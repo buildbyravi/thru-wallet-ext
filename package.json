@@ -1,0 +1,28 @@
+{
+  "name": "thru-wallet-ext",
+  "version": "0.1.0",
+  "description": "Experimental, unofficial self-custody wallet extension for Thru's alphanet",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node test-vault.mjs && node test-thru-client.mjs"
+  },
+  "keywords": ["thru", "blockchain", "wallet", "browser-extension", "alphanet", "crypto"],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/buildbyravi/thru-wallet-ext.git"
+  },
+  "bugs": {
+    "url": "https://github.com/buildbyravi/thru-wallet-ext/issues"
+  },
+  "homepage": "https://github.com/buildbyravi/thru-wallet-ext#readme",
+  "dependencies": {
+    "@thru/crypto": "^0.2.21",
+    "@thru/sdk": "^0.2.39"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.1"
+  }
+}

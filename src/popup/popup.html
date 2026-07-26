@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Thru Wallet</title>
+<link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+<div class="app">
+
+  <header class="topbar">
+    <span class="wordmark">thru</span>
+    <span class="badge">alphanet · unofficial</span>
+  </header>
+
+  <!-- Loading -->
+  <section id="screen-loading" class="screen">
+    <p class="muted center">Loading…</p>
+  </section>
+
+  <!-- Welcome: no wallet yet -->
+  <section id="screen-welcome" class="screen hidden">
+    <h1>Set up your wallet</h1>
+    <p class="muted">This is an experimental, community-built wallet for Thru's alphanet. Not audited. Alphanet funds only.</p>
+    <button class="btn primary" data-action="go-create">Create a new wallet</button>
+    <button class="btn secondary" data-action="go-import">I already have a recovery phrase</button>
+    <button class="btn text" data-action="go-import-key">Import from a private key instead</button>
+  </section>
+
+  <!-- Create: set password -->
+  <section id="screen-create-password" class="screen hidden">
+    <h1>Choose a password</h1>
+    <p class="muted">Used to unlock this wallet on this device. If you forget it, your recovery phrase is the only way back in.</p>
+    <label class="field">
+      <span>Password</span>
+      <input type="password" id="create-password" autocomplete="new-password" minlength="8" />
+    </label>
+    <label class="field">
+      <span>Confirm password</span>
+      <input type="password" id="create-password-confirm" autocomplete="new-password" minlength="8" />
+    </label>
+    <p class="error hidden" id="create-error"></p>
+    <button class="btn primary" data-action="submit-create">Continue</button>
+    <button class="btn text" data-action="go-welcome">Back</button>
+  </section>
+
+  <!-- Create: show mnemonic backup -->
+  <section id="screen-backup" class="screen hidden">
+    <h1>Save your recovery phrase</h1>
+    <p class="muted">These 12 words are the only way to recover this wallet. Write them down and keep them somewhere private — anyone with these words can take everything in the wallet.</p>
+    <div class="mnemonic-grid" id="mnemonic-grid"></div>
+    <label class="checkbox-field">
+      <input type="checkbox" id="backup-confirmed" />
+      <span>I've saved these words somewhere safe</span>
+    </label>
+    <button class="btn primary" id="backup-continue" data-action="finish-create" disabled>Continue</button>
+  </section>
+
+  <!-- Import existing wallet -->
+  <section id="screen-import" class="screen hidden">
+    <h1>Import wallet</h1>
+    <div class="tab-row">
+      <button class="tab-btn active" id="tab-mnemonic" data-action="import-mode-mnemonic">Recovery phrase</button>
+      <button class="tab-btn" id="tab-privatekey" data-action="import-mode-privatekey">Private key</button>
+    </div>
+    <div id="import-mnemonic-fields">
+      <p class="muted">Enter your 12-word recovery phrase, separated by spaces.</p>
+      <textarea class="textarea-lg" id="import-mnemonic" rows="5" placeholder="word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11 word12"></textarea>
+    </div>
+    <div id="import-privatekey-fields" class="hidden">
+      <p class="muted">Paste a 32-byte private key as hex (64 hex characters). The public key and address are derived from it automatically — there's no seed behind a key imported this way, so it can't add further accounts the way a recovery phrase can.</p>
+      <textarea class="textarea-lg" id="import-privatekey" rows="5" placeholder="e.g. 3f1c9a7b2e4d... (64 hex characters total)"></textarea>
+    </div>
+    <label class="field">
+      <span>New password for this device</span>
+      <input type="password" id="import-password" autocomplete="new-password" minlength="8" />
+    </label>
+    <p class="error hidden" id="import-error"></p>
+    <button class="btn primary" data-action="submit-import">Import</button>
+    <button class="btn text" data-action="go-welcome">Back</button>
+  </section>
+
+  <!-- Unlock existing vault -->
+  <section id="screen-unlock" class="screen hidden">
+    <h1>Enter your password</h1>
+    <label class="field">
+      <span>Password</span>
+      <input type="password" id="unlock-password" autocomplete="current-password" />
+    </label>
+    <p class="error hidden" id="unlock-error"></p>
+    <button class="btn primary" data-action="submit-unlock">Unlock</button>
+    <button class="btn text danger" data-action="go-reset-confirm">Reset wallet on this device</button>
+  </section>
+
+  <!-- Reset confirmation -->
+  <section id="screen-reset-confirm" class="screen hidden">
+    <h1>Reset this device?</h1>
+    <p class="muted">This removes the wallet from this browser only. It does <strong>not</strong> touch anything on-chain. Only do this if you have your recovery phrase saved, or don't need this wallet anymore.</p>
+    <button class="btn danger" data-action="confirm-reset">Yes, reset this device</button>
+    <button class="btn text" data-action="go-unlock">Cancel</button>
+  </section>
+
+  <!-- Import an additional private key into an existing vault -->
+  <section id="screen-add-key" class="screen hidden">
+    <div class="subheader">
+      <button class="icon-btn" data-action="go-accounts">‹</button>
+      <h1>Import a private key</h1>
+      <span class="subheader-spacer"></span>
+    </div>
+    <p class="muted">Paste a 32-byte private key as hex (64 hex characters). This adds it as an independent account inside this same wallet — it isn't derived from your recovery phrase, and won't be included if you only back up the phrase.</p>
+    <textarea class="textarea-lg" id="add-key-input" rows="5" placeholder="e.g. 3f1c9a7b2e4d... (64 hex characters total)"></textarea>
+    <p class="error hidden" id="add-key-error"></p>
+    <button class="btn primary" data-action="submit-add-key">Import key</button>
+  </section>
+
+  <!-- Export: re-confirm password first -->
+  <section id="screen-export-password" class="screen hidden">
+    <div class="subheader">
+      <button class="icon-btn" data-action="go-dashboard">‹</button>
+      <h1>Confirm password</h1>
+      <span class="subheader-spacer"></span>
+    </div>
+    <p class="muted">Exporting always re-checks your password, even if the wallet's already unlocked — it's about to show a secret on screen.</p>
+    <label class="field">
+      <span>Password</span>
+      <input type="password" id="export-password" autocomplete="current-password" />
+    </label>
+    <p class="error hidden" id="export-password-error"></p>
+    <button class="btn primary" data-action="submit-export-password">Continue</button>
+  </section>
+
+  <!-- Export: reveal the secret -->
+  <section id="screen-export-reveal" class="screen hidden">
+    <div class="subheader">
+      <span class="subheader-spacer"></span>
+      <h1 id="export-reveal-title">Recovery phrase</h1>
+      <span class="subheader-spacer"></span>
+    </div>
+    <p class="muted" id="export-reveal-warning"></p>
+    <div class="mnemonic-grid hidden" id="export-mnemonic-grid"></div>
+    <p class="hint hidden monospace-block" id="export-privatekey-display"></p>
+    <button class="btn secondary" data-action="copy-export-secret">Copy</button>
+    <button class="btn text" data-action="go-dashboard">Done</button>
+  </section>
+
+  <!-- Dashboard: main hub -->
+  <section id="screen-dashboard" class="screen hidden">
+    <div class="dash-topbar">
+      <button class="account-pill" data-action="go-accounts">
+        <span class="account-pill-icon" id="dash-account-icon">·</span>
+        <span class="account-pill-address" id="dash-account-address">—</span>
+        <span class="account-pill-chevron">›</span>
+      </button>
+      <button class="icon-btn" data-action="lock" title="Lock wallet">⏻</button>
+    </div>
+
+    <div class="balance-hero">
+      <div class="balance-hero-row">
+        <span class="balance-hero-value" id="balance-display">—</span>
+        <span class="balance-hero-unit">THRU</span>
+      </div>
+      <p class="hint" id="raw-balance-hint"></p>
+    </div>
+
+    <div class="bootstrap-banner hidden" id="bootstrap-banner">
+      <p class="hint">No on-chain account yet for this key — that's normal for a fresh wallet.</p>
+      <button class="btn primary" id="create-account-btn" data-action="create-account">Create on-chain account</button>
+    </div>
+
+    <div class="action-grid">
+      <button class="action-btn" data-action="go-send">
+        <span class="action-icon">↑</span>
+        <span>Send</span>
+      </button>
+      <button class="action-btn" data-action="go-receive">
+        <span class="action-icon">↓</span>
+        <span>Receive</span>
+      </button>
+      <button class="action-btn" data-action="go-faucet">
+        <span class="action-icon">+</span>
+        <span>Faucet</span>
+      </button>
+      <button class="action-btn" data-action="go-history">
+        <span class="action-icon">⟳</span>
+        <span>History</span>
+      </button>
+    </div>
+
+    <p class="hint center" id="account-status"></p>
+    <button class="btn text" data-action="refresh">Refresh balance</button>
+  </section>
+
+  <!-- Accounts switcher -->
+  <section id="screen-accounts" class="screen hidden">
+    <div class="subheader">
+      <button class="icon-btn" data-action="go-dashboard">‹</button>
+      <h1>Accounts</h1>
+      <span class="subheader-spacer"></span>
+    </div>
+    <div id="accounts-list"></div>
+    <div class="accounts-add-row">
+      <button class="btn-chip" id="add-account-btn" data-action="add-account" title="Derive the next account from this seed">+ Account (from seed)</button>
+      <button class="btn-chip" data-action="go-add-key" title="Import another private key into this wallet">+ Private key</button>
+    </div>
+    <hr class="divider" />
+    <button class="btn text" data-action="go-export-password">Export active account's secret</button>
+  </section>
+
+  <!-- Send -->
+  <section id="screen-send" class="screen hidden">
+    <div class="subheader">
+      <button class="icon-btn" data-action="go-dashboard">‹</button>
+      <h1>Send</h1>
+      <span class="subheader-spacer"></span>
+    </div>
+    <label class="field">
+      <span>To address</span>
+      <input type="text" id="send-to" placeholder="ta…" />
+    </label>
+    <label class="field">
+      <span>Amount (THRU)</span>
+      <input type="text" id="send-amount" placeholder="0.0" />
+    </label>
+    <button class="btn primary" id="send-submit-btn" data-action="submit-send">Send</button>
+    <p class="error hidden" id="send-error"></p>
+    <p class="hint" id="send-status"></p>
+    <p class="hint">Amount here is in THRU (matches the balance above) — enter, say, 1.5 to send one and a half. This is unaudited alphanet software; double-check the address before sending.</p>
+  </section>
+
+  <!-- Receive -->
+  <section id="screen-receive" class="screen hidden">
+    <div class="subheader">
+      <button class="icon-btn" data-action="go-dashboard">‹</button>
+      <h1>Receive</h1>
+      <span class="subheader-spacer"></span>
+    </div>
+    <p class="muted">Share this address to receive THRU or other assets on alphanet, for the account currently active.</p>
+    <div class="monospace-block" id="receive-address-display"></div>
+    <button class="btn secondary" data-action="copy-receive-address">Copy address</button>
+    <a class="btn secondary link-btn" id="receive-explorer-link" href="#" target="_blank" rel="noopener">View on explorer</a>
+  </section>
+
+  <!-- Faucet -->
+  <section id="screen-faucet" class="screen hidden">
+    <div class="subheader">
+      <button class="icon-btn" data-action="go-dashboard">‹</button>
+      <h1>Faucet</h1>
+      <span class="subheader-spacer"></span>
+    </div>
+    <label class="field">
+      <span>Amount, in raw units (capped at 10,000 per withdrawal)</span>
+      <input type="text" id="faucet-amount" value="1000" />
+    </label>
+    <button class="btn primary" id="faucet-claim-btn" data-action="claim-faucet">Claim on-chain</button>
+    <p class="error hidden" id="faucet-error"></p>
+    <p class="hint" id="faucet-status"></p>
+    <a class="btn secondary link-btn hidden" id="faucet-explorer-link" href="#" target="_blank" rel="noopener">View transaction on explorer</a>
+    <hr class="divider" />
+    <p class="hint">Prefer the CLI instead? This copies the equivalent command rather than submitting anything from here.</p>
+    <button class="btn secondary" id="faucet-copy-btn" data-action="copy-faucet-command">Copy CLI command</button>
+  </section>
+
+  <!-- History -->
+  <section id="screen-history" class="screen hidden">
+    <div class="subheader">
+      <button class="icon-btn" data-action="go-dashboard">‹</button>
+      <h1>History</h1>
+      <span class="subheader-spacer"></span>
+    </div>
+    <div id="history-list"></div>
+    <p class="hint" id="history-status"></p>
+  </section>
+
+  <footer class="foot">
+    <span id="network-label">rpc.alphanet.thru.org</span>
+  </footer>
+
+</div>
+<script src="popup.bundle.js"></script>
+</body>
+</html>
