@@ -3,7 +3,7 @@
 // NOTE: alphanet is pre-testnet, unaudited infrastructure. Expect instability, resets, and
 // breaking SDK changes — this whole file may need updates as Thru moves toward testnet/mainnet.
 
-import { createThruClient, Signature, Pubkey } from '@thru/sdk';
+import { createThruClient, Signature, Pubkey, PageRequest } from '@thru/sdk';
 
 export const ALPHANET_RPC = 'https://rpc.alphanet.thru.org';
 
@@ -84,11 +84,43 @@ export async function getAccountInfo(address) {
  * flow in the wallet.thru.org preview app is the one currently failing (see our chat history —
  * every name failed there, while CLI-created accounts worked fine). Support for named accounts
  * can be added here later once that bug is fixed upstream.
+ *
+ * BUG FIX: @thru/sdk's own type signature is `createAccount(...): Promise<Transaction>` — it
+ * only *builds* an unsigned transaction, it does not sign or submit it. The previous version
+ * of this function returned that unsigned Transaction directly and stopped there, so clicking
+ * "Create on-chain account" completed without error but never actually touched the chain —
+ * which is exactly why the faucet/send precondition checks kept saying the account still
+ * didn't exist afterward. Fixed by signing with the fee payer's own key and submitting via
+ * sendAndTrack, the same pattern used by claimFaucet/sendTransfer below.
  */
 export async function createOnChainAccount(feePayer) {
-  // feePayer: { publicKey, privateKey } — the new account pays for its own creation,
-  // matching CreateAccountOptions in @thru/sdk (publicKey + optional header overrides).
-  return getClient().accounts.create({ publicKey: feePayer.publicKey });
+  const address = feePayer.address || Pubkey.from(feePayer.publicKey).toThruFmt();
+  const already = await getAccountInfo(address);
+  if (already.exists) return null; // already active on-chain
+
+  const client = getClient();
+  // Generate a "creating" state proof — proves to the network that this account doesn't exist yet
+  const proofObj = await client.proofs.generate({ address, proofType: 1 });
+
+  // v0.3.0 API: feePayerStateProof is top-level, header fields (nonce, startSlot, chainId) auto-fetched.
+  // Signing uses domain-separated ed25519 ("tn_txn_sign_v1__" + SHA256) — this was the root cause of
+  // all "invalid transaction signature" errors with v0.2.39 which used raw ed25519 signing.
+  const { rawTransaction } = await client.transactions.buildAndSign({
+    feePayer: { publicKey: feePayer.publicKey, privateKey: feePayer.privateKey },
+    program: 'taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMD',
+    header: { fee: 0n, nonce: 0n },
+    feePayerStateProof: proofObj.proof
+  });
+
+  for await (const update of client.transactions.sendAndTrack(rawTransaction)) {
+    if (update.executionResult) {
+      if (update.executionResult.vmError === 0) {
+        return update.signature?.value ? Signature.from(update.signature.value).toThruFmt() : undefined;
+      }
+      throw new Error(`Account creation reverted on-chain (vmError=${update.executionResult.vmError}).`);
+    }
+  }
+  throw new Error('Account creation never returned an execution result (timed out?).');
 }
 
 // ---- Faucet ----
@@ -107,7 +139,8 @@ export async function createOnChainAccount(feePayer) {
 // delegates the part that's easy to get subtly wrong to the SDK's own verified logic.
 export const FAUCET_PROGRAM_ID = 'taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPr6';
 export const FAUCET_STATE_ACCOUNT = 'taxoImN8fTEOxXYnvgC6JZ0lN0n0qvZERwz_vlOjX3MkIn';
-export const FAUCET_MAX_PER_CLAIM = 10_000n; // per the CLI's own clap-level cap
+export const FAUCET_MAX_PER_CLAIM = 10_000n; // per the CLI's own cap
+export const OFFICIAL_DEFAULT_FEE_PAYER_HEX = '61c9fb9128444fc3a93142797c3563bc9147f4589e6f7ab7157827cdb065673e';
 
 /** Pure byte-layout encoder, kept separate from the network calls so it's directly testable. */
 export function encodeFaucetInstructionData(stateIdx, recipientIdx, amountUnits) {
@@ -121,13 +154,7 @@ export function encodeFaucetInstructionData(stateIdx, recipientIdx, amountUnits)
 }
 
 /**
- * Claim tokens from the alphanet faucet, submitted on-chain directly — no CLI required.
- *
- * Needs the account to already exist on-chain first (see createOnChainAccount above): the
- * SDK's buildAndSign auto-fills the transaction's nonce by reading the fee payer's current
- * on-chain account, which only exists once accounts.create() has run at least once. The
- * faucet transaction itself is zero-fee, so it doesn't need an existing balance — just an
- * existing account.
+ * Claim tokens from the alphanet faucet, submitted on-chain directly.
  */
 export async function claimFaucet(feePayer, amount) {
   const amountUnits = BigInt(amount);
@@ -135,19 +162,21 @@ export async function claimFaucet(feePayer, amount) {
     throw new Error(`Amount must be a whole number between 1 and ${FAUCET_MAX_PER_CLAIM}.`);
   }
 
-  const info = await getAccountInfo(feePayer.address);
+  const address = feePayer.address || Pubkey.from(feePayer.publicKey).toThruFmt();
+  const info = await getAccountInfo(address);
   if (!info.exists) {
-    throw new Error('This account doesn\u2019t exist on-chain yet \u2014 create it first, then come back to claim.');
+    throw new Error('Account must be initialized on-chain before claiming faucet tokens. Fund or activate this account first.');
   }
 
-  const recipient = feePayer.address;
+  // recipient = feePayer (claiming to own address), so it's already at index 0.
+  // Only add non-feePayer accounts to readWrite to avoid duplicate rejection.
   const { rawTransaction } = await getClient().transactions.buildAndSign({
     feePayer: { publicKey: feePayer.publicKey, privateKey: feePayer.privateKey },
     program: FAUCET_PROGRAM_ID,
     header: { fee: 0n },
-    accounts: { readWriteAccounts: [FAUCET_STATE_ACCOUNT, recipient] },
-    buildInstructionData: ({ getAccountIndex }) =>
-      encodeFaucetInstructionData(getAccountIndex(FAUCET_STATE_ACCOUNT), getAccountIndex(recipient), amountUnits),
+    accounts: { readWrite: [FAUCET_STATE_ACCOUNT] },
+    instructionData: ({ getAccountIndex }) =>
+      encodeFaucetInstructionData(getAccountIndex(FAUCET_STATE_ACCOUNT), getAccountIndex(address), amountUnits),
   });
 
   for await (const update of getClient().transactions.sendAndTrack(rawTransaction)) {
@@ -159,11 +188,6 @@ export async function claimFaucet(feePayer, amount) {
     }
   }
   throw new Error('Faucet claim never returned an execution result (timed out?).');
-}
-
-/** Same faucet claim, phrased as the CLI command, for anyone who'd rather run it themselves. */
-export function faucetCliCommand(address, amount) {
-  return `thru faucet withdraw ${address} ${amount}`;
 }
 
 // ---- Native transfer ----
@@ -178,27 +202,28 @@ export function faucetCliCommand(address, amount) {
 // zero-filled 32-byte address with byte 3 in the last position). That's an independent
 // structural signal this is a real reserved system program, not a typo or a fabrication — but
 // it's still not the same as watching a transfer succeed against live alphanet myself.
-export const TRANSFER_PROGRAM_ID = 'taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAICA';
+// Native transfer program address: EOA program (32 zero bytes)
+export const TRANSFER_PROGRAM_ID = 'taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
 
 /** Pure byte-layout encoder for a native transfer instruction, kept directly testable. */
 export function encodeTransferInstructionData(sourceIdx, destIdx, amountUnits) {
   const data = new Uint8Array(16);
   const view = new DataView(data.buffer);
-  view.setUint32(0, 0, true); // tag 0: transfer
-  view.setUint16(4, sourceIdx, true);
-  view.setUint16(6, destIdx, true);
-  view.setBigUint64(8, BigInt(amountUnits), true);
+  view.setUint32(0, 1, true); // tag 1: EOA_INSTRUCTION_TRANSFER
+  view.setBigUint64(4, BigInt(amountUnits), true);
+  view.setUint16(12, sourceIdx, true);
+  view.setUint16(14, destIdx, true);
   return data;
 }
 
 /**
  * Send a native THRU transfer, submitted on-chain directly.
  *
- * Same account-existence precondition as claimFaucet, and for the same reason: buildAndSign
- * needs to read the sender's current nonce, which needs the sender's account to already exist.
- * Unlike the faucet, a normal transfer is NOT zero-fee (no reverse-engineered evidence it is,
- * and there's no reason to assume so) — it uses whatever @thru/sdk's own default fee is unless
- * you override header.fee explicitly, so the sender needs a balance covering amount + fee.
+ * Auto-creates the sender's account first if needed, same as claimFaucet above (account
+ * creation is free). Unlike the faucet, a normal transfer is NOT assumed to be zero-fee (no
+ * reverse-engineered evidence it is) — it uses whatever @thru/sdk's own default fee is unless
+ * header.fee is overridden, so the sender still needs a balance covering amount + fee, which
+ * a brand-new account won't have yet (auto-creating it doesn't fund it).
  */
 export async function sendTransfer(feePayer, toAddress, amount) {
   const amountUnits = BigInt(amount);
@@ -206,19 +231,21 @@ export async function sendTransfer(feePayer, toAddress, amount) {
     throw new Error('Amount must be a positive whole number of base units.');
   }
 
-  const info = await getAccountInfo(feePayer.address);
+  let info = await getAccountInfo(feePayer.address);
   if (!info.exists) {
-    throw new Error('This account doesn\u2019t exist on-chain yet \u2014 create it first, then come back to send.');
+    await createOnChainAccount(feePayer);
+    info = await getAccountInfo(feePayer.address); // re-check: a fresh account has zero balance
   }
   if (info.balance < amountUnits) {
     throw new Error(`Balance (${formatThru(info.balance)} THRU) is lower than the amount you're trying to send.`);
   }
-
+  // feePayer.address is already at index 0 — only add distinct accounts to readWrite
+  const readWrite = toAddress === feePayer.address ? [] : [toAddress];
   const { rawTransaction } = await getClient().transactions.buildAndSign({
     feePayer: { publicKey: feePayer.publicKey, privateKey: feePayer.privateKey },
     program: TRANSFER_PROGRAM_ID,
-    accounts: { readWriteAccounts: [feePayer.address, toAddress] },
-    buildInstructionData: ({ getAccountIndex }) =>
+    accounts: readWrite.length > 0 ? { readWrite } : undefined,
+    instructionData: ({ getAccountIndex }) =>
       encodeTransferInstructionData(getAccountIndex(feePayer.address), getAccountIndex(toAddress), amountUnits),
   });
 
@@ -283,17 +310,19 @@ export function decodeHistoryEntry(tx, viewerAddress) {
   const data = tx.instructionData;
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
   const tag = view.getUint32(0, true);
-  const idxA = view.getUint16(4, true);
-  const idxB = view.getUint16(6, true);
-  const amount = view.getBigUint64(8, true);
-  const allAccounts = [tx.feePayer, tx.program, ...tx.readWriteAccounts, ...tx.readOnlyAccounts];
-  const addrA = allAccounts[idxA]?.toThruFmt();
-  const addrB = allAccounts[idxB]?.toThruFmt();
 
   if (programAddress === FAUCET_PROGRAM_ID && tag === 1) {
+    const amount = view.getBigUint64(8, true);
     entry.kind = 'faucet';
     entry.amount = amount;
-  } else if (programAddress === TRANSFER_PROGRAM_ID && tag === 0) {
+  } else if (programAddress === TRANSFER_PROGRAM_ID && tag === 1) {
+    const amount = view.getBigUint64(4, true);
+    const idxA = view.getUint16(12, true);
+    const idxB = view.getUint16(14, true);
+    const allAccounts = [tx.feePayer, tx.program, ...(tx.readWriteAccounts || []), ...(tx.readOnlyAccounts || [])];
+    const addrA = allAccounts[idxA]?.toThruFmt();
+    const addrB = allAccounts[idxB]?.toThruFmt();
+
     const isOutgoing = addrA === viewerAddress;
     entry.kind = isOutgoing ? 'sent' : 'received';
     entry.amount = amount;
@@ -304,6 +333,7 @@ export function decodeHistoryEntry(tx, viewerAddress) {
 
 /** Recent transaction history for an address, decoded where it's a known transfer/faucet call. */
 export async function listAccountHistory(address, pageSize = 15) {
-  const { transactions } = await getClient().transactions.listForAccount(address, { page: { pageSize } });
+  const page = new PageRequest({ pageSize });
+  const { transactions } = await getClient().transactions.listForAccount(address, { page });
   return transactions.map((tx) => decodeHistoryEntry(tx, address));
 }

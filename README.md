@@ -4,6 +4,10 @@ An experimental, self-custody browser extension for Thru's alphanet, built on th
 `@thru/sdk` and `@thru/crypto` packages (not a mockup). Not affiliated with Unto Labs.
 Not audited. **Alphanet only — do not use with anything you consider real value.**
 
+## Design
+
+Instrument-grade dark UI: flat graphite surfaces, tabular mono numerals, byte-mark identicons, and one phosphor-amber accent. See [DESIGN.md](DESIGN.md) for the token system and rules for adding features.
+
 ## Why this exists
 
 Thru's own wallet architecture is built around an embedded, iframe-hosted wallet
@@ -32,8 +36,8 @@ entry room to breathe instead of cramming into a 380px sliver.
   public key are derived automatically via `@thru/sdk`'s `keys.fromPrivateKey()`.
 - **Multiple accounts, one wallet, with a real switcher**: "+ Account" derives the next
   BIP-44 index from the seed; "+ Private key" imports another independent key into the
-  same wallet. Square "H" icon for seed-derived accounts, circular "K" for imported —
-  same idea as Rabby's square/circle distinction.
+  same wallet. Byte-mark identicons (4×4 deterministic grid) distinguish accounts at a
+  glance — square containers for seed-derived, round for imported keys.
 - **Export**: re-checks your password even if already unlocked, then reveals the
   recovery phrase (seed-derived — note this exports the *whole seed*) or the specific
   private key (imported accounts). Reachable from the Accounts screen.

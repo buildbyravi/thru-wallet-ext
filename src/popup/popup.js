@@ -23,13 +23,21 @@ import {
   parseThruAmount,
   isValidThruAddress,
   claimFaucet,
-  faucetCliCommand,
   FAUCET_MAX_PER_CLAIM,
   sendTransfer,
   listAccountHistory,
   explorerTxUrl,
   explorerAddressUrl,
 } from '../lib/thru-client.js';
+import { icons, byteMarkHtml } from './icons.js';
+
+// Static markup opts into an icon with data-icon="name"; resolved once at load.
+function injectIcons() {
+  for (const el of document.querySelectorAll('[data-icon]')) {
+    const render = icons[el.dataset.icon];
+    if (render) el.insertAdjacentHTML('afterbegin', render());
+  }
+}
 
 const screens = [
   'loading',
@@ -99,13 +107,9 @@ function refsEqual(a, b) {
   return a.kind === 'hd' ? a.index === b.index : a.keyIndex === b.keyIndex;
 }
 
-/** 'H' in a rounded square for seed-derived accounts, 'K' in a circle for imported keys —
- * same idea as Rabby's square/circle distinction between seed and private-key addresses. */
-function accountIconHtml(ref) {
-  return ref.kind === 'hd'
-    ? '<span class="account-icon square">H</span>'
-    : '<span class="account-icon circle">K</span>';
-}
+// Byte-mark identicon per address (see icons.js). Square container for
+// seed-derived accounts, round for imported keys — same seed/key distinction
+// Rabby draws with square vs circle avatars.
 
 function renderMnemonicGrid(mnemonic, gridEl) {
   gridEl.innerHTML = '';
@@ -145,7 +149,7 @@ async function loadDashboard() {
 
 async function refreshActiveAccountAndBalance() {
   activeAccount = await getActiveAccount();
-  document.getElementById('dash-account-icon').textContent = activeAccount.ref.kind === 'hd' ? 'H' : 'K';
+  document.getElementById('dash-account-mark').innerHTML = byteMarkHtml(activeAccount.address, activeAccount.ref);
   document.getElementById('dash-account-address').textContent = truncateAddress(activeAccount.address);
   await refreshBalance();
 }
@@ -158,10 +162,10 @@ async function renderAccountsList() {
   for (const acc of accounts) {
     const row = document.createElement('button');
     row.type = 'button';
-    row.className = 'account-row' + (refsEqual(acc.ref, activeRef) ? ' active' : '');
+    row.className = 'row' + (refsEqual(acc.ref, activeRef) ? ' active' : '');
     row.dataset.action = 'switch-account';
     row.dataset.ref = JSON.stringify(acc.ref);
-    row.innerHTML = `${accountIconHtml(acc.ref)}<span class="account-row-text"><span class="account-label">${acc.label}</span><span class="account-address">${truncateAddress(acc.address)}</span></span>`;
+    row.innerHTML = `${byteMarkHtml(acc.address, acc.ref)}<span class="row-body"><span class="row-title">${acc.label}</span><span class="row-sub">${truncateAddress(acc.address)}</span></span>`;
     container.appendChild(row);
   }
   document.getElementById('add-account-btn').classList.toggle('hidden', !(await hasSeed()));
@@ -188,11 +192,11 @@ async function refreshBalance() {
 }
 
 function historyIconAndClass(entry) {
-  if (entry.success === false) return { icon: '✕', cls: 'failed' };
-  if (entry.kind === 'sent') return { icon: '↑', cls: 'sent' };
-  if (entry.kind === 'received') return { icon: '↓', cls: 'received' };
-  if (entry.kind === 'faucet') return { icon: '+', cls: 'faucet' };
-  return { icon: '•', cls: 'other' };
+  if (entry.success === false) return { icon: icons.x(), cls: 'failed' };
+  if (entry.kind === 'sent') return { icon: icons.send(14), cls: 'sent' };
+  if (entry.kind === 'received') return { icon: icons.receive(14), cls: 'received' };
+  if (entry.kind === 'faucet') return { icon: icons.plus(), cls: 'faucet' };
+  return { icon: icons.dot(), cls: 'other' };
 }
 
 function historyDescription(entry) {
@@ -213,12 +217,12 @@ async function renderHistory() {
     for (const entry of entries) {
       const { icon, cls } = historyIconAndClass(entry);
       const row = document.createElement('div');
-      row.className = 'history-row';
+      row.className = 'row';
       const sigDisplay = entry.signature ? truncateAddress(entry.signature) : 'pending';
       const linkHtml = entry.signature
-        ? `<a class="history-explorer-link" href="${explorerTxUrl(entry.signature)}" target="_blank" rel="noopener">↗</a>`
+        ? `<a class="history-explorer-link" href="${explorerTxUrl(entry.signature)}" target="_blank" rel="noopener" title="View on explorer">${icons.external()}</a>`
         : '';
-      row.innerHTML = `<span class="history-icon ${cls}">${icon}</span><span class="history-main"><span class="history-desc">${historyDescription(entry)}${entry.success === false ? ' (failed)' : ''}</span><span class="history-sig-row"><button type="button" class="history-sig" data-action="copy-history-sig" data-sig="${entry.signature ?? ''}" title="Copy signature">${sigDisplay}</button>${linkHtml}</span></span>`;
+      row.innerHTML = `<span class="row-glyph ${cls}">${icon}</span><span class="row-body"><span class="row-title">${historyDescription(entry)}${entry.success === false ? ' (failed)' : ''}</span><span class="history-sig-row"><button type="button" class="history-sig" data-action="copy-history-sig" data-sig="${entry.signature ?? ''}" title="Copy signature">${sigDisplay}</button>${linkHtml}</span></span>`;
       container.appendChild(row);
     }
   } catch (err) {
@@ -410,7 +414,14 @@ async function handleAction(action, target) {
       break;
 
     case 'copy-address':
-      if (activeAccount) await navigator.clipboard.writeText(activeAccount.address);
+      if (activeAccount) {
+        await navigator.clipboard.writeText(activeAccount.address);
+        const copyBtn = document.getElementById('dash-copy-btn');
+        if (copyBtn) {
+          copyBtn.classList.add('copied');
+          setTimeout(() => copyBtn.classList.remove('copied'), 1000);
+        }
+      }
       break;
 
     case 'copy-receive-address':
@@ -428,7 +439,7 @@ async function handleAction(action, target) {
       btn.disabled = true;
       btn.textContent = 'Creating…';
       try {
-        await createOnChainAccount({ publicKey: activeAccount.publicKey, privateKey: activeAccount.privateKey });
+        await createOnChainAccount(activeAccount);
         await refreshBalance();
       } catch (err) {
         document.getElementById('account-status').textContent = `Account creation failed: ${err.message}`;
@@ -535,17 +546,6 @@ async function handleAction(action, target) {
       break;
     }
 
-    case 'copy-faucet-command': {
-      if (!activeAccount) break;
-      const amount = document.getElementById('faucet-amount').value.trim() || '1000';
-      await navigator.clipboard.writeText(faucetCliCommand(activeAccount.address, amount));
-      const btn = document.getElementById('faucet-copy-btn');
-      const original = btn.textContent;
-      btn.textContent = Number(amount) > Number(FAUCET_MAX_PER_CLAIM) ? 'Copied (⚠ over cap)' : 'Copied!';
-      setTimeout(() => (btn.textContent = original), 1400);
-      break;
-    }
-
     case 'submit-send': {
       const toAddress = document.getElementById('send-to').value.trim();
       const amountRaw = document.getElementById('send-amount').value.trim();
@@ -619,4 +619,5 @@ document.addEventListener('click', (e) => {
   handleAction(target.dataset.action, target);
 });
 
+injectIcons();
 init();

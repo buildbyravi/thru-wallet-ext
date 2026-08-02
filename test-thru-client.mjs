@@ -58,11 +58,13 @@ assert(formatThru(1_500_000_000n) === '1.5', '1.5e9 units formats as "1.5"');
 assert(formatThru(1n) === '0.000000001', 'the smallest unit formats with full precision');
 assert(formatThru(123_456_789_000n) === '123.456789', 'trailing zeros in the fractional part are trimmed');
 
-console.log('\n[5] Transfer instruction encoding uses tag 0 (vs. the faucet\'s tag 1) and otherwise matches the same layout');
-const transferEncoded = encodeTransferInstructionData(0, 1, 500n);
-const transferDecoded = decode(transferEncoded);
-assert(transferDecoded.tag === 0, 'transfer tag is 0');
-assert(transferDecoded.amount === 500n, 'transfer amount round-trips');
+console.log('\n[5] Transfer instruction encoding uses tag 1 (EOA transfer) and matches verified layout');
+const transferEncoded = encodeTransferInstructionData(0, 2, 500n);
+const transferView = new DataView(transferEncoded.buffer);
+assert(transferView.getUint32(0, true) === 1, 'transfer tag is 1');
+assert(transferView.getBigUint64(4, true) === 500n, 'transfer amount is at offset 4');
+assert(transferView.getUint16(12, true) === 0, 'source account index is at offset 12');
+assert(transferView.getUint16(14, true) === 2, 'dest account index is at offset 14');
 assert(transferEncoded.length === 16, 'transfer instruction data is also exactly 16 bytes');
 
 console.log('\n[6] decodeHistoryEntry resolves a real transfer Transaction back into sender/recipient/amount');

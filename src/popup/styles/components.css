@@ -1,0 +1,409 @@
+/* ============================================================
+   Components — reusable primitives. Every new wallet feature
+   should compose from these before inventing new styles.
+   ============================================================ */
+
+/* ---- Buttons ---------------------------------------------- */
+
+.btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  padding: 11px 16px;
+  font-family: var(--font-ui);
+  font-size: var(--fs-md);
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  cursor: pointer;
+  transition: background var(--t-base), border-color var(--t-base), color var(--t-base);
+  text-decoration: none;
+}
+
+.btn.primary {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.btn.primary:hover { background: var(--accent-bright); }
+
+.btn.primary:disabled {
+  background: var(--surface-2);
+  color: var(--text-3);
+  cursor: not-allowed;
+}
+
+.btn.secondary {
+  background: var(--surface-1);
+  color: var(--text-1);
+  border-color: var(--border);
+}
+
+.btn.secondary:hover {
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+}
+
+.btn.text {
+  background: transparent;
+  color: var(--text-2);
+  padding: var(--sp-2) var(--sp-1);
+  font-size: var(--fs-sm);
+  width: auto;
+  align-self: center;
+}
+
+.btn.text:hover { color: var(--text-1); }
+
+.btn.danger {
+  background: transparent;
+  color: var(--negative);
+  border-color: var(--negative-border);
+}
+
+.btn.danger:hover { background: var(--negative-tint); }
+
+.btn.text.danger {
+  border: none;
+  color: var(--negative);
+}
+
+/* ---- Icon button ------------------------------------------ */
+
+.icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-2);
+  cursor: pointer;
+  transition: background var(--t-base), border-color var(--t-base), color var(--t-base);
+}
+
+.icon-btn:hover {
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+  color: var(--text-1);
+}
+
+.icon-btn.copied {
+  border-color: var(--positive-border);
+  color: var(--positive);
+}
+
+.icon-btn.danger-hover:hover {
+  border-color: var(--negative-border);
+  color: var(--negative);
+  background: var(--negative-tint);
+}
+
+/* ---- Chip (small pill action) ----------------------------- */
+
+.btn-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  color: var(--text-2);
+  border-radius: var(--radius-pill);
+  padding: 7px 13px;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--t-base), border-color var(--t-base), color var(--t-base);
+}
+
+.btn-chip:hover {
+  color: var(--text-1);
+  border-color: var(--border-strong);
+  background: var(--surface-2);
+}
+
+/* ---- Fields ------------------------------------------------ */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.field > span {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--eyebrow-tracking);
+  color: var(--text-3);
+}
+
+input[type="password"],
+input[type="text"],
+textarea {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 11px 13px;
+  color: var(--text-1);
+  font-family: var(--font-mono);
+  font-size: var(--fs-md);
+  width: 100%;
+  resize: vertical;
+  transition: border-color var(--t-base), background var(--t-base);
+}
+
+input::placeholder,
+textarea::placeholder { color: var(--text-3); }
+
+input:hover:not(:focus),
+textarea:hover:not(:focus) { border-color: var(--border-strong); }
+
+input:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.textarea-lg {
+  line-height: 1.7;
+  min-height: 116px;
+}
+
+.checkbox-field {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  font-size: var(--fs-md);
+  color: var(--text-2);
+  cursor: pointer;
+  user-select: none;
+}
+
+.checkbox-field input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: var(--accent);
+}
+
+/* ---- Status & messaging ----------------------------------- */
+
+.error {
+  background: var(--negative-tint);
+  color: var(--negative);
+  border: 1px solid var(--negative-border);
+  border-radius: var(--radius-md);
+  padding: 11px 13px;
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+}
+
+.notice {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--accent);
+  border-radius: var(--radius-md);
+  padding: var(--sp-3) var(--sp-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.divider {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: var(--sp-2) 0;
+}
+
+/* ---- Data display ----------------------------------------- */
+
+.monospace-block {
+  font-family: var(--font-mono);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--sp-4);
+  word-break: break-all;
+  font-size: var(--fs-md);
+  line-height: 1.65;
+  color: var(--text-1);
+}
+
+.mnemonic-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--sp-2);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--sp-3);
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+}
+
+.mnemonic-grid span {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 7px 9px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-3);
+}
+
+.mnemonic-grid span b {
+  color: var(--text-1);
+  font-weight: 500;
+}
+
+/* ---- Tabs -------------------------------------------------- */
+
+.tab-row {
+  display: flex;
+  gap: var(--sp-1);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 3px;
+}
+
+.tab-btn {
+  flex: 1;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 8px 0;
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--text-3);
+  cursor: pointer;
+  transition: background var(--t-base), color var(--t-base);
+}
+
+.tab-btn.active {
+  background: var(--surface-3);
+  color: var(--text-1);
+}
+
+.tab-btn:not(.active):hover { color: var(--text-2); }
+
+/* ---- Byte-mark: address-derived identicon ------------------
+   4×4 grid, each cell colored by a nibble of the address hash.
+   Square container = seed-derived, round = imported key.
+   Rendered by renderByteMark() in popup.js. ------------------ */
+
+.byte-mark {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  grid-template-rows: repeat(4, 1fr);
+  gap: 1px;
+  width: 28px;
+  height: 28px;
+  padding: 3px;
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.byte-mark.imported { border-radius: var(--radius-pill); }
+
+.byte-mark i {
+  border-radius: 1px;
+}
+
+.byte-mark .m0 { background: var(--mark-0); }
+.byte-mark .m1 { background: var(--mark-1); }
+.byte-mark .m2 { background: var(--mark-2); }
+.byte-mark .m3 { background: var(--mark-3); }
+
+.byte-mark.sm {
+  width: 22px;
+  height: 22px;
+  padding: 2px;
+}
+
+/* ---- List rows (accounts, history, future assets) ---------- */
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  width: 100%;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--sp-3) var(--sp-4);
+  text-align: left;
+  transition: background var(--t-base), border-color var(--t-base);
+}
+
+button.row { cursor: pointer; }
+
+.row:hover {
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+}
+
+.row.active {
+  border-color: var(--accent-border);
+  background: var(--accent-tint);
+}
+
+.row-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.row-title {
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: var(--text-1);
+  line-height: 1.4;
+}
+
+.row-sub {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row-glyph {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-2);
+}
+
+.row-glyph.sent      { color: var(--text-1); }
+.row-glyph.received,
+.row-glyph.faucet    { color: var(--positive); border-color: var(--positive-border); background: var(--positive-tint); }
+.row-glyph.failed    { color: var(--negative); border-color: var(--negative-border); background: var(--negative-tint); }
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}

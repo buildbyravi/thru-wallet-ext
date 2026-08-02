@@ -21,12 +21,21 @@ await esbuild.build({
   outfile: 'dist/popup.bundle.js',
 });
 
+// popup.css is an aggregator of @imports under src/popup/styles/ — bundle it
+// so dist keeps shipping a single popup.css.
+await esbuild.build({
+  bundle: true,
+  minify: true,
+  logLevel: 'info',
+  entryPoints: ['src/popup/popup.css'],
+  outfile: 'dist/popup.css',
+});
+
 // Everything else in dist/ is a straight copy of authored files under src/ -- nothing is
 // hand-edited directly in dist/, so `rm -rf dist && npm run build` always reproduces it
 // exactly. This bit us once already (see README) when popup.html/css were forgotten in a
 // rebuild; copying manifest.json and icons/ here too closes the same gap for those.
 copyFileSync('src/popup/popup.html', 'dist/popup.html');
-copyFileSync('src/popup/popup.css', 'dist/popup.css');
 copyFileSync('src/manifest.json', 'dist/manifest.json');
 mkdirSync('dist/icons', { recursive: true });
 for (const file of readdirSync('src/icons')) {
