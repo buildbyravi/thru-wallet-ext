@@ -17,6 +17,24 @@ export function isValidThruAddress(address) {
   }
 }
 
+/**
+ * Lightweight RPC health check — times a single accounts.get() call against a known
+ * address. Returns { status, latencyMs } without throwing. Called once on popup open
+ * to drive the footer network indicator; deliberately not polled.
+ */
+export async function checkNetworkHealth() {
+  const start = performance.now();
+  try {
+    // Use the zero address — always fast to look up, doesn't need to exist
+    await getClient().accounts.get('taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA');
+    const latencyMs = Math.round(performance.now() - start);
+    if (latencyMs < 500) return { status: 'healthy', latencyMs };
+    return { status: 'slow', latencyMs };
+  } catch {
+    return { status: 'offline', latencyMs: null };
+  }
+}
+
 // 1 THRU = 1e9 base units.
 export const UNITS_PER_THRU = 1_000_000_000n;
 

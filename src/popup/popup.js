@@ -28,8 +28,11 @@ import {
   listAccountHistory,
   explorerTxUrl,
   explorerAddressUrl,
+  checkNetworkHealth,
 } from '../lib/thru-client.js';
 import { icons, byteMarkHtml } from './icons.js';
+import { showToast } from './toast.js';
+import { renderQR } from './qr.js';
 
 // Static markup opts into an icon with data-icon="name"; resolved once at load.
 function injectIcons() {
@@ -41,6 +44,7 @@ function injectIcons() {
 
 const screens = [
   'loading',
+  'disclaimer',
   'welcome',
   'create-password',
   'backup',
@@ -53,6 +57,7 @@ const screens = [
   'dashboard',
   'accounts',
   'send',
+  'send-preview',
   'receive',
   'faucet',
   'history',
@@ -127,8 +132,21 @@ let activeAccount = null;
 let importMode = 'mnemonic'; // 'mnemonic' | 'privatekey'
 let pendingExportRef = null;
 let pendingExportSecret = null;
+// v1.1: staged send data (preview → confirm flow)
+let pendingSend = null; // { toAddress, amountUnits, amountDisplay }
 
 async function init() {
+  // v1.1: first-run disclaimer — show once, gate everything behind it
+  const { disclaimerAcknowledged } = await chrome.storage.local.get('disclaimerAcknowledged');
+  if (!disclaimerAcknowledged) {
+    show('disclaimer');
+    return;
+  }
+  await proceedAfterDisclaimer();
+}
+
+/** Normal init flow — called after disclaimer is acknowledged (or was already). */
+async function proceedAfterDisclaimer() {
   const has = await hasVault();
   if (!has) {
     show('welcome');
@@ -140,6 +158,8 @@ async function init() {
   } else {
     show('unlock');
   }
+  // v1.1: check network health (non-blocking, fire-and-forget)
+  updateNetworkStatus();
 }
 
 async function loadDashboard() {
@@ -268,6 +288,12 @@ async function handleAction(action, target) {
       show('welcome');
       break;
 
+    // v1.1: disclaimer acknowledgment
+    case 'acknowledge-disclaimer':
+      await chrome.storage.local.set({ disclaimerAcknowledged: true });
+      await proceedAfterDisclaimer();
+      break;
+
     case 'go-create':
       clearSensitiveFields();
       show('create-password');
@@ -318,19 +344,20 @@ async function handleAction(action, target) {
 
     case 'go-send':
       setError('send-error', '');
-      document.getElementById('send-status').textContent = '';
+      pendingSend = null;
       show('send');
       break;
 
     case 'go-receive':
       document.getElementById('receive-address-display').textContent = activeAccount.address;
       document.getElementById('receive-explorer-link').href = explorerAddressUrl(activeAccount.address);
+      // v1.1: render QR code
+      renderQR(document.getElementById('receive-qr'), activeAccount.address);
       show('receive');
       break;
 
     case 'go-faucet':
       setError('faucet-error', '');
-      document.getElementById('faucet-status').textContent = '';
       document.getElementById('faucet-explorer-link').classList.add('hidden');
       show('faucet');
       break;
@@ -416,6 +443,7 @@ async function handleAction(action, target) {
     case 'copy-address':
       if (activeAccount) {
         await navigator.clipboard.writeText(activeAccount.address);
+        showToast('Address copied', 'info');
         const copyBtn = document.getElementById('dash-copy-btn');
         if (copyBtn) {
           copyBtn.classList.add('copied');
@@ -427,10 +455,7 @@ async function handleAction(action, target) {
     case 'copy-receive-address':
       if (activeAccount) {
         await navigator.clipboard.writeText(activeAccount.address);
-        const btn = target;
-        const original = btn.textContent;
-        btn.textContent = 'Copied!';
-        setTimeout(() => (btn.textContent = original), 900);
+        showToast('Address copied', 'info');
       }
       break;
 
@@ -516,10 +541,8 @@ async function handleAction(action, target) {
       const amountInput = document.getElementById('faucet-amount');
       const amount = Number(amountInput.value.trim());
       const btn = document.getElementById('faucet-claim-btn');
-      const statusEl = document.getElementById('faucet-status');
       const linkEl = document.getElementById('faucet-explorer-link');
       setError('faucet-error', '');
-      statusEl.textContent = '';
       linkEl.classList.add('hidden');
       if (!Number.isInteger(amount) || amount <= 0 || amount > Number(FAUCET_MAX_PER_CLAIM)) {
         setError('faucet-error', `Enter a whole number between 1 and ${FAUCET_MAX_PER_CLAIM}.`);
@@ -530,11 +553,11 @@ async function handleAction(action, target) {
       try {
         const signature = await claimFaucet(activeAccount, amount);
         if (signature) {
-          statusEl.textContent = `Claimed. Signature: ${signature}`;
+          showToast(`Claimed ${amount} raw units`, 'success');
           linkEl.href = explorerTxUrl(signature);
           linkEl.classList.remove('hidden');
         } else {
-          statusEl.textContent = 'Claimed.';
+          showToast('Claimed', 'success');
         }
         await refreshBalance();
       } catch (err) {
@@ -546,13 +569,10 @@ async function handleAction(action, target) {
       break;
     }
 
-    case 'submit-send': {
+    case 'preview-send': {
       const toAddress = document.getElementById('send-to').value.trim();
       const amountRaw = document.getElementById('send-amount').value.trim();
-      const btn = document.getElementById('send-submit-btn');
-      const statusEl = document.getElementById('send-status');
       setError('send-error', '');
-      statusEl.textContent = '';
 
       if (!isValidThruAddress(toAddress)) {
         setError('send-error', "That doesn't look like a valid Thru address.");
@@ -570,27 +590,51 @@ async function handleAction(action, target) {
         break;
       }
 
+      // Stage the send and show preview
+      const amountDisplay = `${formatThru(amountUnits)} THRU`;
+      pendingSend = { toAddress, amountUnits, amountDisplay };
+      document.getElementById('preview-amount').textContent = amountDisplay;
+      document.getElementById('preview-to').textContent = toAddress;
+      document.getElementById('preview-total').textContent = `~${amountDisplay}`;
+      show('send-preview');
+      break;
+    }
+
+    case 'confirm-send': {
+      if (!pendingSend) break;
+      const { toAddress, amountUnits, amountDisplay } = pendingSend;
+      const btn = document.getElementById('send-confirm-btn');
+
       btn.disabled = true;
       btn.textContent = 'Sending…';
       try {
         const signature = await sendTransfer(activeAccount, toAddress, amountUnits);
-        statusEl.innerHTML = signature
-          ? `Sent. Signature: ${signature}<br><a class="history-explorer-link" href="${explorerTxUrl(signature)}" target="_blank" rel="noopener">View on explorer</a>`
-          : 'Sent.';
+        pendingSend = null;
         document.getElementById('send-to').value = '';
         document.getElementById('send-amount').value = '';
+        if (signature) {
+          showToast(`Sent ${amountDisplay}`, 'success');
+        } else {
+          showToast('Sent', 'success');
+        }
         await refreshBalance();
+        show('dashboard');
       } catch (err) {
+        showToast(`Send failed: ${err.message}`, 'error');
+        show('send');
         setError('send-error', err.message);
       } finally {
         btn.disabled = false;
-        btn.textContent = 'Send';
+        btn.textContent = 'Confirm & Send';
       }
       break;
     }
 
     case 'copy-history-sig': {
-      if (target.dataset.sig) await navigator.clipboard.writeText(target.dataset.sig);
+      if (target.dataset.sig) {
+        await navigator.clipboard.writeText(target.dataset.sig);
+        showToast('Signature copied', 'info');
+      }
       break;
     }
 
@@ -613,11 +657,90 @@ document.getElementById('backup-confirmed').addEventListener('change', (e) => {
   document.getElementById('backup-continue').disabled = !e.target.checked;
 });
 
+// v1.1: disclaimer checkbox enables the Continue button
+document.getElementById('disclaimer-agreed').addEventListener('change', (e) => {
+  document.getElementById('disclaimer-continue').disabled = !e.target.checked;
+});
+
 document.addEventListener('click', (e) => {
   const target = e.target.closest('[data-action]');
   if (!target || target.disabled) return;
   handleAction(target.dataset.action, target);
 });
+
+// ---- v1.1: Network health indicator ----------------------------------------
+
+async function updateNetworkStatus() {
+  const dot = document.getElementById('network-dot');
+  const latencyEl = document.getElementById('network-latency');
+  if (!dot) return;
+  const result = await checkNetworkHealth();
+  // Remove all status classes, then add the current one
+  dot.classList.remove('healthy', 'slow', 'offline');
+  dot.classList.add(result.status);
+  if (latencyEl) {
+    latencyEl.textContent = result.latencyMs != null ? `${result.latencyMs} ms` : 'offline';
+  }
+}
+
+// ---- v1.1: Address validation on send screen -------------------------------
+
+const sendToInput = document.getElementById('send-to');
+if (sendToInput) {
+  sendToInput.addEventListener('input', () => {
+    const indicator = document.getElementById('send-to-indicator');
+    // Auto-strip all whitespace (spaces, newlines, tabs) — users paste from
+    // explorers/messages which often include trailing junk.
+    const cleaned = sendToInput.value.replace(/\s/g, '');
+    if (cleaned !== sendToInput.value) {
+      const cursor = sendToInput.selectionStart - (sendToInput.value.length - cleaned.length);
+      sendToInput.value = cleaned;
+      sendToInput.setSelectionRange(cursor, cursor);
+    }
+    if (!cleaned) {
+      indicator.classList.add('hidden');
+      indicator.classList.remove('valid', 'invalid');
+      return;
+    }
+    const valid = isValidThruAddress(cleaned);
+    indicator.classList.remove('hidden', 'valid', 'invalid');
+    indicator.classList.add(valid ? 'valid' : 'invalid');
+    indicator.innerHTML = valid ? icons.check(12) : icons.x(12);
+  });
+}
+
+// ---- v1.1: Keyboard shortcuts (Enter to submit, Esc to go back) -----------
+
+document.addEventListener('keydown', (e) => {
+  // Enter: click the visible primary button on the current screen
+  if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey) {
+    const activeEl = document.activeElement;
+    // Don't intercept if a textarea is focused (mnemonic/key input needs Enter for newlines)
+    if (activeEl && activeEl.tagName === 'TEXTAREA') return;
+    // Find the currently visible screen
+    const visibleScreen = document.querySelector('.screen:not(.hidden)');
+    if (!visibleScreen) return;
+    const primaryBtn = visibleScreen.querySelector('.btn.primary:not(:disabled)');
+    if (primaryBtn) {
+      e.preventDefault();
+      primaryBtn.click();
+    }
+  }
+  // Esc: click the back button on the current screen
+  if (e.key === 'Escape') {
+    const visibleScreen = document.querySelector('.screen:not(.hidden)');
+    if (!visibleScreen) return;
+    const backBtn = visibleScreen.querySelector('.icon-btn[data-icon="back"]');
+    if (backBtn) {
+      e.preventDefault();
+      backBtn.click();
+    }
+  }
+});
+
+// ---- v1.1: Copy history sigs with toast ------------------------------------
+
+// (Already handled in handleAction; this comment marks the end of v1.1 additions)
 
 injectIcons();
 init();

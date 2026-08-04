@@ -6,16 +6,11 @@
 <link rel="stylesheet" href="popup.css" />
 </head>
 <body>
+<div id="toast-container"></div>
 <div class="app">
 
   <header class="topbar">
-    <span class="wordmark">
-      <svg class="wordmark-glyph" width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
-        <rect x="1" y="1" width="16" height="16" rx="3" stroke="currentColor" stroke-width="1.5"/>
-        <path d="M-1 6h20M-1 9.5h20M-1 13h20" stroke="currentColor" stroke-width="1.5"/>
-      </svg>
-      thru
-    </span>
+    <span class="wordmark">Thru Wallet</span>
     <span class="badge">alphanet · unofficial</span>
   </header>
 
@@ -23,6 +18,26 @@
   <section id="screen-loading" class="screen">
     <p class="muted center">Loading…</p>
   </section>
+
+  <!-- First-run disclaimer (shown once, never again) -->
+  <section id="screen-disclaimer" class="screen hidden">
+    <div class="disclaimer-notice">
+      <span class="disclaimer-icon">⚠️</span>
+      <h2>Before you begin</h2>
+      <ul class="disclaimer-list">
+        <li>This is an <strong>unofficial</strong> wallet for Thru Alphanet.</li>
+        <li><strong>Never</strong> store real assets in this wallet.</li>
+        <li>Always <strong>back up</strong> your recovery phrase.</li>
+        <li>This project has <strong>not been audited</strong>.</li>
+      </ul>
+      <label class="disclaimer-check">
+        <input type="checkbox" id="disclaimer-agreed" />
+        <span>I understand the risks</span>
+      </label>
+    </div>
+    <button class="btn primary" id="disclaimer-continue" data-action="acknowledge-disclaimer" disabled>Continue</button>
+  </section>
+
 
   <!-- Welcome: no wallet yet -->
   <section id="screen-welcome" class="screen hidden">
@@ -221,16 +236,48 @@
     </div>
     <label class="field">
       <span>To address</span>
-      <input type="text" id="send-to" placeholder="ta…" />
+      <div class="field-with-indicator">
+        <input type="text" id="send-to" placeholder="ta…" />
+        <span id="send-to-indicator" class="field-indicator hidden"></span>
+      </div>
     </label>
     <label class="field">
       <span>Amount (THRU)</span>
       <input type="text" id="send-amount" placeholder="0.0" />
     </label>
-    <button class="btn primary" id="send-submit-btn" data-action="submit-send">Send</button>
+    <button class="btn primary" id="send-submit-btn" data-action="preview-send">Review</button>
     <p class="error hidden" id="send-error"></p>
-    <p class="hint" id="send-status"></p>
-    <p class="hint">Amount here is in THRU (matches the balance above) — enter, say, 1.5 to send one and a half. This is unaudited alphanet software; double-check the address before sending.</p>
+    <p class="hint">Amount is in THRU — enter 1.5 to send one and a half. Unaudited alphanet software.</p>
+  </section>
+
+  <!-- Send preview (two-step confirmation) -->
+  <section id="screen-send-preview" class="screen hidden">
+    <div class="subheader">
+      <button class="icon-btn" data-action="go-send" data-icon="back" title="Back"></button>
+      <h1>Confirm</h1>
+      <span class="subheader-spacer"></span>
+    </div>
+    <div class="tx-preview">
+      <span class="eyebrow">You're sending</span>
+      <div class="tx-preview-amount" id="preview-amount"></div>
+      <div class="tx-preview-row">
+        <span class="tx-preview-label">To</span>
+        <span class="tx-preview-value mono" id="preview-to"></span>
+      </div>
+      <hr class="divider" />
+      <div class="tx-preview-row">
+        <span class="tx-preview-label">Network fee</span>
+        <span class="tx-preview-value mono" id="preview-fee">~1 raw unit</span>
+      </div>
+      <hr class="divider" />
+      <div class="tx-preview-row tx-preview-total">
+        <span class="tx-preview-label">Total</span>
+        <span class="tx-preview-value mono" id="preview-total"></span>
+      </div>
+    </div>
+    <p class="hint center">Double-check the address. Transactions on Thru are irreversible.</p>
+    <button class="btn primary" id="send-confirm-btn" data-action="confirm-send">Confirm &amp; Send</button>
+    <button class="btn text" data-action="go-send">Cancel</button>
   </section>
 
   <!-- Receive -->
@@ -240,7 +287,10 @@
       <h1>Receive</h1>
       <span class="subheader-spacer"></span>
     </div>
-    <p class="muted">Share this address to receive THRU or other assets on alphanet, for the account currently active.</p>
+    <div class="qr-container">
+      <canvas id="receive-qr" width="200" height="200"></canvas>
+    </div>
+    <p class="muted center">Scan or copy this address to receive THRU on alphanet.</p>
     <div class="monospace-block" id="receive-address-display"></div>
     <button class="btn secondary" data-action="copy-receive-address">Copy address</button>
     <a class="btn secondary link-btn" id="receive-explorer-link" href="#" target="_blank" rel="noopener">View on explorer</a>
@@ -275,8 +325,9 @@
   </section>
 
   <footer class="foot">
-    <span class="foot-dot"></span>
+    <span class="foot-dot" id="network-dot"></span>
     <span id="network-label">rpc.alphanet.thru.org</span>
+    <span class="foot-latency" id="network-latency"></span>
   </footer>
 
 </div>

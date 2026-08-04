@@ -1,8 +1,9 @@
 {
   "manifest_version": 3,
-  "name": "Thru Wallet (unofficial, alphanet)",
-  "version": "0.1.0",
+  "name": "Thru Wallet",
+  "version": "1.1.0",
   "description": "Experimental, community-built key/account manager for Thru's alphanet. Not affiliated with Unto Labs. Not audited.",
+  "homepage_url": "https://github.com/buildbyravi/thru-wallet-ext",
   "action": {
     "default_popup": "popup.html",
     "default_icon": {

@@ -21,6 +21,14 @@ export const icons = {
   x: (s = 14) => svg(s, '<path d="M18 6L6 18"/><path d="M6 6l12 12"/>'),
   dot: (s = 14) => svg(s, '<circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/>'),
   plus: (s = 14) => svg(s, '<path d="M12 5v14"/><path d="M5 12h14"/>'),
+  // v1.1 additions
+  warning: (s = 14) => svg(s, '<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4"/><circle cx="12" cy="16" r="0.5" fill="currentColor" stroke="none"/>'),
+  shield: (s = 14) => svg(s, '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>'),
+  checkCircle: (s = 14) => svg(s, '<circle cx="12" cy="12" r="10"/><path d="M9 12l2 2 4-4"/>'),
+  eye: (s = 14) => svg(s, '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>'),
+  eyeOff: (s = 14) => svg(s, '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19M14.12 14.12a3 3 0 1 1-4.24-4.24"/><path d="M1 1l22 22"/>'),
+  refresh: (s = 14) => svg(s, '<path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>'),
+  chevronDown: (s = 12) => svg(s, '<path d="M6 9l6 6 6-6"/>'),
 };
 
 /**
