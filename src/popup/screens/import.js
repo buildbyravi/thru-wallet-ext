@@ -35,7 +35,7 @@ export function mount(container, params = {}) {
       <button type="button" class="tab-btn ${_importMode === 'privatekey' ? 'active' : ''}" id="import-tab-pk">Private Key</button>
     </div>
 
-    <form id="import-form" onsubmit="return false;">
+    <form id="import-form">
       <div id="import-mnemonic-section" class="${_importMode === 'mnemonic' ? '' : 'hidden'}">
         <p class="muted">Enter your 12-word recovery phrase, separated by single spaces.</p>
         <textarea class="textarea-lg" id="import-mnemonic" rows="4" placeholder="word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11 word12" autocomplete="off" spellcheck="false"></textarea>

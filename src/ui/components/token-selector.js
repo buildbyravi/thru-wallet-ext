@@ -3,6 +3,7 @@
 import { Drawer } from './drawer.js';
 import { icons } from '../../popup/icons.js';
 import { truncateAddress } from '../../shared/format.js';
+import { esc, escUrl } from '../../shared/escape.js';
 import * as bridge from '../bridge.js';
 
 /**
@@ -62,6 +63,10 @@ export async function openTokenSelector({ activeAccount, nativeBalanceStr, selec
       const listContainer = bodyEl.querySelector('#drawer-token-list');
       const searchInput = bodyEl.querySelector('#drawer-token-search');
 
+      // Rendered order, so a click resolves back to the real object without passing it
+      // through markup.
+      let renderedTokens = [];
+
       function renderList(query = '') {
         const q = (query || '').trim().toLowerCase();
         const filtered = q
@@ -75,39 +80,53 @@ export async function openTokenSelector({ activeAccount, nativeBalanceStr, selec
         if (filtered.length === 0) {
           listContainer.innerHTML = `
             <div class="empty-state py-4">
-              <p class="muted">No tokens match "${query}"</p>
+              <p class="muted">No tokens match "${esc(query)}"</p>
             </div>
           `;
           return;
         }
 
-        listContainer.innerHTML = filtered.map((t) => {
+        listContainer.innerHTML = filtered.map((t, index) => {
           const isSelected = (t.isNative && !selectedMint) || (t.mintAddress === selectedMint);
-          const avatarText = t.symbol.slice(0, 3).toUpperCase();
-          const logoHtml = t.imageUrl
-            ? `<img src="${t.imageUrl}" class="token-selector-logo" alt="${t.symbol}" /><div class="token-selector-avatar fallback" style="display:none;">${avatarText}</div>`
-            : `<div class="token-selector-avatar">${avatarText}</div>`;
+          const avatarText = String(t.symbol || '').slice(0, 3).toUpperCase();
+          const logoUrl = escUrl(t.imageUrl);
 
+          // Avatar underneath, remote image layered over it. Replaces a
+          // style="display:none" fallback that the extension CSP refuses.
+          const logoHtml = logoUrl
+            ? `<div class="token-selector-logo-stack">
+                 <div class="token-selector-avatar">${esc(avatarText)}</div>
+                 <img src="${logoUrl}" class="token-selector-logo" alt="" />
+               </div>`
+            : `<div class="token-selector-avatar">${esc(avatarText)}</div>`;
+
+          // Index only. The previous version serialized the entire token object into a
+          // data-token attribute and JSON.parse'd it back on click — attacker-controlled
+          // metadata making a round trip through markup, with an unguarded parse at the
+          // other end. The object never leaves JS now.
           return `
-            <div class="token-selector-item ${isSelected ? 'selected' : ''}" data-token='${JSON.stringify(t).replace(/'/g, '&apos;')}'>
+            <div class="token-selector-item ${isSelected ? 'selected' : ''}" data-index="${index}">
               <div class="token-item-left">
                 ${logoHtml}
                 <div class="token-item-info">
                   <div class="token-item-symbol-row">
-                    <span class="token-item-symbol">${t.symbol}</span>
+                    <span class="token-item-symbol">${esc(t.symbol)}</span>
                     ${t.isNative ? '<span class="tag-native">Native</span>' : ''}
                   </div>
-                  <span class="token-item-name">${t.name}</span>
+                  <span class="token-item-name">${esc(t.name)}</span>
                 </div>
               </div>
               <div class="token-item-right">
-                <span class="token-item-balance mono">${t.balanceDisplay}</span>
-                ${t.mintAddress ? `<span class="token-item-mint mono">${truncateAddress(t.mintAddress)}</span>` : ''}
+                <span class="token-item-balance mono">${esc(t.balanceDisplay)}</span>
+                ${t.mintAddress ? `<span class="token-item-mint mono">${esc(truncateAddress(t.mintAddress))}</span>` : ''}
                 ${isSelected ? `<span class="active-check-icon ml-2">${icons.check(14)}</span>` : ''}
               </div>
             </div>
           `;
         }).join('');
+
+        // Keep the rendered order so a click can resolve back to the real object.
+        renderedTokens = filtered;
       }
 
       renderList('');
@@ -119,7 +138,8 @@ export async function openTokenSelector({ activeAccount, nativeBalanceStr, selec
       listContainer?.addEventListener('click', (e) => {
         const item = e.target.closest('.token-selector-item');
         if (!item) return;
-        const tokenData = JSON.parse(item.dataset.token);
+        const tokenData = renderedTokens[Number(item.dataset.index)];
+        if (!tokenData) return;
         closeDrawer();
         if (typeof onTokenSelected === 'function') {
           onTokenSelected(tokenData);

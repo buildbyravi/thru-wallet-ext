@@ -41,7 +41,7 @@ export async function mount(container, params = {}) {
       </div>
     </div>
 
-    <form id="export-pw-form" onsubmit="return false;">
+    <form id="export-pw-form">
       <label class="field">
         <span>Password</span>
         <input type="password" id="export-password" autocomplete="current-password" placeholder="Enter master password" autofocus />

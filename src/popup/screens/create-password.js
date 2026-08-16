@@ -29,7 +29,7 @@ export function mount(container) {
       This password encrypts your keys locally on this device. If you lose it, your 12-word recovery phrase is the only way to restore access.
     </p>
 
-    <form id="create-pw-form" onsubmit="return false;" class="mt-3">
+    <form id="create-pw-form" class="mt-3">
       <label class="field">
         <span>Password</span>
         <input type="password" id="create-password" autocomplete="new-password" minlength="8" placeholder="Minimum 8 characters" autofocus />

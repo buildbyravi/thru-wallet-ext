@@ -44,8 +44,27 @@ function injectIcons() {
   }
 }
 
+/**
+ * Apply data-driven widths to fill bars.
+ *
+ * These used to be `style="width: 74%"` attributes in the markup, which the extension
+ * CSP refuses ("Applying inline style violates the following Content Security Policy
+ * directive") because style-src has no 'unsafe-inline'. CSSOM assignment is NOT covered
+ * by that directive, so setting .style.width here is both allowed and the right place —
+ * these values will come from chain data rather than markup anyway.
+ */
+function applyFillBars(root = document) {
+  for (const el of root.querySelectorAll('[data-fill]')) {
+    const pct = Number(el.dataset.fill);
+    if (Number.isFinite(pct)) {
+      el.style.width = `${Math.max(0, Math.min(100, pct))}%`;
+    }
+  }
+}
+
 async function init() {
   injectIcons();
+  applyFillBars();
 
   try {
     const state = await bridge.bootstrap();
@@ -141,6 +160,10 @@ function switchTab(tabId, updateHash = true) {
   if (tabId === 'my-tokens') {
     loadDeployedTokens();
   }
+  // Panes become visible only now, and a pane that was hidden at init may hold
+  // fill bars that were never sized.
+  const pane = document.getElementById(`tab-${tabId}`);
+  if (pane) applyFillBars(pane);
 }
 
 function updateLivePreview() {
@@ -202,8 +225,8 @@ async function loadDeployedTokens() {
 
   if (tokens.length === 0) {
     container.innerHTML = `
-      <div class="empty-state" style="grid-column: 1 / -1; padding: 48px 0;">
-        <span class="empty-icon" style="margin-bottom: 12px; display: inline-block;">${icons.coins(36)}</span>
+      <div class="empty-state empty-state-full">
+        <span class="empty-icon">${icons.coins(36)}</span>
         <h3>No Tokens Deployed Yet</h3>
         <p>Use the Token Launchpad to create and deploy your first native token on ThruVM.</p>
       </div>
@@ -246,7 +269,7 @@ async function loadDeployedTokens() {
         <span>Deployed:</span>
         <span>${formattedDate}</span>
       </div>
-      <div class="success-actions" style="margin-top: 4px;">
+      <div class="success-actions mt-1">
         <a class="btn secondary sm" href="${explorerAddressUrl(activeNetwork, token.mintAddress)}" target="_blank" rel="noopener">Explorer</a>
         ${token.signature ? `<a class="btn text sm" href="${explorerTxUrl(activeNetwork, token.signature)}" target="_blank" rel="noopener">View Tx</a>` : ''}
       </div>

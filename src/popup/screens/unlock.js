@@ -26,7 +26,7 @@ export function mount(container) {
         <p class="muted">Enter your password to unlock your Thru Wallet.</p>
       </div>
 
-      <form id="unlock-form" class="unlock-form" onsubmit="return false;">
+      <form id="unlock-form" class="unlock-form">
         <label class="field">
           <span>Password</span>
           <div class="password-input-wrap">

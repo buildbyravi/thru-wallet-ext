@@ -34,7 +34,7 @@ export function mount(container, params = {}) {
 
     <div class="monospace-block my-2" id="rename-address-display">${_targetAddress}</div>
 
-    <form id="rename-form" onsubmit="return false;" class="mt-3">
+    <form id="rename-form" class="mt-3">
       <label class="field">
         <span>Account Nickname</span>
         <input type="text" id="rename-input" value="${currentName}" placeholder="e.g. Primary Savings" maxlength="32" autocomplete="off" autofocus />

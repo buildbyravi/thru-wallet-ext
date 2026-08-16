@@ -245,6 +245,21 @@ async function checkRecipientAddress(inputAddress) {
 }
 
 async function init() {
+  // Blanket guard: no form in an extension page may ever perform a native submit, which
+  // would navigate the popup document and blank the UI.
+  //
+  // Six screens previously relied on `onsubmit="return false;"` in markup injected via
+  // innerHTML. Inline handlers are blocked by the extension CSP, so those attributes never
+  // ran — the forms were unprotected the whole time and only appeared safe because a click
+  // handler usually intercepted first. They also emitted the "Applying inline style /
+  // inline event handler violates the following Content Security Policy directive" console
+  // errors on every mount.
+  //
+  // Capture phase, so this wins regardless of what a screen does with its own listener.
+  document.addEventListener('submit', (event) => {
+    event.preventDefault();
+  }, true);
+
   // New-stack opt-in. While FLAGS.NEXT_UI is false this whole branch is skipped and the
   // legacy path below runs byte-for-byte as before, so the migration cannot regress the
   // shipping UI. Force it on for a session with popup.html?next=1

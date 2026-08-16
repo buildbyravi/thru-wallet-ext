@@ -145,3 +145,50 @@
   background: var(--border);
   border: 0;
 }
+
+/* ---- CSP-safe replacements for inline style attributes ----
+   The extension CSP is `default-src 'none'; style-src 'self'` with no
+   'unsafe-inline', so a `style="..."` attribute is refused by the browser with
+   "Applying inline style violates the following Content Security Policy
+   directive". Note that CSSOM assignment (el.style.width = '50%') is NOT
+   blocked — only attributes and <style> blocks are. So anything genuinely
+   dynamic is set from JS, and anything static gets a class here. */
+.is-hidden { display: none !important; }
+.inline-block { display: inline-block; }
+
+/* Fill bars. The width is data-driven, so JS sets it via CSSOM from a
+   data-fill attribute rather than baking a style attribute into markup. */
+.fill-bar {
+  width: 0;
+  transition: width var(--t-base);
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  padding: var(--sp-6) var(--sp-4);
+  text-align: center;
+}
+
+.empty-state-full {
+  grid-column: 1 / -1;
+  padding: var(--sp-8) 0;
+}
+
+.empty-state-icon,
+.empty-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-3);
+  margin-bottom: var(--sp-1);
+}
+
+.empty-state-title {
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: var(--text-2);
+}

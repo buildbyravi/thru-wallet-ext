@@ -1122,6 +1122,28 @@ button.row { cursor: pointer; }
   font-weight: 600;
 }
 
+/* Token logo with a CSS-only fallback.
+   The avatar text sits underneath and the remote image is layered over it, so a broken
+   or blocked image reveals the initials with no onerror handler and no inline style —
+   both of which the extension CSP refuses. */
+.token-row-logo-stack,
+.token-selector-logo-stack {
+  position: relative;
+  flex-shrink: 0;
+  display: flex;
+}
+
+.token-row-logo-stack > .token-row-logo,
+.token-selector-logo-stack > .token-selector-logo {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
 /* Accent tag — used by the recipient badge and the network switcher at
    3 sites. Previously defined only in desktop.css, so it rendered
    completely unstyled in the popup. */

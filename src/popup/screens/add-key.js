@@ -29,7 +29,7 @@ export function mount(container) {
       Paste a 32-byte private key as hex (64 characters). It will be added as an independent account in this wallet.
     </p>
 
-    <form id="add-key-form" onsubmit="return false;" class="mt-3">
+    <form id="add-key-form" class="mt-3">
       <label class="field">
         <span>Private Key (Hex)</span>
         <textarea class="textarea-lg mono" id="add-key-input" rows="4" placeholder="e.g. 3f1c9a7b2e4d... (64 hex characters)" autocomplete="off" spellcheck="false" autofocus></textarea>
