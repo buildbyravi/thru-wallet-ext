@@ -15,7 +15,14 @@
 </head>
 <body>
 <div id="toast-container"></div>
-<div class="app">
+
+<!-- Mount point for the rebuilt UI (src/ui/app/boot.js). It stays hidden while
+     FLAGS.NEXT_UI is false, so the legacy .app tree below is untouched. Unlike the old
+     per-screen `#screen-<id>` containers, this element holds no static markup, so a route
+     mount cannot destroy content that some other code path depends on. -->
+<div id="app" class="app hidden"></div>
+
+<div class="app" id="legacy-app">
 
   <header class="topbar">
     <span class="wordmark">Thru Wallet</span>

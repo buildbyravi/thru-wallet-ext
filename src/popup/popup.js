@@ -30,6 +30,8 @@ import * as renameAccountScreen from './screens/rename-account.js';
 import * as accountDetailScreen from './screens/account-detail.js';
 import * as dashboardScreen from './screens/dashboard.js';
 import * as sendScreen from './screens/send.js';
+import { FLAGS, applyQueryOverrides } from '../shared/flags.js';
+import { boot as bootNextUi } from '../ui/app/boot.js';
 
 
 
@@ -243,6 +245,28 @@ async function checkRecipientAddress(inputAddress) {
 }
 
 async function init() {
+  // New-stack opt-in. While FLAGS.NEXT_UI is false this whole branch is skipped and the
+  // legacy path below runs byte-for-byte as before, so the migration cannot regress the
+  // shipping UI. Force it on for a session with popup.html?next=1
+  applyQueryOverrides(window.location.search);
+  if (FLAGS.NEXT_UI) {
+    const mounted = await bootNextUi({
+      root: document.getElementById('app'),
+      // Hashes that have not migrated yet fall back to the legacy screen of the same name,
+      // so a partially migrated app has no dead ends.
+      legacyFallback: (path) => show(path.replace(/^\//, '') || 'dashboard'),
+    });
+    if (mounted) {
+      document.getElementById('app')?.classList.remove('hidden');
+      // Hide the legacy tree rather than removing it: an unmigrated hash can still fall
+      // back to it via legacyFallback, and removing it would break that escape hatch.
+      document.getElementById('legacy-app')?.classList.add('hidden');
+      return;
+    }
+    // If the mount point is missing, fall through to the legacy UI rather than
+    // showing the user nothing.
+  }
+
   const { disclaimerAcknowledged } = await chrome.storage.local.get('disclaimerAcknowledged');
   if (!disclaimerAcknowledged) {
     show('disclaimer');

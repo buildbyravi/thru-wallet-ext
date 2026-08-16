@@ -113,6 +113,56 @@ for (const file of files) {
   }
 }
 
+/**
+ * Strip comments and string literals before scanning for code patterns.
+ *
+ * Without this, a comment explaining WHY innerHTML is banned counts as a use of it, and
+ * the file that documents the rule fails the rule. Replacing with equal-length runs of
+ * spaces keeps line and column numbers accurate for reporting.
+ *
+ * This is a scanner, not a parser: it tracks quotes, template literals and comments well
+ * enough for these checks, and does not attempt to handle nested template expressions.
+ */
+function stripCommentsAndStrings(source) {
+  let out = '';
+  let i = 0;
+  const n = source.length;
+  let state = 'code'; // code | line | block | single | double | template
+
+  while (i < n) {
+    const c = source[i];
+    const next = source[i + 1];
+
+    if (state === 'code') {
+      if (c === '/' && next === '/') { state = 'line'; out += '  '; i += 2; continue; }
+      if (c === '/' && next === '*') { state = 'block'; out += '  '; i += 2; continue; }
+      if (c === "'") { state = 'single'; out += ' '; i += 1; continue; }
+      if (c === '"') { state = 'double'; out += ' '; i += 1; continue; }
+      if (c === '`') { state = 'template'; out += ' '; i += 1; continue; }
+      out += c; i += 1; continue;
+    }
+
+    if (state === 'line') {
+      if (c === '\n') { state = 'code'; out += '\n'; i += 1; continue; }
+      out += ' '; i += 1; continue;
+    }
+
+    if (state === 'block') {
+      if (c === '*' && next === '/') { state = 'code'; out += '  '; i += 2; continue; }
+      out += c === '\n' ? '\n' : ' '; i += 1; continue;
+    }
+
+    // Inside a string or template literal.
+    if (c === '\\') { out += '  '; i += 2; continue; }
+    if ((state === 'single' && c === "'") || (state === 'double' && c === '"') || (state === 'template' && c === '`')) {
+      state = 'code'; out += ' '; i += 1; continue;
+    }
+    out += c === '\n' ? '\n' : ' '; i += 1;
+  }
+
+  return out;
+}
+
 // DOM-injection gate, implemented as a RATCHET.
 //
 // The legacy components under src/ui/components/ still build markup by interpolating into
@@ -141,7 +191,7 @@ const sinksByFile = new Map();
 for (const file of files) {
   const f = rel(file);
   if (!DOM_SINK_DIRS.some((d) => f.startsWith(d))) continue;
-  const source = readFileSync(file, 'utf8');
+  const source = stripCommentsAndStrings(readFileSync(file, 'utf8'));
   const hits = [];
   source.split('\n').forEach((line, i) => {
     if (DOM_SINK_RE.test(line)) hits.push(`${f}:${i + 1}`);
