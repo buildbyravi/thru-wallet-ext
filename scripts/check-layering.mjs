@@ -90,9 +90,19 @@ const SEND_MESSAGE_ALLOWLIST = new Set([
 const violations = [];
 const files = walk(SRC);
 
+// Comment/string-stripped source, computed once per file and reused by every check.
+// Stripping was originally applied only to the DOM-sink scan, so a comment EXPLAINING a
+// rule still tripped that rule — network-service.js documenting why BigInt breaks
+// chrome.runtime.sendMessage was reported as calling it. Any check that looks for code
+// must look at code.
+const stripped = new Map();
+for (const file of files) {
+  stripped.set(rel(file), stripCommentsAndStrings(readFileSync(file, 'utf8')));
+}
+
 for (const file of files) {
   const f = rel(file);
-  const source = readFileSync(file, 'utf8');
+  const source = stripped.get(f);
 
   for (const spec of importsOf(source)) {
     if (!spec.startsWith('.') && !spec.startsWith('src/')) continue; // package import
@@ -191,7 +201,7 @@ const sinksByFile = new Map();
 for (const file of files) {
   const f = rel(file);
   if (!DOM_SINK_DIRS.some((d) => f.startsWith(d))) continue;
-  const source = stripCommentsAndStrings(readFileSync(file, 'utf8'));
+  const source = stripped.get(f);
   const hits = [];
   source.split('\n').forEach((line, i) => {
     if (DOM_SINK_RE.test(line)) hits.push(`${f}:${i + 1}`);

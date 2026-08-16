@@ -56,7 +56,6 @@ const handlers = Object.assign(Object.create(null), {
       preferencesService.getPreferences(),
       pendingTxService.listPending(),
     ]);
-
     // Fire and forget: results arrive via balanceChanged / pendingTxChanged events.
     if (accounts.length) {
       balanceService.getBalances(accounts.map((a) => a.address)).catch(() => {});
@@ -72,7 +71,7 @@ const handlers = Object.assign(Object.create(null), {
       account,
       accounts,
       keyrings,
-      network,
+      network: networkService.toPublicNetwork(network),
       autoLockMinutes,
       lockout,
       preferences,
@@ -164,9 +163,11 @@ const handlers = Object.assign(Object.create(null), {
   'contacts.remove': ({ address }) => contactsService.removeContact(address),
 
   // ---- Network ---------------------------------------------------------
-  'network.getActive': () => networkService.getActiveNetworkConfig(),
-  'network.setActive': ({ networkId }) => networkService.setActiveNetwork(networkId),
-  'network.list': () => networkService.getAvailableNetworks(),
+  // toPublicNetwork strips BigInt fields, which JSON cannot serialize. Without it every
+  // one of these fails at the message port with "Could not serialize message."
+  'network.getActive': async () => networkService.toPublicNetwork(await networkService.getActiveNetworkConfig()),
+  'network.setActive': async ({ networkId }) => networkService.toPublicNetwork(await networkService.setActiveNetwork(networkId)),
+  'network.list': async () => (await networkService.getAvailableNetworks()).map(networkService.toPublicNetwork),
   'network.upsertCustom': (params) => networkService.upsertCustomNetwork(params),
   'network.removeCustom': ({ networkId }) => networkService.removeCustomNetwork(networkId),
 });

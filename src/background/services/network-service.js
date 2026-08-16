@@ -11,6 +11,35 @@ import * as balances from './balance-service.js';
 const ACTIVE_NETWORK_KEY = 'thru_active_network';
 const CUSTOM_NETWORKS_KEY = 'thru_custom_networks';
 
+/**
+ * Make a network config safe to send to the UI.
+ *
+ * chrome.runtime.sendMessage serializes with JSON, and JSON.stringify THROWS on a BigInt
+ * ("Do not know how to serialize a BigInt"), which Chrome surfaces as the opaque
+ * "Could not serialize message." networks.js carries `faucetMaxPerClaim: 10_000n`, so every
+ * method that returned a raw NetworkConfig — network.getActive, network.setActive,
+ * network.list, and system.bootstrap, which embeds one — failed at the port.
+ *
+ * The legacy UI hid this: popup.js wrapped its bootstrap call in a try/catch that quietly
+ * fell back to individual queries, so the symptom was a slow start and a blank balance
+ * rather than a visible error.
+ *
+ * The BigInt is NOT dropped — tx-service needs the real value for faucet clamping, so the
+ * internal getters keep returning it and only the UI-facing shape is converted. The string
+ * form is suffixed `Units` to make it obvious it is base units and must be re-widened with
+ * BigInt() before arithmetic.
+ */
+function toPublicNetwork(config) {
+  if (!config || typeof config !== 'object') return config;
+  const out = {};
+  for (const [key, value] of Object.entries(config)) {
+    out[key] = typeof value === 'bigint' ? value.toString() : value;
+  }
+  return out;
+}
+
+export { toPublicNetwork };
+
 async function readCustom() {
   try {
     const res = await chrome.storage.local.get(CUSTOM_NETWORKS_KEY);

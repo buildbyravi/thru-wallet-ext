@@ -106,5 +106,87 @@ const resGetNever = await handleApiRequest({ method: 'system.getAutoLock' });
 assert.equal(resGetNever.data, 0);
 console.log('  ok - setting auto-lock to 0 (Never) persists');
 
+console.log('[8] Every UI-facing response survives JSON serialization');
+// chrome.runtime.sendMessage serializes with JSON, and JSON.stringify THROWS on a BigInt,
+// which Chrome reports only as the opaque "Could not serialize message." networks.js carries
+// faucetMaxPerClaim as a BigInt, so network.getActive / network.setActive / network.list and
+// system.bootstrap (which embeds a network) all failed at the port. The legacy UI masked it
+// with a try/catch that fell back to individual queries, so the visible symptom was a slow
+// start and a blank balance rather than an error.
+//
+// This walks the real responses and fails on any value the port cannot carry, so the whole
+// class is caught here instead of in front of a user.
+function findUnserializable(value, path = '$', seen = new WeakSet()) {
+  const t = typeof value;
+  if (t === 'bigint') return `${path} is a BigInt (${value}n)`;
+  if (t === 'function') return `${path} is a function`;
+  if (t === 'symbol') return `${path} is a symbol`;
+  if (t === 'undefined' || value === null) return null;
+  if (t !== 'object') return null;
+  if (value instanceof Date || value instanceof RegExp) return null;
+  if (seen.has(value)) return `${path} is circular`;
+  seen.add(value);
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i += 1) {
+      const hit = findUnserializable(value[i], `${path}[${i}]`, seen);
+      if (hit) return hit;
+    }
+    return null;
+  }
+  if (value instanceof Uint8Array) return `${path} is a Uint8Array (would become an object)`;
+  for (const [k, v] of Object.entries(value)) {
+    const hit = findUnserializable(v, `${path}.${k}`, seen);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+await handleApiRequest({ method: 'wallet.unlock', params: { password: 'Password123!' } });
+
+const SERIALIZATION_PROBES = [
+  ['system.bootstrap', {}],
+  ['network.getActive', {}],
+  ['network.list', {}],
+  ['network.setActive', { networkId: 'alphanet' }],
+  ['account.getActive', {}],
+  ['account.list', { withBalances: true }],
+  ['account.getActiveRef', {}],
+  ['keyring.list', {}],
+  ['settings.get', {}],
+  ['contacts.list', {}],
+  ['token.list', {}],
+  ['tx.getPending', {}],
+  ['wallet.getLockoutState', {}],
+];
+
+for (const [method, params] of SERIALIZATION_PROBES) {
+  const res = await handleApiRequest({ method, params });
+  const offender = findUnserializable(res, method);
+  assert.equal(
+    offender,
+    null,
+    `${method} returned something the message port cannot serialize: ${offender}`,
+  );
+  // Belt and braces: prove the actual serializer accepts it.
+  try {
+    JSON.stringify(res);
+  } catch (error) {
+    assert.fail(`${method} response is not JSON-serializable: ${error.message}`);
+  }
+}
+console.log(`  ok - all ${SERIALIZATION_PROBES.length} probed responses are JSON-safe (no BigInt at the port)`);
+
+// Guard the specific field that caused it, and confirm the value is preserved as a string
+// rather than silently dropped.
+const netRes = await handleApiRequest({ method: 'network.getActive' });
+assert.equal(netRes.ok, true);
+assert.equal(
+  typeof netRes.data.faucetMaxPerClaim,
+  'string',
+  'faucetMaxPerClaim must cross the port as a string, not a BigInt',
+);
+assert.equal(BigInt(netRes.data.faucetMaxPerClaim) > 0n, true, 'the value must survive, not be nulled');
+console.log('  ok - faucetMaxPerClaim is preserved as a string and re-widens to BigInt');
+
 console.log('\nAll background API router integration tests passed.');
 

@@ -37,6 +37,8 @@ export function ExportRoute({ params, navigate, back }) {
   let secret = null;
   let grid = null;
   let challenge = null;
+  let revealToggle = null;
+  let challengeNotice = null;
   const owned = [];
 
   const banner = Banner({ tone: 'error' });
@@ -154,6 +156,7 @@ export function ExportRoute({ params, navigate, back }) {
       },
     });
     owned.push(toggleBtn);
+    revealToggle = toggleBtn;
 
     const copyBtn = CopyButton({
       getValue: () => value,
@@ -167,6 +170,11 @@ export function ExportRoute({ params, navigate, back }) {
       h('span', { class: 'grow' }),
       copyBtn.el,
     ]));
+
+    // Shown only once the challenge starts, to explain why reveal is now disabled.
+    challengeNotice = h('p', { class: ['hint', 'hidden'], text:
+      'The phrase is hidden while you confirm it. Use your written copy to answer.' });
+    body.appendChild(challengeNotice);
 
     body.appendChild(h('p', { class: 'hint', text:
       'Clipboard contents can be read by other applications. Clear it when you are done.' }));
@@ -189,6 +197,15 @@ export function ExportRoute({ params, navigate, back }) {
 
   // ---- Step 3 (backup flow only): prove it was recorded ----------------------
   function renderChallenge(phrase) {
+    // The phrase MUST be off screen while the challenge is answered. Leaving it visible
+    // makes the confirmation meaningless — the user just reads the answers off the grid
+    // above, and the whole point is to prove the words were recorded somewhere else.
+    grid?.hide();
+    if (revealToggle) {
+      revealToggle.update({ label: 'Tap to reveal', iconName: 'eye', disabled: true });
+    }
+    if (challengeNotice) challengeNotice.classList.remove('hidden');
+
     const confirmBtn = Button({
       label: 'Confirm backup',
       variant: 'primary',

@@ -14,6 +14,7 @@ import { AccountsRoute } from './routes/accounts.js';
 import { AccountDetailRoute } from './routes/account-detail.js';
 import { AddAccountRoute } from './routes/add-account.js';
 import { ExportRoute } from './routes/export.js';
+import { KeyringRoute } from './routes/keyring.js';
 
 /**
  * Routes migrated to the new stack.
@@ -46,6 +47,12 @@ export const POPUP_ROUTES = [
     view: AddAccountRoute,
     guard: guards.requireUnlocked,
     title: 'Add account',
+  },
+  {
+    path: '/keyring',
+    view: KeyringRoute,
+    guard: guards.requireUnlocked,
+    title: 'Manage source',
   },
   {
     path: '/export',
