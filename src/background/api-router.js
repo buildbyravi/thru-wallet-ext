@@ -102,6 +102,7 @@ const handlers = Object.assign(Object.create(null), {
   // ---- Keyrings (multi-seed) --------------------------------------------
   'keyring.list': () => keyringService.listKeyrings(),
   'keyring.addSeed': ({ mnemonic, password, label }) => keyringService.addSeedKeyring(mnemonic, password, label),
+  'keyring.createSeed': ({ password, label }) => keyringService.createSeedKeyring(password, label),
   'keyring.addPrivateKey': ({ privateKeyHex, password, label }) => keyringService.addPrivateKeyKeyring(privateKeyHex, password, label),
   'keyring.rename': ({ keyringId, label, password }) => keyringService.renameKeyring(keyringId, label, password),
   'keyring.remove': ({ keyringId, password }) => keyringService.removeKeyring(keyringId, password),

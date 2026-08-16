@@ -401,6 +401,45 @@ export async function addSeedKeyring(mnemonic, password, label = '') {
   return { id: ring.id, type: ring.type, label: ring.label, origin: ring.origin };
 }
 
+/**
+ * Generate a NEW recovery phrase and register it, in one operation.
+ *
+ * Deliberately not two steps. A "generate a mnemonic and hand it to the UI" method would
+ * put a fresh secret across the UI boundary with nothing but an unlocked session behind it,
+ * and the UI would then have to hold it while a second call stored it. Here the entropy
+ * never leaves the background: the phrase is generated, encrypted and persisted before this
+ * returns, and the caller gets only the keyring summary. The user sees the words afterwards
+ * through exportAccountSecret, which re-verifies the password.
+ *
+ * @param {string} password
+ * @param {string} [label]
+ */
+export async function createSeedKeyring(password, label = '') {
+  await verifyPassword(password);
+  const vaultData = await getVaultData();
+
+  // Regenerate rather than fail on the astronomically unlikely duplicate.
+  let mnemonic = null;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const candidate = normalizeMnemonic(MnemonicGenerator.generate());
+    if (!vaultData.keyrings.some((ring) => ring.type === 'seed' && ring.mnemonic === candidate)) {
+      mnemonic = candidate;
+      break;
+    }
+  }
+  if (!mnemonic) throw new Error('Could not generate a unique recovery phrase.');
+
+  const ring = seedKeyring(
+    mnemonic,
+    label || `Seed wallet ${vaultData.keyrings.filter((item) => item.type === 'seed').length + 1}`,
+    'generated',
+  );
+  vaultData.keyrings.push(ring);
+  await persistVaultUpdate(vaultData);
+  await setActiveRef(accountRef(ring.id));
+  return { id: ring.id, type: ring.type, label: ring.label, origin: ring.origin };
+}
+
 export async function addPrivateKeyKeyring(privateKeyHex, password, label = '') {
   await verifyPassword(password);
   const vaultData = await getVaultData();

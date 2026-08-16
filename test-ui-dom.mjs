@@ -358,6 +358,60 @@ d3.add(() => { throw new Error('bad disposer'); }, () => { reached = true; });
 d3.dispose();
 ok('one throwing disposer does not strand the others', reached === true);
 
+// ---- refs: URL-safe account references ------------------------------------
+
+section('refs codec round-trips and rejects tampering');
+
+const { encodeRef, decodeRef, refsEqual: refsEq } = await import('./src/shared/refs.js');
+
+const sampleRef = { keyringId: 'seed_aB3xY9zQ', accountIndex: 4 };
+const token = encodeRef(sampleRef);
+ok('encodeRef produces a URL-safe token', /^[A-Za-z0-9_-]+$/.test(token), `got ${token}`);
+
+const decoded = decodeRef(token);
+ok('decodeRef round-trips keyringId', decoded?.keyringId === 'seed_aB3xY9zQ');
+ok('decodeRef round-trips accountIndex', decoded?.accountIndex === 4);
+
+// A ref must carry only the two fields it needs. If a future caller passes an object that
+// happens to hold a secret, encodeRef must not serialize it into the URL.
+function decodeTokenRaw(t) {
+  const padded = t.replace(/-/g, '+').replace(/_/g, '/');
+  const pad = padded.length % 4 === 0 ? '' : '='.repeat(4 - (padded.length % 4));
+  return atob(padded + pad);
+}
+
+const leaky = encodeRef({ keyringId: 'seed_aB3xY9zQ', accountIndex: 0, mnemonic: 'correct horse battery staple' });
+ok(
+  'encodeRef drops every field except keyringId and accountIndex',
+  !decodeTokenRaw(leaky).includes('horse'),
+  'a secret passed alongside a ref must never reach the URL',
+);
+
+ok('refsEqual matches identical refs', refsEq(sampleRef, { keyringId: 'seed_aB3xY9zQ', accountIndex: 4 }));
+ok('refsEqual tolerates index vs accountIndex', refsEq({ keyringId: 'k_abcd', index: 2 }, { keyringId: 'k_abcd', accountIndex: 2 }));
+ok('refsEqual rejects a different index', !refsEq(sampleRef, { keyringId: 'seed_aB3xY9zQ', accountIndex: 5 }));
+ok('refsEqual rejects a different keyring', !refsEq(sampleRef, { keyringId: 'seed_other1', accountIndex: 4 }));
+ok('refsEqual rejects missing keyringId', !refsEq({ accountIndex: 1 }, { accountIndex: 1 }));
+
+// The hash is user-editable, so decode must reject anything malformed rather than handing
+// a bad object to the vault.
+const BAD_REFS = [
+  '',
+  'not-base64!!',
+  encodeRef({ keyringId: 'seed_ok1234', accountIndex: 0 }).slice(0, 4),
+  btoa(JSON.stringify({ k: '', i: 0 })).replace(/=+$/, ''),
+  btoa(JSON.stringify({ k: 'seed_ok1234', i: -1 })).replace(/=+$/, ''),
+  btoa(JSON.stringify({ k: 'seed_ok1234', i: 999999 })).replace(/=+$/, ''),
+  btoa(JSON.stringify({ k: 'seed_ok1234', i: 1.5 })).replace(/=+$/, ''),
+  btoa(JSON.stringify({ k: '../../etc/passwd', i: 0 })).replace(/=+$/, ''),
+  btoa(JSON.stringify({ k: '<script>', i: 0 })).replace(/=+$/, ''),
+  btoa('not json at all').replace(/=+$/, ''),
+  'A'.repeat(600),
+];
+for (const bad of BAD_REFS) {
+  ok(`decodeRef rejects ${JSON.stringify(bad).slice(0, 40)}`, decodeRef(bad) === null);
+}
+
 // ---- Result ---------------------------------------------------------------
 
 console.log(`\ndom.js checks: ${checks - failures}/${checks} passed.`);

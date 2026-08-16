@@ -12,7 +12,7 @@
 //
 // Run: node test-contract.mjs
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 
 // api-router.js imports service modules that touch `chrome`, so stub enough of the API to
 // let the module graph load. No handler is invoked here; only the shape is inspected.
@@ -172,18 +172,39 @@ for (const code of ['INVALID_REQUEST', 'UNKNOWN_METHOD', 'WALLET_LOCKED', 'AUTH_
 
 section('The UI only calls methods that exist');
 
-// Scan the UI bundles' source for bridge.send('...') literals and confirm each is declared.
-// A typo or a stale call site fails here instead of at runtime in front of a user.
+// Scan UI source for bridge.send('...') literals and confirm each is declared. A typo or a
+// stale call site fails here instead of at runtime in front of a user.
+//
+// The route directory is walked rather than listed, because a hand-maintained list silently
+// stops covering new files — which is exactly how a phantom 'wallet.generateMnemonic' call
+// reached a finished route before this walk existed.
+function walkJs(dir, out = []) {
+  let entries;
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return out;
+  }
+  for (const entry of entries) {
+    const full = `${dir}/${entry.name}`;
+    if (entry.isDirectory()) walkJs(full, out);
+    else if (entry.name.endsWith('.js')) out.push(full);
+  }
+  return out;
+}
+
 const UI_FILES = [
   'src/popup/popup.js',
   'src/desktop/desktop.js',
   'src/ui/bridge.js',
-  'src/ui/components/account-switcher.js',
-  'src/ui/components/network-switcher.js',
-  'src/ui/components/token-selector.js',
-  'src/ui/components/recipient-selector.js',
+  ...walkJs('src/ui/app'),
+  ...walkJs('src/ui/components'),
+  ...walkJs('src/ui/domain'),
+  ...walkJs('src/features'),
 ];
+
 const called = new Set();
+const callSites = new Map();
 for (const file of UI_FILES) {
   let source;
   try {
@@ -193,13 +214,18 @@ for (const file of UI_FILES) {
   }
   const re = /(?:bridge\.)?send\s*\(\s*['"]([a-z]+\.[a-zA-Z]+)['"]/g;
   let m;
-  while ((m = re.exec(source)) !== null) called.add(m[1]);
+  while ((m = re.exec(source)) !== null) {
+    called.add(m[1]);
+    if (!callSites.has(m[1])) callSites.set(m[1], file);
+  }
 }
 const phantom = [...called].filter((m) => !declared.has(m));
 ok(
-  `all ${called.size} bridge calls found in UI source are declared`,
+  `all ${called.size} bridge calls across ${UI_FILES.length} UI files are declared`,
   phantom.length === 0,
-  phantom.length ? `Undeclared: ${phantom.join(', ')}` : '',
+  phantom.length
+    ? phantom.map((m) => `${m} (called from ${callSites.get(m)})`).join('\n         ')
+    : '',
 );
 
 console.log(`\n${failures === 0 ? 'All' : ''} contract checks: ${checks - failures}/${checks} passed.`);

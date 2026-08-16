@@ -144,6 +144,13 @@ export const METHODS = {
     auth: 'password',
     since: 3,
   },
+  'keyring.createSeed': {
+    params: ['password', 'label'],
+    returns: '{ id, type, label, origin } — generates a NEW phrase in the background and '
+      + 'registers it. The phrase is never returned; view it via wallet.exportSecret.',
+    auth: 'password',
+    since: 4,
+  },
   'keyring.addPrivateKey': {
     params: ['privateKeyHex', 'password', 'label'],
     returns: '{ id, type, label } — rejects a key already in the vault',

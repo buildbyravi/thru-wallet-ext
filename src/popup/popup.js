@@ -265,17 +265,37 @@ async function init() {
   // shipping UI. Force it on for a session with popup.html?next=1
   applyQueryOverrides(window.location.search);
   if (FLAGS.NEXT_UI) {
+    const nextRoot = document.getElementById('app');
+    const legacyRoot = document.getElementById('legacy-app');
+
+    // Swap which tree is visible. Both must never be shown at once, and the legacy tree
+    // must be un-hidden before show() runs on it — otherwise an unmigrated route renders
+    // into a hidden container and the user sees a blank panel.
+    const showLegacy = (screenId) => {
+      nextRoot?.classList.add('hidden');
+      legacyRoot?.classList.remove('hidden');
+      show(screenId);
+    };
+
     const mounted = await bootNextUi({
-      root: document.getElementById('app'),
-      // Hashes that have not migrated yet fall back to the legacy screen of the same name,
-      // so a partially migrated app has no dead ends.
-      legacyFallback: (path) => show(path.replace(/^\//, '') || 'dashboard'),
+      root: nextRoot,
+      legacyFallback: (path) => {
+        const screenId = path.replace(/^\//, '') || 'dashboard';
+        showLegacy(screenId);
+      },
+      // Called when the router lands on a migrated route, so the legacy tree goes away
+      // again after a fallback excursion.
+      onMigratedRoute: () => {
+        legacyRoot?.classList.add('hidden');
+        nextRoot?.classList.remove('hidden');
+      },
     });
+
     if (mounted) {
-      document.getElementById('app')?.classList.remove('hidden');
-      // Hide the legacy tree rather than removing it: an unmigrated hash can still fall
-      // back to it via legacyFallback, and removing it would break that escape hatch.
-      document.getElementById('legacy-app')?.classList.add('hidden');
+      nextRoot?.classList.remove('hidden');
+      legacyRoot?.classList.add('hidden');
+      // The legacy tree is hidden rather than removed: unmigrated hashes still fall back
+      // to it, and removing it would break that escape hatch mid-migration.
       return;
     }
     // If the mount point is missing, fall through to the legacy UI rather than

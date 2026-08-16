@@ -30,6 +30,21 @@ export async function addSeedKeyring(mnemonic, password, label = '') {
 }
 
 /**
+ * Generate a NEW recovery phrase and register it in one call.
+ *
+ * The phrase is never returned. Entropy stays in the background and the user views the
+ * words afterwards via wallet.exportSecret, which re-verifies the password. A method that
+ * generated a phrase and handed it to the UI would put a fresh secret across the seam with
+ * only an unlocked session behind it.
+ *
+ * @param {string} password
+ * @param {string} [label]
+ */
+export async function createSeedKeyring(password, label = '') {
+  return vault.createSeedKeyring(password, label);
+}
+
+/**
  * Add a standalone private key as its own keyring.
  * @param {string} privateKeyHex
  * @param {string} password

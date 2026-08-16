@@ -21,21 +21,97 @@ Read `AGENTS.md` first for the rules. Read `docs/BUILD_SPEC.md` for product inte
 
 | I need to… | Go to |
 | --- | --- |
-| add/change a backend API method | `src/background/api-router.js` |
+| **build a new screen** | `src/ui/app/routes/` + `src/ui/kit/` — the new stack |
+| **create any DOM node** | `src/ui/kit/dom.js` `h()`. Never `innerHTML`. |
+| add/change a backend API method | `src/shared/contract/manifest.js` **then** `src/background/api-router.js` |
 | touch encryption, keyrings, seed derivation | `src/lib/vault.js` |
 | touch RPC, transaction building, history decoding | `src/lib/thru-client.js` |
-| change how the UI talks to the background | `src/ui/bridge.js` |
+| change how the UI talks to the background | `src/ui/app/bridge.js` (new) or `src/ui/bridge.js` (legacy) |
 | add a network | `src/lib/networks.js` |
 | format or parse a THRU amount | `src/shared/format.js` |
+| address an account in a URL | `src/shared/refs.js` |
 | change colors, spacing, type | `src/popup/styles/tokens.css` |
-| find the screen the user actually sees | `src/popup/popup.js` + `src/popup/popup.html` (**not** `src/popup/screens/`) |
-| understand why a screen looks broken | §6 — the dual-router problem |
-| add an icon | `src/popup/icons.js` |
+| find the screen the user sees **today** | `src/popup/popup.js` + `src/popup/popup.html` (flag off) |
+| understand why a legacy screen looks broken | §6 — the dual-router problem |
+| turn the new UI on | `src/shared/flags.js` `NEXT_UI`, or `popup.html?next=1` |
+| add an icon to the new stack | `src/ui/kit/icon.js` (data, not markup) |
+| escape a value in a **legacy** template | `src/shared/escape.js` |
 | change the build | `build.mjs` |
 | change permissions or CSP | `src/manifest.json` |
 | add a test | root `test-*.mjs` + `package.json` `scripts.test` |
 
 ---
+
+## 1a. The two frontends (read this before editing any screen)
+
+The frontend is mid-migration. **Both stacks exist and only one renders at a time.**
+
+| | Legacy (default) | New (`NEXT_UI`) |
+| --- | --- | --- |
+| Entry | `popup.js` `init()` → `show()` | `ui/app/boot.js` → `Router` |
+| Mount | `<section id="screen-*">` in `popup.html` | single `<div id="app">` |
+| Navigation | `show(id)` + `ui/router.js` (fighting) | hash: `#/accounts?ref=…` |
+| DOM | `innerHTML` template strings | `kit/dom.js` `h()` nodes |
+| Teardown | `removeEventListener` with fresh arrows (no-op) | `disposer()` with real refs |
+| Bridge | `ui/bridge.js` | `ui/app/bridge.js` (contract-validated) |
+
+Turn the new stack on with `popup.html?next=1`, or flip `FLAGS.NEXT_UI` in
+`src/shared/flags.js`.
+
+**Migrated routes** (these are live on the new stack and deleted-in-place is pending):
+
+| Route | File | Replaces |
+| --- | --- | --- |
+| `#/unlock` | `ui/app/routes/unlock.js` | `screens/unlock.js` + `popup.html` unlock markup |
+| `#/accounts` | `ui/app/routes/accounts.js` | `components/account-switcher.js`, `renderAccountsList` |
+| `#/account?ref=` | `ui/app/routes/account-detail.js` | `screens/account-detail.js` (was dead) |
+| `#/add-account` | `ui/app/routes/add-account.js` | `screens/add-key.js`, `screens/import.js` |
+| `#/export?ref=` | `ui/app/routes/export.js` | `screens/export-*.js` (**was unreachable**) |
+
+Any other hash falls through to the legacy screen of the same name, and the two trees swap
+visibility. Not yet migrated: dashboard, send, receive, faucet, history, settings, welcome,
+onboarding.
+
+---
+
+## 1b. New-stack file map
+
+```
+src/shared/
+  contract/manifest.js   the frozen API surface. Append-only.
+  flags.js               NEXT_UI, DEBUG_ROUTING
+  refs.js                opaque account refs for URLs (no secrets, validated on decode)
+  escape.js              esc/escUrl for LEGACY templates only
+  format.js              formatThru / parseThruAmount / truncateAddress
+
+src/ui/kit/              domain-free primitives. No bridge, no chrome.*
+  dom.js                 h(), text(), clear(), render(), on(), disposer(), isSafeUrl()
+  icon.js                icons as [tag, attrs] DATA -> real SVG nodes
+  button.js              Button, IconButton, CopyButton
+  field.js               Field (label + control + error + hint + password reveal)
+  feedback.js            Banner, Empty, Spinner, PageHeader, Actions, Stack, Row
+
+src/ui/domain/           wallet-aware, no routing
+  account-avatar.js      AccountAvatar (byte-mark), AddressText
+  account-row.js         AccountRow, KeyringGroup, keyringTypeLabel
+  password-prompt.js     requirePassword() re-auth modal
+  seed-phrase-grid.js    SeedPhraseGrid, SeedPhraseChallenge
+
+src/ui/app/
+  bridge.js              contract-validated send/onEvent + 30s timeout
+  router.js              the ONE hash router
+  guards.js              requireUnlocked / requireVault / requireNoWallet / landingRoute
+  boot.js                route table + boot gate + legacy fallback swap
+  routes/                one file per route
+
+src/popup/styles/kit.css styles for kit + domain components
+```
+
+**Component contract:** every component returns `{ el, update(props), destroy() }`.
+`destroy()` must remove the *same* handler references it added — use `disposer()`.
+
+---
+
 
 ## 2. Root files
 

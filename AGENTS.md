@@ -38,25 +38,35 @@ is red. Never weaken or skip a test to make it pass.
 
 1. **Never edit `dist/`.** It is generated and gitignored. Edit `src/`.
 2. **`src/lib/vault.js` and `src/lib/thru-client.js` are sacred.** Crypto, keyrings, RPC shapes,
-   instruction layouts. Change only for a verified bug, never for cosmetics, and only with
-   `test-vault.mjs` / `test-thru-client.mjs` passing.
-3. **One seam between UI and backend:** `bridge.send(method, params)`. Only `src/ui/bridge.js` may
-   call `chrome.runtime.sendMessage`. UI never imports `src/background/**` or `src/lib/vault.js`.
-   Background never imports `src/ui/**`, `src/popup/**`, `src/desktop/**`.
-4. **Backend API is append-only.** Adding a method is safe. Never change or remove an existing
-   method's name or shape — add a new name and retire the old one after zero references remain.
-5. **No new dependencies** except `jsdom` (dev-only). No React/Vue/Tailwind. No build-system change.
+   instruction layouts. Change only for a verified bug or a tested additive primitive, and only
+   with `test-vault.mjs` / `test-thru-client.mjs` passing.
+3. **One seam between UI and backend:** `bridge.send(method, params)`. Only `src/ui/bridge.js`
+   (legacy) and `src/ui/app/bridge.js` (new) may call `chrome.runtime.sendMessage`; only
+   `src/background/services/event-service.js` may push events back. UI never imports
+   `src/background/**` or `src/lib/vault.js`.
+4. **Backend API is append-only.** Add the method to `src/shared/contract/manifest.js` *and*
+   `api-router.js` — `test-contract.mjs` checks both directions. Never rename or reshape an
+   existing method; add a new name and retire the old one after zero references remain.
+5. **No new dependencies.** No React/Vue/Tailwind. No build-system change.
 6. **Money is BigInt only.** Use `src/shared/format.js`. Never `parseFloat(x) * 1e9`.
-7. **No `innerHTML` in new code.** Build nodes and use `textContent`. There is no escaping helper in
-   this repo and ~20 existing sinks interpolate attacker-controlled values (token metadata, account
-   labels, search queries).
-8. **Secrets never touch** URLs, `location.hash`, router params or history, `data-*` attributes,
-   `localStorage`, `sessionStorage`, `window`, or `console.*`. Clear them on lock and on navigate-away.
-9. **Password re-authentication is required** before export, signing, security-setting changes,
-   keyring rename/remove, and reset.
-10. **Delete the old copy in the same commit** as the replacement. This codebase is in its current
-    state because that rule was not followed.
-11. **Small commits.** Never mix a security fix + a UI redesign + a new feature.
+7. **New code builds DOM with `src/ui/kit/dom.js` `h()`.** No `innerHTML` anywhere under
+   `src/ui/**` or `src/features/**` — the layering check enforces a ratchet that may only
+   shrink. Legacy templates that still interpolate must use `src/shared/escape.js`.
+8. **No inline `style="…"` or `on*="…"` attributes.** The CSP is `default-src 'none'` with no
+   `unsafe-inline`, so both are refused by the browser. CSSOM (`el.style.x = y`) and DOM
+   properties (`el.onerror = fn`) are fine.
+9. **Secrets never touch** URLs, `location.hash`, router params or history, `data-*` attributes,
+   `localStorage`, `sessionStorage`, `window`, or `console.*`. Clear them on lock, on navigate
+   away, and in `destroy()`. Use `src/shared/refs.js` to name an account in a URL.
+10. **Password re-authentication is required** before export, signing, security-setting changes,
+    keyring add/rename/remove, and reset. Use `requirePassword()` from
+    `src/ui/domain/password-prompt.js`.
+11. **Every component returns `{ el, update, destroy }`** and `destroy()` removes the *same*
+    handler references it added. Use `disposer()`; a fresh arrow passed to
+    `removeEventListener` removes nothing.
+12. **Delete the old copy in the same commit** as the replacement. This codebase is in its
+    current state because that rule was not followed.
+13. **Small commits.** Never mix a security fix + a UI redesign + a new feature.
 
 ## Stop and ask instead of guessing
 

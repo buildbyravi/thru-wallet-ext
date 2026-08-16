@@ -277,4 +277,62 @@ assert(
   `an over-long label is capped at ${vault.MAX_LABEL_LENGTH} characters`,
 );
 
+console.log('\n[15] createSeedKeyring generates a new phrase without exposing it');
+await vault.resetWallet();
+await vault.createVault('multiseed password');
+const firstRing = (await vault.listKeyrings())[0];
+
+const generatedRing = await vault.createSeedKeyring('multiseed password', 'Second phrase');
+assert(generatedRing.origin === 'generated', 'a phrase created here is marked generated');
+assert(generatedRing.label === 'Second phrase', 'the supplied label is kept');
+assert(
+  !('mnemonic' in generatedRing) && !('privateKeyHex' in generatedRing),
+  'createSeedKeyring returns NO secret material — the phrase never crosses the seam',
+);
+
+let multiRings = await vault.listKeyrings();
+assert(multiRings.length === 2, 'the wallet now holds two recovery phrases');
+assert(multiRings.find((r) => r.id === generatedRing.id).backedUpAt === null, 'a generated phrase starts un-backed-up');
+
+// The two phrases must be genuinely independent key trees.
+const firstAccounts = (await vault.listAccounts()).filter((a) => a.ref.keyringId === firstRing.id);
+const secondAccounts = (await vault.listAccounts()).filter((a) => a.ref.keyringId === generatedRing.id);
+assert(firstAccounts.length >= 1 && secondAccounts.length >= 1, 'both phrases have at least one account');
+assert(
+  firstAccounts[0].address !== secondAccounts[0].address,
+  'the two phrases derive different addresses',
+);
+
+// The phrase is retrievable only through the password-gated export path.
+const exportedSecond = await vault.exportAccountSecret(secondAccounts[0].ref, 'multiseed password');
+assert(exportedSecond.kind === 'hd' && exportedSecond.mnemonic.split(' ').length === 12,
+  'the generated phrase is retrievable via password-gated export');
+assert(exportedSecond.mnemonic !== (await vault.exportAccountSecret(firstAccounts[0].ref, 'multiseed password')).mnemonic,
+  'each keyring exports its own distinct phrase');
+
+let wrongPwRejected = false;
+try {
+  await vault.createSeedKeyring('not the password', 'nope');
+} catch {
+  wrongPwRejected = true;
+}
+assert(wrongPwRejected, 'createSeedKeyring refuses a wrong password');
+assert((await vault.listKeyrings()).length === 2, 'a refused attempt adds no keyring');
+
+console.log('\n[16] Removing a keyring takes its accounts and leaves the rest intact');
+const beforeRemoval = (await vault.listAccounts()).length;
+await vault.removeKeyring(generatedRing.id, 'multiseed password');
+multiRings = await vault.listKeyrings();
+assert(multiRings.length === 1 && multiRings[0].id === firstRing.id, 'only the targeted keyring was removed');
+assert((await vault.listAccounts()).length < beforeRemoval, 'its derived accounts went with it');
+assert(Boolean((await vault.getActiveAccount())?.address), 'an active account still resolves after removal');
+
+let lastKeyringProtected = false;
+try {
+  await vault.removeKeyring(firstRing.id, 'multiseed password');
+} catch {
+  lastKeyringProtected = true;
+}
+assert(lastKeyringProtected, 'the last remaining keyring cannot be removed');
+
 console.log('\nAll vault.js integration checks passed.');
