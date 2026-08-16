@@ -1,8 +1,45 @@
 // Network management service running in the background service worker.
+//
+// Built-in networks come from src/lib/networks.js and are immutable. Custom networks live in a
+// storage overlay so a user can point the wallet at a local devnet node without editing source.
+// A custom entry may not shadow a built-in id, so `alphanet` always means alphanet.
 
-import { NETWORKS, DEFAULT_NETWORK, getNetworkConfig, listNetworks } from '../../lib/networks.js';
+import { DEFAULT_NETWORK, getNetworkConfig, listNetworks } from '../../lib/networks.js';
+import { emitNetworkChanged } from './event-service.js';
+import * as balances from './balance-service.js';
 
 const ACTIVE_NETWORK_KEY = 'thru_active_network';
+const CUSTOM_NETWORKS_KEY = 'thru_custom_networks';
+
+async function readCustom() {
+  try {
+    const res = await chrome.storage.local.get(CUSTOM_NETWORKS_KEY);
+    const list = res?.[CUSTOM_NETWORKS_KEY];
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return [];
+  }
+}
+
+async function writeCustom(list) {
+  await chrome.storage.local.set({ [CUSTOM_NETWORKS_KEY]: list });
+}
+
+function builtInIds() {
+  return new Set(listNetworks().map((n) => n.id));
+}
+
+/** Look up a network by id across built-ins and custom entries. */
+async function resolveNetwork(networkId) {
+  try {
+    return getNetworkConfig(networkId);
+  } catch {
+    const custom = await readCustom();
+    const found = custom.find((n) => n.id === networkId);
+    if (!found) throw new Error(`Unknown network '${networkId}'.`);
+    return found;
+  }
+}
 
 /**
  * Get the currently selected network ID.
@@ -15,26 +52,83 @@ export async function getActiveNetworkId() {
 
 /**
  * Get the currently active network configuration.
- * @returns {Promise<import('../../lib/networks.js').NetworkConfig>}
+ * Falls back to the default if the stored id refers to a deleted custom network.
  */
 export async function getActiveNetworkConfig() {
   const networkId = await getActiveNetworkId();
-  return getNetworkConfig(networkId);
+  try {
+    return await resolveNetwork(networkId);
+  } catch {
+    return getNetworkConfig(DEFAULT_NETWORK);
+  }
 }
 
 /**
- * Set the active network ID.
+ * Set the active network. Clears the balance cache, since a cached balance from one network is
+ * meaningless on another and showing it would be actively misleading.
  * @param {string} networkId
  */
 export async function setActiveNetwork(networkId) {
-  const config = getNetworkConfig(networkId);
+  const config = await resolveNetwork(networkId);
   await chrome.storage.local.set({ [ACTIVE_NETWORK_KEY]: config.id });
+  await balances.clearCache();
+  emitNetworkChanged(config);
   return config;
 }
 
 /**
- * List all available network configurations.
+ * List all networks — built-ins first, then custom entries.
  */
-export function getAvailableNetworks() {
-  return listNetworks();
+export async function getAvailableNetworks() {
+  const custom = await readCustom();
+  return [
+    ...listNetworks().map((n) => ({ ...n, custom: false })),
+    ...custom.map((n) => ({ ...n, custom: true })),
+  ];
+}
+
+/**
+ * Add or update a custom network.
+ * @param {{ id: string, name: string, rpcUrl: string, explorerUrl?: string, environment?: string }} config
+ */
+export async function upsertCustomNetwork(config) {
+  const id = String(config?.id || '').trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
+  if (!id) throw new Error('A network id is required (letters, numbers and dashes).');
+  if (builtInIds().has(id)) throw new Error(`'${id}' is a built-in network and cannot be replaced.`);
+
+  const rpcUrl = String(config?.rpcUrl || '').trim();
+  if (!/^https?:\/\/\S+$/i.test(rpcUrl)) throw new Error('RPC URL must be a valid http(s) URL.');
+
+  const explorerUrl = String(config?.explorerUrl || '').trim();
+  if (explorerUrl && !/^https?:\/\/\S+$/i.test(explorerUrl)) {
+    throw new Error('Explorer URL must be a valid http(s) URL.');
+  }
+
+  const record = {
+    id,
+    name: String(config?.name || id).trim().slice(0, 32),
+    rpcUrl,
+    explorerUrl,
+    environment: config?.environment === 'mainnet' ? 'mainnet' : 'devnet',
+    nativeAsset: 'THRU',
+  };
+
+  const custom = await readCustom();
+  await writeCustom([record, ...custom.filter((n) => n.id !== id)]);
+  return record;
+}
+
+/**
+ * Remove a custom network. Switches back to the default if it was active.
+ * @param {string} networkId
+ */
+export async function removeCustomNetwork(networkId) {
+  const id = String(networkId || '').trim();
+  if (builtInIds().has(id)) throw new Error('Built-in networks cannot be removed.');
+  const custom = await readCustom();
+  await writeCustom(custom.filter((n) => n.id !== id));
+  if ((await getActiveNetworkId()) === id) {
+    await setActiveNetwork(DEFAULT_NETWORK);
+  }
+  return { removed: id };
 }

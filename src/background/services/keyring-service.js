@@ -59,3 +59,17 @@ export async function removeKeyring(keyringId, password) {
   await vault.removeKeyring(keyringId, password);
   return { removed: keyringId };
 }
+
+/**
+ * Record that the user confirmed writing a recovery phrase down.
+ *
+ * Deliberately not password-gated: this reveals nothing and changes no key material, it only
+ * stores an acknowledgement so the UI can stop nagging. Gating it behind a password would push
+ * users to skip the backup step entirely.
+ *
+ * @param {string} keyringId
+ * @param {boolean} [backedUp=true]
+ */
+export async function setBackedUp(keyringId, backedUp = true) {
+  return vault.setKeyringBackedUp(keyringId, backedUp !== false);
+}

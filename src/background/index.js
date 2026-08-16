@@ -4,6 +4,7 @@
 import { lock } from '../lib/vault.js';
 import { handleApiRequest } from './api-router.js';
 import { ensureAutoLockAlarm, shouldAutoLock, touchActivity } from './services/system-service.js';
+import { emitLockStateChanged } from './services/event-service.js';
 
 const AUTO_LOCK_ALARM = 'thru-auto-lock';
 
@@ -23,10 +24,7 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
   try {
     if (await shouldAutoLock()) {
       await lock();
-      // Best-effort notice to any open UI page. No listener is required.
-      chrome.runtime
-        .sendMessage({ type: 'EVENT', event: 'lockStateChanged', data: { unlocked: false } })
-        .catch(() => {});
+      emitLockStateChanged(false);
     }
   } catch {
     // never let a background throw kill the worker

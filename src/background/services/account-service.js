@@ -1,6 +1,9 @@
 // Account management service running in the background worker.
 
 import * as vault from '../../lib/vault.js';
+import { getPreferences, applyAccountPreferences } from './preferences-service.js';
+import { emitAccountsChanged } from './event-service.js';
+import * as balances from './balance-service.js';
 
 /**
  * Strips raw private key bytes before returning account metadata to the UI.
@@ -39,10 +42,27 @@ export async function getActiveRef() {
 
 /**
  * List all accounts across all keyrings (public fields only).
+ *
+ * Applies stored display preferences: pinned first, then explicit order, with hidden accounts
+ * filtered out unless requested. Optionally attaches cached balances so a switcher can render
+ * a balance per row without N round-trips.
+ *
+ * @param {{ includeHidden?: boolean, withBalances?: boolean }} [options]
  */
-export async function listAccounts() {
+export async function listAccounts(options = {}) {
+  const { includeHidden = false, withBalances = false } = options;
   const accounts = await vault.listAccounts();
-  return accounts.map(toPublicAccount);
+  const prefs = await getPreferences();
+  const ordered = applyAccountPreferences(accounts.map(toPublicAccount), prefs, { includeHidden });
+
+  if (!withBalances) return ordered;
+
+  const cached = await balances.getCachedBalances(ordered.map((a) => a.address));
+  return ordered.map((acc) => ({
+    ...acc,
+    balance: cached[acc.address]?.balance ?? null,
+    balanceStale: cached[acc.address]?.stale ?? true,
+  }));
 }
 
 /**
@@ -52,16 +72,59 @@ export async function listAccounts() {
 export async function switchActiveAccount(ref) {
   await vault.switchActiveAccount(ref);
   const active = await vault.getActiveAccount();
-  return toPublicAccount(active);
+  const publicAccount = toPublicAccount(active);
+  emitAccountsChanged({ active: publicAccount });
+  // Refresh in the background; the UI paints from cache immediately.
+  balances.getBalances([publicAccount.address]).catch(() => {});
+  return publicAccount;
 }
 
 /**
- * Derive the next HD account for the primary seed keyring.
+ * Derive the next HD account for a seed keyring.
  * @param {string|null} keyringId
  */
 export async function addHdAccount(keyringId = null) {
   const account = await vault.addHdAccount(keyringId);
-  return toPublicAccount(account);
+  const active = await vault.getActiveAccount();
+  const publicAccount = toPublicAccount(active);
+  emitAccountsChanged({ active: publicAccount, added: account });
+  return publicAccount;
+}
+
+/**
+ * Preview upcoming HD addresses without adding them, so the user can choose which to import.
+ * @param {{ keyringId: string, start?: number, count?: number, withBalances?: boolean }} params
+ */
+export async function previewHdAccounts({ keyringId, start = 0, count = 5, withBalances = false }) {
+  const preview = await vault.previewHdAccounts(keyringId, start, count);
+  if (!withBalances) return preview;
+  const fetched = await balances.getBalances(preview.map((p) => p.address), { emit: false });
+  return preview.map((p) => ({
+    ...p,
+    balance: fetched[p.address]?.balance ?? null,
+  }));
+}
+
+/**
+ * Add several HD indices at once in a single vault write.
+ * @param {{ keyringId: string, indices: number[] }} params
+ */
+export async function addHdAccounts({ keyringId, indices }) {
+  const result = await vault.addHdAccounts(keyringId, indices);
+  const active = await vault.getActiveAccount();
+  emitAccountsChanged({ active: toPublicAccount(active), added: result.added });
+  return result;
+}
+
+/**
+ * Remove one derived HD account, leaving its keyring intact.
+ * @param {{ ref: Object }} params
+ */
+export async function removeHdAccount({ ref }) {
+  const result = await vault.removeHdAccount(ref);
+  const active = await vault.getActiveAccount();
+  emitAccountsChanged({ active: toPublicAccount(active), removed: result });
+  return result;
 }
 
 /**

@@ -21,10 +21,19 @@ import * as tokenService from './services/token-service.js';
 import * as networkService from './services/network-service.js';
 import * as contactsService from './services/contacts-service.js';
 import * as systemService from './services/system-service.js';
+import * as preferencesService from './services/preferences-service.js';
+import * as balanceService from './services/balance-service.js';
+import * as pendingTxService from './services/pending-tx-service.js';
 import { isKnownMethod, getMethodSpec, CONTRACT_VERSION } from '../shared/contract/manifest.js';
 
 const handlers = Object.assign(Object.create(null), {
   // ---- System ------------------------------------------------------------
+  //
+  // bootstrap must never block first paint on a live RPC. It returns vault/account state and
+  // CACHED balances synchronously, kicks off health and balance refreshes without awaiting
+  // them, and lets the UI correct itself when the balanceChanged event arrives. The previous
+  // implementation awaited checkNetworkHealth(), so the popup could not render until the
+  // network answered.
   'system.bootstrap': async () => {
     const hasVault = await walletService.hasVault();
     const unlocked = hasVault ? await walletService.isUnlocked() : false;
@@ -34,16 +43,28 @@ const handlers = Object.assign(Object.create(null), {
     if (unlocked) {
       try {
         account = await accountService.getActiveAccount();
-        accounts = await accountService.listAccounts();
+        accounts = await accountService.listAccounts({ withBalances: true });
         keyrings = await keyringService.listKeyrings();
       } catch {
         // session might be empty or locked mid-flight
       }
     }
-    const network = await networkService.getActiveNetworkConfig();
-    const networkHealth = await txService.checkNetworkHealth();
-    const autoLockMinutes = await systemService.getAutoLockMinutes();
-    const lockout = await walletService.getLockoutState();
+    const [network, autoLockMinutes, lockout, preferences, pending] = await Promise.all([
+      networkService.getActiveNetworkConfig(),
+      systemService.getAutoLockMinutes(),
+      walletService.getLockoutState(),
+      preferencesService.getPreferences(),
+      pendingTxService.listPending(),
+    ]);
+
+    // Fire and forget: results arrive via balanceChanged / pendingTxChanged events.
+    if (accounts.length) {
+      balanceService.getBalances(accounts.map((a) => a.address)).catch(() => {});
+    }
+    if (pending.length) {
+      pendingTxService.reconcile().catch(() => {});
+    }
+
     return {
       contractVersion: CONTRACT_VERSION,
       hasVault,
@@ -52,9 +73,11 @@ const handlers = Object.assign(Object.create(null), {
       accounts,
       keyrings,
       network,
-      networkHealth,
       autoLockMinutes,
       lockout,
+      preferences,
+      pending,
+      // networkHealth is intentionally absent: call tx.checkHealth from the UI after paint.
     };
   },
   'system.setAutoLock': ({ minutes }) => systemService.setAutoLockMinutes(minutes),
@@ -82,31 +105,57 @@ const handlers = Object.assign(Object.create(null), {
   'keyring.addPrivateKey': ({ privateKeyHex, password, label }) => keyringService.addPrivateKeyKeyring(privateKeyHex, password, label),
   'keyring.rename': ({ keyringId, label, password }) => keyringService.renameKeyring(keyringId, label, password),
   'keyring.remove': ({ keyringId, password }) => keyringService.removeKeyring(keyringId, password),
+  'keyring.setBackedUp': ({ keyringId, backedUp }) => keyringService.setBackedUp(keyringId, backedUp),
 
   // ---- Accounts ---------------------------------------------------------
   'account.getActive': () => accountService.getActiveAccount(),
   'account.getActiveRef': () => accountService.getActiveRef(),
-  'account.list': () => accountService.listAccounts(),
+  'account.list': ({ includeHidden, withBalances } = {}) => accountService.listAccounts({ includeHidden, withBalances }),
   'account.switch': ({ ref }) => accountService.switchActiveAccount(ref),
   'account.addHd': ({ keyringId } = {}) => accountService.addHdAccount(keyringId),
   'account.addImported': ({ privateKeyHex, password, label }) => accountService.addImportedKey(privateKeyHex, password, label),
   'account.setLabel': ({ address, label }) => accountService.setAccountLabel(address, label),
   'account.getLabels': () => accountService.getAccountLabels(),
+  'account.previewHd': ({ keyringId, start, count, withBalances }) => accountService.previewHdAccounts({ keyringId, start, count, withBalances }),
+  'account.addHdBatch': ({ keyringId, indices }) => accountService.addHdAccounts({ keyringId, indices }),
+  'account.removeHd': ({ ref }) => accountService.removeHdAccount({ ref }),
+  'account.setHidden': ({ address, hidden }) => preferencesService.setAccountHidden(address, hidden),
+  'account.setPinned': ({ address, pinned }) => preferencesService.setAccountPinned(address, pinned),
+  'account.setOrder': ({ addresses }) => preferencesService.setAccountOrder(addresses),
 
   // ---- Transactions and RPC --------------------------------------------
   'tx.getAccountInfo': ({ address }) => txService.getAccountInfo(address),
   'tx.claimFaucet': ({ amountUnits }) => txService.claimFaucet(amountUnits),
   'tx.send': ({ toAddress, amountUnits }) => txService.sendTransfer(toAddress, amountUnits),
-  'tx.listHistory': ({ address, pageSize } = {}) => txService.listHistory(address, pageSize),
+  'tx.listHistory': ({ address, pageSize, limit, cursor } = {}) => (
+    limit !== undefined || cursor !== undefined
+      ? txService.listHistory(address, { limit, cursor })
+      : txService.listHistory(address, pageSize)
+  ),
   'tx.checkHealth': () => txService.checkNetworkHealth(),
   'tx.autoCreateAccount': () => txService.autoCreateAccount(),
   'tx.validateAddress': ({ address }) => txService.validateAddress(address),
+  'tx.getBalances': ({ addresses }) => balanceService.getBalances(addresses),
+  'tx.getCachedBalances': ({ addresses }) => balanceService.getCachedBalances(addresses),
+  'tx.getTotalBalance': ({ addresses }) => balanceService.getTotalBalance(addresses),
+  'tx.getPending': () => pendingTxService.list(),
+  'tx.reconcilePending': () => pendingTxService.reconcile(),
+  'tx.clearSettled': () => pendingTxService.clearSettled(),
+  'tx.estimateFee': ({ toAddress, amountUnits }) => txService.estimateFee({ toAddress, amountUnits }),
+  'tx.simulate': ({ toAddress, amountUnits }) => txService.simulate({ toAddress, amountUnits }),
 
   // ---- Tokens and launchpad --------------------------------------------
   'token.deploy': (params) => tokenService.deployToken(params),
   'token.list': () => tokenService.listDeployedTokens(),
   'token.deriveAddress': ({ mintSeed }) => tokenService.deriveMintAddress(mintSeed),
   'token.generateSeed': () => tokenService.generateMintSeed(),
+  'token.import': ({ mintAddress, symbol, name, decimals }) => tokenService.importToken({ mintAddress, symbol, name, decimals }),
+  'token.setVisibility': ({ mintAddress, hidden }) => tokenService.setVisibility(mintAddress, hidden),
+  'token.getBalances': ({ address }) => tokenService.getTokenBalances({ address }),
+
+  // ---- Preferences -----------------------------------------------------
+  'settings.get': () => preferencesService.getPreferences(),
+  'settings.set': ({ patch }) => preferencesService.setPreferences(patch),
 
   // ---- Address book ----------------------------------------------------
   'contacts.list': () => contactsService.listContacts(),
@@ -117,6 +166,8 @@ const handlers = Object.assign(Object.create(null), {
   'network.getActive': () => networkService.getActiveNetworkConfig(),
   'network.setActive': ({ networkId }) => networkService.setActiveNetwork(networkId),
   'network.list': () => networkService.getAvailableNetworks(),
+  'network.upsertCustom': (params) => networkService.upsertCustomNetwork(params),
+  'network.removeCustom': ({ networkId }) => networkService.removeCustomNetwork(networkId),
 });
 
 /** Method names the router actually implements. Used by test-contract.mjs. */

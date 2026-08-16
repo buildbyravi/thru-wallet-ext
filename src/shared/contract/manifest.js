@@ -21,7 +21,7 @@
 //   'password' - requires the caller to pass the master password, re-verified server-side
 // `since` is the contract version in which the method first appeared.
 
-export const CONTRACT_VERSION = 3;
+export const CONTRACT_VERSION = 4;
 
 export const METHODS = {
   // ---- System ------------------------------------------------------------
@@ -162,6 +162,12 @@ export const METHODS = {
     auth: 'password',
     since: 3,
   },
+  'keyring.setBackedUp': {
+    params: ['keyringId', 'backedUp'],
+    returns: '{ id, backedUpAt } — records that the user confirmed writing the phrase down',
+    auth: 'unlocked',
+    since: 4,
+  },
 
   // ---- Accounts ---------------------------------------------------------
   'account.getActive': {
@@ -177,8 +183,8 @@ export const METHODS = {
     since: 1,
   },
   'account.list': {
-    params: [],
-    returns: 'array of public account objects across every keyring',
+    params: ['includeHidden', 'withBalances'],
+    returns: 'array of public accounts, pinned first then in stored order, hidden filtered out unless asked',
     auth: 'unlocked',
     since: 1,
   },
@@ -212,6 +218,42 @@ export const METHODS = {
     auth: 'none',
     since: 1,
   },
+  'account.previewHd': {
+    params: ['keyringId', 'start', 'count', 'withBalances'],
+    returns: '[{ index, address, added, balance? }] — derives without persisting anything',
+    auth: 'unlocked',
+    since: 4,
+  },
+  'account.addHdBatch': {
+    params: ['keyringId', 'indices'],
+    returns: '{ keyringId, added } — one vault write for many indices',
+    auth: 'unlocked',
+    since: 4,
+  },
+  'account.removeHd': {
+    params: ['ref'],
+    returns: '{ keyringId, removedIndex } — refuses to remove a keyring\'s last account',
+    auth: 'unlocked',
+    since: 4,
+  },
+  'account.setHidden': {
+    params: ['address', 'hidden'],
+    returns: 'updated preferences — hides from switchers without deleting keys',
+    auth: 'unlocked',
+    since: 4,
+  },
+  'account.setPinned': {
+    params: ['address', 'pinned'],
+    returns: 'updated preferences',
+    auth: 'unlocked',
+    since: 4,
+  },
+  'account.setOrder': {
+    params: ['addresses'],
+    returns: 'updated preferences',
+    auth: 'unlocked',
+    since: 4,
+  },
 
   // ---- Transactions and RPC --------------------------------------------
   'tx.getAccountInfo': {
@@ -233,8 +275,8 @@ export const METHODS = {
     since: 1,
   },
   'tx.listHistory': {
-    params: ['address', 'pageSize'],
-    returns: 'array of JSON-safe history entries',
+    params: ['address', 'pageSize', 'limit', 'cursor'],
+    returns: 'array (positional form) or { entries, nextCursor, hasMore } (options form)',
     auth: 'none',
     since: 1,
   },
@@ -255,6 +297,54 @@ export const METHODS = {
     returns: '{ valid, isSelf, reason } — server-side address check',
     auth: 'none',
     since: 3,
+  },
+  'tx.getBalances': {
+    params: ['addresses'],
+    returns: '{ [address]: { balance, exists, fetchedAt, stale, error } } — concurrency-capped batch',
+    auth: 'none',
+    since: 4,
+  },
+  'tx.getCachedBalances': {
+    params: ['addresses'],
+    returns: 'same shape as tx.getBalances but performs NO network access — safe on the render path',
+    auth: 'none',
+    since: 4,
+  },
+  'tx.getTotalBalance': {
+    params: ['addresses'],
+    returns: '{ total, addressCount } — BigInt sum as a base-unit string',
+    auth: 'none',
+    since: 4,
+  },
+  'tx.getPending': {
+    params: [],
+    returns: '[{ signature, kind, from, to, amountUnits, status, submittedAt }]',
+    auth: 'none',
+    since: 4,
+  },
+  'tx.reconcilePending': {
+    params: [],
+    returns: '{ checked, settled } — settles only on positive chain evidence, never on a guess',
+    auth: 'none',
+    since: 4,
+  },
+  'tx.clearSettled': {
+    params: [],
+    returns: '{ remaining }',
+    auth: 'none',
+    since: 4,
+  },
+  'tx.estimateFee': {
+    params: ['toAddress', 'amountUnits'],
+    returns: '{ supported: false, feeUnits: null, reason } — UNVERIFIED on Thru, see docs/BACKEND_GAPS.md C2',
+    auth: 'none',
+    since: 4,
+  },
+  'tx.simulate': {
+    params: ['toAddress', 'amountUnits'],
+    returns: '{ supported: false, changes: null, reason } — UNVERIFIED on Thru, see docs/BACKEND_GAPS.md C3',
+    auth: 'none',
+    since: 4,
   },
 
   // ---- Tokens and launchpad --------------------------------------------
@@ -281,6 +371,38 @@ export const METHODS = {
     returns: '32-character alphanumeric mint seed',
     auth: 'none',
     since: 1,
+  },
+  'token.import': {
+    params: ['mintAddress', 'symbol', 'name', 'decimals'],
+    returns: 'the saved record — metadata only, does not prove the mint exists on-chain',
+    auth: 'unlocked',
+    since: 4,
+  },
+  'token.setVisibility': {
+    params: ['mintAddress', 'hidden'],
+    returns: '{ mintAddress, hidden }',
+    auth: 'unlocked',
+    since: 4,
+  },
+  'token.getBalances': {
+    params: ['address'],
+    returns: '{ supported: false, balances: null, reason } — UNVERIFIED on Thru, see docs/BACKEND_GAPS.md C1',
+    auth: 'none',
+    since: 4,
+  },
+
+  // ---- Preferences -----------------------------------------------------
+  'settings.get': {
+    params: [],
+    returns: 'full preference record with defaults applied',
+    auth: 'none',
+    since: 4,
+  },
+  'settings.set': {
+    params: ['patch'],
+    returns: 'updated preference record — rejects unknown keys',
+    auth: 'unlocked',
+    since: 4,
   },
 
   // ---- Address book ----------------------------------------------------
@@ -318,9 +440,21 @@ export const METHODS = {
   },
   'network.list': {
     params: [],
-    returns: 'array of NetworkConfig',
+    returns: 'array of NetworkConfig, each flagged { custom: boolean }',
     auth: 'none',
     since: 1,
+  },
+  'network.upsertCustom': {
+    params: ['id', 'name', 'rpcUrl', 'explorerUrl', 'environment'],
+    returns: 'the saved custom network — cannot shadow a built-in id',
+    auth: 'unlocked',
+    since: 4,
+  },
+  'network.removeCustom': {
+    params: ['networkId'],
+    returns: '{ removed } — switches to the default if it was active',
+    auth: 'unlocked',
+    since: 4,
   },
 };
 
@@ -330,6 +464,7 @@ export const EVENTS = {
   lockStateChanged: 'Wallet locked or unlocked',
   networkChanged: 'Active network changed',
   balanceChanged: 'A tracked balance was refreshed in the background',
+  pendingTxChanged: 'A submitted transaction was tracked or settled',
 };
 
 /** Stable error codes. The UI may branch on these; messages are for humans only. */

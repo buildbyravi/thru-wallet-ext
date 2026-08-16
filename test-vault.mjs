@@ -173,4 +173,108 @@ assert((await vault.listKeyrings()).length === 3, 'all V2 keyrings survive lock 
 await vault.setAccountLabelAuthenticated(secondPrivate.address, 'Cold import primary', 'keyring migration password');
 assert((await vault.getActiveAccount()).label === 'Cold import primary', 'authenticated account rename persists');
 
+console.log('\n[11] Keyring provenance distinguishes generated from imported phrases');
+await vault.resetWallet();
+await vault.createVault('provenance password');
+let provKeyrings = await vault.listKeyrings();
+assert(provKeyrings[0].origin === 'generated', 'a phrase created by createVault is marked generated');
+assert(provKeyrings[0].backedUpAt === null, 'a fresh keyring is not yet backed up');
+
+const importedPhrase = MnemonicGenerator.generate();
+const importedRing = await vault.addSeedKeyring(importedPhrase, 'provenance password', 'From elsewhere');
+provKeyrings = await vault.listKeyrings();
+const importedEntry = provKeyrings.find((r) => r.id === importedRing.id);
+assert(importedEntry.origin === 'imported', 'a phrase added via addSeedKeyring is marked imported');
+
+await vault.setKeyringBackedUp(importedRing.id, true);
+provKeyrings = await vault.listKeyrings();
+assert(
+  typeof provKeyrings.find((r) => r.id === importedRing.id).backedUpAt === 'number',
+  'setKeyringBackedUp records an acknowledgement timestamp',
+);
+
+let pkBackupRejected = false;
+try {
+  const throwaway = await keys.generateKeyPair();
+  const pkRing = await vault.addPrivateKeyKeyring(Buffer.from(throwaway.privateKey).toString('hex'), 'provenance password');
+  await vault.setKeyringBackedUp(pkRing.id, true);
+} catch {
+  pkBackupRejected = true;
+}
+assert(pkBackupRejected, 'a private-key keyring cannot be marked "phrase backed up"');
+
+console.log('\n[12] HD preview derives addresses without persisting them');
+await vault.resetWallet();
+await vault.createVault('preview password');
+const previewRingId = (await vault.listKeyrings())[0].id;
+const preview = await vault.previewHdAccounts(previewRingId, 0, 5);
+assert(preview.length === 5, 'previewHdAccounts returns the requested count');
+assert(preview[0].added === true, 'index 0 is reported as already added');
+assert(preview[3].added === false, 'an unadded index is reported as not added');
+assert(new Set(preview.map((p) => p.address)).size === 5, 'every previewed address is distinct');
+assert((await vault.listAccounts()).length === 1, 'previewing persisted nothing');
+
+// The previewed address must be the same one actually derived when it is later added.
+const previewedIndex3 = preview[3].address;
+await vault.addHdAccounts(previewRingId, [3]);
+const afterAdd = await vault.listAccounts();
+assert(
+  afterAdd.some((a) => a.address === previewedIndex3),
+  'the address shown in the preview is the address actually added',
+);
+
+console.log('\n[13] Batch HD add and single HD account removal');
+await vault.resetWallet();
+await vault.createVault('batch password');
+const batchRingId = (await vault.listKeyrings())[0].id;
+const batchResult = await vault.addHdAccounts(batchRingId, [1, 2, 5, 5, 2]);
+assert(batchResult.added.length === 3, 'duplicate indices in one batch are collapsed');
+assert((await vault.listAccounts()).length === 4, 'batch add produced four accounts total');
+
+const reAdd = await vault.addHdAccounts(batchRingId, [1]);
+assert(reAdd.added.length === 0, 're-adding an existing index is a no-op');
+
+const accountsBeforeRemoval = await vault.listAccounts();
+const victim = accountsBeforeRemoval.find((a) => a.ref.index === 5);
+await vault.removeHdAccount(victim.ref);
+const accountsAfterRemoval = await vault.listAccounts();
+assert(accountsAfterRemoval.length === 3, 'removeHdAccount removes exactly one account');
+assert(!accountsAfterRemoval.some((a) => a.address === victim.address), 'the removed address is gone');
+
+// Removing the active account must leave a valid active account behind, not a dangling ref.
+const stillActive = await vault.getActiveAccount();
+assert(Boolean(stillActive?.address), 'an active account still resolves after a removal');
+
+let lastAccountProtected = false;
+await vault.resetWallet();
+await vault.createVault('last account password');
+try {
+  const soloRef = (await vault.getActiveAccount()).ref;
+  await vault.removeHdAccount(soloRef);
+} catch {
+  lastAccountProtected = true;
+}
+assert(lastAccountProtected, "a keyring's last remaining account cannot be removed");
+
+console.log('\n[14] Labels are sanitized in the background, not just by the UI');
+await vault.resetWallet();
+await vault.createVault('sanitize password');
+const sanitizeAddr = (await vault.getActiveAccount()).address;
+
+const stored = await vault.setAccountLabel(sanitizeAddr, '  Trading  ');
+assert(stored === 'Trading', 'surrounding whitespace is trimmed');
+
+await vault.setAccountLabel(sanitizeAddr, '"><iframe src=//evil.co>');
+const escapedLabel = (await vault.getActiveAccount()).label;
+assert(
+  !/[<>"']/.test(escapedLabel),
+  `markup characters are stripped from labels (got ${JSON.stringify(escapedLabel)})`,
+);
+
+await vault.setAccountLabel(sanitizeAddr, 'x'.repeat(200));
+assert(
+  (await vault.getActiveAccount()).label.length === vault.MAX_LABEL_LENGTH,
+  `an over-long label is capped at ${vault.MAX_LABEL_LENGTH} characters`,
+);
+
 console.log('\nAll vault.js integration checks passed.');

@@ -71,11 +71,20 @@ const RULES = [
   },
 ];
 
-// Files permitted to call chrome.runtime.sendMessage. Everything else must use the bridge.
+// chrome.runtime.sendMessage is a two-way street and each direction gets exactly ONE owner:
+//
+//   UI -> background : src/ui/bridge.js only. Keeps the callable API surface in one auditable
+//                      place instead of scattered across screens.
+//   background -> UI : src/background/services/event-service.js only. Keeps every push event
+//                      declared in the contract's EVENTS map and swallows "no receiver"
+//                      rejections in one spot.
+//
+// index.js is NOT on this list on purpose: the worker entry point should emit through the
+// event service like everything else.
 const SEND_MESSAGE_ALLOWLIST = new Set([
   'src/ui/bridge.js',
   'src/ui/app/bridge.js',
-  'src/background/index.js',
+  'src/background/services/event-service.js',
 ]);
 
 const violations = [];

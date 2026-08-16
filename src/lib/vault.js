@@ -369,7 +369,9 @@ export async function listKeyrings() {
     type: ring.type,
     label: ring.label,
     origin: ring.origin || 'unknown',
+    backedUpAt: ring.backedUpAt ?? null,
     accountCount: ring.type === 'seed' ? ring.hdAccountIndices.length : 1,
+    hdIndices: ring.type === 'seed' ? [...ring.hdAccountIndices] : [],
     createdAt: ring.createdAt,
   }));
 }
@@ -440,6 +442,111 @@ export async function removeKeyring(keyringId, password) {
 export async function hasSeed() {
   const vaultData = await getVaultData();
   return vaultData.keyrings.some((ring) => ring.type === 'seed');
+}
+
+/**
+ * Mark a seed keyring as backed up (the user confirmed they wrote the phrase down).
+ * Requires no password: this only records a UI acknowledgement, it reveals nothing.
+ * @param {string} keyringId
+ * @param {boolean} [backedUp=true]
+ */
+export async function setKeyringBackedUp(keyringId, backedUp = true) {
+  const vaultData = await getVaultData();
+  const ring = getKeyring(vaultData, keyringId);
+  if (ring.type !== 'seed') throw new Error('Only recovery-phrase keyrings can be backed up.');
+  ring.backedUpAt = backedUp ? Date.now() : null;
+  await persistVaultUpdate(vaultData);
+  return { id: ring.id, backedUpAt: ring.backedUpAt };
+}
+
+/**
+ * Derive HD addresses WITHOUT persisting them, so the UI can show a range of upcoming
+ * addresses and let the user choose which to add (Rabby's HD manager pattern).
+ *
+ * Reveals only public addresses. Nothing is written to the vault.
+ *
+ * @param {string} keyringId
+ * @param {number} [start=0]
+ * @param {number} [count=5]
+ * @returns {Promise<Array<{ index: number, address: string, added: boolean }>>}
+ */
+export async function previewHdAccounts(keyringId, start = 0, count = 5) {
+  const from = Math.max(0, Math.floor(Number(start) || 0));
+  const howMany = Math.min(50, Math.max(1, Math.floor(Number(count) || 1)));
+  const vaultData = await getVaultData();
+  const ring = getKeyring(vaultData, keyringId);
+  if (ring.type !== 'seed') throw new Error('Only recovery-phrase keyrings derive accounts.');
+
+  const seed = MnemonicGenerator.toSeed(ring.mnemonic);
+  const existing = new Set(ring.hdAccountIndices);
+  const out = [];
+  for (let index = from; index < from + howMany; index += 1) {
+    const account = await ThruHDWallet.getAccount(seed, index);
+    out.push({ index, address: account.address, added: existing.has(index) });
+  }
+  return out;
+}
+
+/**
+ * Add several HD indices to a seed keyring in one vault write.
+ *
+ * Adding N accounts one at a time costs N full AES re-encrypt cycles; this does one.
+ *
+ * @param {string} keyringId
+ * @param {number[]} indices
+ */
+export async function addHdAccounts(keyringId, indices) {
+  const vaultData = await getVaultData();
+  const ring = getKeyring(vaultData, keyringId);
+  if (ring.type !== 'seed') throw new Error('Only recovery-phrase keyrings can derive more accounts.');
+
+  const wanted = [...new Set((indices || []).map((n) => Math.floor(Number(n))))]
+    .filter((n) => Number.isInteger(n) && n >= 0 && n < 100_000)
+    .sort((a, b) => a - b);
+  if (!wanted.length) throw new Error('Choose at least one account to add.');
+
+  const added = wanted.filter((index) => !ring.hdAccountIndices.includes(index));
+  if (!added.length) return { keyringId: ring.id, added: [] };
+
+  ring.hdAccountIndices.push(...added);
+  ring.hdAccountIndices.sort((a, b) => a - b);
+  await persistVaultUpdate(vaultData);
+  await setActiveRef(accountRef(ring.id, added[0]));
+  return { keyringId: ring.id, added };
+}
+
+/**
+ * Remove a single derived HD account, leaving its keyring in place.
+ *
+ * The vault previously only ever appended to hdAccountIndices, so the sole way to remove an
+ * address was to delete the whole keyring. Refuses to remove the last account of a keyring
+ * (remove the keyring instead) and refuses to leave the wallet with no accounts at all.
+ *
+ * @param {Object} ref
+ */
+export async function removeHdAccount(ref) {
+  const vaultData = await getVaultData();
+  const normalized = normalizeRef(ref, vaultData);
+  const ring = getKeyring(vaultData, normalized.keyringId);
+  if (ring.type !== 'seed') {
+    throw new Error('Imported private keys are removed by removing their keyring.');
+  }
+  if (ring.hdAccountIndices.length <= 1) {
+    throw new Error('This is the last account from this recovery phrase — remove the phrase instead.');
+  }
+  const position = ring.hdAccountIndices.indexOf(normalized.accountIndex);
+  if (position < 0) throw new Error('Derived account was not found.');
+
+  ring.hdAccountIndices.splice(position, 1);
+  await persistVaultUpdate(vaultData);
+
+  const activeRef = await getActiveRef();
+  const removedWasActive = activeRef?.keyringId === ring.id
+    && (activeRef.accountIndex ?? activeRef.index) === normalized.accountIndex;
+  if (removedWasActive) {
+    await setActiveRef(accountRef(ring.id, ring.hdAccountIndices[0]));
+  }
+  return { keyringId: ring.id, removedIndex: normalized.accountIndex };
 }
 
 // ---- Account selection and resolution ------------------------------------

@@ -3,6 +3,9 @@
 
 import * as vault from '../../lib/vault.js';
 import * as auth from './auth-service.js';
+import * as balances from './balance-service.js';
+import * as pending from './pending-tx-service.js';
+import { emitLockStateChanged } from './event-service.js';
 
 /**
  * Check whether an encrypted vault exists on device.
@@ -64,6 +67,12 @@ export async function unlock(password) {
   try {
     const result = await vault.unlock(password);
     await auth.recordSuccess();
+    emitLockStateChanged(true);
+    // Warm the balance cache and settle anything left in flight, without blocking the caller.
+    vault.listAccounts()
+      .then((accounts) => balances.getBalances(accounts.map((a) => a.address)))
+      .catch(() => {});
+    pending.reconcile().catch(() => {});
     return result;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -110,15 +119,23 @@ export async function removeLegacyBackup(password) {
  * Lock the wallet, destroying the session key in memory.
  */
 export async function lock() {
-  return vault.lock();
+  await vault.lock();
+  emitLockStateChanged(false);
 }
 
 /**
  * Wipe all wallet data from this device.
+ *
+ * Everything derived from the vault must go with it: throttling state, cached balances, and
+ * tracked transactions. Leaving any of those behind would let a fresh wallet inherit the
+ * previous one's balances or pending list.
  */
 export async function resetWallet() {
   await vault.resetWallet();
   await auth.clearLockout();
+  await balances.clearCache();
+  await pending.clearAll();
+  emitLockStateChanged(false);
 }
 
 /**
