@@ -66,6 +66,37 @@ export async function listHistory(address, pageSize = 15) {
 }
 
 /**
+ * Validate a recipient address server-side and report whether it is the active account.
+ *
+ * The UI does its own optimistic check for instant feedback, but the authoritative check
+ * lives here so a UI bug can never let a malformed address reach transaction construction.
+ *
+ * @param {string} address
+ * @returns {Promise<{ valid: boolean, isSelf: boolean, reason: string|null }>}
+ */
+export async function validateAddress(address) {
+  const addr = String(address || '').trim();
+  if (!addr) {
+    return { valid: false, isSelf: false, reason: 'Enter a recipient address.' };
+  }
+  if (!thruClient.isValidThruAddress(addr)) {
+    return { valid: false, isSelf: false, reason: 'That does not look like a valid Thru address.' };
+  }
+  let isSelf = false;
+  try {
+    const active = await vault.getActiveAccount();
+    isSelf = active?.address === addr;
+  } catch {
+    // locked — self-check is unavailable but format validity still stands
+  }
+  return {
+    valid: true,
+    isSelf,
+    reason: isSelf ? "That's the address you're sending from." : null,
+  };
+}
+
+/**
  * Probe RPC network health and latency.
  */
 export async function checkNetworkHealth() {

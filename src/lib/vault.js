@@ -59,11 +59,16 @@ function newId(prefix) {
   return `${prefix}_${bytesToHex(bytes)}`;
 }
 
-function seedKeyring(mnemonic, label = 'Seed wallet') {
+// `origin` records provenance so the UI can offer "back up your phrase" only where it is
+// meaningful: 'generated' phrases were created by this wallet and have never been written
+// down, 'imported' phrases arrived from elsewhere and are already backed up somewhere.
+// 'unknown' is used for keyrings that predate this field.
+function seedKeyring(mnemonic, label = 'Seed wallet', origin = 'generated') {
   return {
     id: newId('seed'),
     type: 'seed',
     label: label.trim() || 'Seed wallet',
+    origin,
     mnemonic: normalizeMnemonic(mnemonic),
     hdAccountIndices: [0],
     createdAt: Date.now(),
@@ -76,9 +81,23 @@ function privateKeyKeyring(privateKeyHex, label = 'Imported private key') {
     id: newId('pk'),
     type: 'privateKey',
     label: label.trim() || 'Imported private key',
+    origin: 'imported',
     privateKeyHex: hex,
     createdAt: Date.now(),
   };
+}
+
+// Backfills `origin` on vaults written before the field existed. Mutates in place and
+// reports whether anything changed so the caller can decide to re-encrypt.
+function backfillKeyringOrigin(vaultData) {
+  let changed = false;
+  for (const ring of vaultData.keyrings) {
+    if (!ring.origin) {
+      ring.origin = ring.type === 'privateKey' ? 'imported' : 'unknown';
+      changed = true;
+    }
+  }
+  return changed;
 }
 
 function isV2(vaultData) {
@@ -163,7 +182,8 @@ function migrateLegacyVaultData(legacyData) {
   let legacySeedId = null;
   const importedIds = [];
   if (legacyData.mnemonic) {
-    const ring = seedKeyring(legacyData.mnemonic, 'Seed wallet 1');
+    // A V1 vault did not record whether its phrase was generated here or imported.
+    const ring = seedKeyring(legacyData.mnemonic, 'Seed wallet 1', 'unknown');
     ring.hdAccountIndices = [...new Set(legacyData.hdAccountIndices || [0])].sort((a, b) => a - b);
     if (!ring.hdAccountIndices.length) ring.hdAccountIndices = [0];
     legacySeedId = ring.id;
@@ -223,12 +243,28 @@ export async function getAccountLabels() {
   return labels ?? {};
 }
 
+export const MAX_LABEL_LENGTH = 32;
+
+// Labels are rendered in the UI and are fully user-controlled, so the limit lives here in
+// the background rather than relying on an HTML maxlength the caller can bypass. Control
+// characters are stripped; angle brackets and quotes are removed so a label can never
+// contribute to markup even if a future renderer regresses.
+export function sanitizeLabel(label) {
+  return String(label ?? '')
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u001f\u007f-\u009f]/g, '')
+    .replace(/[<>"'`\\]/g, '')
+    .trim()
+    .slice(0, MAX_LABEL_LENGTH);
+}
+
 export async function setAccountLabel(address, label) {
   const labels = await getAccountLabels();
-  const trimmed = String(label || '').trim();
+  const trimmed = sanitizeLabel(label);
   if (trimmed) labels[address] = trimmed;
   else delete labels[address];
   await chrome.storage.local.set({ [LABELS_KEY]: labels });
+  return trimmed;
 }
 
 export async function setAccountLabelAuthenticated(address, label, password) {
@@ -240,14 +276,14 @@ export async function setAccountLabelAuthenticated(address, label, password) {
 
 export async function createVault(password) {
   const mnemonic = MnemonicGenerator.generate();
-  const ring = seedKeyring(mnemonic, 'Seed wallet 1');
+  const ring = seedKeyring(mnemonic, 'Seed wallet 1', 'generated');
   await saveNewVault(defaultV2([ring]), password);
   await setActiveRef(accountRef(ring.id, 0));
   return mnemonic;
 }
 
 export async function importMnemonicVault(mnemonic, password) {
-  const ring = seedKeyring(mnemonic, 'Seed wallet 1');
+  const ring = seedKeyring(mnemonic, 'Seed wallet 1', 'imported');
   await saveNewVault(defaultV2([ring]), password);
   await setActiveRef(accountRef(ring.id, 0));
 }
@@ -296,6 +332,13 @@ export async function unlock(password) {
     const replacement = await encryptVaultData(vaultData, rawKeyBytes, fromB64(stored.salt));
     await chrome.storage.local.set({ [VAULT_KEY]: replacement });
   }
+
+  // Backfill provenance on V2 vaults written before `origin` existed.
+  if (backfillKeyringOrigin(vaultData)) {
+    const replacement = await encryptVaultData(vaultData, rawKeyBytes, fromB64(stored.salt));
+    await chrome.storage.local.set({ [VAULT_KEY]: replacement });
+  }
+
   await chrome.storage.session.set({ [SESSION_KEY]: { vaultData, rawKeyB64: toB64(rawKeyBytes) } });
   return vaultData;
 }
@@ -325,9 +368,17 @@ export async function listKeyrings() {
     id: ring.id,
     type: ring.type,
     label: ring.label,
+    origin: ring.origin || 'unknown',
     accountCount: ring.type === 'seed' ? ring.hdAccountIndices.length : 1,
     createdAt: ring.createdAt,
   }));
+}
+
+// Re-verifies the master password without changing lock state. Throws 'Incorrect password.'
+// on mismatch. Used to gate sensitive UI transitions.
+export async function verifyMasterPassword(password) {
+  await verifyPassword(password);
+  return true;
 }
 
 export async function addSeedKeyring(mnemonic, password, label = '') {
@@ -337,11 +388,15 @@ export async function addSeedKeyring(mnemonic, password, label = '') {
   if (vaultData.keyrings.some((ring) => ring.type === 'seed' && ring.mnemonic === normalized)) {
     throw new Error('That recovery phrase is already in this wallet.');
   }
-  const ring = seedKeyring(normalized, label || `Seed wallet ${vaultData.keyrings.filter((item) => item.type === 'seed').length + 1}`);
+  const ring = seedKeyring(
+    normalized,
+    label || `Seed wallet ${vaultData.keyrings.filter((item) => item.type === 'seed').length + 1}`,
+    'imported',
+  );
   vaultData.keyrings.push(ring);
   await persistVaultUpdate(vaultData);
   await setActiveRef(accountRef(ring.id));
-  return { id: ring.id, type: ring.type, label: ring.label };
+  return { id: ring.id, type: ring.type, label: ring.label, origin: ring.origin };
 }
 
 export async function addPrivateKeyKeyring(privateKeyHex, password, label = '') {
@@ -355,15 +410,16 @@ export async function addPrivateKeyKeyring(privateKeyHex, password, label = '') 
   vaultData.keyrings.push(ring);
   await persistVaultUpdate(vaultData);
   await setActiveRef(accountRef(ring.id));
-  return { id: ring.id, type: ring.type, label: ring.label };
+  return { id: ring.id, type: ring.type, label: ring.label, origin: ring.origin };
 }
 
 export async function renameKeyring(keyringId, label, password) {
   await verifyPassword(password);
   const vaultData = await getVaultData();
   const ring = getKeyring(vaultData, keyringId);
-  ring.label = String(label || '').trim() || (ring.type === 'seed' ? 'Seed wallet' : 'Imported private key');
+  ring.label = sanitizeLabel(label) || (ring.type === 'seed' ? 'Seed wallet' : 'Imported private key');
   await persistVaultUpdate(vaultData);
+  return { id: ring.id, label: ring.label };
 }
 
 export async function removeKeyring(keyringId, password) {
@@ -409,12 +465,19 @@ export async function resolveAccount(ref) {
   const normalized = normalizeRef(ref, vaultData);
   const ring = getKeyring(vaultData, normalized.keyringId);
   const labels = await getAccountLabels();
+  const keyringInfo = { id: ring.id, type: ring.type, label: ring.label, origin: ring.origin || 'unknown' };
   if (ring.type === 'seed') {
     if (!ring.hdAccountIndices.includes(normalized.accountIndex)) throw new Error('Derived account was not found.');
     const seed = MnemonicGenerator.toSeed(ring.mnemonic);
     const account = await ThruHDWallet.getAccount(seed, normalized.accountIndex);
     const label = labels[account.address] || `Account ${normalized.accountIndex + 1}`;
-    return { ...account, ref: externalRef(vaultData, normalized), label, keyring: { id: ring.id, type: ring.type, label: ring.label } };
+    return {
+      ...account,
+      ref: externalRef(vaultData, normalized),
+      label,
+      hdIndex: normalized.accountIndex,
+      keyring: keyringInfo,
+    };
   }
   if (normalized.accountIndex !== 0) throw new Error('Imported private keys have one account.');
   const privateKey = parsePrivateKeyHex(ring.privateKeyHex);
@@ -422,7 +485,15 @@ export async function resolveAccount(ref) {
   const address = Pubkey.from(publicKey).toThruFmt();
   const importedIndex = vaultData.keyrings.filter((item) => item.type === 'privateKey').findIndex((item) => item.id === ring.id);
   const label = labels[address] || `Imported ${importedIndex + 1}`;
-  return { address, publicKey, privateKey, ref: externalRef(vaultData, normalized), label, keyring: { id: ring.id, type: ring.type, label: ring.label } };
+  return {
+    address,
+    publicKey,
+    privateKey,
+    ref: externalRef(vaultData, normalized),
+    label,
+    hdIndex: null,
+    keyring: keyringInfo,
+  };
 }
 
 export async function getActiveAccount() {

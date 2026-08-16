@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
-    "test": "node test-vault.mjs && node test-thru-client.mjs && node test-api-router.mjs"
+    "test": "node scripts/check-layering.mjs && node test-contract.mjs && node test-vault.mjs && node test-thru-client.mjs && node test-api-router.mjs",
+    "test:guards": "node scripts/check-layering.mjs && node test-contract.mjs"
   },
   "keywords": [
     "thru",
