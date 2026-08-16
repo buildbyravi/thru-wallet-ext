@@ -224,9 +224,12 @@ textarea {
   font-family: var(--font-mono);
   font-size: var(--fs-md);
   width: 100%;
-  resize: vertical;
   transition: border-color var(--t-base), background var(--t-base);
 }
+
+/* resize only applies to textarea. It was previously declared on the shared
+   input/textarea rule, where browsers ignore it for inputs. */
+textarea { resize: vertical; }
 
 input::placeholder,
 textarea::placeholder { color: var(--text-3); }

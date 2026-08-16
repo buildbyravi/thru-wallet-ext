@@ -122,19 +122,28 @@
 
 /* ---- Screen scaffold --------------------------------------- */
 
+/* The screen is the vertical rhythm owner for every module that renders
+   straight into it. sp-4 between blocks, with the subheader pulled tighter
+   to its content because a title and the thing it titles belong together. */
 .screen {
   display: flex;
   flex-direction: column;
   gap: var(--sp-4);
   flex: 1;
-  padding: var(--sp-5);
+  padding: var(--sp-4) var(--sp-5) var(--sp-5);
 }
 
 .subheader {
   display: flex;
   align-items: center;
   gap: var(--sp-3);
-  margin-bottom: var(--sp-1);
+  /* No margin-bottom: it stacked on top of .screen's gap, producing 20px
+     after the header and 16px everywhere else — an inconsistency that read
+     as an accident rather than a decision. Negative margin instead pulls
+     the following block closer, which is the actual intent. */
+  margin-bottom: calc(var(--sp-2) * -1);
+  padding-bottom: var(--sp-2);
+  border-bottom: 1px solid var(--border-hairline);
 }
 
 .subheader h1 {
@@ -146,6 +155,60 @@
 .subheader-spacer {
   width: 32px;
   flex-shrink: 0;
+}
+
+/* An action row pinned to the bottom of a short screen, so a two-field form
+   does not leave a dead gap between its fields and its button while the
+   button floats mid-panel. */
+.screen-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin-top: auto;
+  padding-top: var(--sp-4);
+}
+
+/* Every form in this app is a vertical field stack. Declaring that once here
+   is what lets the margin utilities be neutralized below: previously forms
+   had no gap at all, so mt-3/mt-4 on their children was the ONLY thing
+   separating a field from the submit button. */
+form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+/* ---- Rhythm ownership -------------------------------------------------
+   .screen and form both space their children with gap. The margin
+   utilities (.mt-3, .my-2, ...) are used at ~38 sites INSIDE these
+   containers, where they stacked on top of the gap and produced 16px in
+   some places, 20px, 24px and 28px in others. That inconsistency is what
+   reads as sloppy spacing rather than as a decision.
+
+   Neutralising vertical margins on direct children makes gap the single
+   source of truth. The utilities stay available for containers that do NOT
+   set a gap. To deviate deliberately, use .screen-actions (pin to bottom)
+   or .pull-tight (halve the gap above).
+
+   This rule must stay ahead of the exceptions below it: same specificity,
+   so source order decides. */
+.screen > *,
+form > * {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+/* Deliberate deviations, declared after the reset so they win. */
+.screen > .pull-tight,
+form > .pull-tight {
+  margin-top: calc(var(--sp-2) * -1);
+}
+
+/* A secondary/destructive action that should read as separated from the
+   primary one rather than as the next item in an evenly spaced list. */
+.screen > .btn.text,
+form > .btn.text {
+  margin-top: calc(var(--sp-1) * -1);
 }
 
 /* ---- Footer ------------------------------------------------
@@ -500,33 +563,42 @@
   border-color: var(--accent);
 }
 
-/* ---- Unlock Screen ---- */
+/* ---- Unlock Screen ----
+   This screen wraps its content instead of rendering straight into
+   .screen, so it must supply its own vertical rhythm. Without a gap the
+   icon, heading, copy, field, error and buttons all rendered flush. */
 .unlock-container {
   display: flex;
   flex-direction: column;
+  gap: var(--sp-5);
   align-items: center;
   text-align: center;
   padding: var(--sp-6) var(--sp-4) var(--sp-4);
 }
 
 .unlock-brand {
-  margin-bottom: var(--sp-5);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-3);
 }
 
 .unlock-icon-wrap {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 56px;
-  height: 56px;
+  width: 52px;
+  height: 52px;
   background: var(--surface-2);
   border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-md);
   color: var(--accent);
-  margin-bottom: var(--sp-3);
 }
 
 .unlock-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
   width: 100%;
   text-align: left;
 }
