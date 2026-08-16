@@ -7,6 +7,7 @@
 import { Router } from './router.js';
 import * as guards from './guards.js';
 import * as bridge from './bridge.js';
+import { AppShell } from './shell.js';
 import { FLAGS } from '../../shared/flags.js';
 import { UnlockRoute } from './routes/unlock.js';
 import { AccountsRoute } from './routes/accounts.js';
@@ -77,14 +78,38 @@ export async function boot({ root, legacyFallback, onMigratedRoute } = {}) {
 
   const known = new Set(POPUP_ROUTES.map((r) => r.path));
 
+  // Routes that own the whole viewport and must not show the topbar/footer chrome.
+  const FULLSCREEN_ROUTES = new Set(['/unlock', '/welcome']);
+
+  // ONE bootstrap call for the whole boot. The previous sequence called
+  // wallet.hasVault + wallet.isUnlocked for landingRoute(), then the route guard called both
+  // again, on a service worker that may still have been starting. Seeding the guard cache
+  // from this response removes those extra round-trips.
+  let initial = null;
+  try {
+    initial = await bridge.bootstrap();
+    guards.seed(initial);
+  } catch (error) {
+    console.warn('[boot] bootstrap failed; guards will query directly.', error);
+  }
+
+  const shell = AppShell({
+    navigate: (path, options) => router.navigate(path, options),
+  });
+  mount.appendChild(shell.el);
+
   const router = new Router({
     routes: POPUP_ROUTES,
-    root: mount,
+    root: shell.outlet,
     fallback: '/unlock',
     onError: (error) => {
       console.error('[boot] route error:', error);
     },
   });
+
+  function applyChrome(path) {
+    shell.setChromeVisible(!FULLSCREEN_ROUTES.has(path));
+  }
 
   // Hand unmigrated hashes back to the legacy stack rather than bouncing to the fallback,
   // which would make half the app unreachable while the migration is in progress.
@@ -104,6 +129,7 @@ export async function boot({ root, legacyFallback, onMigratedRoute } = {}) {
       return;
     }
     onMigratedRoute?.(cleanPath);
+    applyChrome(cleanPath);
     originalNavigate(path, options);
   };
 
@@ -111,7 +137,10 @@ export async function boot({ root, legacyFallback, onMigratedRoute } = {}) {
   // router.navigate, so the tree swap has to happen on resolve as well.
   window.addEventListener('hashchange', () => {
     const { path } = Router.parseHash();
-    if (known.has(path)) onMigratedRoute?.(path);
+    if (known.has(path)) {
+      onMigratedRoute?.(path);
+      applyChrome(path);
+    }
   });
 
   // Push events replace polling. The old bridge exposed onEvent() with zero subscribers,
@@ -131,9 +160,14 @@ export async function boot({ root, legacyFallback, onMigratedRoute } = {}) {
   const { path } = Router.parseHash();
   if (!path || path === '/') {
     router.navigate(await guards.landingRoute(), { replace: true });
+  } else {
+    applyChrome(path);
   }
 
   router.start();
+
+  // Network status is fetched after first paint, never before it.
+  shell.refreshNetwork();
 
   if (FLAGS.DEBUG_ROUTING) {
     console.info('[boot] new UI active. Migrated routes:', [...known].join(', '));

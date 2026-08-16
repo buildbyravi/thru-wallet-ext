@@ -6,6 +6,29 @@
    the legacy stylesheets reached ~200 unreachable lines.
    ============================================================ */
 
+/* ---- App shell -------------------------------------------------
+   The persistent chrome the rebuilt stack renders around every route.
+   Routes mount into .app-outlet, which grows so a short screen's
+   .screen-actions can still pin to the bottom. */
+
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: var(--popup-min-height);
+}
+
+.app-outlet {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.app-outlet > .screen {
+  flex: 1;
+}
+
 /* ---- Password field reveal toggle ------------------------- */
 
 .password-input-wrap {

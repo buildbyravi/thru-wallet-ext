@@ -539,7 +539,30 @@ function setImportMode(mode) {
   document.getElementById('import-privatekey-fields').classList.toggle('hidden', mode !== 'privatekey');
 }
 
+/**
+ * Legacy actions whose destination has been rebuilt on the new stack.
+ *
+ * Without this table the migrated routes are UNREACHABLE. After unlock the new router
+ * navigates to /dashboard, which has not migrated yet, so it falls through to the legacy
+ * tree — and from there every control is a legacy show() call. The account switcher opened
+ * the old drawer, export stayed as unreachable as it always was, and the new screens sat in
+ * the bundle with no click path to them.
+ *
+ * Each entry is deleted when its originating legacy screen is deleted.
+ */
+const NEXT_UI_REDIRECTS = {
+  'go-accounts': '/accounts',
+  'go-add-key': '/add-account',
+  'go-export-password': '/accounts',
+};
+
 async function handleAction(action, target) {
+  // Intercept before the legacy switch runs, so a migrated destination wins.
+  if (FLAGS.NEXT_UI && Object.prototype.hasOwnProperty.call(NEXT_UI_REDIRECTS, action)) {
+    window.location.hash = `#${NEXT_UI_REDIRECTS[action]}`;
+    return;
+  }
+
   switch (action) {
     case 'go-welcome':
       clearSensitiveFields();

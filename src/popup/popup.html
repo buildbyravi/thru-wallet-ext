@@ -188,7 +188,14 @@
       <div class="dash-account-group">
         <button class="account-pill" data-action="go-accounts">
           <span id="dash-account-mark"></span>
-          <span class="account-pill-address" id="dash-account-address">—</span>
+          <!-- The name span was missing entirely, so popup.js:381's write to
+               #dash-account-name silently did nothing and the pill only ever showed a
+               truncated address. This is the "account name not showing on the home page"
+               defect, and it predates the rebuild. -->
+          <span class="account-pill-meta">
+            <span class="account-pill-name" id="dash-account-name">Account</span>
+            <span class="account-pill-address" id="dash-account-address">—</span>
+          </span>
           <span class="account-pill-chevron"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg></span>
         </button>
         <button class="icon-btn" id="dash-copy-btn" data-action="copy-address" data-icon="copy" title="Copy address"></button>

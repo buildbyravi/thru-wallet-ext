@@ -30,6 +30,25 @@ export function invalidate() {
   cache = { hasVault: null, unlocked: null, at: 0 };
 }
 
+/**
+ * Seed the cache from a system.bootstrap response.
+ *
+ * Boot previously called landingRoute() (two round-trips) and then the route's guard ran
+ * readState() again, on a service worker that may still have been spinning up. Seeding from
+ * the single bootstrap call the UI already makes removes that redundancy — it was a
+ * meaningful part of the "loading wallet" delay.
+ *
+ * @param {{ hasVault?: boolean, unlocked?: boolean }} state
+ */
+export function seed(state) {
+  if (!state || typeof state !== 'object') return;
+  cache = {
+    hasVault: Boolean(state.hasVault),
+    unlocked: Boolean(state.unlocked),
+    at: Date.now(),
+  };
+}
+
 /** Requires an existing, unlocked vault. */
 export async function requireUnlocked() {
   const { hasVault, unlocked } = await readState();
@@ -55,10 +74,13 @@ export async function requireNoWallet() {
 
 /**
  * Where the app should land on open — the equivalent of Rabby's SortHat.
+ *
+ * Reads from the cache when it has been seeded by bootstrap, so the common path costs zero
+ * extra round-trips.
  * @returns {Promise<string>}
  */
 export async function landingRoute() {
-  const { hasVault, unlocked } = await readState({ force: true });
+  const { hasVault, unlocked } = cache.at ? cache : await readState({ force: true });
   if (!hasVault) return '/welcome';
   if (!unlocked) return '/unlock';
   return '/dashboard';
