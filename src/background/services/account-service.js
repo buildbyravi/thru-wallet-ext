@@ -1,0 +1,88 @@
+// Account management service running in the background worker.
+
+import * as vault from '../../lib/vault.js';
+
+/**
+ * Strips raw private key bytes before returning account metadata to the UI.
+ */
+function toPublicAccount(account) {
+  if (!account) return null;
+  return {
+    address: account.address,
+    publicKey: account.publicKey ? (typeof account.publicKey === 'string' ? account.publicKey : account.publicKey.toString()) : account.address,
+    label: account.label,
+    ref: account.ref,
+    keyring: account.keyring ? {
+      id: account.keyring.id,
+      type: account.keyring.type,
+      label: account.keyring.label,
+    } : null,
+  };
+}
+
+/**
+ * Get the currently active account (public fields only).
+ */
+export async function getActiveAccount() {
+  const account = await vault.getActiveAccount();
+  return toPublicAccount(account);
+}
+
+/**
+ * Get the active account reference.
+ */
+export async function getActiveRef() {
+  return vault.getActiveRef();
+}
+
+/**
+ * List all accounts across all keyrings (public fields only).
+ */
+export async function listAccounts() {
+  const accounts = await vault.listAccounts();
+  return accounts.map(toPublicAccount);
+}
+
+/**
+ * Switch active account to a target reference.
+ * @param {Object} ref
+ */
+export async function switchActiveAccount(ref) {
+  await vault.switchActiveAccount(ref);
+  const active = await vault.getActiveAccount();
+  return toPublicAccount(active);
+}
+
+/**
+ * Derive the next HD account for the primary seed keyring.
+ * @param {string|null} keyringId
+ */
+export async function addHdAccount(keyringId = null) {
+  const account = await vault.addHdAccount(keyringId);
+  return toPublicAccount(account);
+}
+
+/**
+ * Import a standalone private key into the active vault.
+ * @param {string} privateKeyHex
+ */
+export async function addImportedKey(privateKeyHex) {
+  const account = await vault.addImportedKey(privateKeyHex);
+  return toPublicAccount(account);
+}
+
+/**
+ * Set a custom nickname for an account address.
+ * @param {string} address
+ * @param {string} label
+ */
+export async function setAccountLabel(address, label) {
+  return vault.setAccountLabel(address, label);
+}
+
+/**
+ * Get all stored account nicknames.
+ */
+export async function getAccountLabels() {
+  return vault.getAccountLabels();
+}

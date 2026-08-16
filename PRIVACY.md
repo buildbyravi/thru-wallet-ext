@@ -3,7 +3,7 @@
 **Last Updated:** August 2026  
 **Repository:** [github.com/buildbyravi/thru-wallet-ext](https://github.com/buildbyravi/thru-wallet-ext)
 
-Thru Wallet is an unofficial, community-built, self-custody Chrome extension for Thru's alphanet (a non-EVM RISC-V Layer-1 blockchain by Unto Labs). It is designed from the ground up to respect user privacy and operate under strict zero-telemetry principles.
+Thru Wallet is a self-custody Chrome extension for Thru's alphanet (a non-EVM RISC-V Layer-1 blockchain). It is designed from the ground up to respect user privacy and operate under strict zero-telemetry principles.
 
 ---
 

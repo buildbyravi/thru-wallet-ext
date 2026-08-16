@@ -1,12 +1,29 @@
-# Thru Wallet (unofficial) — alphanet MVP
+# Thru Wallet — Alphanet
 
-An experimental, self-custody browser extension for Thru's alphanet, built on the real
-`@thru/sdk` and `@thru/crypto` packages (not a mockup). Not affiliated with Unto Labs.
-Not audited. **Alphanet only — do not use with anything you consider real value.**
+A high-performance, self-custody browser extension for Thru, built on the real
+`@thru/sdk` and `@thru/crypto` packages with native Token Program launchpad support.
+
+> [!WARNING]
+> **Not production-ready.** The backend (vault, RPC, transaction construction) is solid and
+> tested. The **frontend is mid-refactor and partially broken**: two routers compete, several
+> screens never mount, and secret export is unreachable by any click path. See
+> [Frontend status](#frontend-status) before relying on it, and
+> [`docs/UI_REBUILD_PLAN.md`](docs/UI_REBUILD_PLAN.md) for the plan and phase gates.
+
+## Documentation
+
+| File | Purpose |
+| --- | --- |
+| [`AGENTS.md`](AGENTS.md) | rules, commands, traps — read first if you're contributing |
+| [`CONTEXT.md`](CONTEXT.md) | file-by-file map with `file:line` references |
+| [`docs/BUILD_SPEC.md`](docs/BUILD_SPEC.md) | product spec, wallet model, security policy, QA matrix |
+| [`docs/UI_REBUILD_PLAN.md`](docs/UI_REBUILD_PLAN.md) | frontend audit, target architecture, phase plan |
+| [`docs/UI_REBUILD_AGENT_PROMPT.md`](docs/UI_REBUILD_AGENT_PROMPT.md) | executable prompt for the rebuild |
+| `docs/archive/` | superseded plans, kept for provenance — do not follow |
 
 ## Design
 
-Instrument-grade dark UI: flat graphite surfaces, tabular mono numerals, byte-mark identicons, and one phosphor-amber accent. See [DESIGN.md](DESIGN.md) for the token system and rules for adding features.
+Precision dark UI derived from the official `thru.org` design system: Steel, Teal, Brick Red (`#d33c43`), and Gold/Yellow (`#ffad42`) palette, Inter Tight and JetBrains Mono typography, tabular numerals, and byte-mark identicons.
 
 ## Why this exists
 
@@ -19,13 +36,19 @@ useful today: personal key management and basic account operations against alpha
 
 ## Layout
 
-The dashboard is a hub, not a scroll of everything at once (Rabby was the reference
-point): an account pill up top opens a dedicated account switcher, a balance hero in the
-middle, and a 4-button action grid (Send, Receive, Faucet, History) that each open their
-own focused screen. Export lives inside the Accounts screen instead of the main grid —
-it's a rare, sensitive action, not a daily one, so it doesn't belong next to Send and
-Receive. Popup is 408×580 to give the account switcher, mnemonic entry, and private-key
-entry room to breathe instead of cramming into a 380px sliver.
+Two surfaces:
+
+- **Popup / side panel** (`popup.html`, 408×580) — the wallet proper. The dashboard is a hub, not a
+  scroll of everything at once (Rabby was the reference point): an account pill up top opens a
+  dedicated account switcher, a balance hero in the middle, and a 4-button action grid (Send,
+  Receive, Faucet, History) that each open their own focused screen. Export belongs with account
+  management rather than next to Send and Receive — it's a rare, sensitive action, not a daily one.
+  408px rather than a 380px sliver so the account switcher, mnemonic entry, and private-key entry
+  have room to breathe.
+- **Desktop tab** (`desktop.html`) — a full-width launchpad surface for token deployment and the
+  future DEX, opened via the topbar button. It is a separate hash-routed page with its own layout; it
+  shares the account and network switchers with the popup but currently duplicates most other
+  helpers.
 
 ## What works
 
@@ -38,13 +61,19 @@ entry room to breathe instead of cramming into a 380px sliver.
   BIP-44 index from the seed; "+ Private key" imports another independent key into the
   same wallet. Byte-mark identicons (4×4 deterministic grid) distinguish accounts at a
   glance — square containers for seed-derived, round for imported keys.
+- **Multiple seed phrases in one vault** — `src/lib/vault.js` implements a full keyring model
+  (`addSeedKeyring`, `addPrivateKeyKeyring`, `renameKeyring`, `removeKeyring`). See the caveat in
+  [Frontend status](#frontend-status): this is implemented and tested but **not yet exposed through
+  the background API**, so the UI cannot reach it.
 - **Export**: re-checks your password even if already unlocked, then reveals the
   recovery phrase (seed-derived — note this exports the *whole seed*) or the specific
-  private key (imported accounts). Reachable from the Accounts screen.
+  private key (imported accounts). **Currently unreachable from the UI** — see
+  [Frontend status](#frontend-status).
 - **Password-encrypted local storage**: PBKDF2 (600,000 iterations, SHA-256) +
   AES-256-GCM. Encrypted vault in `chrome.storage.local`; decrypted vault data lives only
-  in `chrome.storage.session` (memory-only, wiped on browser close). Auto-locks after 15
-  minutes.
+  in `chrome.storage.session` (memory-only, wiped on browser close). Auto-locks on a
+  configurable timer (default 15 minutes) — note this is a fixed-period alarm, **not**
+  inactivity-based, despite the settings label.
 - **Balance** as a human-scale THRU amount (1 THRU = 1e9 base units), raw units kept
   visible underneath.
 - **Create the on-chain account** via `thru.accounts.create({ publicKey })`.
@@ -150,21 +179,23 @@ npm install
 npm run build
 ```
 
-Bundles `src/background.js` and `src/popup/popup.js` via esbuild, and copies everything
-else `dist/` needs (`popup.html`, `popup.css`, `manifest.json`, `icons/`) straight from
-`src/`. `dist/` is gitignored entirely and fully reproducible — `rm -rf dist && npm run
-build` always regenerates it exactly, verified as part of putting this repo together
-after a version that only rebuilt the JS once left stale HTML/CSS sitting in `dist/`.
-Edit files under `src/`, never `dist/` directly.
+Bundles five entry points via esbuild — `src/background/index.js` (service worker),
+`src/popup/popup.js`, `src/popup/popup.css`, `src/desktop/desktop.js`,
+`src/desktop/desktop.css` — and copies `popup.html`, `desktop.html`, `manifest.json` and
+`icons/` straight from `src/`. Edit files under `src/`, never `dist/` directly.
+
+> [!NOTE]
+> `dist/` is gitignored and intended to be fully reproducible, but currently is not:
+> `dist/sidepanel.html` exists with no source file and is not emitted by `build.mjs`. Resolve that
+> before treating `rm -rf dist && npm run build` as exact.
 
 ## Testing
 
 ```
-npm run test
+npm test
 ```
 
-Two suites (61 assertions total), both against real code, not mocks of the logic being
-tested:
+Three suites, all against real code rather than mocks of the logic under test:
 
 - `test-vault.mjs` — mocks `chrome.storage` and runs the real vault module against real
   `@thru/crypto`/`@thru/sdk` code: create → add HD account → import a private key
@@ -175,8 +206,35 @@ tested:
   a naive `parseFloat() * 1e9` would hit), `isValidThruAddress` correctly rejecting a
   tampered checksum (not just checking length/prefix), and `decodeHistoryEntry` resolving
   realistic transfer transactions from both the sender's and recipient's point of view.
+- `test-api-router.mjs` — background API integration across the wallet, account, tx, token
+  and network namespaces.
 
-Worth re-running after touching anything in `src/lib/`.
+`test-auto-sponsor.mjs` also exists but is **not** wired into `npm test`.
+
+Worth re-running after touching anything in `src/lib/` or `src/background/`.
+
+## Frontend status
+
+The backend is in good shape. The frontend is not, and the gap is worth understanding before
+contributing:
+
+- **Two routers compete.** `src/ui/router.js:133` clears `#screen-<id>`, which is the same element
+  holding `popup.html`'s static markup, while 26 of 28 navigation sites call a legacy `show()` that
+  only toggles visibility. The static markup for welcome, unlock and dashboard is destroyed at
+  startup.
+- **Secret export is unreachable.** Both the legacy and the modular path into the export screens are
+  dead ends. This is a broken feature, not a missing one.
+- **Twelve of twenty screen modules never mount**, yet all twenty ship in the bundle — roughly 70 KB
+  of unreachable code.
+- **~80 CSS utility usages reference classes that don't exist** (`.w-100`, `.mt-*`, `.tag-accent`,
+  `.status-dot`), so modular screens render with their fields flush together.
+- **Multi-seed is implemented but unexposed** — `src/lib/vault.js:322-382` has the full keyring API
+  and `src/background/api-router.js` has no `keyring.*` namespace.
+- Several secret-handling defects, including a mnemonic written to a DOM `data-` attribute that is
+  never removed. Details and fixes: [`docs/UI_REBUILD_PLAN.md`](docs/UI_REBUILD_PLAN.md) §1.4.
+
+Also note that much of `src/` (`src/ui/`, `src/popup/screens/`, `src/background/`, `src/desktop/`,
+`src/shared/`, `src/domain/`) is **untracked in git**. Commit before refactoring.
 
 ## Bugs that got caught along the way
 
@@ -196,19 +254,22 @@ Worth re-running after touching anything in `src/lib/`.
 
 ## Ideas for next, roughly in priority order
 
-Not implemented here, but worth considering:
+Items 3–5 from an earlier version of this list (MAX button, recent addresses, network health
+indicator) are now implemented, though some only inside screen modules that don't currently mount —
+see [Frontend status](#frontend-status).
 
 1. **Verify the units question above against real alphanet**, and the faucet/transfer
    addresses generally — the single highest-value thing anyone with real CLI/network
    access could do next.
 2. **Confirm the explorer's actual `/tx/` and `/address/` routes** and fix
    `explorerTxUrl`/`explorerAddressUrl` in `thru-client.js` if they're not what's guessed.
-3. **"Max" button on Send** — fill the full balance minus a fee estimate. Held off
-   because there's no verified way to estimate the fee in advance yet.
-4. **Recently-used addresses on Send** — simple local autocomplete, no new network calls.
-5. **Network status indicator** — a lightweight reachability check against
-   `rpc.alphanet.thru.org` on load, surfaced given the explorer showed "offline" when
-   checked.
+3. **Expose the keyring API** — `src/lib/vault.js:322-382` already implements multi-seed;
+   `src/background/api-router.js` just needs a `keyring.*` namespace. Cheapest high-value work
+   available. See `docs/UI_REBUILD_PLAN.md` §4 Phase 1.
+4. **Fix the frontend routing split** so screens stop shadowing each other, and restore secret
+   export. `docs/UI_REBUILD_PLAN.md` §4 Phases 3–13.
+5. **Fee estimation** — the MAX button currently reserves a hardcoded gas allowance because there's
+   no verified way to estimate a fee in advance yet.
 6. **dApp connector**, if Thru's own embedded-wallet-first ecosystem model ever changes
    or a compatibility layer becomes worth building — deliberately out of scope for now,
    see "Why this exists" above.
@@ -216,6 +277,8 @@ Not implemented here, but worth considering:
 ## Before this touches real funds
 
 Not security-reviewed by anyone beyond chat conversation plus the automated checks
-above. Before it holds anything of value: get an actual review, and independently
+above. Before it holds anything of value: get an actual review, independently
 re-confirm the faucet/transfer program addresses and instruction layouts directly
-against alphanet rather than this MVP's (well-sourced but unverified-by-me) assumptions.
+against alphanet rather than this MVP's (well-sourced but unverified-by-me) assumptions, and
+close the frontend defects in [Frontend status](#frontend-status) — several of them are
+secret-handling issues, not cosmetic ones.

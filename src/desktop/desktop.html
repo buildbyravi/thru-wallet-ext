@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Thru Launchpad & DEX</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="desktop.css" />
+</head>
+<body>
+  <div class="desktop-app">
+    <!-- Top Navigation Header -->
+    <header class="desktop-header">
+      <div class="header-left">
+        <div class="brand">
+          <span class="brand-logo" data-icon="rocket"></span>
+          <span class="brand-name">Thru Launchpad</span>
+          <span class="badge">alphanet</span>
+        </div>
+        <nav class="desktop-nav">
+          <button class="nav-tab active" data-tab="create" data-route="launchpad"><span data-icon="rocket"></span> Launchpad</button>
+          <button class="nav-tab" data-tab="my-tokens" data-route="my-tokens"><span data-icon="coins"></span> My Tokens <span class="nav-badge" id="my-tokens-count">0</span></button>
+          <button class="nav-tab" data-tab="dex" data-route="dex"><span data-icon="bolt"></span> DEX Trading</button>
+          <button class="nav-tab" data-tab="predictions" data-route="predictions"><span data-icon="target"></span> Predictions</button>
+        </nav>
+      </div>
+
+      <div class="header-right">
+        <div class="network-status-pill clickable" id="desktop-network-pill" data-action="switch-network" title="Switch Network">
+          <span class="status-dot healthy" id="desktop-network-dot"></span>
+          <span class="status-text" id="desktop-network-text">alphanet</span>
+        </div>
+
+        <div class="account-pill clickable" id="desktop-account-pill" data-action="switch-account" title="Switch Account">
+          <span id="desktop-account-mark"></span>
+          <div class="account-info">
+            <span class="account-name" id="desktop-account-name">Account 1</span>
+            <span class="account-address" id="desktop-account-address">ta…</span>
+          </div>
+          <div class="account-balance">
+            <span class="balance-num" id="desktop-balance-display">—</span>
+            <span class="balance-unit">THRU</span>
+          </div>
+        </div>
+
+        <button class="btn secondary sm" id="desktop-faucet-btn" data-action="quick-faucet">Claim Faucet</button>
+      </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="desktop-main">
+      <!-- Section: Token Launchpad / Deployer -->
+      <section id="tab-create" class="tab-pane active">
+        <div class="page-header">
+          <div class="page-title-row">
+            <h1>Launch Your Token on ThruVM</h1>
+            <span class="tag-accent">Native Token Program</span>
+          </div>
+          <p class="page-subtitle">Deploy a custom token mint directly via the native Token Program (<code class="mono-code">taAAAA…AKqq</code>). Zero smart contract bytecode required. Sub-second execution.</p>
+        </div>
+
+        <div class="launchpad-grid">
+          <!-- Left Column: Form -->
+          <div class="card form-card">
+            <h2>Token Parameters</h2>
+
+            <form id="token-deploy-form">
+              <div class="form-row">
+                <label class="field flex-1">
+                  <span>Token Symbol / Ticker <strong class="req">*</strong></span>
+                  <input type="text" id="token-ticker" placeholder="e.g. CAT, PEPE, USDC" maxlength="10" required autocomplete="off" />
+                </label>
+                <label class="field flex-2">
+                  <span>Token Name <strong class="req">*</strong></span>
+                  <input type="text" id="token-name" placeholder="e.g. Cyber Cat" maxlength="32" required autocomplete="off" />
+                </label>
+              </div>
+
+              <div class="form-row">
+                <label class="field flex-1">
+                  <span>Decimals</span>
+                  <select id="token-decimals">
+                    <option value="6" selected>6 (Standard)</option>
+                    <option value="9">9 (High precision / native)</option>
+                    <option value="8">8 (Bitcoin standard)</option>
+                    <option value="2">2 (Fiat cent standard)</option>
+                    <option value="0">0 (NFT / Whole units)</option>
+                  </select>
+                </label>
+                <label class="field flex-2">
+                  <span>Initial Supply to Mint</span>
+                  <input type="number" id="token-supply" placeholder="1000000000" min="0" value="1000000000" />
+                </label>
+              </div>
+
+              <label class="field">
+                <span>Logo Image URL (Optional)</span>
+                <input type="url" id="token-image" placeholder="https://… or ipfs://…" autocomplete="off" />
+              </label>
+
+              <label class="field">
+                <span>Description / Project Narrative</span>
+                <textarea id="token-desc" rows="3" placeholder="Tell the community about your token project, utility, and roadmap…"></textarea>
+              </label>
+
+              <div class="fee-notice-box">
+                <span class="fee-icon" data-icon="shield"></span>
+                <div class="fee-text">
+                  <strong>Zero Platform Fee</strong>
+                  <p>Alphanet deployment is self-signed (0-fee state proof). The creator key becomes the permanent Mint Authority.</p>
+                </div>
+              </div>
+
+              <button type="submit" class="btn primary lg full-width" id="deploy-submit-btn">
+                <span data-icon="rocket"></span> Deploy & Mint Token
+              </button>
+            </form>
+
+            <!-- Deployment Progress Modal/Overlay (inside card) -->
+            <div class="deploy-progress-overlay hidden" id="deploy-progress">
+              <div class="progress-spinner"></div>
+              <h3 id="progress-title">Deploying to ThruVM…</h3>
+              <p class="progress-msg" id="progress-message">Deriving Token Mint address…</p>
+              <div class="progress-steps">
+                <div class="step-item active" id="step-1">1. Derive Mint Address</div>
+                <div class="step-item" id="step-2">2. Generate State Proof</div>
+                <div class="step-item" id="step-3">3. Sign & Broadcast</div>
+                <div class="step-item" id="step-4">4. On-Chain Confirmation</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right Column: Live Pump.fun style Preview Card -->
+          <div class="preview-column">
+            <h2>Live Token Preview</h2>
+            <div class="token-preview-card" id="token-preview-card">
+              <div class="preview-card-header">
+                <div class="preview-logo-wrapper" id="preview-logo-wrapper">
+                  <span class="preview-logo-fallback" id="preview-logo-fallback"><span data-icon="coins"></span></span>
+                  <img id="preview-logo-img" class="hidden" src="" alt="Token Logo" />
+                </div>
+                <div class="preview-header-meta">
+                  <div class="preview-ticker-badge">
+                    <span class="preview-ticker" id="preview-ticker">$TICKER</span>
+                    <span class="preview-bonding-pill">Live Mint</span>
+                  </div>
+                  <span class="preview-name" id="preview-name">Token Name</span>
+                </div>
+              </div>
+
+              <p class="preview-desc" id="preview-desc">Enter token details on the left to see live preview…</p>
+
+              <div class="preview-meta-grid">
+                <div class="preview-meta-item">
+                  <span class="meta-label">Decimals</span>
+                  <span class="meta-val" id="preview-decimals">6</span>
+                </div>
+                <div class="preview-meta-item">
+                  <span class="meta-label">Initial Supply</span>
+                  <span class="meta-val" id="preview-supply">1,000,000,000</span>
+                </div>
+                <div class="preview-meta-item full">
+                  <span class="meta-label">Mint Authority</span>
+                  <span class="meta-val mono" id="preview-creator">ta…</span>
+                </div>
+              </div>
+
+              <div class="preview-card-footer">
+                <span class="preview-powered">ThruVM Native Token Standard</span>
+              </div>
+            </div>
+
+            <!-- Success Alert Box (shown after deployment) -->
+            <div class="card success-card hidden" id="deploy-success-card">
+              <div class="success-header">
+                <span class="success-icon" data-icon="checkCircle"></span>
+                <h3>Token Launched Successfully!</h3>
+              </div>
+              <p>Your token mint is live on Thru Alphanet.</p>
+              <div class="mint-info-block">
+                <span class="mint-label">Mint Address</span>
+                <div class="mint-val-row">
+                  <code class="mono-code" id="success-mint-address">ta…</code>
+                  <button class="btn-chip" id="copy-mint-btn" title="Copy Mint Address">Copy</button>
+                </div>
+              </div>
+              <div class="success-actions">
+                <a class="btn secondary sm" id="success-explorer-link" href="#" target="_blank" rel="noopener">View on Explorer</a>
+                <button class="btn text sm" id="deploy-another-btn">Launch Another Token</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Section: My Deployed Tokens -->
+      <section id="tab-my-tokens" class="tab-pane">
+        <div class="page-header">
+          <div class="page-title-row">
+            <h1>My Deployed Tokens</h1>
+            <button class="btn primary sm" data-action="go-tab-create">
+              <span data-icon="plus"></span> Deploy New Token
+            </button>
+          </div>
+          <p class="page-subtitle">Tokens created and minted by your active Thru Wallet accounts.</p>
+        </div>
+
+        <div id="deployed-tokens-container" class="tokens-grid">
+          <!-- Populated dynamically -->
+        </div>
+      </section>
+
+      <!-- Section: Pump.fun Style DEX Trading -->
+      <section id="tab-dex" class="tab-pane">
+        <div class="page-header">
+          <div class="page-title-row">
+            <h1>ThruVM Instant DEX Trading</h1>
+            <span class="tag-accent">Bonding Curve AMM</span>
+          </div>
+          <p class="page-subtitle">Instant liquidity, zero MEV front-running on RISC-V Layer-1, and automated bonding curve graduation.</p>
+        </div>
+
+        <div class="dex-layout-grid">
+          <!-- Left Column: Chart & Bonding Curve -->
+          <div class="card dex-chart-card">
+            <div class="dex-token-header">
+              <div class="dex-token-identity">
+                <div class="dex-token-avatar"><span data-icon="bolt"></span></div>
+                <div>
+                  <h2 class="dex-token-title">THRU / USDC AMM</h2>
+                  <span class="muted mono">taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA</span>
+                </div>
+              </div>
+              <div class="dex-price-box">
+                <span class="dex-price-val mono">$0.0425</span>
+                <span class="tag-native">+18.4% 24h</span>
+              </div>
+            </div>
+
+            <!-- Bonding Curve Progress -->
+            <div class="bonding-curve-block">
+              <div class="bonding-header">
+                <span>Bonding Curve Progress</span>
+                <strong class="mono">68.5%</strong>
+              </div>
+              <div class="bonding-progress-track">
+                <div class="bonding-progress-fill" style="width: 68.5%;"></div>
+              </div>
+              <p class="bonding-hint">When bonding curve reaches 100%, 12,000 THRU liquidity is deposited and locked in the primary AMM pool.</p>
+            </div>
+
+            <!-- SVG Simulated Candlestick / Price Chart -->
+            <div class="dex-chart-viewport">
+              <svg class="dex-chart-svg" viewBox="0 0 600 220" preserveAspectRatio="none">
+                <defs>
+                  <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="var(--accent)" stop-opacity="0.35" />
+                    <stop offset="100%" stop-color="var(--accent)" stop-opacity="0.0" />
+                  </linearGradient>
+                </defs>
+                <path d="M0,180 Q60,160 120,170 T240,130 T360,110 T480,70 T600,45 L600,220 L0,220 Z" fill="url(#chartGradient)" />
+                <path d="M0,180 Q60,160 120,170 T240,130 T360,110 T480,70 T600,45" fill="none" stroke="var(--accent)" stroke-width="2.5" />
+              </svg>
+            </div>
+
+            <!-- Recent Trades Stream -->
+            <div class="recent-trades-section">
+              <h3>Recent On-Chain Swaps</h3>
+              <div class="trades-table-header">
+                <span>Type</span>
+                <span>Amount THRU</span>
+                <span>Tokens</span>
+                <span>Time</span>
+              </div>
+              <div class="trades-list" id="dex-trades-list">
+                <div class="trade-row buy">
+                  <span class="trade-type">BUY</span>
+                  <span class="mono">250.00 THRU</span>
+                  <span class="mono">5,882 TOKENS</span>
+                  <span class="muted">1m ago</span>
+                </div>
+                <div class="trade-row buy">
+                  <span class="trade-type">BUY</span>
+                  <span class="mono">100.00 THRU</span>
+                  <span class="mono">2,352 TOKENS</span>
+                  <span class="muted">3m ago</span>
+                </div>
+                <div class="trade-row sell">
+                  <span class="trade-type">SELL</span>
+                  <span class="mono">50.00 THRU</span>
+                  <span class="mono">1,176 TOKENS</span>
+                  <span class="muted">7m ago</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right Column: Swap Terminal -->
+          <div class="card dex-swap-card">
+            <h2>Swap Terminal</h2>
+
+            <div class="swap-mode-tabs">
+              <button type="button" class="swap-mode-btn active" id="mode-buy">Buy</button>
+              <button type="button" class="swap-mode-btn" id="mode-sell">Sell</button>
+            </div>
+
+            <div class="swap-input-box">
+              <div class="swap-input-header">
+                <span>You Pay</span>
+                <span class="muted">Balance: <strong id="swap-user-balance">0</strong> THRU</span>
+              </div>
+              <div class="swap-input-row">
+                <input type="number" id="swap-pay-amount" placeholder="0.0" value="10" />
+                <span class="swap-currency-badge">THRU</span>
+              </div>
+              <div class="quick-amounts">
+                <button type="button" class="btn-chip" data-amount="1">1</button>
+                <button type="button" class="btn-chip" data-amount="5">5</button>
+                <button type="button" class="btn-chip" data-amount="10">10</button>
+                <button type="button" class="btn-chip" data-amount="max">MAX</button>
+              </div>
+            </div>
+
+            <div class="swap-arrow-divider"><span data-icon="arrowDown"></span></div>
+
+            <div class="swap-input-box">
+              <div class="swap-input-header">
+                <span>You Receive (Estimated)</span>
+                <span class="muted">Slippage: 1.0%</span>
+              </div>
+              <div class="swap-input-row">
+                <input type="text" id="swap-receive-amount" readonly value="235.29" />
+                <span class="swap-currency-badge" id="swap-receive-symbol">TOKENS</span>
+              </div>
+            </div>
+
+            <div class="swap-meta-box">
+              <div class="swap-meta-row">
+                <span>Price Impact</span>
+                <span class="mono text-success">&lt; 0.1%</span>
+              </div>
+              <div class="swap-meta-row">
+                <span>Execution Route</span>
+                <span>ThruVM Native AMM</span>
+              </div>
+              <div class="swap-meta-row">
+                <span>Estimated Gas</span>
+                <span class="mono">~1 raw unit (0.000000001 THRU)</span>
+              </div>
+            </div>
+
+            <button type="button" class="btn primary lg full-width" id="dex-trade-btn">
+              <span data-icon="swap"></span> Execute Swap On-Chain
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Section: Prediction Markets -->
+      <section id="tab-predictions" class="tab-pane">
+        <div class="page-header">
+          <div class="page-title-row">
+            <h1>Thru Prediction Markets</h1>
+            <span class="tag-accent">Binary Outcome Oracles</span>
+          </div>
+          <p class="page-subtitle">Decentralized probability markets resolved on ThruVM high-throughput consensus.</p>
+        </div>
+
+        <div class="predictions-grid">
+          <!-- Market Card 1 -->
+          <div class="card market-card">
+            <div class="market-top">
+              <span class="market-category">Ecosystem</span>
+              <span class="market-expiry">Resolves Sep 30, 2026</span>
+            </div>
+            <h3 class="market-title">Will Thru Public Testnet launch before October 2026?</h3>
+            <div class="odds-bar-container">
+              <div class="odds-yes" style="width: 74%;">YES 74%</div>
+              <div class="odds-no" style="width: 26%;">NO 26%</div>
+            </div>
+            <div class="market-bet-actions">
+              <button class="btn primary flex-1" data-action="bet-market" data-market="1" data-outcome="yes">Buy YES ($0.74)</button>
+              <button class="btn secondary flex-1" data-action="bet-market" data-market="1" data-outcome="no">Buy NO ($0.26)</button>
+            </div>
+            <div class="market-footer">
+              <span>Volume: <strong>142,500 THRU</strong></span>
+              <span>Liquidity: <strong>48,000 THRU</strong></span>
+            </div>
+          </div>
+
+          <!-- Market Card 2 -->
+          <div class="card market-card">
+            <div class="market-top">
+              <span class="market-category">Performance</span>
+              <span class="market-expiry">Resolves Dec 31, 2026</span>
+            </div>
+            <h3 class="market-title">Will Thru Network benchmark exceed 100,000 TPS in multi-node test?</h3>
+            <div class="odds-bar-container">
+              <div class="odds-yes" style="width: 86%;">YES 86%</div>
+              <div class="odds-no" style="width: 14%;">NO 14%</div>
+            </div>
+            <div class="market-bet-actions">
+              <button class="btn primary flex-1" data-action="bet-market" data-market="2" data-outcome="yes">Buy YES ($0.86)</button>
+              <button class="btn secondary flex-1" data-action="bet-market" data-market="2" data-outcome="no">Buy NO ($0.14)</button>
+            </div>
+            <div class="market-footer">
+              <span>Volume: <strong>89,200 THRU</strong></span>
+              <span>Liquidity: <strong>32,000 THRU</strong></span>
+            </div>
+          </div>
+
+          <!-- Market Card 3 -->
+          <div class="card market-card">
+            <div class="market-top">
+              <span class="market-category">Macro</span>
+              <span class="market-expiry">Resolves Nov 15, 2026</span>
+            </div>
+            <h3 class="market-title">Will Bitcoin reach $150,000 USD before year-end?</h3>
+            <div class="odds-bar-container">
+              <div class="odds-yes" style="width: 53%;">YES 53%</div>
+              <div class="odds-no" style="width: 47%;">NO 47%</div>
+            </div>
+            <div class="market-bet-actions">
+              <button class="btn primary flex-1" data-action="bet-market" data-market="3" data-outcome="yes">Buy YES ($0.53)</button>
+              <button class="btn secondary flex-1" data-action="bet-market" data-market="3" data-outcome="no">Buy NO ($0.47)</button>
+            </div>
+            <div class="market-footer">
+              <span>Volume: <strong>310,000 THRU</strong></span>
+              <span>Liquidity: <strong>95,000 THRU</strong></span>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Toast Container -->
+  <div id="toast-container"></div>
+
+  <script src="desktop.bundle.js"></script>
+</body>
+</html>

@@ -153,4 +153,25 @@ assert(isValidThruAddress('') === false, 'empty string is rejected');
 const tamperedAddr = realAddr.slice(0, -1) + (realAddr.at(-1) === 'a' ? 'b' : 'a');
 assert(isValidThruAddress(tamperedAddr) === false, 'flipping the last character breaks the checksum and is correctly rejected');
 
+console.log('\n[10] INITIALIZE_MINT instruction encoding and seed generator work correctly');
+import {
+  encodeInitializeMintInstructionData,
+  generateMintSeed,
+  TOKEN_PROGRAM_ID,
+} from './src/lib/thru-client.js';
+
+const mockSeed = generateMintSeed();
+assert(mockSeed.length === 32, 'generateMintSeed produces 32-character seed');
+const mockAuthority = (await keys.generateKeyPair()).publicKey;
+const mockProof = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
+const initMintData = encodeInitializeMintInstructionData(2, mockSeed, mockProof.length, mockAuthority, 6, mockProof);
+
+const mintView = new DataView(initMintData.buffer, initMintData.byteOffset, initMintData.byteLength);
+assert(mintView.getUint32(0, true) === 0, 'tag is 0 (INITIALIZE_MINT)');
+assert(mintView.getUint16(4, true) === 2, 'mint account index is 2');
+assert(mintView.getUint32(38, true) === mockProof.length, 'proof size is encoded correctly at offset 38');
+assert(initMintData[74] === 6, 'decimals is 6 at offset 74');
+assert(initMintData.length === 75 + mockProof.length, 'total payload length includes header and proof data');
+
 console.log('\nAll thru-client.js encoding checks passed.');
+

@@ -1,38 +1,39 @@
-import {
-  createVault,
-  importMnemonicVault,
-  importPrivateKeyVault,
-  hasVault,
-  isUnlocked,
-  unlock,
-  lock,
-  resetWallet,
-  hasSeed,
-  getActiveAccount,
-  getActiveRef,
-  listAccounts,
-  switchActiveAccount,
-  addHdAccount,
-  addImportedKey,
-  exportAccountSecret,
-} from '../lib/vault.js';
-import {
-  getAccountInfo,
-  createOnChainAccount,
-  formatThru,
-  parseThruAmount,
-  isValidThruAddress,
-  claimFaucet,
-  FAUCET_MAX_PER_CLAIM,
-  sendTransfer,
-  listAccountHistory,
-  explorerTxUrl,
-  explorerAddressUrl,
-  checkNetworkHealth,
-} from '../lib/thru-client.js';
+import * as bridge from '../ui/bridge.js';
+import { formatThru, parseThruAmount, truncateAddress } from '../shared/format.js';
+import { isValidThruAddress, explorerTxUrl, explorerAddressUrl } from '../lib/networks.js';
 import { icons, byteMarkHtml } from './icons.js';
 import { showToast } from './toast.js';
 import { renderQR } from './qr.js';
+import { openAccountSwitcher } from '../ui/components/account-switcher.js';
+import { openNetworkSwitcher } from '../ui/components/network-switcher.js';
+import { renderTxReviewCard } from '../ui/components/tx-review.js';
+import { renderTokenRow } from '../ui/components/token-row.js';
+import { openTokenSelector } from '../ui/components/token-selector.js';
+import { openRecipientSelector, saveRecentRecipient } from '../ui/components/recipient-selector.js';
+import { router } from '../ui/router.js';
+import { events, Events } from '../ui/events.js';
+import { walletStore } from '../ui/store.js';
+import * as settingsScreen from './screens/settings.js';
+import * as welcomeScreen from './screens/welcome.js';
+import * as receiveScreen from './screens/receive.js';
+import * as historyScreen from './screens/history.js';
+import * as faucetScreen from './screens/faucet.js';
+import * as unlockScreen from './screens/unlock.js';
+import * as resetConfirmScreen from './screens/reset-confirm.js';
+import * as createPasswordScreen from './screens/create-password.js';
+import * as backupScreen from './screens/backup.js';
+import * as importScreen from './screens/import.js';
+import * as addKeyScreen from './screens/add-key.js';
+import * as exportPasswordScreen from './screens/export-password.js';
+import * as exportRevealScreen from './screens/export-reveal.js';
+import * as renameAccountScreen from './screens/rename-account.js';
+import * as accountDetailScreen from './screens/account-detail.js';
+import * as dashboardScreen from './screens/dashboard.js';
+import * as sendScreen from './screens/send.js';
+
+
+
+const FAUCET_MAX_PER_CLAIM = 10_000n;
 
 // Static markup opts into an icon with data-icon="name"; resolved once at load.
 function injectIcons() {
@@ -56,17 +57,16 @@ const screens = [
   'export-reveal',
   'dashboard',
   'accounts',
+  'rename-account',
   'send',
   'send-preview',
   'receive',
   'faucet',
   'history',
+  'settings',
 ];
 
-// Every input whose value counts as sensitive (recovery phrases, private keys, passwords).
-// Cleared on every navigation transition that leaves its screen, and unconditionally on
-// reset, so nothing lingers in a form field after it stops being relevant — that's what
-// made a previously-imported key "auto show up" again after a reset.
+// Sensitive inputs cleared on navigation
 const SENSITIVE_FIELD_IDS = [
   'create-password',
   'create-password-confirm',
@@ -87,12 +87,21 @@ function clearSensitiveFields() {
 
 function show(name) {
   for (const s of screens) {
-    document.getElementById(`screen-${s}`).classList.toggle('hidden', s !== name);
+    const el = document.getElementById(`screen-${s}`);
+    if (el) el.classList.toggle('hidden', s !== name);
   }
+  walletStore.setState({ currentScreen: name });
 }
+
+// Register legacy show() as the router's fallback for non-migrated screens.
+// As screens are extracted into modules, they get registered with router.register()
+// and stop going through this fallback.
+router.setLegacyFallback(show);
+
 
 function setError(id, message) {
   const el = document.getElementById(id);
+  if (!el) return;
   if (!message) {
     el.classList.add('hidden');
     el.textContent = '';
@@ -102,19 +111,10 @@ function setError(id, message) {
   }
 }
 
-function truncateAddress(address) {
-  if (!address || address.length < 18) return address;
-  return `${address.slice(0, 8)}…${address.slice(-6)}`;
-}
-
 function refsEqual(a, b) {
   if (!a || !b || a.kind !== b.kind) return false;
   return a.kind === 'hd' ? a.index === b.index : a.keyIndex === b.keyIndex;
 }
-
-// Byte-mark identicon per address (see icons.js). Square container for
-// seed-derived accounts, round for imported keys — same seed/key distinction
-// Rabby draws with square vs circle avatars.
 
 function renderMnemonicGrid(mnemonic, gridEl) {
   gridEl.innerHTML = '';
@@ -125,18 +125,124 @@ function renderMnemonicGrid(mnemonic, gridEl) {
   });
 }
 
-// Holds the mnemonic only transiently, between "create" and the user confirming they saved
-// it on the backup screen. Never written to disk in plaintext.
+// Holds state in memory
 let pendingMnemonic = null;
 let activeAccount = null;
+let activeNetwork = { explorerUrl: 'https://scan.thru.org' };
 let importMode = 'mnemonic'; // 'mnemonic' | 'privatekey'
 let pendingExportRef = null;
 let pendingExportSecret = null;
-// v1.1: staged send data (preview → confirm flow)
 let pendingSend = null; // { toAddress, amountUnits, amountDisplay }
+let pendingRenameAddress = null;
+let selectedSendToken = {
+  symbol: 'THRU',
+  name: 'Thru Native Token',
+  decimals: 9,
+  isNative: true,
+  mintAddress: null,
+  balanceDisplay: '0',
+};
+let cachedSenderBalanceStr = '0';
+let cachedSenderBalanceUnits = 0n;
+
+async function updateSendScreenState() {
+  if (!activeAccount) return;
+  // Update From Sender Box
+  const fromMark = document.getElementById('send-from-mark');
+  if (fromMark) fromMark.innerHTML = byteMarkHtml(activeAccount.address, activeAccount.ref);
+  const fromName = document.getElementById('send-from-name');
+  if (fromName) fromName.textContent = activeAccount.label || 'Account';
+  const fromAddr = document.getElementById('send-from-address');
+  if (fromAddr) fromAddr.textContent = truncateAddress(activeAccount.address);
+
+  // Fetch active account balance
+  try {
+    const info = await bridge.send('tx.getAccountInfo', { address: activeAccount.address });
+    if (info.exists) {
+      cachedSenderBalanceUnits = BigInt(info.balance);
+      cachedSenderBalanceStr = formatThru(cachedSenderBalanceUnits);
+    } else {
+      cachedSenderBalanceUnits = 0n;
+      cachedSenderBalanceStr = '0';
+    }
+  } catch {
+    cachedSenderBalanceUnits = 0n;
+    cachedSenderBalanceStr = '0';
+  }
+  const fromBal = document.getElementById('send-from-balance');
+  if (fromBal) fromBal.textContent = `${cachedSenderBalanceStr} THRU`;
+
+  // Update Token Selector Card
+  if (selectedSendToken.isNative) {
+    selectedSendToken.balanceDisplay = cachedSenderBalanceStr;
+  }
+  const symEl = document.getElementById('send-token-symbol');
+  if (symEl) symEl.textContent = selectedSendToken.symbol;
+  const nameEl = document.getElementById('send-token-name');
+  if (nameEl) nameEl.textContent = selectedSendToken.name;
+  const balEl = document.getElementById('send-token-balance');
+  if (balEl) balEl.textContent = selectedSendToken.balanceDisplay;
+  const tagEl = document.getElementById('send-token-tag');
+  if (tagEl) tagEl.textContent = selectedSendToken.isNative ? 'Native' : 'Token';
+  const avEl = document.getElementById('send-token-avatar');
+  if (avEl) {
+    avEl.innerHTML = selectedSendToken.isNative ? icons.bolt(16) : `<span class="token-avatar-text">${selectedSendToken.symbol.slice(0, 3).toUpperCase()}</span>`;
+  }
+  const unitEl = document.getElementById('send-amount-unit');
+  if (unitEl) unitEl.textContent = selectedSendToken.symbol;
+  const availEl = document.getElementById('send-avail-amount');
+  if (availEl) availEl.textContent = `${selectedSendToken.balanceDisplay} ${selectedSendToken.symbol}`;
+}
+
+async function checkRecipientAddress(inputAddress) {
+  const indicator = document.getElementById('send-to-indicator');
+  const badgeRow = document.getElementById('recipient-badge-row');
+  const badgeEl = document.getElementById('recipient-type-badge');
+  const cleaned = (inputAddress || '').trim();
+
+  if (!cleaned) {
+    indicator?.classList.add('hidden');
+    badgeRow?.classList.add('hidden');
+    return;
+  }
+
+  const valid = isValidThruAddress(cleaned);
+  if (indicator) {
+    indicator.classList.remove('hidden', 'valid', 'invalid');
+    indicator.classList.add(valid ? 'valid' : 'invalid');
+    indicator.innerHTML = valid ? icons.check(12) : icons.x(12);
+  }
+
+  if (valid && badgeRow && badgeEl) {
+    // Check if in own accounts
+    try {
+      const accounts = await bridge.send('account.list');
+      const matched = accounts.find((a) => a.address.toLowerCase() === cleaned.toLowerCase());
+      if (matched) {
+        badgeEl.textContent = `In-Wallet: ${matched.label}`;
+        badgeEl.className = 'tag-accent';
+        badgeRow.classList.remove('hidden');
+        return;
+      }
+    } catch {}
+
+    // Check if current active address
+    if (activeAccount && cleaned.toLowerCase() === activeAccount.address.toLowerCase()) {
+      badgeEl.textContent = 'Warning: Self-Transfer';
+      badgeEl.className = 'tag-subtle';
+      badgeRow.classList.remove('hidden');
+      return;
+    }
+
+    badgeEl.textContent = 'External Address';
+    badgeEl.className = 'tag-subtle';
+    badgeRow.classList.remove('hidden');
+  } else {
+    badgeRow?.classList.add('hidden');
+  }
+}
 
 async function init() {
-  // v1.1: first-run disclaimer — show once, gate everything behind it
   const { disclaimerAcknowledged } = await chrome.storage.local.get('disclaimerAcknowledged');
   if (!disclaimerAcknowledged) {
     show('disclaimer');
@@ -147,19 +253,41 @@ async function init() {
 
 /** Normal init flow — called after disclaimer is acknowledged (or was already). */
 async function proceedAfterDisclaimer() {
-  const has = await hasVault();
-  if (!has) {
-    show('welcome');
-    return;
+  try {
+    const state = await bridge.bootstrap();
+    if (state.network) {
+      activeNetwork = state.network;
+      walletStore.setState({ activeNetwork: state.network });
+    }
+    if (state.networkHealth) {
+      walletStore.setState({ networkHealth: state.networkHealth });
+      updateNetworkStatus(state.networkHealth);
+    }
+    if (state.autoLockMinutes !== undefined) {
+      walletStore.setState({
+        settings: { ...walletStore.getState().settings, autoLockMinutes: state.autoLockMinutes }
+      });
+    }
+    if (!state.hasVault) {
+      router.navigate('welcome');
+      return;
+    }
+    if (state.unlocked && state.account) {
+      activeAccount = state.account;
+      walletStore.setState({ activeAccount: state.account, isUnlocked: true });
+      router.navigate('dashboard');
+    } else {
+      router.navigate('unlock');
+    }
+  } catch {
+    const has = await bridge.send('wallet.hasVault');
+    if (!has) {
+      router.navigate('welcome');
+    } else {
+      router.navigate('unlock');
+    }
+    updateNetworkStatus();
   }
-  const unlocked = await isUnlocked();
-  if (unlocked) {
-    await loadDashboard();
-  } else {
-    show('unlock');
-  }
-  // v1.1: check network health (non-blocking, fire-and-forget)
-  updateNetworkStatus();
 }
 
 async function loadDashboard() {
@@ -168,71 +296,144 @@ async function loadDashboard() {
 }
 
 async function refreshActiveAccountAndBalance() {
-  activeAccount = await getActiveAccount();
+  activeAccount = await bridge.send('account.getActive');
+  if (!activeAccount) return;
+  walletStore.setState({ activeAccount, isUnlocked: true });
   document.getElementById('dash-account-mark').innerHTML = byteMarkHtml(activeAccount.address, activeAccount.ref);
   document.getElementById('dash-account-address').textContent = truncateAddress(activeAccount.address);
   await refreshBalance();
 }
 
-async function renderAccountsList() {
-  const accounts = await listAccounts();
-  const activeRef = await getActiveRef();
+async function renderAccountsList(query = '') {
+  const accounts = await bridge.send('account.list');
+  const activeRef = await bridge.send('account.getActiveRef');
+  const hasSeedKeyring = await bridge.send('wallet.hasSeed');
   const container = document.getElementById('accounts-list');
   container.innerHTML = '';
-  for (const acc of accounts) {
-    const row = document.createElement('button');
-    row.type = 'button';
-    row.className = 'row' + (refsEqual(acc.ref, activeRef) ? ' active' : '');
-    row.dataset.action = 'switch-account';
-    row.dataset.ref = JSON.stringify(acc.ref);
-    row.innerHTML = `${byteMarkHtml(acc.address, acc.ref)}<span class="row-body"><span class="row-title">${acc.label}</span><span class="row-sub">${truncateAddress(acc.address)}</span></span>`;
-    container.appendChild(row);
+
+  const q = (query || '').trim().toLowerCase();
+  const filtered = q
+    ? accounts.filter((acc) => acc.label.toLowerCase().includes(q) || acc.address.toLowerCase().includes(q))
+    : accounts;
+
+  if (filtered.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'empty-state';
+    empty.textContent = q ? `No accounts matching "${query}"` : 'No accounts found.';
+    container.appendChild(empty);
+  } else {
+    for (const acc of filtered) {
+      const row = document.createElement('div');
+      row.className = 'row' + (refsEqual(acc.ref, activeRef) ? ' active' : '');
+
+      const switchBtn = document.createElement('button');
+      switchBtn.type = 'button';
+      switchBtn.className = 'row-content-btn';
+      switchBtn.dataset.action = 'switch-account';
+      switchBtn.dataset.ref = JSON.stringify(acc.ref);
+      switchBtn.innerHTML = `${byteMarkHtml(acc.address, acc.ref)}<span class="row-body"><span class="row-title">${acc.label}</span><span class="row-sub">${truncateAddress(acc.address)}</span></span>`;
+
+      const renameBtn = document.createElement('button');
+      renameBtn.type = 'button';
+      renameBtn.className = 'row-rename-btn';
+      renameBtn.dataset.action = 'go-rename-account';
+      renameBtn.dataset.address = acc.address;
+      renameBtn.dataset.name = acc.label;
+      renameBtn.title = 'Rename account';
+      renameBtn.innerHTML = icons.edit(14);
+
+      row.appendChild(switchBtn);
+      row.appendChild(renameBtn);
+      container.appendChild(row);
+    }
   }
-  document.getElementById('add-account-btn').classList.toggle('hidden', !(await hasSeed()));
+  document.getElementById('add-account-btn').classList.toggle('hidden', !hasSeedKeyring);
 }
 
 async function refreshBalance() {
+  if (!activeAccount) return;
   const balanceEl = document.getElementById('balance-display');
   const statusEl = document.getElementById('account-status');
   const rawHintEl = document.getElementById('raw-balance-hint');
-  const banner = document.getElementById('bootstrap-banner');
+  const tokensListEl = document.getElementById('dash-tokens-list');
   balanceEl.textContent = '…';
-  const info = await getAccountInfo(activeAccount.address);
-  if (info.exists) {
-    balanceEl.textContent = formatThru(info.balance);
-    rawHintEl.textContent = `${info.balance.toString()} raw units`;
-    statusEl.textContent = '';
-    banner.classList.add('hidden');
-  } else {
+  try {
+    const info = await bridge.send('tx.getAccountInfo', { address: activeAccount.address });
+    let nativeBalanceStr = '0';
+      if (info.exists) {
+        const rawUnits = BigInt(info.balance);
+        nativeBalanceStr = formatThru(rawUnits);
+        balanceEl.textContent = nativeBalanceStr;
+        rawHintEl.textContent = `${info.balance} raw units`;
+        statusEl.textContent = '';
+        walletStore.setState({ balance: nativeBalanceStr, balanceRaw: info.balance });
+      } else {
+        balanceEl.textContent = '0';
+        rawHintEl.textContent = '';
+        statusEl.textContent = '';
+        walletStore.setState({ balance: '0', balanceRaw: '0' });
+        bridge.send('tx.autoCreateAccount').catch(() => {});
+      }
+      events.emit(Events.BALANCE_UPDATED, { balance: nativeBalanceStr });
+
+    // Render Native Token + Deployed Tokens
+    if (tokensListEl) {
+      let deployedTokens = [];
+      try {
+        deployedTokens = await bridge.send('token.list');
+      } catch {}
+
+      let tokensHtml = renderTokenRow({
+        symbol: 'THRU',
+        name: 'Thru Native Token',
+        balanceDisplay: nativeBalanceStr,
+        isNative: true,
+      });
+
+      for (const t of deployedTokens) {
+        tokensHtml += renderTokenRow({
+          symbol: t.ticker,
+          name: t.name,
+          balanceDisplay: t.initialSupply ? Number(t.initialSupply).toLocaleString() : '—',
+          mintAddress: t.mintAddress,
+          imageUrl: t.imageUrl,
+          isNative: false,
+        });
+      }
+
+      tokensListEl.innerHTML = tokensHtml;
+    }
+  } catch (err) {
     balanceEl.textContent = '0';
-    rawHintEl.textContent = '';
-    statusEl.textContent = '';
-    banner.classList.remove('hidden');
+    statusEl.textContent = err.message || '';
   }
 }
 
 function historyIconAndClass(entry) {
-  if (entry.success === false) return { icon: icons.x(), cls: 'failed' };
-  if (entry.kind === 'sent') return { icon: icons.send(14), cls: 'sent' };
-  if (entry.kind === 'received') return { icon: icons.receive(14), cls: 'received' };
-  if (entry.kind === 'faucet') return { icon: icons.plus(), cls: 'faucet' };
-  return { icon: icons.dot(), cls: 'other' };
+  if (entry.success === false) return { icon: icons.x(14), cls: 'failed' };
+  const kind = entry.kind;
+  if (kind === 'sent') return { icon: icons.send(14), cls: 'sent' };
+  if (kind === 'received') return { icon: icons.receive(14), cls: 'received' };
+  if (kind === 'faucet') return { icon: icons.faucet(14), cls: 'faucet' };
+  return { icon: icons.dot(14), cls: 'other' };
 }
 
 function historyDescription(entry) {
-  if (entry.kind === 'sent') return `Sent ${formatThru(entry.amount)} THRU to ${truncateAddress(entry.counterparty)}`;
-  if (entry.kind === 'received') return `Received ${formatThru(entry.amount)} THRU from ${truncateAddress(entry.counterparty)}`;
-  if (entry.kind === 'faucet') return `Claimed ${formatThru(entry.amount)} THRU from faucet`;
+  const amountUnits = entry.amount ? BigInt(entry.amount) : 0n;
+  if (entry.kind === 'sent') return `Sent ${formatThru(amountUnits)} THRU to ${truncateAddress(entry.counterparty)}`;
+  if (entry.kind === 'received') return `Received ${formatThru(amountUnits)} THRU from ${truncateAddress(entry.counterparty)}`;
+  if (entry.kind === 'faucet') return `Claimed ${formatThru(amountUnits)} THRU from faucet`;
   return `Program call (${truncateAddress(entry.programAddress)})`;
 }
 
 async function renderHistory() {
+  if (!activeAccount) return;
   const container = document.getElementById('history-list');
   const statusEl = document.getElementById('history-status');
   container.innerHTML = '';
   statusEl.textContent = 'Loading…';
   try {
-    const entries = await listAccountHistory(activeAccount.address);
+    const entries = await bridge.send('tx.listHistory', { address: activeAccount.address });
     statusEl.textContent = entries.length ? '' : 'No transactions yet for this account.';
     for (const entry of entries) {
       const { icon, cls } = historyIconAndClass(entry);
@@ -240,7 +441,7 @@ async function renderHistory() {
       row.className = 'row';
       const sigDisplay = entry.signature ? truncateAddress(entry.signature) : 'pending';
       const linkHtml = entry.signature
-        ? `<a class="history-explorer-link" href="${explorerTxUrl(entry.signature)}" target="_blank" rel="noopener" title="View on explorer">${icons.external()}</a>`
+        ? `<a class="history-explorer-link" href="${explorerTxUrl(activeNetwork, entry.signature)}" target="_blank" rel="noopener" title="View on explorer">${icons.external()}</a>`
         : '';
       row.innerHTML = `<span class="row-glyph ${cls}">${icon}</span><span class="row-body"><span class="row-title">${historyDescription(entry)}${entry.success === false ? ' (failed)' : ''}</span><span class="history-sig-row"><button type="button" class="history-sig" data-action="copy-history-sig" data-sig="${entry.signature ?? ''}" title="Copy signature">${sigDisplay}</button>${linkHtml}</span></span>`;
       container.appendChild(row);
@@ -288,7 +489,6 @@ async function handleAction(action, target) {
       show('welcome');
       break;
 
-    // v1.1: disclaimer acknowledgment
     case 'acknowledge-disclaimer':
       await chrome.storage.local.set({ disclaimerAcknowledged: true });
       await proceedAfterDisclaimer();
@@ -328,6 +528,12 @@ async function handleAction(action, target) {
       show('reset-confirm');
       break;
 
+    case 'open-desktop': {
+      const url = chrome.runtime.getURL('desktop.html');
+      chrome.tabs.create({ url });
+      break;
+    }
+
     case 'go-dashboard':
       clearSensitiveFields();
       pendingExportRef = null;
@@ -337,22 +543,161 @@ async function handleAction(action, target) {
       await loadDashboard();
       break;
 
-    case 'go-accounts':
-      await renderAccountsList();
+    case 'go-accounts': {
+      openAccountSwitcher({
+        onAccountSwitched: async (newAccount) => {
+          activeAccount = newAccount;
+          document.getElementById('dash-account-mark').innerHTML = byteMarkHtml(activeAccount.address, activeAccount.ref);
+          document.getElementById('dash-account-address').textContent = truncateAddress(activeAccount.address);
+          await refreshBalance();
+        },
+        onAddKeyRequested: () => {
+          clearSensitiveFields();
+          setError('add-key-error', '');
+          show('add-key');
+        },
+      });
+      break;
+    }
+
+    case 'open-network-switcher': {
+      openNetworkSwitcher({
+        onNetworkSwitched: async (newConfig) => {
+          activeNetwork = newConfig;
+          updateNetworkStatus();
+          await refreshBalance();
+        },
+      });
+      break;
+    }
+
+    case 'go-rename-account': {
+      pendingRenameAddress = target.dataset.address;
+      const currentName = target.dataset.name || '';
+      document.getElementById('rename-address-display').textContent = pendingRenameAddress;
+      const renameInput = document.getElementById('rename-input');
+      renameInput.value = currentName;
+      show('rename-account');
+      setTimeout(() => {
+        renameInput.focus();
+        renameInput.select();
+      }, 50);
+      break;
+    }
+
+    case 'submit-rename': {
+      if (!pendingRenameAddress) break;
+      const newName = document.getElementById('rename-input').value.trim();
+      await bridge.send('account.setLabel', { address: pendingRenameAddress, label: newName });
+      showToast('Account renamed', 'success');
+      pendingRenameAddress = null;
+      await refreshActiveAccountAndBalance();
+      const currentSearch = document.getElementById('accounts-search')?.value || '';
+      await renderAccountsList(currentSearch);
       show('accounts');
       break;
+    }
 
     case 'go-send':
       setError('send-error', '');
       pendingSend = null;
+      selectedSendToken = {
+        symbol: 'THRU',
+        name: 'Thru Native Token',
+        decimals: 9,
+        isNative: true,
+        mintAddress: null,
+        balanceDisplay: '0',
+      };
+      await updateSendScreenState();
+      checkRecipientAddress(document.getElementById('send-to')?.value);
       show('send');
       break;
 
+    case 'switch-send-account':
+      openAccountSwitcher({
+        onAccountSwitched: async (newAccount) => {
+          activeAccount = newAccount;
+          await updateSendScreenState();
+          checkRecipientAddress(document.getElementById('send-to')?.value);
+        },
+      });
+      break;
+
+    case 'open-token-selector':
+      openTokenSelector({
+        activeAccount,
+        nativeBalanceStr: cachedSenderBalanceStr,
+        selectedMint: selectedSendToken.mintAddress,
+        onTokenSelected: (token) => {
+          selectedSendToken = token;
+          updateSendScreenState();
+        },
+      });
+      break;
+
+    case 'paste-recipient': {
+      try {
+        const text = await navigator.clipboard.readText();
+        const sendToEl = document.getElementById('send-to');
+        if (sendToEl && text) {
+          sendToEl.value = text.trim();
+          checkRecipientAddress(text.trim());
+        }
+      } catch {
+        showToast('Clipboard access denied', 'error');
+      }
+      break;
+    }
+
+    case 'open-my-accounts-recipient':
+      openRecipientSelector({
+        currentAccount: activeAccount,
+        onRecipientSelected: ({ address }) => {
+          const sendToEl = document.getElementById('send-to');
+          if (sendToEl) {
+            sendToEl.value = address;
+            checkRecipientAddress(address);
+            document.getElementById('send-amount')?.focus();
+          }
+        },
+      });
+      break;
+
+    case 'set-amount-pct': {
+      const pct = Number(target.dataset.pct);
+      const amountInput = document.getElementById('send-amount');
+      if (!amountInput) break;
+
+      if (selectedSendToken.isNative) {
+        const maxUnits = cachedSenderBalanceUnits;
+        if (maxUnits <= 0n) {
+          amountInput.value = '0';
+          break;
+        }
+
+        if (pct === 100) {
+          const gasReserve = 10_000n;
+          const sendable = maxUnits > gasReserve ? maxUnits - gasReserve : 0n;
+          amountInput.value = formatThru(sendable);
+        } else {
+          const sendable = (maxUnits * BigInt(pct)) / 100n;
+          amountInput.value = formatThru(sendable);
+        }
+      } else {
+        const total = parseFloat(selectedSendToken.balanceDisplay.replace(/,/g, '')) || 0;
+        const sendable = (total * pct) / 100;
+        amountInput.value = sendable > 0 ? (Math.floor(sendable * 10000) / 10000).toString() : '0';
+      }
+      break;
+    }
+
     case 'go-receive':
-      document.getElementById('receive-address-display').textContent = activeAccount.address;
-      document.getElementById('receive-explorer-link').href = explorerAddressUrl(activeAccount.address);
-      // v1.1: render QR code
-      renderQR(document.getElementById('receive-qr'), activeAccount.address);
+      if (activeAccount) {
+        document.getElementById('receive-address-display').textContent = activeAccount.address;
+        document.getElementById('receive-explorer-link').href = explorerAddressUrl(activeNetwork, activeAccount.address);
+        renderQR(document.getElementById('receive-qr'), activeAccount.address);
+      }
       show('receive');
       break;
 
@@ -379,12 +724,19 @@ async function handleAction(action, target) {
       if (pw.length < 8) return setError('create-error', 'Use at least 8 characters.');
       if (pw !== pw2) return setError('create-error', "Passwords don't match.");
       setError('create-error', '');
-      pendingMnemonic = await createVault(pw);
-      clearSensitiveFields();
-      renderMnemonicGrid(pendingMnemonic, document.getElementById('mnemonic-grid'));
-      document.getElementById('backup-confirmed').checked = false;
-      document.getElementById('backup-continue').disabled = true;
-      show('backup');
+      try {
+        const result = await bridge.send('wallet.create', { password: pw });
+        pendingMnemonic = result.mnemonic;
+        clearSensitiveFields();
+        renderMnemonicGrid(pendingMnemonic, document.getElementById('mnemonic-grid'));
+        document.getElementById('backup-confirmed').checked = false;
+        document.getElementById('backup-continue').disabled = true;
+        walletStore.setState({ hasVault: true, isUnlocked: true });
+        events.emit(Events.WALLET_CREATED);
+        show('backup');
+      } catch (err) {
+        setError('create-error', err.message);
+      }
       break;
     }
 
@@ -399,12 +751,20 @@ async function handleAction(action, target) {
       if (pw.length < 8) return setError('import-error', 'Use at least 8 characters.');
       try {
         if (importMode === 'privatekey') {
-          await importPrivateKeyVault(document.getElementById('import-privatekey').value, pw);
+          await bridge.send('wallet.importPrivateKey', {
+            privateKeyHex: document.getElementById('import-privatekey').value,
+            password: pw,
+          });
         } else {
-          await importMnemonicVault(document.getElementById('import-mnemonic').value, pw);
+          await bridge.send('wallet.importMnemonic', {
+            mnemonic: document.getElementById('import-mnemonic').value,
+            password: pw,
+          });
         }
         setError('import-error', '');
         clearSensitiveFields();
+        walletStore.setState({ hasVault: true, isUnlocked: true });
+        events.emit(Events.WALLET_IMPORTED);
         await loadDashboard();
       } catch (err) {
         setError('import-error', err.message);
@@ -415,9 +775,11 @@ async function handleAction(action, target) {
     case 'submit-unlock': {
       const pw = document.getElementById('unlock-password').value;
       try {
-        await unlock(pw);
+        await bridge.send('wallet.unlock', { password: pw });
         setError('unlock-error', '');
         clearSensitiveFields();
+        walletStore.setState({ isUnlocked: true });
+        events.emit(Events.WALLET_UNLOCKED);
         await loadDashboard();
       } catch (err) {
         setError('unlock-error', err.message);
@@ -427,7 +789,7 @@ async function handleAction(action, target) {
     }
 
     case 'confirm-reset':
-      await resetWallet();
+      await bridge.send('wallet.reset');
       pendingMnemonic = null;
       activeAccount = null;
       pendingExportRef = null;
@@ -459,29 +821,13 @@ async function handleAction(action, target) {
       }
       break;
 
-    case 'create-account': {
-      const btn = document.getElementById('create-account-btn');
-      btn.disabled = true;
-      btn.textContent = 'Creating…';
-      try {
-        await createOnChainAccount(activeAccount);
-        await refreshBalance();
-      } catch (err) {
-        document.getElementById('account-status').textContent = `Account creation failed: ${err.message}`;
-      } finally {
-        btn.disabled = false;
-        btn.textContent = 'Create on-chain account';
-      }
-      break;
-    }
-
     case 'add-account': {
       try {
-        await addHdAccount();
+        await bridge.send('account.addHd');
         await refreshActiveAccountAndBalance();
         await renderAccountsList();
       } catch (err) {
-        setError('add-key-error', err.message); // reused as a generic inline error slot on this screen
+        setError('add-key-error', err.message);
       }
       break;
     }
@@ -489,7 +835,7 @@ async function handleAction(action, target) {
     case 'submit-add-key': {
       const hex = document.getElementById('add-key-input').value;
       try {
-        await addImportedKey(hex);
+        await bridge.send('account.addImported', { privateKeyHex: hex });
         setError('add-key-error', '');
         clearSensitiveFields();
         await refreshActiveAccountAndBalance();
@@ -503,14 +849,14 @@ async function handleAction(action, target) {
 
     case 'switch-account': {
       const ref = JSON.parse(target.dataset.ref);
-      await switchActiveAccount(ref);
+      await bridge.send('account.switch', { ref });
       await refreshActiveAccountAndBalance();
       await renderAccountsList();
       break;
     }
 
     case 'go-export-password':
-      pendingExportRef = await getActiveRef();
+      pendingExportRef = await bridge.send('account.getActiveRef');
       clearSensitiveFields();
       setError('export-password-error', '');
       show('export-password');
@@ -519,7 +865,10 @@ async function handleAction(action, target) {
     case 'submit-export-password': {
       const pw = document.getElementById('export-password').value;
       try {
-        pendingExportSecret = await exportAccountSecret(pendingExportRef, pw);
+        pendingExportSecret = await bridge.send('wallet.exportSecret', {
+          ref: pendingExportRef,
+          password: pw,
+        });
         setError('export-password-error', '');
         clearSensitiveFields();
         renderExportReveal(pendingExportSecret);
@@ -551,10 +900,10 @@ async function handleAction(action, target) {
       btn.disabled = true;
       btn.textContent = 'Claiming…';
       try {
-        const signature = await claimFaucet(activeAccount, amount);
-        if (signature) {
+        const result = await bridge.send('tx.claimFaucet', { amountUnits: amount });
+        if (result && result.signature) {
           showToast(`Claimed ${amount} raw units`, 'success');
-          linkEl.href = explorerTxUrl(signature);
+          linkEl.href = explorerTxUrl(activeNetwork, result.signature);
           linkEl.classList.remove('hidden');
         } else {
           showToast('Claimed', 'success');
@@ -578,7 +927,7 @@ async function handleAction(action, target) {
         setError('send-error', "That doesn't look like a valid Thru address.");
         break;
       }
-      if (toAddress === activeAccount.address) {
+      if (activeAccount && toAddress.toLowerCase() === activeAccount.address.toLowerCase()) {
         setError('send-error', "That's the address you're sending from.");
         break;
       }
@@ -590,12 +939,21 @@ async function handleAction(action, target) {
         break;
       }
 
-      // Stage the send and show preview
-      const amountDisplay = `${formatThru(amountUnits)} THRU`;
-      pendingSend = { toAddress, amountUnits, amountDisplay };
-      document.getElementById('preview-amount').textContent = amountDisplay;
-      document.getElementById('preview-to').textContent = toAddress;
-      document.getElementById('preview-total').textContent = `~${amountDisplay}`;
+      // Save recipient into recent list
+      saveRecentRecipient(toAddress).catch(() => {});
+
+      const amountDisplay = `${formatThru(amountUnits)} ${selectedSendToken.symbol}`;
+      pendingSend = { toAddress, amountUnits: amountUnits.toString(), amountDisplay };
+      const reviewContainer = document.getElementById('tx-review-container');
+      if (reviewContainer) {
+        reviewContainer.innerHTML = renderTxReviewCard({
+          toAddress,
+          amountUnits,
+          fromAddress: activeAccount.address,
+          networkLabel: activeNetwork.label || 'Thru Alphanet',
+          estimatedFee: '~1 raw unit',
+        });
+      }
       show('send-preview');
       break;
     }
@@ -608,11 +966,11 @@ async function handleAction(action, target) {
       btn.disabled = true;
       btn.textContent = 'Sending…';
       try {
-        const signature = await sendTransfer(activeAccount, toAddress, amountUnits);
+        const result = await bridge.send('tx.send', { toAddress, amountUnits });
         pendingSend = null;
         document.getElementById('send-to').value = '';
         document.getElementById('send-amount').value = '';
-        if (signature) {
+        if (result && result.signature) {
           showToast(`Sent ${amountDisplay}`, 'success');
         } else {
           showToast('Sent', 'success');
@@ -644,8 +1002,15 @@ async function handleAction(action, target) {
 
     case 'lock':
       clearSensitiveFields();
-      await lock();
+      await bridge.send('wallet.lock');
+      walletStore.setState({ isUnlocked: false, activeAccount: null });
+      events.emit(Events.WALLET_LOCKED);
+      router.clearHistory();
       show('unlock');
+      break;
+
+    case 'go-settings':
+      router.navigate('settings');
       break;
 
     default:
@@ -653,12 +1018,11 @@ async function handleAction(action, target) {
   }
 }
 
-document.getElementById('backup-confirmed').addEventListener('change', (e) => {
+document.getElementById('backup-confirmed')?.addEventListener('change', (e) => {
   document.getElementById('backup-continue').disabled = !e.target.checked;
 });
 
-// v1.1: disclaimer checkbox enables the Continue button
-document.getElementById('disclaimer-agreed').addEventListener('change', (e) => {
+document.getElementById('disclaimer-agreed')?.addEventListener('change', (e) => {
   document.getElementById('disclaimer-continue').disabled = !e.target.checked;
 });
 
@@ -668,14 +1032,12 @@ document.addEventListener('click', (e) => {
   handleAction(target.dataset.action, target);
 });
 
-// ---- v1.1: Network health indicator ----------------------------------------
-
-async function updateNetworkStatus() {
+// Network health indicator
+async function updateNetworkStatus(preloadedHealth = null) {
   const dot = document.getElementById('network-dot');
   const latencyEl = document.getElementById('network-latency');
   if (!dot) return;
-  const result = await checkNetworkHealth();
-  // Remove all status classes, then add the current one
+  const result = preloadedHealth || (await bridge.send('tx.checkHealth'));
   dot.classList.remove('healthy', 'slow', 'offline');
   dot.classList.add(result.status);
   if (latencyEl) {
@@ -683,41 +1045,33 @@ async function updateNetworkStatus() {
   }
 }
 
-// ---- v1.1: Address validation on send screen -------------------------------
-
+// Live address validation on send screen
 const sendToInput = document.getElementById('send-to');
 if (sendToInput) {
   sendToInput.addEventListener('input', () => {
-    const indicator = document.getElementById('send-to-indicator');
-    // Auto-strip all whitespace (spaces, newlines, tabs) — users paste from
-    // explorers/messages which often include trailing junk.
     const cleaned = sendToInput.value.replace(/\s/g, '');
     if (cleaned !== sendToInput.value) {
       const cursor = sendToInput.selectionStart - (sendToInput.value.length - cleaned.length);
       sendToInput.value = cleaned;
       sendToInput.setSelectionRange(cursor, cursor);
     }
-    if (!cleaned) {
-      indicator.classList.add('hidden');
-      indicator.classList.remove('valid', 'invalid');
-      return;
-    }
-    const valid = isValidThruAddress(cleaned);
-    indicator.classList.remove('hidden', 'valid', 'invalid');
-    indicator.classList.add(valid ? 'valid' : 'invalid');
-    indicator.innerHTML = valid ? icons.check(12) : icons.x(12);
+    checkRecipientAddress(cleaned);
   });
 }
 
-// ---- v1.1: Keyboard shortcuts (Enter to submit, Esc to go back) -----------
+// Accounts search filter
+const accountsSearchInput = document.getElementById('accounts-search');
+if (accountsSearchInput) {
+  accountsSearchInput.addEventListener('input', (e) => {
+    renderAccountsList(e.target.value);
+  });
+}
 
+// Keyboard shortcuts (Enter to submit, Esc to go back)
 document.addEventListener('keydown', (e) => {
-  // Enter: click the visible primary button on the current screen
   if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey) {
     const activeEl = document.activeElement;
-    // Don't intercept if a textarea is focused (mnemonic/key input needs Enter for newlines)
     if (activeEl && activeEl.tagName === 'TEXTAREA') return;
-    // Find the currently visible screen
     const visibleScreen = document.querySelector('.screen:not(.hidden)');
     if (!visibleScreen) return;
     const primaryBtn = visibleScreen.querySelector('.btn.primary:not(:disabled)');
@@ -726,7 +1080,6 @@ document.addEventListener('keydown', (e) => {
       primaryBtn.click();
     }
   }
-  // Esc: click the back button on the current screen
   if (e.key === 'Escape') {
     const visibleScreen = document.querySelector('.screen:not(.hidden)');
     if (!visibleScreen) return;
@@ -738,9 +1091,28 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-// ---- v1.1: Copy history sigs with toast ------------------------------------
-
-// (Already handled in handleAction; this comment marks the end of v1.1 additions)
-
 injectIcons();
+
+// Register screen modules with the router.
+// As screens are migrated from the monolithic handleAction(), they get
+// registered here and the router manages their lifecycle.
+router.register('settings', settingsScreen);
+router.register('welcome', welcomeScreen);
+router.register('receive', receiveScreen);
+router.register('history', historyScreen);
+router.register('faucet', faucetScreen);
+router.register('unlock', unlockScreen);
+router.register('reset-confirm', resetConfirmScreen);
+router.register('create-password', createPasswordScreen);
+router.register('backup', backupScreen);
+router.register('import', importScreen);
+router.register('add-key', addKeyScreen);
+router.register('export-password', exportPasswordScreen);
+router.register('export-reveal', exportRevealScreen);
+router.register('rename-account', renameAccountScreen);
+router.register('account-detail', accountDetailScreen);
+router.register('dashboard', dashboardScreen);
+router.register('send', sendScreen);
+
+
 init();

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Thru Wallet",
-  "version": "1.1.0",
-  "description": "Experimental, community-built key/account manager for Thru's alphanet. Not affiliated with Unto Labs. Not audited.",
+  "version": "1.2.0",
+  "description": "High-performance self-custody wallet, key manager, and token launchpad for Thru.",
   "homepage_url": "https://github.com/buildbyravi/thru-wallet-ext",
   "action": {
     "default_popup": "popup.html",
@@ -18,10 +18,12 @@
     "128": "icons/icon128.png"
   },
   "background": {
-    "service_worker": "background.bundle.js",
-    "type": "module"
+    "service_worker": "background.bundle.js"
   },
-  "permissions": ["storage", "alarms"],
+  "permissions": ["storage", "alarms", "sidePanel"],
+  "side_panel": {
+    "default_path": "popup.html"
+  },
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'self'"
   }

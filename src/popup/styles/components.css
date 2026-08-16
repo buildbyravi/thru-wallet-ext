@@ -350,6 +350,20 @@ textarea:focus {
 
 button.row { cursor: pointer; }
 
+.row-content-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+}
+
 .row:hover {
   background: var(--surface-2);
   border-color: var(--border-strong);
@@ -406,6 +420,69 @@ button.row { cursor: pointer; }
   display: flex;
   flex-direction: column;
   gap: var(--sp-2);
+}
+
+/* ---- Accounts search & rename (v1.2) ----------------------- */
+
+.search-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin-bottom: var(--sp-2);
+}
+
+.search-box .search-icon {
+  position: absolute;
+  left: 12px;
+  display: flex;
+  align-items: center;
+  color: var(--text-3);
+  pointer-events: none;
+}
+
+.search-box input {
+  width: 100%;
+  padding-left: 36px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-1);
+  font-size: var(--fs-sm);
+}
+
+.search-box input:focus {
+  border-color: var(--accent-border);
+  background: var(--surface-2);
+}
+
+.row-rename-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-3);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  opacity: 0.6;
+  transition: opacity var(--t-fast), color var(--t-fast), background var(--t-fast);
+  margin-left: var(--sp-2);
+}
+
+.row-rename-btn:hover {
+  opacity: 1;
+  color: var(--accent);
+  background: var(--surface-3);
+}
+
+.empty-state {
+  text-align: center;
+  padding: var(--sp-6) var(--sp-3);
+  color: var(--text-3);
+  font-size: var(--fs-sm);
 }
 
 /* ---- Toast notifications ---------------------------------- */
@@ -636,3 +713,881 @@ button.row { cursor: pointer; }
   height: 16px;
   cursor: pointer;
 }
+
+/* ============================================================
+   Rabby-Style Bottom Sheet Drawer Overlay
+   ============================================================ */
+
+.drawer-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.drawer-overlay.drawer-open {
+  pointer-events: auto;
+}
+
+.drawer-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(11, 14, 16, 0.72);
+  backdrop-filter: blur(2px);
+  opacity: 0;
+  transition: opacity 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.drawer-overlay.drawer-open .drawer-backdrop {
+  opacity: 1;
+}
+
+.drawer-panel {
+  position: relative;
+  z-index: 1001;
+  background: var(--surface-1);
+  border-top: 1px solid var(--border-strong);
+  border-radius: 16px 16px 0 0;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.6);
+  transform: translateY(100%);
+  transition: transform 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.drawer-overlay.drawer-open .drawer-panel {
+  transform: translateY(0);
+}
+
+.drawer-handle-bar {
+  width: 36px;
+  height: 4px;
+  background: var(--steel-600);
+  border-radius: 2px;
+  margin: 10px auto 4px;
+}
+
+.drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--sp-2) var(--sp-4) var(--sp-3);
+  border-bottom: 1px solid var(--border);
+}
+
+.drawer-title {
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  color: var(--text-1);
+  margin: 0;
+}
+
+.drawer-close-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-3);
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--t-fast);
+}
+
+.drawer-close-btn:hover {
+  background: var(--surface-2);
+  color: var(--text-1);
+}
+
+.drawer-body {
+  padding: var(--sp-4);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  max-height: calc(85vh - 70px);
+}
+
+.drawer-desc {
+  font-size: var(--fs-sm);
+  color: var(--text-3);
+  margin: 0;
+  line-height: 1.4;
+}
+
+.drawer-section-label {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: var(--sp-2);
+}
+
+/* ---- Account Drawer Items ---- */
+
+.account-drawer-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-4);
+}
+
+.account-drawer-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px var(--sp-3);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--t-fast);
+}
+
+.account-drawer-item:hover {
+  background: var(--surface-3);
+  border-color: var(--border-strong);
+}
+
+.account-drawer-item.active {
+  border-color: var(--accent-border);
+  background: var(--accent-tint);
+}
+
+.account-item-left {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+
+.account-item-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.account-item-name {
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: var(--text-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.account-item-addr {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+
+.account-item-right {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.active-check-icon {
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+}
+
+.rename-btn {
+  opacity: 0.7;
+}
+
+.rename-btn:hover {
+  opacity: 1;
+}
+
+/* ---- Network Drawer Items ---- */
+
+.network-drawer-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.network-drawer-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px var(--sp-4);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--t-fast);
+}
+
+.network-drawer-item:hover {
+  background: var(--surface-3);
+  border-color: var(--border-strong);
+}
+
+.network-drawer-item.active {
+  border-color: var(--accent-border);
+  background: var(--accent-tint);
+}
+
+.network-item-left {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.network-item-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.network-item-name {
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+.network-item-url {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+
+.network-item-right {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.tag-subtle {
+  font-size: var(--fs-xs);
+  padding: 2px 6px;
+  background: var(--surface-3);
+  color: var(--text-3);
+  border-radius: 4px;
+}
+
+.tag-native {
+  font-size: 10px;
+  padding: 1px 5px;
+  background: rgba(35, 159, 151, 0.15);
+  color: var(--positive);
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+/* ---- Token List Rows ---- */
+
+.token-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px var(--sp-3);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  transition: all var(--t-fast);
+}
+
+.token-row:hover {
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+}
+
+.token-row-left {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.token-row-avatar,
+.token-row-logo {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--surface-3);
+  border: 1px solid var(--border-strong);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.token-row-meta {
+  display: flex;
+  flex-direction: column;
+}
+
+.token-row-symbol-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.token-row-symbol {
+  font-size: var(--fs-md);
+  font-weight: 700;
+  color: var(--text-1);
+}
+
+.token-row-name {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+
+.token-row-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.token-row-balance {
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+}
+
+.token-row-mint {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+
+/* ---- Skeleton Shimmer Loading States ---- */
+
+.skeleton-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: 12px var(--sp-3);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+}
+
+.skeleton-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--surface-3);
+  animation: shimmer 1.5s infinite;
+}
+
+.skeleton-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+}
+
+.skeleton-line {
+  height: 10px;
+  border-radius: 4px;
+  background: var(--surface-3);
+  animation: shimmer 1.5s infinite;
+}
+
+.skeleton-value {
+  height: 14px;
+  border-radius: 4px;
+  background: var(--surface-3);
+  animation: shimmer 1.5s infinite;
+}
+
+.w-60 { width: 60%; }
+.w-40 { width: 40%; }
+.w-30 { width: 30%; }
+
+@keyframes shimmer {
+  0% { opacity: 0.3; }
+  50% { opacity: 0.8; }
+  100% { opacity: 0.3; }
+}
+
+.tab-tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ============================================================
+   Rabby-Style Pre-Sign Transaction Review Card
+   ============================================================ */
+
+.tx-review-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--sp-4);
+}
+
+.tx-review-eyebrow {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-3);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: var(--sp-2);
+  display: block;
+}
+
+.balance-change-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px var(--sp-3);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+
+.balance-change-box.negative {
+  border-color: var(--negative-border);
+  background: var(--negative-tint);
+}
+
+.balance-change-box.positive {
+  border-color: var(--positive-border);
+  background: var(--positive-tint);
+}
+
+.change-amount {
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  color: var(--negative);
+}
+
+.balance-change-box.positive .change-amount {
+  color: var(--positive);
+}
+
+.change-tag {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--surface-3);
+  color: var(--text-2);
+}
+
+.tx-review-details {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding-top: var(--sp-2);
+  border-top: 1px solid var(--border);
+}
+
+.tx-review-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: var(--fs-sm);
+}
+
+.tx-review-label {
+  color: var(--text-3);
+}
+
+.tx-review-val {
+  color: var(--text-1);
+  font-weight: 500;
+}
+
+.tx-risk-box {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  padding: 10px var(--sp-3);
+  border-radius: var(--radius-md);
+  font-size: var(--fs-xs);
+  line-height: 1.4;
+}
+
+.tx-risk-box.safe {
+  background: var(--positive-tint);
+  border: 1px solid var(--positive-border);
+  color: var(--text-2);
+}
+
+.tx-risk-box.safe .risk-icon {
+  color: var(--positive);
+}
+
+.tx-risk-box.warning {
+  background: rgba(255, 173, 66, 0.12);
+  border: 1px solid rgba(255, 173, 66, 0.4);
+  color: var(--text-2);
+}
+
+.tx-risk-box.warning .risk-icon {
+  color: var(--gold);
+}
+
+.risk-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.risk-copy strong {
+  color: var(--text-1);
+  font-size: 11px;
+}
+
+/* ---- Rabby Dashboard Tabs ---- */
+
+.dash-tabs {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  border-bottom: 1px solid var(--border);
+  padding: 0 var(--sp-4);
+  margin-top: var(--sp-4);
+}
+
+.dash-tab-btn {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: all var(--t-fast);
+}
+
+.dash-tab-btn:hover {
+  color: var(--text-1);
+}
+
+.dash-tab-btn.active {
+  color: var(--text-1);
+  border-bottom-color: var(--accent);
+}
+
+.dash-tab-content {
+  padding: var(--sp-3) var(--sp-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+/* ============================================================
+   Rabby Send Screen Elements
+   ============================================================ */
+
+.send-section-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-3);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.send-from-box {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--sp-3) var(--sp-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  transition: all var(--t-fast);
+}
+
+.send-from-box:hover {
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+}
+
+.send-from-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.send-from-left {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.send-from-meta {
+  display: flex;
+  flex-direction: column;
+}
+
+.send-from-name {
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+.send-from-address {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+
+.send-from-right {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.send-from-balance {
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Token Selector Card */
+.send-token-card {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px var(--sp-4);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  transition: all var(--t-fast);
+}
+
+.send-token-card:hover {
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+}
+
+.send-token-left {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.send-token-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--surface-3);
+  border: 1px solid var(--border-strong);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  color: var(--accent);
+}
+
+.send-token-meta {
+  display: flex;
+  flex-direction: column;
+}
+
+.send-token-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.send-token-symbol {
+  font-size: var(--fs-md);
+  font-weight: 700;
+  color: var(--text-1);
+}
+
+.send-token-name {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+
+.send-token-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.send-token-avail-label {
+  font-size: 10px;
+  color: var(--text-3);
+  text-transform: uppercase;
+}
+
+.send-token-balance {
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Send Field Groups */
+.send-field-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.send-field-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.recipient-quick-actions {
+  display: flex;
+  gap: var(--sp-2);
+}
+
+.recipient-badge-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: -2px;
+}
+
+.send-avail-hint {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+
+.send-avail-hint strong {
+  color: var(--text-2);
+}
+
+.amount-input-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.amount-input-box input {
+  width: 100%;
+  padding-right: 60px;
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.amount-unit {
+  position: absolute;
+  right: var(--sp-3);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  color: var(--text-3);
+  pointer-events: none;
+}
+
+.fraction-chips-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--sp-2);
+}
+
+.fraction-chips-row .btn-chip {
+  padding: 6px 0;
+  text-align: center;
+  font-size: 11px;
+}
+
+/* Token Selector Drawer */
+.token-selector-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.token-selector-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px var(--sp-3);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--t-fast);
+}
+
+.token-selector-item:hover {
+  background: var(--surface-3);
+  border-color: var(--border-strong);
+}
+
+.token-selector-item.selected {
+  border-color: var(--accent-border);
+  background: var(--accent-tint);
+}
+
+.token-selector-avatar,
+.token-selector-logo {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--surface-3);
+  border: 1px solid var(--border-strong);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.token-item-symbol-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.token-item-symbol {
+  font-size: var(--fs-md);
+  font-weight: 700;
+  color: var(--text-1);
+}
+
+.token-item-name {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+
+.token-item-balance {
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+}
+
+.token-item-mint {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+
+/* Recipient Drawer Items */
+.account-name-badge-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.recipient-avatar-circle {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  color: var(--text-3);
+}
+
+
+

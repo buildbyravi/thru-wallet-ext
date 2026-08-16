@@ -36,11 +36,11 @@ Because Thru's alphanet is an active, evolving testnet environment, users should
 
 ## 3. Frequently Asked Questions (FAQ)
 
-### Q: Is this an official wallet from Unto Labs / Thru?
-**A:** **No.** Thru Wallet is an unofficial, community-built project created by independent developers. It is not affiliated with, endorsed by, or maintained by Unto Labs or the core Thru team.
+### Q: Which networks are supported?
+**A:** Thru Wallet supports Thru Alphanet (`rpc.alphanet.thru.org`). Mainnet support will be added upon network release.
 
 ### Q: Is this safe to use with real money or mainnet funds?
-**A:** **No.** This extension is designed exclusively for Thru's **alphanet testnet**. It is unaudited and intended for testing, development, and experimental use. **Do not import keys containing real assets or financial value.**
+**A:** **No.** This extension is designed exclusively for Thru's **alphanet testnet**. It is intended for testing, development, and experimental use. **Do not import keys containing real assets or financial value.**
 
 ### Q: How do I back up my wallet?
 **A:** You can back up your wallet using your **12-word BIP-39 recovery phrase**:

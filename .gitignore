@@ -5,3 +5,4 @@ npm-debug.log*
 *.log
 .claude/
 thru-wallet-deploy.txt
+*.zip

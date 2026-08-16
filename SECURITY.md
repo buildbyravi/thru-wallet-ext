@@ -10,8 +10,8 @@ Thru Wallet is an experimental, open-source, self-custody browser extension desi
 ## 1. Threat Model & Scope Notice
 
 > [!CAUTION]
-> **UNAUDITED ALPHANET SOFTWARE**  
-> Thru Wallet is an **unofficial, community-built, unaudited** project. It is designed strictly for testnet/alphanet evaluation, development, and experimentation. **Do not use this wallet with mainnet assets or any keys holding real financial value.**
+> **ALPHANET SOFTWARE**  
+> Thru Wallet is designed strictly for testnet/alphanet evaluation, development, and experimentation. **Do not use this wallet with mainnet assets or any keys holding real financial value.**
 
 ### Threat Assumptions & Boundaries
 *   **Target Network:** Thru Alphanet (`rpc.alphanet.thru.org`).

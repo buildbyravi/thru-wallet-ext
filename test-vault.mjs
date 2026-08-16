@@ -126,5 +126,51 @@ try {
   console.log('    correctly refused with:', err.message);
 }
 assert(noSeedThrew, 'addHdAccount() throws on a private-key-only vault');
+console.log('\n[9] Custom account labels/nicknames persist and resolve correctly');
+await vault.setAccountLabel(pkOnlyGenerated.address, 'Trading Bot Primary');
+const labels = await vault.getAccountLabels();
+assert(labels[pkOnlyGenerated.address] === 'Trading Bot Primary', 'setAccountLabel saved custom label');
+const activeLabeled = await vault.getActiveAccount();
+assert(activeLabeled.label === 'Trading Bot Primary', 'resolveAccount returned the custom nickname');
+await vault.setAccountLabel(pkOnlyGenerated.address, ''); // clearing label
+const labelsAfterClear = await vault.getAccountLabels();
+assert(!labelsAfterClear[pkOnlyGenerated.address], 'clearing label removes entry');
+const activeDefault = await vault.getActiveAccount();
+assert(activeDefault.label === 'Imported 1', 'cleared label falls back to default name');
+
+console.log('\n[10] Vault V2 keeps multiple seed and private-key keyrings isolated under one password');
+await vault.resetWallet();
+await vault.createVault('keyring migration password');
+const { MnemonicGenerator } = await import('@thru/crypto');
+const secondMnemonic = MnemonicGenerator.generate();
+const addedSeed = await vault.addSeedKeyring(secondMnemonic, 'keyring migration password', 'Trading seed');
+let keyrings = await vault.listKeyrings();
+assert(keyrings.length === 2, 'two seed keyrings are listed');
+assert(keyrings.some((ring) => ring.id === addedSeed.id && ring.label === 'Trading seed'), 'new seed keyring keeps its label');
+const secondSeedAccount = await vault.getActiveAccount();
+assert(secondSeedAccount.keyring.id === addedSeed.id, 'new seed keyring becomes active');
+const derivedSecondSeedRef = await vault.addHdAccount(addedSeed.id);
+const derivedSecondSeed = await vault.resolveAccount(derivedSecondSeedRef);
+assert(derivedSecondSeed.address !== secondSeedAccount.address, 'each seed keyring derives its own account tree');
+let duplicateSeedRejected = false;
+try {
+  await vault.addSeedKeyring(secondMnemonic, 'keyring migration password');
+} catch {
+  duplicateSeedRejected = true;
+}
+assert(duplicateSeedRejected, 'duplicate recovery phrase is rejected');
+
+const secondPrivate = await keys.generateKeyPair();
+const privateKeyring = await vault.addPrivateKeyKeyring(Buffer.from(secondPrivate.privateKey).toString('hex'), 'keyring migration password', 'Cold import');
+keyrings = await vault.listKeyrings();
+assert(keyrings.length === 3 && keyrings.some((ring) => ring.id === privateKeyring.id && ring.type === 'privateKey'), 'private key is a separate keyring');
+const importedV2 = await vault.getActiveAccount();
+assert(importedV2.address === secondPrivate.address, 'separate private-key keyring resolves its own address');
+await vault.lock();
+assert(!(await vault.isUnlocked()), 'locking clears every V2 keyring session');
+await vault.unlock('keyring migration password');
+assert((await vault.listKeyrings()).length === 3, 'all V2 keyrings survive lock and unlock');
+await vault.setAccountLabelAuthenticated(secondPrivate.address, 'Cold import primary', 'keyring migration password');
+assert((await vault.getActiveAccount()).label === 'Cold import primary', 'authenticated account rename persists');
 
 console.log('\nAll vault.js integration checks passed.');

@@ -111,34 +111,60 @@ export async function getAccountInfo(address) {
  * didn't exist afterward. Fixed by signing with the fee payer's own key and submitting via
  * sendAndTrack, the same pattern used by claimFaucet/sendTransfer below.
  */
+const inFlightRegistrations = new Map();
+const knownRegisteredAccounts = new Set();
+
+/**
+ * Create the on-chain account for a freshly generated key.
+ *
+ * Implements in-flight deduplication: if an account registration is already in progress
+ * for an address, subsequent calls await the same promise instead of broadcasting multiple transactions.
+ */
 export async function createOnChainAccount(feePayer) {
   const address = feePayer.address || Pubkey.from(feePayer.publicKey).toThruFmt();
-  const already = await getAccountInfo(address);
-  if (already.exists) return null; // already active on-chain
+  if (knownRegisteredAccounts.has(address)) return null;
 
-  const client = getClient();
-  // Generate a "creating" state proof — proves to the network that this account doesn't exist yet
-  const proofObj = await client.proofs.generate({ address, proofType: 1 });
-
-  // v0.3.0 API: feePayerStateProof is top-level, header fields (nonce, startSlot, chainId) auto-fetched.
-  // Signing uses domain-separated ed25519 ("tn_txn_sign_v1__" + SHA256) — this was the root cause of
-  // all "invalid transaction signature" errors with v0.2.39 which used raw ed25519 signing.
-  const { rawTransaction } = await client.transactions.buildAndSign({
-    feePayer: { publicKey: feePayer.publicKey, privateKey: feePayer.privateKey },
-    program: 'taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMD',
-    header: { fee: 0n, nonce: 0n },
-    feePayerStateProof: proofObj.proof
-  });
-
-  for await (const update of client.transactions.sendAndTrack(rawTransaction)) {
-    if (update.executionResult) {
-      if (update.executionResult.vmError === 0) {
-        return update.signature?.value ? Signature.from(update.signature.value).toThruFmt() : undefined;
-      }
-      throw new Error(`Account creation reverted on-chain (vmError=${update.executionResult.vmError}).`);
-    }
+  // Return existing in-flight registration promise if one is already running
+  if (inFlightRegistrations.has(address)) {
+    return inFlightRegistrations.get(address);
   }
-  throw new Error('Account creation never returned an execution result (timed out?).');
+
+  const promise = (async () => {
+    try {
+      const already = await getAccountInfo(address);
+      if (already.exists) {
+        knownRegisteredAccounts.add(address);
+        return null; // already active on-chain
+      }
+
+      const client = getClient();
+      // Generate a "creating" state proof — proves to the network that this account doesn't exist yet
+      const proofObj = await client.proofs.generate({ address, proofType: 1 });
+
+      const { rawTransaction } = await client.transactions.buildAndSign({
+        feePayer: { publicKey: feePayer.publicKey, privateKey: feePayer.privateKey },
+        program: 'taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMD',
+        header: { fee: 0n, nonce: 0n },
+        feePayerStateProof: proofObj.proof
+      });
+
+      for await (const update of client.transactions.sendAndTrack(rawTransaction)) {
+        if (update.executionResult) {
+          if (update.executionResult.vmError === 0) {
+            knownRegisteredAccounts.add(address);
+            return update.signature?.value ? Signature.from(update.signature.value).toThruFmt() : undefined;
+          }
+          throw new Error(`Account creation reverted on-chain (vmError=${update.executionResult.vmError}).`);
+        }
+      }
+      throw new Error('Account creation never returned an execution result (timed out?).');
+    } finally {
+      inFlightRegistrations.delete(address);
+    }
+  })();
+
+  inFlightRegistrations.set(address, promise);
+  return promise;
 }
 
 // ---- Faucet ----
@@ -158,7 +184,6 @@ export async function createOnChainAccount(feePayer) {
 export const FAUCET_PROGRAM_ID = 'taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPr6';
 export const FAUCET_STATE_ACCOUNT = 'taxoImN8fTEOxXYnvgC6JZ0lN0n0qvZERwz_vlOjX3MkIn';
 export const FAUCET_MAX_PER_CLAIM = 10_000n; // per the CLI's own cap
-export const OFFICIAL_DEFAULT_FEE_PAYER_HEX = '61c9fb9128444fc3a93142797c3563bc9147f4589e6f7ab7157827cdb065673e';
 
 /** Pure byte-layout encoder, kept separate from the network calls so it's directly testable. */
 export function encodeFaucetInstructionData(stateIdx, recipientIdx, amountUnits) {
@@ -173,6 +198,11 @@ export function encodeFaucetInstructionData(stateIdx, recipientIdx, amountUnits)
 
 /**
  * Claim tokens from the alphanet faucet, submitted on-chain directly.
+ *
+ * Self-Signing & Zero-Wallet Linking:
+ * Each wallet signs its OWN faucet transaction with fee: 0n.
+ * Even a freshly generated wallet with 0 balance can claim directly without
+ * requiring prior funding, sponsor keys, or third-party fee payers.
  */
 export async function claimFaucet(feePayer, amount) {
   const amountUnits = BigInt(amount);
@@ -181,10 +211,6 @@ export async function claimFaucet(feePayer, amount) {
   }
 
   const address = feePayer.address || Pubkey.from(feePayer.publicKey).toThruFmt();
-  const info = await getAccountInfo(address);
-  if (!info.exists) {
-    throw new Error('Account must be initialized on-chain before claiming faucet tokens. Fund or activate this account first.');
-  }
 
   // recipient = feePayer (claiming to own address), so it's already at index 0.
   // Only add non-feePayer accounts to readWrite to avoid duplicate rejection.
@@ -354,4 +380,153 @@ export async function listAccountHistory(address, pageSize = 15) {
   const page = new PageRequest({ pageSize });
   const { transactions } = await getClient().transactions.listForAccount(address, { page });
   return transactions.map((tx) => decodeHistoryEntry(tx, address));
+}
+
+// ---- Native Token Launchpad (v1.2) -----------------------------------------
+// Native built-in Token Program address on ThruVM (similar to SPL Token Program)
+export const TOKEN_PROGRAM_ID = 'taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKqq';
+export const DEPLOYED_TOKENS_KEY = 'thru_deployed_tokens';
+
+/** Generate a 32-character alphanumeric random seed for mint address derivation. */
+export function generateMintSeed() {
+  const alphabet = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+  const randBytes = new Uint8Array(32);
+  crypto.getRandomValues(randBytes);
+  let seed = '';
+  for (let i = 0; i < 32; i++) {
+    seed += alphabet[randBytes[i] % alphabet.length];
+  }
+  return seed;
+}
+
+/** Derive deterministic Token Mint address on ThruVM using the 32-byte seed. */
+export async function deriveTokenMintAddress(mintSeed) {
+  const client = getClient();
+  const res = await client.proofs.deriveAddress({
+    programId: TOKEN_PROGRAM_ID,
+    seed: mintSeed,
+  });
+  return res.derivedAddress;
+}
+
+/** Pure byte-layout encoder for INITIALIZE_MINT (Tag 0) instruction. */
+export function encodeInitializeMintInstructionData(accountIdx, mintSeed, proofSizeBytes, authorityPubkeyBytes, decimals, proofBytes) {
+  const seedBytes = new TextEncoder().encode(mintSeed);
+  const totalLength = 4 + 2 + 32 + 4 + 32 + 1 + proofBytes.length;
+  const payload = new Uint8Array(totalLength);
+  const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
+
+  // Tag 0: INITIALIZE_MINT
+  view.setUint32(0, 0, true);
+  // Account Index
+  view.setUint16(4, accountIdx, true);
+  // Seed (32 bytes)
+  payload.set(seedBytes.subarray(0, 32), 6);
+  // Proof size
+  view.setUint32(38, proofSizeBytes, true);
+  // Mint Authority Pubkey (32 bytes)
+  payload.set(authorityPubkeyBytes.subarray(0, 32), 42);
+  // Decimals (uint8)
+  payload[74] = decimals;
+  // Append raw proof bytes
+  payload.set(proofBytes, 75);
+
+  return payload;
+}
+
+/** List all tokens deployed by this wallet extension. */
+export async function getDeployedTokens() {
+  const { [DEPLOYED_TOKENS_KEY]: tokens } = await chrome.storage.local.get(DEPLOYED_TOKENS_KEY);
+  return tokens ?? [];
+}
+
+/** Save a deployed token record locally. */
+export async function saveDeployedToken(tokenInfo) {
+  const tokens = await getDeployedTokens();
+  tokens.unshift(tokenInfo);
+  await chrome.storage.local.set({ [DEPLOYED_TOKENS_KEY]: tokens });
+}
+
+/**
+ * Deploy a new Token Mint on Thru directly via the Native Token Program.
+ *
+ * Self-signed, zero contract compiler required, executes in ~1s on ThruVM.
+ */
+export async function deployTokenMint({
+  feePayer,
+  ticker,
+  name,
+  decimals = 6,
+  initialSupply = 0,
+  imageUri = '',
+  description = '',
+  mintSeed = generateMintSeed(),
+  onProgress = () => {},
+}) {
+  const client = getClient();
+  const address = feePayer.address || Pubkey.from(feePayer.publicKey).toThruFmt();
+
+  // 1. Ensure feePayer account exists on-chain
+  onProgress({ step: 'checking_account', message: 'Checking wallet status…' });
+  const payerInfo = await getAccountInfo(address);
+  if (!payerInfo.exists) {
+    onProgress({ step: 'creating_account', message: 'Registering account on-chain…' });
+    await createOnChainAccount(feePayer);
+  }
+
+  // 2. Derive deterministic mint address
+  onProgress({ step: 'deriving_mint', message: 'Deriving Token Mint address on ThruVM…' });
+  const mintAddress = await deriveTokenMintAddress(mintSeed);
+
+  // 3. Generate creating state proof for the mint account
+  onProgress({ step: 'generating_proof', message: 'Generating cryptographic state proof…' });
+  const proofObj = await client.proofs.generate({ address: mintAddress, proofType: 1 });
+
+  // 4. Construct INITIALIZE_MINT instruction payload
+  const authorityPubkeyBytes = Pubkey.from(feePayer.publicKey).toBytes();
+  const instructionPayload = encodeInitializeMintInstructionData(
+    2,
+    mintSeed,
+    proofObj.proof.length,
+    authorityPubkeyBytes,
+    decimals,
+    proofObj.proof
+  );
+
+  // 5. Build, sign, and broadcast transaction
+  onProgress({ step: 'submitting_tx', message: 'Broadcasting Token Deployment transaction…' });
+  const { rawTransaction } = await client.transactions.buildAndSign({
+    feePayer: { publicKey: feePayer.publicKey, privateKey: feePayer.privateKey },
+    program: TOKEN_PROGRAM_ID,
+    accounts: { readWrite: [mintAddress] },
+    instructionData: () => instructionPayload,
+  });
+
+  let signatureStr = '';
+  for await (const update of client.transactions.sendAndTrack(rawTransaction)) {
+    if (update.executionResult) {
+      if (update.executionResult.vmError === 0) {
+        signatureStr = update.signature?.value ? Signature.from(update.signature.value).toThruFmt() : '';
+        break;
+      }
+      throw new Error(`Token deployment reverted on-chain (vmError=${update.executionResult.vmError}).`);
+    }
+  }
+
+  const tokenRecord = {
+    mintAddress,
+    ticker: (ticker || '').toUpperCase().trim(),
+    name: (name || ticker || '').trim(),
+    decimals: Number(decimals),
+    initialSupply: Number(initialSupply) || 0,
+    imageUri: (imageUri || '').trim(),
+    description: (description || '').trim(),
+    creator: address,
+    signature: signatureStr,
+    createdAt: Date.now(),
+  };
+
+  await saveDeployedToken(tokenRecord);
+  onProgress({ step: 'success', message: 'Token deployed successfully!', token: tokenRecord });
+  return tokenRecord;
 }

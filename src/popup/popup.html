@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <title>Thru Wallet</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="popup.css" />
 </head>
 <body>
@@ -11,7 +14,10 @@
 
   <header class="topbar">
     <span class="wordmark">Thru Wallet</span>
-    <span class="badge">alphanet · unofficial</span>
+    <div class="topbar-right">
+      <span class="badge">alphanet</span>
+      <button class="icon-btn-ghost" data-action="open-desktop" data-icon="expand" title="Open Launchpad in full browser tab"></button>
+    </div>
   </header>
 
   <!-- Loading -->
@@ -22,17 +28,17 @@
   <!-- First-run disclaimer (shown once, never again) -->
   <section id="screen-disclaimer" class="screen hidden">
     <div class="disclaimer-notice">
-      <span class="disclaimer-icon">⚠️</span>
-      <h2>Before you begin</h2>
+      <span class="disclaimer-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span>
+      <h2>Security & Network Notice</h2>
       <ul class="disclaimer-list">
-        <li>This is an <strong>unofficial</strong> wallet for Thru Alphanet.</li>
-        <li><strong>Never</strong> store real assets in this wallet.</li>
-        <li>Always <strong>back up</strong> your recovery phrase.</li>
-        <li>This project has <strong>not been audited</strong>.</li>
+        <li>Thru Alphanet is an experimental testing network.</li>
+        <li><strong>Never</strong> store real financial assets on Alphanet.</li>
+        <li>Always <strong>back up</strong> your recovery phrase and keys.</li>
+        <li>You hold full <strong>self-custody</strong> of your credentials.</li>
       </ul>
       <label class="disclaimer-check">
         <input type="checkbox" id="disclaimer-agreed" />
-        <span>I understand the risks</span>
+        <span>I understand</span>
       </label>
     </div>
     <button class="btn primary" id="disclaimer-continue" data-action="acknowledge-disclaimer" disabled>Continue</button>
@@ -171,11 +177,14 @@
         <button class="account-pill" data-action="go-accounts">
           <span id="dash-account-mark"></span>
           <span class="account-pill-address" id="dash-account-address">—</span>
-          <span class="account-pill-chevron">›</span>
+          <span class="account-pill-chevron"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg></span>
         </button>
         <button class="icon-btn" id="dash-copy-btn" data-action="copy-address" data-icon="copy" title="Copy address"></button>
       </div>
-      <button class="icon-btn danger-hover" data-action="lock" data-icon="lock" title="Lock wallet"></button>
+      <div class="dash-topbar-actions">
+        <button class="icon-btn" data-action="go-settings" title="Settings"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
+        <button class="icon-btn danger-hover" data-action="lock" data-icon="lock" title="Lock wallet"></button>
+      </div>
     </div>
 
     <div class="balance-hero">
@@ -185,11 +194,6 @@
         <span class="balance-hero-unit">THRU</span>
       </div>
       <p class="hint mono" id="raw-balance-hint"></p>
-    </div>
-
-    <div class="notice hidden" id="bootstrap-banner">
-      <p class="hint">No on-chain account yet for this key — that's normal for a fresh wallet.</p>
-      <button class="btn primary" id="create-account-btn" data-action="create-account">Create on-chain account</button>
     </div>
 
     <div class="action-grid">
@@ -207,8 +211,28 @@
       </button>
     </div>
 
+    <!-- Launchpad Quick Entry -->
+    <div class="launchpad-banner" data-action="open-desktop">
+      <div class="launchpad-banner-left">
+        <span class="launchpad-banner-icon" data-icon="rocket"></span>
+        <div class="launchpad-banner-text">
+          <strong>Token Launchpad & DEX</strong>
+          <span class="muted">Deploy & trade native tokens on ThruVM</span>
+        </div>
+      </div>
+      <span class="launchpad-banner-arrow" data-icon="expand"></span>
+    </div>
+
+    <!-- Tokens / Assets List -->
+    <div class="dash-assets-section">
+      <div class="dash-assets-header">
+        <span class="drawer-section-label">Assets</span>
+        <button class="icon-btn-ghost sm" data-action="refresh" title="Refresh balance" data-icon="refresh"></button>
+      </div>
+      <div id="dash-tokens-list" class="dash-tokens-list"></div>
+    </div>
+
     <p class="hint center" id="account-status"></p>
-    <button class="btn text" data-action="refresh">Refresh balance</button>
   </section>
 
   <!-- Accounts switcher -->
@@ -217,6 +241,10 @@
       <button class="icon-btn" data-action="go-dashboard" data-icon="back" title="Back"></button>
       <h1>Accounts</h1>
       <span class="subheader-spacer"></span>
+    </div>
+    <div class="search-box">
+      <span class="search-icon" data-icon="search"></span>
+      <input type="text" id="accounts-search" placeholder="Search by name or address…" autocomplete="off" />
     </div>
     <div id="accounts-list" class="list"></div>
     <div class="accounts-add-row">
@@ -227,56 +255,117 @@
     <button class="btn text" data-action="go-export-password">Export active account's secret</button>
   </section>
 
-  <!-- Send -->
+  <!-- Rename Account -->
+  <section id="screen-rename-account" class="screen hidden">
+    <div class="subheader">
+      <button class="icon-btn" data-action="go-accounts" data-icon="back" title="Back"></button>
+      <h1>Rename Account</h1>
+      <span class="subheader-spacer"></span>
+    </div>
+    <div class="monospace-block" id="rename-address-display"></div>
+    <label class="field">
+      <span>Account Name / Nickname</span>
+      <input type="text" id="rename-input" placeholder="e.g. Trading Wallet" maxlength="32" autocomplete="off" />
+    </label>
+    <button class="btn primary" id="rename-save-btn" data-action="submit-rename">Save Name</button>
+    <button class="btn text" data-action="go-accounts">Cancel</button>
+  </section>
+
+  <!-- Send (Rabby Multi-Feature Flow) -->
   <section id="screen-send" class="screen hidden">
     <div class="subheader">
       <button class="icon-btn" data-action="go-dashboard" data-icon="back" title="Back"></button>
       <h1>Send</h1>
       <span class="subheader-spacer"></span>
     </div>
-    <label class="field">
-      <span>To address</span>
+
+    <!-- From Account Selector Bar -->
+    <div class="send-from-box clickable" data-action="switch-send-account" title="Click to change sender account">
+      <span class="send-section-label">FROM SENDER</span>
+      <div class="send-from-content">
+        <div class="send-from-left">
+          <span id="send-from-mark"></span>
+          <div class="send-from-meta">
+            <span class="send-from-name" id="send-from-name">Account 1</span>
+            <span class="send-from-address mono" id="send-from-address">ta…</span>
+          </div>
+        </div>
+        <div class="send-from-right">
+          <span class="send-from-balance mono" id="send-from-balance">— THRU</span>
+          <span class="account-pill-chevron" data-icon="chevronRight"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Token Selector Card -->
+    <div class="send-token-card clickable" data-action="open-token-selector" title="Click to select token">
+      <div class="send-token-left">
+        <div class="send-token-avatar" id="send-token-avatar"><span data-icon="bolt"></span></div>
+        <div class="send-token-meta">
+          <div class="send-token-title-row">
+            <span class="send-token-symbol" id="send-token-symbol">THRU</span>
+            <span class="tag-native" id="send-token-tag">Native</span>
+          </div>
+          <span class="send-token-name" id="send-token-name">Thru Native Token</span>
+        </div>
+      </div>
+      <div class="send-token-right">
+        <span class="send-token-avail-label">Available</span>
+        <span class="send-token-balance mono" id="send-token-balance">—</span>
+        <span class="account-pill-chevron" data-icon="chevronRight"></span>
+      </div>
+    </div>
+
+    <!-- Recipient Field with Quick Actions -->
+    <div class="send-field-group">
+      <div class="send-field-header">
+        <span class="send-section-label">TO RECIPIENT</span>
+        <div class="recipient-quick-actions">
+          <button type="button" class="btn-chip" data-action="paste-recipient" title="Paste from clipboard"><span data-icon="clipboard"></span> Paste</button>
+          <button type="button" class="btn-chip" data-action="open-my-accounts-recipient" title="Send to your other in-wallet accounts"><span data-icon="user"></span> My Accounts</button>
+        </div>
+      </div>
       <div class="field-with-indicator">
-        <input type="text" id="send-to" placeholder="ta…" />
+        <input type="text" id="send-to" placeholder="Enter recipient ta… address" autocomplete="off" />
         <span id="send-to-indicator" class="field-indicator hidden"></span>
       </div>
-    </label>
-    <label class="field">
-      <span>Amount (THRU)</span>
-      <input type="text" id="send-amount" placeholder="0.0" />
-    </label>
-    <button class="btn primary" id="send-submit-btn" data-action="preview-send">Review</button>
+      <div class="recipient-badge-row hidden" id="recipient-badge-row">
+        <span class="tag-subtle" id="recipient-type-badge">In-Wallet Account</span>
+      </div>
+    </div>
+
+    <!-- Amount Field with Quick Fraction Chips -->
+    <div class="send-field-group">
+      <div class="send-field-header">
+        <span class="send-section-label">AMOUNT</span>
+        <span class="send-avail-hint">Available: <strong class="mono" id="send-avail-amount">—</strong></span>
+      </div>
+      <div class="amount-input-box">
+        <input type="text" id="send-amount" placeholder="0.0" autocomplete="off" />
+        <span class="amount-unit" id="send-amount-unit">THRU</span>
+      </div>
+      <div class="fraction-chips-row">
+        <button type="button" class="btn-chip" data-action="set-amount-pct" data-pct="25">25%</button>
+        <button type="button" class="btn-chip" data-action="set-amount-pct" data-pct="50">50%</button>
+        <button type="button" class="btn-chip" data-action="set-amount-pct" data-pct="75">75%</button>
+        <button type="button" class="btn-chip" data-action="set-amount-pct" data-pct="100">MAX</button>
+      </div>
+    </div>
+
     <p class="error hidden" id="send-error"></p>
-    <p class="hint">Amount is in THRU — enter 1.5 to send one and a half. Unaudited alphanet software.</p>
+    <button class="btn primary" id="send-submit-btn" data-action="preview-send">Review Transaction</button>
   </section>
 
-  <!-- Send preview (two-step confirmation) -->
+  <!-- Send preview (Rabby Pre-Sign Simulation) -->
   <section id="screen-send-preview" class="screen hidden">
     <div class="subheader">
       <button class="icon-btn" data-action="go-send" data-icon="back" title="Back"></button>
-      <h1>Confirm</h1>
+      <h1>Pre-Sign Review</h1>
       <span class="subheader-spacer"></span>
     </div>
-    <div class="tx-preview">
-      <span class="eyebrow">You're sending</span>
-      <div class="tx-preview-amount" id="preview-amount"></div>
-      <div class="tx-preview-row">
-        <span class="tx-preview-label">To</span>
-        <span class="tx-preview-value mono" id="preview-to"></span>
-      </div>
-      <hr class="divider" />
-      <div class="tx-preview-row">
-        <span class="tx-preview-label">Network fee</span>
-        <span class="tx-preview-value mono" id="preview-fee">~1 raw unit</span>
-      </div>
-      <hr class="divider" />
-      <div class="tx-preview-row tx-preview-total">
-        <span class="tx-preview-label">Total</span>
-        <span class="tx-preview-value mono" id="preview-total"></span>
-      </div>
-    </div>
-    <p class="hint center">Double-check the address. Transactions on Thru are irreversible.</p>
-    <button class="btn primary" id="send-confirm-btn" data-action="confirm-send">Confirm &amp; Send</button>
+    <div id="tx-review-container"></div>
+    <p class="hint center mt-2">Transactions on Thru blockchain are final and irreversible.</p>
+    <button class="btn primary" id="send-confirm-btn" data-action="confirm-send">Sign &amp; Broadcast</button>
     <button class="btn text" data-action="go-send">Cancel</button>
   </section>
 
@@ -324,7 +413,10 @@
     <p class="hint" id="history-status"></p>
   </section>
 
-  <footer class="foot">
+  <!-- Settings (router-managed screen) -->
+  <section id="screen-settings" class="screen hidden"></section>
+
+  <footer class="foot clickable" data-action="open-network-switcher" title="Switch network">
     <span class="foot-dot" id="network-dot"></span>
     <span id="network-label">rpc.alphanet.thru.org</span>
     <span class="foot-latency" id="network-latency"></span>
