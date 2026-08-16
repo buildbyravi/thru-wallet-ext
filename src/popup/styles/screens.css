@@ -4,41 +4,24 @@
    screen-specific rules here only when components can't cover it.
    ============================================================ */
 
-/* ---- Top bar ----------------------------------------------- */
+/* ---- Top bar -----------------------------------------------
+   Chrome sits on the recessed steel surface with a hairline under it,
+   separating it from the white working area below. */
 
 .topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--sp-4) var(--sp-5);
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--surface-2);
   border-bottom: 1px solid var(--border);
+  min-height: var(--topbar-height);
 }
 
 .topbar-right {
   display: flex;
   align-items: center;
   gap: var(--sp-2);
-}
-
-.icon-btn-ghost {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  background: transparent;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--text-2);
-  cursor: pointer;
-  padding: 0;
-  transition: all var(--t-fast);
-}
-
-.icon-btn-ghost:hover {
-  background: var(--surface-2);
-  color: var(--accent);
-  border-color: var(--accent-border);
 }
 
 .wordmark {
@@ -52,15 +35,27 @@
   color: var(--text-1);
 }
 
+/* A short accent rule before the wordmark, echoing the red bar the site
+   puts above its panel headings. */
+.wordmark::before {
+  content: "";
+  width: 3px;
+  height: 15px;
+  background: var(--accent);
+  flex-shrink: 0;
+}
+
 .badge {
+  font-family: var(--font-mono);
   font-size: 10px;
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: var(--eyebrow-tracking);
   text-transform: uppercase;
-  color: var(--text-3);
+  color: var(--text-2);
+  background: var(--surface-1);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  padding: 3px 8px;
+  padding: 3px 7px;
 }
 
 /* ---- Launchpad Banner in Popup ---------------------------- */
@@ -153,24 +148,29 @@
   flex-shrink: 0;
 }
 
-/* ---- Footer ------------------------------------------------ */
+/* ---- Footer ------------------------------------------------
+   Status strip on the recessed surface, mirroring the topbar so the
+   white working area is framed top and bottom. */
 
 .foot {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: var(--sp-2);
+  background: var(--surface-2);
   border-top: 1px solid var(--border);
-  padding: var(--sp-3) var(--sp-5);
+  padding: var(--sp-3) var(--sp-4);
   font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 0.02em;
-  color: var(--text-3);
+  color: var(--text-2);
 }
 
+.foot.clickable:hover { background: var(--surface-3); }
+
 .foot-dot {
-  width: 5px;
-  height: 5px;
+  width: 6px;
+  height: 6px;
   border-radius: var(--radius-pill);
   background: var(--text-3);
   flex-shrink: 0;
@@ -178,13 +178,14 @@
 }
 
 .foot-dot.healthy { background: var(--positive); }
-.foot-dot.slow    { background: var(--accent); }
+.foot-dot.slow    { background: var(--gold); }
 .foot-dot.offline { background: var(--negative); }
 
 .foot-latency {
   font-family: var(--font-mono);
   font-size: 10px;
   color: var(--text-3);
+  font-variant-numeric: tabular-nums;
 }
 
 /* ---- Dashboard --------------------------------------------- */
@@ -210,8 +211,8 @@
   gap: var(--sp-2);
   background: var(--surface-1);
   border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
-  padding: 4px 12px 4px 4px;
+  border-radius: var(--radius-md);
+  padding: 4px 10px 4px 4px;
   cursor: pointer;
   min-width: 0;
   transition: background var(--t-base), border-color var(--t-base);
@@ -222,33 +223,27 @@
   border-color: var(--border-strong);
 }
 
-.account-pill-address {
-  font-family: var(--font-mono);
-  font-size: var(--fs-sm);
-  color: var(--text-1);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .account-pill-chevron {
   color: var(--text-3);
   flex-shrink: 0;
 }
 
-/* Balance: the ledger hero. Amount in tabular mono with the raw
-   unit line beneath it — the number IS the interface. */
+/* Balance: the ledger hero. Presented as a bordered readout panel on the
+   recessed surface, the way thru.org frames its TYPE / LANGUAGES values —
+   the number is data in an instrument, not marketing copy. */
 .balance-hero {
   display: flex;
   flex-direction: column;
-  align-items: center;
   gap: var(--sp-1);
-  padding: var(--sp-6) 0 var(--sp-4);
-  text-align: center;
+  padding: var(--sp-4);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  text-align: left;
 }
 
 .balance-hero-label {
-  margin-bottom: var(--sp-1);
+  margin-bottom: 2px;
 }
 
 .balance-hero-row {
@@ -262,8 +257,9 @@
   font-variant-numeric: tabular-nums;
   font-size: var(--fs-display);
   font-weight: 600;
-  letter-spacing: -0.03em;
+  letter-spacing: -0.035em;
   color: var(--text-1);
+  line-height: 1.1;
 }
 
 .balance-hero-unit {
@@ -271,6 +267,30 @@
   font-size: var(--fs-lg);
   font-weight: 500;
   color: var(--text-3);
+}
+
+/* Assets section. These three classes were referenced by both the legacy
+   markup and dashboard.js with no rules at all, so the header and list
+   had no layout whatsoever. */
+.dash-assets-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.dash-assets-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  padding-bottom: var(--sp-1);
+  border-bottom: 1px solid var(--border);
+}
+
+.dash-tokens-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
 }
 
 .action-grid {
@@ -675,15 +695,27 @@
   flex-direction: column;
   align-items: flex-start;
   line-height: 1.2;
+  min-width: 0;
 }
 
 .account-pill-name {
   font-size: var(--fs-sm);
   font-weight: 600;
   color: var(--text-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 130px;
 }
 
+/* Single definition. This selector was previously declared twice with
+   conflicting font-size and color, so the rendered result was an
+   accidental merge of two authors' intentions. */
 .account-pill-address {
+  font-family: var(--font-mono);
   font-size: var(--fs-xs);
   color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

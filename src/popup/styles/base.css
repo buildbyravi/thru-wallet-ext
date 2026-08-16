@@ -23,10 +23,16 @@ body {
 * { scrollbar-width: none; }
 *::-webkit-scrollbar { display: none; }
 
+/* The app is a white working surface inside the pale steel page frame,
+   with a hairline rule on each side — the same framing thru.org uses
+   around its content column. */
 .app {
   display: flex;
   flex-direction: column;
   min-height: var(--popup-min-height);
+  background: var(--surface-1);
+  border-left: 1px solid var(--border);
+  border-right: 1px solid var(--border);
 }
 
 h1 {
@@ -36,11 +42,21 @@ h1 {
   color: var(--text-1);
 }
 
+h2 {
+  font-size: var(--fs-lg);
+  font-weight: 620;
+  letter-spacing: -0.01em;
+  color: var(--text-1);
+}
+
 /* Eyebrow: uppercase micro-label. Used for section headers,
-   field labels, and data captions — the system's structural voice. */
+   field labels, and data captions — the system's structural voice.
+   Monospace here because thru.org sets every micro-label in mono, and
+   that single choice carries most of the technical character. */
 .eyebrow {
+  font-family: var(--font-mono);
   font-size: var(--fs-xs);
-  font-weight: 600;
+  font-weight: 500;
   text-transform: uppercase;
   letter-spacing: var(--eyebrow-tracking);
   color: var(--text-3);
@@ -68,7 +84,16 @@ h1 {
 
 svg { display: block; }
 
-a { color: var(--accent); }
+a {
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px solid var(--accent-border);
+}
+
+a:hover {
+  color: var(--accent-bright);
+  border-bottom-color: var(--accent);
+}
 
 ::selection {
   background: var(--accent);
@@ -77,8 +102,8 @@ a { color: var(--accent); }
 
 :focus-visible {
   outline: 2px solid var(--accent);
-  outline-offset: 2px;
-  border-radius: 2px;
+  outline-offset: 1px;
+  border-radius: 1px;
 }
 
 @media (prefers-reduced-motion: reduce) {

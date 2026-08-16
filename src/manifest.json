@@ -25,6 +25,6 @@
     "default_path": "popup.html"
   },
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'"
+    "extension_pages": "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src https://rpc.alphanet.thru.org https://rpc.devnet.thru.org http://127.0.0.1:* http://localhost:*; frame-src 'none'; form-action 'none'; base-uri 'none'; object-src 'none'"
   }
 }

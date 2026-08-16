@@ -1,7 +1,14 @@
 /* ============================================================
-   Design tokens — derived from thru.org official design system.
-   Palette: Steel, Teal, Brick (#d33c43), Yellow/Gold (#ffad42).
-   Typography: Inter Tight & JetBrains Mono.
+   Design tokens — light theme, matched to the thru.org homepage.
+   
+   The site reads as an instrument panel, not a web app: pale steel
+   chrome, white working surfaces, hairline borders, near-zero radius,
+   monospace micro-labels, and brick red used sparingly as a signal
+   rather than as decoration.
+
+   Only surface/text/border assignments changed from the dark theme.
+   The underlying thru.org colour scales are untouched, so every
+   component keeps referring to the same semantic variables.
    ============================================================ */
 
 :root {
@@ -30,6 +37,7 @@
   --brick-200: #f6acb0;
   --brick-300: #ed787e;
   --brick-400: #d33c43;
+  --brick-500: #a82c33;
 
   --yellow-100: #fdefdd;
   --yellow-200: #fde0ba;
@@ -37,59 +45,78 @@
   --yellow-400: #ffad42;
   --golden: #ffffbd;
 
-  /* ---- Application Surfaces (thru.org Precision Dark Theme) ---- */
-  --bg: #151b1e;
-  --surface-1: #1c2428;
-  --surface-2: #242f35;
-  --surface-3: #2b353b;
+  /* ---- Application surfaces (light instrument panel) ----
+     bg        page / chrome, the pale steel-teal of the site frame
+     surface-1 the white working surface: cards, inputs, rows
+     surface-2 recessed panel: sidebars, grouped list backgrounds
+     surface-3 pressed / hover state on a recessed panel          */
+  --bg: #dfe8ea;
+  --surface-1: #ffffff;
+  --surface-2: #eef3f4;
+  --surface-3: #e2eaec;
+  --surface-inset: #f7f9fa;
 
-  --border: #2d3e3e;
-  --border-strong: #456063;
+  /* Hairlines. The site leans on 1px borders instead of shadows to
+     separate things, which is what gives it the drafting-table feel. */
+  --border: #c8d5d9;
+  --border-strong: #a4b3bc;
+  --border-hairline: #dde5e8;
 
-  /* ---- Color: text ---- */
-  --text-1: #f9fbfb;
-  --text-2: #cdd5db;
-  --text-3: #7e93a0;
+  /* ---- Text ---- */
+  --text-1: #151b1e;
+  --text-2: #43515b;
+  --text-3: #6c8290;
+  --text-inverse: #ffffff;
 
-  /* ---- Color: accent (Thru Signature Red #d33c43) ---- */
+  /* ---- Accent (Thru signature red) ---- */
   --accent: #d33c43;
-  --accent-bright: #ed787e;
+  --accent-bright: #a82c33;
   --accent-ink: #ffffff;
-  --accent-tint: rgba(211, 60, 67, 0.12);
-  --accent-border: rgba(211, 60, 67, 0.4);
+  --accent-tint: #fdf0f1;
+  --accent-border: #f0b8bb;
 
-  /* ---- Color: gold / highlight ---- */
-  --gold: #ffad42;
-  --gold-tint: rgba(255, 173, 66, 0.12);
-  --gold-border: rgba(255, 173, 66, 0.4);
+  /* ---- Ink: the black used for primary CTAs on the site ---- */
+  --ink: #151b1e;
+  --ink-hover: #2b353b;
+  --ink-ink: #ffffff;
 
-  /* ---- Color: semantic ---- */
-  --positive: #239f97;
-  --positive-tint: rgba(35, 159, 151, 0.12);
-  --positive-border: rgba(35, 159, 151, 0.4);
-  --negative: #d33c43;
-  --negative-tint: rgba(211, 60, 67, 0.12);
-  --negative-border: rgba(211, 60, 67, 0.4);
+  /* ---- Gold / highlight ---- */
+  --gold: #b26a00;
+  --gold-tint: #fdf4e6;
+  --gold-border: #f0d5a8;
 
-  /* ---- Color: byte-mark identicon ramp ---- */
-  --mark-0: #1c2428;
-  --mark-1: #456063;
-  --mark-2: #81a7a7;
+  /* ---- Semantic ---- */
+  --positive: #1c7d76;
+  --positive-tint: #e8f5f4;
+  --positive-border: #a8d8d4;
+  --negative: #c0343b;
+  --negative-tint: #fdf0f1;
+  --negative-border: #f0b8bb;
+
+  /* ---- Byte-mark identicon ramp (light) ---- */
+  --mark-0: #e2eaec;
+  --mark-1: #a9c3c5;
+  --mark-2: #5e8787;
   --mark-3: #d33c43;
 
-  /* ---- Typography (thru.org) ---- */
-  --font-ui: 'Inter Tight', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  /* ---- Typography ----
+     Inter Tight and JetBrains Mono are thru.org's faces. They are listed
+     first so they are used when installed locally or once the .woff2
+     files are vendored under src/popup/fonts/ (see popup.html). The
+     fallbacks are the platform equivalents, not generic defaults, so the
+     UI stays close to intent without any network request. */
+  --font-ui: 'Inter Tight', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI Variable Text', 'Segoe UI', Roboto, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Mono', 'SFMono-Regular', Menlo, Consolas, monospace;
 
   --fs-xs: 11px;
   --fs-sm: 12px;
   --fs-md: 13px;
   --fs-lg: 15px;
   --fs-xl: 18px;
+  --fs-2xl: 22px;
   --fs-display: 34px;
 
-  /* Micro-label */
-  --eyebrow-tracking: 0.08em;
+  --eyebrow-tracking: 0.09em;
 
   /* ---- Spacing (4px base) ---- */
   --sp-1: 4px;
@@ -98,19 +125,28 @@
   --sp-4: 16px;
   --sp-5: 20px;
   --sp-6: 24px;
+  --sp-7: 28px;
+  --sp-8: 32px;
 
-  /* ---- Shape ---- */
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 8px;
+  /* ---- Shape. The site is nearly square-cornered; keeping radii
+     small is most of what separates "instrument" from "consumer app". */
+  --radius-sm: 2px;
+  --radius-md: 3px;
+  --radius-lg: 4px;
   --radius-pill: 999px;
+
+  /* ---- Elevation. Used only for things that genuinely float. ---- */
+  --shadow-sheet: 0 -1px 0 var(--border), 0 -12px 32px rgba(21, 27, 30, 0.12);
+  --shadow-pop: 0 1px 2px rgba(21, 27, 30, 0.06), 0 8px 24px rgba(21, 27, 30, 0.1);
+  --overlay-bg: rgba(21, 27, 30, 0.32);
 
   /* ---- Motion ---- */
   --t-fast: 100ms ease-out;
   --t-base: 150ms ease-out;
+  --t-screen: 200ms cubic-bezier(0.2, 0, 0.2, 1);
 
-  /* ---- Popup dimensions ---- */
+  /* ---- Dimensions ---- */
   --popup-width: 408px;
   --popup-min-height: 580px;
+  --topbar-height: 48px;
 }
-

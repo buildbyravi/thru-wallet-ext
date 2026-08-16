@@ -56,14 +56,24 @@ export const icons = {
  * Square = seed-derived (hd), round = imported key.
  */
 export function byteMarkHtml(address, ref, { small = false } = {}) {
-  const src = address || '';
-  let cells = '';
-  for (let i = 0; i < 16; i++) {
-    const code = src.charCodeAt((i * 7 + 3) % src.length || 0) || 0;
-    cells += `<i class="m${code % 4}"></i>`;
-  }
+  const src = String(address || '');
   const classes = ['byte-mark'];
   if (ref && ref.kind !== 'hd') classes.push('imported');
   if (small) classes.push('sm');
+
+  // With an empty or placeholder address every cell used to collapse to m0
+  // (`% src.length` is `% 0` -> NaN -> 0), producing an identical flat block for
+  // every unknown account and quietly destroying the checksum property. Render an
+  // explicitly empty mark instead, so "no address yet" reads as a blank slot rather
+  // than as a real identity.
+  if (src.length < 2) {
+    return `<span class="${classes.join(' ')} empty" aria-hidden="true"></span>`;
+  }
+
+  let cells = '';
+  for (let i = 0; i < 16; i++) {
+    const code = src.charCodeAt((i * 7 + 3) % src.length) || 0;
+    cells += `<i class="m${code % 4}"></i>`;
+  }
   return `<span class="${classes.join(' ')}" aria-hidden="true">${cells}</span>`;
 }

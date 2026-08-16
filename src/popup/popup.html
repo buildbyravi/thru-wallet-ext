@@ -2,11 +2,16 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>Thru Wallet</title>
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="popup.css" />
+  <title>Thru Wallet</title>
+  <!-- No remote stylesheets or fonts. A wallet that fetches a font on every open
+       leaks a usage/timing signal to a third party, and a remote stylesheet can
+       inject CSS over balances and addresses. Removing these is also what allows
+       the strict default-src 'none' CSP in manifest.json.
+       To restore Inter Tight / JetBrains Mono exactly, drop the .woff2 files into
+       src/popup/fonts/, add @font-face rules to styles/base.css, and extend the
+       copy step in build.mjs. Until then the stack in styles/tokens.css falls back
+       to the platform UI and mono faces. -->
+  <link rel="stylesheet" href="popup.css" />
 </head>
 <body>
 <div id="toast-container"></div>

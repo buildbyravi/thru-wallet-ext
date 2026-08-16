@@ -1,6 +1,7 @@
 /* Aggregator only — all styles live in styles/. Order matters:
-   tokens → base → components → screens. */
+   tokens → base → utilities → components → screens. */
 @import "./styles/tokens.css";
 @import "./styles/base.css";
+@import "./styles/utilities.css";
 @import "./styles/components.css";
 @import "./styles/screens.css";

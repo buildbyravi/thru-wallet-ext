@@ -334,7 +334,7 @@ select:focus {
 .deploy-progress-overlay {
   position: absolute;
   inset: 0;
-  background: rgba(11, 13, 14, 0.95);
+  background: rgba(255, 255, 255, 0.94);
   border-radius: var(--radius-lg);
   display: flex;
   flex-direction: column;
@@ -405,7 +405,7 @@ select:focus {
   border: 1px solid var(--accent-border);
   border-radius: var(--radius-lg);
   padding: var(--sp-6);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--shadow-pop);
   position: relative;
   overflow: hidden;
 }
@@ -877,7 +877,7 @@ select:focus {
 .swap-mode-btn.active {
   background: var(--surface-1);
   color: var(--text-1);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 1px 2px rgba(21, 27, 30, 0.08);
 }
 
 .swap-input-box {
@@ -1018,7 +1018,7 @@ select:focus {
 }
 
 .odds-yes {
-  background: rgba(35, 159, 151, 0.3);
+  background: var(--positive-tint);
   color: var(--positive);
   border: 1px solid var(--positive-border);
   border-right: none;
@@ -1028,7 +1028,7 @@ select:focus {
 }
 
 .odds-no {
-  background: rgba(224, 76, 56, 0.25);
+  background: var(--negative-tint);
   color: var(--negative);
   border: 1px solid var(--negative-border);
   border-left: none;

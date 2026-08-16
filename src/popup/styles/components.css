@@ -3,7 +3,10 @@
    should compose from these before inventing new styles.
    ============================================================ */
 
-/* ---- Buttons ---------------------------------------------- */
+/* ---- Buttons ----------------------------------------------
+   thru.org's primary CTA is black-on-white, not red. Red is reserved
+   as a signal colour (accent rules, active states, destructive intent),
+   which is what keeps it meaningful. */
 
 .btn {
   display: flex;
@@ -24,27 +27,58 @@
 }
 
 .btn.primary {
-  background: var(--accent);
-  color: var(--accent-ink);
+  background: var(--ink);
+  color: var(--ink-ink);
+  border-color: var(--ink);
 }
 
-.btn.primary:hover { background: var(--accent-bright); }
+.btn.primary:hover {
+  background: var(--ink-hover);
+  border-color: var(--ink-hover);
+}
 
 .btn.primary:disabled {
-  background: var(--surface-2);
+  background: var(--surface-3);
   color: var(--text-3);
+  border-color: var(--border);
+  cursor: not-allowed;
+}
+
+/* Accent variant for the rare case where the action IS the signal —
+   e.g. confirming a broadcast. Use sparingly. */
+.btn.accent {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent);
+}
+
+.btn.accent:hover {
+  background: var(--accent-bright);
+  border-color: var(--accent-bright);
+}
+
+.btn.accent:disabled {
+  background: var(--surface-3);
+  color: var(--text-3);
+  border-color: var(--border);
   cursor: not-allowed;
 }
 
 .btn.secondary {
   background: var(--surface-1);
   color: var(--text-1);
-  border-color: var(--border);
+  border-color: var(--border-strong);
 }
 
 .btn.secondary:hover {
   background: var(--surface-2);
-  border-color: var(--border-strong);
+  border-color: var(--text-3);
+}
+
+.btn.secondary:disabled {
+  color: var(--text-3);
+  border-color: var(--border);
+  cursor: not-allowed;
 }
 
 .btn.text {
@@ -71,6 +105,17 @@
   color: var(--negative);
 }
 
+/* Size variants — used by desktop.html at 6 sites with no definition. */
+.btn.lg {
+  padding: 14px 20px;
+  font-size: var(--fs-lg);
+}
+
+.btn.sm {
+  padding: 7px 12px;
+  font-size: var(--fs-sm);
+}
+
 /* ---- Icon button ------------------------------------------ */
 
 .icon-btn {
@@ -80,7 +125,7 @@
   width: 32px;
   height: 32px;
   flex-shrink: 0;
-  background: transparent;
+  background: var(--surface-1);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   color: var(--text-2);
@@ -94,9 +139,25 @@
   color: var(--text-1);
 }
 
+.icon-btn.sm {
+  width: 26px;
+  height: 26px;
+}
+
+.icon-btn-ghost {
+  background: transparent;
+  border-color: transparent;
+}
+
+.icon-btn-ghost:hover {
+  background: var(--surface-3);
+  border-color: var(--border);
+}
+
 .icon-btn.copied {
   border-color: var(--positive-border);
   color: var(--positive);
+  background: var(--positive-tint);
 }
 
 .icon-btn.danger-hover:hover {
@@ -137,17 +198,25 @@
 }
 
 .field > span {
+  font-family: var(--font-mono);
   font-size: var(--fs-xs);
-  font-weight: 600;
+  font-weight: 500;
   text-transform: uppercase;
   letter-spacing: var(--eyebrow-tracking);
   color: var(--text-3);
 }
 
+/* Inputs sit on a faintly recessed surface with a hairline border, the
+   way the site's code and value boxes read. Focus moves the border to
+   ink rather than accent: red then stays reserved for error and signal. */
 input[type="password"],
 input[type="text"],
+input[type="number"],
+input[type="url"],
+input[type="search"],
+input[type="email"],
 textarea {
-  background: var(--surface-1);
+  background: var(--surface-inset);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   padding: 11px 13px;
@@ -168,7 +237,14 @@ textarea:hover:not(:focus) { border-color: var(--border-strong); }
 input:focus,
 textarea:focus {
   outline: none;
-  border-color: var(--accent);
+  border-color: var(--ink);
+  background: var(--surface-1);
+}
+
+input[aria-invalid="true"],
+textarea[aria-invalid="true"] {
+  border-color: var(--negative-border);
+  background: var(--negative-tint);
 }
 
 .textarea-lg {
@@ -199,14 +275,15 @@ textarea:focus {
   background: var(--negative-tint);
   color: var(--negative);
   border: 1px solid var(--negative-border);
+  border-left: 2px solid var(--negative);
   border-radius: var(--radius-md);
-  padding: 11px 13px;
+  padding: 10px 12px;
   font-size: var(--fs-sm);
   line-height: 1.5;
 }
 
 .notice {
-  background: var(--surface-1);
+  background: var(--surface-2);
   border: 1px solid var(--border);
   border-left: 2px solid var(--accent);
   border-radius: var(--radius-md);
@@ -215,6 +292,9 @@ textarea:focus {
   flex-direction: column;
   gap: var(--sp-3);
 }
+
+.notice.warning { border-left-color: var(--gold); background: var(--gold-tint); }
+.notice.danger { border-left-color: var(--negative); background: var(--negative-tint); }
 
 .divider {
   border: none;
@@ -226,7 +306,7 @@ textarea:focus {
 
 .monospace-block {
   font-family: var(--font-mono);
-  background: var(--surface-1);
+  background: var(--surface-inset);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   padding: var(--sp-4);
@@ -309,7 +389,7 @@ textarea:focus {
   width: 28px;
   height: 28px;
   padding: 3px;
-  background: var(--bg);
+  background: var(--surface-inset);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
   flex-shrink: 0;
@@ -317,6 +397,13 @@ textarea:focus {
 }
 
 .byte-mark.imported { border-radius: var(--radius-pill); }
+
+/* No address yet. Reads as a blank slot rather than a real identity. */
+.byte-mark.empty {
+  background: var(--surface-3);
+  border-style: dashed;
+  border-color: var(--border);
+}
 
 .byte-mark i {
   border-radius: 1px;
@@ -333,7 +420,10 @@ textarea:focus {
   padding: 2px;
 }
 
-/* ---- List rows (accounts, history, future assets) ---------- */
+/* ---- List rows (accounts, history, future assets) ----------
+   Rows read as cells in an instrument readout: square-ish, hairline
+   bordered, with the active state marked by a solid accent rule on the
+   leading edge rather than a tinted fill. */
 
 .row {
   display: flex;
@@ -345,7 +435,7 @@ textarea:focus {
   border-radius: var(--radius-md);
   padding: var(--sp-3) var(--sp-4);
   text-align: left;
-  transition: background var(--t-base), border-color var(--t-base);
+  transition: background var(--t-base), border-color var(--t-base), box-shadow var(--t-base);
 }
 
 button.row { cursor: pointer; }
@@ -370,8 +460,9 @@ button.row { cursor: pointer; }
 }
 
 .row.active {
-  border-color: var(--accent-border);
-  background: var(--accent-tint);
+  border-color: var(--border-strong);
+  background: var(--surface-1);
+  box-shadow: inset 2px 0 0 var(--accent);
 }
 
 .row-body {
@@ -387,6 +478,9 @@ button.row { cursor: pointer; }
   font-weight: 600;
   color: var(--text-1);
   line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .row-sub {
@@ -398,6 +492,17 @@ button.row { cursor: pointer; }
   white-space: nowrap;
 }
 
+.row-value {
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-1);
+  flex-shrink: 0;
+  text-align: right;
+}
+
+.row-value.stale { color: var(--text-3); }
+
 .row-glyph {
   display: flex;
   align-items: center;
@@ -405,7 +510,7 @@ button.row { cursor: pointer; }
   width: 30px;
   height: 30px;
   flex-shrink: 0;
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   background: var(--surface-2);
   color: var(--text-2);
@@ -415,11 +520,42 @@ button.row { cursor: pointer; }
 .row-glyph.received,
 .row-glyph.faucet    { color: var(--positive); border-color: var(--positive-border); background: var(--positive-tint); }
 .row-glyph.failed    { color: var(--negative); border-color: var(--negative-border); background: var(--negative-tint); }
+.row-glyph.pending   { color: var(--gold); border-color: var(--gold-border); background: var(--gold-tint); }
 
 .list {
   display: flex;
   flex-direction: column;
   gap: var(--sp-2);
+}
+
+/* Grouped list: a keyring section, the way Rabby groups addresses by
+   their source. Header is a mono micro-label on a recessed strip. */
+.list-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.list-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: var(--eyebrow-tracking);
+  color: var(--text-2);
+}
+
+.list-group-count {
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
 }
 
 /* ---- Accounts search & rename (v1.2) ----------------------- */
@@ -443,7 +579,7 @@ button.row { cursor: pointer; }
 .search-box input {
   width: 100%;
   padding-left: 36px;
-  background: var(--surface-1);
+  background: var(--surface-inset);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   color: var(--text-1);
@@ -451,8 +587,8 @@ button.row { cursor: pointer; }
 }
 
 .search-box input:focus {
-  border-color: var(--accent-border);
-  background: var(--surface-2);
+  border-color: var(--ink);
+  background: var(--surface-1);
 }
 
 .row-rename-btn {
@@ -634,6 +770,7 @@ button.row { cursor: pointer; }
 .icon-btn.copied {
   border-color: var(--positive-border);
   color: var(--positive);
+  background: var(--positive-tint);
   animation: copy-pulse 1s ease-out;
 }
 
@@ -736,7 +873,7 @@ button.row { cursor: pointer; }
 .drawer-backdrop {
   position: absolute;
   inset: 0;
-  background: rgba(11, 14, 16, 0.72);
+  background: var(--overlay-bg);
   backdrop-filter: blur(2px);
   opacity: 0;
   transition: opacity 180ms cubic-bezier(0.16, 1, 0.3, 1);
@@ -750,12 +887,12 @@ button.row { cursor: pointer; }
   position: relative;
   z-index: 1001;
   background: var(--surface-1);
-  border-top: 1px solid var(--border-strong);
-  border-radius: 16px 16px 0 0;
+  border-top: 2px solid var(--ink);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   max-height: 85vh;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.6);
+  box-shadow: var(--shadow-sheet);
   transform: translateY(100%);
   transition: transform 180ms cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -766,8 +903,8 @@ button.row { cursor: pointer; }
 
 .drawer-handle-bar {
   width: 36px;
-  height: 4px;
-  background: var(--steel-600);
+  height: 3px;
+  background: var(--border-strong);
   border-radius: 2px;
   margin: 10px auto 4px;
 }
@@ -975,10 +1112,29 @@ button.row { cursor: pointer; }
 .tag-native {
   font-size: 10px;
   padding: 1px 5px;
-  background: rgba(35, 159, 151, 0.15);
+  background: var(--positive-tint);
   color: var(--positive);
-  border-radius: 4px;
+  border: 1px solid var(--positive-border);
+  border-radius: var(--radius-sm);
   font-weight: 600;
+}
+
+/* Accent tag — used by the recipient badge and the network switcher at
+   3 sites. Previously defined only in desktop.css, so it rendered
+   completely unstyled in the popup. */
+.tag-accent {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 1px 5px;
+  background: var(--accent-tint);
+  color: var(--accent);
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-sm);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 /* ---- Token List Rows ---- */
@@ -1222,8 +1378,8 @@ button.row { cursor: pointer; }
 }
 
 .tx-risk-box.warning {
-  background: rgba(255, 173, 66, 0.12);
-  border: 1px solid rgba(255, 173, 66, 0.4);
+  background: var(--gold-tint);
+  border: 1px solid var(--gold-border);
   color: var(--text-2);
 }
 
