@@ -335,4 +335,61 @@ try {
 }
 assert(lastKeyringProtected, 'the last remaining keyring cannot be removed');
 
+console.log('\n[17] Per-account private key export, including seed-derived accounts');
+await vault.resetWallet();
+await vault.createVault('perkey password');
+const pkRingId = (await vault.listKeyrings())[0].id;
+await vault.addHdAccounts(pkRingId, [1, 2]);
+const pkAccounts = await vault.listAccounts();
+assert(pkAccounts.length === 3, 'three HD accounts exist');
+
+const key0 = await vault.exportAccountPrivateKey(pkAccounts[0].ref, 'perkey password');
+assert(key0.kind === 'privateKey', 'export returns kind privateKey');
+assert(/^[0-9a-f]{64}$/.test(key0.privateKeyHex), 'a private key is 64 lowercase hex characters');
+assert(key0.derivedFrom === 'seed', 'a seed-derived key reports derivedFrom: seed');
+assert(key0.address === pkAccounts[0].address, 'the export reports the address it belongs to');
+
+const key1 = await vault.exportAccountPrivateKey(pkAccounts[1].ref, 'perkey password');
+assert(key1.privateKeyHex !== key0.privateKeyHex, 'each derived account has its own distinct key');
+
+// THE critical check: the exported key must actually control the address it claims to.
+// If this were ever wrong, someone would import the key expecting those funds and find an
+// empty account — with no way to tell which key was correct.
+const derivedFromKey0 = await keys.fromPrivateKey(Buffer.from(key0.privateKeyHex, 'hex'));
+const { Pubkey } = await import('@thru/sdk');
+assert(
+  Pubkey.from(derivedFromKey0).toThruFmt() === pkAccounts[0].address,
+  'the exported key really derives the account address it was exported for',
+);
+const derivedFromKey1 = await keys.fromPrivateKey(Buffer.from(key1.privateKeyHex, 'hex'));
+assert(
+  Pubkey.from(derivedFromKey1).toThruFmt() === pkAccounts[1].address,
+  'the same holds for a non-zero derivation index',
+);
+
+// A phrase export and a key export must not be confused for one another.
+const phraseExport = await vault.exportAccountSecret(pkAccounts[0].ref, 'perkey password');
+assert(phraseExport.kind === 'hd' && Boolean(phraseExport.mnemonic), 'exportAccountSecret still returns the phrase for a seed account');
+assert(!('mnemonic' in key0), 'a private-key export never includes the recovery phrase');
+
+let pkWrongPw = false;
+try {
+  await vault.exportAccountPrivateKey(pkAccounts[0].ref, 'wrong password');
+} catch {
+  pkWrongPw = true;
+}
+assert(pkWrongPw, 'exportAccountPrivateKey refuses a wrong password');
+
+// An imported key exports itself and is labelled as such.
+const standalone = await keys.generateKeyPair();
+const standaloneHex = Buffer.from(standalone.privateKey).toString('hex');
+await vault.addPrivateKeyKeyring(standaloneHex, 'perkey password', 'Standalone');
+const importedRef = (await vault.getActiveAccount()).ref;
+const importedKey = await vault.exportAccountPrivateKey(importedRef, 'perkey password');
+assert(importedKey.derivedFrom === 'import', 'an imported key reports derivedFrom: import');
+assert(
+  importedKey.privateKeyHex.toLowerCase() === standaloneHex.toLowerCase(),
+  'an imported key exports byte-for-byte what was imported',
+);
+
 console.log('\nAll vault.js integration checks passed.');

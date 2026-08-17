@@ -111,6 +111,14 @@ export const METHODS = {
     auth: 'password',
     since: 1,
   },
+  'wallet.exportPrivateKey': {
+    params: ['ref', 'password'],
+    returns: "{ kind: 'privateKey', privateKeyHex, address, derivedFrom } — ONE account's key, "
+      + 'including a seed-derived one. Discloses far less than exportSecret, which returns the '
+      + 'whole phrase.',
+    auth: 'password',
+    since: 4,
+  },
   'wallet.verifyPassword': {
     params: ['password'],
     returns: 'true, or throws — used to gate sensitive UI transitions',

@@ -186,12 +186,32 @@ export function AccountDetailRoute({ params, navigate, back }) {
     }
 
     // ---- Export: the feature that had no click path ----
-    actions.push(track(Button({
-      label: isSeed ? 'Export recovery phrase' : 'Export private key',
-      variant: 'secondary',
-      iconName: 'key',
-      onClick: () => navigate(`/export?ref=${encodeRef(account.ref)}`),
-    })).el);
+    // A seed-derived account gets BOTH options, because they disclose very different
+    // amounts. The phrase controls every address it can ever derive; this address's private
+    // key controls one. Offering only the phrase would force the greater disclosure on
+    // someone who needs the lesser one.
+    if (isSeed) {
+      actions.push(track(Button({
+        label: 'Export this account\u2019s private key',
+        variant: 'secondary',
+        iconName: 'key',
+        onClick: () => navigate(`/export?ref=${encodeRef(account.ref)}&mode=key`),
+      })).el);
+
+      actions.push(track(Button({
+        label: 'Export recovery phrase (all accounts)',
+        variant: 'secondary',
+        iconName: 'shield',
+        onClick: () => navigate(`/export?ref=${encodeRef(account.ref)}`),
+      })).el);
+    } else {
+      actions.push(track(Button({
+        label: 'Export private key',
+        variant: 'secondary',
+        iconName: 'key',
+        onClick: () => navigate(`/export?ref=${encodeRef(account.ref)}`),
+      })).el);
+    }
 
     if (isSeed && keyring?.origin === 'generated' && !keyring?.backedUpAt) {
       actions.push(track(Button({

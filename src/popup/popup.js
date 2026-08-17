@@ -271,10 +271,30 @@ async function init() {
     // Swap which tree is visible. Both must never be shown at once, and the legacy tree
     // must be un-hidden before show() runs on it — otherwise an unmigrated route renders
     // into a hidden container and the user sees a blank panel.
+    //
+    // Falling back must also HYDRATE the legacy screen, not merely reveal it. show() only
+    // toggles .hidden; the data comes from a per-screen loader. Calling show('dashboard')
+    // directly is why the pill read "Account —" and the balance read "— THRU": init()
+    // returned early into the new stack, so `activeAccount` was never set and
+    // refreshActiveAccountAndBalance() never ran.
+    const LEGACY_LOADERS = {
+      dashboard: () => loadDashboard(),
+      accounts: () => renderAccountsList(''),
+    };
+
     const showLegacy = (screenId) => {
       nextRoot?.classList.add('hidden');
       legacyRoot?.classList.remove('hidden');
-      show(screenId);
+      const loader = LEGACY_LOADERS[screenId];
+      if (loader) {
+        // The loader calls show() itself, then populates.
+        Promise.resolve(loader()).catch((error) => {
+          console.error(`[popup] legacy loader for '${screenId}' failed:`, error);
+          show(screenId);
+        });
+      } else {
+        show(screenId);
+      }
     };
 
     const mounted = await bootNextUi({
@@ -358,8 +378,14 @@ async function refreshActiveAccountAndBalance() {
   activeAccount = await bridge.send('account.getActive');
   if (!activeAccount) return;
   walletStore.setState({ activeAccount, isUnlocked: true });
-  document.getElementById('dash-account-mark').innerHTML = byteMarkHtml(activeAccount.address, activeAccount.ref);
-  document.getElementById('dash-account-address').textContent = truncateAddress(activeAccount.address);
+  const markEl = document.getElementById('dash-account-mark');
+  if (markEl) markEl.innerHTML = byteMarkHtml(activeAccount.address, activeAccount.ref);
+  // The name was never populated here, so even after the missing element was added the pill
+  // still showed only a truncated address.
+  const nameEl = document.getElementById('dash-account-name');
+  if (nameEl) nameEl.textContent = activeAccount.label || 'Account';
+  const addrEl = document.getElementById('dash-account-address');
+  if (addrEl) addrEl.textContent = truncateAddress(activeAccount.address);
   await refreshBalance();
 }
 

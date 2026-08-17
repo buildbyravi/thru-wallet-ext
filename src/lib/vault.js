@@ -701,3 +701,37 @@ export async function exportAccountSecret(ref, password) {
   if (ring.type === 'seed') return { kind: 'hd', mnemonic: ring.mnemonic, keyringId: ring.id };
   return { kind: 'imported', privateKeyHex: ring.privateKeyHex, keyringId: ring.id };
 }
+
+/**
+ * Export the private key of ONE account, including a seed-derived one.
+ *
+ * Distinct from exportAccountSecret on purpose. For a seed account that returns the whole
+ * recovery phrase, which controls every address the phrase can ever derive. A single
+ * address's private key is a far smaller thing to hand over — it is what you give to a tool
+ * that needs one account, and losing it does not lose the rest of the wallet.
+ *
+ * Presenting both as one "export" would be a security mistake: the user cannot choose the
+ * lesser disclosure if the UI only offers the greater one.
+ *
+ * @param {Object} ref
+ * @param {string} password
+ * @returns {Promise<{ kind: 'privateKey', privateKeyHex: string, address: string, derivedFrom: string }>}
+ */
+export async function exportAccountPrivateKey(ref, password) {
+  const vaultData = await verifyPassword(password);
+  if (!isV2(vaultData)) throw new Error('Wallet migration is required before exporting a secret.');
+  const normalized = normalizeRef(ref, vaultData);
+  const ring = getKeyring(vaultData, normalized.keyringId);
+
+  const account = await resolveAccount(normalized);
+  if (!account?.privateKey) throw new Error('Could not derive a private key for that account.');
+
+  return {
+    kind: 'privateKey',
+    privateKeyHex: bytesToHex(account.privateKey),
+    address: account.address,
+    // Tells the UI whether this key is one of many from a phrase, so it can warn accordingly.
+    derivedFrom: ring.type === 'seed' ? 'seed' : 'import',
+    keyringId: ring.id,
+  };
+}

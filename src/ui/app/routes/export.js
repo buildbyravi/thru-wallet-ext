@@ -32,6 +32,9 @@ export function ExportRoute({ params, navigate, back }) {
   const d = disposer();
   const ref = decodeRef(params.ref);
   const isBackupFlow = params.mode === 'backup';
+  // 'key' exports only THIS account's private key. 'phrase' exports the whole recovery
+  // phrase. Two different amounts of disclosure, so they are two different requests.
+  const wantsKeyOnly = params.mode === 'key';
 
   /** The only copy of the secret. Never leaves this closure. */
   let secret = null;
@@ -42,7 +45,7 @@ export function ExportRoute({ params, navigate, back }) {
   const banner = Banner({ tone: 'error' });
   const body = h('div', { class: 'stack stack-4' });
   const header = PageHeader({
-    title: isBackupFlow ? 'Back up phrase' : 'Export secret',
+    title: isBackupFlow ? 'Back up phrase' : wantsKeyOnly ? 'Export private key' : 'Export secret',
     onBack: () => back(),
   });
   const el = h('section', { class: 'screen' }, [header.el, banner.el, body]);
@@ -86,9 +89,11 @@ export function ExportRoute({ params, navigate, back }) {
         h('strong', { text: 'Anyone with this can take your funds' }),
       ]),
       h('ul', { class: 'warn-list' }, [
+        h('li', { text: wantsKeyOnly
+          ? 'This key controls this one address only — not your whole wallet.'
+          : 'This phrase controls EVERY account derived from it.' }),
         h('li', { text: 'Never type it into a website, form, or support chat.' }),
         h('li', { text: 'Never photograph it or store it in a password manager note.' }),
-        h('li', { text: 'Write it on paper and keep it offline.' }),
         h('li', { text: 'Thru staff will never ask for it.' }),
       ]),
     ]);
@@ -105,7 +110,10 @@ export function ExportRoute({ params, navigate, back }) {
           confirmLabel: 'Reveal secret',
           // The password goes straight into this one call and is discarded. The returned
           // secret never touches the URL, the store, or a data attribute.
-          verify: (password) => bridge.send('wallet.exportSecret', { ref, password }),
+          verify: (password) => bridge.send(
+            wantsKeyOnly ? 'wallet.exportPrivateKey' : 'wallet.exportSecret',
+            { ref, password },
+          ),
         });
         if (!result) return;
         secret = result;
@@ -122,12 +130,21 @@ export function ExportRoute({ params, navigate, back }) {
   function renderSecret() {
     clearBody();
 
-    const isMnemonic = secret.kind === 'hd' && secret.mnemonic;
+    // 'hd' carries a mnemonic; 'privateKey' and 'imported' carry a hex key.
+    const isMnemonic = secret.kind === 'hd' && Boolean(secret.mnemonic);
     const value = isMnemonic ? secret.mnemonic : secret.privateKeyHex;
 
+    if (!value) {
+      banner.set('The wallet returned no secret for that account.');
+      return;
+    }
+
     body.appendChild(h('p', { class: 'hint', text: isMnemonic
-      ? 'These 12 words restore every account derived from this phrase. Order matters.'
-      : 'This key controls exactly one address.' }));
+      ? 'These words restore every account derived from this phrase. Order matters.'
+      : secret.derivedFrom === 'seed'
+        ? 'This key controls only this address. Your recovery phrase still controls it and '
+          + 'every other address derived from the same phrase.'
+        : 'This key controls exactly one address.' }));
 
     let valueNode;
     if (isMnemonic) {

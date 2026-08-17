@@ -94,6 +94,7 @@ const handlers = Object.assign(Object.create(null), {
   'wallet.reset': () => walletService.resetWallet(),
   'wallet.hasSeed': () => walletService.hasSeed(),
   'wallet.exportSecret': ({ ref, password }) => walletService.exportSecret(ref, password),
+  'wallet.exportPrivateKey': ({ ref, password }) => walletService.exportPrivateKey(ref, password),
   'wallet.verifyPassword': ({ password }) => walletService.verifyPassword(password),
   'wallet.getLockoutState': () => walletService.getLockoutState(),
   'wallet.removeLegacyBackup': ({ password }) => walletService.removeLegacyBackup(password),

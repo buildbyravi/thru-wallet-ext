@@ -146,10 +146,23 @@ export async function hasSeed() {
 }
 
 /**
- * Re-authenticate with password and export the secret for a given account ref.
+ * Export the seed phrase or imported key backing an account.
  * @param {Object} ref
  * @param {string} password
  */
 export async function exportSecret(ref, password) {
   return vault.exportAccountSecret(ref, password);
+}
+
+/**
+ * Export ONE account's private key, including a seed-derived account.
+ *
+ * Kept separate from exportSecret because the two disclose very different amounts: a phrase
+ * controls every address it can derive, a private key controls exactly one.
+ *
+ * @param {Object} ref
+ * @param {string} password
+ */
+export async function exportPrivateKey(ref, password) {
+  return vault.exportAccountPrivateKey(ref, password);
 }
