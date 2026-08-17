@@ -177,6 +177,44 @@ export function listHandlerNames() {
   return Object.keys(handlers);
 }
 
+/**
+ * Find the first value in a response that the message port cannot carry.
+ *
+ * chrome.runtime.sendMessage serializes with JSON and reports ANY failure as the single
+ * opaque string "Could not serialize message." with no indication of which method or which
+ * field caused it. That message cost real debugging time twice, so the router now names the
+ * offender itself.
+ *
+ * Returns a path description, or null when the value is safe.
+ */
+function findUnserializable(value, path = 'data', depth = 0) {
+  if (depth > 12) return null;
+  const t = typeof value;
+  if (t === 'bigint') return `${path} is a BigInt (${value}n) — convert with .toString()`;
+  if (t === 'function') return `${path} is a function`;
+  if (t === 'symbol') return `${path} is a symbol`;
+  if (value === null || t === 'undefined' || t !== 'object') return null;
+  if (value instanceof Date) return null;
+  if (ArrayBuffer.isView(value) || value instanceof ArrayBuffer) {
+    return `${path} is binary (${value.constructor?.name}) — send hex or base64 instead`;
+  }
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i += 1) {
+      const hit = findUnserializable(value[i], `${path}[${i}]`, depth + 1);
+      if (hit) return hit;
+    }
+    return null;
+  }
+  if (value instanceof Map || value instanceof Set) {
+    return `${path} is a ${value.constructor.name} — send a plain object or array`;
+  }
+  for (const [k, v] of Object.entries(value)) {
+    const hit = findUnserializable(v, `${path}.${k}`, depth + 1);
+    if (hit) return hit;
+  }
+  return null;
+}
+
 function fail(code, message, retryable = false) {
   return { ok: false, error: { code, message, retryable } };
 }
@@ -233,7 +271,23 @@ export async function handleApiRequest(request) {
     // Stamp only after a successful call so a locked-out unlock attempt cannot be used to
     // keep a session alive indefinitely.
     await systemService.touchActivity();
-    return { ok: true, data: data === undefined ? null : data };
+
+    const payload = data === undefined ? null : data;
+
+    // Catch the unserializable BEFORE the port does, so the caller gets a message naming the
+    // method and the field instead of Chrome's bare "Could not serialize message."
+    try {
+      JSON.stringify(payload);
+    } catch {
+      const offender = findUnserializable(payload) || 'an unknown value';
+      console.error(`[api-router] ${method} returned an unserializable payload: ${offender}`);
+      return fail(
+        'UNSERIALIZABLE_RESPONSE',
+        `${method} returned data that cannot cross the message port: ${offender}`,
+      );
+    }
+
+    return { ok: true, data: payload };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error || 'Internal error.');
     const code = error?.code || 'METHOD_ERROR';

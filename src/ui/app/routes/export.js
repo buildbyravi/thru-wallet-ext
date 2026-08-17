@@ -37,8 +37,6 @@ export function ExportRoute({ params, navigate, back }) {
   let secret = null;
   let grid = null;
   let challenge = null;
-  let revealToggle = null;
-  let challengeNotice = null;
   const owned = [];
 
   const banner = Banner({ tone: 'error' });
@@ -133,30 +131,31 @@ export function ExportRoute({ params, navigate, back }) {
 
     let valueNode;
     if (isMnemonic) {
-      grid = SeedPhraseGrid({ phrase: value, revealed: false });
+      // Revealed straight away on this step. The point of this page is to let the user READ
+      // and write the phrase down; making them tap through a blur first adds nothing, because
+      // reaching here already required the password.
+      grid = SeedPhraseGrid({ phrase: value, revealed: true });
       valueNode = grid.el;
     } else {
-      // Blurred until requested, so the key is not exposed by simply landing here.
-      valueNode = h('div', { class: 'monospace-block blurred', text: value });
+      valueNode = h('div', { class: 'monospace-block', text: value });
     }
     body.appendChild(valueNode);
 
-    const toggleBtn = Button({
-      label: 'Tap to reveal',
+    const hideBtn = Button({
+      label: 'Hide',
       variant: 'secondary',
-      iconName: 'eye',
+      iconName: 'eyeOff',
       onClick: () => {
         const nowVisible = grid
           ? grid.toggle()
           : (valueNode.classList.toggle('blurred'), !valueNode.classList.contains('blurred'));
-        toggleBtn.update({
-          label: nowVisible ? 'Hide' : 'Tap to reveal',
+        hideBtn.update({
+          label: nowVisible ? 'Hide' : 'Reveal',
           iconName: nowVisible ? 'eyeOff' : 'eye',
         });
       },
     });
-    owned.push(toggleBtn);
-    revealToggle = toggleBtn;
+    owned.push(hideBtn);
 
     const copyBtn = CopyButton({
       getValue: () => value,
@@ -166,21 +165,25 @@ export function ExportRoute({ params, navigate, back }) {
     owned.push(copyBtn);
 
     body.appendChild(h('div', { class: 'row-flex' }, [
-      toggleBtn.el,
+      hideBtn.el,
       h('span', { class: 'grow' }),
       copyBtn.el,
     ]));
-
-    // Shown only once the challenge starts, to explain why reveal is now disabled.
-    challengeNotice = h('p', { class: ['hint', 'hidden'], text:
-      'The phrase is hidden while you confirm it. Use your written copy to answer.' });
-    body.appendChild(challengeNotice);
 
     body.appendChild(h('p', { class: 'hint', text:
       'Clipboard contents can be read by other applications. Clear it when you are done.' }));
 
     if (isBackupFlow && isMnemonic) {
-      renderChallenge(value);
+      // A SEPARATE step, not a section below the phrase. Testing showed the challenge
+      // rendered under a visible grid, so the answers could simply be read off the screen and
+      // the confirmation proved nothing.
+      const nextBtn = Button({
+        label: "I've written it down",
+        variant: 'primary',
+        onClick: () => renderChallengeStep(value),
+      });
+      owned.push(nextBtn);
+      body.appendChild(h('div', { class: 'screen-actions' }, nextBtn.el));
     } else {
       const doneBtn = Button({
         label: 'Done',
@@ -196,20 +199,17 @@ export function ExportRoute({ params, navigate, back }) {
   }
 
   // ---- Step 3 (backup flow only): prove it was recorded ----------------------
-  function renderChallenge(phrase) {
-    // The phrase MUST be off screen while the challenge is answered. Leaving it visible
-    // makes the confirmation meaningless — the user just reads the answers off the grid
-    // above, and the whole point is to prove the words were recorded somewhere else.
-    grid?.hide();
-    if (revealToggle) {
-      revealToggle.update({ label: 'Tap to reveal', iconName: 'eye', disabled: true });
-    }
-    if (challengeNotice) challengeNotice.classList.remove('hidden');
+  function renderChallengeStep(phrase) {
+    // Full page replace. The phrase is destroyed from the DOM here rather than merely blurred,
+    // so it cannot be recovered by removing a class in devtools while answering.
+    clearBody();
+    header.setTitle('Confirm backup');
 
     const confirmBtn = Button({
       label: 'Confirm backup',
       variant: 'primary',
       disabled: true,
+      busyLabel: 'Saving…',
       onClick: async () => {
         try {
           const keyringId = secret?.keyringId || ref.keyringId;
@@ -229,10 +229,23 @@ export function ExportRoute({ params, navigate, back }) {
       onChange: (allCorrect) => confirmBtn.update({ disabled: !allCorrect }),
     });
 
-    body.appendChild(h('div', { class: 'hr' }));
-    body.appendChild(h('p', { class: 'eyebrow', text: 'Confirm you wrote it down' }));
+    const backBtn = Button({
+      label: 'Show the phrase again',
+      variant: 'text',
+      onClick: () => {
+        challenge?.destroy();
+        challenge = null;
+        header.setTitle('Back up phrase');
+        renderSecret();
+      },
+    });
+    owned.push(backBtn);
+
+    body.appendChild(h('p', { class: 'muted', text:
+      'Using your written copy, pick the correct word for each position. The phrase is not '
+      + 'shown on this step.' }));
     body.appendChild(challenge.el);
-    body.appendChild(h('div', { class: 'screen-actions' }, confirmBtn.el));
+    body.appendChild(h('div', { class: 'screen-actions' }, [confirmBtn.el, backBtn.el]));
   }
 
   renderGate();

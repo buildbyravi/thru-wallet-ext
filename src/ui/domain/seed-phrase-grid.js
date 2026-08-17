@@ -56,12 +56,20 @@ export function SeedPhraseGrid({ phrase = '', revealed = false } = {}) {
 }
 
 /**
- * Backup confirmation challenge: pick the right word for N random positions.
+ * Backup confirmation challenge: pick the correct word for N specific positions.
  *
- * Rabby confirms a phrase by asking the user to re-enter it. A multiple-choice challenge
- * proves the same thing (the phrase was actually recorded) without requiring the user to
- * type 12 words into a field that could be logged or autofilled, and without a second
- * input that has to be hardened against spellcheck.
+ * Rabby confirms a phrase by asking the user to re-type it. Multiple choice proves the same
+ * thing without a second input that would have to be hardened against spellcheck, autofill
+ * and logging.
+ *
+ * Rewritten after testing showed two defects in the first version:
+ *
+ *   - Positions were drawn with rejection sampling from the whole phrase, which could cluster
+ *     (0,1,2) and made the "Word N" labels look like question numbers rather than positions.
+ *     Positions are now taken one per evenly-sized bucket, so they are always spread out and
+ *     the label unambiguously means "the Nth word of your phrase".
+ *   - A duplicated word in the phrase made a pick ambiguous. Options are now deduplicated and
+ *     drawn from the wordlist of OTHER positions, so exactly one option is correct.
  *
  * @param {Object} props
  *   phrase     the mnemonic to verify against
@@ -71,57 +79,78 @@ export function SeedPhraseGrid({ phrase = '', revealed = false } = {}) {
 export function SeedPhraseChallenge({ phrase = '', rounds = 3, onChange } = {}) {
   const d = disposer();
   const words = String(phrase || '').trim().split(/\s+/).filter(Boolean);
+  const total = words.length;
+  const asked = Math.max(1, Math.min(rounds, total));
 
-  // Deterministic-per-mount but unpredictable positions, so a user cannot learn "it always
-  // asks for word 4".
+  // One position per bucket, so questions are spread across the phrase instead of clustering.
   const positions = [];
-  while (positions.length < Math.min(rounds, words.length)) {
-    const candidate = Math.floor(Math.random() * words.length);
-    if (!positions.includes(candidate)) positions.push(candidate);
+  const bucket = total / asked;
+  for (let i = 0; i < asked; i += 1) {
+    const lo = Math.floor(i * bucket);
+    const hi = Math.max(lo, Math.floor((i + 1) * bucket) - 1);
+    positions.push(lo + Math.floor(Math.random() * (hi - lo + 1)));
   }
-  positions.sort((a, b) => a - b);
 
   const answers = new Map();
+  let allCorrect = false;
 
   function report() {
-    const allCorrect = positions.every((pos) => answers.get(pos) === words[pos]);
+    allCorrect = positions.every((pos) => answers.get(pos) === words[pos]);
     onChange?.(allCorrect);
   }
 
   const questions = positions.map((pos) => {
-    // Three decoys drawn from the phrase itself, so a wrong pick is plausible and the
-    // challenge cannot be passed by recognising an obviously foreign word.
-    const decoys = new Set([words[pos]]);
-    while (decoys.size < 4 && decoys.size < words.length) {
-      decoys.add(words[Math.floor(Math.random() * words.length)]);
+    const correct = words[pos];
+
+    // Decoys come from other positions and must differ from the correct word, so exactly one
+    // option can be right even when the phrase repeats a word.
+    const pool = words.filter((w, i) => i !== pos && w !== correct);
+    const decoys = new Set();
+    let guard = 0;
+    while (decoys.size < 3 && pool.length && guard < 200) {
+      decoys.add(pool[Math.floor(Math.random() * pool.length)]);
+      guard += 1;
     }
-    const options = [...decoys].sort(() => Math.random() - 0.5);
+
+    const options = [correct, ...decoys].sort(() => Math.random() - 0.5);
 
     const optionEls = options.map((word) => {
       const btn = h('button', {
         type: 'button',
         class: 'chip-option',
         text: word,
+        'aria-label': `Word ${pos + 1}: ${word}`,
       });
       d.on(btn, 'click', () => {
         answers.set(pos, word);
-        for (const sibling of optionEls) sibling.classList.remove('selected');
+        for (const sibling of optionEls) {
+          sibling.classList.remove('selected');
+          sibling.setAttribute('aria-pressed', 'false');
+        }
         btn.classList.add('selected');
+        btn.setAttribute('aria-pressed', 'true');
         report();
       });
       return btn;
     });
 
     return h('div', { class: 'challenge-row' }, [
-      h('span', { class: 'eyebrow', text: `Word ${pos + 1}` }),
+      h('span', { class: 'eyebrow', text: `Word #${pos + 1} of your phrase` }),
       h('div', { class: 'row-flex wrap' }, optionEls),
     ]);
   });
 
   const el = h('div', { class: 'stack stack-3' }, questions);
 
+  // Report the initial (incorrect) state so the caller's button starts disabled without the
+  // caller having to duplicate that assumption.
+  report();
+
   return {
     el,
+    get isComplete() {
+      return allCorrect;
+    },
     destroy() {
       answers.clear();
       d.dispose();

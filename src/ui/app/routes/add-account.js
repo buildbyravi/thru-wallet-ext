@@ -67,8 +67,12 @@ export function AddAccountRoute({ navigate, back }) {
       body.appendChild(track(OptionCard({
         iconName: 'plus',
         title: 'Add from existing phrase',
-        body: 'Derive the next address. Nothing new to back up.',
-        onClick: () => renderDerive(),
+        body: seedKeyrings.length > 1
+          ? `Derive the next address from one of your ${seedKeyrings.length} phrases.`
+          : 'Derive the next address. Nothing new to back up.',
+        // With more than one phrase the user must choose which; jumping straight to the
+        // first one made every phrase after the first undeliverable.
+        onClick: () => (seedKeyrings.length > 1 ? renderSeedPicker() : renderDerive(seedKeyrings[0])),
       })).el);
     }
 
@@ -97,11 +101,14 @@ export function AddAccountRoute({ navigate, back }) {
   // ---- Derive from an existing phrase (with preview) -----------------------
   // Rabby shows candidate addresses and lets the user choose. account.previewHd derives
   // without persisting, so nothing is written until a selection is confirmed.
-  function renderDerive() {
+  //
+  // Takes the keyring as an argument rather than assuming seedKeyrings[0]. The first version
+  // hardcoded index 0, so once a second phrase existed it was impossible to derive from it —
+  // which defeats the point of multi-seed.
+  function renderDerive(ring) {
     clearBody();
     banner.clear();
 
-    const ring = seedKeyrings[0];
     const chosen = new Set();
     const listHost = h('div', { class: 'list' });
     let start = 0;
@@ -175,10 +182,35 @@ export function AddAccountRoute({ navigate, back }) {
     body.appendChild(moreBtn.el);
     body.appendChild(h('div', { class: 'screen-actions' }, [
       addBtn.el,
-      track(Button({ label: 'Back', variant: 'text', onClick: () => renderMenu() })).el,
+      track(Button({
+        label: 'Back',
+        variant: 'text',
+        onClick: () => (seedKeyrings.length > 1 ? renderSeedPicker() : renderMenu()),
+      })).el,
     ]));
 
     loadPage();
+  }
+
+  // ---- Choose WHICH phrase to derive from ---------------------------------
+  function renderSeedPicker() {
+    clearBody();
+    banner.clear();
+
+    body.appendChild(h('p', { class: 'hint', text: 'Which recovery phrase should the new address come from?' }));
+
+    for (const ring of seedKeyrings) {
+      body.appendChild(track(OptionCard({
+        iconName: 'wallet',
+        title: ring.label || 'Recovery phrase',
+        body: `${ring.accountCount} account${ring.accountCount === 1 ? '' : 's'} · `
+          + (ring.origin === 'imported' ? 'imported phrase' : 'created here'),
+        onClick: () => renderDerive(ring),
+      })).el);
+    }
+
+    body.appendChild(h('div', { class: 'screen-actions' },
+      track(Button({ label: 'Back', variant: 'text', onClick: () => renderMenu() })).el));
   }
 
   // ---- Create a new phrase ------------------------------------------------
