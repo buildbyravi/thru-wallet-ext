@@ -272,27 +272,30 @@ async function init() {
     // must be un-hidden before show() runs on it — otherwise an unmigrated route renders
     // into a hidden container and the user sees a blank panel.
     //
-    // Falling back must also HYDRATE the legacy screen, not merely reveal it. show() only
-    // toggles .hidden; the data comes from a per-screen loader. Calling show('dashboard')
-    // directly is why the pill read "Account —" and the balance read "— THRU": init()
-    // returned early into the new stack, so `activeAccount` was never set and
-    // refreshActiveAccountAndBalance() never ran.
-    const LEGACY_LOADERS = {
-      dashboard: () => loadDashboard(),
-      accounts: () => renderAccountsList(''),
-    };
-
-    const showLegacy = (screenId) => {
+    // Falling back must also HYDRATE the screen, not merely reveal it. show() only toggles
+    // .hidden; the data comes from the legacy handleAction case for that screen — go-receive
+    // fills the address and QR, go-history loads entries, go-send resets the form and token.
+    // Calling show('dashboard') directly is why the pill read "Account —" and the balance
+    // read "— THRU": init() returns early into the new stack, so `activeAccount` was never
+    // set and the populate step never ran.
+    //
+    // Delegating to handleAction reuses that logic exactly rather than reimplementing it per
+    // screen, so a fallback behaves identically to clicking the legacy button. `activeAccount`
+    // is hydrated first because several cases read it.
+    const showLegacy = async (screenId) => {
       nextRoot?.classList.add('hidden');
       legacyRoot?.classList.remove('hidden');
-      const loader = LEGACY_LOADERS[screenId];
-      if (loader) {
-        // The loader calls show() itself, then populates.
-        Promise.resolve(loader()).catch((error) => {
-          console.error(`[popup] legacy loader for '${screenId}' failed:`, error);
-          show(screenId);
-        });
-      } else {
+      try {
+        if (!activeAccount) {
+          activeAccount = await bridge.send('account.getActive').catch(() => null);
+          if (activeAccount) walletStore.setState({ activeAccount, isUnlocked: true });
+        }
+        if (!activeNetwork) {
+          activeNetwork = await bridge.send('network.getActive').catch(() => null);
+        }
+        await handleAction(`go-${screenId}`);
+      } catch (error) {
+        console.error(`[popup] legacy fallback for '${screenId}' failed:`, error);
         show(screenId);
       }
     };
@@ -301,7 +304,10 @@ async function init() {
       root: nextRoot,
       legacyFallback: (path) => {
         const screenId = path.replace(/^\//, '') || 'dashboard';
-        showLegacy(screenId);
+        // showLegacy is async; a rejection here must not become an unhandled rejection.
+        showLegacy(screenId).catch((error) => {
+          console.error(`[popup] legacy fallback threw for '${screenId}':`, error);
+        });
       },
       // Called when the router lands on a migrated route, so the legacy tree goes away
       // again after a fallback excursion.
@@ -577,6 +583,7 @@ function setImportMode(mode) {
  * Each entry is deleted when its originating legacy screen is deleted.
  */
 const NEXT_UI_REDIRECTS = {
+  'go-dashboard': '/dashboard',
   'go-accounts': '/accounts',
   'go-add-key': '/add-account',
   'go-export-password': '/accounts',

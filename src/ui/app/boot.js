@@ -10,6 +10,7 @@ import * as bridge from './bridge.js';
 import { AppShell } from './shell.js';
 import { FLAGS } from '../../shared/flags.js';
 import { UnlockRoute } from './routes/unlock.js';
+import { DashboardRoute } from './routes/dashboard.js';
 import { AccountsRoute } from './routes/accounts.js';
 import { AccountDetailRoute } from './routes/account-detail.js';
 import { AddAccountRoute } from './routes/add-account.js';
@@ -29,6 +30,12 @@ export const POPUP_ROUTES = [
     view: UnlockRoute,
     guard: guards.requireVault,
     title: 'Unlock',
+  },
+  {
+    path: '/dashboard',
+    view: DashboardRoute,
+    guard: guards.requireUnlocked,
+    title: 'Wallet',
   },
   {
     path: '/accounts',
