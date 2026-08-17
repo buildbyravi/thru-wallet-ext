@@ -13,13 +13,16 @@ bundled with esbuild. No framework. Real `@thru/sdk` + `@thru/crypto`.
 | --- | --- |
 | always — rules, commands, traps | `AGENTS.md` (this file) |
 | "where is X?" | `CONTEXT.md` — file-by-file map with `file:line` refs |
+| "what's done, what's next?" | `docs/STATUS_AND_ROADMAP.md` — **start here for any new work** |
+| "has this broken before?" | `docs/DEFECT_LOG.md` — every defect, root cause and lesson |
 | product intent, security policy, QA matrix | `docs/BUILD_SPEC.md` |
-| target directory layout, phase/commit plan | `docs/UI_REBUILD_PLAN.md` |
-| doing the UI rebuild | `docs/UI_REBUILD_AGENT_PROMPT.md` |
+| backend capability tiers | `docs/BACKEND_GAPS.md` |
+| target directory layout, phase plan | `docs/UI_REBUILD_PLAN.md` |
 | historical only, do not follow | `docs/archive/` |
 
-Conflict resolution: `UI_REBUILD_PLAN.md` wins on **structure**; `BUILD_SPEC.md` wins on
-**behaviour**; `CONTEXT.md` wins on **current facts**.
+Conflict resolution: `STATUS_AND_ROADMAP.md` wins on **current state**;
+`UI_REBUILD_PLAN.md` wins on **structure**; `BUILD_SPEC.md` wins on **behaviour**;
+`CONTEXT.md` wins on **file facts**.
 
 ## Commands
 
@@ -78,19 +81,36 @@ weakening. Introducing a second router, a second store, or a second way of build
 
 ## Traps that will waste your time
 
-- **`src/popup/screens/` is mostly not what runs.** The live UI is `src/popup/popup.js` +
-  `src/popup/popup.html`. Twelve of twenty screen modules never mount. Verify reachability first.
+**Reload the extension, not just the popup.** Chrome caches the service worker, so reopening the
+popup runs new UI against old backend code. Use the **Reload** button on the extension card.
+This made an already-fixed serialization bug appear to persist.
+
+**Money is BigInt internally and a STRING on the wire.** Chrome messaging serializes with JSON
+and `JSON.stringify` throws on BigInt, which Chrome reports only as `Could not serialize
+message.` `api-router.js` now names the offending method and field itself. If you see Chrome's
+bare version, the failure is in the **request** direction.
+
+**The build only WARNS on CSS syntax errors**, it does not fail. Check for `▲ [WARNING]`.
+
+- **`src/popup/screens/` is mostly not what runs.** Twelve of twenty screen modules never
+  mounted. Verify reachability before editing anything there.
 - **`src/ui/router.js:133` does `container.innerHTML = ''`** on `#screen-<id>`, destroying
-  `popup.html`'s static markup for welcome / unlock / dashboard at startup. Editing that markup may
-  have no visible effect.
-- **`src/background.js` is dead.** The service worker is `src/background/index.js`.
-- **`removeEventListener` with a fresh arrow function removes nothing.** Six sites do this.
-- **Inline `on*` attributes injected via `innerHTML` are silently blocked by CSP** — six
-  `onsubmit="return false;"` and one `onerror=` currently do nothing.
-- **Multi-seed already exists in `src/lib/vault.js:322-382` and is unexposed.** `api-router.js` has
-  no `keyring.*` namespace. Check `CONTEXT.md` §4 before building anything account-related.
-- **Secret export is unreachable by any click path.** Not a missing feature — a broken one.
-- **Most of `src/` is untracked in git.** Commit before refactoring so rollback exists.
+  `popup.html`'s static markup at startup. Editing that markup may have no visible effect. The
+  new stack (`src/ui/app/router.js`) does not do this.
+- **`src/background.js` is deleted.** The service worker is `src/background/index.js`.
+- **`removeEventListener` with a fresh arrow function removes nothing.** Six legacy sites do
+  this; it is why dashboard buttons died permanently after one navigation. Use `disposer()`.
+- **Inline `on*` attributes are silently blocked by CSP**, so any that exist are dead code. Six
+  `onsubmit="return false;"` handlers never ran, leaving those forms genuinely unprotected.
+- **`show()` reveals a screen; it does not load one.** The data comes from the legacy
+  `handleAction` case. Calling `show()` alone yields a visible but empty screen.
+- **Do not ship a control before its destination route exists.** A gear button pointing at an
+  unregistered route fell through to the legacy fallback and errored on a blank panel.
+- **Hand-maintained file lists rot.** `test-contract.mjs` walks directories for exactly this
+  reason — its old static list stopped covering new files and let a phantom method through.
+- **Nothing tests reachability or rendering.** Every test can pass while a whole feature area
+  has no click path. See `docs/DEFECT_LOG.md` §1.2 and §6.
+- **Most of `src/` was untracked in git** before this session. It is committed now.
 
 ## Reporting
 

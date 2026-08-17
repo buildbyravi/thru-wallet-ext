@@ -4,21 +4,25 @@ A high-performance, self-custody browser extension for Thru, built on the real
 `@thru/sdk` and `@thru/crypto` packages with native Token Program launchpad support.
 
 > [!WARNING]
-> **Not production-ready.** The backend (vault, RPC, transaction construction) is solid and
-> tested. The **frontend is mid-refactor and partially broken**: two routers compete, several
-> screens never mount, and secret export is unreachable by any click path. See
-> [Frontend status](#frontend-status) before relying on it, and
-> [`docs/UI_REBUILD_PLAN.md`](docs/UI_REBUILD_PLAN.md) for the plan and phase gates.
+> **Not production-ready.** The backend (vault, keyrings, RPC, transaction construction) is
+> solid and tested. The **frontend is mid-migration**: seven routes are rebuilt on a new stack
+> behind a flag, while send/receive/faucet/history/settings still run on the legacy code. See
+> [`docs/STATUS_AND_ROADMAP.md`](docs/STATUS_AND_ROADMAP.md) for exact state and next steps.
+>
+> **Nothing has been verified against a running chain.** Program addresses, instruction layouts
+> and the amount-unit question remain unconfirmed.
 
 ## Documentation
 
 | File | Purpose |
 | --- | --- |
 | [`AGENTS.md`](AGENTS.md) | rules, commands, traps — read first if you're contributing |
+| [`docs/STATUS_AND_ROADMAP.md`](docs/STATUS_AND_ROADMAP.md) | **where the rebuild is and what's next** |
 | [`CONTEXT.md`](CONTEXT.md) | file-by-file map with `file:line` references |
+| [`docs/DEFECT_LOG.md`](docs/DEFECT_LOG.md) | every defect found, its root cause and the lesson |
 | [`docs/BUILD_SPEC.md`](docs/BUILD_SPEC.md) | product spec, wallet model, security policy, QA matrix |
-| [`docs/UI_REBUILD_PLAN.md`](docs/UI_REBUILD_PLAN.md) | frontend audit, target architecture, phase plan |
-| [`docs/UI_REBUILD_AGENT_PROMPT.md`](docs/UI_REBUILD_AGENT_PROMPT.md) | executable prompt for the rebuild |
+| [`docs/BACKEND_GAPS.md`](docs/BACKEND_GAPS.md) | backend capability tiers; what's blocked on chain verification |
+| [`docs/UI_REBUILD_PLAN.md`](docs/UI_REBUILD_PLAN.md) | original audit, target architecture, phase plan |
 | `docs/archive/` | superseded plans, kept for provenance — do not follow |
 
 ## Design
@@ -215,26 +219,29 @@ Worth re-running after touching anything in `src/lib/` or `src/background/`.
 
 ## Frontend status
 
-The backend is in good shape. The frontend is not, and the gap is worth understanding before
-contributing:
+Mid-migration. Two stacks coexist and `FLAGS.NEXT_UI` in `src/shared/flags.js` selects which
+renders. It is **`false` by default**, so the shipping experience is still the legacy UI; force
+the rebuilt stack for a session with `popup.html?next=1`.
 
-- **Two routers compete.** `src/ui/router.js:133` clears `#screen-<id>`, which is the same element
-  holding `popup.html`'s static markup, while 26 of 28 navigation sites call a legacy `show()` that
-  only toggles visibility. The static markup for welcome, unlock and dashboard is destroyed at
-  startup.
-- **Secret export is unreachable.** Both the legacy and the modular path into the export screens are
-  dead ends. This is a broken feature, not a missing one.
-- **Twelve of twenty screen modules never mount**, yet all twenty ship in the bundle — roughly 70 KB
-  of unreachable code.
-- **~80 CSS utility usages reference classes that don't exist** (`.w-100`, `.mt-*`, `.tag-accent`,
-  `.status-dot`), so modular screens render with their fields flush together.
-- **Multi-seed is implemented but unexposed** — `src/lib/vault.js:322-382` has the full keyring API
-  and `src/background/api-router.js` has no `keyring.*` namespace.
-- Several secret-handling defects, including a mnemonic written to a DOM `data-` attribute that is
-  never removed. Details and fixes: [`docs/UI_REBUILD_PLAN.md`](docs/UI_REBUILD_PLAN.md) §1.4.
+**Rebuilt on the new stack** (single hash router, node-based DOM, real teardown):
+`#/unlock`, `#/dashboard`, `#/accounts`, `#/account`, `#/add-account`, `#/keyring`, `#/export`.
 
-Also note that much of `src/` (`src/ui/`, `src/popup/screens/`, `src/background/`, `src/desktop/`,
-`src/shared/`, `src/domain/`) is **untracked in git**. Commit before refactoring.
+**Still legacy:** send, receive, faucet, history, settings, welcome/onboarding. Unmigrated
+hashes fall through to the legacy screen, hydrated via its original `handleAction` case.
+
+Two things the rebuild fixed that were outright broken rather than merely ugly:
+
+- **Secret export had no click path at all.** A user could not retrieve their own recovery
+  phrase. It now works, and a seed-derived account can additionally export just *that*
+  account's private key rather than the whole phrase.
+- **Multi-seed was fully implemented in the vault and completely unexposed** — no `keyring.*`
+  namespace existed in the API router. Multiple recovery phrases and imported keys are now
+  visible, grouped by source, and manageable.
+
+What is **not** verified: no route has been rendered by an automated test, and nothing has been
+confirmed against a running chain. Full detail in
+[`docs/STATUS_AND_ROADMAP.md`](docs/STATUS_AND_ROADMAP.md); every defect found and its root
+cause in [`docs/DEFECT_LOG.md`](docs/DEFECT_LOG.md).
 
 ## Bugs that got caught along the way
 

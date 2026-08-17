@@ -58,19 +58,25 @@ The frontend is mid-migration. **Both stacks exist and only one renders at a tim
 Turn the new stack on with `popup.html?next=1`, or flip `FLAGS.NEXT_UI` in
 `src/shared/flags.js`.
 
-**Migrated routes** (these are live on the new stack and deleted-in-place is pending):
+**Migrated routes** (live on the new stack; legacy equivalents pending deletion):
 
 | Route | File | Replaces |
 | --- | --- | --- |
 | `#/unlock` | `ui/app/routes/unlock.js` | `screens/unlock.js` + `popup.html` unlock markup |
+| `#/dashboard` | `ui/app/routes/dashboard.js` | `screens/dashboard.js` + `popup.js loadDashboard` |
 | `#/accounts` | `ui/app/routes/accounts.js` | `components/account-switcher.js`, `renderAccountsList` |
 | `#/account?ref=` | `ui/app/routes/account-detail.js` | `screens/account-detail.js` (was dead) |
 | `#/add-account` | `ui/app/routes/add-account.js` | `screens/add-key.js`, `screens/import.js` |
+| `#/keyring?id=` | `ui/app/routes/keyring.js` | nothing — new capability |
 | `#/export?ref=` | `ui/app/routes/export.js` | `screens/export-*.js` (**was unreachable**) |
 
-Any other hash falls through to the legacy screen of the same name, and the two trees swap
-visibility. Not yet migrated: dashboard, send, receive, faucet, history, settings, welcome,
-onboarding.
+Any other hash falls through to `legacyFallback`, which delegates to
+`handleAction('go-<screen>')` so the legacy screen is **hydrated**, not merely revealed, and the
+two trees swap visibility. Not yet migrated: **send, receive, faucet, history, settings,
+welcome/onboarding**.
+
+For current status and the ordered next steps, see `docs/STATUS_AND_ROADMAP.md`.
+For every defect found and its lesson, see `docs/DEFECT_LOG.md`.
 
 ---
 
@@ -189,19 +195,22 @@ only.
 | V1→V2 migration | 161-186, 283-298 | runs inside `unlock()`; keeps `vault_legacy_backup_v1` until two successful unlocks |
 | labels | 221-237 | `getAccountLabels`, `setAccountLabel`, `setAccountLabelAuthenticated` |
 | lifecycle | 241-318 | `createVault`, `importMnemonicVault`, `importPrivateKeyVault`, `unlock`, `lock`, `resetWallet` |
-| **keyring management** | **322-387** | **`listKeyrings`, `addSeedKeyring`, `addPrivateKeyKeyring`, `renameKeyring`, `removeKeyring`, `hasSeed`** |
-| account resolution | 391-475 | `switchActiveAccount`, `resolveAccount`, `listAccounts`, `addHdAccount`, `addImportedKey` |
-| export | 479-486 | `exportAccountSecret(ref, password)` — re-verifies the password |
+| **keyring management** | **322-430** | **`listKeyrings`, `verifyMasterPassword`, `addSeedKeyring`, `createSeedKeyring`, `addPrivateKeyKeyring`, `renameKeyring`, `removeKeyring`, `setKeyringBackedUp`, `previewHdAccounts`, `addHdAccounts`, `removeHdAccount`, `hasSeed`** |
+| account resolution | ~470-560 | `switchActiveAccount`, `resolveAccount`, `listAccounts`, `addHdAccount`, `addImportedKey` |
+| export | ~565-605 | `exportAccountSecret(ref, password)`, `exportAccountPrivateKey(ref, password)` — both re-verify the password |
 
-**⚠️ The most important fact in this repo:** lines 322–382 implement full multi-seed support and
-**nothing outside this file calls them.** `api-router.js` has no `keyring.*` namespace. Multi-seed is
-built, paid for, and invisible.
+**✅ RESOLVED (was the most important fact in this repo):** the multi-seed primitives were
+implemented here and called from nowhere — `api-router.js` had no `keyring.*` namespace, so the
+whole feature was invisible. It is now exposed and reachable from `#/accounts` and `#/keyring`,
+with a regression guard in `test-contract.mjs` that fails if the namespace is ever orphaned again.
 
-**⚠️** `addImportedKey` (463) is documented at 461-462 as the legacy path that **skips password
-verification**. `api-router.js:61` uses it. The safe `addPrivateKeyKeyring` (347) is unused.
+**✅ RESOLVED:** `account.addImported` used to route at `addImportedKey` (the legacy path
+documented as **skipping password verification**). It now uses the password-checked
+`addPrivateKeyKeyring`. `addImportedKey` remains for legacy-vault compatibility only.
 
-**⚠️** `setAccountLabel` (226) applies only `String(label).trim()` — no length or charset limit. The
-`maxlength="32"` in the UI is client-side only.
+**✅ RESOLVED:** `setAccountLabel` now goes through `sanitizeLabel()`, which strips control
+characters and markup characters and caps length at `MAX_LABEL_LENGTH` (32) in the background,
+rather than trusting the UI's `maxlength`.
 
 **Gap:** no `origin: 'generated' | 'imported'` on seed keyrings, so the UI cannot tell an imported
 phrase from a generated one (Rabby's `byImport` flag).
@@ -538,12 +547,17 @@ security: as a side panel the document can live for days, so anything left in th
 3. **`removeEventListener` with a fresh arrow function removes nothing.** Six sites do this:
    `settings.js:132-137`, `dashboard.js:205-208`, `import.js:137-138`,
    `account-detail.js:132-134`, `export-reveal.js:87-88`, `backup.js:98-100`.
-4. **Inline `on*` attributes injected via `innerHTML` are silently blocked by CSP.** Six
-   `onsubmit="return false;"` and one `onerror=` exist and do nothing.
+4. **Inline `on*` attributes injected via `innerHTML` are silently blocked by CSP.** The six
+   `onsubmit="return false;"` and the one `onerror=` have been removed; a capture-phase submit
+   guard in `popup.js` now prevents native form submits document-wide. Do not add new ones.
 5. **`src/background.js` is not the service worker.** `src/background/index.js` is.
-6. **Most of `src/` is untracked in git** (`src/ui/`, `src/popup/screens/`, `src/background/`,
-   `src/desktop/`, `src/shared/`, `src/domain/`). Commit before refactoring so rollback exists.
+6. **`src/` is now fully tracked in git.** Baseline commit `e77f3af`.
 7. **`dist/sidepanel.html` has no source** and is not produced by `build.mjs`. Do not treat `dist/`
    as reproducible until that is resolved.
 8. **Amount units are an open question.** Faucet takes raw base units; Send takes human-scale THRU.
    Neither is confirmed against a live network.
+9. **Reload the extension, not just the popup.** Chrome caches the service worker, so a backend
+   fix will appear not to work until the extension card's Reload button is used.
+10. **`show()` reveals a screen; it does not load one.** The data comes from the legacy
+    `handleAction` case for that screen. This is why the migration fallback delegates to
+    `handleAction` rather than calling `show()`.

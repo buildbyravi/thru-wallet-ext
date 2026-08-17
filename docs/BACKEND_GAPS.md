@@ -1,20 +1,49 @@
 # Backend gaps for a Rabby-class UI
 
-What the backend must gain before the frontend can match Rabby's UX. Derived from Rabby's
-`src/ui/views/**` structure and this repo's actual API surface
-(`src/shared/contract/manifest.js`).
+**STATUS: Tiers A and B are implemented.** Contract v4, 71 methods. This document is kept as the
+rationale record and as the live list of what remains (Tier C, blocked on chain verification).
+For current state and next steps see `docs/STATUS_AND_ROADMAP.md`.
 
-Ordered by **blast radius**, not by value, because the user's instruction "if backend breaks we
-fix later" is safe for RPC plumbing and wrong for the vault. A corrupted vault is unrecoverable
-key loss, so anything touching stored key material gets a migration and a test, never a
-best-effort edit.
-
-| Tier | Blast radius | Policy |
+| Tier | Blast radius | Status |
 | --- | --- | --- |
-| A | new methods, new storage keys, no existing shape touched | implement now |
-| B | additive vault field or new stored structure | implement now, with migration + test |
-| C | needs Thru protocol behaviour we have not verified | build the interface, return `supported:false`, never fake data |
-| D | changes an existing method's shape | forbidden — add `methodV2` instead |
+| A | new methods, new storage keys | ✅ done |
+| B | additive vault field or stored structure | ✅ done, each with migration + tests |
+| C | needs unverified Thru protocol behaviour | ⛔ blocked — interfaces exist, return `supported:false` |
+| D | changes an existing method's shape | forbidden, enforced by `test-contract.mjs` |
+
+What shipped, against the original list:
+
+- A1 batch balances → `tx.getBalances` / `tx.getCachedBalances` / `tx.getTotalBalance`
+- A2 non-blocking first paint → `system.bootstrap` no longer awaits network health
+- A3 push events → `event-service.js`; `accountsChanged`, `lockStateChanged`, `networkChanged`,
+  `balanceChanged`, `pendingTxChanged` all emitted and consumed
+- A4 ordering/pinning/hiding → `account.setOrder` / `setPinned` / `setHidden`
+- A5 whitelist → enforced inside `tx.send`, so a UI bug cannot bypass it
+- A6 preferences → `settings.get` / `settings.set`, unknown keys rejected
+- A7 history pagination → cursor form added without breaking the positional form
+- A8 custom networks → `network.upsertCustom` / `removeCustom`
+- A9 token registry → `token.import` / `setVisibility`, metadata normalized and scheme-allowlisted
+- A10 pending transactions → `pending-tx-service.js`, badge text, duplicate-submit protection
+- B1 derive-and-preview → `account.previewHd`, persists nothing
+- B2 remove one HD account → `account.removeHd`, refuses a keyring's last account
+- B3 backup state → `keyring.setBackedUp` + `backedUpAt`
+- B4 batch derivation → `account.addHdBatch`, one AES re-encrypt instead of N
+
+Beyond the original list: `keyring.createSeed` (generates a phrase in the background and
+registers it in one password-gated call, so fresh entropy never crosses the seam) and
+`wallet.exportPrivateKey` (one account's key, distinct from exporting the whole phrase).
+
+Both pre-existing defects noted at the bottom of the original analysis are fixed: the
+`symbol`/`imageUrl` vs `ticker`/`imageUri` mismatch, and the missing `clipboardRead` permission.
+
+---
+
+## Ordered by **blast radius**, not by value
+
+The instruction "if backend breaks we fix later" is safe for RPC plumbing and wrong for the
+vault. A corrupted vault is unrecoverable key loss, so anything touching stored key material got
+a migration and a test regardless of devnet status. That decision is why the schema changes
+(`origin`, `backedUpAt`) did not require recreating test wallets.
 
 ---
 

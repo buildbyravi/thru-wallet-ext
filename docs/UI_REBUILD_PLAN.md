@@ -1,6 +1,16 @@
 # Thru Wallet — Frontend Rebuild Plan (Rabby-class UI, future-proof)
 
-Status: proposal, not yet implemented.
+> [!IMPORTANT]
+> **§1 of this document is a HISTORICAL AUDIT**, written before the rebuild began. Many defects
+> it describes are now fixed. It is kept intact because the root causes and reasoning are still
+> the best explanation of *why* the architecture in §3 looks the way it does.
+>
+> For current state read **`docs/STATUS_AND_ROADMAP.md`**.
+> For what each defect turned out to be, read **`docs/DEFECT_LOG.md`**.
+>
+> §3 (target architecture) and §5 (design system) remain authoritative.
+
+Status: §3 architecture implemented; migration in progress (7 of 13 routes).
 Owner: this document is the contract. The executable instruction set for an AI agent is
 `docs/UI_REBUILD_AGENT_PROMPT.md`.
 
