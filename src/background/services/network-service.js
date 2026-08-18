@@ -6,6 +6,7 @@
 
 import { DEFAULT_NETWORK, getNetworkConfig, listNetworks } from '../../lib/networks.js';
 import { emitNetworkChanged } from './event-service.js';
+import { configureNetwork } from '../../lib/thru-client.js';
 
 const ACTIVE_NETWORK_KEY = 'thru_active_network';
 const CUSTOM_NETWORKS_KEY = 'thru_custom_networks';
@@ -82,13 +83,29 @@ export async function getActiveNetworkId() {
  * Get the currently active network configuration.
  * Falls back to the default if the stored id refers to a deleted custom network.
  */
+/**
+ * Get the currently active network configuration.
+ *
+ * Also BINDS thru-client to it. That binding is the thing that makes network switching real:
+ * thru-client memoizes one RPC client and previously hardcoded the alphanet URL, so selecting
+ * another network changed the badge and the scoped storage while every RPC call still went to
+ * alphanet. Doing it here rather than only in setActiveNetwork means a fresh service worker —
+ * which MV3 restarts aggressively — is bound correctly on its first read instead of only after
+ * the user happens to switch.
+ *
+ * configureNetwork is idempotent and only discards the memoized client when the URL actually
+ * changes, so calling it on every read is cheap.
+ */
 export async function getActiveNetworkConfig() {
   const networkId = await getActiveNetworkId();
+  let config;
   try {
-    return await resolveNetwork(networkId);
+    config = await resolveNetwork(networkId);
   } catch {
-    return getNetworkConfig(DEFAULT_NETWORK);
+    config = getNetworkConfig(DEFAULT_NETWORK);
   }
+  configureNetwork(config);
+  return config;
 }
 
 /**
@@ -106,6 +123,9 @@ export async function getActiveNetworkConfig() {
 export async function setActiveNetwork(networkId) {
   const config = await resolveNetwork(networkId);
   await chrome.storage.local.set({ [ACTIVE_NETWORK_KEY]: config.id });
+  // Rebind immediately so the next RPC call already targets the new endpoint, rather than
+  // waiting for whoever happens to read the config next.
+  configureNetwork(config);
   emitNetworkChanged(toPublicNetwork(config));
   return config;
 }

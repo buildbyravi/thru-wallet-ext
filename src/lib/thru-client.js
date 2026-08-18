@@ -1,12 +1,73 @@
-// Thin wrapper around @thru/sdk, pointed at Thru's alphanet.
+// Thin wrapper around @thru/sdk.
 //
 // NOTE: alphanet is pre-testnet, unaudited infrastructure. Expect instability, resets, and
 // breaking SDK changes — this whole file may need updates as Thru moves toward testnet/mainnet.
+//
+// NETWORK BINDING: this module used to hardcode the alphanet RPC URL and memoize a single
+// client at first use, while the program addresses were module constants duplicating the ones
+// in src/lib/networks.js. That made network switching COSMETIC: selecting localnet changed the
+// badge and scoped local storage, but every RPC call still went to alphanet, and a network with
+// different program addresses could not have worked at all.
+//
+// The active network is now injected by the background via configureNetwork(). This module
+// still does not import networks.js or any service — it holds whatever it was given and falls
+// back to the alphanet defaults, so it stays independently testable.
 
 import { createThruClient, Signature, Pubkey, PageRequest } from '@thru/sdk';
 import { scopedKey } from '../shared/network-scope.js';
 
 export const ALPHANET_RPC = 'https://rpc.alphanet.thru.org';
+
+// Defaults, used until configureNetwork() is called. Kept so tests and any direct importer
+// behave as before rather than failing on an unset network.
+const DEFAULT_NETWORK = Object.freeze({
+  id: 'alphanet',
+  rpcUrl: ALPHANET_RPC,
+  faucetProgramId: 'taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPr6',
+  // 46 characters and SDK-parseable. networks.js previously declared a 43-character value here
+  // that Pubkey.from() rejects; it was never caught because this module ignored that config.
+  faucetStateAccount: 'taxoImN8fTEOxXYnvgC6JZ0lN0n0qvZERwz_vlOjX3MkIn',
+  faucetMaxPerClaim: 10_000n,
+  transferProgramId: 'taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+  tokenProgramId: 'taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKqq',
+});
+
+let activeNetwork = DEFAULT_NETWORK;
+
+/**
+ * Point this module at a network.
+ *
+ * Idempotent, and only discards the memoized client when the RPC URL actually changes, so
+ * calling it on every config read is cheap. Accepts `faucetMaxPerClaim` as a BigInt or a
+ * string, because the UI-facing shape sends it as a string (JSON cannot carry BigInt).
+ *
+ * @param {Object} config a NetworkConfig from src/lib/networks.js
+ */
+export function configureNetwork(config) {
+  if (!config?.rpcUrl) return activeNetwork;
+  const next = {
+    id: config.id || 'unknown',
+    rpcUrl: config.rpcUrl,
+    faucetProgramId: config.faucetProgramId ?? null,
+    faucetStateAccount: config.faucetStateAccount ?? null,
+    faucetMaxPerClaim: config.faucetMaxPerClaim == null
+      ? null
+      : BigInt(config.faucetMaxPerClaim),
+    transferProgramId: config.transferProgramId || DEFAULT_NETWORK.transferProgramId,
+    tokenProgramId: config.tokenProgramId || DEFAULT_NETWORK.tokenProgramId,
+  };
+  if (next.rpcUrl !== activeNetwork.rpcUrl) {
+    // Drop the memoized client so the next call builds one against the new endpoint.
+    client = undefined;
+  }
+  activeNetwork = next;
+  return activeNetwork;
+}
+
+/** The network this module is currently pointed at. */
+export function getConfiguredNetwork() {
+  return activeNetwork;
+}
 
 /** Validate a Thru address using the SDK's own parsing + checksum logic, not a guessed regex. */
 export function isValidThruAddress(address) {
@@ -76,7 +137,7 @@ export function parseThruAmount(input) {
 let client;
 export function getClient() {
   if (!client) {
-    client = createThruClient({ baseUrl: ALPHANET_RPC });
+    client = createThruClient({ baseUrl: activeNetwork.rpcUrl });
   }
   return client;
 }
@@ -182,6 +243,8 @@ export async function createOnChainAccount(feePayer) {
 // [feePayer, program, ...readWriteAccounts, ...readOnlyAccounts] after sorting, which is why
 // this uses buildInstructionData + getAccountIndex instead of hand-rolling that sort — it
 // delegates the part that's easy to get subtly wrong to the SDK's own verified logic.
+// These remain exported for tests and for callers that want the alphanet defaults, but the
+// network calls below now read from the CONFIGURED network so a switch actually takes effect.
 export const FAUCET_PROGRAM_ID = 'taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPr6';
 export const FAUCET_STATE_ACCOUNT = 'taxoImN8fTEOxXYnvgC6JZ0lN0n0qvZERwz_vlOjX3MkIn';
 export const FAUCET_MAX_PER_CLAIM = 10_000n; // per the CLI's own cap
@@ -200,28 +263,54 @@ export function encodeFaucetInstructionData(stateIdx, recipientIdx, amountUnits)
 /**
  * Claim tokens from the alphanet faucet, submitted on-chain directly.
  *
- * Self-Signing & Zero-Wallet Linking:
- * Each wallet signs its OWN faucet transaction with fee: 0n.
- * Even a freshly generated wallet with 0 balance can claim directly without
- * requiring prior funding, sponsor keys, or third-party fee payers.
+ * Self-Signing: each wallet signs its OWN faucet transaction with fee: 0n, so no sponsor keys
+ * or third-party fee payers are involved.
+ *
+ * CORRECTION (verified on alphanet 2026-08-18): this comment previously claimed a freshly
+ * generated wallet with 0 balance "can claim directly without requiring prior funding". It
+ * cannot — the node rejects the transaction with "[not_found] account not found" until the
+ * fee payer exists on-chain. The account still needs no FUNDING, only registration, which is
+ * what createOnChainAccount does and what the guard below now handles.
  */
 export async function claimFaucet(feePayer, amount) {
+  // Read from the configured network, not the module constants, so a network switch actually
+  // reaches a different faucet.
+  const net = activeNetwork;
+  if (!net.faucetProgramId || !net.faucetStateAccount) {
+    throw new Error(`The ${net.id} network has no faucet.`);
+  }
+
   const amountUnits = BigInt(amount);
-  if (amountUnits <= 0n || amountUnits > FAUCET_MAX_PER_CLAIM) {
-    throw new Error(`Amount must be a whole number between 1 and ${FAUCET_MAX_PER_CLAIM}.`);
+  const cap = net.faucetMaxPerClaim ?? FAUCET_MAX_PER_CLAIM;
+  if (amountUnits <= 0n || amountUnits > cap) {
+    throw new Error(`Amount must be a whole number between 1 and ${cap}.`);
   }
 
   const address = feePayer.address || Pubkey.from(feePayer.publicKey).toThruFmt();
+
+  // The fee payer must already exist on-chain, or the node rejects the whole transaction with
+  // "[not_found] account not found".
+  //
+  // VERIFIED ON ALPHANET 2026-08-18: a freshly generated address fails here, and succeeds
+  // immediately after createOnChainAccount. sendTransfer has always done this; claimFaucet did
+  // not, so the very first thing a new wallet might do — tap Faucet — was the one path that
+  // failed. The comment above this function previously asserted the opposite ("even a freshly
+  // generated wallet with 0 balance can claim directly"), which is why the gap was never
+  // questioned.
+  const info = await getAccountInfo(address);
+  if (!info.exists) {
+    await createOnChainAccount(feePayer);
+  }
 
   // recipient = feePayer (claiming to own address), so it's already at index 0.
   // Only add non-feePayer accounts to readWrite to avoid duplicate rejection.
   const { rawTransaction } = await getClient().transactions.buildAndSign({
     feePayer: { publicKey: feePayer.publicKey, privateKey: feePayer.privateKey },
-    program: FAUCET_PROGRAM_ID,
+    program: net.faucetProgramId,
     header: { fee: 0n },
-    accounts: { readWrite: [FAUCET_STATE_ACCOUNT] },
+    accounts: { readWrite: [net.faucetStateAccount] },
     instructionData: ({ getAccountIndex }) =>
-      encodeFaucetInstructionData(getAccountIndex(FAUCET_STATE_ACCOUNT), getAccountIndex(address), amountUnits),
+      encodeFaucetInstructionData(getAccountIndex(net.faucetStateAccount), getAccountIndex(address), amountUnits),
   });
 
   for await (const update of getClient().transactions.sendAndTrack(rawTransaction)) {
@@ -288,7 +377,7 @@ export async function sendTransfer(feePayer, toAddress, amount) {
   const readWrite = toAddress === feePayer.address ? [] : [toAddress];
   const { rawTransaction } = await getClient().transactions.buildAndSign({
     feePayer: { publicKey: feePayer.publicKey, privateKey: feePayer.privateKey },
-    program: TRANSFER_PROGRAM_ID,
+    program: activeNetwork.transferProgramId,
     accounts: readWrite.length > 0 ? { readWrite } : undefined,
     instructionData: ({ getAccountIndex }) =>
       encodeTransferInstructionData(getAccountIndex(feePayer.address), getAccountIndex(toAddress), amountUnits),
@@ -349,18 +438,25 @@ export function decodeHistoryEntry(tx, viewerAddress) {
     programAddress,
   };
 
-  const canDecode = tx.instructionData?.length === 16 && (programAddress === TRANSFER_PROGRAM_ID || programAddress === FAUCET_PROGRAM_ID);
+  // Decode against the CONFIGURED network's program ids. Using the module constants here would
+  // silently fail to decode history on any network whose program addresses differ, leaving every
+  // entry as "unknown" rather than as a transfer.
+  const faucetProgram = activeNetwork.faucetProgramId;
+  const transferProgram = activeNetwork.transferProgramId;
+
+  const canDecode = tx.instructionData?.length === 16
+    && (programAddress === transferProgram || programAddress === faucetProgram);
   if (!canDecode) return entry;
 
   const data = tx.instructionData;
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
   const tag = view.getUint32(0, true);
 
-  if (programAddress === FAUCET_PROGRAM_ID && tag === 1) {
+  if (programAddress === faucetProgram && tag === 1) {
     const amount = view.getBigUint64(8, true);
     entry.kind = 'faucet';
     entry.amount = amount;
-  } else if (programAddress === TRANSFER_PROGRAM_ID && tag === 1) {
+  } else if (programAddress === transferProgram && tag === 1) {
     const amount = view.getBigUint64(4, true);
     const idxA = view.getUint16(12, true);
     const idxB = view.getUint16(14, true);
@@ -404,7 +500,7 @@ export function generateMintSeed() {
 export async function deriveTokenMintAddress(mintSeed) {
   const client = getClient();
   const res = await client.proofs.deriveAddress({
-    programId: TOKEN_PROGRAM_ID,
+    programId: activeNetwork.tokenProgramId,
     seed: mintSeed,
   });
   return res.derivedAddress;
@@ -518,7 +614,7 @@ export async function deployTokenMint({
   onProgress({ step: 'submitting_tx', message: 'Broadcasting Token Deployment transaction…' });
   const { rawTransaction } = await client.transactions.buildAndSign({
     feePayer: { publicKey: feePayer.publicKey, privateKey: feePayer.privateKey },
-    program: TOKEN_PROGRAM_ID,
+    program: activeNetwork.tokenProgramId,
     accounts: { readWrite: [mintAddress] },
     instructionData: () => instructionPayload,
   });

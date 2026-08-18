@@ -173,5 +173,77 @@ assert(mintView.getUint32(38, true) === mockProof.length, 'proof size is encoded
 assert(initMintData[74] === 6, 'decimals is 6 at offset 74');
 assert(initMintData.length === 75 + mockProof.length, 'total payload length includes header and proof data');
 
+console.log('\n[11] Every program address in every network config is SDK-parseable');
+// networks.js shipped a faucetStateAccount that was 43 characters and REJECTED by Pubkey.from.
+// It went unnoticed because thru-client.js carried its own valid copy and ignored the config
+// entirely — so the bad value was only reachable once program ids started coming from the
+// network config. Validating every address in every declared network closes that off.
+{
+  const { listAllNetworks } = await import('./src/lib/networks.js');
+  const { Pubkey } = await import('@thru/sdk');
+
+  const ADDRESS_FIELDS = ['faucetProgramId', 'faucetStateAccount', 'transferProgramId', 'tokenProgramId'];
+  const all = listAllNetworks();
+  let checked = 0;
+
+  for (const network of all) {
+    for (const field of ADDRESS_FIELDS) {
+      const value = network[field];
+      // null is legitimate: a network without a faucet declares neither faucet field.
+      if (value == null) continue;
+      let valid = true;
+      try {
+        Pubkey.from(value);
+      } catch {
+        valid = false;
+      }
+      assert(valid, `${network.id}.${field} is a valid Thru address (len=${String(value).length})`);
+      checked += 1;
+    }
+
+    // A faucet needs BOTH fields or neither; one alone would fail at call time.
+    assert(
+      Boolean(network.faucetProgramId) === Boolean(network.faucetStateAccount),
+      `${network.id} declares both faucet fields or neither`,
+    );
+    assert(
+      /^https?:\/\/\S+$/.test(String(network.rpcUrl || '')),
+      `${network.id}.rpcUrl is a valid http(s) URL`,
+    );
+  }
+  assert(checked > 0, `validated ${checked} program addresses across ${all.length} networks`);
+}
+
+console.log('\n[12] configureNetwork actually rebinds the client');
+// The regression this guards: thru-client memoized one client against a hardcoded alphanet URL,
+// so switching network changed the badge and the scoped storage while every RPC call still went
+// to alphanet. Network switching was cosmetic.
+{
+  const client = await import('./src/lib/thru-client.js');
+  const { getNetworkConfig } = await import('./src/lib/networks.js');
+
+  assert(
+    client.getConfiguredNetwork().rpcUrl === client.ALPHANET_RPC,
+    'defaults to alphanet before any configuration',
+  );
+
+  const local = getNetworkConfig('localnet');
+  const bound = client.configureNetwork(local);
+  assert(bound.rpcUrl === local.rpcUrl, 'configureNetwork adopts the new RPC URL');
+  assert(client.getConfiguredNetwork().id === 'localnet', 'the configured network is reported back');
+  assert(
+    client.getConfiguredNetwork().transferProgramId === local.transferProgramId,
+    'program addresses come from the configured network',
+  );
+
+  // The UI-facing shape sends faucetMaxPerClaim as a string, since JSON cannot carry BigInt.
+  const fromWire = client.configureNetwork({ ...local, faucetMaxPerClaim: '5000' });
+  assert(fromWire.faucetMaxPerClaim === 5000n, 'a string cap is widened back to BigInt');
+
+  // Restore, so anything importing later sees the default.
+  client.configureNetwork(getNetworkConfig('alphanet'));
+  assert(client.getConfiguredNetwork().id === 'alphanet', 'rebinding back to alphanet works');
+}
+
 console.log('\nAll thru-client.js encoding checks passed.');
 

@@ -21,13 +21,40 @@ export async function getAccountInfo(address) {
 }
 
 /**
+ * Normalize whatever thru-client returned into { signature, blockHeight }.
+ *
+ * thru-client's claimFaucet / sendTransfer / createOnChainAccount all return the signature as a
+ * plain STRING, but this service read `result.signature` and `result.blockHeight` — so both were
+ * always `undefined`. Two consequences, neither of which threw:
+ *
+ *   1. every tx.send / tx.claimFaucet response carried signature: undefined, so explorer links
+ *      had nothing to link to;
+ *   2. pending.track() bails on `if (!tx?.signature) return null`, so NOTHING was ever tracked.
+ *      The pending-transaction feature, its badge and its dashboard banner were all inert.
+ *
+ * Found only by driving api-router end to end against a live node; calling thru-client directly
+ * hides it, because the bug is in the layer between them. Accepts an object too, so a future
+ * client that returns one keeps working.
+ */
+function normalizeTxResult(result) {
+  if (typeof result === 'string') return { signature: result, blockHeight: null };
+  if (result && typeof result === 'object') {
+    return {
+      signature: result.signature ?? null,
+      blockHeight: result.blockHeight ?? null,
+    };
+  }
+  return { signature: null, blockHeight: null };
+}
+
+/**
  * Perform a faucet claim for the active account.
  * @param {string|number|bigint} amountUnits
  */
 export async function claimFaucet(amountUnits) {
   const feePayer = await vault.getActiveAccount();
   const rawUnits = BigInt(amountUnits);
-  const result = await thruClient.claimFaucet(feePayer, rawUnits);
+  const result = normalizeTxResult(await thruClient.claimFaucet(feePayer, rawUnits));
   const network = await getActiveNetworkConfig();
 
   await pending.track({
@@ -40,10 +67,7 @@ export async function claimFaucet(amountUnits) {
   });
   await balances.getBalances([feePayer.address]);
 
-  return {
-    signature: result.signature,
-    blockHeight: result.blockHeight,
-  };
+  return result;
 }
 
 /**
@@ -92,7 +116,23 @@ export async function sendTransfer(toAddress, amountUnits) {
     throw err;
   }
 
-  const result = await thruClient.sendTransfer(feePayer, target, rawUnits);
+  // VERIFIED ON ALPHANET 2026-08-18: the transfer program requires the RECIPIENT account to
+  // already exist on-chain. Sending to a never-registered address reverts with vmError=-765,
+  // which five different instruction layouts all produced identically — the byte layout was
+  // never the problem. The sender cannot register someone else's account (createOnChainAccount
+  // signs as the account being created), so this cannot be fixed transparently. It has to be
+  // reported clearly instead of surfacing a raw VM error code.
+  const recipientInfo = await thruClient.getAccountInfo(target);
+  if (!recipientInfo.exists) {
+    const err = new Error(
+      'That address has never been used on this network, so it cannot receive a transfer yet. '
+      + 'The recipient needs to activate it first.',
+    );
+    err.code = 'RECIPIENT_NOT_ACTIVATED';
+    throw err;
+  }
+
+  const result = normalizeTxResult(await thruClient.sendTransfer(feePayer, target, rawUnits));
   const network = await getActiveNetworkConfig();
 
   await pending.track({
@@ -105,10 +145,7 @@ export async function sendTransfer(toAddress, amountUnits) {
   });
   await balances.getBalances([feePayer.address]);
 
-  return {
-    signature: result.signature,
-    blockHeight: result.blockHeight,
-  };
+  return result;
 }
 
 /**
@@ -197,7 +234,7 @@ export async function checkNetworkHealth() {
  */
 export async function autoCreateAccount() {
   const feePayer = await vault.getActiveAccount();
-  const result = await thruClient.createOnChainAccount(feePayer);
+  const result = normalizeTxResult(await thruClient.createOnChainAccount(feePayer));
   await balances.getBalances([feePayer.address]);
   return result;
 }
@@ -218,11 +255,31 @@ export async function autoCreateAccount() {
  * faucet instruction is known to be zero-fee; transfers are assumed not to be, but the amount
  * is unverified. The MAX button currently reserves a hardcoded 10_000 base units as a guess.
  */
+/**
+ * Estimate the network fee for a transfer.
+ *
+ * MEASURED ON ALPHANET 2026-08-18, not derived from a spec. A 1-base-unit transfer between two
+ * registered accounts cost exactly 1 base unit in fees (sender debited 2 total). Reported as
+ * `source: 'measured'` so a caller can tell the difference between a verified number and an
+ * authoritative one.
+ *
+ * `reserveUnits` is deliberately larger than the observed fee. Only one amount and one
+ * transaction size were sampled, so whether the fee scales with either is still unknown; the MAX
+ * button should hold back more than the single observation suggests. 1000 base units is
+ * 0.000001 THRU — negligible to a user, and ample if the real fee turns out to vary.
+ *
+ * The previous hardcoded 10_000 reserve was 10,000x the real fee, which on a faucet-funded
+ * devnet account (10,000 units per claim) meant MAX could reserve the entire balance.
+ */
 export async function estimateFee(/* { toAddress, amountUnits } */) {
   return {
-    supported: false,
-    feeUnits: null,
-    reason: 'Fee estimation is not verified against Thru yet. The Send screen reserves a fixed gas allowance instead.',
+    supported: true,
+    source: 'measured',
+    feeUnits: '1',
+    reserveUnits: '1000',
+    measuredOn: 'alphanet',
+    reason: 'Observed on a live transfer between two registered accounts. Not a published spec, '
+      + 'so the reserve is set above the observed value.',
   };
 }
 

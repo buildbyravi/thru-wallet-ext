@@ -34,6 +34,14 @@ import { Pubkey } from '@thru/sdk';
 // in one place rather than being copy-pasted per entry.
 const TRANSFER_PROGRAM_ID = 'taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
 const TOKEN_PROGRAM_ID = 'taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKqq';
+const FAUCET_PROGRAM_ID = 'taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPr6';
+
+// The faucet state account previously declared here was 43 characters and REJECTED by the
+// SDK's own parser. It was never exercised because thru-client.js carried its own (valid)
+// 46-character copy and ignored this config entirely. Both now come from one constant, and
+// test-thru-client.mjs validates every address in every network against Pubkey.from so a
+// malformed one cannot ship again.
+const FAUCET_STATE_ACCOUNT = 'taxoImN8fTEOxXYnvgC6JZ0lN0n0qvZERwz_vlOjX3MkIn';
 
 export const NETWORKS = {
   alphanet: {
@@ -41,8 +49,8 @@ export const NETWORKS = {
     label: 'Alphanet',
     rpcUrl: 'https://rpc.alphanet.thru.org',
     explorerUrl: 'https://scan.thru.org',
-    faucetProgramId: 'taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPr6',
-    faucetStateAccount: 'taxoImSW7q1d_fwrjEq4P8mJwGqx6NNHmTZxXMVi8hQ',
+    faucetProgramId: FAUCET_PROGRAM_ID,
+    faucetStateAccount: FAUCET_STATE_ACCOUNT,
     faucetMaxPerClaim: 10_000n,
     transferProgramId: TRANSFER_PROGRAM_ID,
     tokenProgramId: TOKEN_PROGRAM_ID,
@@ -61,8 +69,8 @@ export const NETWORKS = {
     // A local node usually has no explorer. Links are suppressed when this is empty rather
     // than producing a dead URL.
     explorerUrl: '',
-    faucetProgramId: 'taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPr6',
-    faucetStateAccount: 'taxoImSW7q1d_fwrjEq4P8mJwGqx6NNHmTZxXMVi8hQ',
+    faucetProgramId: FAUCET_PROGRAM_ID,
+    faucetStateAccount: FAUCET_STATE_ACCOUNT,
     faucetMaxPerClaim: 10_000n,
     transferProgramId: TRANSFER_PROGRAM_ID,
     tokenProgramId: TOKEN_PROGRAM_ID,
