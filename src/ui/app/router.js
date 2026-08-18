@@ -135,6 +135,9 @@ export class Router {
 
       const instance = await route.view({
         params,
+        // The set of paths this router actually knows. Passed in so a view can validate a
+        // user-supplied path (e.g. unlock's returnTo) against reality instead of trusting it.
+        knownPaths: new Set(this.routes.keys()),
         navigate: (to, options) => this.navigate(to, options),
         back: () => this.back(),
       });

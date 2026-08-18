@@ -49,11 +49,25 @@ export function seed(state) {
   };
 }
 
+/**
+ * Build an /unlock redirect that remembers where the user was going.
+ *
+ * Without this, opening `#/send` while locked sent you to /unlock and then to /dashboard,
+ * silently discarding the destination. The path is carried as a query param and validated on the
+ * way back out (see resolveReturnTo), so it can only ever name a real route.
+ */
+function unlockRedirect(path, params) {
+  if (!path || path === '/unlock' || path === '/welcome') return { redirect: '/unlock' };
+  const query = new URLSearchParams(params || {}).toString();
+  const target = query ? `${path}?${query}` : path;
+  return { redirect: `/unlock?returnTo=${encodeURIComponent(target)}` };
+}
+
 /** Requires an existing, unlocked vault. */
-export async function requireUnlocked() {
+export async function requireUnlocked({ path, params } = {}) {
   const { hasVault, unlocked } = await readState();
   if (!hasVault) return { redirect: '/welcome' };
-  if (!unlocked) return { redirect: '/unlock' };
+  if (!unlocked) return unlockRedirect(path, params);
   return null;
 }
 
@@ -84,4 +98,41 @@ export async function landingRoute() {
   if (!hasVault) return '/welcome';
   if (!unlocked) return '/unlock';
   return '/dashboard';
+}
+
+/**
+ * Validate a `returnTo` value against the real route table before navigating to it.
+ *
+ * The hash is user-editable, so this must not be trusted. Only a path that the router actually
+ * knows is allowed; anything else falls back to the dashboard. `knownPaths` is injected rather
+ * than imported to avoid a cycle with boot.js.
+ *
+ * @param {string} returnTo raw param value
+ * @param {Set<string>|string[]} knownPaths
+ * @returns {string} a safe path to navigate to
+ */
+export function resolveReturnTo(returnTo, knownPaths) {
+  const fallback = '/dashboard';
+  if (!returnTo) return fallback;
+
+  let decoded;
+  try {
+    decoded = decodeURIComponent(String(returnTo));
+  } catch {
+    return fallback;
+  }
+
+  // Must be a local absolute path. Rejects protocol-relative (//evil), absolute URLs, and
+  // anything with a scheme — an open redirect is pointless inside an extension page but it costs
+  // nothing to refuse.
+  if (!decoded.startsWith('/') || decoded.startsWith('//')) return fallback;
+  if (/[:\\]/.test(decoded)) return fallback;
+
+  const [path] = decoded.split('?');
+  const known = knownPaths instanceof Set ? knownPaths : new Set(knownPaths || []);
+  if (!known.has(path)) return fallback;
+  // Never bounce back to the screen we just came from.
+  if (path === '/unlock' || path === '/welcome') return fallback;
+
+  return decoded;
 }

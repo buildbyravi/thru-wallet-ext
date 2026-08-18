@@ -52,7 +52,14 @@ export async function ensureAutoLockAlarm() {
     const minutes = await getAutoLockMinutes();
     if (minutes > 0) {
       // create() replaces an existing alarm of the same name, so no clear() is needed.
-      chrome.alarms.create(AUTO_LOCK_ALARM, { periodInMinutes: CHECK_PERIOD_MINUTES });
+      //
+      // delayInMinutes is explicit. With periodInMinutes alone, the timing of the FIRST fire is
+      // ambiguous across Chromium builds, and a heartbeat that fires the instant a worker starts
+      // is exactly the shape that produces a spurious lock right after unlocking.
+      chrome.alarms.create(AUTO_LOCK_ALARM, {
+        delayInMinutes: CHECK_PERIOD_MINUTES,
+        periodInMinutes: CHECK_PERIOD_MINUTES,
+      });
     } else {
       chrome.alarms.clear(AUTO_LOCK_ALARM);
     }
@@ -126,4 +133,57 @@ export async function shouldAutoLock() {
  */
 export async function ping() {
   return { ok: true, contractVersion: CONTRACT_VERSION };
+}
+
+/**
+ * Report everything that decides lock state, for diagnosing spurious locks.
+ *
+ * Exists because a lock-on-refresh was reported and the cause is not inferable from code alone:
+ * the session lives in chrome.storage.session, which survives a page reload but not an extension
+ * reload, and auto-lock depends on a timestamp in that same store. This returns the actual values
+ * so the answer comes from data rather than speculation.
+ *
+ * Contains no secret material — only presence flags, timestamps and counts.
+ */
+export async function diagnostics() {
+  const now = Date.now();
+
+  let sessionPresent = false;
+  let sessionKeys = [];
+  try {
+    const all = await chrome.storage.session.get(null);
+    sessionKeys = Object.keys(all || {});
+    sessionPresent = sessionKeys.includes('unlocked_session');
+  } catch (error) {
+    sessionKeys = [`<error: ${error?.message}>`];
+  }
+
+  const minutes = await getAutoLockMinutes();
+  const lastActivityAt = await getLastActivityAt();
+  const msSinceActivity = lastActivityAt ? now - lastActivityAt : null;
+
+  let alarm = null;
+  try {
+    const found = await chrome.alarms.get(AUTO_LOCK_ALARM);
+    alarm = found
+      ? { name: found.name, periodInMinutes: found.periodInMinutes, scheduledInMs: found.scheduledTime - now }
+      : null;
+  } catch {
+    alarm = '<alarms unavailable>';
+  }
+
+  return {
+    now,
+    // Does the decrypted session exist at all? If this is false after a refresh, the session
+    // store was cleared rather than auto-lock having fired.
+    sessionPresent,
+    sessionKeys,
+    autoLockMinutes: minutes,
+    lastActivityAt,
+    msSinceActivity,
+    // Would the next alarm tick lock the wallet right now, and why.
+    wouldAutoLock: minutes > 0 && Boolean(lastActivityAt) && msSinceActivity >= minutes * 60_000,
+    autoLockWindowMs: minutes > 0 ? minutes * 60_000 : null,
+    alarm,
+  };
 }

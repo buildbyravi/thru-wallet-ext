@@ -29,11 +29,16 @@ import { Field } from '../../kit/field.js';
 import { Button } from '../../kit/button.js';
 import { Banner } from '../../kit/feedback.js';
 import * as bridge from '../bridge.js';
-import { invalidate } from '../guards.js';
+import { invalidate, resolveReturnTo } from '../guards.js';
 
-export function UnlockRoute({ navigate }) {
+export function UnlockRoute({ params, navigate, knownPaths }) {
   const d = disposer();
   let countdownTimer = null;
+
+  // Where to go after unlocking. A guard that bounced us here records the original
+  // destination, so opening #/send while locked lands on Send rather than silently on the
+  // dashboard. Validated against the real route table before use — the hash is user-editable.
+  const returnTo = resolveReturnTo(params.returnTo, knownPaths);
 
   const banner = Banner({ tone: 'error' });
 
@@ -120,7 +125,8 @@ export function UnlockRoute({ navigate }) {
       // Clear before navigating: the string must not outlive this screen.
       password.clearSecret();
       invalidate();
-      navigate('/dashboard', { replace: true });
+      // Return to the screen that was originally requested, not always the dashboard.
+      navigate(returnTo, { replace: true });
     } catch (error) {
       password.clearSecret();
 

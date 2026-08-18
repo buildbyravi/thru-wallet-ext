@@ -82,6 +82,7 @@ const handlers = Object.assign(Object.create(null), {
   'system.setAutoLock': ({ minutes }) => systemService.setAutoLockMinutes(minutes),
   'system.getAutoLock': () => systemService.getAutoLockMinutes(),
   'system.ping': () => systemService.ping(),
+  'system.diagnostics': () => systemService.diagnostics(),
 
   // ---- Wallet lifecycle --------------------------------------------------
   'wallet.hasVault': () => walletService.hasVault(),

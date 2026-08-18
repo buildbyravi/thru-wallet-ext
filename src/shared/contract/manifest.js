@@ -49,6 +49,13 @@ export const METHODS = {
     auth: 'none',
     since: 3,
   },
+  'system.diagnostics': {
+    params: [],
+    returns: '{ sessionPresent, sessionKeys, autoLockMinutes, lastActivityAt, msSinceActivity, '
+      + 'wouldAutoLock, alarm } — lock-state facts for debugging spurious locks. No secrets.',
+    auth: 'none',
+    since: 4,
+  },
 
   // ---- Wallet lifecycle --------------------------------------------------
   'wallet.hasVault': {
