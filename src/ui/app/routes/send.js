@@ -29,7 +29,9 @@ import { icon } from '../../kit/icon.js';
 import { Button } from '../../kit/button.js';
 import { Field } from '../../kit/field.js';
 import { PageHeader, Banner, Spinner } from '../../kit/feedback.js';
-import { AccountAvatar, AddressText } from '../../domain/account-avatar.js';
+import { AccountAvatar } from '../../domain/account-avatar.js';
+import { AccountPicker } from '../../domain/account-picker.js';
+import { AssetSelector } from '../../domain/asset-selector.js';
 import * as bridge from '../bridge.js';
 import { formatThru, parseThruAmount, truncateAddress } from '../../../shared/format.js';
 import { safeAddressParam } from '../../../shared/refs.js';
@@ -38,7 +40,11 @@ export function SendRoute({ params, navigate, back }) {
   const d = disposer();
   const owned = [];
 
-  let account = null;
+  let account = null;          // the sending account
+  let accounts = [];           // every account, for the From and To pickers
+  let keyrings = [];           // for grouping both pickers by source
+  let contacts = [];
+  let tokens = [];
   let balanceUnits = 0n;
   let network = null;
   let feeInfo = null;          // from tx.estimateFee
@@ -70,17 +76,48 @@ export function SendRoute({ params, navigate, back }) {
     banner.clear();
     header.setTitle('Send');
 
-    // -- From --
-    body.appendChild(h('div', { class: 'detail-hero' }, [
+    // -- From: now tappable. The legacy card had a chevron implying it was, but nothing was
+    //    wired to it, so there was no way to send from a different account without leaving the
+    //    screen and switching the active account first.
+    const fromCard = h('button', { type: 'button', class: 'row clickable' }, [
       AccountAvatar({
         address: account.address,
         imported: account.keyring?.type === 'privateKey',
       }),
-      h('div', { class: 'grow' }, [
-        h('div', { class: 'row-title', text: account.label || 'Account' }),
-        AddressText({ address: account.address }),
+      h('span', { class: 'row-body' }, [
+        h('span', { class: 'row-title', text: account.label || 'Account' }),
+        // Which SOURCE this account came from, so "send from" is unambiguous when several
+        // accounts share a similar name.
+        h('span', { class: 'row-sub', text: account.keyring?.label || 'Unknown source' }),
       ]),
-      h('div', { class: 'row-value', text: `${formatThru(balanceUnits)} THRU` }),
+      h('span', { class: 'row-value', text: `${formatThru(balanceUnits)} THRU` }),
+      h('span', { class: 'account-pill-chevron' }, icon('chevronRight', 13)),
+    ]);
+    d.on(fromCard, 'click', () => renderFromPicker());
+
+    body.appendChild(h('div', { class: 'stack stack-2' }, [
+      h('span', { class: 'eyebrow', text: 'From' }),
+      fromCard,
+    ]));
+
+    // -- Asset --
+    const assetCard = h('button', { type: 'button', class: 'row clickable' }, [
+      h('div', { class: 'token-row-avatar' }, icon('bolt', 15)),
+      h('span', { class: 'row-body' }, [
+        h('span', { class: 'row-flex', style: { gap: '6px' } }, [
+          h('span', { class: 'row-title', text: 'THRU' }),
+          h('span', { class: 'tag-native', text: 'Native' }),
+        ]),
+        h('span', { class: 'row-sub', text: 'Thru Native Token' }),
+      ]),
+      h('span', { class: 'row-value', text: `${formatThru(balanceUnits)} THRU` }),
+      h('span', { class: 'account-pill-chevron' }, icon('chevronRight', 13)),
+    ]);
+    d.on(assetCard, 'click', () => renderAssetPicker());
+
+    body.appendChild(h('div', { class: 'stack stack-2' }, [
+      h('span', { class: 'eyebrow', text: 'Asset' }),
+      assetCard,
     ]));
 
     // -- Recipient --
@@ -130,7 +167,7 @@ export function SendRoute({ params, navigate, back }) {
       variant: 'secondary',
       size: 'sm',
       iconName: 'wallet',
-      onClick: () => renderPicker(recipient, recipientStatus),
+      onClick: () => renderPicker(recipient),
     }));
 
     body.appendChild(h('div', { class: 'stack stack-2' }, [
@@ -314,66 +351,83 @@ export function SendRoute({ params, navigate, back }) {
     return true;
   }
 
-  // ---- Pick one of my own accounts ---------------------------------------
-  async function renderPicker(recipientField, statusEl) {
+  // ---- Choose which account to send FROM ----------------------------------
+  function renderFromPicker() {
+    clearBody();
+    header.setTitle('Send from');
+
+    body.appendChild(h('p', { class: 'hint', text:
+      'Grouped by the recovery phrase or key each account comes from.' }));
+
+    const picker = track(AccountPicker({
+      accounts,
+      keyrings,
+      activeRef: account.ref,
+      emptyText: 'No other accounts in this wallet.',
+      onPick: async (pick) => {
+        if (!pick.ref) return;
+        try {
+          // Switching the active account is the honest model: tx.send always signs with the
+          // active account, so the From selection must actually change it rather than be a
+          // display-only preference the backend ignores.
+          await bridge.send('account.switch', { ref: pick.ref });
+          amountUnits = 0n;
+          await load();
+        } catch (error) {
+          banner.set(error.message || 'Could not switch account.');
+        }
+      },
+    }));
+    body.appendChild(picker.el);
+
+    body.appendChild(h('div', { class: 'screen-actions' },
+      track(Button({ label: 'Cancel', variant: 'text', onClick: () => renderForm() })).el));
+  }
+
+  // ---- Choose the asset ---------------------------------------------------
+  function renderAssetPicker() {
+    clearBody();
+    header.setTitle('Choose asset');
+
+    const selector = track(AssetSelector({
+      nativeBalance: balanceUnits.toString(),
+      tokens,
+      selectedMint: null,
+      onSelect: () => renderForm(),
+    }));
+    body.appendChild(selector.el);
+
+    body.appendChild(h('div', { class: 'screen-actions' },
+      track(Button({ label: 'Cancel', variant: 'text', onClick: () => renderForm() })).el));
+  }
+
+  // ---- Choose a recipient -------------------------------------------------
+  function renderPicker(recipientField) {
     clearBody();
     header.setTitle('Choose recipient');
 
-    const listHost = h('div', { class: 'list' }, Spinner({ label: 'Loading accounts' }).el);
     body.appendChild(h('p', { class: 'hint', text:
-      'Your own accounts are already active on-chain, so they can always receive a transfer.' }));
-    body.appendChild(listHost);
+      'Your own accounts are already active on-chain, so they can always receive. Grouped by '
+      + 'the phrase or key each one comes from.' }));
+
+    const picker = track(AccountPicker({
+      accounts,
+      keyrings,
+      contacts,
+      // Cannot send to the account you are sending from. excludeRef compares by keyringId +
+      // index, unlike the legacy picker which compared the OLD ref shape and could mis-match.
+      excludeRef: account.ref,
+      emptyText: 'No other accounts or saved contacts yet.',
+      onPick: (pick) => renderForm({ to: pick.address, amount: '' }),
+    }));
+    body.appendChild(picker.el);
+
     body.appendChild(h('div', { class: 'screen-actions' },
       track(Button({
         label: 'Back',
         variant: 'text',
-        onClick: () => renderForm({ to: recipientField.value, amount: '' }),
+        onClick: () => renderForm({ to: recipientField?.value || '', amount: '' }),
       })).el));
-
-    try {
-      const [accounts, contacts] = await Promise.all([
-        bridge.send('account.list', { withBalances: true }),
-        bridge.send('contacts.list'),
-      ]);
-      while (listHost.firstChild) listHost.removeChild(listHost.firstChild);
-
-      const rows = [];
-      for (const acc of accounts || []) {
-        if (acc.address === account.address) continue; // cannot send to self
-        rows.push({ label: acc.label, address: acc.address, balance: acc.balance, own: true });
-      }
-      for (const c of contacts || []) {
-        rows.push({ label: c.label, address: c.address, balance: null, own: false });
-      }
-
-      if (!rows.length) {
-        listHost.appendChild(h('p', { class: 'hint', text: 'No other accounts or contacts yet.' }));
-        return;
-      }
-
-      for (const row of rows) {
-        const btn = h('button', { type: 'button', class: 'row clickable' }, [
-          AccountAvatar({ address: row.address }),
-          h('span', { class: 'row-body' }, [
-            h('span', { class: 'row-flex', style: { gap: '6px' } }, [
-              h('span', { class: 'row-title', text: row.label || 'Account' }),
-              row.own ? null : h('span', { class: 'badge', text: 'contact' }),
-            ]),
-            h('span', { class: 'row-sub', text: truncateAddress(row.address) }),
-          ]),
-          row.balance != null
-            ? h('span', { class: 'row-value', text: `${formatThru(BigInt(row.balance))} THRU` })
-            : null,
-        ]);
-        d.on(btn, 'click', () => {
-          renderForm({ to: row.address, amount: '' });
-        });
-        listHost.appendChild(btn);
-      }
-    } catch (error) {
-      while (listHost.firstChild) listHost.removeChild(listHost.firstChild);
-      listHost.appendChild(h('p', { class: 'error', text: error.message || 'Could not load accounts.' }));
-    }
   }
 
   // ---- Step 2: review ----------------------------------------------------
@@ -536,14 +590,26 @@ export function SendRoute({ params, navigate, back }) {
   async function load() {
     banner.clear();
     try {
-      const [active, net, fee] = await Promise.all([
+      // Everything both pickers need, in one round of parallel calls. account.list and
+      // keyring.list together are what allow grouping by source; the legacy picker fetched only
+      // account.list and so had no way to say which phrase an account came from.
+      const [active, net, fee, allAccounts, allKeyrings, contactList, tokenList] = await Promise.all([
         bridge.send('account.getActive'),
         bridge.send('network.getActive'),
         bridge.send('tx.estimateFee', {}).catch(() => null),
+        bridge.send('account.list', { withBalances: true }).catch(() => []),
+        bridge.send('keyring.list').catch(() => []),
+        bridge.send('contacts.list').catch(() => []),
+        bridge.send('token.list').catch(() => []),
       ]);
+
       account = active;
       network = net;
       feeInfo = fee;
+      accounts = allAccounts || [];
+      keyrings = allKeyrings || [];
+      contacts = contactList || [];
+      tokens = tokenList || [];
 
       const info = await bridge.send('tx.getAccountInfo', { address: account.address });
       balanceUnits = info.balance != null ? BigInt(info.balance) : 0n;

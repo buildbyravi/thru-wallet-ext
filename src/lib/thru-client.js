@@ -496,14 +496,38 @@ export function generateMintSeed() {
   return seed;
 }
 
-/** Derive deterministic Token Mint address on ThruVM using the 32-byte seed. */
+/**
+ * Derive the deterministic Token Mint address for a seed.
+ *
+ * BROKEN AND NOT SILENTLY GUESSED. Two separate problems, found by testing against a reference
+ * dataset of 2008 generated wallets (\\wsl$\ubuntu\home\ravi\n-thru\wallets.json):
+ *
+ *   1. This called `client.proofs.deriveAddress`, which DOES NOT EXIST in @thru/sdk 0.3.4 —
+ *      `proofs` exposes only `generate` and `getStateRoots`. The call threw TypeError, so token
+ *      mint derivation has been failing outright, which is why `token.deriveAddress` and the
+ *      launchpad's mint preview never worked. The namespace is `helpers`.
+ *
+ *   2. `helpers.deriveAddress(inputs[])` does run and return an address, but it does NOT
+ *      reproduce the reference dataset's mint address from the same seed, so the correct input
+ *      set is unknown. The dataset also uses 64-hex-character (32-byte) seeds while
+ *      generateMintSeed() produces 32 alphanumeric characters — a different format entirely.
+ *
+ * Returning a plausible-but-wrong mint address is worse than failing: it would point a deploy or
+ * a lookup at the wrong account. So this reports the gap instead of guessing, matching how
+ * tx.estimateFee and token.getBalances handle unverified behaviour.
+ *
+ * TO FIX: get the mint-derivation spec (program id, seed encoding, and input order) from the
+ * Thru team, then verify against the reference dataset before trusting it.
+ */
 export async function deriveTokenMintAddress(mintSeed) {
-  const client = getClient();
-  const res = await client.proofs.deriveAddress({
-    programId: activeNetwork.tokenProgramId,
-    seed: mintSeed,
-  });
-  return res.derivedAddress;
+  const err = new Error(
+    'Token mint derivation is not verified against Thru. The SDK method previously used '
+    + '(proofs.deriveAddress) does not exist, and helpers.deriveAddress does not reproduce known '
+    + 'reference addresses, so the correct derivation is unknown.',
+  );
+  err.code = 'DERIVATION_UNVERIFIED';
+  err.seedLength = String(mintSeed ?? '').length;
+  throw err;
 }
 
 /** Pure byte-layout encoder for INITIALIZE_MINT (Tag 0) instruction. */
