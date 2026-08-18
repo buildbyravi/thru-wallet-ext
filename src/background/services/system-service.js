@@ -9,17 +9,23 @@
 // settings screen has always called this "Lock after inactivity"; now it is.
 
 import { CONTRACT_VERSION } from '../../shared/contract/manifest.js';
+import {
+  AUTO_LOCK_CHOICES,
+  DEFAULT_AUTOLOCK_MINUTES,
+  normalizeAutoLockMinutes,
+} from '../../shared/autolock.js';
 
 const AUTO_LOCK_ALARM = 'thru-auto-lock';
 const AUTO_LOCK_KEY = 'thru_system_autolock_minutes';
 const LAST_ACTIVITY_KEY = 'thru_last_activity_at';
-const DEFAULT_AUTOLOCK_MINUTES = 15;
 
 // How often the alarm wakes to compare the activity stamp. Chrome clamps alarm periods to
 // a 1-minute floor for unpacked/production extensions, so this is the practical minimum.
 const CHECK_PERIOD_MINUTES = 1;
 
-export const AUTO_LOCK_CHOICES = [0, 1, 5, 15, 30, 60, 240];
+// Re-exported so existing importers keep working; the list itself now lives in
+// src/shared/autolock.js so the settings UI can use the same one instead of duplicating it.
+export { AUTO_LOCK_CHOICES };
 
 /**
  * Get the configured inactivity window in minutes (0 = never lock).
@@ -59,8 +65,7 @@ export async function ensureAutoLockAlarm() {
  * @returns {Promise<{ autoLockMinutes: number }>}
  */
 export async function setAutoLockMinutes(minutes) {
-  const parsed = parseInt(minutes, 10);
-  const min = Number.isNaN(parsed) || parsed < 0 ? DEFAULT_AUTOLOCK_MINUTES : parsed;
+  const min = normalizeAutoLockMinutes(minutes);
 
   try {
     if (typeof chrome !== 'undefined' && chrome.storage?.local) {

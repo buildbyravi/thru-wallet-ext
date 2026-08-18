@@ -16,6 +16,8 @@ import { AccountDetailRoute } from './routes/account-detail.js';
 import { AddAccountRoute } from './routes/add-account.js';
 import { ExportRoute } from './routes/export.js';
 import { KeyringRoute } from './routes/keyring.js';
+import { SettingsRoute } from './routes/settings.js';
+import { ResetRoute } from './routes/reset.js';
 
 /**
  * Routes migrated to the new stack.
@@ -69,6 +71,21 @@ export const POPUP_ROUTES = [
     // Autofocus is suppressed here: focusing the first control on a screen that is about to
     // display a recovery phrase would scroll the secret into view before the user has read
     // the warning above it.
+    autofocus: false,
+  },
+  {
+    path: '/settings',
+    view: SettingsRoute,
+    guard: guards.requireUnlocked,
+    title: 'Settings',
+  },
+  {
+    // requireVault, not requireUnlocked: reset must be reachable from the unlock screen by
+    // someone who has forgotten their password. That is the main reason it exists.
+    path: '/reset',
+    view: ResetRoute,
+    guard: guards.requireVault,
+    title: 'Reset wallet',
     autofocus: false,
   },
 ];
