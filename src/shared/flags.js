@@ -19,6 +19,29 @@ export const FLAGS = {
    */
   NEXT_UI: false,
 
+  /**
+   * Token launchpad and DEX (src/launchpad/**).
+   *
+   * OFF while the core wallet is finished. The wallet must do the things a wallet is for —
+   * accounts, send, receive, history, settings, networks — before it grows a trading surface.
+   * Shipping both half-done means neither gets verified.
+   *
+   * This is a flag rather than a deletion so the code stays in the tree, keeps building, and
+   * keeps being covered by the layering and contract checks. It comes back when its own
+   * testing pass happens, not before.
+   *
+   * When off: the dashboard banner and the topbar expand button are hidden. launchpad.html
+   * is still built and still reachable by direct URL — it is not a security boundary, it is a
+   * product decision about what the UI advertises.
+   */
+  FEATURE_LAUNCHPAD: false,
+
+  /**
+   * Token deployment inside the launchpad. Separate from FEATURE_LAUNCHPAD so the launchpad
+   * can be shown read-only (browse/inspect) before write operations are trusted.
+   */
+  FEATURE_TOKEN_DEPLOY: false,
+
   /** Log route transitions and bridge calls. Never logs params — they can hold secrets. */
   DEBUG_ROUTING: false,
 };
@@ -39,6 +62,7 @@ export function applyQueryOverrides(search = '') {
     const params = new URLSearchParams(search);
     if (params.get('next') === '1') FLAGS.NEXT_UI = true;
     if (params.get('debug') === '1') FLAGS.DEBUG_ROUTING = true;
+    if (params.get('launchpad') === '1') FLAGS.FEATURE_LAUNCHPAD = true;
   } catch {
     // ignore
   }

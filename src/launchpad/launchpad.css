@@ -2,7 +2,7 @@
 @import "../popup/styles/base.css";
 @import "../popup/styles/components.css";
 
-/* ---- Desktop App Layout ---------------------------------- */
+/* ---- Launchpad App Layout ---------------------------------- */
 
 html, body {
   width: 100%;
@@ -15,14 +15,14 @@ html, body {
   -webkit-font-smoothing: antialiased;
 }
 
-.desktop-app {
+.lp-app {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
 }
 
 /* Header */
-.desktop-header {
+.lp-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -60,7 +60,7 @@ html, body {
   color: var(--text-1);
 }
 
-.desktop-nav {
+.lp-nav {
   display: flex;
   gap: var(--sp-2);
 }
@@ -178,7 +178,7 @@ html, body {
 }
 
 /* Main Workspace */
-.desktop-main {
+.lp-main {
   flex: 1;
   max-width: 1200px;
   width: 100%;

@@ -13,6 +13,7 @@ import { showToast } from '../toast.js';
 import { formatThru, truncateAddress } from '../../shared/format.js';
 import { openAccountSwitcher } from '../../ui/components/account-switcher.js';
 import { renderTokenRow } from '../../ui/components/token-row.js';
+import { FLAGS } from '../../shared/flags.js';
 
 /** @type {Array<function>} */
 let _unsubs = [];
@@ -165,9 +166,14 @@ export async function mount(container) {
   container.querySelector('#dash-faucet-btn')?.addEventListener('click', () => router.navigate('faucet'));
   container.querySelector('#dash-history-btn')?.addEventListener('click', () => router.navigate('history'));
 
-  // Launchpad banner
-  container.querySelector('#dash-launchpad-btn')?.addEventListener('click', () => {
-    const url = chrome.runtime.getURL('desktop.html');
+  // Launchpad banner. Hidden while FLAGS.FEATURE_LAUNCHPAD is off so the core wallet ships
+  // without advertising an unfinished trading surface.
+  const launchpadBtn = container.querySelector('#dash-launchpad-btn');
+  if (launchpadBtn && !FLAGS.FEATURE_LAUNCHPAD) {
+    launchpadBtn.classList.add('hidden');
+  }
+  launchpadBtn?.addEventListener('click', () => {
+    const url = chrome.runtime.getURL('launchpad.html');
     chrome.tabs.create({ url });
   });
 

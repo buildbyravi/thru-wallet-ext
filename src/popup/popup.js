@@ -264,6 +264,15 @@ async function init() {
   // legacy path below runs byte-for-byte as before, so the migration cannot regress the
   // shipping UI. Force it on for a session with popup.html?next=1
   applyQueryOverrides(window.location.search);
+
+  // Hide launchpad entry points on the legacy stack. The new dashboard route checks the flag
+  // when it builds, so this only covers the static markup. Reveal for a session with
+  // popup.html?launchpad=1
+  if (!FLAGS.FEATURE_LAUNCHPAD) {
+    for (const el of document.querySelectorAll('[data-action="open-launchpad"]')) {
+      el.classList.add('hidden');
+    }
+  }
   if (FLAGS.NEXT_UI) {
     const nextRoot = document.getElementById('app');
     const legacyRoot = document.getElementById('legacy-app');
@@ -643,8 +652,8 @@ async function handleAction(action, target) {
       show('reset-confirm');
       break;
 
-    case 'open-desktop': {
-      const url = chrome.runtime.getURL('desktop.html');
+    case 'open-launchpad': {
+      const url = chrome.runtime.getURL('launchpad.html');
       chrome.tabs.create({ url });
       break;
     }

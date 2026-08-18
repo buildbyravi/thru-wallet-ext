@@ -31,26 +31,30 @@ await esbuild.build({
   outfile: 'dist/popup.css',
 });
 
-// Desktop full-tab launchpad bundles
+// Launchpad full-tab bundles.
+//
+// The output is launchpad.* rather than desktop.*: `desktop.html` is deliberately reserved
+// for a future expanded-wallet-in-a-tab view (the sense in which Rabby uses that name), and
+// having the launchpad occupy it would guarantee a collision the moment we build that.
 await esbuild.build({
   ...shared,
-  entryPoints: ['src/desktop/desktop.js'],
-  outfile: 'dist/desktop.bundle.js',
+  entryPoints: ['src/launchpad/launchpad.js'],
+  outfile: 'dist/launchpad.bundle.js',
 });
 
 await esbuild.build({
   bundle: true,
   minify: true,
   logLevel: 'info',
-  entryPoints: ['src/desktop/desktop.css'],
-  outfile: 'dist/desktop.css',
+  entryPoints: ['src/launchpad/launchpad.css'],
+  outfile: 'dist/launchpad.css',
 });
 
 // Everything else in dist/ is a straight copy of authored files under src/ -- nothing is
 // hand-edited directly in dist/, so `rm -rf dist && npm run build` always reproduces it
 // exactly.
 copyFileSync('src/popup/popup.html', 'dist/popup.html');
-copyFileSync('src/desktop/desktop.html', 'dist/desktop.html');
+copyFileSync('src/launchpad/launchpad.html', 'dist/launchpad.html');
 copyFileSync('src/manifest.json', 'dist/manifest.json');
 mkdirSync('dist/icons', { recursive: true });
 for (const file of readdirSync('src/icons')) {

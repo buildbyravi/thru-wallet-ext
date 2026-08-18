@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
-    "test": "node scripts/check-layering.mjs && node test-contract.mjs && node test-ui-dom.mjs && node test-vault.mjs && node test-thru-client.mjs && node test-api-router.mjs",
-    "test:guards": "node scripts/check-layering.mjs && node test-contract.mjs && node test-ui-dom.mjs"
+    "test": "node test-derivation.mjs && node scripts/check-layering.mjs && node test-contract.mjs && node test-ui-dom.mjs && node test-vault.mjs && node test-thru-client.mjs && node test-api-router.mjs",
+    "test:guards": "node test-derivation.mjs && node scripts/check-layering.mjs && node test-contract.mjs && node test-ui-dom.mjs"
   },
   "keywords": [
     "thru",
@@ -27,8 +27,8 @@
   },
   "homepage": "https://github.com/buildbyravi/thru-wallet-ext#readme",
   "dependencies": {
-    "@thru/crypto": "^0.2.21",
-    "@thru/sdk": "^0.3.4"
+    "@thru/crypto": "0.2.21",
+    "@thru/sdk": "0.3.4"
   },
   "devDependencies": {
     "esbuild": "^0.28.1"

@@ -76,8 +76,8 @@ async function init() {
       updateAccountHeader();
       await refreshBalance();
     } else {
-      document.getElementById('desktop-account-name').textContent = 'Wallet locked';
-      document.getElementById('desktop-account-address').textContent = 'Please unlock extension';
+      document.getElementById('lp-account-name').textContent = 'Wallet locked';
+      document.getElementById('lp-account-address').textContent = 'Please unlock extension';
     }
     if (state.networkHealth) {
       updateNetworkStatus(state.networkHealth);
@@ -86,8 +86,8 @@ async function init() {
     }
   } catch (err) {
     console.warn('Bootstrap failed:', err);
-    document.getElementById('desktop-account-name').textContent = 'No active wallet';
-    document.getElementById('desktop-account-address').textContent = 'Please unlock extension';
+    document.getElementById('lp-account-name').textContent = 'No active wallet';
+    document.getElementById('lp-account-address').textContent = 'Please unlock extension';
     updateNetworkStatus();
   }
 
@@ -111,15 +111,15 @@ function handleHashChange() {
 
 function updateAccountHeader() {
   if (!activeAccount) return;
-  document.getElementById('desktop-account-name').textContent = activeAccount.label || 'Account 1';
-  document.getElementById('desktop-account-address').textContent = truncateAddress(activeAccount.address);
-  document.getElementById('desktop-account-mark').innerHTML = byteMarkHtml(activeAccount.address, activeAccount.ref, { small: true });
+  document.getElementById('lp-account-name').textContent = activeAccount.label || 'Account 1';
+  document.getElementById('lp-account-address').textContent = truncateAddress(activeAccount.address);
+  document.getElementById('lp-account-mark').innerHTML = byteMarkHtml(activeAccount.address, activeAccount.ref, { small: true });
   document.getElementById('preview-creator').textContent = truncateAddress(activeAccount.address);
 }
 
 async function refreshBalance() {
   if (!activeAccount) return;
-  const balanceEl = document.getElementById('desktop-balance-display');
+  const balanceEl = document.getElementById('lp-balance-display');
   const swapBalanceEl = document.getElementById('swap-user-balance');
   try {
     const info = await bridge.send('tx.getAccountInfo', { address: activeAccount.address });
@@ -137,8 +137,8 @@ async function refreshBalance() {
 }
 
 async function updateNetworkStatus(preloadedHealth = null) {
-  const dot = document.getElementById('desktop-network-dot');
-  const text = document.getElementById('desktop-network-text');
+  const dot = document.getElementById('lp-network-dot');
+  const text = document.getElementById('lp-network-text');
   if (!dot) return;
   const health = preloadedHealth || (await bridge.send('tx.checkHealth'));
   dot.classList.remove('healthy', 'slow', 'offline');

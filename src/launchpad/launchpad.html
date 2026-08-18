@@ -6,19 +6,19 @@
   <title>Thru Launchpad &amp; DEX</title>
   <!-- No remote stylesheets or fonts. See the note in popup.html: this is both a
        privacy fix and what allows the strict CSP in manifest.json. -->
-  <link rel="stylesheet" href="desktop.css" />
+  <link rel="stylesheet" href="launchpad.css" />
 </head>
 <body>
-  <div class="desktop-app">
+  <div class="lp-app">
     <!-- Top Navigation Header -->
-    <header class="desktop-header">
+    <header class="lp-header">
       <div class="header-left">
         <div class="brand">
           <span class="brand-logo" data-icon="rocket"></span>
           <span class="brand-name">Thru Launchpad</span>
           <span class="badge">alphanet</span>
         </div>
-        <nav class="desktop-nav">
+        <nav class="lp-nav">
           <button class="nav-tab active" data-tab="create" data-route="launchpad"><span data-icon="rocket"></span> Launchpad</button>
           <button class="nav-tab" data-tab="my-tokens" data-route="my-tokens"><span data-icon="coins"></span> My Tokens <span class="nav-badge" id="my-tokens-count">0</span></button>
           <button class="nav-tab" data-tab="dex" data-route="dex"><span data-icon="bolt"></span> DEX Trading</button>
@@ -27,29 +27,29 @@
       </div>
 
       <div class="header-right">
-        <div class="network-status-pill clickable" id="desktop-network-pill" data-action="switch-network" title="Switch Network">
-          <span class="status-dot healthy" id="desktop-network-dot"></span>
-          <span class="status-text" id="desktop-network-text">alphanet</span>
+        <div class="network-status-pill clickable" id="lp-network-pill" data-action="switch-network" title="Switch Network">
+          <span class="status-dot healthy" id="lp-network-dot"></span>
+          <span class="status-text" id="lp-network-text">alphanet</span>
         </div>
 
-        <div class="account-pill clickable" id="desktop-account-pill" data-action="switch-account" title="Switch Account">
-          <span id="desktop-account-mark"></span>
+        <div class="account-pill clickable" id="lp-account-pill" data-action="switch-account" title="Switch Account">
+          <span id="lp-account-mark"></span>
           <div class="account-info">
-            <span class="account-name" id="desktop-account-name">Account 1</span>
-            <span class="account-address" id="desktop-account-address">ta…</span>
+            <span class="account-name" id="lp-account-name">Account 1</span>
+            <span class="account-address" id="lp-account-address">ta…</span>
           </div>
           <div class="account-balance">
-            <span class="balance-num" id="desktop-balance-display">—</span>
+            <span class="balance-num" id="lp-balance-display">—</span>
             <span class="balance-unit">THRU</span>
           </div>
         </div>
 
-        <button class="btn secondary sm" id="desktop-faucet-btn" data-action="quick-faucet">Claim Faucet</button>
+        <button class="btn secondary sm" id="lp-faucet-btn" data-action="quick-faucet">Claim Faucet</button>
       </div>
     </header>
 
     <!-- Main Container -->
-    <main class="desktop-main">
+    <main class="lp-main">
       <!-- Section: Token Launchpad / Deployer -->
       <section id="tab-create" class="tab-pane active">
         <div class="page-header">
@@ -438,6 +438,6 @@
   <!-- Toast Container -->
   <div id="toast-container"></div>
 
-  <script src="desktop.bundle.js"></script>
+  <script src="launchpad.bundle.js"></script>
 </body>
 </html>
