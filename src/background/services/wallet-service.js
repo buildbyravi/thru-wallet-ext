@@ -129,11 +129,15 @@ export async function lock() {
  * Everything derived from the vault must go with it: throttling state, cached balances, and
  * tracked transactions. Leaving any of those behind would let a fresh wallet inherit the
  * previous one's balances or pending list.
+ *
+ * Uses the clear-ALL variants because per-network data is namespaced by network id. Clearing
+ * only the active network would leave the previous wallet's balances and pending transactions
+ * waiting on every other network the user had visited.
  */
 export async function resetWallet() {
   await vault.resetWallet();
   await auth.clearLockout();
-  await balances.clearCache();
+  await balances.clearAllCaches();
   await pending.clearAll();
   emitLockStateChanged(false);
 }

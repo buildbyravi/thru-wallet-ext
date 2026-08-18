@@ -122,12 +122,26 @@ export function DashboardRoute({ navigate }) {
   }
 
   // ---- Actions -----------------------------------------------------------
+  // The faucet tile is kept as a reference so it can be hidden on networks that have no
+  // faucet. Offering "Faucet" on mainnet would be an invitation to a dead end at best.
+  const faucetTile = track(ActionTile({ iconName: 'faucet', label: 'Faucet', onClick: () => navigate('/faucet') }));
+
   const actionGrid = h('div', { class: 'action-grid' }, [
     track(ActionTile({ iconName: 'send', label: 'Send', onClick: () => navigate('/send') })).el,
     track(ActionTile({ iconName: 'receive', label: 'Receive', onClick: () => navigate('/receive') })).el,
-    track(ActionTile({ iconName: 'faucet', label: 'Faucet', onClick: () => navigate('/faucet') })).el,
+    faucetTile.el,
     track(ActionTile({ iconName: 'history', label: 'History', onClick: () => navigate('/history') })).el,
   ]);
+
+  /**
+   * A network is faucet-capable only if it declares both a faucet program and a state account.
+   * Mirrors hasFaucet() in src/lib/networks.js, computed from the serialized config the UI has.
+   */
+  function applyNetworkCapabilities(network) {
+    const faucetAvailable = Boolean(network?.faucetProgramId && network?.faucetStateAccount);
+    faucetTile.el.classList.toggle('hidden', !faucetAvailable);
+    actionGrid.classList.toggle('action-grid-3', !faucetAvailable);
+  }
 
   // ---- Launchpad ---------------------------------------------------------
   // Gated behind FLAGS.FEATURE_LAUNCHPAD. The core wallet ships first; the launchpad returns
@@ -209,6 +223,12 @@ export function DashboardRoute({ navigate }) {
   async function load({ force = false } = {}) {
     banner.clear();
     refreshBtn.el.classList.add('spinning');
+
+    // Capabilities first, so the action grid does not briefly advertise a faucet the current
+    // network does not have.
+    bridge.send('network.getActive')
+      .then((network) => applyNetworkCapabilities(network))
+      .catch(() => {});
 
     try {
       account = await bridge.send('account.getActive');
@@ -297,6 +317,9 @@ export function DashboardRoute({ navigate }) {
     }),
     bridge.onEvent('accountsChanged', () => load()),
     bridge.onEvent('pendingTxChanged', ({ pending } = {}) => renderPending(pending)),
+    // Balances, tokens and pending transactions are all per-network, so a switch means every
+    // number on this screen belongs to a different chain and must be re-read.
+    bridge.onEvent('networkChanged', () => load({ force: true })),
   );
 
   return {

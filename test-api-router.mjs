@@ -188,5 +188,85 @@ assert.equal(
 assert.equal(BigInt(netRes.data.faucetMaxPerClaim) > 0n, true, 'the value must survive, not be nulled');
 console.log('  ok - faucetMaxPerClaim is preserved as a string and re-widens to BigInt');
 
+console.log('[9] Per-network data isolation');
+// Getting the global-vs-scoped split wrong is a data-model bug that only surfaces the first
+// time someone switches network — at which point they see the previous network's pending
+// transactions and a token list of mints that do not exist where they now are.
+const { GLOBAL_KEYS, SCOPED_KEYS, scopedKey, baseKeyOf, networkOf } =
+  await import('./src/shared/network-scope.js');
+const { listNetworks, listAllNetworks } = await import('./src/lib/networks.js');
+
+const overlap = GLOBAL_KEYS.filter((k) => SCOPED_KEYS.includes(k));
+assert.equal(overlap.length, 0, `a key cannot be both global and scoped: ${overlap.join(', ')}`);
+
+// The vault must never be scoped. The same key controls the same address on every Thru
+// network, so scoping it would make switching network look like the wallet had been erased.
+for (const k of ['vault', 'unlocked_session', 'active_account_ref']) {
+  assert.equal(GLOBAL_KEYS.includes(k), true, `${k} must be declared global`);
+  assert.equal(SCOPED_KEYS.includes(k), false, `${k} must never be network-scoped`);
+}
+console.log('  ok - vault, session and active-ref keys are global, never scoped');
+
+assert.equal(scopedKey('thru_pending_txs', 'alphanet'), 'thru_pending_txs::alphanet');
+assert.equal(baseKeyOf('thru_pending_txs::alphanet'), 'thru_pending_txs');
+assert.equal(networkOf('thru_pending_txs::alphanet'), 'alphanet');
+assert.equal(networkOf('vault'), null, 'an unscoped key reports no network');
+assert.throws(() => scopedKey('thru_pending_txs', ''), 'a missing network id must throw, not silently produce a global key');
+console.log('  ok - scopedKey round-trips and refuses an empty network id');
+
+// Only enabled networks are selectable; declared-but-unfinished ones stay out of the UI.
+const selectable = listNetworks().map((n) => n.id);
+const declared = listAllNetworks().map((n) => n.id);
+assert.equal(selectable.includes('alphanet'), true, 'alphanet is selectable');
+assert.equal(declared.includes('mainnet'), true, 'mainnet is declared');
+assert.equal(selectable.includes('mainnet'), false, 'mainnet is NOT selectable while unverified');
+assert.equal(declared.includes('testnet'), true, 'testnet is declared');
+assert.equal(selectable.includes('testnet'), false, 'testnet is NOT selectable while unverified');
+console.log(`  ok - ${selectable.length} of ${declared.length} networks selectable; unverified ones declared but disabled`);
+
+// The real behavioural check: pending transactions must not leak across a network switch.
+await handleApiRequest({ method: 'wallet.unlock', params: { password: 'Password123!' } });
+const activeAcct = (await handleApiRequest({ method: 'account.getActive' })).data;
+
+await handleApiRequest({ method: 'network.setActive', params: { networkId: 'alphanet' } });
+const { track } = await import('./src/background/services/pending-tx-service.js');
+await track({
+  signature: 'sig-on-alphanet',
+  kind: 'transfer',
+  from: activeAcct.address,
+  to: activeAcct.address,
+  amountUnits: '1',
+  networkId: 'alphanet',
+});
+const alphaPending = (await handleApiRequest({ method: 'tx.getPending' })).data;
+assert.equal(alphaPending.some((r) => r.signature === 'sig-on-alphanet'), true, 'the record is visible on the network it was made on');
+
+await handleApiRequest({ method: 'network.setActive', params: { networkId: 'localnet' } });
+const localPending = (await handleApiRequest({ method: 'tx.getPending' })).data;
+assert.equal(
+  localPending.some((r) => r.signature === 'sig-on-alphanet'),
+  false,
+  'an alphanet transaction must NOT appear after switching to localnet',
+);
+console.log('  ok - pending transactions do not leak across a network switch');
+
+await handleApiRequest({ method: 'network.setActive', params: { networkId: 'alphanet' } });
+const backAgain = (await handleApiRequest({ method: 'tx.getPending' })).data;
+assert.equal(
+  backAgain.some((r) => r.signature === 'sig-on-alphanet'),
+  true,
+  'switching back restores that network\'s own records rather than having wiped them',
+);
+console.log('  ok - switching back preserves each network\'s own records');
+
+// Account labels are the counter-example: they describe an address, not a chain, so they must
+// survive a switch.
+await handleApiRequest({ method: 'account.setLabel', params: { address: activeAcct.address, label: 'CrossNet' } });
+await handleApiRequest({ method: 'network.setActive', params: { networkId: 'localnet' } });
+const labelAfterSwitch = (await handleApiRequest({ method: 'account.getActive' })).data.label;
+assert.equal(labelAfterSwitch, 'CrossNet', 'account labels are global and survive a network switch');
+await handleApiRequest({ method: 'network.setActive', params: { networkId: 'alphanet' } });
+console.log('  ok - account labels are global and survive a network switch');
+
 console.log('\nAll background API router integration tests passed.');
 

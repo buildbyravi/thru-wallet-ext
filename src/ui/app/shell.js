@@ -13,12 +13,19 @@ import { icon } from '../kit/icon.js';
 import * as bridge from './bridge.js';
 
 /**
- * @param {{ navigate: Function, onLock?: Function }} options
+ * @param {{ navigate: Function, onNetworkChange?: Function }} options
  */
-export function AppShell({ navigate }) {
+export function AppShell({ navigate, onNetworkChange }) {
   const d = disposer();
+  let currentNetwork = null;
 
   // ---- Topbar -------------------------------------------------------------
+  //
+  // The network badge is not decoration. Once mainnet exists, "which chain am I on" is the
+  // difference between a test transfer and a real one, so it is shown permanently next to the
+  // wordmark and styled differently for a live network.
+  const networkBadge = h('span', { class: 'badge', text: '…' });
+
   const settingsBtn = h('button', {
     type: 'button',
     class: 'icon-btn',
@@ -44,7 +51,10 @@ export function AppShell({ navigate }) {
   });
 
   const topbar = h('header', { class: 'topbar' }, [
-    h('div', { class: 'wordmark' }, h('span', { text: 'thru wallet' })),
+    h('div', { class: 'row-flex' }, [
+      h('div', { class: 'wordmark' }, h('span', { text: 'thru wallet' })),
+      networkBadge,
+    ]),
     h('div', { class: 'topbar-right' }, [settingsBtn, lockBtn]),
   ]);
 
@@ -73,9 +83,22 @@ export function AppShell({ navigate }) {
   async function refreshNetwork() {
     try {
       const network = await bridge.send('network.getActive');
-      netLabel.textContent = network?.label || network?.id || 'Unknown network';
+      const label = network?.label || network?.id || 'Unknown network';
+      netLabel.textContent = label;
+
+      // A live network must never look like a test one. `isTestnet` existed in the config for
+      // a long time and drove nothing; it now drives both the badge and faucet visibility.
+      networkBadge.textContent = label;
+      networkBadge.classList.toggle('badge-live', network?.isTestnet === false);
+      networkBadge.title = network?.isTestnet === false
+        ? 'Live network — transactions move real funds'
+        : 'Test network';
+
+      currentNetwork = network;
+      onNetworkChange?.(network);
     } catch {
       netLabel.textContent = 'Network unavailable';
+      networkBadge.textContent = '—';
     }
     try {
       const health = await bridge.send('tx.checkHealth');
@@ -96,14 +119,14 @@ export function AppShell({ navigate }) {
     }
   }
 
-  d.add(bridge.onEvent('networkChanged', (network) => {
-    netLabel.textContent = network?.label || network?.id || 'Unknown network';
-    refreshNetwork();
-  }));
+  d.add(bridge.onEvent('networkChanged', () => refreshNetwork()));
 
   return {
     el,
     outlet,
+    get network() {
+      return currentNetwork;
+    },
     /** Hide chrome on screens that own the whole viewport (unlock, onboarding). */
     setChromeVisible(visible) {
       topbar.classList.toggle('hidden', !visible);

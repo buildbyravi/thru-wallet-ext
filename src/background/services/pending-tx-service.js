@@ -16,8 +16,13 @@
 
 import * as thruClient from '../../lib/thru-client.js';
 import { emit } from './event-service.js';
+import { getActiveNetworkId } from './network-service.js';
+import { scopedKey } from '../../shared/network-scope.js';
 
-const PENDING_KEY = 'thru_pending_txs';
+// Per-network. A transaction signature exists on exactly one chain, so a shared store would
+// show devnet's pending transfers after switching to mainnet — and would badge the extension
+// icon for transactions that can never confirm on the current network.
+const PENDING_BASE_KEY = 'thru_pending_txs';
 const MAX_RECORDS = 50;
 
 // Give up watching after this long and mark the record 'unknown' rather than guessing.
@@ -30,10 +35,15 @@ export const TX_STATUS = {
   UNKNOWN: 'unknown',
 };
 
+async function pendingKey() {
+  return scopedKey(PENDING_BASE_KEY, await getActiveNetworkId());
+}
+
 async function readAll() {
   try {
-    const res = await chrome.storage.local.get(PENDING_KEY);
-    const list = res?.[PENDING_KEY];
+    const key = await pendingKey();
+    const res = await chrome.storage.local.get(key);
+    const list = res?.[key];
     return Array.isArray(list) ? list : [];
   } catch {
     return [];
@@ -42,7 +52,7 @@ async function readAll() {
 
 async function writeAll(list) {
   try {
-    await chrome.storage.local.set({ [PENDING_KEY]: list.slice(0, MAX_RECORDS) });
+    await chrome.storage.local.set({ [await pendingKey()]: list.slice(0, MAX_RECORDS) });
   } catch {
     // ignore
   }
@@ -198,10 +208,18 @@ export async function clearSettled() {
   return { remaining: next.length };
 }
 
-/** Wipe all records. Called on wallet reset. */
+/**
+ * Wipe records for EVERY network. Called on wallet reset.
+ *
+ * Scans for scoped keys rather than removing one, because a reset must not leave the previous
+ * wallet's pending transactions waiting on a network the user has not selected yet.
+ */
 export async function clearAll() {
   try {
-    await chrome.storage.local.remove(PENDING_KEY);
+    const all = await chrome.storage.local.get(null);
+    const keys = Object.keys(all || {})
+      .filter((k) => k === PENDING_BASE_KEY || k.startsWith(`${PENDING_BASE_KEY}::`));
+    if (keys.length) await chrome.storage.local.remove(keys);
   } catch {
     // ignore
   }

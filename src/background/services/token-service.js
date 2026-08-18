@@ -3,6 +3,7 @@
 import * as vault from '../../lib/vault.js';
 import * as thruClient from '../../lib/thru-client.js';
 import { getPreferences, setPreferences, setTokenHidden } from './preferences-service.js';
+import { getActiveNetworkId } from './network-service.js';
 
 /**
  * Deploy a new native token mint on ThruVM using the active account.
@@ -22,8 +23,12 @@ import { getPreferences, setPreferences, setTokenHidden } from './preferences-se
  */
 export async function deployToken(params) {
   const feePayer = await vault.getActiveAccount();
+  const networkId = await getActiveNetworkId();
   return thruClient.deployTokenMint({
     feePayer,
+    // The mint is recorded against the network it was created on, so switching networks does
+    // not list mints that do not exist there.
+    networkId,
     mintSeed: params.mintSeed,
     name: params.name,
     symbol: params.symbol,
@@ -63,7 +68,11 @@ function normalizeToken(raw, hidden) {
  * Hidden tokens are still returned, flagged, so a settings screen can unhide them.
  */
 export async function listDeployedTokens() {
-  const [raw, prefs] = await Promise.all([thruClient.getDeployedTokens(), getPreferences()]);
+  const networkId = await getActiveNetworkId();
+  const [raw, prefs] = await Promise.all([
+    thruClient.getDeployedTokens(networkId),
+    getPreferences(),
+  ]);
   const hidden = new Set(prefs.hiddenTokens);
   const deployed = (Array.isArray(raw) ? raw : []).map((t) => normalizeToken(t, hidden));
   const imported = prefs.customTokens.map((t) => ({

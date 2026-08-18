@@ -6,7 +6,6 @@
 
 import { DEFAULT_NETWORK, getNetworkConfig, listNetworks } from '../../lib/networks.js';
 import { emitNetworkChanged } from './event-service.js';
-import * as balances from './balance-service.js';
 
 const ACTIVE_NETWORK_KEY = 'thru_active_network';
 const CUSTOM_NETWORKS_KEY = 'thru_custom_networks';
@@ -93,15 +92,21 @@ export async function getActiveNetworkConfig() {
 }
 
 /**
- * Set the active network. Clears the balance cache, since a cached balance from one network is
- * meaningless on another and showing it would be actively misleading.
+ * Set the active network.
+ *
+ * Deliberately does NOT clear the balance cache any more. Per-network data is namespaced by
+ * network id (see src/shared/network-scope.js), so each network already reads its own cache,
+ * pending transactions and token registry. Switching therefore needs no wiping, switching back
+ * preserves each side's last-known values, and staleness is decided by age rather than by
+ * whether someone remembered to clear. Removing that call also removed this module's dependency
+ * on balance-service.
+ *
  * @param {string} networkId
  */
 export async function setActiveNetwork(networkId) {
   const config = await resolveNetwork(networkId);
   await chrome.storage.local.set({ [ACTIVE_NETWORK_KEY]: config.id });
-  await balances.clearCache();
-  emitNetworkChanged(config);
+  emitNetworkChanged(toPublicNetwork(config));
   return config;
 }
 

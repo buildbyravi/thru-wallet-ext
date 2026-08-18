@@ -4,6 +4,7 @@
 // breaking SDK changes — this whole file may need updates as Thru moves toward testnet/mainnet.
 
 import { createThruClient, Signature, Pubkey, PageRequest } from '@thru/sdk';
+import { scopedKey } from '../shared/network-scope.js';
 
 export const ALPHANET_RPC = 'https://rpc.alphanet.thru.org';
 
@@ -434,17 +435,34 @@ export function encodeInitializeMintInstructionData(accountIdx, mintSeed, proofS
   return payload;
 }
 
-/** List all tokens deployed by this wallet extension. */
-export async function getDeployedTokens() {
-  const { [DEPLOYED_TOKENS_KEY]: tokens } = await chrome.storage.local.get(DEPLOYED_TOKENS_KEY);
-  return tokens ?? [];
+/**
+ * List tokens deployed by this wallet extension, for one network.
+ *
+ * A mint address only exists on the chain it was deployed to, so this store is namespaced by
+ * network id. Without that, switching to mainnet would list devnet mints as if they were real.
+ *
+ * `networkId` is a parameter rather than a lookup because this module must not depend on a
+ * background service. Callers (token-service.js) already know the active network.
+ *
+ * @param {string} networkId
+ */
+export async function getDeployedTokens(networkId) {
+  const key = networkId ? scopedKey(DEPLOYED_TOKENS_KEY, networkId) : DEPLOYED_TOKENS_KEY;
+  const stored = await chrome.storage.local.get(key);
+  const tokens = stored?.[key];
+  return Array.isArray(tokens) ? tokens : [];
 }
 
-/** Save a deployed token record locally. */
-export async function saveDeployedToken(tokenInfo) {
-  const tokens = await getDeployedTokens();
+/**
+ * Save a deployed token record locally, for one network.
+ * @param {Object} tokenInfo
+ * @param {string} networkId
+ */
+export async function saveDeployedToken(tokenInfo, networkId) {
+  const key = networkId ? scopedKey(DEPLOYED_TOKENS_KEY, networkId) : DEPLOYED_TOKENS_KEY;
+  const tokens = await getDeployedTokens(networkId);
   tokens.unshift(tokenInfo);
-  await chrome.storage.local.set({ [DEPLOYED_TOKENS_KEY]: tokens });
+  await chrome.storage.local.set({ [key]: tokens });
 }
 
 /**
@@ -461,6 +479,9 @@ export async function deployTokenMint({
   imageUri = '',
   description = '',
   mintSeed = generateMintSeed(),
+  // The network the mint is being created on. Recorded so the local registry stays scoped:
+  // a mint address only exists on the chain it was deployed to.
+  networkId = null,
   onProgress = () => {},
 }) {
   const client = getClient();
@@ -526,7 +547,7 @@ export async function deployTokenMint({
     createdAt: Date.now(),
   };
 
-  await saveDeployedToken(tokenRecord);
+  await saveDeployedToken(tokenRecord, networkId);
   onProgress({ step: 'success', message: 'Token deployed successfully!', token: tokenRecord });
   return tokenRecord;
 }

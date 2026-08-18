@@ -6,6 +6,24 @@
    the legacy stylesheets reached ~200 unreachable lines.
    ============================================================ */
 
+/* ---- Network badge --------------------------------------------
+   A live network must never be mistakeable for a test one. The default
+   .badge is quiet steel; .badge-live is the accent signal, which is
+   exactly the case where spending the signal colour is justified. */
+
+.badge-live {
+  background: var(--accent-tint);
+  border-color: var(--accent);
+  color: var(--accent-bright);
+  font-weight: 600;
+}
+
+/* Action grid collapses to three columns on networks with no faucet,
+   so the row stays evenly divided instead of leaving a gap. */
+.action-grid-3 {
+  grid-template-columns: repeat(3, 1fr) !important;
+}
+
 /* ---- App shell -------------------------------------------------
    The persistent chrome the rebuilt stack renders around every route.
    Routes mount into .app-outlet, which grows so a short screen's

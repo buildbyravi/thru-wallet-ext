@@ -15,16 +15,27 @@
 
 import * as thruClient from '../../lib/thru-client.js';
 import { emitBalanceChanged } from './event-service.js';
+import { getActiveNetworkId } from './network-service.js';
+import { scopedKey } from '../../shared/network-scope.js';
 
-const CACHE_KEY = 'thru_balance_cache';
+// Per-network. A balance on devnet says nothing about mainnet, so each network keeps its own
+// cache rather than one shared cache that has to be wiped on every switch. Switching back and
+// forth therefore preserves each side's last-known values, and staleness is decided by age
+// instead of by whether someone remembered to clear.
+const CACHE_BASE_KEY = 'thru_balance_cache';
 const FRESH_MS = 30_000;
 const MAX_CONCURRENCY = 4;
 const MAX_ADDRESSES = 50;
 
+async function cacheKey() {
+  return scopedKey(CACHE_BASE_KEY, await getActiveNetworkId());
+}
+
 async function readCache() {
   try {
-    const res = await chrome.storage.local.get(CACHE_KEY);
-    const cache = res?.[CACHE_KEY];
+    const key = await cacheKey();
+    const res = await chrome.storage.local.get(key);
+    const cache = res?.[key];
     return cache && typeof cache === 'object' ? cache : {};
   } catch {
     return {};
@@ -33,7 +44,7 @@ async function readCache() {
 
 async function writeCache(cache) {
   try {
-    await chrome.storage.local.set({ [CACHE_KEY]: cache });
+    await chrome.storage.local.set({ [await cacheKey()]: cache });
   } catch {
     // ignore
   }
@@ -160,10 +171,30 @@ export async function invalidate(address) {
   await writeCache(cache);
 }
 
-/** Wipe the cache. Called on reset and on network switch, since balances are per-network. */
+/**
+ * Wipe the CURRENT network's cache.
+ *
+ * No longer called on network switch — each network has its own scoped cache, so a switch
+ * needs no clearing at all. Kept for wallet reset, where every network's cached balances must
+ * go with the keys.
+ */
 export async function clearCache() {
   try {
-    await chrome.storage.local.remove(CACHE_KEY);
+    await chrome.storage.local.remove(await cacheKey());
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * Wipe EVERY network's balance cache. Used on wallet reset: a fresh wallet must not inherit
+ * the previous one's balances on any network.
+ */
+export async function clearAllCaches() {
+  try {
+    const all = await chrome.storage.local.get(null);
+    const keys = Object.keys(all || {}).filter((k) => k.startsWith(`${CACHE_BASE_KEY}::`) || k === CACHE_BASE_KEY);
+    if (keys.length) await chrome.storage.local.remove(keys);
   } catch {
     // ignore
   }
