@@ -2,10 +2,33 @@
 // Directly interacts with vault.js.
 
 import * as vault from '../../lib/vault.js';
+import * as thruClient from '../../lib/thru-client.js';
 import * as auth from './auth-service.js';
 import * as balances from './balance-service.js';
 import * as pending from './pending-tx-service.js';
 import { emitLockStateChanged } from './event-service.js';
+
+/**
+ * Register the newly active account on-chain, without blocking the caller.
+ *
+ * Thru requires an account to exist on-chain before it can receive a faucet claim or a transfer.
+ * Registration is free but needs the network, so this is fire-and-forget: an offline node must
+ * never prevent someone creating or importing a wallet. claimFaucet guards independently, and the
+ * dashboard's balance check remains a third backstop.
+ */
+function registerActiveOnChain() {
+  Promise.resolve()
+    .then(async () => {
+      const active = await vault.getActiveAccount();
+      if (!active?.address) return;
+      const info = await thruClient.getAccountInfo(active.address);
+      if (info.exists) return;
+      await thruClient.createOnChainAccount(active);
+    })
+    .catch((error) => {
+      console.warn('[wallet-service] on-chain registration deferred:', error?.message || error);
+    });
+}
 
 /**
  * Check whether an encrypted vault exists on device.
@@ -29,6 +52,11 @@ export async function isUnlocked() {
 export async function createVault(password) {
   const mnemonic = await vault.createVault(password);
   const active = await vault.getActiveAccount();
+  // Register the first account on-chain immediately. Without this it only happened as a side
+  // effect of the dashboard's balance check, so a brand-new wallet that tapped Faucet first
+  // failed with "[not_found] account not found". Not awaited: an offline node must not prevent
+  // wallet creation, and claimFaucet still guards independently.
+  registerActiveOnChain();
   return { mnemonic, address: active.address };
 }
 
@@ -39,7 +67,9 @@ export async function createVault(password) {
  * @returns {Promise<{ address: string }>}
  */
 export async function importMnemonicVault(mnemonic, password) {
-  return vault.importMnemonicVault(mnemonic, password);
+  const result = await vault.importMnemonicVault(mnemonic, password);
+  registerActiveOnChain();
+  return result;
 }
 
 /**
@@ -49,7 +79,9 @@ export async function importMnemonicVault(mnemonic, password) {
  * @returns {Promise<{ address: string }>}
  */
 export async function importPrivateKeyVault(privateKeyHex, password) {
-  return vault.importPrivateKeyVault(privateKeyHex, password);
+  const result = await vault.importPrivateKeyVault(privateKeyHex, password);
+  registerActiveOnChain();
+  return result;
 }
 
 /**

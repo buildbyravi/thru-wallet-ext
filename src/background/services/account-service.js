@@ -1,9 +1,44 @@
 // Account management service running in the background worker.
 
 import * as vault from '../../lib/vault.js';
+import * as thruClient from '../../lib/thru-client.js';
 import { getPreferences, applyAccountPreferences } from './preferences-service.js';
 import { emitAccountsChanged } from './event-service.js';
 import * as balances from './balance-service.js';
+
+/**
+ * Register a newly created account on-chain, without blocking the caller.
+ *
+ * Thru requires an account to exist on-chain before it can receive a faucet claim or a transfer.
+ * Registration is free — it needs no funding, only a transaction — but it does need the network.
+ *
+ * Until now this happened in exactly one place: the dashboard's balance check, fired as
+ * `bridge.send('tx.autoCreateAccount').catch(() => {})` and never awaited. That left two gaps:
+ *
+ *   1. a race — open the popup and tap Faucet before that lands, and the claim fails with
+ *      "[not_found] account not found";
+ *   2. any account added without a loaded dashboard afterwards was never registered at all.
+ *
+ * Doing it at creation makes registration a property of creating an account rather than a side
+ * effect of looking at one. Deliberately NOT awaited: an offline or slow node must never block
+ * adding an account, and the dashboard check plus the guard inside claimFaucet remain as
+ * backstops. Errors are logged rather than swallowed silently so a persistent failure is visible.
+ *
+ * @param {{ address: string, publicKey: any, privateKey: any }} account
+ */
+function registerOnChain(account) {
+  if (!account?.address) return;
+  Promise.resolve()
+    .then(async () => {
+      const info = await thruClient.getAccountInfo(account.address);
+      if (info.exists) return;
+      await thruClient.createOnChainAccount(account);
+    })
+    .catch((error) => {
+      // Not fatal: the account exists locally and can be registered later.
+      console.warn(`[account-service] on-chain registration deferred for ${account.address}:`, error?.message || error);
+    });
+}
 
 /**
  * Strips raw private key bytes before returning account metadata to the UI.
@@ -87,6 +122,8 @@ export async function addHdAccount(keyringId = null) {
   const account = await vault.addHdAccount(keyringId);
   const active = await vault.getActiveAccount();
   const publicAccount = toPublicAccount(active);
+  // Register as part of creating, not as a side effect of viewing a dashboard later.
+  registerOnChain(active);
   emitAccountsChanged({ active: publicAccount, added: account });
   return publicAccount;
 }
@@ -112,6 +149,7 @@ export async function previewHdAccounts({ keyringId, start = 0, count = 5, withB
 export async function addHdAccounts({ keyringId, indices }) {
   const result = await vault.addHdAccounts(keyringId, indices);
   const active = await vault.getActiveAccount();
+  registerOnChain(active);
   emitAccountsChanged({ active: toPublicAccount(active), added: result.added });
   return result;
 }
@@ -142,6 +180,7 @@ export async function removeHdAccount({ ref }) {
 export async function addImportedKey(privateKeyHex, password, label = '') {
   await vault.addPrivateKeyKeyring(privateKeyHex, password, label);
   const active = await vault.getActiveAccount();
+  registerOnChain(active);
   return toPublicAccount(active);
 }
 
