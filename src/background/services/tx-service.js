@@ -256,28 +256,38 @@ export async function autoCreateAccount() {
  * is unverified. The MAX button currently reserves a hardcoded 10_000 base units as a guess.
  */
 /**
- * Estimate the network fee for a transfer.
+ * Estimate the network fee for a transfer, from the ACTIVE network's config.
  *
- * MEASURED ON ALPHANET 2026-08-18, not derived from a spec. A 1-base-unit transfer between two
- * registered accounts cost exactly 1 base unit in fees (sender debited 2 total). Reported as
- * `source: 'measured'` so a caller can tell the difference between a verified number and an
- * authoritative one.
+ * The fee is a per-network value, not a constant. It was measured on alphanet devnet, and the
+ * transfer program and its fee schedule may both change at testnet — so a network whose fee has
+ * not been measured reports `supported: false` rather than quoting a devnet number as if it
+ * applied. A guessed fee on a live network is the most expensive kind of guess.
  *
- * `reserveUnits` is deliberately larger than the observed fee. Only one amount and one
- * transaction size were sampled, so whether the fee scales with either is still unknown; the MAX
- * button should hold back more than the single observation suggests. 1000 base units is
- * 0.000001 THRU — negligible to a user, and ample if the real fee turns out to vary.
- *
- * The previous hardcoded 10_000 reserve was 10,000x the real fee, which on a faucet-funded
- * devnet account (10,000 units per claim) meant MAX could reserve the entire balance.
+ * `reserveUnits` is what MAX should hold back. It sits well above the observed fee because only
+ * one amount and one transaction size were sampled, so whether the fee scales with either is
+ * still unknown. The previous hardcoded 10_000 reserve was 10,000x the real fee, which on a
+ * faucet-funded account (10,000 per claim) could reserve the whole balance.
  */
 export async function estimateFee(/* { toAddress, amountUnits } */) {
+  const network = await getActiveNetworkConfig();
+
+  if (network.baseFeeUnits == null) {
+    return {
+      supported: false,
+      networkId: network.id,
+      feeUnits: null,
+      reserveUnits: null,
+      reason: `The transfer fee on ${network.label} has not been measured. It is deliberately not `
+        + 'inherited from devnet, because the transfer program and its fee schedule may differ.',
+    };
+  }
+
   return {
     supported: true,
-    source: 'measured',
-    feeUnits: '1',
-    reserveUnits: '1000',
-    measuredOn: 'alphanet',
+    networkId: network.id,
+    source: network.environment === 'devnet' ? 'measured' : 'assumed',
+    feeUnits: network.baseFeeUnits.toString(),
+    reserveUnits: (network.feeReserveUnits ?? network.baseFeeUnits).toString(),
     reason: 'Observed on a live transfer between two registered accounts. Not a published spec, '
       + 'so the reserve is set above the observed value.',
   };

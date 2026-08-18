@@ -183,6 +183,52 @@ try {
   console.log('  the cause and the transfer instruction spec needs to come from the Thru team.');
 }
 
+// ---- Calls the /send route depends on --------------------------------------
+const fee = await call('tx.estimateFee', {});
+report(
+  'tx.estimateFee reports a per-network fee',
+  fee.supported ? 'PASS' : 'CHECK',
+  fee.supported
+    ? `feeUnits=${fee.feeUnits} reserveUnits=${fee.reserveUnits} source=${fee.source}`
+    : `unsupported on ${fee.networkId}: ${fee.reason}`,
+);
+
+const selfCheck = await call('tx.validateAddress', { address: sender.address });
+report(
+  'tx.validateAddress detects a self-transfer',
+  selfCheck.valid === true && selfCheck.isSelf === true ? 'PASS' : 'FAIL',
+  `valid=${selfCheck.valid} isSelf=${selfCheck.isSelf}`,
+);
+
+const junkCheck = await call('tx.validateAddress', { address: 'not-an-address' });
+report(
+  'tx.validateAddress rejects malformed input',
+  junkCheck.valid === false ? 'PASS' : 'FAIL',
+  junkCheck.reason,
+);
+
+// The rule /send must surface rather than let the VM report: an unregistered recipient cannot
+// receive, and the sender cannot register an account it holds no key for.
+const { keys, Pubkey } = await import('@thru/sdk');
+const ghostKp = await keys.generateKeyPair();
+const ghost = Pubkey.from(ghostKp.publicKey).toThruFmt();
+const ghostInfo = await call('tx.getAccountInfo', { address: ghost });
+report(
+  'an unused address reads as not existing, so /send can warn before signing',
+  ghostInfo.exists === false ? 'PASS' : 'CHECK',
+  `exists=${ghostInfo.exists}`,
+);
+try {
+  await call('tx.send', { toAddress: ghost, amountUnits: '1' });
+  report('tx.send refuses an unregistered recipient', 'FAIL', 'it was accepted, which contradicts the earlier finding');
+} catch (error) {
+  report(
+    'tx.send refuses an unregistered recipient with a clear code',
+    error.code === 'RECIPIENT_NOT_ACTIVATED' ? 'PASS' : 'CHECK',
+    `code=${error.code}: ${error.message}`,
+  );
+}
+
 // ---- History through the real service --------------------------------------
 try {
   const history = await call('tx.listHistory', { address: sender.address, pageSize: 10 });

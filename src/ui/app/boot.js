@@ -18,6 +18,7 @@ import { ExportRoute } from './routes/export.js';
 import { KeyringRoute } from './routes/keyring.js';
 import { SettingsRoute } from './routes/settings.js';
 import { ResetRoute } from './routes/reset.js';
+import { SendRoute } from './routes/send.js';
 
 /**
  * Routes migrated to the new stack.
@@ -71,6 +72,16 @@ export const POPUP_ROUTES = [
     // Autofocus is suppressed here: focusing the first control on a screen that is about to
     // display a recovery phrase would scroll the secret into view before the user has read
     // the warning above it.
+    autofocus: false,
+  },
+  {
+    path: '/send',
+    view: SendRoute,
+    guard: guards.requireUnlocked,
+    title: 'Send',
+    // No autofocus: the router's focus helper would land on the recipient field, and on a screen
+    // that ends in an irreversible action the first keystroke should not already be going
+    // somewhere.
     autofocus: false,
   },
   {

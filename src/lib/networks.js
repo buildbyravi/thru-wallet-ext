@@ -28,10 +28,17 @@ import { Pubkey } from '@thru/sdk';
  * @property {boolean} isTestnet    - Test/dev network. Drives faucet visibility and the badge.
  * @property {boolean} enabled      - Whether the network is selectable yet
  * @property {'devnet'|'testnet'|'mainnet'|'local'} environment
+ * @property {bigint|null} baseFeeUnits    - Observed transfer fee, or null when UNKNOWN
+ * @property {bigint|null} feeReserveUnits - What MAX should hold back, or null when unknown
  */
 
-// Program addresses are identical across Thru networks today. Declared once so a change lands
+// Program addresses are identical across Thru networks TODAY. Declared once so a change lands
 // in one place rather than being copy-pasted per entry.
+//
+// They are per-network fields on purpose: the transfer program address is not guaranteed to
+// survive the move to testnet, and neither is the fee. Anything network-specific belongs in the
+// entry, not in a module constant — thru-client already had to be un-hardcoded once for exactly
+// this reason.
 const TRANSFER_PROGRAM_ID = 'taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
 const TOKEN_PROGRAM_ID = 'taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKqq';
 const FAUCET_PROGRAM_ID = 'taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPr6';
@@ -57,6 +64,11 @@ export const NETWORKS = {
     isTestnet: true,
     enabled: true,
     environment: 'devnet',
+    // MEASURED on alphanet 2026-08-18: a transfer between two registered accounts cost
+    // exactly 1 base unit. Only one amount and one size were sampled, so the reserve sits
+    // well above it rather than at it.
+    baseFeeUnits: 1n,
+    feeReserveUnits: 1000n,
   },
 
   // Local node for development. Enabled because it costs nothing to offer and is the fastest
@@ -77,6 +89,10 @@ export const NETWORKS = {
     isTestnet: true,
     enabled: true,
     environment: 'local',
+    // A local node normally runs the same programs as devnet, but it is still a different
+    // deployment, so this is an assumption rather than a measurement.
+    baseFeeUnits: 1n,
+    feeReserveUnits: 1000n,
   },
 
   // Declared but NOT enabled. Present so the shape, storage scoping and UI paths exist and are
@@ -98,6 +114,11 @@ export const NETWORKS = {
     isTestnet: true,
     enabled: false,
     environment: 'testnet',
+    // UNKNOWN. Not inherited from devnet: the transfer program and its fee schedule may both
+    // change at testnet. null makes tx.estimateFee report unsupported instead of quoting a
+    // devnet number as if it applied here.
+    baseFeeUnits: null,
+    feeReserveUnits: null,
   },
 
   mainnet: {
@@ -113,6 +134,9 @@ export const NETWORKS = {
     isTestnet: false,
     enabled: false,
     environment: 'mainnet',
+    // UNKNOWN, and on a live network a guessed fee is the most expensive kind of guess.
+    baseFeeUnits: null,
+    feeReserveUnits: null,
   },
 };
 
