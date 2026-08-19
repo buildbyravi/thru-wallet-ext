@@ -19,6 +19,10 @@ import { KeyringRoute } from './routes/keyring.js';
 import { SettingsRoute } from './routes/settings.js';
 import { ResetRoute } from './routes/reset.js';
 import { SendRoute } from './routes/send.js';
+import { ReceiveRoute } from './routes/receive.js';
+import { FaucetRoute } from './routes/faucet.js';
+import { HistoryRoute } from './routes/history.js';
+import { WelcomeRoute } from './routes/welcome.js';
 
 /**
  * Routes migrated to the new stack.
@@ -82,6 +86,33 @@ export const POPUP_ROUTES = [
     // No autofocus: the router's focus helper would land on the recipient field, and on a screen
     // that ends in an irreversible action the first keystroke should not already be going
     // somewhere.
+    autofocus: false,
+  },
+  {
+    path: '/receive',
+    view: ReceiveRoute,
+    guard: guards.requireUnlocked,
+    title: 'Receive',
+  },
+  {
+    path: '/faucet',
+    view: FaucetRoute,
+    guard: guards.requireUnlocked,
+    title: 'Faucet',
+  },
+  {
+    path: '/history',
+    view: HistoryRoute,
+    guard: guards.requireUnlocked,
+    title: 'Activity',
+  },
+  {
+    // requireNoWallet: onboarding must bounce to the dashboard if a wallet already exists,
+    // otherwise a stray #/welcome would offer to create a second one over the top.
+    path: '/welcome',
+    view: WelcomeRoute,
+    guard: guards.requireNoWallet,
+    title: 'Welcome',
     autofocus: false,
   },
   {

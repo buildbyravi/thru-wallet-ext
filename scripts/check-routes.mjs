@@ -120,7 +120,9 @@ for (const m of legacySource.matchAll(/'go-[a-z-]+':\s*'(\/[a-z0-9-]*)'/g)) {
   legacyFallbackPaths.add(m[1]);
 }
 // Paths that deliberately fall through to the legacy stack until they migrate.
-const UNMIGRATED_OK = new Set(['/receive', '/faucet', '/history', '/welcome']);
+// EMPTY as of the full migration — every route now exists on the new stack. Anything added here
+// again is a temporary state that must be justified, not a place to park a broken link.
+const UNMIGRATED_OK = new Set([]);
 
 for (const [path, sites] of navigated) {
   if (registered.has(path)) continue;

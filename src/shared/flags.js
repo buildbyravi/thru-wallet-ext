@@ -11,13 +11,17 @@
 
 export const FLAGS = {
   /**
-   * Mount the new hash-router UI instead of the legacy show()/screen-id UI.
+   * Mount the rebuilt hash-router UI.
    *
-   * Routes live under src/ui/app/routes/. Any hash the new router does not recognise
-   * falls through to the legacy stack while this is a partial migration, so an
-   * unmigrated screen is never a dead end.
+   * ON as of the full migration: all 14 routes exist on the new stack, so there is nothing left
+   * for the legacy fallback to serve. scripts/check-routes.mjs enforces that every navigated
+   * route is registered and every registered route is reachable, so a missing screen fails the
+   * build rather than silently falling through.
+   *
+   * The legacy tree is deleted in the same commit. It remains recoverable from git history and
+   * from legacy-ui-backup-*.zip in the repo root.
    */
-  NEXT_UI: false,
+  NEXT_UI: true,
 
   /**
    * Token launchpad and DEX (src/launchpad/**).
