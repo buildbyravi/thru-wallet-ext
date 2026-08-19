@@ -100,10 +100,23 @@ a:hover {
   color: var(--accent-ink);
 }
 
+/* Focus ring in INK, not accent.
+   --accent (#d33c43) and --negative (#c0343b) are nearly the same red, so an
+   accent-coloured focus ring was indistinguishable from an error border -- a red box
+   around your account name on a wallet reads as "something is wrong". Ink is
+   unambiguous, has strong contrast on the light theme, and keeps red reserved for
+   errors and destructive intent. */
 :focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-  border-radius: 1px;
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* A route container is focused programmatically on navigation so screen readers announce
+   the new view. That is not a user-chosen focus, so it must not draw a ring. */
+.screen:focus,
+.screen:focus-visible {
+  outline: none;
 }
 
 @media (prefers-reduced-motion: reduce) {

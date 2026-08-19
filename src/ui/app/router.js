@@ -146,11 +146,24 @@ export class Router {
       if (instance?.el && this.root) this.root.appendChild(instance.el);
       if (route.title) document.title = `${route.title} — Thru Wallet`;
 
-      // Move focus to the new view so keyboard and screen-reader users are not left
-      // where the previous screen's DOM used to be.
-      const focusTarget = this.root?.querySelector('[autofocus], input, button, [tabindex]');
-      if (focusTarget && route.autofocus !== false) {
-        requestAnimationFrame(() => focusTarget.focus?.());
+      // Move focus into the new view so keyboard and screen-reader users are not left where the
+      // previous screen's DOM used to be.
+      //
+      // Only an element that explicitly asks for focus gets it. This previously ran
+      // querySelector('[autofocus], input, button, [tabindex]'), which takes the FIRST focusable
+      // element in DOM order -- on the dashboard that is the account pill, so arriving after
+      // unlock drew a focus ring around the account name as if something were wrong. Nothing is
+      // being typed on arrival, so focusing a navigation control is simply incorrect. It was also
+      // redundant: kit/field.js focuses its own control when asked.
+      //
+      // With no explicit target, focus goes to the route container instead. That announces the
+      // new view without putting a visible ring on a control the user did not choose.
+      const explicit = this.root?.querySelector('[autofocus]');
+      if (explicit && route.autofocus !== false) {
+        requestAnimationFrame(() => explicit.focus?.());
+      } else if (instance?.el && route.autofocus !== false) {
+        instance.el.setAttribute('tabindex', '-1');
+        requestAnimationFrame(() => instance.el.focus?.({ preventScroll: true }));
       }
     } catch (error) {
       console.error('[router] failed to mount route:', error);
