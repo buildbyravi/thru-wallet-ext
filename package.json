@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
-    "test": "node test-derivation.mjs && node scripts/check-layering.mjs && node test-contract.mjs && node test-ui-dom.mjs && node test-vault.mjs && node test-thru-client.mjs && node test-api-router.mjs",
-    "test:guards": "node test-derivation.mjs && node scripts/check-layering.mjs && node test-contract.mjs && node test-ui-dom.mjs"
+    "test": "node test-derivation.mjs && node scripts/check-layering.mjs && node scripts/check-routes.mjs && node test-contract.mjs && node test-ui-dom.mjs && node test-vault.mjs && node test-thru-client.mjs && node test-api-router.mjs",
+    "test:guards": "node test-derivation.mjs && node scripts/check-layering.mjs && node scripts/check-routes.mjs && node test-contract.mjs && node test-ui-dom.mjs"
   },
   "keywords": [
     "thru",
