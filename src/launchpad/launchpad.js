@@ -1,10 +1,13 @@
-import * as bridge from '../ui/bridge.js';
+import * as bridge from '../ui/app/bridge.js';
 import { formatThru, truncateAddress } from '../shared/format.js';
 import { explorerAddressUrl, explorerTxUrl } from '../lib/networks.js';
 import { icons, byteMarkHtml } from '../popup/icons.js';
 import { showToast } from '../popup/toast.js';
-import { openAccountSwitcher } from '../ui/components/account-switcher.js';
-import { openNetworkSwitcher } from '../ui/components/network-switcher.js';
+// The legacy account/network switcher drawers are gone with the rest of the legacy UI. Their
+// detail and rename buttons never worked on this page anyway - they navigated to legacy
+// #screen-* containers that only ever existed in popup.html - so nothing functional was lost.
+// The launchpad is flagged off pending its own pass; account and network switching happen in the
+// popup, and this page shows them read-only.
 
 const FAUCET_MAX_PER_CLAIM = 10_000n;
 
@@ -323,22 +326,12 @@ function setupEventListeners() {
 
     if (action === 'go-tab-create') {
       switchTab('create');
-    } else if (action === 'switch-account') {
-      openAccountSwitcher({
-        onAccountSwitched: async (newAccount) => {
-          activeAccount = newAccount;
-          updateAccountHeader();
-          await refreshBalance();
-        },
-      });
-    } else if (action === 'switch-network') {
-      openNetworkSwitcher({
-        onNetworkSwitched: async (newConfig) => {
-          activeNetwork = newConfig;
-          updateNetworkStatus();
-          await refreshBalance();
-        },
-      });
+    } else if (action === 'switch-account' || action === 'switch-network') {
+      // Read-only here. Switching happens in the popup, which owns the account and network
+      // screens; this page reflects whatever is active. The legacy drawers that used to open
+      // here navigated to #screen-* containers that only existed in popup.html, so their
+      // detail and rename buttons were already dead on this page.
+      showToast('Switch account or network from the wallet popup.', 'info');
     } else if (action === 'quick-faucet') {
       if (!activeAccount) {
         showToast('Please unlock wallet first.', 'error');

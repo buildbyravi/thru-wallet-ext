@@ -82,7 +82,6 @@ const RULES = [
 // index.js is NOT on this list on purpose: the worker entry point should emit through the
 // event service like everything else.
 const SEND_MESSAGE_ALLOWLIST = new Set([
-  'src/ui/bridge.js',
   'src/ui/app/bridge.js',
   'src/background/services/event-service.js',
 ]);
@@ -186,13 +185,10 @@ function stripCommentsAndStrings(source) {
 //     and the list can never rot into a permanent exemption
 //
 // Target: every entry reaches 0 and this map becomes empty.
-const DOM_SINK_BASELINE = {
-  'src/ui/router.js': 1,
-  'src/ui/components/drawer.js': 1,
-  'src/ui/components/account-switcher.js': 2,
-  'src/ui/components/recipient-selector.js': 2,
-  'src/ui/components/token-selector.js': 2,
-};
+// EMPTY. The legacy components that owned all 8 sinks are deleted, so the ratchet is closed:
+// any innerHTML/insertAdjacentHTML/outerHTML under src/ui or src/features now fails the build
+// outright. Do not add entries back - the whole point of the ratchet was to reach this state.
+const DOM_SINK_BASELINE = {};
 
 const DOM_SINK_DIRS = ['src/ui/', 'src/features/'];
 const DOM_SINK_RE = /\.(innerHTML|outerHTML)\s*=|insertAdjacentHTML\s*\(|document\s*\.\s*write\s*\(/;
