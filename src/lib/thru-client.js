@@ -14,6 +14,14 @@
 // back to the alphanet defaults, so it stays independently testable.
 
 import { createThruClient, Signature, Pubkey, PageRequest } from '@thru/sdk';
+// Official program bindings. BUILD_SPEC Part IX: prefer @thru/sdk, @thru/crypto and
+// @thru/programs over hand-written protocol code wherever the SDK provides the capability.
+// These replace a hand-rolled derivation that called a non-existent SDK method.
+import {
+  deriveMintAddress as sdkDeriveMintAddress,
+  deriveTokenAccountAddress as sdkDeriveTokenAccountAddress,
+  bytesToHex as sdkBytesToHex,
+} from '@thru/programs/token';
 import { scopedKey } from '../shared/network-scope.js';
 
 export const ALPHANET_RPC = 'https://rpc.alphanet.thru.org';
@@ -484,50 +492,72 @@ export async function listAccountHistory(address, pageSize = 15) {
 export const TOKEN_PROGRAM_ID = 'taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKqq';
 export const DEPLOYED_TOKENS_KEY = 'thru_deployed_tokens';
 
-/** Generate a 32-character alphanumeric random seed for mint address derivation. */
+/**
+ * Generate a mint seed: 32 random bytes as 64 hex characters.
+ *
+ * FIXED after reading the official binding. This produced 32 characters drawn from a base-62
+ * alphabet, which is neither 32 bytes nor hex. @thru/programs/token deriveMintAddress does
+ * `hexToBytes(seed)` and throws "Seed must be 32 bytes (64 hex characters)" on anything else, so
+ * every seed this generated was invalid for real mint derivation.
+ */
 export function generateMintSeed() {
-  const alphabet = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
-  const randBytes = new Uint8Array(32);
-  crypto.getRandomValues(randBytes);
-  let seed = '';
-  for (let i = 0; i < 32; i++) {
-    seed += alphabet[randBytes[i] % alphabet.length];
-  }
-  return seed;
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return sdkBytesToHex(bytes);
 }
 
 /**
- * Derive the deterministic Token Mint address for a seed.
+ * Derive the deterministic Token Mint address for a seed, via the official binding.
  *
- * BROKEN AND NOT SILENTLY GUESSED. Two separate problems, found by testing against a reference
- * dataset of 2008 generated wallets (\\wsl$\ubuntu\home\ravi\n-thru\wallets.json):
+ * HISTORY, because this was wrong in three separate ways:
  *
- *   1. This called `client.proofs.deriveAddress`, which DOES NOT EXIST in @thru/sdk 0.3.4 —
- *      `proofs` exposes only `generate` and `getStateRoots`. The call threw TypeError, so token
- *      mint derivation has been failing outright, which is why `token.deriveAddress` and the
- *      launchpad's mint preview never worked. The namespace is `helpers`.
+ *   1. It called `client.proofs.deriveAddress`, which does not exist in @thru/sdk 0.3.4 —
+ *      `proofs` exposes only `generate` and `getStateRoots`. The call threw, so token mint
+ *      derivation has never worked and `token.deriveAddress` always failed.
+ *   2. The seed format was wrong. generateMintSeed produced 32 base-62 characters; the real
+ *      derivation does hexToBytes(seed) and requires 32 bytes / 64 hex characters.
+ *   3. The inputs were wrong. Derivation is over [mintAuthorityBytes, seedBytes], so it needs
+ *      the CREATOR's address — a seed alone cannot identify a mint.
  *
- *   2. `helpers.deriveAddress(inputs[])` does run and return an address, but it does NOT
- *      reproduce the reference dataset's mint address from the same seed, so the correct input
- *      set is unknown. The dataset also uses 64-hex-character (32-byte) seeds while
- *      generateMintSeed() produces 32 alphanumeric characters — a different format entirely.
+ * Now delegated to @thru/programs/token, which is the authoritative implementation rather than
+ * a guess. Note that a reference corpus of generated wallets did NOT reproduce these addresses;
+ * its `tokenProgramId` field is not a mint derived this way, so it was not treated as an oracle.
  *
- * Returning a plausible-but-wrong mint address is worse than failing: it would point a deploy or
- * a lookup at the wrong account. So this reports the gap instead of guessing, matching how
- * tx.estimateFee and token.getBalances handle unverified behaviour.
- *
- * TO FIX: get the mint-derivation spec (program id, seed encoding, and input order) from the
- * Thru team, then verify against the reference dataset before trusting it.
+ * @param {string} mintSeed 64 hex characters
+ * @param {string} mintAuthorityAddress the account that will own the mint
+ * @returns {Promise<string>} the derived mint address
  */
-export async function deriveTokenMintAddress(mintSeed) {
-  const err = new Error(
-    'Token mint derivation is not verified against Thru. The SDK method previously used '
-    + '(proofs.deriveAddress) does not exist, and helpers.deriveAddress does not reproduce known '
-    + 'reference addresses, so the correct derivation is unknown.',
+export async function deriveTokenMintAddress(mintSeed, mintAuthorityAddress) {
+  if (!mintAuthorityAddress) {
+    throw new Error('Deriving a mint address needs the mint authority (creator) address.');
+  }
+  const result = await sdkDeriveMintAddress(
+    getClient(),
+    mintAuthorityAddress,
+    mintSeed,
+    activeNetwork.tokenProgramId,
   );
-  err.code = 'DERIVATION_UNVERIFIED';
-  err.seedLength = String(mintSeed ?? '').length;
-  throw err;
+  return result?.address ?? String(result);
+}
+
+/**
+ * Derive the token ACCOUNT address that holds one owner's balance of one mint.
+ *
+ * Thru separates a wallet account from its per-mint token accounts, so a token transfer needs
+ * both sides to have an initialized token account. This is what makes reading an owned token
+ * balance possible (docs/BACKEND_GAPS.md C1) and is the missing piece for token transfers.
+ *
+ * @param {string} ownerAddress
+ * @param {string} mintAddress
+ */
+export async function deriveTokenAccountAddress(ownerAddress, mintAddress) {
+  const result = await sdkDeriveTokenAccountAddress(
+    getClient(),
+    ownerAddress,
+    mintAddress,
+    activeNetwork.tokenProgramId,
+  );
+  return result?.address ?? String(result);
 }
 
 /** Pure byte-layout encoder for INITIALIZE_MINT (Tag 0) instruction. */

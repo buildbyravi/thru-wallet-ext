@@ -383,10 +383,19 @@ export const METHODS = {
     since: 1,
   },
   'token.deriveAddress': {
-    params: ['mintSeed'],
-    returns: 'derived mint address string',
+    params: ['mintSeed', 'mintAuthorityAddress'],
+    returns: 'derived mint address string. mintSeed must be 64 hex characters (32 bytes); the '
+      + 'authority defaults to the active account because derivation is over '
+      + '[authorityBytes, seedBytes].',
     auth: 'none',
     since: 1,
+  },
+  'token.deriveTokenAccount': {
+    params: ['ownerAddress', 'mintAddress'],
+    returns: 'address of the token account holding that owner\'s balance of that mint. Thru keeps '
+      + 'wallet accounts separate from per-mint token accounts.',
+    auth: 'none',
+    since: 4,
   },
   'token.generateSeed': {
     params: [],

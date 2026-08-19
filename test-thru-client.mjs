@@ -160,8 +160,14 @@ import {
   TOKEN_PROGRAM_ID,
 } from './src/lib/thru-client.js';
 
-const mockSeed = generateMintSeed();
-assert(mockSeed.length === 32, 'generateMintSeed produces 32-character seed');
+  const mockSeed = generateMintSeed();
+  // This previously asserted 32 characters, which ENCODED THE BUG: generateMintSeed produced 32
+  // base-62 characters, while @thru/programs/token deriveMintAddress does hexToBytes(seed) and
+  // throws "Seed must be 32 bytes (64 hex characters)". The test was protecting the wrong
+  // behaviour, so a real mint seed was never generated. Corrected to the SDK's actual contract.
+  assert(mockSeed.length === 64, 'generateMintSeed produces 64 characters (32 bytes)');
+  assert(/^[0-9a-f]{64}$/.test(mockSeed), 'generateMintSeed produces lowercase hex, as hexToBytes requires');
+  assert(generateMintSeed() !== mockSeed, 'generateMintSeed is random, not fixed');
 const mockAuthority = (await keys.generateKeyPair()).publicKey;
 const mockProof = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
 const initMintData = encodeInitializeMintInstructionData(2, mockSeed, mockProof.length, mockAuthority, 6, mockProof);

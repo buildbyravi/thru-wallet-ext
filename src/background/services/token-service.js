@@ -131,8 +131,30 @@ export async function getTokenBalances(/* { address } */) {
  * Derive deterministic token mint address from a 32-character seed.
  * @param {string} mintSeed
  */
-export function deriveMintAddress(mintSeed) {
-  return thruClient.deriveTokenMintAddress(mintSeed);
+/**
+ * Derive the deterministic mint address for a seed.
+ *
+ * Requires the mint authority, because derivation is over [authorityBytes, seedBytes] — a seed
+ * alone cannot identify a mint. Defaults to the active account, which is who a deploy from this
+ * wallet would actually make the authority.
+ *
+ * @param {string} mintSeed 64 hex characters
+ * @param {string} [mintAuthorityAddress] defaults to the active account
+ */
+export async function deriveMintAddress(mintSeed, mintAuthorityAddress) {
+  const authority = mintAuthorityAddress || (await vault.getActiveAccount())?.address;
+  return thruClient.deriveTokenMintAddress(mintSeed, authority);
+}
+
+/**
+ * Derive the token account address holding one owner's balance of one mint.
+ *
+ * Thru keeps a wallet account separate from its per-mint token accounts, so this is the address
+ * a token balance actually lives at.
+ */
+export async function deriveTokenAccount(ownerAddress, mintAddress) {
+  const owner = ownerAddress || (await vault.getActiveAccount())?.address;
+  return thruClient.deriveTokenAccountAddress(owner, mintAddress);
 }
 
 /**

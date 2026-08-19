@@ -149,7 +149,8 @@ const handlers = Object.assign(Object.create(null), {
   // ---- Tokens and launchpad --------------------------------------------
   'token.deploy': (params) => tokenService.deployToken(params),
   'token.list': () => tokenService.listDeployedTokens(),
-  'token.deriveAddress': ({ mintSeed }) => tokenService.deriveMintAddress(mintSeed),
+  'token.deriveAddress': ({ mintSeed, mintAuthorityAddress }) => tokenService.deriveMintAddress(mintSeed, mintAuthorityAddress),
+  'token.deriveTokenAccount': ({ ownerAddress, mintAddress }) => tokenService.deriveTokenAccount(ownerAddress, mintAddress),
   'token.generateSeed': () => tokenService.generateMintSeed(),
   'token.import': ({ mintAddress, symbol, name, decimals }) => tokenService.importToken({ mintAddress, symbol, name, decimals }),
   'token.setVisibility': ({ mintAddress, hidden }) => tokenService.setVisibility(mintAddress, hidden),
