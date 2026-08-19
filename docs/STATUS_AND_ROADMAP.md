@@ -1,182 +1,176 @@
 # Status and roadmap
 
 Single source of truth for **where the rebuild is** and **what happens next**.
-Last updated: end of the frontend rebuild session (13 commits, `e77f3af`..`5d15758`).
+Last updated: legacy UI deleted, migration complete (`e77f3af`..`c0ba23a`).
 
 Companion docs: `AGENTS.md` (rules) · `CONTEXT.md` (file map) · `docs/DEFECT_LOG.md` (every
 defect + lesson) · `docs/BACKEND_GAPS.md` (capability tiers) · `docs/BUILD_SPEC.md` (product
-spec) · `docs/UI_REBUILD_PLAN.md` (original phase plan)
+spec) · `docs/UI_REBUILD_PLAN.md` (original phase plan, §1 historical)
 
 ---
 
 ## 1. Where we are
 
+### The frontend rebuild is DONE
+
+One stack. `FLAGS.NEXT_UI` is `true`, the legacy tree is deleted, and there is no fallback path
+left. All 14 routes are real:
+
+```
+/welcome  /unlock  /dashboard  /accounts  /account  /add-account  /keyring
+/export   /send    /receive    /faucet    /history  /settings     /reset
+```
+
+Structural properties now enforced by CI rather than by discipline:
+
+| Property | Enforced by |
+| --- | --- |
+| No `innerHTML` anywhere in the UI | `check-layering.mjs` — **0 sinks, ratchet closed** |
+| One file per direction across the seam | `check-layering.mjs` sendMessage allowlist |
+| UI never imports vault/background | `check-layering.mjs` import rules |
+| Every navigated route exists | `check-routes.mjs` |
+| Every registered route is reachable | `check-routes.mjs` |
+| Every CSS class used is defined | `check-routes.mjs` |
+| Contract agrees in both directions | `test-contract.mjs` |
+| Key derivation cannot change silently | `test-derivation.mjs` |
+| Nothing unserializable crosses the port | `test-api-router.mjs` |
+
 ### Verified green
 
 ```
-npm run build     clean, no warnings
-npm test          layering (79 files, 4 rules) · contract (34, both directions)
-                  dom+refs (89) · vault · thru-client · api-router (+13 serialization probes)
+npm run build     clean, no warnings, dist/ reproducible
+npm test          derivation 16 · layering 60 files / 0 sinks · routes 14/14
+                  contract 34 · dom+refs 89 · vault · thru-client · api-router
 ```
+
+### Verified against a live chain
+
+Confirmed on alphanet, not assumed:
+
+- **Amount units.** The faucet field is raw base units — claiming 10000 credited exactly 10000.
+  This was the highest-value unknown in the project.
+- **Program addresses and instruction layouts** for faucet and transfer both execute.
+- **Transfer fee is 1 base unit**, measured. Now per-network config, `null` where unmeasured.
+- **History decoding** returns `sent` / `faucet` with amounts, and reports `success: false`.
+- **Accounts register on creation**, so faucet works on a brand-new wallet with no dashboard
+  visit (`scripts/verify-autoregister.mjs`, 5/5).
+- **End-to-end through `api-router`** — the same seam `bridge.send()` uses — 19/19
+  (`scripts/verify-live-e2e.mjs`).
 
 ### Not verified
 
-- **Nothing has been confirmed against a running chain.** Devnet is offline.
-- **No route has been rendered in a browser by an automated test.** All UI confirmation so far
-  came from the user manually testing, which found 9 defects my suite could not.
-
-### Frontend migration state
-
-Two stacks coexist. `FLAGS.NEXT_UI` in `src/shared/flags.js` selects which renders; it is
-**`false` by default**, so the shipping experience is still the legacy UI. Force the new stack
-for a session with `popup.html?next=1`.
-
-| Route | State | Replaces |
-| --- | --- | --- |
-| `#/unlock` | ✅ new stack | `screens/unlock.js` + static markup |
-| `#/dashboard` | ✅ new stack | `screens/dashboard.js` + `popup.js loadDashboard` |
-| `#/accounts` | ✅ new stack | `components/account-switcher.js`, `renderAccountsList` |
-| `#/account?ref=` | ✅ new stack | `screens/account-detail.js` (was **dead**) |
-| `#/add-account` | ✅ new stack | `screens/add-key.js`, `screens/import.js` |
-| `#/keyring?id=` | ✅ new stack | nothing — new capability |
-| `#/export?ref=` | ✅ new stack | `screens/export-*.js` (was **unreachable**) |
-| send | ⛔ legacy | — |
-| receive | ⛔ legacy | — |
-| faucet | ⛔ legacy | — |
-| history | ⛔ legacy | — |
-| settings | ⛔ legacy | — |
-| welcome / onboarding | ⛔ legacy | — |
-
-Unmigrated hashes fall through to `legacyFallback`, which delegates to
-`handleAction('go-<screen>')` so the legacy screen is **hydrated**, not merely revealed. The two
-DOM trees swap visibility; both are never shown at once.
-
-### Backend state
-
-Contract v4, **71 methods**, append-only, verified in both directions by `test-contract.mjs`.
-
-Complete and tested: multi-seed keyrings (create/import/rename/remove/backup-state), HD preview
-and batch add, per-account private key export, password re-verification, unlock backoff,
-inactivity auto-lock, address book, preferences (order/pin/hide/whitelist), batched + cached
-balances, push events, pending-transaction tracking, custom networks, token registry.
-
-Deliberately unimplemented, returning `{ supported: false, reason }` rather than fabricated
-values: `tx.estimateFee`, `tx.simulate`, `token.getBalances`. See `docs/BACKEND_GAPS.md` Tier C.
+- **No route has been rendered by an automated test.** Every UI confirmation so far came from
+  manual testing, which found 9 defects the suite could not. `check-routes.mjs` closed the
+  reachability and CSS half; **mounting is still uncovered** (see Step 1).
+- **Lock-on-refresh is unresolved.** Run `system.diagnostics` and read `sessionPresent`. `false`
+  right after a refresh means the session store is not persisting — a platform difference, since
+  the reported browser is Comet rather than Chrome — and not auto-lock firing. The two need
+  opposite fixes.
+- **Token transfer does not exist.** See Step 2.
 
 ---
 
 ## 2. What to do next, in order
 
-### Step 1 — jsdom route smoke test (before any more routes)
+### Step 1 — jsdom route mount test
 
-**Highest value item in this document.** It closes the three gaps that produced most of the
-defects the user found manually.
+The remaining half of the original Step 1. `check-routes.mjs` proves a route is *reachable* and
+its classes are *defined*; nothing proves it *mounts*. For each of the 14 routes, with a mocked
+bridge, in locked / unlocked / no-vault states:
 
-Add `jsdom` as a dev dependency and `test-ui-routes.mjs` that, for every route in
-`POPUP_ROUTES`:
+1. mount and assert no throw;
+2. walk the rendered tree for a seeded mnemonic or private key and assert neither appears in text
+   or in any attribute;
+3. call `destroy()` and assert every listener was removed and no secret survives in the detached
+   subtree.
 
-1. mounts it with a mocked bridge in **locked**, **unlocked** and **no-vault** states and
-   asserts no throw;
-2. asserts every CSS class the route uses is defined somewhere in `src/popup/styles/**`
-   (this alone would have caught ~80 undefined-class usages);
-3. walks the rendered tree for `[data-*]` attributes and text content matching a seeded
-   mnemonic or private key, asserting neither appears;
-4. asserts every route is **reachable** — that some other route or the shell contains a control
-   navigating to it, and that no control navigates to a path absent from the route table.
+Item 2 matters because the old stack wrote a mnemonic into `grid.dataset.raw` and never removed
+it. Note that `npm install jsdom` timed out once here and left a corrupt partial
+`node_modules/jsdom` with only a `lib` directory; remove it before retrying.
 
-Item 4 is the one that matters most: shipping a gear button before its route existed, and
-leaving four finished routes with no click path, were both connectivity failures.
+### Step 2 — token transfer
 
-Note: `npm install jsdom` timed out once in this environment and left a corrupt partial
-`node_modules/jsdom` with only a `lib` directory. If it fails, remove that directory before
-retrying.
+`@thru/programs/token` is installed and provides everything needed:
+`createTransferInstruction`, `createInitializeAccountInstruction`, `deriveTokenAccountAddress`,
+`parseTokenAccountData`.
 
-### Step 2 — migrate `#/send`
+Thru keeps a wallet account separate from its per-mint token accounts, so a transfer needs both
+sides to have an initialized token account — the same "recipient must be activated" shape already
+handled for native sends.
 
-The only flow that moves money, and it carries known hazards:
+This turns two things honest at once: the asset selector's `not sendable` state becomes genuinely
+sendable, and `token.getBalances` (BACKEND_GAPS C1) stops returning `supported: false`.
 
-- The global Enter handler clicks the first enabled `.btn.primary` in the visible screen. On the
-  send preview that is **Sign & Broadcast**. Use `kit/confirm-slider.js` (specified, not built)
-  or an explicit opt-in, never a bare Enter.
-- Merge validation from both copies: the module has a zero-amount guard the monolith lacks; the
-  monolith has an inline error surface the module lost. `checkRecipientAddress` is
-  character-identical in both, so one can simply be deleted.
-- Amounts are BigInt-only via `shared/format.js`. `tx.send` already validates address, amount,
-  self-transfer, whitelist and duplicate submission in the background, so the UI cannot weaken
-  those.
-- Surface `tx.estimateFee`'s `supported: false` honestly instead of printing a guessed fee.
-- Show pending state from `tx.getPending` after submit.
+Also replace the hand-rolled `encodeInitializeMintInstructionData` with
+`createInitializeMintInstruction` while in there.
 
-### Step 3 — migrate receive, faucet, history, settings
+### Step 3 — spacing and the tab-width question
 
-Mechanical by comparison. Settings should expose the preferences and custom-network methods that
-already exist with no UI, and fix the auto-lock label to say what it now truthfully does.
+Width is **fixed at 408px** on `body`; height is auto above a 580px floor. Correct for a popup,
+wrong when `popup.html` is opened in a tab for testing, where the 408px body leaves the viewport
+blank to the right. One media query lets the working surface widen when it is not in a popup.
+Do the section-spacing pass at the same time.
 
-### Step 4 — migrate welcome / onboarding
+### Step 4 — launchpad
 
-Route the new-wallet flow into `#/export?mode=backup` so a generated phrase is confirmed before
-use, matching the path `add-account` already takes.
+Flagged off (`FEATURE_LAUNCHPAD`). Its account/network switcher buttons currently point users at
+the popup, and it still uses `popup/icons.js` markup strings rather than `ui/kit/icon.js`.
+Migrate it onto the kit when it gets its own testing pass, then re-enable.
 
-### Step 5 — flip the flag, then delete
+Note `token.deriveAddress` now needs a mint authority and a 64-hex-character seed; the launchpad's
+deploy form predates both.
 
-Set `NEXT_UI: true`. Then, and only then, delete `src/popup/screens/**`,
-`src/ui/components/**`, `src/ui/router.js`, `src/ui/store.js`, `src/ui/events.js`, the static
-`#screen-*` markup in `popup.html`, the `handleAction` switch, `NEXT_UI_REDIRECTS`,
-`LEGACY_LOADERS`, and the flag itself.
+### Step 5 — remaining chain questions
 
-Expected result: the DOM-sink ratchet in `check-layering.mjs` reaches **0** and the baseline map
-becomes empty.
+1. **Explorer route patterns** `/tx/` and `/account/` — convention, unconfirmed. Worst case a
+   dead link.
+2. **Whether the transfer fee scales** with amount or transaction size. One observation only,
+   which is why the reserve sits 1000x above it.
+3. **Whether an external unregistered recipient can ever receive.** The sender cannot register an
+   account it holds no key for, so `tx.send` reports `RECIPIENT_NOT_ACTIVATED`. Worth confirming
+   with the Thru team whether that is intended protocol behaviour.
 
-### Step 6 — chain verification (needs devnet)
+### Step 6 — feature modules
 
-Blocking on a live network, in priority order:
+`src/features/<id>/` + one registry line + its own backend namespace, per `BUILD_SPEC.md` §3.
+`@thru/programs` also ships **`clob`** and **`oracle`** alongside `amm`, which are directly
+relevant to perps and prediction markets.
 
-1. **The amount-unit question.** The faucet field takes raw base units; Send takes human-scale
-   THRU. Both are reasoned, neither is confirmed. If reversed, the fix is contained to
-   `parseThruAmount()` and the faucet input. **Highest-value verification available.**
-2. Faucet and transfer program addresses and instruction layouts — reverse-engineered, not
-   sourced from Thru docs.
-3. Explorer `/tx/` and `/address/` route patterns.
-4. Whether transfers carry a non-zero fee, which unblocks `tx.estimateFee` (Tier C2).
-5. Token Program account reads, which unblock `token.getBalances` (Tier C1) and turn the asset
-   list into a real one rather than a launchpad registry.
-
-### Step 7 — feature modules
-
-Only after Step 5. `src/features/<id>/` + one registry line + its own backend namespace, per
-`docs/BUILD_SPEC.md` §3. Launchpad, DEX, perps, prediction markets. `enabled: false` must remove
-a feature completely.
+The wallet core is **not** a feature. Accounts, send, receive, history and settings are the
+product and stay in `routes/`. Only genuinely optional surfaces go in `features/`.
 
 ---
 
 ## 3. Debugging notes that will save time
 
-**Reload the extension, not just the popup.** Chrome caches the service worker. Reopening the
-popup runs new UI against old backend code — this made a fixed serialization error appear to
-persist and cost a full round trip to diagnose. Use the **Reload** button on the extension card
-in `chrome://extensions`.
+**Reload the extension, not just the popup.** Chrome caches the service worker, so reopening the
+popup runs new UI against old backend code. This made an already-fixed serialization error appear
+to persist and cost a full diagnostic round trip.
 
-**`Could not serialize message.` is now self-diagnosing.** `api-router.js` checks every payload
-before returning and names the method and field path, e.g. *"network.getActive returned data
-that cannot cross the message port: data.faucetMaxPerClaim is a BigInt (10000n)"*. If you ever
-see Chrome's bare version again, the failure is in the **request** direction, not the response.
+**`Could not serialize message.` is self-diagnosing now.** `api-router.js` checks every payload
+before returning and names the method and field path. If Chrome's bare version ever appears
+again, the failure is in the **request** direction.
 
-**The build only warns on CSS syntax errors.** It does not fail. Check the build output for
-`▲ [WARNING]`.
+**The build only warns on CSS syntax errors.** Check for `▲ [WARNING]`.
 
-**`npm test` runs guardrails first** (`check-layering`, `test-contract`, `test-ui-dom`) so
-structural breakage fails fast before the slower integration suites.
+**`npm test` runs guards first** — derivation, layering, routes, contract, dom — so structural
+breakage fails fast before the slower integration suites.
 
-**Flag overrides are dev-only and one-way.** `?next=1` and `?debug=1` can turn a flag on, never
-off, and are never persisted.
+**Live verification scripts are under `scripts/` and are NOT part of `npm test`.** They report
+against a real node rather than asserting, and use throwaway in-memory keys that never touch a
+real vault: `verify-live-e2e`, `verify-autoregister`, `verify-chain`, `measure-fee`,
+`diagnose-faucet`, `probe-transfer-*`.
+
+**Install the docs skill.** `npx skills add https://thru.org/docs`. Reading one docs page fixed
+three token bugs that had absorbed significant probing effort.
 
 ---
 
 ## 4. Standing invariants
 
-Do not regress these; each was earned by a defect in `docs/DEFECT_LOG.md`.
+Each was earned by a defect in `docs/DEFECT_LOG.md`.
 
-1. New DOM is built with `kit/dom.js` `h()`. The sink ratchet may only shrink.
+1. New DOM is built with `kit/dom.js` `h()`. The sink ratchet is at **0** and must stay there.
 2. The contract is append-only and tested in both directions.
 3. Sensitive operations are `auth: 'password'`, re-verified against the encrypted blob — never
    against session state.
@@ -186,5 +180,6 @@ Do not regress these; each was earned by a defect in `docs/DEFECT_LOG.md`.
 7. No inline `style="…"` or `on*="…"`. CSSOM and DOM properties are fine; attributes are refused
    by the CSP.
 8. Unverified chain behaviour returns `{ supported: false, reason }`. Never a fabricated number.
-9. Delete the legacy copy in the same commit as its replacement.
-10. Do not ship a control before its destination exists.
+9. Anything network-specific belongs in the network config, not a module constant.
+10. Do not ship a control before its destination exists — `check-routes.mjs` now enforces this.
+11. A test that asserts current behaviour may be asserting a bug. `generateMintSeed` had one.

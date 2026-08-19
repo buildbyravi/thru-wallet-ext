@@ -1,4 +1,4 @@
-# AGENTS.md
+--# AGENTS.md
 
 Rules for any agent working in `thru-wallet-ext`. Read this first, then `CONTEXT.md`.
 
@@ -11,10 +11,10 @@ bundled with esbuild. No framework. Real `@thru/sdk` + `@thru/crypto`.
 
 | Read when | File |
 | --- | --- |
-| always — rules, commands, traps | `AGENTS.md` (this file) |
-| "where is X?" | `CONTEXT.md` — file-by-file map with `file:line` refs |
-| "what's done, what's next?" | `docs/STATUS_AND_ROADMAP.md` — **start here for any new work** |
-| "has this broken before?" | `docs/DEFECT_LOG.md` — every defect, root cause and lesson |
+| always -- rules, commands, traps | `AGENTS.md` (this file) |
+| "where is X?" | `CONTEXT.md` -- file-by-file map with `file:line` refs |
+| "what's done, what's next?" | `docs/STATUS_AND_ROADMAP.md` -- **start here for any new work** |
+| "has this broken before?" | `docs/DEFECT_LOG.md` -- every defect, root cause and lesson |
 | product intent, security policy, QA matrix | `docs/BUILD_SPEC.md` |
 | backend capability tiers | `docs/BACKEND_GAPS.md` |
 | target directory layout, phase plan | `docs/UI_REBUILD_PLAN.md` |
@@ -32,7 +32,7 @@ npm run build      # node build.mjs -> dist/
 npm test           # test-vault.mjs && test-thru-client.mjs && test-api-router.mjs
 ```
 
-Load `dist/` unpacked via `chrome://extensions` → Developer mode → Load unpacked.
+Load `dist/` unpacked via `chrome://extensions` --  Developer mode --  Load unpacked.
 
 Run `npm run build && npm test` **before and after** every change. Never report success while either
 is red. Never weaken or skip a test to make it pass.
@@ -48,14 +48,18 @@ is red. Never weaken or skip a test to make it pass.
    `src/background/services/event-service.js` may push events back. UI never imports
    `src/background/**` or `src/lib/vault.js`.
 4. **Backend API is append-only.** Add the method to `src/shared/contract/manifest.js` *and*
-   `api-router.js` — `test-contract.mjs` checks both directions. Never rename or reshape an
+   `api-router.js` -- `test-contract.mjs` checks both directions. Never rename or reshape an
    existing method; add a new name and retire the old one after zero references remain.
-5. **No new dependencies.** No React/Vue/Tailwind. No build-system change.
+5. **No new dependencies except first-party Thru packages.** @thru/sdk, @thru/crypto and
+   @thru/programs are preferred over hand-written protocol code  @thru/programs ships
+   	oken, mm, multicall, passkey-manager, clob and oracle. No React/Vue/Tailwind,
+   no build-system change. SDK versions are pinned EXACTLY; 	est-derivation.mjs fails if a
+   bump changes key derivation.
 6. **Money is BigInt only.** Use `src/shared/format.js`. Never `parseFloat(x) * 1e9`.
-7. **New code builds DOM with `src/ui/kit/dom.js` `h()`.** No `innerHTML` anywhere under
-   `src/ui/**` or `src/features/**` — the layering check enforces a ratchet that may only
-   shrink. Legacy templates that still interpolate must use `src/shared/escape.js`.
-8. **No inline `style="…"` or `on*="…"` attributes.** The CSP is `default-src 'none'` with no
+7. **All DOM is built with `src/ui/kit/dom.js` `h()`.** `innerHTML`, `insertAdjacentHTML` and
+   `outerHTML` under `src/ui/**` or `src/features/**` fail the build outright. The injection
+   ratchet is at 0 and must stay there.
+8. **No inline `style=""` or `on*=""` attributes.** The CSP is `default-src 'none'` with no
    `unsafe-inline`, so both are refused by the browser. CSSOM (`el.style.x = y`) and DOM
    properties (`el.onerror = fn`) are fine.
 9. **Secrets never touch** URLs, `location.hash`, router params or history, `data-*` attributes,
@@ -90,27 +94,30 @@ and `JSON.stringify` throws on BigInt, which Chrome reports only as `Could not s
 message.` `api-router.js` now names the offending method and field itself. If you see Chrome's
 bare version, the failure is in the **request** direction.
 
-**The build only WARNS on CSS syntax errors**, it does not fail. Check for `▲ [WARNING]`.
+**The build only WARNS on CSS syntax errors**, it does not fail. Check for `---- [WARNING]`.
 
-- **`src/popup/screens/` is mostly not what runs.** Twelve of twenty screen modules never
-  mounted. Verify reachability before editing anything there.
-- **`src/ui/router.js:133` does `container.innerHTML = ''`** on `#screen-<id>`, destroying
-  `popup.html`'s static markup at startup. Editing that markup may have no visible effect. The
-  new stack (`src/ui/app/router.js`) does not do this.
+- **There is ONE UI stack.** The legacy `show()`/`#screen-*` tree is deleted. Screens are routes
+  in `src/ui/app/routes/`, registered in `src/ui/app/boot.js`.
 - **`src/background.js` is deleted.** The service worker is `src/background/index.js`.
-- **`removeEventListener` with a fresh arrow function removes nothing.** Six legacy sites do
-  this; it is why dashboard buttons died permanently after one navigation. Use `disposer()`.
-- **Inline `on*` attributes are silently blocked by CSP**, so any that exist are dead code. Six
-  `onsubmit="return false;"` handlers never ran, leaving those forms genuinely unprotected.
-- **`show()` reveals a screen; it does not load one.** The data comes from the legacy
-  `handleAction` case. Calling `show()` alone yields a visible but empty screen.
-- **Do not ship a control before its destination route exists.** A gear button pointing at an
-  unregistered route fell through to the legacy fallback and errored on a blank panel.
+- **`removeEventListener` with a fresh arrow function removes nothing.** This killed dashboard
+  buttons permanently after one navigation in the old stack. Always use `disposer()`.
+- **Do not ship a control before its destination route exists.** `scripts/check-routes.mjs`
+  fails the build on it, in both directions.
+- **A test can assert a bug.** `generateMintSeed` had a test demanding a 32-character seed when
+  the SDK requires 64 hex, which would have blocked the correct fix. Check what a test is
+  protecting before trusting it.
+- **Amount units differ by screen on purpose.** Faucet takes BASE UNITS; Send takes whole THRU.
+  Verified on alphanet: claiming 10000 credits exactly 10000 base units.
+- **A transfer recipient must already exist on-chain.** Accounts this wallet creates are
+  registered automatically; an external never-used address cannot receive.
+- **Never hand-roll a program instruction or address derivation.** `@thru/programs` ships them.
+  A hand-rolled mint derivation called a non-existent SDK method and threw for months.
+- **`chrome.storage.session` holds the unlocked session.** It survives a page reload but not an
+  extension reload. Run `system.diagnostics` before blaming auto-lock.
 - **Hand-maintained file lists rot.** `test-contract.mjs` walks directories for exactly this
-  reason — its old static list stopped covering new files and let a phantom method through.
-- **Nothing tests reachability or rendering.** Every test can pass while a whole feature area
-  has no click path. See `docs/DEFECT_LOG.md` §1.2 and §6.
-- **Most of `src/` was untracked in git** before this session. It is committed now.
+  reason -- its old static list stopped covering new files and let a phantom method through.
+- **No test mounts a route yet.** `check-routes.mjs` proves reachability and CSS existence;
+  rendering is still uncovered. See `docs/STATUS_AND_ROADMAP.md` Step 1.
 
 ## Reporting
 
