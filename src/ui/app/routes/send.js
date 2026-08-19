@@ -55,7 +55,28 @@ export function SendRoute({ params, navigate, back }) {
 
   const banner = Banner({ tone: 'error' });
   const body = h('div', { class: 'stack stack-4' }, Spinner({ label: 'Loading' }).el);
-  const header = PageHeader({ title: 'Send', onBack: () => back() });
+
+  // Form state survives an excursion into a sub-view. Without this, opening the asset or
+  // recipient picker and coming back cleared whatever had been typed.
+  let formState = { to: '', amount: '' };
+
+  // The asset / From / recipient views are INTERNAL states of this one route, not separate
+  // routes. The header was built once with `onBack: () => back()`, so its arrow always left the
+  // route entirely and landed on the dashboard — losing the form with it. A one-deep step stack
+  // makes the arrow mean "back to the form" while inside a sub-view, and "leave Send" only from
+  // the form itself.
+  let subView = null;
+
+  function handleBack() {
+    if (subView) {
+      subView = null;
+      renderForm(formState);
+      return;
+    }
+    back();
+  }
+
+  const header = PageHeader({ title: 'Send', onBack: () => handleBack() });
   const el = h('section', { class: 'screen' }, [header.el, banner.el, body]);
 
   function clearBody() {
@@ -72,6 +93,9 @@ export function SendRoute({ params, navigate, back }) {
 
   // ---- Step 1: compose ----------------------------------------------------
   function renderForm(prefill = {}) {
+    // Base state: leaving from here exits the route.
+    subView = null;
+    formState = { to: prefill.to ?? formState.to, amount: prefill.amount ?? formState.amount };
     clearBody();
     banner.clear();
     header.setTitle('Send');
@@ -132,6 +156,8 @@ export function SendRoute({ params, navigate, back }) {
         recipient.setError('');
         recipientStatus.classList.add('hidden');
         recipientState = null;
+        // Keep the shared state current so an excursion into a picker and back does not lose it.
+        formState.to = recipient.value;
         refreshReviewEnabled();
       },
     }));
@@ -177,15 +203,18 @@ export function SendRoute({ params, navigate, back }) {
     ]));
 
     // -- Amount --
+    // Max sits inline on the spendable line rather than as a full-width button of its own. A
+    // 100%-wide Max read as heavily as the primary Review action, which made a convenience
+    // shortcut compete visually with the thing that actually advances the flow.
     const amount = track(Field({
       label: 'Amount (THRU)',
       type: 'text',
       inputMode: 'decimal',
       placeholder: '0.0',
       value: prefill.amount || '',
-      hint: `Spendable: ${formatThru(spendableUnits())} THRU`,
       onInput: () => {
         amount.setError('');
+        formState.amount = amount.value;
         parseAmount(amount);
         refreshReviewEnabled();
       },
@@ -205,17 +234,20 @@ export function SendRoute({ params, navigate, back }) {
         }
         // BigInt formatting only. The legacy MAX did Math.floor(bigint * 10000), which throws.
         amount.value = formatThru(spendable);
+        formState.amount = amount.value;
         parseAmount(amount);
         refreshReviewEnabled();
       },
     }));
-
-    const feeLine = h('p', { class: 'hint' }, feeText());
+    maxBtn.el.classList.add('w-auto');
 
     body.appendChild(h('div', { class: 'stack stack-2' }, [
       amount.el,
-      h('div', { class: 'row-flex' }, [maxBtn.el]),
-      feeLine,
+      h('div', { class: 'row-flex between' }, [
+        h('span', { class: 'hint', text: `Spendable: ${formatThru(spendableUnits())} THRU` }),
+        maxBtn.el,
+      ]),
+      h('p', { class: 'hint' }, feeText()),
     ]));
 
     // -- Review --
@@ -353,6 +385,7 @@ export function SendRoute({ params, navigate, back }) {
 
   // ---- Choose which account to send FROM ----------------------------------
   function renderFromPicker() {
+    subView = 'from';
     clearBody();
     header.setTitle('Send from');
 
@@ -386,6 +419,7 @@ export function SendRoute({ params, navigate, back }) {
 
   // ---- Choose the asset ---------------------------------------------------
   function renderAssetPicker() {
+    subView = 'asset';
     clearBody();
     header.setTitle('Choose asset');
 
@@ -403,6 +437,7 @@ export function SendRoute({ params, navigate, back }) {
 
   // ---- Choose a recipient -------------------------------------------------
   function renderPicker(recipientField) {
+    subView = 'recipient';
     clearBody();
     header.setTitle('Choose recipient');
 

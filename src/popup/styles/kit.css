@@ -6,6 +6,18 @@
    the legacy stylesheets reached ~200 unreachable lines.
    ============================================================ */
 
+/* ---- Inline buttons -------------------------------------------
+   `.btn` sets width:100%, and utilities.css loads BEFORE components.css,
+   so a bare `.w-auto` loses the specificity tie and a "small" button
+   still spans the row. Declared here because kit.css loads after
+   components.css, which is what makes the override actually win. */
+
+.btn.w-auto {
+  width: auto;
+  align-self: center;
+  flex-shrink: 0;
+}
+
 /* ---- Network badge --------------------------------------------
    A live network must never be mistakeable for a test one. The default
    .badge is quiet steel; .badge-live is the accent signal, which is
