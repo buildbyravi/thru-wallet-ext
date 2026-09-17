@@ -65,9 +65,10 @@ is red. Never weaken or skip a test to make it pass.
 9. **Secrets never touch** URLs, `location.hash`, router params or history, `data-*` attributes,
    `localStorage`, `sessionStorage`, `window`, or `console.*`. Clear them on lock, on navigate
    away, and in `destroy()`. Use `src/shared/refs.js` to name an account in a URL.
-10. **Password re-authentication is required** before export, signing, security-setting changes,
-    keyring add/rename/remove, and reset. Use `requirePassword()` from
-    `src/ui/domain/password-prompt.js`.
+10. **Password re-authentication is required by default** before export, signing,
+    security-setting changes, keyring add/rename/remove, and reset. Signing has a user-visible
+    session-only opt-out, but changing that opt-out is itself password-gated. Use
+    `requirePassword()` from `src/ui/domain/password-prompt.js`.
 11. **Every component returns `{ el, update, destroy }`** and `destroy()` removes the *same*
     handler references it added. Use `disposer()`; a fresh arrow passed to
     `removeEventListener` removes nothing.

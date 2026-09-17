@@ -106,7 +106,48 @@ const resGetNever = await handleApiRequest({ method: 'system.getAutoLock' });
 assert.equal(resGetNever.data, 0);
 console.log('  ok - setting auto-lock to 0 (Never) persists');
 
-console.log('[8] Every UI-facing response survives JSON serialization');
+console.log('[8] Signing re-authentication defaults to on and is password-gated');
+const prefsDefault = await handleApiRequest({ method: 'settings.get' });
+assert.equal(prefsDefault.ok, true);
+assert.equal(prefsDefault.data.requirePasswordForSigning, true);
+const sendWithoutPassword = await handleApiRequest({
+  method: 'tx.send',
+  params: { toAddress: res2.data.address, amountUnits: '1' },
+});
+assert.equal(sendWithoutPassword.ok, false);
+assert.equal(sendWithoutPassword.error.code, 'AUTH_REQUIRED');
+const sendWrongPassword = await handleApiRequest({
+  method: 'tx.send',
+  params: { toAddress: res2.data.address, amountUnits: '1', password: 'wrong password' },
+});
+assert.equal(sendWrongPassword.ok, false);
+assert.equal(sendWrongPassword.error.code, 'AUTH_REQUIRED');
+const unsafeSettingsSet = await handleApiRequest({
+  method: 'settings.set',
+  params: { patch: { requirePasswordForSigning: false } },
+});
+assert.equal(unsafeSettingsSet.ok, false);
+const disableWrongPassword = await handleApiRequest({
+  method: 'settings.setSecurity',
+  params: { patch: { requirePasswordForSigning: false }, password: 'wrong password' },
+});
+assert.equal(disableWrongPassword.ok, false);
+assert.equal(disableWrongPassword.error.code, 'AUTH_REQUIRED');
+const disableWithPassword = await handleApiRequest({
+  method: 'settings.setSecurity',
+  params: { patch: { requirePasswordForSigning: false }, password: 'Password123!' },
+});
+assert.equal(disableWithPassword.ok, true);
+assert.equal(disableWithPassword.data.requirePasswordForSigning, false);
+const enableWithPassword = await handleApiRequest({
+  method: 'settings.setSecurity',
+  params: { patch: { requirePasswordForSigning: true }, password: 'Password123!' },
+});
+assert.equal(enableWithPassword.ok, true);
+assert.equal(enableWithPassword.data.requirePasswordForSigning, true);
+console.log('  ok - signing auth rejects missing/wrong passwords and opt-out is password-gated');
+
+console.log('[9] Every UI-facing response survives JSON serialization');
 // chrome.runtime.sendMessage serializes with JSON, and JSON.stringify THROWS on a BigInt,
 // which Chrome reports only as the opaque "Could not serialize message." networks.js carries
 // faucetMaxPerClaim as a BigInt, so network.getActive / network.setActive / network.list and
@@ -188,7 +229,7 @@ assert.equal(
 assert.equal(BigInt(netRes.data.faucetMaxPerClaim) > 0n, true, 'the value must survive, not be nulled');
 console.log('  ok - faucetMaxPerClaim is preserved as a string and re-widens to BigInt');
 
-console.log('[9] Per-network data isolation');
+console.log('[10] Per-network data isolation');
 // Getting the global-vs-scoped split wrong is a data-model bug that only surfaces the first
 // time someone switches network — at which point they see the previous network's pending
 // transactions and a token list of mints that do not exist where they now are.

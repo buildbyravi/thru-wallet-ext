@@ -66,7 +66,7 @@ Observed test summary:
 - Derivation: 16/16 passed.
 - Layering: 60 files checked, 0 violations, DOM sink ratchet closed for guarded UI paths.
 - Routes: 14 registered routes, all reachable, 128 used classes all defined.
-- Contract: 34/34 passed.
+- Contract: 42/42 passed.
 - DOM/refs: 89/89 passed.
 - Vault integration: passed.
 - Thru client encoding/history/network config: passed.
@@ -285,8 +285,10 @@ stack.
 
 ### Architectural weaknesses to address before feature expansion
 
-1. **Auth policy drift:** some security-sensitive methods are still only `auth: 'unlocked'` or
-   `auth: 'none'`. See `docs/AUDIT_REPORT.md`.
+1. **Auth policy drift:** F-01 signing auth is now guarded by `auth: 'signing'`, which requires
+   password re-authentication by default and allows an explicit password-gated Settings opt-out.
+   Reset, auto-lock, and broader security preferences still need their own hardening passes. See
+   `docs/AUDIT_REPORT.md`.
 2. **Route rendering is not tested:** route graph and classes are tested; actual route mounting in a
    browser-like DOM is still uncovered.
 3. **Launchpad bypasses UI guardrails:** it remains a separate bundled page with `innerHTML` sinks.
@@ -372,15 +374,15 @@ src/
 
 Purpose: make the backend contract match wallet policy.
 
-1. Add tests enumerating every signing/destructive/security-setting method.
-2. Add append-only password-gated signing methods or change only where contract permits:
+1. Keep tests enumerating every signing/destructive/security-setting method.
+2. Signing methods now use `auth: 'signing'` and require password re-authentication by default:
    - native send
    - faucet claim
    - account auto-create
    - token deploy before it is re-enabled
 3. Move reset confirmation/password policy into the background.
-4. Split security preferences from display preferences, password-gating auto-lock and whitelist
-   mutations.
+4. Finish splitting security preferences from display preferences by password-gating auto-lock;
+   signing re-authentication and whitelist preferences are already under `settings.setSecurity`.
 5. Update UI callers to use new methods and remove UI-only assumptions.
 
 Risk: signing UX changes can frustrate users if password prompts are too frequent. Mitigation:
@@ -495,14 +497,13 @@ Do not begin DEX, prediction, dApp connector, NFTs, or hardware/passkey flows un
 
 The next code change should be small and security-first:
 
-1. Add contract/API-router tests that currently expose the auth gaps:
-   - signing methods require password auth
+1. Finish remaining audit hardening that is not covered by the F-01 signing fix:
    - unlocked reset without password is rejected
-   - security preference changes require password auth
-2. Implement append-only password-gated replacements where changing existing method semantics would
-   violate the API contract.
-3. Migrate UI callers.
-4. Run full `npm test && npm run build`.
+   - auto-lock and broader security preference changes require password auth
+   - disabled launchpad is removed from the build or migrated to the guarded DOM kit
+2. Keep signing APIs on `auth: 'signing'`: password is required by default, and the Settings
+   opt-out is itself password-gated.
+3. Run full `npm test && npm run build` after each small security change.
 
 Only after that should the jsdom route mount test and state/store refactor begin.
 

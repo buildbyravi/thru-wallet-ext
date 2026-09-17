@@ -340,7 +340,7 @@ Identicon · label · full address · copy · QR · account type · derivation i
 association · provenance (generated/imported) · balance · assets · activity · explorer link ·
 export · rename · remove keyring · future hardware info.
 
-Every sensitive action requires password re-authentication.
+Every sensitive action requires password re-authentication by default. If the user explicitly opts into session-only signing from Settings, that opt-out itself must be password-gated and only affects transaction signing; secret export, key changes, reset, and security-setting changes remain password-gated.
 
 ### Send — a reviewed flow, never a one-click form
 

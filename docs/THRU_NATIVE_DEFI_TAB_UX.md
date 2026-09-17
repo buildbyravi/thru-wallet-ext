@@ -271,7 +271,11 @@ The tab view can show advanced controls:
 Both popup and tab must use the same backend signing path:
 
 ```text
-quote → review → password auth → sign → submit → pending → confirmed/failed
+quote → review → signing auth → sign → submit → pending → confirmed/failed
+
+`auth: 'signing'` requires password re-authentication by default. Users may explicitly enable
+session-only signing from Settings, but that opt-out is itself password-gated and should be shown
+as less secure.
 ```
 
 No surface should be able to sign directly with only an unlocked session.
@@ -645,7 +649,7 @@ Do not jump straight to charts or DEX UI. The safe order is:
 ## 13. Acceptance criteria for a Thru launchpad/DEX release
 
 - The UI never names an external DEX as a migration target unless there is a verified integration.
-- Every launch/trade/migration action goes through wallet review and backend password auth.
+- Every launch/trade/migration action goes through wallet review and background `auth: 'signing'`; password re-authentication is the default, with any session-only opt-out requiring password-gated Settings confirmation.
 - Token, pool, and launch addresses are shown as Thru `ta...` identities.
 - Charts are powered by Thru market/indexer data or clearly marked unavailable.
 - No simulated swap/trade/perp action appears as real.

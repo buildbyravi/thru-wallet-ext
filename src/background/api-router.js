@@ -159,6 +159,7 @@ const handlers = Object.assign(Object.create(null), {
   // ---- Preferences -----------------------------------------------------
   'settings.get': () => preferencesService.getPreferences(),
   'settings.set': ({ patch }) => preferencesService.setPreferences(patch),
+  'settings.setSecurity': ({ patch }) => preferencesService.setSecurityPreferences(patch),
 
   // ---- Address book ----------------------------------------------------
   'contacts.list': () => contactsService.listContacts(),
@@ -226,17 +227,33 @@ function fail(code, message, retryable = false) {
  * Enforce the contract's declared auth level for a method.
  * @returns {Promise<null|{ ok: false, error: object }>} an error envelope, or null to proceed
  */
+async function verifyPasswordParam(params, message = 'This action needs your password.') {
+  const password = params?.password;
+  if (typeof password !== 'string' || password.length === 0) {
+    return fail('AUTH_REQUIRED', message);
+  }
+  try {
+    await walletService.verifyPassword(password);
+  } catch (error) {
+    return fail('AUTH_REQUIRED', error?.message || 'Incorrect password.');
+  }
+  return null;
+}
+
 async function checkAuth(spec, params) {
-  if (spec.auth === 'unlocked' || spec.auth === 'password') {
+  if (spec.auth === 'unlocked' || spec.auth === 'password' || spec.auth === 'signing') {
     const unlocked = await walletService.isUnlocked();
     if (!unlocked) {
       return fail('WALLET_LOCKED', 'Unlock your wallet to continue.');
     }
   }
   if (spec.auth === 'password') {
-    const password = params?.password;
-    if (typeof password !== 'string' || password.length === 0) {
-      return fail('AUTH_REQUIRED', 'This action needs your password.');
+    return verifyPasswordParam(params);
+  }
+  if (spec.auth === 'signing') {
+    const prefs = await preferencesService.getPreferences();
+    if (prefs.requirePasswordForSigning !== false) {
+      return verifyPasswordParam(params, 'Signing needs your password.');
     }
   }
   return null;

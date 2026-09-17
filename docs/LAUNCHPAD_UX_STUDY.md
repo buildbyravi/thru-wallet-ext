@@ -133,7 +133,7 @@ launchpad should keep launchpad speed, but final signing must look like a wallet
 - first buy amount and slippage if applicable
 - irreversible fields
 - network and fee
-- explicit password re-authentication before signing
+- explicit password re-authentication before signing by default; any session-only signing opt-out must be password-gated in Settings
 
 This aligns with `docs/AUDIT_REPORT.md`: signing currently needs backend-enforced password gates
 before launchpad expansion.
@@ -610,7 +610,7 @@ Recommended path:
    `src/ui/kit` primitives.
 4. **No fake DEX/prediction tabs:** move DEX and prediction concepts to future feature modules.
 5. **Use current wallet bridge only:** no direct vault/storage access.
-6. **Signing:** launchpad deploy must use a backend password-gated signing method after Phase A of
+6. **Signing:** launchpad deploy must use backend `auth: 'signing'` and require password re-authentication by default after Phase A of
    `docs/MIGRATION_MAP.md`.
 
 ---
@@ -723,7 +723,7 @@ Before enabling any launchpad route:
 - Token names/symbols/images cannot impersonate verified state.
 - Mint address is always copyable and visible on detail/review/success screens.
 - Create form cannot place name, symbol, image, draft, or account ref secrets in URLs.
-- Launch signing requires password re-authentication in the background API.
+- Launch signing uses background `auth: 'signing'`, which requires password re-authentication by default.
 - Duplicate launch submit cannot create duplicate transactions.
 - RPC failure cannot show success.
 - Route destroy clears draft-only sensitive temporary fields.

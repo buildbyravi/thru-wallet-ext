@@ -20,6 +20,7 @@ import { icon } from '../../kit/icon.js';
 import { Button } from '../../kit/button.js';
 import { Field } from '../../kit/field.js';
 import { PageHeader, Banner, Spinner } from '../../kit/feedback.js';
+import { requirePassword } from '../../domain/password-prompt.js';
 import * as bridge from '../bridge.js';
 import { formatThru } from '../../../shared/format.js';
 
@@ -125,7 +126,17 @@ export function FaucetRoute({ navigate, back }) {
       .catch(() => null);
 
     try {
-      const result = await bridge.send('tx.claimFaucet', { amountUnits: units.toString() });
+      const params = { amountUnits: units.toString() };
+      const prefs = await bridge.send('settings.get').catch(() => null);
+      const result = prefs?.requirePasswordForSigning === false
+        ? await bridge.send('tx.claimFaucet', params)
+        : await requirePassword({
+          title: 'Confirm faucet claim',
+          body: 'Re-enter your password to sign and submit this faucet transaction.',
+          confirmLabel: 'Sign claim',
+          verify: (password) => bridge.send('tx.claimFaucet', { ...params, password }),
+        });
+      if (!result) return;
       await renderSuccess(result, before, units);
     } catch (error) {
       banner.set(error.message || 'The faucet claim failed.');

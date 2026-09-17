@@ -40,8 +40,20 @@ Structural properties now enforced by CI rather than by discipline:
 ```
 npm run build     clean, no warnings, dist/ reproducible
 npm test          derivation 16 · layering 60 files / 0 sinks · routes 14/14
-                  contract 34 · dom+refs 89 · vault · thru-client · api-router
+                  contract 42 · dom+refs 89 · vault · thru-client · api-router
+npm audit --omit=dev
+                  found 0 vulnerabilities
 ```
+
+### Recent security hardening
+
+- F-01 signing auth is fixed in the background contract. `tx.send`, `tx.claimFaucet`,
+  `tx.autoCreateAccount`, and `token.deploy` use `auth: 'signing'`.
+- Signing re-authentication is required by default and is verified inside `api-router` before a
+  signing handler runs.
+- Users can explicitly opt into session-only signing from Settings, but that opt-out is itself
+  password-gated via `settings.setSecurity`.
+- Generic `settings.set` rejects signing/whitelist security keys.
 
 ### Verified against a live chain
 
@@ -72,7 +84,17 @@ Confirmed on alphanet, not assumed:
 
 ## 2. What to do next, in order
 
-### Step 1 — jsdom route mount test
+### Step 1 — finish remaining audit hardening
+
+The F-01 signing issue is fixed. Next security items before feature expansion:
+
+1. Move `wallet.reset` policy into the background API: explicit confirmation always, password
+   required when unlocked.
+2. Move auto-lock changes behind a password-gated method.
+3. Remove launchpad from the build while disabled or migrate it to the guarded DOM kit and expand
+   the DOM-sink ratchet to cover it.
+
+### Step 2 — jsdom route mount test
 
 The remaining half of the original Step 1. `check-routes.mjs` proves a route is *reachable* and
 its classes are *defined*; nothing proves it *mounts*. For each of the 14 routes, with a mocked
@@ -88,7 +110,7 @@ Item 2 matters because the old stack wrote a mnemonic into `grid.dataset.raw` an
 it. Note that `npm install jsdom` timed out once here and left a corrupt partial
 `node_modules/jsdom` with only a `lib` directory; remove it before retrying.
 
-### Step 2 — token transfer
+### Step 3 — token transfer
 
 `@thru/programs/token` is installed and provides everything needed:
 `createTransferInstruction`, `createInitializeAccountInstruction`, `deriveTokenAccountAddress`,
@@ -104,14 +126,14 @@ sendable, and `token.getBalances` (BACKEND_GAPS C1) stops returning `supported: 
 Also replace the hand-rolled `encodeInitializeMintInstructionData` with
 `createInitializeMintInstruction` while in there.
 
-### Step 3 — spacing and the tab-width question
+### Step 4 — spacing and the tab-width question
 
 Width is **fixed at 408px** on `body`; height is auto above a 580px floor. Correct for a popup,
 wrong when `popup.html` is opened in a tab for testing, where the 408px body leaves the viewport
 blank to the right. One media query lets the working surface widen when it is not in a popup.
 Do the section-spacing pass at the same time.
 
-### Step 4 — launchpad
+### Step 5 — launchpad
 
 Flagged off (`FEATURE_LAUNCHPAD`). Its account/network switcher buttons currently point users at
 the popup, and it still uses `popup/icons.js` markup strings rather than `ui/kit/icon.js`.
@@ -120,7 +142,7 @@ Migrate it onto the kit when it gets its own testing pass, then re-enable.
 Note `token.deriveAddress` now needs a mint authority and a 64-hex-character seed; the launchpad's
 deploy form predates both.
 
-### Step 5 — remaining chain questions
+### Step 6 — remaining chain questions
 
 1. **Explorer route patterns** `/tx/` and `/account/` — convention, unconfirmed. Worst case a
    dead link.
@@ -130,7 +152,7 @@ deploy form predates both.
    account it holds no key for, so `tx.send` reports `RECIPIENT_NOT_ACTIVATED`. Worth confirming
    with the Thru team whether that is intended protocol behaviour.
 
-### Step 6 — feature modules
+### Step 7 — feature modules
 
 `src/features/<id>/` + one registry line + its own backend namespace, per `BUILD_SPEC.md` §3.
 `@thru/programs` also ships **`clob`** and **`oracle`** alongside `amm`, which are directly

@@ -618,7 +618,7 @@ Creator actions:
 - update metadata/social links, only if mutable and verified
 - transfer creator role, only if protocol supports it and password-gated
 
-Every creator action that signs requires background-enforced password re-authentication.
+Every creator action that signs uses background `auth: 'signing'`, which requires password re-authentication by default unless the user has explicitly enabled the password-gated session-only signing setting.
 
 ---
 
@@ -702,7 +702,7 @@ Before implementing this UX:
 2. Keep `FEATURE_LAUNCHPAD` false until unsafe `src/launchpad/**` is removed or migrated.
 3. Do not ship simulated DEX trading or fake charts.
 4. Extend `scripts/check-layering.mjs` to cover future launchpad/market feature paths.
-5. Add password-gated signing APIs before token deploy/trade/migration actions.
+5. Keep token deploy/trade/migration actions on background `auth: 'signing'` with password re-authentication enabled by default.
 6. Store chart/market data as non-secret cache only; never mix with vault storage.
 7. Use Thru SDK/program bindings where available; document uncertainty where not.
 
@@ -831,7 +831,7 @@ Tabs: Trades | Holders | Pools | Risks
 - All untrusted token metadata uses text nodes and safe URL filtering.
 - Chart shell handles loading, empty, stale, offline, and unsupported states.
 - Trade/migration buttons are absent or disabled until verified support exists.
-- Signing actions require backend password re-authentication.
+- Signing actions require backend password re-authentication by default via `auth: 'signing'`.
 - Duplicate trade/migration clicks cannot submit duplicate transactions.
 - RPC accepted does not equal success; pending/confirmed states are distinct.
 - Market stats name their source and staleness.

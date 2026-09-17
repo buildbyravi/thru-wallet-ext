@@ -11,7 +11,7 @@ Scope: source-level security, wallet-risk, API contract, launchpad readiness, an
 
 The core popup rebuild has strong structural guardrails: one UI/background seam, zero DOM injection sinks in `src/ui/**`, route/CSS reachability checks, pinned Thru SDK derivation tests, and JSON-serialization tests across the API port. `npm run build && npm test` is green after dependency installation.
 
-However, the audit found several wallet-critical authorization gaps in the background contract. The most important issue is that transaction-signing methods are only `auth: 'unlocked'`, even though project policy requires password re-authentication before signing. An unlocked extension session is therefore enough to submit transfers, faucet claims, account-registration transactions, and token deployments. Destructive and security-setting operations have similar UI-only password gates or no password gate at the API layer.
+Remediation update 2026-09-18: F-01 has been addressed after the audit. Transaction-signing methods now use `auth: 'signing'`, which requires password re-authentication by default and verifies it in the background router before any signing handler runs. A password-gated Settings opt-out exists for users who explicitly choose session-only signing. Destructive reset and some broader security-setting operations still need follow-up hardening.
 
 The disabled launchpad is also still built into `dist/launchpad.html` and contains legacy `innerHTML` rendering paths with token/user-controlled values; it is outside the current zero-sink ratchet.
 
@@ -19,10 +19,10 @@ The disabled launchpad is also still built into `dist/launchpad.html` and contai
 
 | Severity | Count | Theme |
 | --- | ---: | --- |
-| Critical | 1 | Signing can be performed from an unlocked session without password re-authentication. |
-| High | 3 | Reset/destructive operations and security settings can bypass intended password gates; launchpad injection surface remains reachable. |
-| Medium | 3 | Launchpad/token deployment contract drift; launchpad uses invalid mint seed generation; dependency audit unavailable. |
-| Low | 2 | Documentation/contract drift and residual logging/noise. |
+| Critical | 0 | F-01 signing re-authentication is remediated in this branch. |
+| High | 3 | Reset/destructive operations and some security settings can bypass intended password gates; launchpad injection surface remains reachable. |
+| Medium | 2 | Launchpad deployment remains disabled/untested and still uses invalid mint seed generation; token deploy field drift is partially patched. |
+| Low | 1 | Residual logging/noise. |
 
 ---
 
@@ -44,10 +44,11 @@ npm audit --json
   - Derivation: 16/16
   - Layering: 60 files, 0 violations, 0 DOM sinks in guarded UI paths
   - Routes: 14/14 registered/reachable; 128 used CSS classes all defined
-  - Contract: 34/34
+  - Contract: 42/42
   - DOM/refs: 89/89
   - Vault, thru-client, api-router integration suites passed
-- `npm audit --json`: INCONCLUSIVE. The npm registry audit endpoint returned `503 Service Unavailable`, so dependency CVE posture could not be verified in this run.
+- Historical `npm audit --json`: INCONCLUSIVE. The npm registry audit endpoint returned `503 Service Unavailable` during the original audit.
+- Remediation recheck 2026-09-18: `npm audit --omit=dev` PASS, `found 0 vulnerabilities`.
 
 ---
 
@@ -64,37 +65,26 @@ npm audit --json
 
 ## Findings
 
-### F-01 — Critical — Signing endpoints do not require password re-authentication
+### F-01 — Remediated — Signing endpoints require password re-authentication by default
 
-**Evidence**
+**Status after fix**
 
-`src/shared/contract/manifest.js` declares transaction-signing endpoints as unlocked-only:
+`src/shared/contract/manifest.js` now declares transaction-signing endpoints as `auth: 'signing'` and includes an optional `password` parameter:
 
-- `tx.claimFaucet`: `auth: 'unlocked'` at lines 287-291.
-- `tx.send`: `auth: 'unlocked'` at lines 293-297.
-- `tx.autoCreateAccount`: `auth: 'unlocked'` at lines 311-315.
-- `token.deploy`: `auth: 'unlocked'` at lines 373-377.
+- `tx.claimFaucet`
+- `tx.send`
+- `tx.autoCreateAccount`
+- `token.deploy`
 
-The Send route calls the signing endpoint directly after a click:
+`src/background/api-router.js` handles `auth: 'signing'` centrally. The router requires an unlocked wallet and, unless the user explicitly disabled `requirePasswordForSigning`, requires and verifies the master password before dispatching to the signing handler.
 
-- `src/ui/app/routes/send.js` lines 543-550: `bridge.send('tx.send', { toAddress, amountUnits })`.
+The default preference is `requirePasswordForSigning: true`. The only way to change it is through `settings.setSecurity`, which is itself `auth: 'password'`. The generic unlocked-only `settings.set` rejects security-sensitive keys, including `requirePasswordForSigning`, `enforceWhitelist`, and `whitelist`.
 
-The Faucet route also calls its signing endpoint directly:
+The Send and Faucet popup routes now call `requirePassword()` and pass the password directly into the single signing API call. The legacy disabled launchpad page was also updated so its built but hidden faucet/deploy actions do not call signing endpoints without a password.
 
-- `src/ui/app/routes/faucet.js` lines 127-129: `bridge.send('tx.claimFaucet', ...)`.
+**Residual risk**
 
-**Why this matters**
-
-Project policy in `AGENTS.md` requires password re-authentication before signing. In the current contract, any extension page/script with access to the bridge while the wallet is unlocked can sign and broadcast native transfers or other transactions without knowing the master password.
-
-**Impact**
-
-- Funds can be moved while an unlocked session is unattended or if an extension page is compromised.
-- UI confirmation does not provide a backend security boundary; it can be bypassed by calling the background method directly.
-
-**Recommendation**
-
-Add append-only password-gated signing methods, for example `tx.sendV2`, `tx.claimFaucetV2`, `tx.autoCreateAccountV2`, and `token.deployV2`, each taking `password` and verifying it in the background before signing. Migrate UI callers, then retire old methods once unused. Add contract tests asserting every method that signs is `auth: 'password'`.
+Users can opt into session-only signing from Settings after password re-authentication. That is an intentional product setting requested in this pass and should remain clearly labelled as less secure.
 
 ---
 
@@ -126,22 +116,23 @@ Move reset policy into the background handler. Suggested shape: `wallet.reset({ 
 **Evidence**
 
 - `system.setAutoLock` is `auth: 'unlocked'` in `src/shared/contract/manifest.js` lines 34-38.
-- `settings.set` is `auth: 'unlocked'` in `src/shared/contract/manifest.js` lines 432-436.
-- Preferences include security-sensitive fields such as `enforceWhitelist` and `whitelist` in `src/background/services/preferences-service.js`.
-- `setPreferences()` accepts any known preference key and writes it after unlocked-only auth.
+- `system.setAutoLock` is still `auth: 'unlocked'` in `src/shared/contract/manifest.js`.
+- `settings.set` is still `auth: 'unlocked'`, but after the F-01 remediation it rejects security-sensitive preference keys.
+- `settings.setSecurity` is now `auth: 'password'` and is the path for `requirePasswordForSigning`, `enforceWhitelist`, and `whitelist`.
+- Auto-lock still needs the same treatment in a follow-up pass.
 
 **Why this matters**
 
-Project policy requires password re-authentication before security-setting changes. With the current contract, an unlocked session can disable auto-lock (`minutes: 0`), disable/enforce/modify recipient whitelist settings, or write other safety preferences without the master password.
+Project policy requires password re-authentication before security-setting changes. The signing and whitelist preference path is now password-gated, but an unlocked session can still change auto-lock (`minutes: 0`) without the master password.
 
 **Impact**
 
-- A compromised or unattended unlocked session can weaken future wallet safety controls.
-- Whitelist enforcement in `tx.send` can be changed before a transfer.
+- A compromised or unattended unlocked session can still weaken auto-lock behaviour.
+- Whitelist enforcement and signing re-authentication can no longer be changed through unlocked-only `settings.set`.
 
 **Recommendation**
 
-Split preferences into benign display settings and security settings. Make auto-lock and whitelist mutations password-gated, either via dedicated methods or a `settings.setSecurity` method. Add contract tests that enumerate security-sensitive fields and require `auth: 'password'`.
+Finish the split by moving auto-lock changes behind a password-gated method. `settings.setSecurity` now covers signing re-authentication and whitelist preferences.
 
 ---
 
@@ -180,7 +171,7 @@ Either remove launchpad from the build while disabled, or migrate it to `src/ui/
 
 - The contract declares `token.deploy` parameters as `['mintSeed', 'name', 'symbol', 'decimals', 'description', 'imageUrl']`.
 - `src/background/services/token-service.js` forwards `params.symbol` to both `symbol` and `ticker` at lines 32-36.
-- `src/launchpad/launchpad.js` submits `ticker` rather than `symbol` at lines 490-498.
+- Remediation update: `src/launchpad/launchpad.js` now submits both `symbol` and legacy `ticker` when it calls `token.deploy`, but the disabled launchpad still needs a full migration/test pass before it is treated as supported.
 
 **Why this matters**
 
@@ -219,19 +210,19 @@ Use `bridge.send('token.generateSeed')` or an equivalent audited helper for all 
 
 ---
 
-### F-07 — Medium — Dependency vulnerability audit could not complete
+### F-07 — Remediated for production deps — Dependency vulnerability audit rechecked
 
 **Evidence**
 
-`npm audit --json` returned `503 Service Unavailable` from `https://registry.npmjs.org/-/npm/v1/security/audits/quick`.
+The original `npm audit --json` returned `503 Service Unavailable` from `https://registry.npmjs.org/-/npm/v1/security/audits/quick`.
 
-**Impact**
+**Recheck**
 
-Known-vulnerability status of direct/transitive npm dependencies is unknown for this report.
+`npm audit --omit=dev` completed on 2026-09-18 and reported `found 0 vulnerabilities`.
 
-**Recommendation**
+**Residual note**
 
-Re-run `npm audit --production` and `npm audit` once the registry endpoint is available. Because this is a wallet extension, also review advisories manually for `@thru/*`, `esbuild`, and any transitive crypto/serialization packages.
+Because this is a wallet extension, continue reviewing advisories manually for `@thru/*`, `esbuild`, and any transitive crypto/serialization packages when dependencies change.
 
 ---
 
@@ -239,9 +230,9 @@ Re-run `npm audit --production` and `npm audit` once the registry endpoint is av
 
 **Evidence**
 
-- `token.generateSeed` in the contract says it returns a “32-character alphanumeric mint seed”.
-- Nearby `token.deriveAddress` documentation requires a 64-character hex seed.
-- Tests and comments elsewhere indicate 64 hex characters is now the correct shape.
+- Remediation update: `token.generateSeed` in the contract now says it returns a “64-character lowercase hex mint seed (32 bytes)”.
+- Nearby `token.deriveAddress` documentation already requires a 64-character hex seed.
+- Tests and comments elsewhere indicate 64 hex characters is the correct shape.
 
 **Impact**
 
@@ -275,22 +266,21 @@ Keep logs minimal, avoid addresses where possible, and consider a build-time deb
 
 ## Highest-priority remediation plan
 
-1. **Add password-gated signing methods** and migrate `send`, `faucet`, `autoCreateAccount`, and `token.deploy` callers.
-2. **Move reset policy into the background**, with explicit confirmation always and password required when unlocked.
-3. **Password-gate security-setting mutations**, especially auto-lock and whitelist preferences.
-4. **Exclude or migrate launchpad before enabling it.** If it remains built, include `src/launchpad/**` in the DOM sink ratchet.
-5. **Add a jsdom route mount test** as already planned in `docs/STATUS_AND_ROADMAP.md`, and include launchpad or assert it is not shipped.
-6. **Re-run dependency audit** when npm audit service is available.
+1. **Move reset policy into the background**, with explicit confirmation always and password required when unlocked.
+2. **Password-gate remaining security-setting mutations**, especially auto-lock. Signing re-authentication and whitelist preferences now use `settings.setSecurity`.
+3. **Exclude or migrate launchpad before enabling it.** If it remains built, include `src/launchpad/**` in the DOM sink ratchet.
+4. **Add a jsdom route mount test** as already planned in `docs/STATUS_AND_ROADMAP.md`, and include launchpad or assert it is not shipped.
+5. **Keep dependency audit in release checks**; production dependency audit currently reports zero vulnerabilities.
 
 ---
 
 ## Suggested tests to add
 
-- Contract test: every method that can sign or broadcast a transaction must be `auth: 'password'`.
+- Contract test: every method that can sign or broadcast a transaction must use `auth: 'signing'` and carry a password parameter.
 - Contract test: every destructive method (`wallet.reset`, key/account removal) must have a backend-enforced password/confirmation policy.
 - Contract test: security preferences cannot be changed through generic unlocked-only `settings.set`.
 - API-router test: direct `wallet.reset` while unlocked without password is rejected.
-- API-router test: direct `tx.send` without password is rejected once v2 methods exist.
+- API-router test: direct `tx.send` without password is rejected while `requirePasswordForSigning` is enabled.
 - DOM-sink scan extended to `src/launchpad/**`.
 - Launchpad smoke test: deployment form produces `symbol`, not only `ticker`, and a 64-hex seed.
 
@@ -298,4 +288,4 @@ Keep logs minimal, avoid addresses where possible, and consider a build-time deb
 
 ## Overall conclusion
 
-The repository is in a much better structural state than the legacy defect history suggests, and the main test suite is green. The remaining risk is not broad code quality; it is concentrated in a few high-value wallet boundaries where UI-level confirmation is being treated as if it were backend authorization. Moving password re-authentication and destructive-operation policy into the background API contract should be the next security-hardening milestone before adding new wallet features.
+The repository is in a much better structural state than the legacy defect history suggests. F-01 signing re-authentication is now enforced in the background by default, with a password-gated user opt-out for session-only signing. Remaining risk is concentrated in reset policy, auto-lock/security-setting hardening, disabled launchpad DOM sinks, and missing route-mount coverage.
