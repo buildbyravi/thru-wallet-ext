@@ -31,7 +31,6 @@ import { AccountAvatar, AddressText } from '../../domain/account-avatar.js';
 import { AssetRow } from '../../domain/token-row.js';
 import * as bridge from '../bridge.js';
 import { formatThru } from '../../../shared/format.js';
-import { FLAGS } from '../../../shared/flags.js';
 
 /**
  * One button in the quick-action grid.
@@ -141,28 +140,6 @@ export function DashboardRoute({ navigate }) {
     const faucetAvailable = Boolean(network?.faucetProgramId && network?.faucetStateAccount);
     faucetTile.el.classList.toggle('hidden', !faucetAvailable);
     actionGrid.classList.toggle('action-grid-3', !faucetAvailable);
-  }
-
-  // ---- Launchpad ---------------------------------------------------------
-  // Gated behind FLAGS.FEATURE_LAUNCHPAD. The core wallet ships first; the launchpad returns
-  // when it gets its own testing pass. Matches the existing .launchpad-banner child structure,
-  // including the .launchpad-banner-left wrapper the CSS positions against.
-  let launchpad = null;
-  if (FLAGS.FEATURE_LAUNCHPAD) {
-    launchpad = h('button', { type: 'button', class: 'launchpad-banner' }, [
-      h('div', { class: 'launchpad-banner-left' }, [
-        h('span', { class: 'launchpad-banner-icon' }, icon('rocket', 17)),
-        h('div', { class: 'launchpad-banner-text' }, [
-          h('strong', { text: 'Token Launchpad & DEX' }),
-          h('span', { class: 'muted', text: 'Deploy & trade native tokens on ThruVM' }),
-        ]),
-      ]),
-      h('span', { class: 'launchpad-banner-arrow' }, icon('external', 13)),
-    ]);
-    d.on(launchpad, 'click', () => {
-      // A full tab, not the popup: the launchpad needs the width.
-      chrome.tabs.create({ url: chrome.runtime.getURL('launchpad.html') });
-    });
   }
 
   // ---- Assets ------------------------------------------------------------
@@ -300,7 +277,6 @@ export function DashboardRoute({ navigate }) {
     balanceHero,
     pendingHost,
     actionGrid,
-    launchpad,
     assetsSection,
   ]);
 

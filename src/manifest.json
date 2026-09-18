@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Thru Wallet",
   "version": "1.2.0",
-  "description": "High-performance self-custody wallet, key manager, and token launchpad for Thru.",
+  "description": "High-performance self-custody wallet and key manager for Thru.",
   "homepage_url": "https://github.com/buildbyravi/thru-wallet-ext",
   "action": {
     "default_popup": "popup.html",

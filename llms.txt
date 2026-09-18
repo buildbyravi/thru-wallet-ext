@@ -14,7 +14,7 @@ Chrome MV3 self-custody wallet extension for the Thru native Layer 1. Thru is no
 - API seam: UI calls `bridge.send(method, params)` only.
 - Background owns auth, signing, services, and RPC coordination.
 - Vault and transaction/RPC code are sacred: `src/lib/vault.js`, `src/lib/thru-client.js`, `src/lib/networks.js`.
-- Launchpad is still built but feature-flagged off and legacy. Do not add new DEX/launchpad behavior inside it before module separation.
+- The legacy launchpad/DEX/prediction surface is quarantined: `src/launchpad/**` is deleted, no launchpad page is built, and `popup.html?launchpad=1` no longer does anything. `test-launchpad-quarantine.mjs` enforces this. Do not revive it; a future launchpad is a new `src/features/launchpad/**` module with `launchpad.*` backend namespaces.
 
 ## Read first
 
@@ -60,7 +60,9 @@ Features must not import sibling features or vault internals.
 
 ## Current P0 work
 
-1. Fix `wallet.reset` background confirmation/password policy.
-2. Password-gate auto-lock changes.
-3. Remove or migrate launchpad DOM sinks before enabling it.
-4. Add route mount tests.
+Done: signing re-authentication (contract v5), reset/auto-lock background hardening (contract v6), legacy launchpad quarantine.
+
+1. Custom-network decision: hide "Add custom network" until HTTPS/localhost policy, narrow user-granted host access, verified chain/program capabilities, and no default-program fallback exist.
+2. Add route mount tests for all 14 routes in no-vault, locked, and unlocked states; assert no mnemonic, private key, or password survives rendered or detached DOM.
+3. Token portfolio and token transfer only after live Thru Token Program validation (account enumeration, decimals, mint metadata, balances, transfer, history decoding).
+4. Contacts CRUD UI and account pin/hide/order UI on top of the existing backend support.

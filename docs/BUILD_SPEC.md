@@ -43,8 +43,8 @@ Current audited facts as of 2026-09-18:
 | UI stack | Single popup route stack, 14 routes, no legacy popup fallback. |
 | Contract | v6, 74 methods. |
 | Signing | Existing signing methods intentionally moved to `auth: 'signing'` in contract v5. Password re-auth is required by default; a session-only opt-out is password-gated. |
-| Guarded DOM | `src/ui/**` sink ratchet is 0. |
-| Launchpad | Still built and feature-flagged off under `src/launchpad/**`; must be removed from build or migrated before enablement. |
+| Guarded DOM | Sink ratchet is 0 across **all of `src/`** (`src/popup/vendor/` excluded), not just `src/ui/**`. |
+| Launchpad | **Quarantined.** `src/launchpad/**` is deleted, not built, and not reachable by URL, flag or control; `test-launchpad-quarantine.mjs` enforces it. Research docs are retained. Backend `token.*` methods are unchanged. |
 | Thru protocol | Thru is a native L1. External wallets/DEXs are UX references only. |
 
 Older archived docs describe pre-rebuild structures such as `src/desktop`, dual routers, and
@@ -208,7 +208,7 @@ src/ui/app/         one popup router, route tables, boot gate, guards, bridge.
 src/features/<id>/  future self-contained feature UI/model modules.
 src/lib/thru/       future thin official Thru SDK/program adapters.
 src/popup/          popup shell HTML + boot stub + styles.
-src/launchpad/      current built but flagged-off legacy surface; quarantine/migrate before enabling.
+                    (src/launchpad/ is deleted -- see the Launchpad row above and CONTEXT.md Sec 9.)
 ```
 
 The archived documents proposed other structures (`popup/core/**`, `src/desktop/**`, and a
@@ -507,9 +507,10 @@ attacker-influenceable values. Escaping 20 call sites by hand is a policy that d
 
 - one node factory `src/ui/kit/dom.js` `h()`; text via `textContent`; `on*` attributes and
   `javascript:` URLs rejected
-- CI greps for `innerHTML =`, `insertAdjacentHTML`, `outerHTML =` under guarded UI/feature paths
-  and fails on any match. `src/launchpad/**` must be added to that ratchet or removed from the
-  build before launchpad is enabled.
+- CI greps for `innerHTML =`, `insertAdjacentHTML`, `outerHTML =` across all of `src/`
+  (`src/popup/vendor/` excluded) and fails on any match. The scan used to cover only
+  `src/ui/**` + `src/features/**`; the directory left outside it was where the sinks survived,
+  so it now covers the whole shipped runtime and `test-launchpad-quarantine.mjs` re-asserts zero.
 
 ### CSP
 

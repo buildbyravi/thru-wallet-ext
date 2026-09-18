@@ -1,5 +1,21 @@
 # Launchpad frontend design and UX study
 
+> [!IMPORTANT]
+> **RESEARCH ONLY — no shipped code corresponds to this document.** The legacy `src/launchpad/**`
+> surface this study was written about is **deleted** (quarantined): it is not built, is not in
+> `dist/`, and cannot be re-enabled by URL, feature flag or UI control.
+> `test-launchpad-quarantine.mjs` fails the build if any of it returns.
+>
+> Present-tense statements below about "the disabled launchpad surface" are therefore stale. This is
+> also not a plan to re-enable it: a launchpad returns only as an isolated
+> `src/features/launchpad/**` module with `launchpad.*` backend namespaces, guarded DOM
+> (`src/ui/kit/dom.js`), and verified Thru Token/AMM program semantics — see
+> `docs/MODULE_BOUNDARIES.md`.
+>
+> For current state read `docs/STATUS_AND_ROADMAP.md` and `CONTEXT.md` §9. The study is retained
+> because the UX research is still the best input for that future module, and research is expensive
+> to recreate.
+
 Date: 2026-09-18  
 Scope: frontend/product study for a future Thru-native launchpad surface. This is a design and
 architecture document only; it does not verify or implement new Thru protocol semantics.
@@ -13,8 +29,9 @@ architecture document only; it does not verify or implement new Thru protocol se
 
 ## 0. Purpose
 
-The wallet already has a disabled `src/launchpad/` surface. Before it is redesigned or enabled,
-we need a clear UX target based on the current permissionless token-launch market:
+The wallet had a disabled `src/launchpad/` surface when this study was written; that tree has since
+been deleted (see the banner above). Before any launchpad is redesigned or built, we need a clear UX
+target based on the current permissionless token-launch market:
 
 - Pump.fun-style ultra-fast launch and trade boards.
 - Raydium/Meteora-style configurable bonding-curve infrastructure.
