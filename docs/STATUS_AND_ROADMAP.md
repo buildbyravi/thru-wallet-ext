@@ -136,14 +136,20 @@ sendable, and `token.getBalances` (BACKEND_GAPS C1) stops returning `supported: 
 Also replace the hand-rolled `encodeInitializeMintInstructionData` with
 `createInitializeMintInstruction` while in there.
 
-### Step 5 — spacing and the tab-width question
+### Step 5 — dependency pin cleanup
+
+Non-PR cleanup: `package.json` currently allows `@thru/programs` upgrades with `^0.3.4`. Align it
+with the repository rule that Thru SDK/program packages are exact-pinned, then run the golden
+derivation and Thru-client tests before merging.
+
+### Step 6 — spacing and the tab-width question
 
 Width is **fixed at 408px** on `body`; height is auto above a 580px floor. Correct for a popup,
 wrong when `popup.html` is opened in a tab for testing, where the 408px body leaves the viewport
 blank to the right. One media query lets the working surface widen when it is not in a popup.
 Do the section-spacing pass at the same time.
 
-### Step 6 — launchpad
+### Step 7 — launchpad
 
 Flagged off (`FEATURE_LAUNCHPAD`). Its account/network switcher buttons currently point users at
 the popup, and it still uses `popup/icons.js` markup strings rather than `ui/kit/icon.js`.
@@ -152,7 +158,7 @@ Migrate it onto the kit when it gets its own testing pass, then re-enable.
 Note `token.deriveAddress` now needs a mint authority and a 64-hex-character seed; the launchpad's
 deploy form predates both.
 
-### Step 7 — remaining chain questions
+### Step 8 — remaining chain questions
 
 1. **Explorer route patterns** `/tx/` and `/account/` — convention, unconfirmed. Worst case a
    dead link.
@@ -162,7 +168,7 @@ deploy form predates both.
    account it holds no key for, so `tx.send` reports `RECIPIENT_NOT_ACTIVATED`. Worth confirming
    with the Thru team whether that is intended protocol behaviour.
 
-### Step 8 — feature modules
+### Step 9 — feature modules
 
 `src/features/<id>/` + one registry line + its own backend namespace, per `BUILD_SPEC.md` §3.
 `@thru/programs` also ships **`clob`** and **`oracle`** alongside `amm`, which are directly

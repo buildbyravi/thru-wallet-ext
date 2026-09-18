@@ -444,10 +444,11 @@ Thru exposes AMM bindings under `@thru/programs/amm` (pool derivation, instructi
 quoting) and a Token Program. Do not implement DEX or launchpad behaviour until those program
 interfaces are verified against the target network.
 
-**dApp connector:** do not invent a fake `window.thru` standard. Thru's documented architecture is
-centred on a hosted embedded wallet with passkey login. Define the abstraction now
-(`WalletProvider { connect, disconnect, getAccounts, signTransaction }`), implement
-`ThruEmbeddedProvider` / `ThruExtensionProvider` only once a real compatibility standard exists.
+**dApp connector:** do not invent a fake `window.thru` standard. Future integration must follow
+Thru's documented `connect()`, `getSigningContext()`, and `signTransaction()` lifecycle: connection
+is account approval/discovery, signing context explains the managed account vs fee payer/signer,
+and signing returns canonical transaction bytes after wallet approval. Define abstractions now, but
+implement an extension/dApp provider only after the official extension-compatible shape is verified.
 
 ---
 

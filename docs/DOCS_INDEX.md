@@ -31,9 +31,10 @@ Purpose: single map for every maintained Markdown document in this repository. U
 
 ### For AI agents and MCP planning
 
-1. `llms.txt` — short read-only agent context.
-2. `docs/MCP_AGENT_INTEGRATION.md` — safe local MCP companion model.
-3. `docs/MODULE_BOUNDARIES.md` — what agents may edit without crossing feature boundaries.
+1. `llms.txt` — short read-only agent context for this repository.
+2. `https://thru.org/docs/llm.txt` — official Thru protocol-doc entry point for agents.
+3. `docs/MCP_AGENT_INTEGRATION.md` — official Explorer MCP preference plus safe local wallet MCP model.
+4. `docs/MODULE_BOUNDARIES.md` — what agents may edit without crossing feature boundaries.
 
 ---
 

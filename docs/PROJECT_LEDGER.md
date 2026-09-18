@@ -117,6 +117,7 @@ This table deduplicates the repeated local-agent timeline. Commit IDs before the
 | P1 | jsdom route mount test | Current tests prove routes exist but do not mount them in a browser-like DOM. | `docs/STATUS_AND_ROADMAP.md` |
 | P1 | Token transfer | Required for honest asset support. Must use official `@thru/programs/token`. | `docs/BACKEND_GAPS.md` |
 | P1 | Feature module split | Launchpad/DEX/prediction must be separated before serious DeFi work. | `docs/MODULE_BOUNDARIES.md` |
+| P1 | Exact-pin `@thru/programs` | Non-PR cleanup: `package.json` currently allows `^0.3.4`; align with the repo rule that Thru SDK/program package versions are exact-pinned. | `package.json` |
 | P2 | Full-tab shell | Required for launchpad/DEX/charts without slowing popup. | `docs/WALLET_FEATURES_PERFORMANCE_STUDY.md` |
 | P2 | Thru-native AMM/indexer integration | Needed for real swap/chart/market flows. | `docs/THRU_NATIVE_DEFI_TAB_UX.md` |
 | P2 | Local MCP companion | Useful for AI agents, but must never sign/export secrets. | `docs/MCP_AGENT_INTEGRATION.md` |
@@ -128,7 +129,7 @@ This table deduplicates the repeated local-agent timeline. Commit IDs before the
 1. Preserve working backend/security/Thru behavior unless a verified bug requires modification.
 2. Thru is a native L1, not EVM. EVM/Solana/Cosmos products are UX references only.
 3. Do not invent fake token/DEX/launchpad/chart/perps behavior.
-4. Do not invent a `window.thru` provider standard.
+4. Do not invent a `window.thru` provider standard; future dApp integration must follow Thru's documented `connect()`, `getSigningContext()`, and `signTransaction()` flow after compatibility validation.
 5. UI never imports vault internals or background services.
 6. Background owns auth/signing.
 7. Secrets never enter URLs, `data-*`, localStorage/sessionStorage, console logs, or analytics.

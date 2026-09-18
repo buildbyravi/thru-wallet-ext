@@ -145,10 +145,12 @@ The send review needs a real "Network fee" line. Today the MAX button reserves a
 Rabby's signature feature — predicted balance changes before signing. Needs a simulate RPC.
 → `tx.simulate({ ... })` → `supported:false`.
 
-### C4. Message signing
-Needed for any future dApp connector. Thru's documented model is a hosted embedded wallet with
-passkeys, and no injected-provider standard is confirmed.
-→ Defer entirely; do not invent `window.thru`.
+### C4. dApp signing integration
+Needed for any future dApp connector. Do not invent an injected `window.thru` provider standard.
+Future integration must follow Thru's documented wallet approval/signing lifecycle:
+`connect()` for account approval/discovery, `getSigningContext()` for managed-account/fee-payer/signer
+context, and `signTransaction()` for wallet approval and canonical transaction bytes. Endpoint,
+provider shape, and extension compatibility still need product/security validation before implementation.
 
 Every C item is also an entry in `BUILD_SPEC.md` Part X (open questions). The single
 highest-value verification remains the faucet/transfer **unit scale**.

@@ -25,13 +25,14 @@ Chrome MV3 self-custody wallet extension for the Thru native Layer 1. Thru is no
 5. `CONTEXT.md` — file map.
 6. `docs/MODULE_BOUNDARIES.md` — target feature separation.
 7. `docs/MCP_AGENT_INTEGRATION.md` — safe MCP plan.
+8. `https://thru.org/docs/llm.txt` — official Thru protocol-doc entry point for agents.
 
 ## Hard safety rules
 
 - Never request, store, print, or reveal mnemonic/private key/password.
 - Never log decrypted vault data.
 - Never put secrets in URLs, `data-*`, localStorage/sessionStorage, console logs, analytics, or MCP output.
-- Do not invent a `window.thru` provider standard.
+- Do not invent a `window.thru` provider standard; future dApp integration must follow Thru's documented `connect()`, `getSigningContext()`, and `signTransaction()` flow.
 - Do not fabricate token balances, DEX quotes, charts, launchpad state, perps, prediction markets, or protocol semantics.
 - Use official Thru SDK/program surfaces when available.
 - Run `npm test && npm run build` before and after code changes.
@@ -40,7 +41,7 @@ Chrome MV3 self-custody wallet extension for the Thru native Layer 1. Thru is no
 
 Signing methods use `auth: 'signing'`. Password re-authentication is required by default. A user may explicitly opt into session-only signing from Settings, but that opt-out is itself password-gated.
 
-MCP/AI agents must not sign directly. Agents may prepare intents only. Account addresses, balances, activity, labels, refs, and keyring metadata are non-secret but privacy-sensitive and require explicit per-session companion permission. The human reviews in the extension UI; the background signs/submits after auth policy passes.
+MCP/AI agents must not sign directly. Prefer the official read-only Thru Explorer MCP for live chain queries. A local wallet MCP may handle permissioned wallet reads and intent preparation only. Account addresses, balances, activity, labels, refs, and keyring metadata are non-secret but privacy-sensitive and require explicit per-session companion permission. The human reviews in the extension UI; the background signs/submits after auth policy passes.
 
 ## Target feature separation
 

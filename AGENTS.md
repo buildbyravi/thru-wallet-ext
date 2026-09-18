@@ -55,11 +55,11 @@ is red. Never weaken or skip a test to make it pass.
 4. **Backend API is append-only.** Add the method to `src/shared/contract/manifest.js` *and*
    `api-router.js` -- `test-contract.mjs` checks both directions. Never rename or reshape an
    existing method; add a new name and retire the old one after zero references remain.
-5. **No new dependencies except first-party Thru packages.** @thru/sdk, @thru/crypto and
-   @thru/programs are preferred over hand-written protocol code  @thru/programs ships
-   	oken, mm, multicall, passkey-manager, clob and oracle. No React/Vue/Tailwind,
-   no build-system change. SDK versions are pinned EXACTLY; 	est-derivation.mjs fails if a
-   bump changes key derivation.
+5. **No new dependencies except first-party Thru packages.** `@thru/sdk`, `@thru/crypto`, and
+   verified `@thru/programs/*` surfaces are preferred over hand-written protocol code. No
+   React/Vue/Tailwind, no build-system change. Thru SDK/program versions should be pinned exactly;
+   `@thru/programs` currently still uses `^0.3.4` and is tracked as a non-PR cleanup in
+   `docs/STATUS_AND_ROADMAP.md`.
 6. **Money is BigInt only.** Use `src/shared/format.js`. Never `parseFloat(x) * 1e9`.
 7. **All DOM is built with `src/ui/kit/dom.js` `h()`.** `innerHTML`, `insertAdjacentHTML` and
    `outerHTML` under `src/ui/**` or `src/features/**` fail the build outright. The injection

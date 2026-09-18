@@ -3,7 +3,7 @@
 Date: 2026-09-18  
 Scope: product/architecture study for what a modern browser wallet generally needs, and how the Thru wallet should scale without popup lag or hanging. This is a design document only; it does not implement new chain, token, DEX, launchpad, chart, or dApp-provider behavior.
 
-> Thru-specific rule: use MetaMask, Rabby, Phantom, Keplr, Brave Wallet, and Coinbase/Base Wallet as UX and architecture references only. Thru is a native Layer 1, so implementation must use verified Thru-native SDKs/programs and a future verified read/indexer adapter; package and transport TBD after official Thru docs and live validation. Do not copy EVM/Solana/Cosmos assumptions into Thru.
+> Thru-specific rule: use MetaMask, Rabby, Phantom, Keplr, Brave Wallet, and Coinbase/Base Wallet as UX and architecture references only. Thru is a native Layer 1, so implementation must use verified Thru-native SDKs/programs, official gRPC/gRPC-Web transport after endpoint/devnet validation, and a future verified read/indexer adapter where needed. Do not copy EVM/Solana/Cosmos assumptions into Thru.
 
 ---
 
@@ -45,7 +45,7 @@ Good general model for:
 - portfolio dashboard
 - hardware-wallet compatibility
 
-MetaMask-style dApp connection exposes accounts/networks to a dApp, but transactions still require user approval. For Thru, the important lesson is: **connection is not signing**. A future Thru dApp connector should expose only verified permissions and must not invent an unverified `window.thru` standard.
+MetaMask-style dApp connection exposes accounts/networks to a dApp, but transactions still require user approval. For Thru, the important lesson is: **connection is not signing**. Do not invent an unverified `window.thru` standard; future dApp integration must follow Thru's documented `connect()`, `getSigningContext()`, and `signTransaction()` approval/signing flow after extension compatibility is validated.
 
 ### Rabby-style wallet
 
@@ -685,7 +685,7 @@ For this Thru wallet, the right target is:
 ```txt
 Popup = fast wallet + quick swap + signing approvals
 Full tab = launchpad + DEX/DeFi terminal + charts + markets
-Background = auth, signing, vault, Thru SDK, RPC coordination, and future verified read/indexer adapter coordination
+Background = auth, signing, vault, Thru SDK, RPC coordination, and official gRPC/gRPC-Web transport and future read/indexer adapter coordination after endpoint/devnet validation
 Indexer = history, market data, chart data
 ```
 

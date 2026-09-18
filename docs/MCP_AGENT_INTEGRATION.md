@@ -9,9 +9,11 @@ This is a planning document only. No MCP server is implemented in this phase.
 
 ## 1. Core safety rule
 
-MCP must be a **separate local companion**, not code inside the Chrome extension service worker.
+Prefer the official read-only Thru Explorer MCP for live chain queries. A local wallet MCP, if added
+later, must be a **separate local companion**, not code inside the Chrome extension service worker.
 
-Agents may help prepare and explain actions, but the extension must remain the only signing surface:
+Agents may help inspect chain state, prepare actions, and explain actions, but the extension must
+remain the only wallet signing surface:
 
 ```txt
 AI/MCP prepares intent → extension shows human review → user approves/authenticates → background signs/submits
@@ -25,7 +27,30 @@ AI/MCP receives password/private key/mnemonic → AI signs/broadcasts
 
 ---
 
-## 2. Allowed MCP tool classes
+## 2. Official Thru Explorer MCP vs local wallet MCP
+
+Use the official Thru Explorer MCP for live chain context:
+
+```txt
+https://scan.thru.org/api/mcp
+```
+
+It is appropriate for account lookup, transaction inspection, recent blocks/transactions, search,
+and on-chain ABI lookup. It is read-only and should be preferred over scraping explorer pages or
+asking an agent to guess from stale docs.
+
+Use a future local wallet MCP only for permissioned wallet reads and intent preparation. It must
+never expose secrets, direct signing, direct broadcast, reset, or security-setting mutation.
+
+For protocol-doc context, agents should start at:
+
+```txt
+https://thru.org/docs/llm.txt
+```
+
+---
+
+## 3. Allowed local wallet MCP tool classes
 
 ### Privacy-sensitive read tools
 
@@ -71,7 +96,7 @@ Never expose these through MCP:
 
 ---
 
-## 3. Trust boundaries
+## 4. Trust boundaries
 
 ```txt
 Local MCP companion process
@@ -94,7 +119,7 @@ Human extension UI
 
 ---
 
-## 4. MCP implementation direction
+## 5. MCP implementation direction
 
 If implemented later, use a local Node process outside the extension:
 
@@ -123,7 +148,7 @@ Preferred pattern:
 
 ---
 
-## 5. Contract design for future MCP-safe intent APIs
+## 6. Contract design for future MCP-safe intent APIs
 
 Potential extension methods:
 
@@ -147,9 +172,10 @@ Signing remains centralized through one intent submit path.
 
 ---
 
-## 6. LLM context file
+## 7. LLM context file
 
-The root `llms.txt` file is intentionally short and read-only. It tells agents:
+The root `llms.txt` file is intentionally short and read-only for this repository. For official
+protocol-doc traversal, start at `https://thru.org/docs/llm.txt`. The repo `llms.txt` tells agents:
 
 - where to read current status,
 - what files are sacred,
@@ -161,7 +187,7 @@ Keep `llms.txt` concise enough to be copied into agent context. Put long explana
 
 ---
 
-## 7. Non-goals
+## 8. Non-goals
 
 - No agent gets the wallet password.
 - No agent gets mnemonic/private key export.
@@ -172,7 +198,7 @@ Keep `llms.txt` concise enough to be copied into agent context. Put long explana
 
 ---
 
-## 8. Review checklist before implementing MCP
+## 9. Review checklist before implementing MCP
 
 - [ ] Reset and auto-lock audit gaps fixed.
 - [ ] Route mount tests added.

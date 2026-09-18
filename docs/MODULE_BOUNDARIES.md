@@ -78,7 +78,8 @@ src/lib/thru/
   amm-adapter.js           # @thru/programs/amm only
   oracle-adapter.js        # @thru/programs/oracle only
   clob-adapter.js          # @thru/programs/clob only if verified
-  indexer-adapter.js       # future verified read/indexer adapter; package/transport TBD
+  read-adapter.js          # official gRPC/gRPC-Web transport after endpoint/devnet validation
+  indexer-adapter.js       # future derived read/indexer adapter where needed
   intent-builder.js        # shared transaction intent builder, no signing
 
 src/shared/contract/
@@ -183,7 +184,8 @@ Target adapters:
 | `amm-adapter.js` | AMM pool derivation, quotes, swaps, liquidity builders from `@thru/programs/amm` | Token launch wizard UI, prediction markets |
 | `oracle-adapter.js` | Oracle reads/builders if official and verified | Price fabrication |
 | `clob-adapter.js` | CLOB/order builders only if official and verified | AMM swaps |
-| `indexer-adapter.js` | Future verified read/indexer adapter; package and transport TBD after official Thru docs and live validation | Signing or vault access |
+| `read-adapter.js` | Official gRPC/gRPC-Web transport after endpoint/devnet validation | Signing or vault access |
+| `indexer-adapter.js` | Future derived read/indexer model where needed | Signing or vault access |
 | `intent-builder.js` | Typed transaction intent objects | Secret material or direct broadcast |
 
 Adapter rules:
@@ -301,7 +303,7 @@ Move token creation/deploy UX into `src/features/launchpad`. Its backend owns `l
 
 ### Phase E — DEX module
 
-Create `src/features/dex`. Its backend owns `dex.*` methods. It may use `amm-adapter.js`, `token-adapter.js`, and a future verified read/indexer adapter after package and transport validation. It may not use launchpad internals.
+Create `src/features/dex`. Its backend owns `dex.*` methods. It may use `amm-adapter.js`, `token-adapter.js`, official gRPC/gRPC-Web transport after endpoint/devnet validation, and a future verified read/indexer adapter where needed. It may not use launchpad internals.
 
 ### Phase F — prediction module
 

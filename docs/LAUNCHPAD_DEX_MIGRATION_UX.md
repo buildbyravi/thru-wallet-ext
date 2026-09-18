@@ -7,7 +7,7 @@ trading, or charting.
 
 > Correction: Thru is a native Layer 1, not an EVM chain. External DEXs such as Uniswap,
 > Raydium, PancakeSwap, FOMO, and Pons are UX references only. The Thru implementation target is
-> Thru-native Token Program, AMM Program, and a future verified read/indexer adapter; package and transport TBD after official Thru docs and live validation. See
+> Thru-native Token Program, AMM Program, official gRPC/gRPC-Web transport after endpoint/devnet validation, and a future verified read/indexer adapter where needed. See
 > `docs/THRU_NATIVE_DEFI_TAB_UX.md` for the corrected architecture.
 
 Related docs:

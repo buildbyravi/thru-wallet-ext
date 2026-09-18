@@ -5,9 +5,9 @@ Status: corrective product/architecture note after reviewing Thru docs. No runti
 
 This document supersedes any interpretation that Thru launchpad tokens should literally migrate to
 EVM venues such as Uniswap. Thru is a new Layer 1 with its own VM, transaction format, account
-model, Token Program, AMM Program, and explorer tooling. Market/history reads should use a future
-verified read/indexer adapter; package and transport TBD after official Thru docs and live validation.
-External launchpads/DEXs remain useful UX references only.
+model, Token Program, AMM Program, official gRPC/gRPC-Web transport, and explorer tooling.
+Market/history reads should use gRPC/gRPC-Web only after endpoint/devnet validation, plus a future
+verified read/indexer adapter where needed. External launchpads/DEXs remain useful UX references only.
 
 ---
 
@@ -26,10 +26,12 @@ From Thru docs reviewed for this correction:
   transfers, minting, burning, freeze/thaw, and token-account derivation.
 - `@thru/programs/amm` appears in official Thru documentation as the AMM direction, but repository
   usage must be verified before implementation.
-- Market/history reads should use a future verified read/indexer adapter; package and transport TBD
-  after official Thru docs and live validation.
+- gRPC and browser gRPC-Web are official Thru interfaces, but wallet integration remains deferred
+  until endpoint and devnet validation.
+- Market/history reads should use official gRPC/gRPC-Web after validation, plus a future verified
+  read/indexer adapter where needed.
 - Explorer MCP can inspect accounts, transactions, blocks, recent activity, search, and on-chain
-  ABIs without scraping explorer pages.
+  ABIs without scraping explorer pages, and should be preferred for AI live-chain lookups.
 
 Therefore, the Thru product model is:
 
@@ -38,7 +40,7 @@ Thru Launchpad Program / Token Program
   → Thru launch state
   → Thru Token Mint + Token Accounts
   → Thru AMM pool / future Thru DEX venue
-  → future verified read/indexer adapter market data
+  → official gRPC/gRPC-Web after endpoint/devnet validation + future read/indexer adapter where needed
   → Thru wallet popup + full-tab DeFi terminal
 ```
 
@@ -286,9 +288,9 @@ No surface should be able to sign directly with only an unlocked session.
 A Thru-native chart system should be built from Thru data sources.
 
 ```text
-Future verified read/indexer adapter
+Official gRPC/gRPC-Web after endpoint/devnet validation
   → ordered block/transaction/account/event stream
-  → MarketIndexer using the future verified read/indexer adapter
+  → MarketIndexer using a future verified read/indexer adapter where needed
   → candles, trades, pool snapshots, holder snapshots
   → frontend market API
   → chart components
@@ -634,8 +636,8 @@ Do not jump straight to charts or DEX UI. The safe order is:
    - 64-hex mint seeds, correct symbol/name params, password-gated deploy
 7. **Thru AMM research/verification**
    - use `@thru/programs/amm`; verify pool init, swap, liquidity, quote, metadata parsing
-8. **Market indexer design**
-   - future verified read/indexer adapter for candles, trades, holders, pools; package and transport TBD after official Thru docs and live validation
+8. **Market/read adapter design**
+   - use official gRPC/gRPC-Web after endpoint/devnet validation; add a future verified read/indexer adapter for candles, trades, holders, and pools where needed
 9. **Popup swap**
    - only after quote + signing + duplicate protection + token account handling are verified
 10. **Full-tab DEX terminal**

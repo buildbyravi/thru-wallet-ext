@@ -32,7 +32,7 @@ Start with the docs index:
 | [`CONTEXT.md`](CONTEXT.md) | Current file-by-file repository map. |
 | [`docs/MODULE_BOUNDARIES.md`](docs/MODULE_BOUNDARIES.md) | Target feature separation for launchpad, DEX, prediction, portfolio, and SDK adapters. |
 | [`docs/MCP_AGENT_INTEGRATION.md`](docs/MCP_AGENT_INTEGRATION.md) | Safe AI-agent/MCP companion plan. |
-| [`llms.txt`](llms.txt) | Short read-only LLM context. |
+| [`llms.txt`](llms.txt) | Short read-only repo LLM context; pair with official Thru protocol docs at `https://thru.org/docs/llm.txt`. |
 | [`docs/AUDIT_REPORT.md`](docs/AUDIT_REPORT.md) | Security audit findings and remediation status. |
 | [`docs/DEFECT_LOG.md`](docs/DEFECT_LOG.md) | Historical defects, root causes, and lessons. |
 | [`docs/BACKEND_GAPS.md`](docs/BACKEND_GAPS.md) | Capability gaps and unsupported backend states. |
@@ -160,7 +160,7 @@ Historical alphanet results are tracked in `docs/STATUS_AND_ROADMAP.md` and `doc
 - Signing requires password re-authentication by default.
 - Session-only signing is an explicit user setting and is less secure.
 - Do not implement unverified protocol behavior.
-- Do not invent a fake `window.thru` provider.
+- Do not invent a fake `window.thru` provider; future dApp integration must follow Thru's documented `connect()`, `getSigningContext()`, and `signTransaction()` flow.
 
 ---
 
