@@ -94,6 +94,7 @@ This table deduplicates the repeated local-agent timeline. Commit IDs before the
 | 24 | this PR | PR security hotfix | Contract v7 rejects custom activation in the background, self-heals unsafe stored active ids before RPC binding, and leaves legacy records inert/removable. |
 | 25 | PR #5 | merged | Audit remediation: harden dependencies, CSP, and popup bundle (post-quarantine hygiene). |
 | 26 | contract v8 work | this phase | Token transfer built on official `@thru/programs/token` bindings: `token.transfer` (signing-auth) + real `token.getBalances` (closes BACKEND_GAPS C1); asset selector/send/dashboard/history token paths; golden wire-byte and decoder tests; recipient token-account init sent as a preceding sender-signed transaction; `scripts/verify-token-transfer.mjs` live probe (alphanet run pending — sandbox RPC unreachable). |
+| 27 | passkey spike | this phase | Time-boxed feasibility spike on the pinned `@thru/programs/passkey-manager` bindings (`docs/PASSKEY_SPIKE.md`): protocol feasible (challenge binds nonce+accounts+indices+instruction bytes; fee payer is a late-bound separate account; authority records give recovery), implementation gated on three probes — live program revision, distinct-account fee-payer validation, extension-origin `clientDataJSON` acceptance. No keyring branch, no `checkAuth` fork; not started pending user green-light. |
 
 ---
 
@@ -243,7 +244,9 @@ TESTS:                npm test -> PASS (derivation 16, layering 57 files / 0 sin
 BUILD:                npm run build -> PASS, no warnings; npm audit --omit=dev -> 0 vulnerabilities.
 KNOWN LIMITATIONS:    no route is mounted by a test yet (Step 2). Research docs describe a
                       launchpad/DEX that does not exist in code and must not be read as state.
-NEXT PHASE:           jsdom route mount tests, then the custom-network decision.
+NEXT PHASE:           run `scripts/verify-token-transfer.mjs` where alphanet is reachable;
+                      passkey implementation stays gated on the probes in
+                      `docs/PASSKEY_SPIKE.md` (user green-light required).
 ```
 
 ---
@@ -254,8 +257,8 @@ When these change, update this ledger, `CONTEXT.md`, `docs/STATUS_AND_ROADMAP.md
 
 | Identifier | Current value |
 | --- | --- |
-| contract version | 7 |
-| method count | 74 |
+| contract version | 8 |
+| method count | 75 |
 | route count | 14 |
 | guarded DOM sink count (all of `src/`) | 0 |
 | enabled networks | alphanet, localnet |

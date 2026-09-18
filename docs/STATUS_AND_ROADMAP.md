@@ -229,6 +229,29 @@ Open chain questions that need `scripts/verify-token-transfer.mjs` on a network-
 machine (moved to Step 8): whether initialize-account tolerates a never-registered recipient
 owner, and the actual token-program fee.
 
+### Step 4c — passkey feasibility spike ← DONE (`docs/PASSKEY_SPIKE.md`)
+
+Time-boxed research spike, per the agreed order (spike first, implementation only with concrete
+answers). Verdict: **protocol-feasible, implementation-gated.** The pinned
+`@thru/programs/passkey-manager` bindings already carry the hard parts — challenge
+construction binding nonce + ordered accounts + wallet index + authority index + full target
+instruction bytes, a late-bound **index-0 fee payer** (the outer-fee-payer question is answered:
+someone else pays — a passkey account is a PDA with no private key and cannot be its own
+payer), authority records with expiry for real recovery (ADD/REMOVE_AUTHORITY), and low-S
+signature normalization. The earlier brief's "extension has no usable RP ID" claim does not
+hold: Chrome 122+ extensions can call WebAuthn against RP IDs covered by host permissions.
+
+Three probes gate any implementation, all answerable by throwaway-key verification scripts
+rather than research: (1) which on-chain program **revision** is live (bindings ship legacy and
+AuthorityRecord encoders side by side), (2) whether a distinct-account fee payer validates on
+alphanet, (3) one live VALIDATE proving extension-origin `clientDataJSON` is accepted. Held
+constraints: no keyring branch inside `checkAuth` (the challenge is only constructible after
+instruction building, at the tx/passkey service), full `PasskeyMetadata` storage (credentialId,
+X/Y, rpId, authIdx — never seed-derived), recovery-authority flow precedes any
+seed-replacement messaging, and ceremonies run in an extension tab/side panel rather than the
+auto-closing popup. Passkey implementation remains **not started** until the user green-lights
+the probe.
+
 ### Step 5 — dependency pin cleanup
 
 Completed in the 2026-09-18 audit pass: `@thru/programs` and `@thru/sdk` are exact-pinned at
