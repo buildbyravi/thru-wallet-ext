@@ -41,7 +41,7 @@ Current audited facts as of 2026-09-18:
 | Area | State |
 | --- | --- |
 | UI stack | Single popup route stack, 14 routes, no legacy popup fallback. |
-| Contract | v5, 74 methods. |
+| Contract | v6, 74 methods. |
 | Signing | Existing signing methods intentionally moved to `auth: 'signing'` in contract v5. Password re-auth is required by default; a session-only opt-out is password-gated. |
 | Guarded DOM | `src/ui/**` sink ratchet is 0. |
 | Launchpad | Still built and feature-flagged off under `src/launchpad/**`; must be removed from build or migrated before enablement. |
@@ -177,6 +177,11 @@ method's shape is never edited in place.
 signing methods in place from `auth: 'unlocked'` to `auth: 'signing'`. This is a documented
 compatibility break so older callers cannot bypass the new background signing gate by continuing
 to call legacy method names.
+
+**Contract v6 exception:** destructive/security-setting hardening intentionally changed existing
+method requirements in place: `wallet.reset` now needs explicit confirmation and needs a password
+when unlocked; `system.setAutoLock` now requires password re-authentication. This prevents older
+callers from weakening auto-lock or resetting an unlocked wallet through stale UI assumptions.
 
 **R3 — Layering is enforced by a script, not by discipline.** `scripts/check-layering.mjs` fails the
 build when:

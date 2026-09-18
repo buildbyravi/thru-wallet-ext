@@ -11,7 +11,7 @@ Scope: source-level security, wallet-risk, API contract, launchpad readiness, an
 
 The core popup rebuild has strong structural guardrails: one UI/background seam, zero DOM injection sinks in `src/ui/**`, route/CSS reachability checks, pinned Thru SDK derivation tests, and JSON-serialization tests across the API port. `npm run build && npm test` is green after dependency installation.
 
-Remediation update 2026-09-18: F-01 has been addressed after the audit. Transaction-signing methods now use `auth: 'signing'`, which requires password re-authentication by default and verifies it in the background router before any signing handler runs. A password-gated Settings opt-out exists for users who explicitly choose session-only signing. Destructive reset and some broader security-setting operations still need follow-up hardening.
+Remediation update 2026-09-18: F-01 has been addressed after the audit. Transaction-signing methods now use `auth: 'signing'`, which requires password re-authentication by default and verifies it in the background router before any signing handler runs. A password-gated Settings opt-out exists for users who explicitly choose session-only signing. Contract v6 also hardens reset and auto-lock changes in the background.
 
 The disabled launchpad is also still built into `dist/launchpad.html` and contains legacy `innerHTML` rendering paths with token/user-controlled values; it is outside the current zero-sink ratchet.
 
@@ -44,7 +44,7 @@ npm audit --json
   - Derivation: 16/16
   - Layering: 60 files, 0 violations, 0 DOM sinks in guarded UI paths
   - Routes: 14/14 registered/reachable; 128 used CSS classes all defined
-  - Contract: 48/48 (current contract version is v5; see `src/shared/contract/manifest.js`)
+  - Contract: 54/54 (current contract version is v6; see `src/shared/contract/manifest.js`)
   - DOM/refs: 89/89
   - Vault, thru-client, api-router integration suites passed
 - Historical `npm audit --json`: INCONCLUSIVE. The npm registry audit endpoint returned `503 Service Unavailable` during the original audit.
@@ -90,49 +90,31 @@ Users can opt into session-only signing from Settings after password re-authenti
 
 ### F-02 — High — `wallet.reset` can bypass the unlocked-state password prompt
 
-**Evidence**
+**Status: remediated in contract v6.**
 
-- `wallet.reset` has no parameters and `auth: 'none'` in `src/shared/contract/manifest.js` lines 103-107.
-- The Reset route performs a UI-level password prompt only when it believes the wallet is unlocked, then calls `bridge.send('wallet.reset')` at `src/ui/app/routes/reset.js` lines 52-93.
-- The route comment explicitly acknowledges the API-level gap: lines 89-92 verify the password before destruction because `wallet.reset` itself takes no password.
+`wallet.reset` now takes `{ confirmation, password }` and the background service enforces the
+policy instead of trusting UI state:
 
-**Why this matters**
-
-The password gate exists only in UI code. A direct API call can erase the local vault whether locked or unlocked. Locked reset without a password is a product requirement for forgotten-password recovery, but the background API should still enforce an explicit confirmation token and should require a password when a live unlocked session exists.
-
-**Impact**
-
-- Local key material can be wiped by any caller that reaches `wallet.reset`.
-- On an unlocked shared machine, the intended password re-authentication can be bypassed.
-
-**Recommendation**
-
-Move reset policy into the background handler. Suggested shape: `wallet.reset({ confirmation, password })`, where `confirmation === 'RESET'` is always required; if `vault.isUnlocked()` is true, verify `password` before deletion. Add tests for locked reset, unlocked reset with correct password, and unlocked reset without/wrong password.
+- `confirmation === "RESET"` is always required;
+- when the wallet is unlocked, the master password is required and verified before deletion;
+- when the wallet is locked, typed confirmation remains sufficient for the intentional
+  forgotten-password erase-this-device path;
+- direct API calls, missing confirmation, missing password, wrong password, locked state, and
+  worker/session restart behavior are covered in `test-api-router.mjs`.
 
 ---
 
 ### F-03 — High — Security settings are mutable with only an unlocked session
 
-**Evidence**
+**Status: remediated for auto-lock in contract v6; signing/whitelist were remediated in v5.**
 
-- `system.setAutoLock` is `auth: 'unlocked'` in `src/shared/contract/manifest.js` lines 34-38.
-- `system.setAutoLock` is still `auth: 'unlocked'` in `src/shared/contract/manifest.js`.
-- `settings.set` is still `auth: 'unlocked'`, but after the F-01 remediation it rejects security-sensitive preference keys.
-- `settings.setSecurity` is now `auth: 'password'` and is the path for `requirePasswordForSigning`, `enforceWhitelist`, and `whitelist`.
-- Auto-lock still needs the same treatment in a follow-up pass.
+`system.setAutoLock` is now `auth: 'password'`, declares `password`, and records `authSince: 6`.
+The Settings UI prompts for the password before any auto-lock change, with a danger confirmation
+for `Never`. The API-router test covers missing password, wrong password, the `Never` setting,
+and locked-state refusal.
 
-**Why this matters**
-
-Project policy requires password re-authentication before security-setting changes. The signing and whitelist preference path is now password-gated, but an unlocked session can still change auto-lock (`minutes: 0`) without the master password.
-
-**Impact**
-
-- A compromised or unattended unlocked session can still weaken auto-lock behaviour.
-- Whitelist enforcement and signing re-authentication can no longer be changed through unlocked-only `settings.set`.
-
-**Recommendation**
-
-Finish the split by moving auto-lock changes behind a password-gated method. `settings.setSecurity` now covers signing re-authentication and whitelist preferences.
+`settings.setSecurity` remains the password-gated path for `requirePasswordForSigning`,
+`enforceWhitelist`, and `whitelist`, while generic `settings.set` rejects those keys.
 
 ---
 
@@ -266,11 +248,10 @@ Keep logs minimal, avoid addresses where possible, and consider a build-time deb
 
 ## Highest-priority remediation plan
 
-1. **Move reset policy into the background**, with explicit confirmation always and password required when unlocked.
-2. **Password-gate remaining security-setting mutations**, especially auto-lock. Signing re-authentication and whitelist preferences now use `settings.setSecurity`.
-3. **Exclude or migrate launchpad before enabling it.** If it remains built, include `src/launchpad/**` in the DOM sink ratchet.
-4. **Add a jsdom route mount test** as already planned in `docs/STATUS_AND_ROADMAP.md`, and include launchpad or assert it is not shipped.
-5. **Keep dependency audit in release checks**; production dependency audit currently reports zero vulnerabilities.
+1. **Exclude or migrate launchpad before enabling it.** If it remains built, include `src/launchpad/**` in the DOM sink ratchet.
+2. **Add a jsdom route mount test** as already planned in `docs/STATUS_AND_ROADMAP.md`, and include launchpad or assert it is not shipped.
+3. **Resolve the custom-network security/capability decision** before promoting arbitrary RPC endpoints.
+4. **Keep dependency audit in release checks**; production dependency audit currently reports zero vulnerabilities.
 
 ---
 
@@ -288,4 +269,4 @@ Keep logs minimal, avoid addresses where possible, and consider a build-time deb
 
 ## Overall conclusion
 
-The repository is in a much better structural state than the legacy defect history suggests. F-01 signing re-authentication is now enforced in the background by default, with a password-gated user opt-out for session-only signing. Remaining risk is concentrated in reset policy, auto-lock/security-setting hardening, disabled launchpad DOM sinks, and missing route-mount coverage.
+The repository is in a much better structural state than the legacy defect history suggests. F-01 signing re-authentication is now enforced in the background by default, with a password-gated user opt-out for session-only signing. Contract v6 also moves reset and auto-lock policy into backend-enforced checks. Remaining risk is concentrated in the disabled launchpad DOM surface, missing route-mount/browser coverage, and custom-network capability/CSP policy.

@@ -10,6 +10,10 @@
 //      Contract v5 is the explicit security exception: existing signing methods keep their
 //      names but now use auth:'signing'. This is an intentional compatibility break so older
 //      callers cannot keep signing from an unlocked-only session by using legacy names.
+//
+//      Contract v6 is the destructive-settings hardening break: reset now requires an explicit
+//      confirmation parameter and requires a password when the wallet is unlocked; auto-lock
+//      changes now require password re-authentication.
 //   2. Every method the UI calls must appear here, and every handler registered in
 //      src/background/api-router.js must appear here. test-contract.mjs enforces both
 //      directions, so a rename on either side fails CI instead of failing silently at
@@ -27,7 +31,7 @@
 //                explicitly disabled signing re-authentication in Settings
 // `since` is the contract version in which the method first appeared.
 
-export const CONTRACT_VERSION = 5;
+export const CONTRACT_VERSION = 6;
 
 export const METHODS = {
   // ---- System ------------------------------------------------------------
@@ -38,10 +42,11 @@ export const METHODS = {
     since: 1,
   },
   'system.setAutoLock': {
-    params: ['minutes'],
+    params: ['minutes', 'password'],
     returns: '{ autoLockMinutes }',
-    auth: 'unlocked',
+    auth: 'password',
     since: 1,
+    authSince: 6,
   },
   'system.getAutoLock': {
     params: [],
@@ -107,10 +112,11 @@ export const METHODS = {
     since: 1,
   },
   'wallet.reset': {
-    params: [],
-    returns: 'void — wipes every wallet key from this device',
+    params: ['confirmation', 'password'],
+    returns: 'void — wipes every wallet key from this device; requires confirmation always and password when unlocked',
     auth: 'none',
     since: 1,
+    hardeningSince: 6,
   },
   'wallet.hasSeed': {
     params: [],

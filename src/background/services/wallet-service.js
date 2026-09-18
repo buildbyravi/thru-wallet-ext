@@ -166,7 +166,28 @@ export async function lock() {
  * only the active network would leave the previous wallet's balances and pending transactions
  * waiting on every other network the user had visited.
  */
-export async function resetWallet() {
+export async function resetWallet({ confirmation, password } = {}) {
+  if (String(confirmation || '').trim().toUpperCase() !== 'RESET') {
+    const err = new Error('Type RESET to erase this wallet.');
+    err.code = 'AUTH_REQUIRED';
+    throw err;
+  }
+
+  if (await vault.isUnlocked()) {
+    if (typeof password !== 'string' || password.length === 0) {
+      const err = new Error('Erasing an unlocked wallet needs your password.');
+      err.code = 'AUTH_REQUIRED';
+      throw err;
+    }
+    try {
+      await verifyPassword(password);
+    } catch (error) {
+      const err = new Error(error?.message || 'Incorrect password.');
+      err.code = 'AUTH_REQUIRED';
+      throw err;
+    }
+  }
+
   await vault.resetWallet();
   await auth.clearLockout();
   await balances.clearAllCaches();

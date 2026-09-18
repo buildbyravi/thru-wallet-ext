@@ -66,7 +66,7 @@ Observed test summary:
 - Derivation: 16/16 passed.
 - Layering: 60 files checked, 0 violations, DOM sink ratchet closed for guarded UI paths.
 - Routes: 14 registered routes, all reachable, 128 used classes all defined.
-- Contract: 48/48 passed in the latest docs-audit verification; contract version is v5.
+- Contract: 54/54 passed in the latest docs-audit verification; contract version is v6.
 - DOM/refs: 89/89 passed.
 - Vault integration: passed.
 - Thru client encoding/history/network config: passed.
@@ -287,8 +287,8 @@ stack.
 
 1. **Auth policy drift:** F-01 signing auth is now guarded by `auth: 'signing'`, which requires
    password re-authentication by default and allows an explicit password-gated Settings opt-out.
-   Reset, auto-lock, and broader security preferences still need their own hardening passes. See
-   `docs/AUDIT_REPORT.md`.
+   Reset and auto-lock were hardened in contract v6; broader security preferences should continue
+   to use password-gated APIs. See `docs/AUDIT_REPORT.md`.
 2. **Route rendering is not tested:** route graph and classes are tested; actual route mounting in a
    browser-like DOM is still uncovered.
 3. **Launchpad bypasses UI guardrails:** it remains a separate bundled page with `innerHTML` sinks.

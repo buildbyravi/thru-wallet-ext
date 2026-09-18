@@ -12,7 +12,7 @@ Purpose: canonical ledger for build phases, state identifiers, accepted constrai
 | Repository | `buildbyravi/thru-wallet-ext` |
 | Arena branch | `arena/01a06be7-thru-wallet-ext` |
 | Base main commit for this Arena branch | `e1eec74d4ef4e18e4759e8281af1391655cb37cd` |
-| Current contract version | `5` |
+| Current contract version | `6` |
 | Contract source | `src/shared/contract/manifest.js` |
 | Current route count | 14 popup routes |
 | Contract method count | 74 methods |
@@ -98,9 +98,10 @@ This table deduplicates the repeated local-agent timeline. Commit IDs before the
 | --- | --- |
 | `npm test` | Passing; includes derivation, layering, routes, contract, DOM, vault, Thru client, API router. |
 | `npm run build` | Passing; generates background, popup, launchpad bundles and CSS. |
-| Contract | v5, 74 methods. |
+| Contract | v6, 74 methods. |
 | Signing auth | `tx.send`, `tx.claimFaucet`, `tx.autoCreateAccount`, `token.deploy` use `auth: 'signing'`. |
 | Signing re-auth | Required by default; can be disabled only through password-gated `settings.setSecurity`. |
+| Reset/auto-lock hardening | Contract v6: reset requires explicit confirmation and password when unlocked; auto-lock changes are password-gated. |
 | Production dependency audit | `npm audit --omit=dev` reported `found 0 vulnerabilities` in this session. |
 | DOM sink ratchet | `src/ui/**` guarded at 0 sinks. `src/launchpad/**` still outside the ratchet. |
 | Live chain facts | Alphanet faucet units, transfer fee, program addresses, history decoding, and account registration were verified historically. |
@@ -111,10 +112,9 @@ This table deduplicates the repeated local-agent timeline. Commit IDs before the
 
 | Priority | Work | Why it matters | Owner doc |
 | ---: | --- | --- | --- |
-| P0 | Background-enforce `wallet.reset` confirmation/password policy | Reset can still be called without backend-level confirmation/password policy. | `docs/AUDIT_REPORT.md` |
-| P0 | Password-gate `system.setAutoLock` | Auto-lock can still be weakened from an unlocked session. | `docs/AUDIT_REPORT.md` |
 | P0 | Remove/migrate launchpad DOM sinks before enabling launchpad | Built page still uses legacy rendering and is outside `src/ui/**` ratchet. | `docs/AUDIT_REPORT.md` |
-| P1 | jsdom route mount test | Current tests prove routes exist but do not mount them in a browser-like DOM. | `docs/STATUS_AND_ROADMAP.md` |
+| P0 | Custom-network security/capability decision | Arbitrary RPCs need CSP/permission/capability handling before promotion. | `docs/STATUS_AND_ROADMAP.md` |
+| P1 | Route mount/browser smoke tests | Current tests prove routes exist but do not mount them in a browser-like DOM. | `docs/STATUS_AND_ROADMAP.md` |
 | P1 | Token transfer | Required for honest asset support. Must use official `@thru/programs/token`. | `docs/BACKEND_GAPS.md` |
 | P1 | Feature module split | Launchpad/DEX/prediction must be separated before serious DeFi work. | `docs/MODULE_BOUNDARIES.md` |
 | P1 | Exact-pin `@thru/programs` | Non-PR cleanup: `package.json` currently allows `^0.3.4`; align with the repo rule that Thru SDK/program package versions are exact-pinned. | `package.json` |

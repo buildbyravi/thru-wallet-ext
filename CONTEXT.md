@@ -144,7 +144,7 @@ program addresses, `faucetStateAccount`, `faucetMaxPerClaim`, `baseFeeUnits`, `f
 | `services/system-service.js` | 189 | Auto-lock, activity stamping, diagnostics |
 | `services/event-service.js` | 47 | The **only** inbound push channel |
 
-Contract v5, **74 methods**, append-only except the documented v5 signing-auth security break.
+Contract v6, **74 methods**, append-only except the documented v5 signing-auth and v6 destructive-settings security breaks.
 `src/shared/contract/manifest.js` is the allowlist, not just documentation.
 
 Deliberately unimplemented, returning `{ supported: false, reason }` rather than fabricated

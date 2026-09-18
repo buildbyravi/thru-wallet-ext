@@ -11,9 +11,10 @@ Chrome MV3 self-custody wallet extension for the **Thru native Layer 1**. Built 
 
 - Single popup UI stack; no legacy popup fallback.
 - 14 popup routes: welcome, unlock, dashboard, accounts, account detail, add account, keyring, export, send, receive, faucet, history, settings, reset.
-- Contract version: **5**.
+- Contract version: **6**.
 - Contract method count: **74**.
 - Signing methods use `auth: 'signing'`: password re-authentication is required by default, with a password-gated user opt-out for session-only signing.
+- Reset and auto-lock changes are background-hardened in contract v6.
 - `src/launchpad/**` is still a built but feature-flagged legacy surface. Do not add real DEX/launchpad functionality there before module separation.
 - Thru is **not EVM**. Rabby/MetaMask/Phantom/Keplr/etc. are UX references only.
 
@@ -102,12 +103,12 @@ src/lib/thru/*-adapter.js
 
 Highest priority:
 
-1. `wallet.reset` still needs background-level confirmation/password policy.
-2. `system.setAutoLock` still needs password gating.
-3. Built legacy launchpad must be removed from build or migrated to guarded DOM before enabling.
-4. Route mount tests are missing.
-5. Token transfer and token balances are not implemented.
-6. DEX/launchpad/prediction must be isolated into feature modules before adding real DeFi functionality.
+1. Built legacy launchpad must be removed from build or migrated to guarded DOM before enabling.
+2. Route mount tests are missing.
+3. Token transfer and token balances are not implemented.
+4. DEX/launchpad/prediction must be isolated into feature modules before adding real DeFi functionality.
+5. Custom-network UI needs a security/capability decision before being promoted.
+6. `@thru/programs` should be exact-pinned in a follow-up cleanup.
 
 See [`docs/STATUS_AND_ROADMAP.md`](docs/STATUS_AND_ROADMAP.md) for the live ordered list.
 

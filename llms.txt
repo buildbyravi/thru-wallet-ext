@@ -9,7 +9,7 @@ Chrome MV3 self-custody wallet extension for the Thru native Layer 1. Thru is no
 ## Current state
 
 - Single popup route stack with 14 routes.
-- Contract version: 5.
+- Contract version: 6.
 - Contract source: `src/shared/contract/manifest.js`.
 - API seam: UI calls `bridge.send(method, params)` only.
 - Background owns auth, signing, services, and RPC coordination.

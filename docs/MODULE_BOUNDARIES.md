@@ -274,7 +274,7 @@ node test-feature-prediction.mjs
 - Fix `wallet.reset` background policy.
 - Password-gate auto-lock changes.
 - Add route mount tests.
-- Keep signing auth on contract v5.
+- Keep signing auth on contract v5 and destructive-settings hardening on contract v6.
 
 ### Phase B — quarantine legacy launchpad
 
