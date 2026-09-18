@@ -94,7 +94,7 @@ hash directly (`#/send`) where the UI has no link, so unmigrated or unreachable 
 | `/receive` | Address, QR canvas actually draws, copy button confirms | [ ] | [ ] |
 | `/faucet` | Claim state, disabled when already claimed, error when the network has no faucet | [ ] | [ ] |
 | `/history` | Entries, filter chips, "load more" appends instead of refetching | [ ] | [ ] |
-| `/settings` | Network list (including any saved custom network and its Remove button), auto-lock, security toggle, **Open side panel**, danger zone, version in About | [ ] | [ ] |
+| `/settings` | Built-in network controls; any saved custom row says **not selectable**, is inert, and exposes only Remove; auto-lock, security toggle, **Open side panel**, danger zone, version | [ ] | [ ] |
 | `/reset` | Warning copy, confirmation text required, reset returns to `/welcome` | [ ] | [ ] |
 
 Also check the redirects a browser can trigger but the tests cannot:
@@ -144,9 +144,30 @@ thing that actually persists — the side panel document, which can stay open fo
   error state rather than an eternal spinner, and the wallet is still usable.
 - [ ] Let the service worker go idle (wait ~30s with the popup closed), then open the popup: it must
   load without a "service did not respond" banner.
-- [ ] A saved custom network from before the Add-custom control was withdrawn is still listed and can
-  still be removed. There is deliberately **no** way to add one: see the comment in
-  `src/ui/app/routes/settings.js` and the P0 custom-network decision in `docs/PROJECT_LEDGER.md`.
+- [ ] **Contract-v7 startup heal.** In the extension service-worker console, seed one disposable
+  legacy record and select it as stale state, then reload the extension:
+  ```js
+  await chrome.storage.local.set({
+    thru_custom_networks: [{ id: 'legacy-smoke', name: 'Legacy smoke',
+      rpcUrl: 'https://legacy.invalid', explorerUrl: '', environment: 'devnet' }],
+    thru_active_network: 'legacy-smoke',
+  });
+  ```
+  Open the popup. It must show Alphanet, and
+  `(await chrome.storage.local.get('thru_active_network')).thru_active_network` must be
+  `'alphanet'`; the legacy endpoint must never appear as the bound/active network.
+- [ ] In Settings, **Legacy smoke** is still listed, says **not selectable**, and its main row cannot
+  be focused or clicked as a network control. **Remove** is its only action.
+- [ ] From an extension-page console, send the bypass request directly:
+  ```js
+  await chrome.runtime.sendMessage({ method: 'network.setActive',
+    params: { networkId: 'legacy-smoke' } });
+  ```
+  It must return `{ ok: false, error: { code: 'CUSTOM_NETWORK_DISABLED', retryable: false, ... } }`;
+  the badge and stored active id must remain Alphanet.
+- [ ] Click Remove. The legacy row disappears and built-in switching still works. There is
+  deliberately no Add control; re-enablement requires all four conditions in
+  `docs/STATUS_AND_ROADMAP.md` Step 2b.
 
 ## 7. Recording the result
 

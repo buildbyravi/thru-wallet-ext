@@ -16,9 +16,9 @@
 //          dataset value, in an input's value, or in the URL — and none of them survives in the
 //          detached DOM after the route is destroyed;
 //       4. the modal keyboard focus trap actually traps (Tab wraps, Escape cancels, focus returns);
-//       5. Settings offers no way to add a custom network, still lists and can remove networks a
-//         user already saved, and opens the side panel through an explicit user action that does
-//         not change toolbar behaviour.
+//       5. Settings offers no way to add a custom network; legacy records are clearly disabled,
+//          cannot dispatch network.setActive even through the real bridge, remain removable, and
+//          the side panel opens through an explicit action that does not change toolbar behaviour.
 //
 // WHY NOT jsdom
 //
@@ -874,14 +874,15 @@ const NETWORK_ALPHANET = {
   baseFeeUnits: '1',
   feeReserveUnits: '1000',
   custom: false,
+  selectable: true,
 };
 
 const NETWORK_TESTNET = { ...NETWORK_ALPHANET, id: 'testnet', label: 'Testnet',
   rpcUrl: 'https://rpc.testnet.thru.org', explorerUrl: 'https://scan.testnet.thru.org',
   faucetProgramId: null, environment: 'testnet', baseFeeUnits: null, feeReserveUnits: null };
 
-// A network the user saved BEFORE the add-custom control was withdrawn. It must still be listed,
-// still be switchable away from, and still be removable — hiding it would strand the user.
+// A network saved before custom-network quarantine. Contract v7 keeps the record visible and
+// removable, but neither this fixture nor the real background permits it to become active.
 const NETWORK_CUSTOM = {
   id: 'custom:https://my-node.example/rpc',
   label: 'My node',
@@ -896,6 +897,9 @@ const NETWORK_CUSTOM = {
   baseFeeUnits: null,
   feeReserveUnits: null,
   custom: true,
+  selectable: false,
+  unselectableReason: 'Custom networks cannot be selected. The wallet will not build or sign '
+    + 'transactions against an endpoint whose chain programs it has not verified.',
 };
 
 const SEED_KEYRING = {
@@ -1148,7 +1152,15 @@ const FIXTURES = {
   'network.list': () => networkList().map((n) => ({ ...n })),
   'network.getActive': () => ({ ...activeNetwork() }),
   'network.setActive': ({ networkId } = {}) => {
-    if (!networkList().some((n) => n.id === networkId)) throw apiError('NOT_FOUND', 'Unknown network.');
+    const found = networkList().find((network) => network.id === networkId);
+    if (!found) throw apiError('NOT_FOUND', 'Unknown network.');
+    if (found.custom || found.selectable === false) {
+      throw apiError(
+        'CUSTOM_NETWORK_DISABLED',
+        `${found.unselectableReason} Remove '${networkId}' in Settings, or switch to a built-in network.`,
+        false,
+      );
+    }
     backend.activeNetworkId = String(networkId);
     return { ...activeNetwork() };
   },
@@ -1156,8 +1168,7 @@ const FIXTURES = {
     const before = backend.customNetworks.length;
     backend.customNetworks = backend.customNetworks.filter((n) => n.id !== networkId);
     if (backend.customNetworks.length === before) throw apiError('NOT_FOUND', 'Unknown network.');
-    if (backend.activeNetworkId === networkId) backend.activeNetworkId = 'alphanet';
-    return { removed: true };
+    return { removed: networkId };
   },
   // Present on purpose: the backend method still exists (the contract is append-only), and this
   // test asserts no shipped UI ever reaches it.
@@ -1550,6 +1561,7 @@ const { focusTrap, collectFocusable, isFocusable } = await import('./src/ui/kit/
 const { requirePassword } = await import('./src/ui/domain/password-prompt.js');
 const { boot, POPUP_ROUTES } = await import('./src/ui/app/boot.js');
 const guards = await import('./src/ui/app/guards.js');
+const bridge = await import('./src/ui/app/bridge.js');
 const { Router } = await import('./src/ui/app/router.js');
 
 function isInside(node, root) {
@@ -1730,11 +1742,54 @@ async function settingsTest() {
   ok('settings has no custom-endpoint input fields', rpcInputs.length === 0,
     rpcInputs.map((el) => el.getAttribute('placeholder')).join(', '));
   ok('settings says the capability is temporarily unavailable', /temporarily unavailable/i.test(text));
-  ok('a network saved before the withdrawal is still listed', /My node/.test(text),
+  ok('a network saved before the quarantine is still listed', /My node/.test(text),
     text.slice(0, 200));
+  ok('the legacy row carries a clear not-selectable warning',
+    /not selectable/i.test(text) && /will not build or sign/i.test(text), text.slice(0, 500));
+
+  const customRow = allElements(tree).find((candidate) => (
+    candidate.classList.contains('row') && /My node/.test(textOf(candidate))
+  ));
+  ok('the saved custom network is rendered as a row', Boolean(customRow));
+  ok('the custom row is inert markup, not a button', customRow?.localName === 'div',
+    `element=${customRow?.localName}`);
+  ok('the custom row is exposed as disabled to assistive technology',
+    customRow?.getAttribute('aria-disabled') === 'true',
+    `aria-disabled=${customRow?.getAttribute('aria-disabled')}`);
+  ok('built-in network rows remain selectable buttons',
+    buttons(tree, /^Alphanet/i).length === 1, buttons(tree, /Alphanet/i).map(labelOf).join(', '));
+
+  const callsBeforeInertClick = chromeLog.calls.filter((method) => method === 'network.setActive').length;
+  click(customRow);
+  await settle();
+  ok('clicking the inert custom row does not call network.setActive',
+    chromeLog.calls.filter((method) => method === 'network.setActive').length === callsBeforeInertClick,
+    chromeLog.calls.join(', '));
+  ok('clicking the inert custom row does not navigate away', router.currentPath === '/settings',
+    router.currentPath);
+  ok('clicking the inert custom row cannot change the active network',
+    backend.activeNetworkId === 'alphanet', backend.activeNetworkId);
+
+  // A stale page or devtools caller still goes through the real bridge. The fixture mirrors the
+  // background's contract-v7 enforcement so this proves the refusal shape reaches callers intact.
+  let directError = null;
+  try {
+    await bridge.send('network.setActive', { networkId: NETWORK_CUSTOM.id });
+  } catch (error) {
+    directError = error;
+  }
+  ok('a direct bridge call for the custom id is rejected', Boolean(directError));
+  ok('the direct refusal has the stable CUSTOM_NETWORK_DISABLED code',
+    directError?.code === 'CUSTOM_NETWORK_DISABLED', directError?.code);
+  ok('the direct refusal is permanent, not retryable', directError?.retryable === false,
+    `retryable=${directError?.retryable}`);
+  ok('direct rejection leaves the built-in network active',
+    backend.activeNetworkId === 'alphanet', backend.activeNetworkId);
+
   const removeButtons = buttons(tree, /remove my node/i);
-  ok('a saved custom network can still be removed', removeButtons.length === 1,
-    `found ${removeButtons.length}`);
+  ok('Remove is the custom row\'s only button action',
+    removeButtons.length === 1 && buttons(tree, /My node/i).length === 1,
+    buttons(tree, /My node/i).map(labelOf).join(', '));
   ok('no UI call reached network.upsertCustom',
     !chromeLog.calls.includes('network.upsertCustom') && chromeLog.unexpected.length === 0);
 
@@ -1758,6 +1813,11 @@ async function settingsTest() {
   await settle();
   ok('removing a saved custom network calls network.removeCustom',
     chromeLog.calls.includes('network.removeCustom'));
+  ok('removal deletes the legacy record from backend state', backend.customNetworks.length === 0,
+    `${backend.customNetworks.length} custom records remain`);
+  ok('the removed custom row disappears while the quarantine notice remains',
+    !/My node/.test(textOf(tree)) && /temporarily unavailable/i.test(textOf(tree)),
+    textOf(tree).slice(0, 300));
 }
 
 // ---- Focus trap ------------------------------------------------------------

@@ -98,6 +98,7 @@ Fix: the fallback delegates to `handleAction('go-<screen>')` and hydrates `activ
 | 2.14 | Seed/private-key textareas lacked `spellcheck="false"`; with Chrome Enhanced Spell Check the contents are transmitted to Google | a documented exfiltration path, missed | `READ` |
 | 2.15 | The password dialog declared `role="dialog"` + `aria-modal="true"` with **no focus trap**: Tab walked into the page behind the overlay, so a user could keep typing a password into a field that was no longer on screen and activate controls they could not see | an ARIA attribute was treated as the mechanism instead of the claim | `READ` |
 | 2.16 | Settings offered "Add custom network" for any http(s) endpoint while the manifest CSP allows `connect-src` only to the Thru RPC hosts and localhost, and the network service silently falls back to the DEFAULT transfer/token program ids for a custom network — a saved network could look configured and then build transactions against the wrong programs | a backend capability was surfaced as a feature before its safety design existed | `READ` |
+| 2.17 | Removing the Add form left legacy custom rows clickable, and `network.setActive` still accepted their ids directly; UI withdrawal was therefore bypassable and a stale stored custom id could be rebound on worker startup | the UI was mistaken for a security boundary; unsafe state was hidden rather than rejected and migrated | `READ` |
 
 **The structural response**, rather than fixing 20 sites and hoping:
 
@@ -111,6 +112,9 @@ Fix: the fallback delegates to `handleAction('go-<screen>')` and hydrates `activ
 - Sensitive operations are `auth: 'password'` in the contract, re-verified against the
   encrypted blob rather than against session state. `test-contract.mjs` asserts this for eight
   specific methods.
+- Contract v7 puts custom-network quarantine in `network-service`: direct activation fails with a
+  stable, non-retryable code and stale active ids heal before `configureNetwork()`. Settings is a
+  presentation of that invariant, not its enforcement point.
 
 > **Lesson:** escaping at call sites is a policy and policies decay at the site nobody
 > reviewed. One factory plus one grep is a property.

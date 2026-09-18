@@ -316,7 +316,12 @@ export async function handleApiRequest(request) {
       error: {
         code,
         message,
-        retryable: /network|timeout|fetch|rate|unavailable/i.test(message),
+        // Service errors may know that a failure is permanent. Honour that explicit signal before
+        // falling back to the router's heuristic, which would otherwise misclassify every custom-
+        // network refusal as transient merely because its message contains "network".
+        retryable: typeof error?.retryable === 'boolean'
+          ? error.retryable
+          : /network|timeout|fetch|rate|unavailable/i.test(message),
       },
     };
   }

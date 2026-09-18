@@ -367,7 +367,129 @@ assert.equal(labelAfterSwitch, 'CrossNet', 'account labels are global and surviv
 await handleApiRequest({ method: 'network.setActive', params: { networkId: 'alphanet' } });
 console.log('  ok - account labels are global and survive a network switch');
 
-console.log('[11] Reset is background-enforced');
+console.log('[11] Contract-v7 custom-network quarantine is background-enforced');
+const LEGACY_CUSTOM_ID = 'legacy-custom';
+const legacyCustom = {
+  id: LEGACY_CUSTOM_ID,
+  name: 'Legacy custom',
+  rpcUrl: 'https://legacy-node.example/rpc',
+  explorerUrl: 'https://legacy-node.example/explorer',
+  environment: 'devnet',
+  nativeAsset: 'THRU',
+};
+storage.set('thru_custom_networks', [legacyCustom]);
+
+// N1: a direct message-port request cannot activate a stored custom endpoint. Its permanent error
+// must survive router normalization, and neither persisted selection nor thru-client binding moves.
+const thruClient = await import('./src/lib/thru-client.js');
+const { getNetworkConfig } = await import('./src/lib/networks.js');
+await handleApiRequest({ method: 'network.setActive', params: { networkId: 'alphanet' } });
+const configuredBeforeRefusal = { ...thruClient.getConfiguredNetwork() };
+const storedBeforeRefusal = storage.get('thru_active_network');
+const customRefusal = await handleApiRequest({
+  method: 'network.setActive',
+  params: { networkId: LEGACY_CUSTOM_ID },
+});
+assert.equal(customRefusal.ok, false);
+assert.equal(customRefusal.error.code, 'CUSTOM_NETWORK_DISABLED');
+assert.equal(customRefusal.error.retryable, false, 'a policy refusal must never offer Retry');
+assert.match(customRefusal.error.message, /will not build or sign/i);
+assert.equal(storage.get('thru_active_network'), storedBeforeRefusal,
+  'rejection must not rewrite the active-network pointer');
+assert.deepEqual(thruClient.getConfiguredNetwork(), configuredBeforeRefusal,
+  'rejection must not bind thru-client to the custom endpoint');
+console.log('  ok - direct custom activation is permanently refused with storage and RPC binding untouched');
+
+// N2: legacy records remain visible for deletion and carry an explicit non-selectable contract.
+const listedNetworks = await handleApiRequest({ method: 'network.list' });
+assert.equal(listedNetworks.ok, true);
+const listedBuiltIn = listedNetworks.data.find((network) => network.id === 'alphanet');
+const listedCustom = listedNetworks.data.find((network) => network.id === LEGACY_CUSTOM_ID);
+assert.equal(listedBuiltIn.selectable, true);
+assert.equal(listedCustom.custom, true);
+assert.equal(listedCustom.selectable, false);
+assert.equal(listedCustom.label, 'Legacy custom');
+assert.match(listedCustom.unselectableReason, /chain programs.*not verified/i);
+console.log('  ok - network.list marks built-ins selectable and legacy custom records non-selectable');
+
+// N3: network.getActive self-heals a legacy pointer before rebinding. Pre-binding the custom record
+// here reproduces the unsafe state from contract v6 and proves the read returns to a verified built-in.
+storage.set('thru_active_network', LEGACY_CUSTOM_ID);
+thruClient.configureNetwork(legacyCustom);
+assert.equal(thruClient.getConfiguredNetwork().id, LEGACY_CUSTOM_ID,
+  'control: the old client accepted this incomplete custom record');
+const healedActive = await handleApiRequest({ method: 'network.getActive' });
+assert.equal(healedActive.ok, true);
+assert.equal(healedActive.data.id, 'alphanet');
+assert.equal(storage.get('thru_active_network'), 'alphanet');
+assert.equal(thruClient.getConfiguredNetwork().id, 'alphanet');
+assert.notEqual(thruClient.getConfiguredNetwork().rpcUrl, legacyCustom.rpcUrl);
+console.log('  ok - network.getActive heals storage and binds alphanet instead of the legacy endpoint');
+
+// N4: system.bootstrap is the fresh-worker startup path. Run it while locked so its background
+// balance refresh cannot make a live RPC call; the network heal itself remains fully exercised.
+await handleApiRequest({ method: 'wallet.lock' });
+storage.set('thru_active_network', LEGACY_CUSTOM_ID);
+thruClient.configureNetwork(legacyCustom);
+const healedBootstrap = await handleApiRequest({ method: 'system.bootstrap' });
+assert.equal(healedBootstrap.ok, true);
+assert.equal(healedBootstrap.data.unlocked, false);
+assert.equal(healedBootstrap.data.network.id, 'alphanet');
+assert.equal(storage.get('thru_active_network'), 'alphanet');
+assert.equal(thruClient.getConfiguredNetwork().id, 'alphanet');
+await handleApiRequest({
+  method: 'wallet.unlock',
+  params: { password: 'Password123!' },
+});
+console.log('  ok - startup bootstrap self-heals before any custom endpoint can be bound');
+
+// N5: declared-but-disabled networks are not a bypass, either by direct request or stale storage.
+const disabledRefusal = await handleApiRequest({
+  method: 'network.setActive',
+  params: { networkId: 'testnet' },
+});
+assert.equal(disabledRefusal.ok, false);
+assert.match(disabledRefusal.error.message, /unknown network/i);
+assert.equal(storage.get('thru_active_network'), 'alphanet');
+storage.set('thru_active_network', 'testnet');
+thruClient.configureNetwork(getNetworkConfig('localnet'));
+const healedDisabled = await handleApiRequest({ method: 'network.getActive' });
+assert.equal(healedDisabled.ok, true);
+assert.equal(healedDisabled.data.id, 'alphanet');
+assert.equal(storage.get('thru_active_network'), 'alphanet');
+assert.equal(thruClient.getConfiguredNetwork().id, 'alphanet');
+console.log('  ok - disabled built-ins are refused directly and healed when found in storage');
+
+// N6/N7: removal is still available to an unlocked wallet, including when it is the first call to
+// encounter a stale pointer. Unknown removals fail rather than pretending success.
+storage.set('thru_active_network', LEGACY_CUSTOM_ID);
+thruClient.configureNetwork(legacyCustom);
+const removedCustom = await handleApiRequest({
+  method: 'network.removeCustom',
+  params: { networkId: LEGACY_CUSTOM_ID },
+});
+assert.equal(removedCustom.ok, true);
+assert.equal(removedCustom.data.removed, LEGACY_CUSTOM_ID);
+assert.equal(storage.get('thru_custom_networks').length, 0);
+assert.equal(storage.get('thru_active_network'), 'alphanet');
+assert.equal(thruClient.getConfiguredNetwork().id, 'alphanet');
+const removedAgain = await handleApiRequest({
+  method: 'network.removeCustom',
+  params: { networkId: LEGACY_CUSTOM_ID },
+});
+assert.equal(removedAgain.ok, false);
+assert.match(removedAgain.error.message, /unknown network/i);
+const deletedActivation = await handleApiRequest({
+  method: 'network.setActive',
+  params: { networkId: LEGACY_CUSTOM_ID },
+});
+assert.equal(deletedActivation.ok, false);
+assert.notEqual(deletedActivation.error.code, 'CUSTOM_NETWORK_DISABLED',
+  'a deleted record is unknown, not a stored custom network');
+assert.equal(storage.get('thru_active_network'), 'alphanet');
+console.log('  ok - removal remains available; deleted/unknown ids cannot become active');
+
+console.log('[12] Reset is background-enforced');
 const resetMissingConfirmation = await handleApiRequest({ method: 'wallet.reset' });
 assert.equal(resetMissingConfirmation.ok, false);
 assert.equal(resetMissingConfirmation.error.code, 'AUTH_REQUIRED');

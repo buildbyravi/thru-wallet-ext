@@ -1,6 +1,6 @@
 # Backend gaps for a Rabby-class UI
 
-**STATUS: Tiers A and B are implemented.** Contract v6, 74 methods. This document is kept as the
+**STATUS: Tiers A and B are implemented.** Contract v7, 74 methods. This document is kept as the
 rationale record and as the live list of what remains (Tier C, blocked on chain verification).
 For current state and next steps see `docs/STATUS_AND_ROADMAP.md` and `docs/PROJECT_LEDGER.md`.
 
@@ -21,10 +21,11 @@ What shipped, against the original list:
 - A5 whitelist → enforced inside `tx.send`, so a UI bug cannot bypass it
 - A6 preferences → `settings.get` / `settings.set`, unknown keys rejected
 - A7 history pagination → cursor form added without breaking the positional form
-- A8 custom networks → `network.upsertCustom` / `removeCustom`. Both methods still exist; only
-  `removeCustom` has a UI caller. `upsertCustom` is deliberately unreachable from the UI until the
-  CSP/host-permission/capability-verification design lands — see `docs/STATUS_AND_ROADMAP.md`
-  Step 2b. Capability without a safe UI is a gap, not a feature.
+- A8 custom networks → storage compatibility only since contract v7. `network.upsertCustom` /
+  `removeCustom` remain declared, but only removal has a UI caller. Legacy records are listed as
+  non-selectable; `network.setActive` refuses them in the background and stale selections heal
+  before RPC binding. Re-enablement remains blocked on the CSP/host-permission/capability/auth
+  design in `docs/STATUS_AND_ROADMAP.md` Step 2b.
 - A9 token registry → `token.import` / `setVisibility`, metadata normalized and scheme-allowlisted
 - A10 pending transactions → `pending-tx-service.js`, badge text, duplicate-submit protection
 - B1 derive-and-preview → `account.previewHd`, persists nothing
@@ -89,8 +90,10 @@ setting currently means a new bespoke storage key.
 keeping the old positional behaviour working.
 
 ### A8. Custom networks / RPC override
-`src/lib/networks.js` is a static map. Rabby has CustomRPC and CustomTestnet.
-→ `network.add/update/remove` over a stored overlay, with the built-ins immutable.
+`src/lib/networks.js` is a static map. A stored overlay was added, but activating an arbitrary RPC
+without verified program ids is unsafe. Contract v7 therefore keeps legacy records only for
+listing/removal and limits activation to enabled built-ins. A real CustomRPC feature needs the four
+preconditions in `docs/STATUS_AND_ROADMAP.md` Step 2b; the overlay alone is not a feature.
 
 ### A9. Token visibility and manual import
 `token.list` returns only tokens **this wallet deployed** — not tokens the account owns. It is a

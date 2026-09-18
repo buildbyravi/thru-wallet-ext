@@ -1,7 +1,7 @@
 # Status and roadmap
 
 Single source of truth for **where the rebuild is** and **what happens next**.
-Last updated: legacy launchpad quarantined (deleted from `src/` and `dist/`).
+Last updated: contract v7 quarantines legacy custom networks at the background boundary.
 
 Companion docs: `docs/DOCS_INDEX.md` (which doc to trust) · `docs/PROJECT_LEDGER.md` (past/present/future build tracking) · `CONTEXT.md` (file map) · `docs/MODULE_BOUNDARIES.md` (feature separation) · `docs/DEFECT_LOG.md` (every defect + lesson) · `docs/BACKEND_GAPS.md` (capability tiers) · `docs/BUILD_SPEC.md` (product spec)
 
@@ -33,13 +33,14 @@ Structural properties now enforced by CI rather than by discipline:
 | Contract agrees in both directions | `test-contract.mjs` |
 | Key derivation cannot change silently | `test-derivation.mjs` |
 | Nothing unserializable crosses the port | `test-api-router.mjs` |
+| Custom endpoints cannot become active, including by direct API call or stale storage | `test-api-router.mjs` + `test-route-lifecycle.mjs` |
 
 ### Verified green
 
 ```
 npm run build     clean, no warnings, dist/ wiped and reproduced: popup.html + 2 bundles
-npm test          derivation 16 · layering 57 files / 0 sinks · routes 14/14 · CSS 123/123
-                  launchpad quarantine 45 · contract 54 · dom+refs 89
+npm test          derivation 16 · layering 58 files / 0 sinks · routes 14/14 · CSS 123/123
+                  launchpad quarantine 45 · contract 56 · dom+refs 89 · route lifecycle 694
                   vault · thru-client · api-router
 npm audit --omit=dev
                   found 0 vulnerabilities
@@ -56,6 +57,8 @@ npm audit --omit=dev
 - Generic `settings.set` rejects signing/whitelist security keys.
 - Contract v6 hardens `wallet.reset`: typed confirmation is always required, and password is required when the wallet is unlocked.
 - Contract v6 hardens `system.setAutoLock`: auto-lock changes are password-gated, including `Never`.
+- Contract v7 refuses `network.setActive` for custom endpoints in the background and heals stale
+  custom/disabled selections to the default before `configureNetwork()` can bind them.
 - F-04 is closed by deletion: the legacy launchpad/DEX/prediction page no longer exists, is not
   built, and cannot be re-enabled by URL, flag or control (`test-launchpad-quarantine.mjs`).
 
@@ -75,9 +78,9 @@ Confirmed on alphanet, not assumed:
 
 ### Not verified
 
-- **No route has been rendered by an automated test.** Every UI confirmation so far came from
-  manual testing, which found 9 defects the suite could not. `check-routes.mjs` closed the
-  reachability and CSS half; **mounting is still uncovered** (see Step 1).
+- **Browser rendering remains manual.** The lifecycle shim mounts every route, but cannot prove real
+  popup/side-panel layout, focus rings, canvas output, extension reloads, or service-worker eviction.
+  Run `docs/MANUAL_SMOKE_CHECKLIST.md` before merging UI changes.
 - **Lock-on-refresh is unresolved.** Run `system.diagnostics` and read `sessionPresent`. `false`
   right after a refresh means the session store is not persisting — a platform difference, since
   the reported browser is Comet rather than Chrome — and not auto-lock firing. The two need
@@ -88,7 +91,8 @@ Confirmed on alphanet, not assumed:
 
 ## 2. What to do next, in order
 
-Step 1 is complete and kept here as the record of what was removed. **Step 2 is the active item.**
+Steps 1, 2, and 2b are complete and kept here as the security/reliability record. Remaining steps
+are independent follow-ups; custom-network re-enablement stays blocked on all four preconditions.
 
 ### Step 1 — quarantine legacy launchpad — DONE
 
@@ -121,7 +125,7 @@ What was removed, and what deliberately was not:
 
 This was the largest remaining test gap: `check-routes.mjs` proves a route is *reachable* and its
 classes are *defined*; nothing proved it *mounts*. All three requirements are now asserted, for all
-14 routes, in no-vault / locked / unlocked states (680 checks, ~1s):
+14 routes, in no-vault / locked / unlocked states (694 checks, ~1–2s):
 
 1. mount through the real Router, guards, bridge and kit, and assert no throw plus the landing path
    the guard actually specifies;
@@ -145,17 +149,26 @@ What a shim still cannot prove is browser behaviour: layout at real widths, real
 output, the side panel, service-worker eviction, the clipboard permission prompt. That is
 `docs/MANUAL_SMOKE_CHECKLIST.md`, and it is a required runbook before merging UI changes.
 
-### Step 2b — custom-network decision  ← DONE (withdrawn from the UI)
+### Step 2b — custom-network decision  ← DONE (contract v7 quarantine)
 
-The "Add custom network" form is removed from Settings. `network.upsertCustom` accepted any http(s)
-endpoint while the manifest CSP allows `connect-src` only to the Thru RPC hosts and localhost, and
-the network service falls back to the DEFAULT transfer/token program ids for a custom network — so a
-saved network could look configured and then build transactions against the wrong programs.
-Networks saved earlier are still listed, still switchable away from, and still removable; hiding them
-would strand the user. Re-enabling needs all four of: an HTTPS-only policy with an explicit localhost
-exception, narrow user-granted host permission, a verified per-network capability record instead of
-silent defaults, and password re-auth plus a warning before the wallet talks to a user-supplied
-endpoint. `test-route-lifecycle.mjs` fails if any shipped UI file calls the method again.
+The original UI withdrawal was incomplete: a saved legacy row still called `network.setActive`, and
+the background accepted it. Because custom records carry no verified transfer/token program ids,
+`thru-client` would silently use Alphanet defaults against the custom endpoint.
+
+Contract v7 closes that path at the security boundary:
+
+- `network.setActive` accepts enabled built-ins only. A saved custom id returns permanent
+  `CUSTOM_NETWORK_DISABLED`; direct bridge/message calls cannot bypass Settings.
+- every active-network read rewrites a custom, disabled, or unknown stored id to the default before
+  `configureNetwork()` runs, including the `system.bootstrap` path of a fresh MV3 worker;
+- `network.list` marks legacy custom records `selectable: false` with a reason; Settings renders an
+  inert, `aria-disabled` row whose only action is Remove;
+- `network.upsertCustom`/`removeCustom` remain declared for compatibility and record cleanup.
+
+Re-enabling still needs all four of: an HTTPS-only policy with an explicit localhost exception,
+narrow user-granted host permission, a verified per-network capability record instead of silent
+defaults, and password re-auth plus a warning before the wallet talks to a user-supplied endpoint.
+API-router and lifecycle tests cover direct rejection, startup healing, inert UI, and removal.
 
 ### Step 3 — feature-module quarantine before DeFi expansion
 
@@ -266,7 +279,7 @@ Each was earned by a defect in `docs/DEFECT_LOG.md`.
 1. New DOM is built with `kit/dom.js` `h()`. The sink ratchet is at **0** and must stay there.
 2. The contract is append-only and tested in both directions, except documented security breaks:
    contract v5 moved existing signing methods to `auth: 'signing'`; contract v6 hardened reset
-   and auto-lock requirements.
+   and auto-lock requirements; contract v7 refuses custom-network activation and heals stale ids.
 3. Sensitive operations are `auth: 'password'` or `auth: 'signing'`, re-verified against the
    encrypted blob when password auth is required — never against session state.
 4. Secrets never enter URLs, router params, history, `data-*`, storage, `window` or `console`.

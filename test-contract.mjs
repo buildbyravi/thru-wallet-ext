@@ -51,6 +51,7 @@ const wired = new Set(listHandlerNames());
 section('Contract versioning');
 ok('contract v5 documents the signing-auth compatibility break', CONTRACT_VERSION >= 5);
 ok('contract v6 documents destructive-settings hardening', CONTRACT_VERSION >= 6);
+ok('contract v7 documents the custom-network quarantine break', CONTRACT_VERSION >= 7);
 
 section('Contract and router agree in both directions');
 
@@ -203,7 +204,14 @@ ok('auth:none method runs while locked', openMethod.ok === true, `got ${JSON.str
 
 section('Error codes are stable');
 
-for (const code of ['INVALID_REQUEST', 'UNKNOWN_METHOD', 'WALLET_LOCKED', 'AUTH_REQUIRED', 'AUTH_LOCKED_OUT']) {
+for (const code of [
+  'INVALID_REQUEST',
+  'UNKNOWN_METHOD',
+  'WALLET_LOCKED',
+  'AUTH_REQUIRED',
+  'AUTH_LOCKED_OUT',
+  'CUSTOM_NETWORK_DISABLED',
+]) {
   ok(`${code} is documented`, typeof ERROR_CODES[code] === 'string');
 }
 
