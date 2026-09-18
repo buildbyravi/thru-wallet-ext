@@ -15,9 +15,15 @@
 // be — it exists so the value is a single opaque token that survives URL parsing, not to
 // hide anything.
 
-import { isValidThruAddress } from '../lib/networks.js';
-
+// This module is shared by the popup and background bundles. Keep URL-prefill checks local and
+// deliberately shallow: importing lib/networks.js here would pull Pubkey and the full SDK into
+// the popup just to reject obviously malformed input. The background performs authoritative
+// checksum validation before a recipient can be used.
 const MAX_REF_LENGTH = 512;
+
+function looksLikeAddressShape(value) {
+  return typeof value === 'string' && /^ta[A-Za-z0-9_-]{40,60}$/.test(value);
+}
 
 function toBase64Url(input) {
   const b64 = btoa(input);
@@ -81,12 +87,18 @@ export function refsEqual(a, b) {
 }
 
 /**
- * Validate an address that arrived from a URL before it reaches a send flow.
- * Returns the address when valid, otherwise null.
+ * Shape-filter an address that arrived from a URL before it PREFILLS the send form.
+ *
+ * This is intentionally not address validation. It only rejects values that cannot plausibly be
+ * a Thru address, keeping the popup bundle independent of the SDK. The value still passes through
+ * tx.validateAddress in the background before review and tx-service validates it again before
+ * signing. A loose accept is safer here than a false reject: the background is authoritative.
+ *
  * @param {string} value
+ * @returns {string|null} the trimmed value when plausibly shaped, otherwise null
  */
 export function safeAddressParam(value) {
   const addr = String(value || '').trim();
   if (!addr || addr.length > 128) return null;
-  return isValidThruAddress(addr) ? addr : null;
+  return looksLikeAddressShape(addr) ? addr : null;
 }

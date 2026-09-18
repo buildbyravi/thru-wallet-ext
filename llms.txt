@@ -36,7 +36,11 @@ Chrome MV3 self-custody wallet extension for the Thru native Layer 1. Thru is no
 - Never request, store, print, or reveal mnemonic/private key/password.
 - Never log decrypted vault data.
 - Never put secrets in URLs, `data-*`, localStorage/sessionStorage, console logs, analytics, or MCP output.
-- Do not invent a `window.thru` provider standard; future dApp integration must follow Thru's documented `connect()`, `getSigningContext()`, and `signTransaction()` flow.
+- Do not invent a `window.thru` provider standard. Thru's current official wallet docs describe
+  `@thru/wallet` and `@thru/wallet/react` for the hosted `wallet.thru.org/embedded` iframe, not
+  an extension provider; the existence of `connect()`, `getSigningContext()`, and
+  `signTransaction()` does not establish extension/BYO-signer compatibility. Wait for a verified
+  contract before implementing a dApp connector.
 - Do not fabricate token balances, DEX quotes, charts, launchpad state, perps, prediction markets, or protocol semantics.
 - Use official Thru SDK/program surfaces when available.
 - Run `npm test && npm run build` before and after code changes.

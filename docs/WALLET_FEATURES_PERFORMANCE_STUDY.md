@@ -45,7 +45,7 @@ Good general model for:
 - portfolio dashboard
 - hardware-wallet compatibility
 
-MetaMask-style dApp connection exposes accounts/networks to a dApp, but transactions still require user approval. For Thru, the important lesson is: **connection is not signing**. Do not invent an unverified `window.thru` standard; future dApp integration must follow Thru's documented `connect()`, `getSigningContext()`, and `signTransaction()` approval/signing flow after extension compatibility is validated.
+MetaMask-style dApp connection exposes accounts/networks to a dApp, but transactions still require user approval. For Thru, the important lesson is: **connection is not signing**. Thru's current official docs describe `@thru/wallet` connecting a web app to the hosted `wallet.thru.org/embedded` iframe; that hosted flow is not evidence of an extension-compatible provider or a BYO-signer path. Do not invent an unverified `window.thru` standard or copy the hosted protocol. A future dApp integration must follow an official extension/BYO-signer contract, if published, and its documented `connect()`, `getSigningContext()`, and `signTransaction()` lifecycle after compatibility is validated.
 
 ### Rabby-style wallet
 
@@ -578,7 +578,7 @@ vmError=-765
 2. Token balances.
 3. Token account activation UX.
 4. Better pending/history UI.
-5. dApp permission model only after verified Thru standard.
+5. dApp permission model only after a verified Thru extension/BYO-signer standard; the current hosted embedded-wallet package is not that standard.
 6. Full-tab shell.
 
 ### Then

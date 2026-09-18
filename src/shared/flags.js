@@ -19,7 +19,7 @@ export const FLAGS = {
    * build rather than silently falling through.
    *
    * The legacy tree is deleted in the same commit. It remains recoverable from git history and
-   * from legacy-ui-backup-*.zip in the repo root.
+   * from git history; no second legacy copy is kept in the repository.
    */
   NEXT_UI: true,
 

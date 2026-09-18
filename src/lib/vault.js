@@ -5,7 +5,7 @@
 // compatibility with the original popup while exposing the safer keyring primitives used by
 // the background API.
 
-import { MnemonicGenerator, ThruHDWallet } from '@thru/crypto';
+import { MnemonicGenerator, ThruHDWallet } from '@thru/sdk/crypto';
 import { keys as sdkKeys, Pubkey } from '@thru/sdk';
 
 const PBKDF2_ITERATIONS = 600_000;

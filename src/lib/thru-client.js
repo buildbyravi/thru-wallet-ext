@@ -14,8 +14,8 @@
 // back to the alphanet defaults, so it stays independently testable.
 
 import { createThruClient, Signature, Pubkey, PageRequest } from '@thru/sdk';
-// Official program bindings. BUILD_SPEC Part IX: prefer @thru/sdk, @thru/crypto and
-// @thru/programs over hand-written protocol code wherever the SDK provides the capability.
+// Official program bindings. BUILD_SPEC Part IX: prefer @thru/sdk (including its crypto
+// subpath) and @thru/programs over hand-written protocol code wherever the SDK provides it.
 // These replace a hand-rolled derivation that called a non-existent SDK method.
 import {
   deriveMintAddress as sdkDeriveMintAddress,

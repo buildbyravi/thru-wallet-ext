@@ -121,10 +121,11 @@ This table deduplicates the repeated local-agent timeline. Commit IDs before the
 | P1 | Side-panel width beyond 408px | `body { max-width: 100% }` fixes a panel narrower than the popup width; a wider panel still shows a 408px column. Needs a browser to decide. | `docs/MANUAL_SMOKE_CHECKLIST.md` §2 |
 | P1 | Token transfer | Required for honest asset support. Must use official `@thru/programs/token`. | `docs/BACKEND_GAPS.md` |
 | P1 | Feature module split | Launchpad/DEX/prediction must be separated before serious DeFi work. | `docs/MODULE_BOUNDARIES.md` |
-| P1 | Exact-pin `@thru/programs` | Non-PR cleanup: `package.json` currently allows `^0.3.4`; align with the repo rule that Thru SDK/program package versions are exact-pinned. | `package.json` |
+| P1 | Exact-pin `@thru/programs` | Completed in the 2026-09-18 audit pass: `@thru/programs` and `@thru/sdk` are exact-pinned at `0.3.16`; derivation uses `@thru/sdk/crypto` and golden vectors are unchanged. | `package.json`, `test-derivation.mjs` |
 | P2 | Full-tab shell | Required for launchpad/DEX/charts without slowing popup. | `docs/WALLET_FEATURES_PERFORMANCE_STUDY.md` |
 | P2 | Thru-native AMM/indexer integration | Needed for real swap/chart/market flows. | `docs/THRU_NATIVE_DEFI_TAB_UX.md` |
 | P2 | Local MCP companion | Useful for AI agents, but must never sign/export secrets. | `docs/MCP_AGENT_INTEGRATION.md` |
+| P2 | dApp connector boundary | Current official wallet docs describe the hosted `wallet.thru.org/embedded` iframe via `@thru/wallet`; this extension has no verified extension/BYO-signer provider contract. Do not add `window.thru` or infer extension compatibility from `connect()`/`signTransaction()`. | `docs/STATUS_AND_ROADMAP.md` Step 10; `docs/BACKEND_GAPS.md` C4 |
 
 ---
 
@@ -133,7 +134,7 @@ This table deduplicates the repeated local-agent timeline. Commit IDs before the
 1. Preserve working backend/security/Thru behavior unless a verified bug requires modification.
 2. Thru is a native L1, not EVM. EVM/Solana/Cosmos products are UX references only.
 3. Do not invent fake token/DEX/launchpad/chart/perps behavior.
-4. Do not invent a `window.thru` provider standard; future dApp integration must follow Thru's documented `connect()`, `getSigningContext()`, and `signTransaction()` flow after compatibility validation.
+4. Do not invent a `window.thru` provider standard. Thru's current docs describe a hosted embedded wallet, not this extension; future integration must follow an official extension/BYO-signer contract if one is published, rather than treating `connect()`/`getSigningContext()`/`signTransaction()` as proof of compatibility.
 5. UI never imports vault internals or background services.
 6. Background owns auth/signing.
 7. Secrets never enter URLs, `data-*`, localStorage/sessionStorage, console logs, or analytics.

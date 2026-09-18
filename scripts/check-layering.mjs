@@ -54,8 +54,11 @@ const RULES = [
   {
     id: 'ui-must-not-import-background-or-vault',
     when: (f) => f.startsWith('src/ui/') || f.startsWith('src/popup/') || f.startsWith('src/desktop/') || f.startsWith('src/features/'),
-    forbid: (spec) => /(^|\/)background\//.test(spec) || /lib\/vault(\.js)?$/.test(spec) || /lib\/thru-client(\.js)?$/.test(spec),
-    why: 'The UI reaches the backend only through bridge.send(). Importing vault.js or a service would pull key material into the popup bundle.',
+    forbid: (spec) => /(^|\/)background\//.test(spec)
+      || /lib\/vault(\.js)?$/.test(spec)
+      || /lib\/thru-client(\.js)?$/.test(spec)
+      || /lib\/networks(\.js)?$/.test(spec),
+    why: 'The UI reaches the backend only through bridge.send(). Importing vault.js, a service, or the SDK-bearing network config would pull backend/runtime code into the popup bundle.',
   },
   {
     id: 'kit-must-stay-domain-free',
@@ -66,8 +69,10 @@ const RULES = [
   {
     id: 'shared-must-stay-portable',
     when: (f) => f.startsWith('src/shared/'),
-    forbid: (spec) => /(^|\/)(ui|popup|desktop|background|features)\//.test(spec) || /lib\/vault(\.js)?$/.test(spec),
-    why: 'src/shared is imported by both sides, so it must not reach into either.',
+    forbid: (spec) => /(^|\/)(ui|popup|desktop|background|features)\//.test(spec)
+      || /lib\/vault(\.js)?$/.test(spec)
+      || /lib\/networks(\.js)?$/.test(spec),
+    why: 'src/shared is imported by both sides, so it must not reach into either or drag the SDK-bearing network config across the bundle boundary.',
   },
 ];
 

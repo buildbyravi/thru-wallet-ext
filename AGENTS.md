@@ -1,11 +1,11 @@
---# AGENTS.md
+# AGENTS.md
 
 Rules for any agent working in `thru-wallet-ext`. Read this first, then `CONTEXT.md`.
 
 ## What this is
 
 Chrome MV3 self-custody wallet for the **Thru L1** blockchain (devnet/alphanet). Vanilla ES modules
-bundled with esbuild. No framework. Real `@thru/sdk` + `@thru/crypto`.
+bundled with esbuild. No framework. Real `@thru/sdk` (including its `@thru/sdk/crypto` subpath) + `@thru/programs`.
 
 ## Documents
 
@@ -34,10 +34,10 @@ Conflict resolution: `STATUS_AND_ROADMAP.md` wins on **current engineering state
 ```
 npm install
 npm run build      # node build.mjs -> dist/
-npm test           # guards (derivation, layering, routes, launchpad quarantine, contract, dom, route lifecycle) then vault, thru-client, api-router
+npm test           # guards (derivation, layering, CSP, routes, launchpad quarantine, contract, dom, route lifecycle) then vault, thru-client, api-router
 ```
 
-Load `dist/` unpacked via `chrome://extensions` --  Developer mode --  Load unpacked.
+Load `dist/` unpacked via `chrome://extensions` -- Developer mode -- Load unpacked.
 
 Run `npm run build && npm test` **before and after** every change. Never report success while either
 is red. Never weaken or skip a test to make it pass.
@@ -53,13 +53,12 @@ is red. Never weaken or skip a test to make it pass.
    `src/background/services/event-service.js` may push events back. UI never imports
    `src/background/**` or `src/lib/vault.js`.
 4. **Backend API is append-only.** Add the method to `src/shared/contract/manifest.js` *and*
-   `api-router.js` -- `test-contract.mjs` checks both directions. Never rename or reshape an
+   `api-router.js` -- `test-contract.mjs` checks both directions. Never rename or reshape an
    existing method; add a new name and retire the old one after zero references remain.
-5. **No new dependencies except first-party Thru packages.** `@thru/sdk`, `@thru/crypto`, and
-   verified `@thru/programs/*` surfaces are preferred over hand-written protocol code. No
-   React/Vue/Tailwind, no build-system change. Thru SDK/program versions should be pinned exactly;
-   `@thru/programs` currently still uses `^0.3.4` and is tracked as a non-PR cleanup in
-   `docs/STATUS_AND_ROADMAP.md`.
+5. **No new dependencies except first-party Thru packages.** Use `@thru/sdk` (including its
+   `@thru/sdk/crypto` subpath) and verified `@thru/programs/*` surfaces instead of hand-written
+   protocol code. No React/Vue/Tailwind, no build-system change. Every Thru SDK/program version
+   must be pinned exactly.
 6. **Money is BigInt only.** Use `src/shared/format.js`. Never `parseFloat(x) * 1e9`.
 7. **All DOM is built with `src/ui/kit/dom.js` `h()`.** `innerHTML`, `insertAdjacentHTML` and
    `outerHTML` anywhere in `src/**` (outside `src/popup/vendor/`) fail the build outright. The
@@ -101,7 +100,7 @@ and `JSON.stringify` throws on BigInt, which Chrome reports only as `Could not s
 message.` `api-router.js` now names the offending method and field itself. If you see Chrome's
 bare version, the failure is in the **request** direction.
 
-**The build only WARNS on CSS syntax errors**, it does not fail. Check for `---- [WARNING]`.
+**The build only WARNS on CSS syntax errors**, it does not fail. Check for `---- [WARNING]`.
 
 - **There is ONE UI stack.** The legacy `show()`/`#screen-*` tree is deleted. Screens are routes
   in `src/ui/app/routes/`, registered in `src/ui/app/boot.js`.

@@ -456,11 +456,20 @@ Thru exposes AMM bindings under `@thru/programs/amm` (pool derivation, instructi
 quoting) and a Token Program. Do not implement DEX or launchpad behaviour until those program
 interfaces are verified against the target network.
 
-**dApp connector:** do not invent a fake `window.thru` standard. Future integration must follow
-Thru's documented `connect()`, `getSigningContext()`, and `signTransaction()` lifecycle: connection
-is account approval/discovery, signing context explains the managed account vs fee payer/signer,
-and signing returns canonical transaction bytes after wallet approval. Define abstractions now, but
-implement an extension/dApp provider only after the official extension-compatible shape is verified.
+**dApp connector:** do not invent a fake `window.thru` standard. Thru's current official wallet
+docs describe `@thru/wallet` / `@thru/wallet/react` integrating a dApp with the hosted iframe at
+`https://wallet.thru.org/embedded`; they do not define a provider contract for an independently
+installed extension. That hosted flow uses `connect()` for approval/discovery,
+`getSigningContext()` for managed-account versus fee-payer/signer context, and
+`signTransaction()` for wallet-approved canonical raw bytes, which the dApp submits separately.
+See the official [overview](https://thru.org/docs/wallet/overview/),
+[embedded integration](https://thru.org/docs/wallet/embedded-wallet-integration/), and
+[approval/signing](https://thru.org/docs/wallet/approval-and-signing/) docs.
+
+Define only internal abstractions if useful. Do not implement an extension/dApp provider, inject
+`window.thru`, or copy the hosted iframe protocol until Thru publishes a bring-your-own-signer or
+extension-compatible contract with origin discovery, permissions, approval transport, signing
+ownership, and submission semantics.
 
 ---
 
@@ -529,10 +538,11 @@ font-src 'self'; connect-src <rpc origins>; frame-src 'none'; form-action 'none'
 base-uri 'none'; object-src 'none'
 ```
 
-The current policy omits `default-src`, leaving `frame-src`/`img-src`/`connect-src`/`form-action`/
-`base-uri` unrestricted — an injected `<iframe src="https://evil">` would render inside trusted
-extension chrome. Self-host fonts; the two HTML files currently fetch Google Fonts on every open,
-which is both a usage oracle for a wallet and a CSS-injection vector.
+The shipped policy includes `default-src 'none'` and explicit `script-src`, `style-src`, `img-src`,
+`font-src`, `connect-src`, `frame-src`, `form-action`, `base-uri`, and `object-src` directives.
+`connect-src` is checked by `scripts/check-csp.mjs`: every enabled network must be allowed and
+no disabled or undeclared RPC origin may be authorized. Keep fonts self-hosted and do not add
+remote page resources.
 
 ### Authentication hardening
 
@@ -648,7 +658,7 @@ in one commit.
 
 `npm test` must run and pass:
 
-1. `test-vault.mjs` — real vault against real `@thru/crypto`/`@thru/sdk`
+1. `test-vault.mjs` — real vault against real `@thru/sdk/crypto`/`@thru/sdk`
 2. `test-thru-client.mjs` — instruction layouts, BigInt amount round-trip, address checksum, history decode
 3. `test-api-router.mjs` — background API integration
 4. `test-contract.mjs` — manifest ⇄ handlers, both directions
@@ -724,9 +734,9 @@ second way of building DOM.
 
 ### Thru-specific rule
 
-The blockchain layer is authoritative. Prefer `@thru/sdk`, `@thru/crypto`, `@thru/programs`,
-`@thru/wallet`, `@thru/passkey` over hand-written protocol code wherever the official SDK provides
-the capability. Use only verified APIs.
+The blockchain layer is authoritative. Prefer `@thru/sdk` (including its `@thru/sdk/crypto`
+subpath), `@thru/programs`, `@thru/wallet`, and `@thru/passkey` over hand-written protocol code
+wherever the official SDK provides the capability. Use only verified APIs.
 
 ### Report format after each phase
 

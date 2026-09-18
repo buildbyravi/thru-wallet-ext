@@ -332,5 +332,5 @@ A feature is not “separate” until all of these are true:
 - Do not rewrite the wallet core just to create feature directories.
 - Do not add React/Vue/Tailwind just to imitate another wallet.
 - Do not implement fake AMM/DEX/launchpad/chart behavior.
-- Do not invent unverified Thru dApp provider behavior.
+- Do not invent unverified Thru dApp provider behavior. The current `@thru/wallet` docs describe a hosted `wallet.thru.org/embedded` integration, not an extension/BYO-signer contract; do not add `window.thru` until that contract is published and verified.
 - Do not let MCP or an AI agent sign directly.

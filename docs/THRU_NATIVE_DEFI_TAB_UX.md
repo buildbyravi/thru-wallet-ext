@@ -34,7 +34,8 @@ From Thru docs reviewed for this correction:
 - Transactions have Thru-native headers, account ordering, state proofs, resource units, nonce,
   fee, chain id, and Ed25519 signatures.
 - Web integrations should use only verified official Thru packages. The packages currently installed
-  in this repository are `@thru/sdk`, `@thru/crypto`, and `@thru/programs`.
+  in this repository are `@thru/sdk` (including `@thru/sdk/crypto`) and `@thru/programs`; the
+  deprecated standalone crypto package is intentionally absent.
 - `@thru/programs/token` exposes Token Program builders/parsers for mints, token accounts,
   transfers, minting, burning, freeze/thaw, and token-account derivation.
 - `@thru/programs/amm` appears in official Thru documentation as the AMM direction, but repository

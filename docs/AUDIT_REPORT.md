@@ -5,6 +5,19 @@ Repository: `buildbyravi/thru-wallet-ext`
 Branch: `arena/01a06be7-thru-wallet-ext`  
 Scope: source-level security, wallet-risk, API contract, launchpad readiness, and build/test posture. No live-chain transaction testing was performed for this report.
 
+## Remediation update — 2026-09-18
+
+The follow-up audit pass applied the mechanical fixes from the current review:
+
+- UI/shared address URL handling is now a loose shape filter; authoritative checksum validation remains in the background. The two UI imports of the SDK-bearing network config are gone, and `check-layering.mjs` forbids that dependency from returning.
+- `@thru/sdk` and `@thru/programs` are exact-pinned at `0.3.16`; derivation uses `@thru/sdk/crypto`, the deprecated standalone crypto package is removed, and the golden addresses remain unchanged.
+- CI uses `npm ci`. `scripts/check-csp.mjs` enforces a two-way match between enabled networks and `connect-src`, keeping disabled/testnet/mainnet origins unreachable until deliberate enablement.
+- `AGENTS.md` and `CONTEXT.md` have valid headings and no raw control bytes; the one-off document normalizer and nonexistent legacy zip references are gone.
+- Background account-registration side effects no longer make the regular Node API suite call a live RPC. Live registration remains exercised only by the explicit `scripts/verify-live-e2e.mjs` path.
+- The worker explicitly requests `TRUSTED_CONTEXTS` for `chrome.storage.session` at startup.
+
+`W-6` remains a product tradeoff: `clipboardRead` is used by the shipped Paste button and was not removed. Public vulnerability reporting still requires repository settings/contact ownership work outside the source tree.
+
 ---
 
 ## Executive summary

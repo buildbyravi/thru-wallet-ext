@@ -3,10 +3,9 @@
 //   node scripts/gen-derivation-vectors.mjs
 // Then paste the output into test-derivation.mjs and commit both together.
 
-// Note the split: mnemonic and HD derivation live in @thru/crypto, while key/pubkey
-// conversion lives in @thru/sdk. vault.js imports from both, so BOTH packages can change
-// derivation and both versions are recorded in the vectors below.
-import { MnemonicGenerator, ThruHDWallet } from '@thru/crypto';
+// Mnemonic and HD derivation are imported from the SDK's public crypto subpath so the wallet
+// has one pinned SDK version and no deprecated duplicate crypto package to drift against.
+import { MnemonicGenerator, ThruHDWallet } from '@thru/sdk/crypto';
 import { keys, Pubkey } from '@thru/sdk';
 import { readFileSync } from 'node:fs';
 
@@ -15,7 +14,6 @@ const PHRASE = 'abandon abandon abandon abandon abandon abandon abandon abandon 
 const PRIVATE_KEY_HEX = '4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318';
 
 const sdkVersion = JSON.parse(readFileSync('node_modules/@thru/sdk/package.json', 'utf8')).version;
-const cryptoVersion = JSON.parse(readFileSync('node_modules/@thru/crypto/package.json', 'utf8')).version;
 
 const seed = MnemonicGenerator.toSeed(PHRASE);
 const hd = [];
@@ -29,7 +27,6 @@ const importedAddress = Pubkey.from(pub).toThruFmt();
 
 console.log(JSON.stringify({
   sdkVersion,
-  cryptoVersion,
   phrase: PHRASE,
   hd,
   privateKeyHex: PRIVATE_KEY_HEX,

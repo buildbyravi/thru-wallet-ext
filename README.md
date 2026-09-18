@@ -1,6 +1,6 @@
 # Thru Wallet — Alphanet
 
-Chrome MV3 self-custody wallet extension for the **Thru native Layer 1**. Built with vanilla ES modules, esbuild, and real Thru packages (`@thru/sdk`, `@thru/crypto`, `@thru/programs`).
+Chrome MV3 self-custody wallet extension for the **Thru native Layer 1**. Built with vanilla ES modules, esbuild, and real Thru packages (`@thru/sdk` and its `@thru/sdk/crypto` subpath, plus `@thru/programs`).
 
 > [!WARNING]
 > Not production-ready. Use only with alphanet/devnet funds until security review and mainnet readiness are complete.
@@ -115,7 +115,7 @@ Highest priority:
 2. Token transfer and token balances remain blocked on live Thru Token Program verification.
 3. Custom networks remain quarantined until HTTPS/host-permission, verified chain-program capability, and re-authentication requirements are implemented together.
 4. Any future launchpad/DEX/prediction work must be built as isolated feature modules. The legacy surface is deleted and nothing of the kind ships today.
-5. `@thru/programs` should be exact-pinned in a follow-up cleanup.
+5. `@thru/programs` and `@thru/sdk` are exact-pinned; derivation comes from `@thru/sdk/crypto` so the deprecated standalone crypto package is not installed.
 
 See [`docs/STATUS_AND_ROADMAP.md`](docs/STATUS_AND_ROADMAP.md) for the live ordered list.
 
@@ -169,7 +169,11 @@ Historical alphanet results are tracked in `docs/STATUS_AND_ROADMAP.md` and `doc
 - Signing requires password re-authentication by default.
 - Session-only signing is an explicit user setting and is less secure.
 - Do not implement unverified protocol behavior.
-- Do not invent a fake `window.thru` provider; future dApp integration must follow Thru's documented `connect()`, `getSigningContext()`, and `signTransaction()` flow.
+- Thru's current official wallet docs describe `@thru/wallet` connecting to the hosted
+  `wallet.thru.org/embedded` iframe; they do not establish an extension provider contract.
+- Do not invent a fake `window.thru` provider or infer extension compatibility from the hosted
+  `connect()`, `getSigningContext()`, and `signTransaction()` methods. Wait for a verified
+  extension/BYO-signer contract.
 
 ---
 

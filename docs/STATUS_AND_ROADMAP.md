@@ -200,9 +200,10 @@ Also replace the hand-rolled `encodeInitializeMintInstructionData` with
 
 ### Step 5 — dependency pin cleanup
 
-Non-PR cleanup: `package.json` currently allows `@thru/programs` upgrades with `^0.3.4`. Align it
-with the repository rule that Thru SDK/program packages are exact-pinned, then run the golden
-derivation and Thru-client tests before merging.
+Completed in the 2026-09-18 audit pass: `@thru/programs` and `@thru/sdk` are exact-pinned at
+`0.3.16`, and derivation imports from the SDK's public `@thru/sdk/crypto` subpath rather than
+the deprecated standalone crypto package. Golden vectors remain unchanged; `npm ci` is the CI
+install gate.
 
 ### Step 6 — spacing and the tab-width question
 
@@ -244,6 +245,23 @@ relevant to perps and prediction markets.
 
 The wallet core is **not** a feature. Accounts, send, receive, history and settings are the
 product and stay in `routes/`. Only genuinely optional surfaces go in `features/`.
+
+### Step 10 — dApp integration boundary: hosted wallet, not extension provider
+
+The current official [Thru wallet overview](https://thru.org/docs/wallet/overview/) and
+[embedded integration guide](https://thru.org/docs/wallet/embedded-wallet-integration/) describe
+`@thru/wallet` / `@thru/wallet/react` connecting a web app to the hosted iframe at
+`https://wallet.thru.org/embedded`. The documented `connect()`, `getSigningContext()`, and
+`signTransaction()` methods are part of that hosted-wallet lifecycle: the wallet approves and signs,
+and the dApp submits the returned raw bytes separately. They do not, by themselves, establish an
+extension-compatible provider contract or a bring-your-own-signer path.
+
+This extension therefore has no dApp connector today. Do not inject `window.thru`, copy the hosted
+iframe protocol, or add provider permissions based only on the existence of those SDK methods. A
+future connector is blocked until Thru publishes and we validate an extension/BYO-signer contract
+covering origin discovery, permissions, approval transport, signing ownership, and submission
+semantics. Internal interfaces may be prepared; no provider implementation should ship ahead of
+that verification.
 
 ---
 

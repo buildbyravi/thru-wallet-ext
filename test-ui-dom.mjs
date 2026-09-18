@@ -362,9 +362,22 @@ ok('one throwing disposer does not strand the others', reached === true);
 
 section('refs codec round-trips and rejects tampering');
 
-const { encodeRef, decodeRef, refsEqual: refsEq } = await import('./src/shared/refs.js');
+const { encodeRef, decodeRef, refsEqual: refsEq, safeAddressParam } = await import('./src/shared/refs.js');
 
 const sampleRef = { keyringId: 'seed_aB3xY9zQ', accountIndex: 4 };
+
+// URL prefill handling belongs in the portable shared module, so it must remain a shape filter,
+// not an SDK-backed checksum validator. The background owns authoritative validation.
+const plausibleAddress = `ta${'A'.repeat(44)}`;
+ok('safeAddressParam accepts a plausibly shaped address', safeAddressParam(plausibleAddress) === plausibleAddress);
+ok('safeAddressParam trims surrounding whitespace', safeAddressParam(`  ${plausibleAddress}  `) === plausibleAddress);
+ok('safeAddressParam rejects a short or wrong-prefix value',
+  safeAddressParam('not-an-address') === null && safeAddressParam(`tx${'A'.repeat(44)}`) === null);
+// A checksum-invalid value can still pass this outer shape filter; that is deliberate and proves
+// callers cannot mistake this helper for address validation.
+const checksumInvalidButShaped = `ta${'B'.repeat(44)}`;
+ok('safeAddressParam does not pretend to validate a checksum',
+  safeAddressParam(checksumInvalidButShaped) === checksumInvalidButShaped);
 const token = encodeRef(sampleRef);
 ok('encodeRef produces a URL-safe token', /^[A-Za-z0-9_-]+$/.test(token), `got ${token}`);
 

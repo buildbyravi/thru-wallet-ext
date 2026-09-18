@@ -20,7 +20,13 @@ import { keyringTypeLabel } from '../../domain/account-row.js';
 import { requirePassword } from '../../domain/password-prompt.js';
 import * as bridge from '../bridge.js';
 import { decodeRef, encodeRef, refsEqual } from '../../../shared/refs.js';
-import { explorerAddressUrl } from '../../../lib/networks.js';
+
+// The network config is already serialized across the background seam. Keep this route from
+// importing lib/networks.js: that module imports Pubkey from @thru/sdk and would put the SDK's
+// protobuf/runtime graph in the popup bundle for a URL-builder helper.
+function explorerAddressUrl(network, address) {
+  return network?.explorerUrl ? `${network.explorerUrl}/account/${address}` : '';
+}
 
 /** One label/value row in the detail table. */
 function DetailRow(label, valueNode) {

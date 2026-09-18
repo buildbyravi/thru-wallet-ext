@@ -22,7 +22,7 @@ Thru Wallet is an experimental, open-source, self-custody browser extension desi
 
 ## 2. Key Storage & Encryption Architecture
 
-Key security is implemented using native browser WebCrypto primitives (`crypto.subtle`), avoiding third-party JavaScript crypto dependencies for core vault operations.
+Vault encryption is implemented using native browser WebCrypto primitives (`crypto.subtle`). Protocol key derivation and address generation use the pinned public `@thru/sdk/crypto` implementation; the deprecated standalone crypto package is not installed.
 
 ```
        [ Master Password ]
@@ -63,20 +63,20 @@ To prevent unauthorized access when a device is left unattended:
 
 ## 4. Minimal Extension Permissions
 
-Thru Wallet adheres strictly to the **Principle of Least Privilege**. The extension requests only two Manifest V3 permissions:
+Thru Wallet adheres to the **Principle of Least Privilege**. The extension requests only the
+four permissions needed by the shipped flows:
 
 ```json
-"permissions": [
-  "storage",
-  "alarms"
-]
+"permissions": ["storage", "alarms", "sidePanel", "clipboardRead"]
 ```
 
 ### Permission Audit
 | Permission | Justification |
 | :--- | :--- |
-| `storage` | Required for persisting encrypted vault payloads (`local`) and holding transient unlocked state (`session`). |
-| `alarms` | Required to manage the 15-minute inactivity auto-lock timer in background service workers. |
+| `storage` | Required for encrypted vault payloads (`local`) and transient unlocked state (`session`). |
+| `alarms` | Required for the inactivity auto-lock heartbeat in the background worker. |
+| `sidePanel` | Required for the explicit user action that opens the wallet in Chrome's side panel. |
+| `clipboardRead` | Used only by the recipient-field Paste button; Ctrl+V remains available without it. |
 
 ### Explicitly Excluded Permissions
 *   `tabs` / `activeTab`: **Not requested.** The extension cannot inspect browser tabs or web page contents.
@@ -89,11 +89,10 @@ Thru Wallet adheres strictly to the **Principle of Least Privilege**. The extens
 
 Thru Wallet enforces a strict Manifest V3 Content Security Policy:
 
-```json
-"content_security_policy": {
-  "extension_pages": "script-src 'self'; object-src 'self'"
-}
-```
+The extension pages use `default-src 'none'` with explicit script, style, image, font, connection,
+frame, form-action, base-uri, and object directives. RPC connections are limited to the enabled
+network origins in `src/manifest.json`; `scripts/check-csp.mjs` fails the build when that allowlist
+drifts from `src/lib/networks.js`.
 
 *   **No Inline Scripts:** Inline JavaScript execution (`<script>...</script>` or event handlers like `onclick=""`) is completely disabled.
 *   **No Remote Scripts:** No external JavaScript files, CDNs, or remote resources can be loaded or executed.
@@ -117,6 +116,7 @@ To maintain a clean security footprint and prevent attack vectors common to web3
 
 If you discover a potential security flaw, vulnerability, or unexpected behavior in Thru Wallet, please disclose it responsibly:
 
-*   **Reporting Channel:** File a report on [GitHub Issues](https://github.com/buildbyravi/thru-wallet-ext/issues).
-*   **Details to Include:** Describe the problem, steps to reproduce, impact assessment, and any relevant environmental details (browser version, OS).
-*   **Remediation:** Issues involving cryptographic safety or key storage will be investigated and addressed with high priority.
+*   **Private reporting:** Use [GitHub Private Vulnerability Reporting](https://github.com/buildbyravi/thru-wallet-ext/security/advisories/new) once it is enabled in the repository Security settings. The repository owner must complete that setting; do **not** open a public issue for an unpatched vulnerability, especially one involving key extraction or signing.
+*   **Details to Include:** Describe the problem, steps to reproduce, impact assessment, affected version/commit, and relevant browser/OS details. Include a minimal proof of concept, but never include real seed phrases, private keys, or user data.
+*   **Response target:** The maintainers aim to acknowledge a private report within 3 business days and provide an initial triage within 7 days.
+*   **Remediation:** Issues involving cryptographic safety or key storage are treated as release-blocking until assessed. A coordinated disclosure timeline will be agreed with the reporter after triage.
