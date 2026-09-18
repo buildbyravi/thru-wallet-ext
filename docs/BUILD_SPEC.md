@@ -529,10 +529,11 @@ font-src 'self'; connect-src <rpc origins>; frame-src 'none'; form-action 'none'
 base-uri 'none'; object-src 'none'
 ```
 
-The current policy omits `default-src`, leaving `frame-src`/`img-src`/`connect-src`/`form-action`/
-`base-uri` unrestricted — an injected `<iframe src="https://evil">` would render inside trusted
-extension chrome. Self-host fonts; the two HTML files currently fetch Google Fonts on every open,
-which is both a usage oracle for a wallet and a CSS-injection vector.
+The shipped policy includes `default-src 'none'` and explicit `script-src`, `style-src`, `img-src`,
+`font-src`, `connect-src`, `frame-src`, `form-action`, `base-uri`, and `object-src` directives.
+`connect-src` is checked by `scripts/check-csp.mjs`: every enabled network must be allowed and
+no disabled or undeclared RPC origin may be authorized. Keep fonts self-hosted and do not add
+remote page resources.
 
 ### Authentication hardening
 
@@ -648,7 +649,7 @@ in one commit.
 
 `npm test` must run and pass:
 
-1. `test-vault.mjs` — real vault against real `@thru/crypto`/`@thru/sdk`
+1. `test-vault.mjs` — real vault against real `@thru/sdk/crypto`/`@thru/sdk`
 2. `test-thru-client.mjs` — instruction layouts, BigInt amount round-trip, address checksum, history decode
 3. `test-api-router.mjs` — background API integration
 4. `test-contract.mjs` — manifest ⇄ handlers, both directions
@@ -724,9 +725,9 @@ second way of building DOM.
 
 ### Thru-specific rule
 
-The blockchain layer is authoritative. Prefer `@thru/sdk`, `@thru/crypto`, `@thru/programs`,
-`@thru/wallet`, `@thru/passkey` over hand-written protocol code wherever the official SDK provides
-the capability. Use only verified APIs.
+The blockchain layer is authoritative. Prefer `@thru/sdk` (including its `@thru/sdk/crypto`
+subpath), `@thru/programs`, `@thru/wallet`, and `@thru/passkey` over hand-written protocol code
+wherever the official SDK provides the capability. Use only verified APIs.
 
 ### Report format after each phase
 

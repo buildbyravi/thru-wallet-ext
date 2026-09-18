@@ -200,9 +200,10 @@ Also replace the hand-rolled `encodeInitializeMintInstructionData` with
 
 ### Step 5 — dependency pin cleanup
 
-Non-PR cleanup: `package.json` currently allows `@thru/programs` upgrades with `^0.3.4`. Align it
-with the repository rule that Thru SDK/program packages are exact-pinned, then run the golden
-derivation and Thru-client tests before merging.
+Completed in the 2026-09-18 audit pass: `@thru/programs` and `@thru/sdk` are exact-pinned at
+`0.3.16`, and derivation imports from the SDK's public `@thru/sdk/crypto` subpath rather than
+the deprecated standalone crypto package. Golden vectors remain unchanged; `npm ci` is the CI
+install gate.
 
 ### Step 6 — spacing and the tab-width question
 

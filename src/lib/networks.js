@@ -96,11 +96,13 @@ export const NETWORKS = {
   },
 
   // Declared but NOT enabled. Present so the shape, storage scoping and UI paths exist and are
-  // exercised before either network is real. Flipping `enabled` is the entire change needed.
+  // exercised before either network is real. Enabling it requires two deliberate edits: set
+  // `enabled: true` here and add its verified RPC origin to manifest.json connect-src.
   //
-  // Left disabled deliberately: the RPC hosts, the faucet situation and whether program
-  // addresses stay identical are all unverified. Shipping a selectable network whose endpoint
-  // is a guess would let someone believe they had switched when they had not.
+  // Left disabled deliberately: the RPC host, the faucet situation and whether program addresses
+  // stay identical are all unverified. Shipping a selectable network whose endpoint is a guess
+  // would let someone believe they had switched when they had not. scripts/check-csp.mjs fails if
+  // the network and CSP are out of agreement in either direction.
   testnet: {
     id: 'testnet',
     label: 'Testnet',

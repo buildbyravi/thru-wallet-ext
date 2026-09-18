@@ -141,7 +141,7 @@ assert(activeDefault.label === 'Imported 1', 'cleared label falls back to defaul
 console.log('\n[10] Vault V2 keeps multiple seed and private-key keyrings isolated under one password');
 await vault.resetWallet();
 await vault.createVault('keyring migration password');
-const { MnemonicGenerator } = await import('@thru/crypto');
+const { MnemonicGenerator } = await import('@thru/sdk/crypto');
 const secondMnemonic = MnemonicGenerator.generate();
 const addedSeed = await vault.addSeedKeyring(secondMnemonic, 'keyring migration password', 'Trading seed');
 let keyrings = await vault.listKeyrings();

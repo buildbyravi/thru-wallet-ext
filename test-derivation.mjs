@@ -2,11 +2,11 @@
 //
 // WHY THIS EXISTS
 //
-// Thru is on devnet and @thru/sdk / @thru/crypto change rapidly. Key derivation is the one
-// thing that must NEVER change silently. If an SDK upgrade alters how a mnemonic maps to an
-// address, then every existing vault starts deriving DIFFERENT addresses. The user's keys are
-// still intact, but the wallet looks in the wrong place, so their balance reads zero and their
-// funds appear to have vanished. Nothing else in this suite would notice.
+// Thru is on devnet and @thru/sdk changes rapidly. Key derivation is the one thing that must
+// NEVER change silently. If an SDK upgrade alters how a mnemonic maps to an address, then every
+// existing vault starts deriving DIFFERENT addresses. The user's keys are still intact, but the
+// wallet looks in the wrong place, so their balance reads zero and their funds appear to have
+// vanished. Nothing else in this suite would notice.
 //
 // So: a fixed phrase must always produce a fixed set of addresses. If it does not, the build
 // fails and someone makes a deliberate decision instead of shipping the change.
@@ -17,8 +17,8 @@
 // IF THIS TEST FAILS
 //
 //   1. Do NOT update the expected values to make it pass. That is the one forbidden fix.
-//   2. Determine whether derivation genuinely changed, or whether an import moved between
-//      @thru/crypto and @thru/sdk.
+//   2. Determine whether derivation genuinely changed, or whether an import moved within
+//      the SDK's public crypto surface.
 //   3. If derivation really changed, existing installs need a migration path BEFORE the new
 //      SDK ships: derive with both schemes, detect which one holds funds, and migrate. Losing
 //      that decision point is how a wallet loses money.
@@ -28,13 +28,12 @@
 // Run: node test-derivation.mjs
 
 import { readFileSync } from 'node:fs';
-import { MnemonicGenerator, ThruHDWallet } from '@thru/crypto';
+import { MnemonicGenerator, ThruHDWallet } from '@thru/sdk/crypto';
 import { keys, Pubkey } from '@thru/sdk';
 
 // A deliberately public, well-known test phrase. It must never hold real funds.
 const VECTORS = {
-  sdkVersion: '0.3.4',
-  cryptoVersion: '0.2.21',
+  sdkVersion: '0.3.16',
   phrase: 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about',
   hd: [
     { index: 0, address: 'taogps3bfPUvvkQDAk4c6EY6wNcIcLrG9JL10WukBf3hLg' },
@@ -68,27 +67,24 @@ section('Dependency versions are pinned to what the vectors were generated again
 
 const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
 const installedSdk = JSON.parse(readFileSync('node_modules/@thru/sdk/package.json', 'utf8')).version;
-const installedCrypto = JSON.parse(readFileSync('node_modules/@thru/crypto/package.json', 'utf8')).version;
 
-// A caret range means an unrelated install can move derivation without anyone deciding to.
-ok(
-  '@thru/sdk is pinned exactly (no ^ or ~)',
-  /^\d+\.\d+\.\d+/.test(pkg.dependencies['@thru/sdk'] || ''),
-  `package.json says '${pkg.dependencies['@thru/sdk']}'`,
-);
-ok(
-  '@thru/crypto is pinned exactly (no ^ or ~)',
-  /^\d+\.\d+\.\d+/.test(pkg.dependencies['@thru/crypto'] || ''),
-  `package.json says '${pkg.dependencies['@thru/crypto']}'`,
-);
+// A range means an unrelated install can move derivation without anyone deciding to. The
+// programs package is pinned too because its SDK peer/import path must not silently introduce a
+// second SDK copy into the wallet.
+for (const name of ['@thru/sdk', '@thru/programs']) {
+  ok(
+    `${name} is pinned exactly (no ^ or ~)`,
+    /^\d+\.\d+\.\d+$/.test(pkg.dependencies[name] || ''),
+    `package.json says '${pkg.dependencies[name] || '(missing)'}'`,
+  );
+}
 
-// A version drift is a warning, not a failure: the derivation checks below are the real
-// verdict. A new version that derives identically is fine and only needs the note updated.
-if (installedSdk !== VECTORS.sdkVersion || installedCrypto !== VECTORS.cryptoVersion) {
+// A version drift is a warning, not a failure: the derivation checks below are the real verdict.
+// A new SDK version that derives identically is fine and only needs the recorded note updated.
+if (installedSdk !== VECTORS.sdkVersion) {
   console.warn(
-    `  note - versions differ from when vectors were generated`
-    + `\n         @thru/sdk    expected ${VECTORS.sdkVersion}, installed ${installedSdk}`
-    + `\n         @thru/crypto expected ${VECTORS.cryptoVersion}, installed ${installedCrypto}`
+    `  note - @thru/sdk differs from when vectors were generated`
+    + `\n         expected ${VECTORS.sdkVersion}, installed ${installedSdk}`
     + `\n         The derivation checks below decide whether this matters.`,
   );
 }

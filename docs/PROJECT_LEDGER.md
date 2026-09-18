@@ -121,7 +121,7 @@ This table deduplicates the repeated local-agent timeline. Commit IDs before the
 | P1 | Side-panel width beyond 408px | `body { max-width: 100% }` fixes a panel narrower than the popup width; a wider panel still shows a 408px column. Needs a browser to decide. | `docs/MANUAL_SMOKE_CHECKLIST.md` §2 |
 | P1 | Token transfer | Required for honest asset support. Must use official `@thru/programs/token`. | `docs/BACKEND_GAPS.md` |
 | P1 | Feature module split | Launchpad/DEX/prediction must be separated before serious DeFi work. | `docs/MODULE_BOUNDARIES.md` |
-| P1 | Exact-pin `@thru/programs` | Non-PR cleanup: `package.json` currently allows `^0.3.4`; align with the repo rule that Thru SDK/program package versions are exact-pinned. | `package.json` |
+| P1 | Exact-pin `@thru/programs` | Completed in the 2026-09-18 audit pass: `@thru/programs` and `@thru/sdk` are exact-pinned at `0.3.16`; derivation uses `@thru/sdk/crypto` and golden vectors are unchanged. | `package.json`, `test-derivation.mjs` |
 | P2 | Full-tab shell | Required for launchpad/DEX/charts without slowing popup. | `docs/WALLET_FEATURES_PERFORMANCE_STUDY.md` |
 | P2 | Thru-native AMM/indexer integration | Needed for real swap/chart/market flows. | `docs/THRU_NATIVE_DEFI_TAB_UX.md` |
 | P2 | Local MCP companion | Useful for AI agents, but must never sign/export secrets. | `docs/MCP_AGENT_INTEGRATION.md` |

@@ -3,7 +3,7 @@
 **Repository:** [github.com/buildbyravi/thru-wallet-ext](https://github.com/buildbyravi/thru-wallet-ext)  
 **Issue Tracker:** [github.com/buildbyravi/thru-wallet-ext/issues](https://github.com/buildbyravi/thru-wallet-ext/issues)
 
-Welcome to the Thru Wallet support document. Thru Wallet is an experimental, self-custody Chrome extension for Thru's alphanet, built with `@thru/sdk` and `@thru/crypto`.
+Welcome to the Thru Wallet support document. Thru Wallet is an experimental, self-custody Chrome extension for Thru's alphanet, built with `@thru/sdk` (including its `@thru/sdk/crypto` subpath) and `@thru/programs`.
 
 ---
 
