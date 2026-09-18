@@ -48,6 +48,9 @@ function section(title) {
 const declared = new Set(Object.keys(METHODS));
 const wired = new Set(listHandlerNames());
 
+section('Contract versioning');
+ok('contract v5 documents the signing-auth compatibility break', CONTRACT_VERSION >= 5);
+
 section('Contract and router agree in both directions');
 
 const undeclared = [...wired].filter((m) => !declared.has(m));
@@ -66,12 +69,12 @@ ok(
 
 section('Manifest entries are well formed');
 
-const VALID_AUTH = new Set(['none', 'unlocked', 'password']);
+const VALID_AUTH = new Set(['none', 'unlocked', 'password', 'signing']);
 const malformed = [];
 for (const [name, spec] of Object.entries(METHODS)) {
   if (!Array.isArray(spec.params)) malformed.push(`${name}: params must be an array`);
   if (typeof spec.returns !== 'string' || !spec.returns) malformed.push(`${name}: returns must be a non-empty string`);
-  if (!VALID_AUTH.has(spec.auth)) malformed.push(`${name}: auth must be one of none|unlocked|password`);
+  if (!VALID_AUTH.has(spec.auth)) malformed.push(`${name}: auth must be one of none|unlocked|password|signing`);
   if (!Number.isInteger(spec.since) || spec.since < 1) malformed.push(`${name}: since must be a positive integer`);
   if (spec.since > CONTRACT_VERSION) malformed.push(`${name}: since (${spec.since}) exceeds CONTRACT_VERSION (${CONTRACT_VERSION})`);
 }
@@ -84,10 +87,10 @@ ok('method names are namespace.method', badNames.length === 0, badNames.join(', 
 section('Password-gated methods accept a password param');
 
 const missingPasswordParam = Object.entries(METHODS)
-  .filter(([, spec]) => spec.auth === 'password' && !spec.params.includes('password'))
+  .filter(([, spec]) => (spec.auth === 'password' || spec.auth === 'signing') && !spec.params.includes('password'))
   .map(([name]) => name);
 ok(
-  'every auth:password method declares a password param',
+  'every password/signing method declares a password param',
   missingPasswordParam.length === 0,
   missingPasswordParam.join(', '),
 );
@@ -108,6 +111,26 @@ const MUST_REQUIRE_PASSWORD = [
 ];
 for (const name of MUST_REQUIRE_PASSWORD) {
   ok(`${name} requires a password`, METHODS[name]?.auth === 'password', `auth is '${METHODS[name]?.auth}'`);
+}
+ok(
+  'settings.setSecurity was introduced with contract v5',
+  METHODS['settings.setSecurity']?.since === 5,
+  `since is '${METHODS['settings.setSecurity']?.since}'`,
+);
+
+// Signing has its own auth mode because the user may explicitly opt out of re-authentication in
+// Settings. The secure default is still password-required, enforced inside api-router before a
+// signing handler runs.
+const MUST_USE_SIGNING_AUTH = [
+  'tx.claimFaucet',
+  'tx.send',
+  'tx.autoCreateAccount',
+  'token.deploy',
+];
+for (const name of MUST_USE_SIGNING_AUTH) {
+  ok(`${name} uses signing auth`, METHODS[name]?.auth === 'signing', `auth is '${METHODS[name]?.auth}'`);
+  ok(`${name} can carry a signing password`, METHODS[name]?.params.includes('password'));
+  ok(`${name} records authSince v5`, METHODS[name]?.authSince === 5, `authSince is '${METHODS[name]?.authSince}'`);
 }
 
 section('Multi-seed keyring API is exposed');

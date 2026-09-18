@@ -5,7 +5,8 @@
 > it describes are now fixed. It is kept intact because the root causes and reasoning are still
 > the best explanation of *why* the architecture in §3 looks the way it does.
 >
-> For current state read **`docs/STATUS_AND_ROADMAP.md`**.
+> For current state read **`docs/STATUS_AND_ROADMAP.md`**, `docs/PROJECT_LEDGER.md`, and
+> `CONTEXT.md`. For future launchpad/DEX/prediction separation read `docs/MODULE_BOUNDARIES.md`.
 > For what each defect turned out to be, read **`docs/DEFECT_LOG.md`**.
 >
 > §3 (target architecture) and §5 (design system) remain authoritative.

@@ -1,9 +1,14 @@
 # Agent Prompt — Thru Wallet frontend rebuild
 
-Copy everything below the line into a fresh agent session in this repo. It is written to be
-self-contained and to fail safely: the agent stops and asks rather than guessing.
+> Historical prompt/reference. Do not execute this as the current plan without first reading
+> `docs/DOCS_INDEX.md`, `docs/PROJECT_LEDGER.md`, `docs/STATUS_AND_ROADMAP.md`, and `CONTEXT.md`.
+> The rebuild is now complete; this file is kept for rationale and recovery context.
 
-Companion document: `docs/UI_REBUILD_PLAN.md` (the agent must read it first).
+Copy everything below the line into a fresh agent session only when intentionally replaying the
+historical rebuild plan. It is written to be self-contained and to fail safely: the agent stops and
+asks rather than guessing.
+
+Companion document: `docs/UI_REBUILD_PLAN.md`.
 
 ---
 

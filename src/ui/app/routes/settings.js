@@ -12,6 +12,7 @@ import { icon } from '../../kit/icon.js';
 import { Button } from '../../kit/button.js';
 import { Field } from '../../kit/field.js';
 import { PageHeader, Banner, Spinner } from '../../kit/feedback.js';
+import { requirePassword } from '../../domain/password-prompt.js';
 import * as bridge from '../bridge.js';
 import { AUTO_LOCK_CHOICES } from '../../../shared/autolock.js';
 
@@ -24,6 +25,7 @@ export function SettingsRoute({ navigate, back }) {
   const owned = [];
   let networks = [];
   let activeNetworkId = null;
+  let preferences = null;
 
   const banner = Banner({ tone: 'error' });
   const body = h('div', { class: 'stack stack-5' }, Spinner({ label: 'Loading settings' }).el);
@@ -192,16 +194,57 @@ export function SettingsRoute({ navigate, back }) {
     hostEl.appendChild(h('div', { class: 'row-flex wrap' }, chips));
   }
 
+  function renderSigningReauth(hostEl, requirePasswordForSigning) {
+    hostEl.appendChild(h('p', { class: 'hint', text:
+      'Recommended: require the wallet password before any transaction is signed. Turning this off '
+      + 'allows signing from an already-unlocked session.' }));
+
+    const options = [
+      { value: true, label: 'Require password' },
+      { value: false, label: 'Session-only' },
+    ];
+    const chips = options.map((option) => {
+      const selected = option.value === requirePasswordForSigning;
+      const chip = h('button', {
+        type: 'button',
+        class: ['chip-option', selected ? 'selected' : null].filter(Boolean),
+        text: option.label,
+      });
+      if (!selected) {
+        d.on(chip, 'click', async () => {
+          banner.clear();
+          const result = await requirePassword({
+            title: option.value ? 'Require password for signing' : 'Disable signing password prompt',
+            body: option.value
+              ? 'Enter your password to require re-authentication before every signing action.'
+              : 'Enter your password to allow transaction signing from an unlocked session. This is less secure.',
+            confirmLabel: option.value ? 'Require password' : 'Allow session-only signing',
+            danger: option.value === false,
+            verify: (password) => bridge.send('settings.setSecurity', {
+              patch: { requirePasswordForSigning: option.value },
+              password,
+            }),
+          });
+          if (result) load();
+        });
+      }
+      return chip;
+    });
+    hostEl.appendChild(h('div', { class: 'row-flex wrap' }, chips));
+  }
+
   async function load() {
     banner.clear();
     try {
-      const [netList, active, autoLock] = await Promise.all([
+      const [netList, active, autoLock, prefs] = await Promise.all([
         bridge.send('network.list'),
         bridge.send('network.getActive'),
         bridge.send('system.getAutoLock'),
+        bridge.send('settings.get'),
       ]);
       networks = netList || [];
       activeNetworkId = active?.id || null;
+      preferences = prefs || {};
       render(autoLock);
     } catch (error) {
       clearBody();
@@ -221,8 +264,11 @@ export function SettingsRoute({ navigate, back }) {
     renderAddCustom(networkSection);
 
     // ---- Security ----
-    const security = h('section', { class: 'stack stack-2' }, [SectionHeader('Auto-lock')]);
+    const security = h('section', { class: 'stack stack-2' }, [SectionHeader('Security')]);
     body.appendChild(security);
+    security.appendChild(h('strong', { text: 'Signing' }));
+    renderSigningReauth(security, preferences?.requirePasswordForSigning !== false);
+    security.appendChild(h('strong', { text: 'Auto-lock' }));
     renderAutoLock(security, Number(autoLockMinutes));
 
     // ---- Accounts shortcut ----

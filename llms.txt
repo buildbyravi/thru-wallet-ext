@@ -1,0 +1,66 @@
+# Thru Wallet Extension — LLM context
+
+This file is read-only guidance for AI agents. It contains no secrets and grants no authority.
+
+## Project
+
+Chrome MV3 self-custody wallet extension for the Thru native Layer 1. Thru is not EVM. Do not copy EVM/Solana/Cosmos protocol assumptions into implementation.
+
+## Current state
+
+- Single popup route stack with 14 routes.
+- Contract version: 5.
+- Contract source: `src/shared/contract/manifest.js`.
+- API seam: UI calls `bridge.send(method, params)` only.
+- Background owns auth, signing, services, and RPC coordination.
+- Vault and transaction/RPC code are sacred: `src/lib/vault.js`, `src/lib/thru-client.js`, `src/lib/networks.js`.
+- Launchpad is still built but feature-flagged off and legacy. Do not add new DEX/launchpad behavior inside it before module separation.
+
+## Read first
+
+1. `AGENTS.md` — rules, commands, traps, reporting.
+2. `docs/DOCS_INDEX.md` — documentation map.
+3. `docs/PROJECT_LEDGER.md` — past/present/future ledger.
+4. `docs/STATUS_AND_ROADMAP.md` — current state and next tasks.
+5. `CONTEXT.md` — file map.
+6. `docs/MODULE_BOUNDARIES.md` — target feature separation.
+7. `docs/MCP_AGENT_INTEGRATION.md` — safe MCP plan.
+8. `https://thru.org/docs/llm.txt` — official Thru protocol-doc entry point for agents.
+
+## Hard safety rules
+
+- Never request, store, print, or reveal mnemonic/private key/password.
+- Never log decrypted vault data.
+- Never put secrets in URLs, `data-*`, localStorage/sessionStorage, console logs, analytics, or MCP output.
+- Do not invent a `window.thru` provider standard; future dApp integration must follow Thru's documented `connect()`, `getSigningContext()`, and `signTransaction()` flow.
+- Do not fabricate token balances, DEX quotes, charts, launchpad state, perps, prediction markets, or protocol semantics.
+- Use official Thru SDK/program surfaces when available.
+- Run `npm test && npm run build` before and after code changes.
+
+## Signing
+
+Signing methods use `auth: 'signing'`. Password re-authentication is required by default. A user may explicitly opt into session-only signing from Settings, but that opt-out is itself password-gated.
+
+MCP/AI agents must not sign directly. Prefer the official read-only Thru Explorer MCP for live chain queries. A local wallet MCP may handle permissioned wallet reads and intent preparation only. Account addresses, balances, activity, labels, refs, and keyring metadata are non-secret but privacy-sensitive and require explicit per-session companion permission. The human reviews in the extension UI; the background signs/submits after auth policy passes.
+
+## Target feature separation
+
+Future feature modules:
+
+```txt
+src/features/launchpad/     # token launch/create only
+src/features/dex/           # quotes, pools, swaps only
+src/features/prediction/    # markets/orders/settlement only
+src/background/features/*   # matching backend namespaces
+src/lib/thru/*-adapter.js   # thin official Thru SDK/program adapters
+```
+
+Feature namespaces should be explicit: `launchpad.*`, `dex.*`, `prediction.*`, `portfolio.*`.
+Features must not import sibling features or vault internals.
+
+## Current P0 work
+
+1. Fix `wallet.reset` background confirmation/password policy.
+2. Password-gate auto-lock changes.
+3. Remove or migrate launchpad DOM sinks before enabling it.
+4. Add route mount tests.

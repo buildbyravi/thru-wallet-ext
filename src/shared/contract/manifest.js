@@ -6,6 +6,10 @@
 //      an existing method's param names or return shape. To change behaviour, add a new
 //      name (e.g. 'tx.send' -> 'tx.sendV2') and retire the old one only after zero
 //      references remain in the UI.
+//
+//      Contract v5 is the explicit security exception: existing signing methods keep their
+//      names but now use auth:'signing'. This is an intentional compatibility break so older
+//      callers cannot keep signing from an unlocked-only session by using legacy names.
 //   2. Every method the UI calls must appear here, and every handler registered in
 //      src/background/api-router.js must appear here. test-contract.mjs enforces both
 //      directions, so a rename on either side fails CI instead of failing silently at
@@ -19,9 +23,11 @@
 //   'none'     - callable while locked
 //   'unlocked' - requires an unlocked session
 //   'password' - requires the caller to pass the master password, re-verified server-side
+//   'signing'  - requires unlocked; also requires and verifies password unless the user has
+//                explicitly disabled signing re-authentication in Settings
 // `since` is the contract version in which the method first appeared.
 
-export const CONTRACT_VERSION = 4;
+export const CONTRACT_VERSION = 5;
 
 export const METHODS = {
   // ---- System ------------------------------------------------------------
@@ -285,16 +291,18 @@ export const METHODS = {
     since: 1,
   },
   'tx.claimFaucet': {
-    params: ['amountUnits'],
+    params: ['amountUnits', 'password'],
     returns: '{ signature, blockHeight }',
-    auth: 'unlocked',
+    auth: 'signing',
     since: 1,
+    authSince: 5,
   },
   'tx.send': {
-    params: ['toAddress', 'amountUnits'],
+    params: ['toAddress', 'amountUnits', 'password'],
     returns: '{ signature, blockHeight }',
-    auth: 'unlocked',
+    auth: 'signing',
     since: 1,
+    authSince: 5,
   },
   'tx.listHistory': {
     params: ['address', 'pageSize', 'limit', 'cursor'],
@@ -309,10 +317,11 @@ export const METHODS = {
     since: 1,
   },
   'tx.autoCreateAccount': {
-    params: [],
+    params: ['password'],
     returns: 'result of the on-chain account creation',
-    auth: 'unlocked',
+    auth: 'signing',
     since: 1,
+    authSince: 5,
   },
   'tx.validateAddress': {
     params: ['address'],
@@ -371,10 +380,11 @@ export const METHODS = {
 
   // ---- Tokens and launchpad --------------------------------------------
   'token.deploy': {
-    params: ['mintSeed', 'name', 'symbol', 'decimals', 'description', 'imageUrl'],
+    params: ['mintSeed', 'name', 'symbol', 'decimals', 'description', 'imageUrl', 'password'],
     returns: 'deployment result including the mint address',
-    auth: 'unlocked',
+    auth: 'signing',
     since: 1,
+    authSince: 5,
   },
   'token.list': {
     params: [],
@@ -399,7 +409,7 @@ export const METHODS = {
   },
   'token.generateSeed': {
     params: [],
-    returns: '32-character alphanumeric mint seed',
+    returns: '64-character lowercase hex mint seed (32 bytes)',
     auth: 'none',
     since: 1,
   },
@@ -431,9 +441,15 @@ export const METHODS = {
   },
   'settings.set': {
     params: ['patch'],
-    returns: 'updated preference record — rejects unknown keys',
+    returns: 'updated preference record — rejects unknown and security-sensitive keys',
     auth: 'unlocked',
     since: 4,
+  },
+  'settings.setSecurity': {
+    params: ['patch', 'password'],
+    returns: 'updated preference record for security-sensitive settings; password-gated',
+    auth: 'password',
+    since: 5,
   },
 
   // ---- Address book ----------------------------------------------------

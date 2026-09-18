@@ -201,8 +201,8 @@ Stated plainly, because the gaps predict the next round of bugs.
    usages shipped. `docs/UI_REBUILD_PLAN.md` specifies `scripts/check-css.mjs`; it is not built.
 4. **Live chain.** Faucet/transfer program addresses, instruction layouts, the amount-unit
    question and explorer URL patterns remain unverified against a running network.
-5. **The legacy stack.** Untested throughout, and still serving send, receive, faucet, history
-   and settings.
+5. **Legacy launchpad surface.** The legacy popup stack is deleted, but `src/launchpad/**` is still
+   built while feature-flagged off and remains outside the guarded `src/ui/**` DOM-sink ratchet.
 
 The single highest-value addition is a **jsdom route smoke test**: mount every registered route
 in locked / unlocked / no-vault states with a mocked bridge, assert no throw, and assert every

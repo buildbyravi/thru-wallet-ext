@@ -32,6 +32,7 @@ import { PageHeader, Banner, Spinner } from '../../kit/feedback.js';
 import { AccountAvatar } from '../../domain/account-avatar.js';
 import { AccountPicker } from '../../domain/account-picker.js';
 import { AssetSelector } from '../../domain/asset-selector.js';
+import { requirePassword } from '../../domain/password-prompt.js';
 import * as bridge from '../bridge.js';
 import { formatThru, parseThruAmount, truncateAddress } from '../../../shared/format.js';
 import { safeAddressParam } from '../../../shared/refs.js';
@@ -544,10 +545,20 @@ export function SendRoute({ params, navigate, back }) {
   async function submit(to) {
     banner.clear();
     try {
-      const result = await bridge.send('tx.send', {
+      const params = {
         toAddress: to,
         amountUnits: amountUnits.toString(),
-      });
+      };
+      const prefs = await bridge.send('settings.get').catch(() => null);
+      const result = prefs?.requirePasswordForSigning === false
+        ? await bridge.send('tx.send', params)
+        : await requirePassword({
+          title: 'Confirm send',
+          body: 'Re-enter your password to sign and broadcast this transfer.',
+          confirmLabel: 'Sign & send',
+          verify: (password) => bridge.send('tx.send', { ...params, password }),
+        });
+      if (!result) return;
       renderSuccess(to, result);
     } catch (error) {
       // The background owns the authoritative guards (whitelist, duplicate submission,

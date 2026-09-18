@@ -23,9 +23,10 @@ const DEFAULTS = {
   pinnedAccounts: [],        // [address] — sorted above everything else
   hiddenAccounts: [],        // [address] — filtered out of switchers, never deleted
 
-  // Send safety (Rabby: whitelist)
+  // Send/signing safety (Rabby-style guardrails)
   enforceWhitelist: false,
   whitelist: [],             // [address] — when enforceWhitelist is on, sends must target one
+  requirePasswordForSigning: true, // user may explicitly opt out in Settings after re-auth
 
   // Token registry visibility
   hiddenTokens: [],          // [mintAddress]
@@ -39,6 +40,12 @@ const DEFAULTS = {
 const ARRAY_FIELDS = new Set([
   'accountOrder', 'pinnedAccounts', 'hiddenAccounts',
   'whitelist', 'hiddenTokens', 'customTokens',
+]);
+
+const SECURITY_FIELDS = new Set([
+  'enforceWhitelist',
+  'whitelist',
+  'requirePasswordForSigning',
 ]);
 
 async function readRaw() {
@@ -78,7 +85,7 @@ export async function setPreferences(patch) {
   const rejected = [];
 
   for (const [key, value] of Object.entries(patch)) {
-    if (!Object.prototype.hasOwnProperty.call(DEFAULTS, key) || key === 'version') {
+    if (!Object.prototype.hasOwnProperty.call(DEFAULTS, key) || key === 'version' || SECURITY_FIELDS.has(key)) {
       rejected.push(key);
       continue;
     }
@@ -92,6 +99,45 @@ export async function setPreferences(patch) {
 
   if (rejected.length) {
     throw new Error(`Unknown preference key(s): ${rejected.join(', ')}`);
+  }
+
+  next.version = PREFS_VERSION;
+  await chrome.storage.local.set({ [PREFS_KEY]: next });
+  return next;
+}
+
+/**
+ * Update security-sensitive preferences. api-router exposes this only through
+ * settings.setSecurity, which is password-gated and centrally re-verifies the master password.
+ * Keeping these keys out of settings.set prevents an unattended unlocked session from lowering
+ * future send/signing protections before submitting a transaction.
+ * @param {Object} patch
+ */
+export async function setSecurityPreferences(patch) {
+  if (!patch || typeof patch !== 'object' || Array.isArray(patch)) {
+    throw new Error('Security preferences patch must be an object.');
+  }
+  const current = await getPreferences();
+  const next = { ...current };
+  const rejected = [];
+
+  for (const [key, value] of Object.entries(patch)) {
+    if (!SECURITY_FIELDS.has(key)) {
+      rejected.push(key);
+      continue;
+    }
+    if (ARRAY_FIELDS.has(key)) {
+      if (!Array.isArray(value)) throw new Error(`'${key}' must be an array.`);
+      next[key] = value;
+    } else if (key === 'requirePasswordForSigning' || key === 'enforceWhitelist') {
+      next[key] = Boolean(value);
+    } else {
+      next[key] = value;
+    }
+  }
+
+  if (rejected.length) {
+    throw new Error(`Unsupported security preference key(s): ${rejected.join(', ')}`);
   }
 
   next.version = PREFS_VERSION;

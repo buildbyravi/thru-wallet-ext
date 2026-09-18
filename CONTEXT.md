@@ -144,8 +144,8 @@ program addresses, `faucetStateAccount`, `faucetMaxPerClaim`, `baseFeeUnits`, `f
 | `services/system-service.js` | 189 | Auto-lock, activity stamping, diagnostics |
 | `services/event-service.js` | 47 | The **only** inbound push channel |
 
-Contract v4, **~75 methods**, append-only. `src/shared/contract/manifest.js` (524 lines) is the
-allowlist, not documentation.
+Contract v5, **74 methods**, append-only except the documented v5 signing-auth security break.
+`src/shared/contract/manifest.js` is the allowlist, not just documentation.
 
 Deliberately unimplemented, returning `{ supported: false, reason }` rather than fabricated
 values: `tx.simulate`, `token.getBalances`.
@@ -238,10 +238,12 @@ pending; `check-routes.mjs` catches used-but-undefined, not defined-but-unused.
 
 `launchpad.js` (522)  `launchpad.html` (443)  `launchpad.css` (1,057)
 
-Emits `launchpad.*`. **`desktop.html` is reserved** for a future expanded-wallet-in-a-tab view.
-Hidden behind `FLAGS.FEATURE_LAUNCHPAD`; still built and still covered by the checks.
+Hidden behind `FLAGS.FEATURE_LAUNCHPAD`; still built as `launchpad.html`/`launchpad.bundle.js`.
+It is legacy and is **not** yet separated into `launchpad.*`, `dex.*`, or `prediction.*` feature
+modules. It is outside the guarded `src/ui/**` DOM-sink ratchet and must be removed from the
+build or migrated to `ui/kit/dom.js` before enabling.
 
-Uses `ui/app/bridge.js`. Its account/network switcher buttons point users at the popup -- the
+Uses `ui/app/bridge.js`. Its account/network switcher buttons point users at the popup — the
 legacy drawers they used to open were already non-functional on this page.
 
 ---

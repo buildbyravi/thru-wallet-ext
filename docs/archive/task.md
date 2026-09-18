@@ -1,5 +1,9 @@
 # Phase 1 — Backend API Layer + Network Config (COMPLETED)
 
+> [!WARNING]
+> Archived historical document. Do not use this as current project state. Start with `docs/DOCS_INDEX.md`, `docs/PROJECT_LEDGER.md`, `docs/STATUS_AND_ROADMAP.md`, and `CONTEXT.md`.
+
+
 - [x] `src/lib/networks.js` — Typed network config map (alphanet, testnet, mainnet ready)
 - [x] `src/shared/format.js` — Pure formatting utilities (`formatThru`, `parseThruAmount`, `truncateAddress`)
 - [x] `src/ui/bridge.js` — WalletBridge RPC client with `send`, `onEvent`, and `bootstrap`

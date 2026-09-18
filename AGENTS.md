@@ -11,18 +11,23 @@ bundled with esbuild. No framework. Real `@thru/sdk` + `@thru/crypto`.
 
 | Read when | File |
 | --- | --- |
-| always -- rules, commands, traps | `AGENTS.md` (this file) |
-| "where is X?" | `CONTEXT.md` -- file-by-file map with `file:line` refs |
-| "what's done, what's next?" | `docs/STATUS_AND_ROADMAP.md` -- **start here for any new work** |
-| "has this broken before?" | `docs/DEFECT_LOG.md` -- every defect, root cause and lesson |
+| always — rules, commands, traps | `AGENTS.md` (this file) |
+| docs map / avoid stale context | `docs/DOCS_INDEX.md` |
+| past, present, future build tracking | `docs/PROJECT_LEDGER.md` |
+| "what's done, what's next?" | `docs/STATUS_AND_ROADMAP.md` — **start here for active work** |
+| "where is X?" | `CONTEXT.md` — file-by-file map with `file:line` refs |
+| feature separation / SDK-adapter boundaries | `docs/MODULE_BOUNDARIES.md` |
+| AI-agent/MCP safety | `llms.txt`, then `docs/MCP_AGENT_INTEGRATION.md` |
+| "has this broken before?" | `docs/DEFECT_LOG.md` — every defect, root cause and lesson |
 | product intent, security policy, QA matrix | `docs/BUILD_SPEC.md` |
 | backend capability tiers | `docs/BACKEND_GAPS.md` |
-| target directory layout, phase plan | `docs/UI_REBUILD_PLAN.md` |
-| historical only, do not follow | `docs/archive/` |
+| historical rebuild plan only | `docs/UI_REBUILD_PLAN.md`, `docs/UI_REBUILD_AGENT_PROMPT.md` |
+| archived, do not follow for current state | `docs/archive/` |
 
-Conflict resolution: `STATUS_AND_ROADMAP.md` wins on **current state**;
-`UI_REBUILD_PLAN.md` wins on **structure**; `BUILD_SPEC.md` wins on **behaviour**;
-`CONTEXT.md` wins on **file facts**.
+Conflict resolution: `STATUS_AND_ROADMAP.md` wins on **current engineering state**;
+`PROJECT_LEDGER.md` wins on **phase/build tracking**; `MODULE_BOUNDARIES.md` wins on
+**future feature separation**; `BUILD_SPEC.md` wins on **product/security behaviour**;
+`CONTEXT.md` wins on **file facts**; `DOCS_INDEX.md` wins on **which doc to trust**.
 
 ## Commands
 
@@ -50,11 +55,11 @@ is red. Never weaken or skip a test to make it pass.
 4. **Backend API is append-only.** Add the method to `src/shared/contract/manifest.js` *and*
    `api-router.js` -- `test-contract.mjs` checks both directions. Never rename or reshape an
    existing method; add a new name and retire the old one after zero references remain.
-5. **No new dependencies except first-party Thru packages.** @thru/sdk, @thru/crypto and
-   @thru/programs are preferred over hand-written protocol code  @thru/programs ships
-   	oken, mm, multicall, passkey-manager, clob and oracle. No React/Vue/Tailwind,
-   no build-system change. SDK versions are pinned EXACTLY; 	est-derivation.mjs fails if a
-   bump changes key derivation.
+5. **No new dependencies except first-party Thru packages.** `@thru/sdk`, `@thru/crypto`, and
+   verified `@thru/programs/*` surfaces are preferred over hand-written protocol code. No
+   React/Vue/Tailwind, no build-system change. Thru SDK/program versions should be pinned exactly;
+   `@thru/programs` currently still uses `^0.3.4` and is tracked as a non-PR cleanup in
+   `docs/STATUS_AND_ROADMAP.md`.
 6. **Money is BigInt only.** Use `src/shared/format.js`. Never `parseFloat(x) * 1e9`.
 7. **All DOM is built with `src/ui/kit/dom.js` `h()`.** `innerHTML`, `insertAdjacentHTML` and
    `outerHTML` under `src/ui/**` or `src/features/**` fail the build outright. The injection
@@ -65,9 +70,10 @@ is red. Never weaken or skip a test to make it pass.
 9. **Secrets never touch** URLs, `location.hash`, router params or history, `data-*` attributes,
    `localStorage`, `sessionStorage`, `window`, or `console.*`. Clear them on lock, on navigate
    away, and in `destroy()`. Use `src/shared/refs.js` to name an account in a URL.
-10. **Password re-authentication is required** before export, signing, security-setting changes,
-    keyring add/rename/remove, and reset. Use `requirePassword()` from
-    `src/ui/domain/password-prompt.js`.
+10. **Password re-authentication is required by default** before export, signing,
+    security-setting changes, keyring add/rename/remove, and reset. Signing has a user-visible
+    session-only opt-out, but changing that opt-out is itself password-gated. Use
+    `requirePassword()` from `src/ui/domain/password-prompt.js`.
 11. **Every component returns `{ el, update, destroy }`** and `destroy()` removes the *same*
     handler references it added. Use `disposer()`; a fresh arrow passed to
     `removeEventListener` removes nothing.

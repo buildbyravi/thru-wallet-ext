@@ -158,7 +158,7 @@ export async function deriveTokenAccount(ownerAddress, mintAddress) {
 }
 
 /**
- * Generate a fresh 32-character alphanumeric mint seed.
+ * Generate a fresh 64-character lowercase hex mint seed (32 bytes).
  */
 export function generateMintSeed() {
   return thruClient.generateMintSeed();

@@ -3,54 +3,52 @@
 Merged authority document. Supersedes `guide.md` and `thru-implementation_plan.md`, both archived
 under `docs/archive/` for provenance.
 
-**Read order for a new agent:** `AGENTS.md` → `CONTEXT.md` → this file → `docs/UI_REBUILD_PLAN.md`.
+**Read order for a new agent:** `AGENTS.md` → `docs/DOCS_INDEX.md` →
+`docs/PROJECT_LEDGER.md` → `docs/STATUS_AND_ROADMAP.md` → `CONTEXT.md` → this file.
 
 **Division of responsibility between documents:**
 
 | Document | Owns |
 | --- | --- |
 | `AGENTS.md` | hard rules, commands, traps. Short. Always in context. |
+| `docs/DOCS_INDEX.md` | which document to trust and archive/reference status. |
+| `docs/PROJECT_LEDGER.md` | past/present/future build tracking and identifiers. |
+| `docs/STATUS_AND_ROADMAP.md` | active state and ordered next work. |
 | `CONTEXT.md` | file-by-file map. "Where do I look for X?" |
-| this file | product spec, wallet model, feature requirements, security policy, QA matrix |
-| `docs/UI_REBUILD_PLAN.md` | **authoritative** target directory layout and phase/commit plan |
-| `docs/UI_REBUILD_AGENT_PROMPT.md` | the executable prompt derived from the two above |
+| `docs/MODULE_BOUNDARIES.md` | target feature/module/adapter separation. |
+| this file | product spec, wallet model, feature requirements, security policy, QA matrix. |
+| `docs/UI_REBUILD_PLAN.md` | historical rebuild plan and rationale; not current file facts. |
+| `docs/UI_REBUILD_AGENT_PROMPT.md` | historical prompt derived from older plan; do not execute as current state. |
 
-Where this file and `UI_REBUILD_PLAN.md` disagree on **structure**, `UI_REBUILD_PLAN.md` wins — it
-was written against the audited tree. Where they disagree on **product behaviour**, this file wins.
+Where this file and newer docs disagree on **current structure**, `CONTEXT.md` and
+`MODULE_BOUNDARIES.md` win. Where they disagree on **product/security behaviour**, this file wins.
 
 ---
 
-## Part 0 — Status ledger (read this before trusting any older claim)
+## Part 0 — Current status summary
 
-The archived `task.md` marks Phases 1–4 "COMPLETED". A file-by-file audit found that most of that
-work is **present in the repo but unreachable at runtime**. Corrected status:
+This file owns product/security behaviour. It no longer owns the detailed current-state ledger.
+For exact current state, route/method counts, and next tasks, read:
 
-| Claim in `task.md` | Reality |
+- `docs/DOCS_INDEX.md` — which document to trust;
+- `docs/PROJECT_LEDGER.md` — past/present/future build tracking and identifiers;
+- `docs/STATUS_AND_ROADMAP.md` — active roadmap;
+- `CONTEXT.md` — current file map;
+- `docs/MODULE_BOUNDARIES.md` — future feature separation and SDK-adapter boundaries.
+
+Current audited facts as of 2026-09-18:
+
+| Area | State |
 | --- | --- |
-| `src/lib/networks.js`, `src/shared/format.js`, `src/ui/bridge.js` | ✅ real, reachable, working |
-| `src/background/services/*`, `api-router.js`, `background/index.js` | ✅ real and working |
-| `test-api-router.mjs` | ✅ exists and runs |
-| `src/ui/store.js` | ⚠️ partial — `subscribe()` and `get()` have zero callers, so `notify()` always iterates an empty set |
-| `src/ui/components/drawer.js`, `account-switcher.js`, `network-switcher.js`, `token-row.js` | ✅ reachable |
-| `src/ui/components/skeleton.js` | ❌ zero importers — dead file |
-| "Rabby-Style Dashboard" | ⚠️ `screens/dashboard.js` mounts, but its listeners die permanently after any round-trip to another screen |
-| Pre-sign review card | ⚠️ reachable only through `screens/send.js` |
-| Settings / export secrets | ❌ **export is unreachable from the shipped UI by any click path** |
+| UI stack | Single popup route stack, 14 routes, no legacy popup fallback. |
+| Contract | v5, 74 methods. |
+| Signing | Existing signing methods intentionally moved to `auth: 'signing'` in contract v5. Password re-auth is required by default; a session-only opt-out is password-gated. |
+| Guarded DOM | `src/ui/**` sink ratchet is 0. |
+| Launchpad | Still built and feature-flagged off under `src/launchpad/**`; must be removed from build or migrated before enablement. |
+| Thru protocol | Thru is a native L1. External wallets/DEXs are UX references only. |
 
-Additional facts that contradict the archived documents:
-
-- The archived plan describes a target of `src/popup/core/`, `src/popup/components/`. What was
-  actually built is `src/ui/` + `src/popup/screens/`. Neither matches. The authoritative target is
-  `docs/UI_REBUILD_PLAN.md` §3.
-- The archived plan cites `src/background.js` as the live service worker. It is dead;
-  `src/manifest.json` and `build.mjs` both point at `src/background/index.js`.
-- Line counts in the archived plan (`popup.js` 624, `popup.html` 286, `vault.js` 297) are stale.
-  Actual: 1118, 428, 486.
-- `guide.md` referenced `README(20260815-192822).md` and `thru-implementation_plan(1).md`. Neither
-  filename exists in this repo.
-- **Most of the modular refactor is untracked in git** (`src/ui/`, `src/popup/screens/`,
-  `src/background/`, `src/desktop/`, `src/shared/`, `src/domain/`). Commit it before refactoring so
-  there is a rollback point.
+Older archived docs describe pre-rebuild structures such as `src/desktop`, dual routers, and
+unreachable export flows. Those are historical facts, not current state.
 
 ---
 
@@ -175,11 +173,16 @@ Only `src/ui/app/bridge.js` may call `chrome.runtime.sendMessage`.
 requires a new name (`tx.send` → `tx.sendV2`), keeping the old until no route references it. A
 method's shape is never edited in place.
 
+**Contract v5 exception:** the signing re-authentication fix intentionally changed existing
+signing methods in place from `auth: 'unlocked'` to `auth: 'signing'`. This is a documented
+compatibility break so older callers cannot bypass the new background signing gate by continuing
+to call legacy method names.
+
 **R3 — Layering is enforced by a script, not by discipline.** `scripts/check-layering.mjs` fails the
 build when:
-- `src/background/**` imports `src/ui/**`, `src/popup/**`, or `src/desktop/**`
+- `src/background/**` imports `src/ui/**`, `src/popup/**`, or legacy `src/desktop/**`
 - `src/ui/kit/**` imports `bridge`, `chrome.*`, or `src/features/**`
-- `src/ui/**` imports `src/background/**` or `src/lib/vault.js`
+- `src/ui/**`, `src/popup/**`, future `src/features/**`, or legacy `src/desktop/**` imports `src/background/**`, `src/lib/vault.js`, or `src/lib/thru-client.js`
 - `chrome.runtime.sendMessage` appears outside `src/ui/app/bridge.js`
 
 **R4 — The contract is tested in both directions.** `test-contract.mjs` asserts manifest ⊇ handlers
@@ -189,22 +192,23 @@ where `token-service.js` sends `symbol`/`imageUrl` while `thru-client.js` destru
 
 ### Target directory layout
 
-**Authoritative version: `docs/UI_REBUILD_PLAN.md` §3.** Summary:
+**Authoritative version for future separation: `docs/MODULE_BOUNDARIES.md`.** Summary:
 
 ```
-src/shared/       contract manifest, format, ref codec. No chrome.*, no DOM.
-src/background/   service worker, api-router, migrations/, services/, features/
-src/ui/kit/       domain-free primitives (+ dom.js, the only node factory)
-src/ui/domain/    wallet-aware components
-src/ui/app/       one router, route tables, boot gate, guards, store, bridge
-src/features/<id>/  self-contained feature modules
-src/popup/        shell HTML + boot stub + styles
-src/desktop/      shell HTML + boot stub + styles
+src/shared/         contract manifest, format, ref codec. No chrome.*, no DOM.
+src/background/     service worker, api-router, services, future background/features.
+src/ui/kit/         domain-free primitives (+ dom.js, the only node factory).
+src/ui/domain/      wallet-aware reusable components.
+src/ui/app/         one popup router, route tables, boot gate, guards, bridge.
+src/features/<id>/  future self-contained feature UI/model modules.
+src/lib/thru/       future thin official Thru SDK/program adapters.
+src/popup/          popup shell HTML + boot stub + styles.
+src/launchpad/      current built but flagged-off legacy surface; quarantine/migrate before enabling.
 ```
 
-The archived documents proposed two other structures (`popup/core/**`, and a
-`core/domain/application/infrastructure` layering). Both are superseded. The principle they were
-reaching for is retained and is what matters: **domain and infrastructure must never depend on UI.**
+The archived documents proposed other structures (`popup/core/**`, `src/desktop/**`, and a
+`core/domain/application/infrastructure` layering). Those are superseded. The retained principle:
+**domain and infrastructure must never depend on UI.**
 
 ### Component lifecycle
 
@@ -340,7 +344,7 @@ Identicon · label · full address · copy · QR · account type · derivation i
 association · provenance (generated/imported) · balance · assets · activity · explorer link ·
 export · rename · remove keyring · future hardware info.
 
-Every sensitive action requires password re-authentication.
+Every sensitive action requires password re-authentication by default. If the user explicitly opts into session-only signing from Settings, that opt-out itself must be password-gated and only affects transaction signing; secret export, key changes, reset, and security-setting changes remain password-gated.
 
 ### Send — a reviewed flow, never a one-click form
 
@@ -359,7 +363,8 @@ possible, check account existence, re-check unlock state, prevent duplicate subm
 exact effect. Never silently change recipient or amount. Never submit because the user clicked once.
 
 **Amount arithmetic is BigInt-only**, via `src/shared/format.js`. Never `parseFloat(x) * 1e9` — it
-misrounds. `src/desktop/desktop.js` currently violates this in its swap estimate.
+misrounds. Future DEX/swap modules must keep quote math out of UI rendering and behind tested
+adapters.
 
 **No irreversible action may be triggerable by a stray Enter key.** The current global Enter handler
 clicks the first enabled `.btn.primary` in the visible screen, which on the send preview is
@@ -439,10 +444,11 @@ Thru exposes AMM bindings under `@thru/programs/amm` (pool derivation, instructi
 quoting) and a Token Program. Do not implement DEX or launchpad behaviour until those program
 interfaces are verified against the target network.
 
-**dApp connector:** do not invent a fake `window.thru` standard. Thru's documented architecture is
-centred on a hosted embedded wallet with passkey login. Define the abstraction now
-(`WalletProvider { connect, disconnect, getAccounts, signTransaction }`), implement
-`ThruEmbeddedProvider` / `ThruExtensionProvider` only once a real compatibility standard exists.
+**dApp connector:** do not invent a fake `window.thru` standard. Future integration must follow
+Thru's documented `connect()`, `getSigningContext()`, and `signTransaction()` lifecycle: connection
+is account approval/discovery, signing context explains the managed account vs fee payer/signer,
+and signing returns canonical transaction bytes after wallet approval. Define abstractions now, but
+implement an extension/dApp provider only after the official extension-compatible shape is verified.
 
 ---
 
@@ -496,8 +502,9 @@ attacker-influenceable values. Escaping 20 call sites by hand is a policy that d
 
 - one node factory `src/ui/kit/dom.js` `h()`; text via `textContent`; `on*` attributes and
   `javascript:` URLs rejected
-- CI greps for `innerHTML =`, `insertAdjacentHTML`, `outerHTML =` under `src/ui`, `src/features`,
-  `src/popup`, `src/desktop` and fails on any match
+- CI greps for `innerHTML =`, `insertAdjacentHTML`, `outerHTML =` under guarded UI/feature paths
+  and fails on any match. `src/launchpad/**` must be added to that ratchet or removed from the
+  build before launchpad is enabled.
 
 ### CSP
 

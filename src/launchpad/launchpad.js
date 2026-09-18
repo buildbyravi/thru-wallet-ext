@@ -1,4 +1,5 @@
 import * as bridge from '../ui/app/bridge.js';
+import { requirePassword } from '../ui/domain/password-prompt.js';
 import { formatThru, truncateAddress } from '../shared/format.js';
 import { explorerAddressUrl, explorerTxUrl } from '../lib/networks.js';
 import { icons, byteMarkHtml } from '../popup/icons.js';
@@ -38,6 +39,17 @@ const TAB_TO_HASH = {
   'dex': '#/dex',
   'predictions': '#/predictions',
 };
+
+async function runSigningAction(promptOptions, run) {
+  const prefs = await bridge.send('settings.get').catch(() => null);
+  if (prefs?.requirePasswordForSigning === false) {
+    return run({});
+  }
+  return requirePassword({
+    ...promptOptions,
+    verify: (password) => run({ password }),
+  });
+}
 
 // Inject inline icons
 function injectIcons() {
@@ -340,7 +352,15 @@ function setupEventListeners() {
       target.disabled = true;
       target.textContent = 'Claiming…';
       try {
-        await bridge.send('tx.claimFaucet', { amountUnits: FAUCET_MAX_PER_CLAIM.toString() });
+        const result = await runSigningAction({
+          title: 'Confirm faucet claim',
+          body: 'Re-enter your password to sign and submit this faucet transaction.',
+          confirmLabel: 'Sign claim',
+        }, ({ password }) => bridge.send('tx.claimFaucet', {
+          amountUnits: FAUCET_MAX_PER_CLAIM.toString(),
+          password,
+        }));
+        if (!result) return;
         showToast(`Claimed ${formatThru(FAUCET_MAX_PER_CLAIM)} THRU from faucet!`, 'success');
         await refreshBalance();
       } catch (err) {
@@ -487,15 +507,25 @@ function setupEventListeners() {
       try {
         setDeployStep(1, 'Deploying native token mint on ThruVM…');
 
-        const deployed = await bridge.send('token.deploy', {
+        const deployed = await runSigningAction({
+          title: 'Confirm token deployment',
+          body: 'Re-enter your password to sign and submit this token deployment.',
+          confirmLabel: 'Deploy token',
+        }, ({ password }) => bridge.send('token.deploy', {
           ticker,
+          symbol: ticker,
           name,
           decimals,
           initialSupply,
           imageUrl,
           description,
           mintSeed: previewSeed,
-        });
+          password,
+        }));
+        if (!deployed) {
+          progressOverlay.classList.add('hidden');
+          return;
+        }
 
         setDeployStep(4, 'Token mint created!');
         progressOverlay.classList.add('hidden');
