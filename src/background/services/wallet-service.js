@@ -17,6 +17,15 @@ import { emitLockStateChanged } from './event-service.js';
  * dashboard's balance check remains a third backstop.
  */
 function registerActiveOnChain() {
+  // The normal Node API-router suite intentionally provides only storage, not a Chrome runtime.
+  // Registration is a convenience side effect, so skip it there instead of leaking live RPC
+  // traffic into a deterministic unit run. scripts/verify-live-e2e.mjs supplies the runtime mock
+  // and remains the explicit live path.
+  const hasExtensionRuntime = typeof chrome !== 'undefined'
+    && typeof chrome.runtime?.getManifest === 'function'
+    && typeof chrome.runtime?.onMessage?.addListener === 'function';
+  if (!hasExtensionRuntime) return;
+
   Promise.resolve()
     .then(async () => {
       const active = await vault.getActiveAccount();

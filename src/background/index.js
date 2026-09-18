@@ -8,6 +8,25 @@ import { emitLockStateChanged } from './services/event-service.js';
 
 const AUTO_LOCK_ALARM = 'thru-auto-lock';
 
+// The unlocked session contains decrypted recovery phrases and private keys. Chrome currently
+// defaults storage.session to TRUSTED_CONTEXTS, but write that boundary down at worker startup so
+// a future manifest/runtime change cannot silently broaden who can read it. The optional guard keeps
+// Node-only service tests usable; Chrome MV3 always provides this method.
+function restrictSessionStorage() {
+  const setAccessLevel = chrome.storage?.session?.setAccessLevel;
+  if (typeof setAccessLevel !== 'function') return;
+  try {
+    Promise.resolve(setAccessLevel.call(chrome.storage.session, { accessLevel: 'TRUSTED_CONTEXTS' }))
+      .catch((error) => {
+        console.warn('[background] could not set session storage access level:', error?.message || error);
+      });
+  } catch (error) {
+    console.warn('[background] could not set session storage access level:', error?.message || error);
+  }
+}
+
+restrictSessionStorage();
+
 chrome.runtime.onInstalled.addListener(() => {
   ensureAutoLockAlarm();
 });

@@ -28,6 +28,15 @@ import * as balances from './balance-service.js';
  */
 function registerOnChain(account) {
   if (!account?.address) return;
+
+  // The regular Node API-router suite provides storage but intentionally does not provide an
+  // extension runtime. Do not let a fire-and-forget convenience side effect turn that suite into
+  // an accidental live-RPC test. The dedicated live probe supplies the runtime surface explicitly.
+  const hasExtensionRuntime = typeof chrome !== 'undefined'
+    && typeof chrome.runtime?.getManifest === 'function'
+    && typeof chrome.runtime?.onMessage?.addListener === 'function';
+  if (!hasExtensionRuntime) return;
+
   Promise.resolve()
     .then(async () => {
       const info = await thruClient.getAccountInfo(account.address);

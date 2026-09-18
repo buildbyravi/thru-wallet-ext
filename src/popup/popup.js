@@ -7,8 +7,7 @@
 //
 // What remains is a boot stub. If it ever grows a screen again, that screen belongs in a route.
 //
-// The legacy tree is recoverable from git history and from legacy-ui-backup-*.zip in the repo
-// root.
+// The legacy tree is recoverable from git history. Do not keep a second copy in the repository.
 
 import { boot } from '../ui/app/boot.js';
 import { applyQueryOverrides } from '../shared/flags.js';
