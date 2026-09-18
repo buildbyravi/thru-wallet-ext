@@ -48,6 +48,9 @@ function section(title) {
 const declared = new Set(Object.keys(METHODS));
 const wired = new Set(listHandlerNames());
 
+section('Contract versioning');
+ok('contract v5 documents the signing-auth compatibility break', CONTRACT_VERSION >= 5);
+
 section('Contract and router agree in both directions');
 
 const undeclared = [...wired].filter((m) => !declared.has(m));
@@ -122,6 +125,7 @@ const MUST_USE_SIGNING_AUTH = [
 for (const name of MUST_USE_SIGNING_AUTH) {
   ok(`${name} uses signing auth`, METHODS[name]?.auth === 'signing', `auth is '${METHODS[name]?.auth}'`);
   ok(`${name} can carry a signing password`, METHODS[name]?.params.includes('password'));
+  ok(`${name} records authSince v5`, METHODS[name]?.authSince === 5, `authSince is '${METHODS[name]?.authSince}'`);
 }
 
 section('Multi-seed keyring API is exposed');

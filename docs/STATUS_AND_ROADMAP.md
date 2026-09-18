@@ -193,9 +193,10 @@ three token bugs that had absorbed significant probing effort.
 Each was earned by a defect in `docs/DEFECT_LOG.md`.
 
 1. New DOM is built with `kit/dom.js` `h()`. The sink ratchet is at **0** and must stay there.
-2. The contract is append-only and tested in both directions.
-3. Sensitive operations are `auth: 'password'`, re-verified against the encrypted blob — never
-   against session state.
+2. The contract is append-only and tested in both directions, except the documented contract v5
+   security break that moved existing signing methods to `auth: 'signing'`.
+3. Sensitive operations are `auth: 'password'` or `auth: 'signing'`, re-verified against the
+   encrypted blob when password auth is required — never against session state.
 4. Secrets never enter URLs, router params, history, `data-*`, storage, `window` or `console`.
 5. Money is BigInt internally and a **string** on the wire. Never both in one object.
 6. `destroy()` removes the same handler references it added. Use `disposer()`.

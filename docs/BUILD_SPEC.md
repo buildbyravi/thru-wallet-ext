@@ -175,6 +175,11 @@ Only `src/ui/app/bridge.js` may call `chrome.runtime.sendMessage`.
 requires a new name (`tx.send` → `tx.sendV2`), keeping the old until no route references it. A
 method's shape is never edited in place.
 
+**Contract v5 exception:** the signing re-authentication fix intentionally changed existing
+signing methods in place from `auth: 'unlocked'` to `auth: 'signing'`. This is a documented
+compatibility break so older callers cannot bypass the new background signing gate by continuing
+to call legacy method names.
+
 **R3 — Layering is enforced by a script, not by discipline.** `scripts/check-layering.mjs` fails the
 build when:
 - `src/background/**` imports `src/ui/**`, `src/popup/**`, or `src/desktop/**`

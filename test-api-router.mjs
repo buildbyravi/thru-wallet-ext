@@ -110,18 +110,33 @@ console.log('[8] Signing re-authentication defaults to on and is password-gated'
 const prefsDefault = await handleApiRequest({ method: 'settings.get' });
 assert.equal(prefsDefault.ok, true);
 assert.equal(prefsDefault.data.requirePasswordForSigning, true);
-const sendWithoutPassword = await handleApiRequest({
-  method: 'tx.send',
-  params: { toAddress: res2.data.address, amountUnits: '1' },
-});
-assert.equal(sendWithoutPassword.ok, false);
-assert.equal(sendWithoutPassword.error.code, 'AUTH_REQUIRED');
+
+const signingWithoutPassword = [
+  ['tx.send', { toAddress: res2.data.address, amountUnits: '1' }],
+  ['tx.claimFaucet', { amountUnits: '1' }],
+  ['tx.autoCreateAccount', {}],
+  ['token.deploy', {
+    mintSeed: 'a'.repeat(64),
+    name: 'Audit Token',
+    symbol: 'AUDIT',
+    decimals: 6,
+    description: '',
+    imageUrl: '',
+  }],
+];
+for (const [method, params] of signingWithoutPassword) {
+  const res = await handleApiRequest({ method, params });
+  assert.equal(res.ok, false, `${method} without password must fail`);
+  assert.equal(res.error.code, 'AUTH_REQUIRED', `${method} without password must require auth`);
+}
+
 const sendWrongPassword = await handleApiRequest({
   method: 'tx.send',
   params: { toAddress: res2.data.address, amountUnits: '1', password: 'wrong password' },
 });
 assert.equal(sendWrongPassword.ok, false);
 assert.equal(sendWrongPassword.error.code, 'AUTH_REQUIRED');
+
 const unsafeSettingsSet = await handleApiRequest({
   method: 'settings.set',
   params: { patch: { requirePasswordForSigning: false } },
@@ -139,14 +154,22 @@ const disableWithPassword = await handleApiRequest({
 });
 assert.equal(disableWithPassword.ok, true);
 assert.equal(disableWithPassword.data.requirePasswordForSigning, false);
+
+const sessionOnlySend = await handleApiRequest({
+  method: 'tx.send',
+  params: { toAddress: res2.data.address, amountUnits: '1' },
+});
+assert.equal(sessionOnlySend.ok, false);
+assert.notEqual(sessionOnlySend.error.code, 'AUTH_REQUIRED');
+assert.match(sessionOnlySend.error.message, /address you're sending from/i);
+
 const enableWithPassword = await handleApiRequest({
   method: 'settings.setSecurity',
   params: { patch: { requirePasswordForSigning: true }, password: 'Password123!' },
 });
 assert.equal(enableWithPassword.ok, true);
 assert.equal(enableWithPassword.data.requirePasswordForSigning, true);
-console.log('  ok - signing auth rejects missing/wrong passwords and opt-out is password-gated');
-
+console.log('  ok - signing auth rejects missing/wrong passwords and session-only opt-out reaches the signing handler');
 console.log('[9] Every UI-facing response survives JSON serialization');
 // chrome.runtime.sendMessage serializes with JSON, and JSON.stringify THROWS on a BigInt,
 // which Chrome reports only as the opaque "Could not serialize message." networks.js carries

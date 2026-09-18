@@ -6,6 +6,10 @@
 //      an existing method's param names or return shape. To change behaviour, add a new
 //      name (e.g. 'tx.send' -> 'tx.sendV2') and retire the old one only after zero
 //      references remain in the UI.
+//
+//      Contract v5 is the explicit security exception: existing signing methods keep their
+//      names but now use auth:'signing'. This is an intentional compatibility break so older
+//      callers cannot keep signing from an unlocked-only session by using legacy names.
 //   2. Every method the UI calls must appear here, and every handler registered in
 //      src/background/api-router.js must appear here. test-contract.mjs enforces both
 //      directions, so a rename on either side fails CI instead of failing silently at
@@ -23,7 +27,7 @@
 //                explicitly disabled signing re-authentication in Settings
 // `since` is the contract version in which the method first appeared.
 
-export const CONTRACT_VERSION = 4;
+export const CONTRACT_VERSION = 5;
 
 export const METHODS = {
   // ---- System ------------------------------------------------------------
@@ -291,12 +295,14 @@ export const METHODS = {
     returns: '{ signature, blockHeight }',
     auth: 'signing',
     since: 1,
+    authSince: 5,
   },
   'tx.send': {
     params: ['toAddress', 'amountUnits', 'password'],
     returns: '{ signature, blockHeight }',
     auth: 'signing',
     since: 1,
+    authSince: 5,
   },
   'tx.listHistory': {
     params: ['address', 'pageSize', 'limit', 'cursor'],
@@ -315,6 +321,7 @@ export const METHODS = {
     returns: 'result of the on-chain account creation',
     auth: 'signing',
     since: 1,
+    authSince: 5,
   },
   'tx.validateAddress': {
     params: ['address'],
@@ -377,6 +384,7 @@ export const METHODS = {
     returns: 'deployment result including the mint address',
     auth: 'signing',
     since: 1,
+    authSince: 5,
   },
   'token.list': {
     params: [],
@@ -441,7 +449,7 @@ export const METHODS = {
     params: ['patch', 'password'],
     returns: 'updated preference record for security-sensitive settings; password-gated',
     auth: 'password',
-    since: 4,
+    since: 5,
   },
 
   // ---- Address book ----------------------------------------------------
