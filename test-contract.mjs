@@ -52,6 +52,19 @@ section('Contract versioning');
 ok('contract v5 documents the signing-auth compatibility break', CONTRACT_VERSION >= 5);
 ok('contract v6 documents destructive-settings hardening', CONTRACT_VERSION >= 6);
 ok('contract v7 documents the custom-network quarantine break', CONTRACT_VERSION >= 7);
+ok('contract v8 documents the token-transfer addition', CONTRACT_VERSION >= 8);
+
+// Contract v8 invariants: the new signing surface exists with the right gate, and the
+// capability stub it replaces did not silently change shape into something else.
+{
+  const transfer = METHODS['token.transfer'];
+  ok('token.transfer exists since v8 with signing auth',
+    Boolean(transfer) && transfer.since === 8 && transfer.auth === 'signing' && transfer.authSince === 8,
+    JSON.stringify(transfer));
+  ok('token.transfer declares mintAddress, toAddress, amountUnits and password',
+    ['mintAddress', 'toAddress', 'amountUnits', 'password'].every((p) => transfer.params.includes(p)),
+    (transfer?.params || []).join(','));
+}
 
 section('Contract and router agree in both directions');
 

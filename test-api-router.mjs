@@ -158,6 +158,11 @@ const signingWithoutPassword = [
     description: '',
     imageUrl: '',
   }],
+  ['token.transfer', {
+    mintAddress: 'taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKqq',
+    toAddress: res2.data.address,
+    amountUnits: '1',
+  }],
 ];
 for (const [method, params] of signingWithoutPassword) {
   const res = await handleApiRequest({ method, params });
@@ -197,6 +202,29 @@ const sessionOnlySend = await handleApiRequest({
 assert.equal(sessionOnlySend.ok, false);
 assert.notEqual(sessionOnlySend.error.code, 'AUTH_REQUIRED');
 assert.match(sessionOnlySend.error.message, /address you're sending from/i);
+
+// Contract v8: token.transfer's LOCAL guards (shape, amount, self-send) must fire before any
+// network access, exactly like tx.send's. Each case reaches the handler past auth and fails on
+// a specific local rule; anything escaping to an RPC would surface as an unrecognised error.
+const sessionOnlyTokenGuards = [
+  [{ mintAddress: 'not-an-address', toAddress: res2.data.address, amountUnits: '1' },
+    /valid token mint address/i],
+  [{ mintAddress: 'taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKqq', toAddress: 'junk', amountUnits: '1' },
+    /valid Thru address/i],
+  [{ mintAddress: 'taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKqq', toAddress: res2.data.address, amountUnits: '1' },
+    /address you're sending from/i],
+  [{ mintAddress: 'taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKqq', toAddress: 'taEREREREREREREREREREREREREREREREREREREREREREg', amountUnits: '0' },
+    /greater than zero/i],
+  [{ mintAddress: 'taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKqq', toAddress: 'taEREREREREREREREREREREREREREREREREREREREREREg', amountUnits: 'abc' },
+    /whole number of base units/i],
+];
+for (const [params, pattern] of sessionOnlyTokenGuards) {
+  const res = await handleApiRequest({ method: 'token.transfer', params });
+  assert.equal(res.ok, false, `token.transfer ${pattern} must fail`);
+  assert.notEqual(res.error.code, 'AUTH_REQUIRED', `token.transfer ${pattern} must pass auth`);
+  assert.match(res.error.message, pattern, `token.transfer guard message for ${pattern}`);
+}
+console.log('  ok - token.transfer local guards fire before any network access');
 
 const enableWithPassword = await handleApiRequest({
   method: 'settings.setSecurity',
@@ -254,6 +282,9 @@ const SERIALIZATION_PROBES = [
   ['settings.get', {}],
   ['contacts.list', {}],
   ['token.list', {}],
+  // Registry empty here, so this returns supported:true with zero balances and no RPC, which
+  // is exactly why it belongs in the probe: the shape itself must stay port-safe.
+  ['token.getBalances', { address: res2.data.address }],
   ['tx.getPending', {}],
   ['wallet.getLockoutState', {}],
 ];

@@ -74,6 +74,20 @@ const SECRET_PASSWORD = 'Hunter2!correct-horse';
 const ADDRESS_A = 'ta1addressaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 const ADDRESS_B = 'ta1addressbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
 
+/** A deployed token the active account actually holds (contract v8 asset flows). */
+const TOKEN_FIXTURE = {
+  mintAddress: 'ta1smkfixturemint000000000000000000000000000',
+  symbol: 'SMK',
+  name: 'Smoke Token',
+  decimals: 6,
+  imageUrl: '',
+  hidden: false,
+  source: 'deployed',
+  deployedAt: 1750000000000,
+  initialSupply: '1000000000',
+};
+const TOKEN_ACCOUNT_FIXTURE = 'ta1smktokenaccount0000000000000000000000';
+
 /** Every string that must never appear in the DOM, by kind. */
 const SECRETS = [
   ['mnemonic', SECRET_MNEMONIC],
@@ -1009,7 +1023,7 @@ const backend = {
   contacts: [{ address: ADDRESS_B, label: 'Spending wallet', createdAt: 1750000003000 }],
   lockout: { locked: false, failedAttempts: 0, retryInMs: 0 },
   pending: [],
-  tokens: [],
+  tokens: [TOKEN_FIXTURE],
 };
 
 function activeNetwork() {
@@ -1191,6 +1205,31 @@ const FIXTURES = {
   'contacts.list': () => backend.contacts.map((c) => ({ ...c })),
 
   'token.list': () => backend.tokens.map((t) => ({ ...t })),
+  'token.getBalances': () => ({
+    supported: true,
+    networkId: activeNetwork().id,
+    balances: backend.tokens.map((t) => ({
+      mintAddress: t.mintAddress,
+      symbol: t.symbol,
+      name: t.name,
+      decimals: t.decimals,
+      imageUrl: t.imageUrl || '',
+      hidden: Boolean(t.hidden),
+      source: t.source || 'deployed',
+      tokenAccount: TOKEN_ACCOUNT_FIXTURE,
+      tokenAccountExists: true,
+      amountUnits: '250000000',
+      error: false,
+    })),
+    reason: null,
+  }),
+  'token.deriveTokenAccount': () => TOKEN_ACCOUNT_FIXTURE,
+  'token.transfer': () => ({
+    signature: 'sig_token_cccccccccccccccccccccccccccccccccccc',
+    blockHeight: null,
+    recipientTokenAccountCreated: false,
+    initSignature: null,
+  }),
 
   'tx.checkHealth': () => ({
     status: 'ok',
@@ -1422,7 +1461,7 @@ function resetBackend(scenario) {
   backend.contacts = [{ address: ADDRESS_B, label: 'Spending wallet', createdAt: 1750000003000 }];
   backend.lockout = { locked: false, failedAttempts: 0, retryInMs: 0 };
   backend.pending = [];
-  backend.tokens = [];
+  backend.tokens = [TOKEN_FIXTURE];
 }
 
 /** Fresh document, window and #app, plus cleared logs. */
@@ -2252,6 +2291,51 @@ async function navigationTest() {
     ok(`no secret appears on the ${path} round trip`,
       findSecrets(SECRETS).length === 0 && findSecretsInTornDown(SECRETS).length === 0);
   }
+
+  // ---- Send: selecting a token asset (contract v8) -------------------------
+  // The asset picker used to list tokens as permanently "not sendable"; with token.transfer
+  // behind it, a funded token is selectable and the whole form re-denominates. This drives
+  // the real click path: asset card → picker → token row → form.
+  router.navigate('/send');
+  await settle();
+  const assetCard = buttons(router.root, /thru native token/i)[0];
+  ok('the send screen offers the asset card', Boolean(assetCard));
+  if (assetCard) {
+    click(assetCard);
+    await settle();
+    const tokenRow = buttons(router.root, /smoke token/i)[0];
+    ok('a funded token is selectable in the asset picker', Boolean(tokenRow));
+    ok('the picker no longer declares tokens fundamentally unsendable',
+      !/Token transfers are not supported yet/.test(textOf(router.root)));
+    if (tokenRow) {
+      click(tokenRow);
+      await settle();
+      ok('the amount field re-denominates to the token', textOf(router.root).includes('Amount (SMK)'));
+      ok('the spendable line shows the token balance', textOf(router.root).includes('Spendable: 250 SMK'),
+        textOf(router.root).slice(0, 240));
+
+      // The recipient probe is mint-dependent: picking a recipient must check THIS mint's
+      // token account, not reuse the native wallet-existence answer.
+      const pickBtn = buttons(router.root, /my accounts/i)[0];
+      if (pickBtn) {
+        click(pickBtn);
+        await settle();
+        const accountRow = buttons(router.root, /spending/i)[0];
+        if (accountRow) {
+          click(accountRow);
+          await settle();
+          ok('the token recipient check runs against the token account',
+            /SMK account|token account/i.test(textOf(router.root)), textOf(router.root).slice(0, 260));
+        } else {
+          ok('a recipient row exists in the account picker', false, textOf(router.root).slice(0, 200));
+        }
+      } else {
+        ok('the send form offers the account picker shortcut', false, textOf(router.root).slice(0, 200));
+      }
+    }
+  }
+  ok('no secret appears on the token send flow',
+    findSecrets(SECRETS).length === 0 && findSecretsInTornDown(SECRETS).length === 0);
 
   // The account pill is the dashboard's route into account management.
   router.navigate('/dashboard');

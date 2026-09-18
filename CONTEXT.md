@@ -112,9 +112,10 @@ Notable functions: `createVault`, `unlock`, `lock`, `resetWallet`, `listKeyrings
 
 Password-verified operations re-check against the **encrypted blob**, not session state.
 
-### `src/lib/thru-client.js` --  703 lines
+### `src/lib/thru-client.js` --  999 lines
 
-RPC, transaction construction, history decoding, token deployment.
+RPC, transaction construction, history decoding (native + token entries), token deployment,
+token account reads and token transfers.
 
 **Network binding matters here.** `configureNetwork(config)` sets the RPC URL and program
 addresses; `network-service` calls it on every config read and enabled built-in switch. Contract v7
@@ -122,8 +123,12 @@ refuses custom activation and rewrites any stale custom/disabled active id to Al
 binding call. Before binding existed the client memoized a hardcoded alphanet URL, so network
 switching was cosmetic.
 
-Token derivation delegates to `@thru/programs/token` --  `deriveTokenMintAddress` needs a mint
-authority and a **64-hex-character** seed. `generateMintSeed()` produces exactly that.
+Token derivation and token instructions delegate to `@thru/programs/token` --
+`deriveTokenMintAddress` needs a mint authority and a **64-hex-character** seed;
+`generateMintSeed()` produces exactly that. Token transfers initialize the recipient's token
+account in a preceding transaction when missing (program-derived, no recipient key needed),
+and the token wire format uses a **one-byte** instruction tag -- pinned by goldens in
+test-thru-client.mjs.
 
 ### `src/lib/networks.js` --  193 lines
 
@@ -148,8 +153,8 @@ program addresses, `faucetStateAccount`, `faucetMaxPerClaim`, `baseFeeUnits`, `f
 | `services/wallet-service.js` | 204 | Lifecycle, unlock backoff, export, on-chain registration |
 | `services/keyring-service.js` | 119 | Multi-seed add/create/rename/remove/backup-state |
 | `services/account-service.js` | 203 | Public accounts, HD preview/batch/remove, preference ordering |
-| `services/tx-service.js` | 308 | Faucet, transfer, history, validation, fee estimate |
-| `services/token-service.js` | 165 | Deploy, registry, derivation, visibility |
+| `services/tx-service.js` | 378 | Faucet, transfer, history (+token direction resolution), validation, fee estimate |
+| `services/token-service.js` | 330 | Deploy, registry, derivation, visibility, **owned balances, token transfers** |
 | `services/balance-service.js` | 201 | Batched + cached balances, **per-network** |
 | `services/pending-tx-service.js` | 227 | Submitted--  confirmed tracking, badge, **per-network** |
 | `services/preferences-service.js` | 178 | Order/pin/hide, whitelist, settings |
@@ -159,10 +164,10 @@ program addresses, `faucetStateAccount`, `faucetMaxPerClaim`, `baseFeeUnits`, `f
 | `services/system-service.js` | 189 | Auto-lock, activity stamping, diagnostics |
 | `services/event-service.js` | 47 | The **only** inbound push channel |
 
-Contract v7, **74 methods**, append-only except the documented v5 signing-auth, v6 destructive-settings, and v7 custom-network quarantine security breaks. `src/shared/contract/manifest.js` is the allowlist, not just documentation.
+Contract v8, **75 methods**, append-only except the documented v5 signing-auth, v6 destructive-settings, and v7 custom-network quarantine security breaks; v8 is purely additive (`token.transfer`, real `token.getBalances`). `src/shared/contract/manifest.js` is the allowlist, not just documentation.
 
 Deliberately unimplemented, returning `{ supported: false, reason }` rather than fabricated
-values: `tx.simulate`, `token.getBalances`.
+values: `tx.simulate`. (`token.getBalances` became real in contract v8.)
 
 ---
 
@@ -186,7 +191,7 @@ no prop that accepts markup.
 ### `src/ui/domain/` --  wallet-aware components
 
 `account-avatar.js` (59)  `account-row.js` (151)  `account-picker.js` (147, grouped by keyring)
- `asset-selector.js` (105)  `token-row.js` (88)  `password-prompt.js` (139,
+ `asset-selector.js` (143)  `token-row.js` (88)  `password-prompt.js` (139,
 `requirePassword()`, focus-trapped)  `seed-phrase-grid.js` (160, grid + backup challenge)
 
 ### `src/ui/app/` --  router and routes
@@ -198,16 +203,16 @@ topbar + network badge + footer)
 | --- | --- | --- |
 | `/welcome` | `routes/welcome.js` | 295 |
 | `/unlock` | `routes/unlock.js` | 191 |
-| `/dashboard` | `routes/dashboard.js` | 311 |
+| `/dashboard` | `routes/dashboard.js` | 324 |
 | `/accounts` | `routes/accounts.js` | 194 |
 | `/account?ref=` | `routes/account-detail.js` | 296 |
 | `/add-account` | `routes/add-account.js` | 392 |
 | `/keyring?id=` | `routes/keyring.js` | 190 |
 | `/export?ref=` | `routes/export.js` | 279 |
-| `/send` | `routes/send.js` | 682 |
+| `/send` | `routes/send.js` | 822 |
 | `/receive` | `routes/receive.js` | 137 |
 | `/faucet` | `routes/faucet.js` | 252 |
-| `/history` | `routes/history.js` | 234 |
+| `/history` | `routes/history.js` | 262 |
 | `/settings` | `routes/settings.js` | 395 |
 | `/reset` | `routes/reset.js` | 169 |
 
@@ -220,7 +225,7 @@ topbar + network badge + footer)
 
 No `chrome.*`, no DOM.
 
-`contract/manifest.js` (558)  `format.js` (42, the only money math)  `refs.js` (92, opaque
+`contract/manifest.js` (579)  `format.js` (82, the only money math)  `refs.js` (92, opaque
 account refs for URLs)  `network-scope.js` (87, the per-network vs global split)
 `flags.js` (73)  `autolock.js` (36)
 

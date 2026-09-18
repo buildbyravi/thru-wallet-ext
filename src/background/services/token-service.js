@@ -2,8 +2,11 @@
 
 import * as vault from '../../lib/vault.js';
 import * as thruClient from '../../lib/thru-client.js';
-import { getPreferences, setPreferences, setTokenHidden } from './preferences-service.js';
+import { getPreferences, setPreferences, setTokenHidden, assertWhitelisted } from './preferences-service.js';
 import { getActiveNetworkId } from './network-service.js';
+import * as pending from './pending-tx-service.js';
+import * as balances from './balance-service.js';
+import { formatTokenAmount } from '../../shared/format.js';
 
 /**
  * Deploy a new native token mint on ThruVM using the active account.
@@ -112,18 +115,180 @@ export async function setVisibility(mintAddress, hidden) {
 }
 
 /**
- * Balances of tokens the account actually owns.
+ * Balances of tokens an address actually owns, for every mint in the local registry
+ * (deployed on the active network + manually imported).
  *
- * NOT IMPLEMENTED. token.list returns only tokens this wallet deployed — it is a launchpad
- * registry, not an asset list. Reading owned balances needs Token Program account-read
- * semantics that have not been verified against a live network, so this reports unsupported
- * rather than returning zeros that would look like real empty balances.
+ * Contract v8. This used to return `supported: false` (docs/BACKEND_GAPS.md C1): owned
+ * balances need Token Program account reads, which the official @thru/programs/token bindings
+ * now provide (`deriveTokenAccountAddress` + `parseTokenAccountData`).
+ *
+ * Honesty rules preserved from the stub era:
+ *   - a token account that does not exist reports amountUnits: null — that is a REAL zero,
+ *     carried explicitly via tokenAccountExists: false rather than as the number 0;
+ *   - a balance whose read FAILED reports error: true and amountUnits: null — unknown is
+ *     never shaped like zero;
+ *   - decimals are read from the on-chain mint when there is a balance to display, falling
+ *     back to the registry value only if the mint read fails.
+ *
+ * Reads are sequential and bounded by registry size (deployed + imported mints for the
+ * active network), which is user-scale data, not chain enumeration.
+ *
+ * @param {Object} args
+ * @param {string} args.address owner whose balances to read (defaults to the active account)
  */
-export async function getTokenBalances(/* { address } */) {
+export async function getTokenBalances({ address } = {}) {
+  const owner = address || (await vault.getActiveAccount())?.address;
+  if (!owner) throw new Error('An address is required to read token balances.');
+  const networkId = await getActiveNetworkId();
+  const registry = await listDeployedTokens();
+
+  const results = [];
+  let anyError = false;
+  for (const token of registry) {
+    if (!token.mintAddress) continue;
+    const base = {
+      mintAddress: token.mintAddress,
+      symbol: token.symbol,
+      name: token.name,
+      decimals: token.decimals,
+      imageUrl: token.imageUrl,
+      hidden: token.hidden,
+      source: token.source,
+      tokenAccount: null,
+      tokenAccountExists: null,
+      amountUnits: null,
+      error: false,
+    };
+    try {
+      const balance = await thruClient.getTokenBalance(owner, token.mintAddress);
+      base.tokenAccount = balance.tokenAccount;
+      base.tokenAccountExists = balance.exists;
+      if (balance.exists) {
+        base.amountUnits = balance.amount.toString();
+        // Decimals must be authoritative for display math, so prefer the on-chain mint over
+        // whatever the local registry claims (an imported record can declare anything).
+        try {
+          const mint = await thruClient.readMintAccount(token.mintAddress);
+          if (mint.exists) {
+            base.decimals = mint.decimals;
+            if (!base.symbol && mint.ticker) base.symbol = mint.ticker;
+          }
+        } catch {
+          // Registry decimals stand; the balance is still real.
+        }
+      }
+    } catch {
+      // The read failed (RPC unreachable, malformed account). This token's balance is
+      // UNKNOWN — recorded as an error, never as zero.
+      anyError = true;
+      base.error = true;
+    }
+    results.push(base);
+  }
+
   return {
-    supported: false,
-    balances: null,
-    reason: 'Reading owned token balances needs Token Program account reads that are not verified on Thru yet.',
+    supported: true,
+    networkId,
+    balances: results,
+    reason: anyError
+      ? 'One or more token balances could not be read from the network; those are shown as unknown, not as zero.'
+      : null,
+  };
+}
+
+/**
+ * Send a token transfer from the active account (contract v8, auth: 'signing').
+ *
+ * The same guard discipline as tx-service.sendTransfer, applied to a mint-denominated amount:
+ *   - mint and recipient must be well-formed Thru addresses
+ *   - amount must be a positive integer number of base units (of the MINT, not of THRU)
+ *   - self-transfers are refused
+ *   - the whitelist is enforced when the user has enabled it
+ *   - an identical transfer of the same mint within the last 15s is a double-click
+ *   - the mint must exist on-chain on the active network
+ * The chain-level guards (source token account exists, not frozen, balance covers amount)
+ * live in thru-client.sendTokenTransfer, and the recipient's token account is initialized by
+ * the sender when missing — a program-derived address needs no recipient signature.
+ *
+ * @param {Object} params
+ * @param {string} params.mintAddress
+ * @param {string} params.toAddress
+ * @param {string|number|bigint} params.amountUnits raw units of the mint
+ */
+export async function transferToken({ mintAddress, toAddress, amountUnits }) {
+  const mint = String(mintAddress || '').trim();
+  if (!thruClient.isValidThruAddress(mint)) {
+    throw new Error('That does not look like a valid token mint address.');
+  }
+  const target = String(toAddress || '').trim();
+  if (!thruClient.isValidThruAddress(target)) {
+    throw new Error('That does not look like a valid Thru address.');
+  }
+
+  let rawUnits;
+  try {
+    rawUnits = BigInt(amountUnits);
+  } catch {
+    throw new Error('Amount must be a whole number of base units.');
+  }
+  if (rawUnits <= 0n) {
+    throw new Error('Enter an amount greater than zero.');
+  }
+
+  const feePayer = await vault.getActiveAccount();
+  if (feePayer.address === target) {
+    throw new Error("That's the address you're sending from.");
+  }
+
+  await assertWhitelisted(target);
+
+  if (await pending.isProbableDuplicate({
+    from: feePayer.address,
+    to: target,
+    amountUnits: rawUnits.toString(),
+    mint,
+  })) {
+    const err = new Error('An identical transfer was just submitted. Check Activity before sending again.');
+    err.code = 'DUPLICATE_SUBMISSION';
+    throw err;
+  }
+
+  // The mint must exist here, on the active network. Imported registry metadata is
+  // user-typed and proves nothing; decimals and the display ticker come from the mint itself.
+  const mintInfo = await thruClient.readMintAccount(mint);
+  if (!mintInfo.exists) {
+    const err = new Error('No token mint exists at that address on this network.');
+    err.code = 'MINT_NOT_FOUND';
+    throw err;
+  }
+  const symbol = mintInfo.ticker || 'tokens';
+
+  const result = await thruClient.sendTokenTransfer({
+    feePayer,
+    mintAddress: mint,
+    recipientAddress: target,
+    amountUnits: rawUnits,
+  });
+
+  const networkId = await getActiveNetworkId();
+  await pending.track({
+    signature: result.signature,
+    kind: 'token',
+    from: feePayer.address,
+    to: target,
+    amountUnits: rawUnits.toString(),
+    mint,
+    displayAmount: `${formatTokenAmount(rawUnits, mintInfo.decimals)} ${symbol}`,
+    networkId,
+  });
+  // The THRU balance paid the fee (twice, if the recipient token account was created).
+  await balances.getBalances([feePayer.address]);
+
+  return {
+    signature: result.signature || null,
+    blockHeight: null,
+    recipientTokenAccountCreated: Boolean(result.recipientTokenAccountCreated),
+    initSignature: result.initSignature || null,
   };
 }
 

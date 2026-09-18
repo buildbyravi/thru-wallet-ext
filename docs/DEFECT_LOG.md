@@ -176,6 +176,21 @@ Recording these matters more than the ones I inherited.
 > **Lesson:** a guardrail with an inconsistency (stripping comments in one scan but not
 > another) will eventually flag the very file that documents the rule.
 
+### 4.7 The deploy-authority derivation that could never have worked — `READ`
+
+`deriveTokenMintAddress(mintSeed)` was called with **no mint authority**, so the wallet derived
+the trivial-authority mint address while the InitializeMint instruction it then broadcast was
+built with real authority bytes — two different programs' worth of state that could never meet
+on-chain. And the hand-rolled `encodeInitializeMintInstructionData` sitting next to it had no
+official binding to be pinned against, so nothing could have caught its wire layout either. The
+deploy path was in fact always-throwing on the first live call. Both halves were retired in the
+same change: `deriveTokenMintAddress(mintSeed, address)` (authority mandatory) plus
+`createInitializeMintInstruction` from `@thru/programs/token`, with derivation goldens pinned in
+test-thru-client.mjs.
+
+> **Lesson:** a "sacred" hand-rolled encoder is only as trustworthy as its verifier. A wire
+> format that no official binding reproduces is not sacred — it is simply untested.
+
 ---
 
 ## 5. Duplication found

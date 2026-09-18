@@ -73,7 +73,14 @@ async function updateBadge(list) {
 
 /**
  * Record a freshly submitted transaction.
- * @param {{ signature: string, kind: string, from: string, to?: string, amountUnits?: string, networkId?: string }} tx
+ *
+ * `mint` distinguishes a token transfer from a native one: the same addresses sending the
+ * same amount of THRU and of a token within the dedupe window are two different transactions,
+ * not a double-click. `displayAmount` is a preformatted display string (e.g. "5 ABC") for
+ * kinds whose raw units are not THRU and must never pass through format().
+ *
+ * @param {{ signature: string, kind: string, from: string, to?: string, amountUnits?: string,
+ *   mint?: string, displayAmount?: string, networkId?: string }} tx
  */
 export async function track(tx) {
   if (!tx?.signature) return null;
@@ -84,6 +91,8 @@ export async function track(tx) {
     from: tx.from || null,
     to: tx.to || null,
     amountUnits: tx.amountUnits != null ? String(tx.amountUnits) : null,
+    mint: tx.mint || null,
+    displayAmount: tx.displayAmount || null,
     networkId: tx.networkId || null,
     status: TX_STATUS.SUBMITTED,
     submittedAt: Date.now(),
@@ -115,18 +124,25 @@ export async function listPending() {
 /**
  * Whether an identical transfer was submitted within the last few seconds.
  * Used to block a double-click from broadcasting twice.
- * @param {{ from: string, to: string, amountUnits: string }} candidate
+ *
+ * `mint` is part of identity: a native send and a token send with the same from/to/amount
+ * are NOT duplicates of each other. Legacy records carry no mint (null) and only ever match
+ * native (mintless) candidates.
+ *
+ * @param {{ from: string, to: string, amountUnits: string, mint?: string }} candidate
  * @param {number} [windowMs=15000]
  */
 export async function isProbableDuplicate(candidate, windowMs = 15_000) {
   const all = await readAll();
   const cutoff = Date.now() - windowMs;
+  const mint = candidate.mint || null;
   return all.some((r) => (
     r.submittedAt >= cutoff
     && r.status === TX_STATUS.SUBMITTED
     && r.from === candidate.from
     && r.to === candidate.to
     && r.amountUnits === String(candidate.amountUnits)
+    && (r.mint || null) === mint
   ));
 }
 
