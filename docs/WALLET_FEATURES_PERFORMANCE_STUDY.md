@@ -3,7 +3,7 @@
 Date: 2026-09-18  
 Scope: product/architecture study for what a modern browser wallet generally needs, and how the Thru wallet should scale without popup lag or hanging. This is a design document only; it does not implement new chain, token, DEX, launchpad, chart, or dApp-provider behavior.
 
-> Thru-specific rule: use MetaMask, Rabby, Phantom, Keplr, Brave Wallet, and Coinbase/Base Wallet as UX and architecture references only. Thru is a native Layer 1, so implementation must use verified Thru-native SDKs, programs, RPC/gRPC-Web, replay/indexer, and explorer tooling. Do not copy EVM/Solana/Cosmos assumptions into Thru.
+> Thru-specific rule: use MetaMask, Rabby, Phantom, Keplr, Brave Wallet, and Coinbase/Base Wallet as UX and architecture references only. Thru is a native Layer 1, so implementation must use verified Thru-native SDKs/programs and a future verified read/indexer adapter; package and transport TBD after official Thru docs and live validation. Do not copy EVM/Solana/Cosmos assumptions into Thru.
 
 ---
 
@@ -463,7 +463,7 @@ application services
   ↓
 Thru client / SDK / indexer adapters
   ↓
-Thru RPC / gRPC-Web / indexer
+Future verified read/indexer adapter
 ```
 
 Rules:
@@ -685,7 +685,7 @@ For this Thru wallet, the right target is:
 ```txt
 Popup = fast wallet + quick swap + signing approvals
 Full tab = launchpad + DEX/DeFi terminal + charts + markets
-Background = auth, signing, vault, Thru SDK, RPC/indexer coordination
+Background = auth, signing, vault, Thru SDK, RPC coordination, and future verified read/indexer adapter coordination
 Indexer = history, market data, chart data
 ```
 

@@ -78,7 +78,7 @@ src/lib/thru/
   amm-adapter.js           # @thru/programs/amm only
   oracle-adapter.js        # @thru/programs/oracle only
   clob-adapter.js          # @thru/programs/clob only if verified
-  indexer-adapter.js       # @thru/replay / @thru/indexer / gRPC reads
+  indexer-adapter.js       # future verified read/indexer adapter; package/transport TBD
   intent-builder.js        # shared transaction intent builder, no signing
 
 src/shared/contract/
@@ -183,7 +183,7 @@ Target adapters:
 | `amm-adapter.js` | AMM pool derivation, quotes, swaps, liquidity builders from `@thru/programs/amm` | Token launch wizard UI, prediction markets |
 | `oracle-adapter.js` | Oracle reads/builders if official and verified | Price fabrication |
 | `clob-adapter.js` | CLOB/order builders only if official and verified | AMM swaps |
-| `indexer-adapter.js` | `@thru/replay`, `@thru/indexer`, gRPC/gRPC-Web reads | Signing or vault access |
+| `indexer-adapter.js` | Future verified read/indexer adapter; package and transport TBD after official Thru docs and live validation | Signing or vault access |
 | `intent-builder.js` | Typed transaction intent objects | Secret material or direct broadcast |
 
 Adapter rules:
@@ -301,7 +301,7 @@ Move token creation/deploy UX into `src/features/launchpad`. Its backend owns `l
 
 ### Phase E — DEX module
 
-Create `src/features/dex`. Its backend owns `dex.*` methods. It may use `amm-adapter.js`, `token-adapter.js`, and indexer reads. It may not use launchpad internals.
+Create `src/features/dex`. Its backend owns `dex.*` methods. It may use `amm-adapter.js`, `token-adapter.js`, and a future verified read/indexer adapter after package and transport validation. It may not use launchpad internals.
 
 ### Phase F — prediction module
 

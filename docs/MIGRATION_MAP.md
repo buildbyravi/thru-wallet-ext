@@ -66,7 +66,7 @@ Observed test summary:
 - Derivation: 16/16 passed.
 - Layering: 60 files checked, 0 violations, DOM sink ratchet closed for guarded UI paths.
 - Routes: 14 registered routes, all reachable, 128 used classes all defined.
-- Contract: 47/47 passed in the latest docs-audit verification; contract version is v5.
+- Contract: 48/48 passed in the latest docs-audit verification; contract version is v5.
 - DOM/refs: 89/89 passed.
 - Vault integration: passed.
 - Thru client encoding/history/network config: passed.

@@ -27,18 +27,21 @@ AI/MCP receives password/private key/mnemonic → AI signs/broadcasts
 
 ## 2. Allowed MCP tool classes
 
-### Safe read tools
+### Privacy-sensitive read tools
 
-These can be exposed as read-only tools because they return public or non-secret local state:
+These tools return non-secret but privacy-sensitive wallet state. Account addresses, balances,
+activity, labels, refs, and keyring metadata can reveal identity, holdings, habits, and transaction
+history. They must require explicit user permission for each companion/session and should be scoped
+to the selected wallet/network/account set.
 
 | Tool idea | Data returned | Notes |
 | --- | --- | --- |
-| `wallet_get_public_accounts` | addresses, labels, refs, keyring metadata | No private keys, no mnemonic. |
-| `wallet_get_balances` | cached/fresh balances | Must respect network scoping. |
-| `wallet_get_assets` | visible tokens/assets | Unsupported token balances must say unsupported. |
-| `wallet_get_activity` | transactions/pending records | Public chain/history data only. |
-| `wallet_get_networks` | active/selectable networks | No hidden secrets. |
-| `wallet_get_capabilities` | supported/unsupported feature flags | Useful to stop agents fabricating behavior. |
+| `wallet_get_public_accounts` | addresses, labels, refs, keyring metadata | Non-secret but privacy-sensitive; requires explicit per-session permission. No private keys, no mnemonic. |
+| `wallet_get_balances` | cached/fresh balances | Non-secret but privacy-sensitive; requires explicit per-session permission and network scoping. |
+| `wallet_get_assets` | visible tokens/assets | Non-secret but privacy-sensitive; unsupported token balances must say unsupported. |
+| `wallet_get_activity` | transactions/pending records | Non-secret but privacy-sensitive; can reveal habits and counterparties. |
+| `wallet_get_networks` | active/selectable networks | Requires explicit per-session permission if tied to selected accounts. |
+| `wallet_get_capabilities` | supported/unsupported feature flags | Least sensitive; useful to stop agents fabricating behavior. |
 
 ### Protected preparation tools
 
@@ -72,7 +75,7 @@ Never expose these through MCP:
 
 ```txt
 Local MCP companion process
-  ├─ can call read-only extension APIs if explicitly allowed
+  ├─ can call privacy-sensitive read-only APIs only after explicit per-session user permission
   ├─ can request preparation of an intent
   └─ cannot sign, export secrets, or change security settings
 
@@ -110,12 +113,13 @@ The extension should expose only a narrow, audited bridge for the MCP companion.
 
 Preferred pattern:
 
-1. MCP server asks extension for public/cached state.
-2. MCP server proposes a transaction intent.
-3. Extension records intent as pending review.
-4. Extension opens popup/full-tab review surface.
-5. User approves/rejects.
-6. Background signs only after `auth: 'signing'` policy passes.
+1. User grants the local companion explicit per-session permission for selected privacy-sensitive reads.
+2. MCP server asks extension for permitted non-secret state.
+3. MCP server proposes a transaction intent.
+4. Extension records intent as pending review.
+5. Extension opens popup/full-tab review surface.
+6. User approves/rejects.
+7. Background signs only after `auth: 'signing'` policy passes.
 
 ---
 

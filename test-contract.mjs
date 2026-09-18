@@ -112,6 +112,11 @@ const MUST_REQUIRE_PASSWORD = [
 for (const name of MUST_REQUIRE_PASSWORD) {
   ok(`${name} requires a password`, METHODS[name]?.auth === 'password', `auth is '${METHODS[name]?.auth}'`);
 }
+ok(
+  'settings.setSecurity was introduced with contract v5',
+  METHODS['settings.setSecurity']?.since === 5,
+  `since is '${METHODS['settings.setSecurity']?.since}'`,
+);
 
 // Signing has its own auth mode because the user may explicitly opt out of re-authentication in
 // Settings. The secure default is still password-required, enforced inside api-router before a

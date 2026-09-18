@@ -40,7 +40,7 @@ Chrome MV3 self-custody wallet extension for the Thru native Layer 1. Thru is no
 
 Signing methods use `auth: 'signing'`. Password re-authentication is required by default. A user may explicitly opt into session-only signing from Settings, but that opt-out is itself password-gated.
 
-MCP/AI agents must not sign directly. Agents may prepare intents only. The human reviews in the extension UI; the background signs/submits after auth policy passes.
+MCP/AI agents must not sign directly. Agents may prepare intents only. Account addresses, balances, activity, labels, refs, and keyring metadata are non-secret but privacy-sensitive and require explicit per-session companion permission. The human reviews in the extension UI; the background signs/submits after auth policy passes.
 
 ## Target feature separation
 

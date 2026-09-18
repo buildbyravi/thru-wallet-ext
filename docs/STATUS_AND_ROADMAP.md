@@ -38,7 +38,7 @@ Structural properties now enforced by CI rather than by discipline:
 ```
 npm run build     clean, no warnings, dist/ reproducible
 npm test          derivation 16 · layering 60 files / 0 sinks · routes 14/14
-                  contract 47 · dom+refs 89 · vault · thru-client · api-router
+                  contract 48 · dom+refs 89 · vault · thru-client · api-router
 npm audit --omit=dev
                   found 0 vulnerabilities
 ```

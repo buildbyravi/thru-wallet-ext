@@ -138,9 +138,11 @@ This table deduplicates the repeated local-agent timeline. Commit IDs before the
 
 ---
 
-## 7. Phase reporting ledger template
+## 7. Milestone reporting template
 
-Append completed phase summaries here or to a dedicated release note using this format:
+Record **major milestones only** here. Git commits and PRs are the detailed change log; do not turn
+this ledger into another giant duplicate history. For a major completed milestone, summarize using
+this format:
 
 ```txt
 PHASE:

@@ -6,7 +6,7 @@ architecture document only; it does not verify or implement new Thru protocol se
 
 > Correction: Thru is a native Layer 1, not an EVM or Solana clone. The launchpad should study
 > Pump.fun/Pons/Raydium/Meteora/Zora-style UX patterns, but implementation must target Thru-native
-> Token Program, AMM Program, RPC/gRPC-Web, replay/indexer, and explorer tooling. See
+> Token Program, AMM Program, and a future verified read/indexer adapter; package and transport TBD after official Thru docs and live validation. See
 > `docs/THRU_NATIVE_DEFI_TAB_UX.md`.
 
 ---

@@ -5,8 +5,9 @@ Status: corrective product/architecture note after reviewing Thru docs. No runti
 
 This document supersedes any interpretation that Thru launchpad tokens should literally migrate to
 EVM venues such as Uniswap. Thru is a new Layer 1 with its own VM, transaction format, account
-model, Token Program, AMM Program, indexing stack, gRPC/gRPC-Web API, and explorer tooling. External
-launchpads/DEXs remain useful UX references only.
+model, Token Program, AMM Program, and explorer tooling. Market/history reads should use a future
+verified read/indexer adapter; package and transport TBD after official Thru docs and live validation.
+External launchpads/DEXs remain useful UX references only.
 
 ---
 
@@ -19,16 +20,14 @@ From Thru docs reviewed for this correction:
 - Thru programs run on the Thru VM and can be written in C.
 - Transactions have Thru-native headers, account ordering, state proofs, resource units, nonce,
   fee, chain id, and Ed25519 signatures.
-- Web integrations should use Thru packages such as `@thru/sdk`, `@thru/programs`, `@thru/wallet`,
-  `@thru/replay`, and `@thru/indexer`.
+- Web integrations should use only verified official Thru packages. The packages currently installed
+  in this repository are `@thru/sdk`, `@thru/crypto`, and `@thru/programs`.
 - `@thru/programs/token` exposes Token Program builders/parsers for mints, token accounts,
   transfers, minting, burning, freeze/thaw, and token-account derivation.
-- `@thru/programs/amm` exposes AMM helpers for pool derivation, init pool, add/withdraw liquidity,
-  swaps, pool metadata parsing, and exact-input quote helpers.
-- Thru gRPC/gRPC-Web exposes Query, Command, and Streaming services; the StreamingService supports
-  account/block/transaction monitoring.
-- `@thru/replay` and `@thru/indexer` are the correct direction for historical + live market data
-  pipelines and Postgres-backed read models.
+- `@thru/programs/amm` appears in official Thru documentation as the AMM direction, but repository
+  usage must be verified before implementation.
+- Market/history reads should use a future verified read/indexer adapter; package and transport TBD
+  after official Thru docs and live validation.
 - Explorer MCP can inspect accounts, transactions, blocks, recent activity, search, and on-chain
   ABIs without scraping explorer pages.
 
@@ -39,7 +38,7 @@ Thru Launchpad Program / Token Program
   → Thru launch state
   → Thru Token Mint + Token Accounts
   → Thru AMM pool / future Thru DEX venue
-  → Thru indexer/replay market data
+  → future verified read/indexer adapter market data
   → Thru wallet popup + full-tab DeFi terminal
 ```
 
@@ -287,9 +286,9 @@ No surface should be able to sign directly with only an unlocked session.
 A Thru-native chart system should be built from Thru data sources.
 
 ```text
-Thru StreamingService / @thru/replay
+Future verified read/indexer adapter
   → ordered block/transaction/account/event stream
-  → MarketIndexer using @thru/indexer
+  → MarketIndexer using the future verified read/indexer adapter
   → candles, trades, pool snapshots, holder snapshots
   → frontend market API
   → chart components
@@ -494,7 +493,7 @@ Background API router
   ↓ application services
 Launchpad service / Market service / Swap service
   ↓ ports
-Thru Token Program / Thru AMM Program / Thru RPC / Thru Indexer
+Thru Token Program / Thru AMM Program / future verified read/indexer adapter
 ```
 
 Forbidden:
@@ -553,7 +552,7 @@ ThruPool = {
   metadata,
   liquidityLockFacts,
   createdAt,
-  source,              // 'thru-rpc' | 'thru-indexer' | 'explorer-mcp'
+  source,              // future verified read/indexer adapter or explorer MCP
 };
 ```
 
@@ -611,7 +610,7 @@ ThruMarketState = {
 | Raydium LaunchLab quick/advanced modes | Quick and Advanced Thru launch templates. |
 | Meteora DBC templates | Reusable Thru launch templates and curve configs. |
 | DEX Screener chart terminal | Full-tab Thru market page with price, candles, liquidity, volume, trades. |
-| Birdeye holder/security panel | Thru holder distribution and risk facts from Thru indexer. |
+| Birdeye holder/security panel | Thru holder distribution and risk facts from a future verified read/indexer adapter. |
 | Rabby popup + tab split | Popup for wallet actions; full tab for advanced DeFi/launchpad/perps. |
 | Clanker social launch | Future launch-from-social/AI draft creation, never direct signing. |
 
@@ -636,7 +635,7 @@ Do not jump straight to charts or DEX UI. The safe order is:
 7. **Thru AMM research/verification**
    - use `@thru/programs/amm`; verify pool init, swap, liquidity, quote, metadata parsing
 8. **Market indexer design**
-   - `@thru/replay`/`@thru/indexer` for candles, trades, holders, pools
+   - future verified read/indexer adapter for candles, trades, holders, pools; package and transport TBD after official Thru docs and live validation
 9. **Popup swap**
    - only after quote + signing + duplicate protection + token account handling are verified
 10. **Full-tab DEX terminal**
@@ -651,7 +650,7 @@ Do not jump straight to charts or DEX UI. The safe order is:
 - The UI never names an external DEX as a migration target unless there is a verified integration.
 - Every launch/trade/migration action goes through wallet review and background `auth: 'signing'`; password re-authentication is the default, with any session-only opt-out requiring password-gated Settings confirmation.
 - Token, pool, and launch addresses are shown as Thru `ta...` identities.
-- Charts are powered by Thru market/indexer data or clearly marked unavailable.
+- Charts are powered by a future verified read/indexer adapter or clearly marked unavailable.
 - No simulated swap/trade/perp action appears as real.
 - Full-tab and popup share the same bridge/API contracts.
 - Launchpad, DEX, market, and perps remain separable feature modules.
@@ -668,7 +667,7 @@ FILES ADDED: docs/THRU_NATIVE_DEFI_TAB_UX.md
 FILES MODIFIED: docs/LAUNCHPAD_DEX_MIGRATION_UX.md, docs/LAUNCHPAD_UX_STUDY.md
 BACKEND CHANGES: none
 UI CHANGES: none
-SECURITY IMPACT: no runtime change; corrects the architecture to Thru-native Token/AMM/indexer paths and rejects EVM/Uniswap assumptions
+SECURITY IMPACT: no runtime change; corrects the architecture to Thru-native Token/AMM/future-read-adapter paths and rejects EVM/Uniswap assumptions
 TESTS: npm test -> PASS before document creation; rerun after edits
 BUILD: npm run build -> PASS before document creation; rerun after edits
 KNOWN LIMITATIONS: no live Thru AMM/DEX/perps verification; no UI implemented; docs learned from public Thru docs only
