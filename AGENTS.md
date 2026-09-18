@@ -34,7 +34,7 @@ Conflict resolution: `STATUS_AND_ROADMAP.md` wins on **current engineering state
 ```
 npm install
 npm run build      # node build.mjs -> dist/
-npm test           # guards (derivation, layering, routes, launchpad quarantine, contract, dom) then vault, thru-client, api-router
+npm test           # guards (derivation, layering, routes, launchpad quarantine, contract, dom, route lifecycle) then vault, thru-client, api-router
 ```
 
 Load `dist/` unpacked via `chrome://extensions` --  Developer mode --  Load unpacked.
@@ -128,8 +128,12 @@ bare version, the failure is in the **request** direction.
   extension reload. Run `system.diagnostics` before blaming auto-lock.
 - **Hand-maintained file lists rot.** `test-contract.mjs` walks directories for exactly this
   reason -- its old static list stopped covering new files and let a phantom method through.
-- **No test mounts a route yet.** `check-routes.mjs` proves reachability and CSS existence;
-  rendering is still uncovered. See `docs/STATUS_AND_ROADMAP.md` Step 2.
+- **`test-route-lifecycle.mjs` mounts every route, but not in a browser.** It drives the real
+  Router, guards, bridge and kit against a hand-rolled DOM shim with only
+  `chrome.runtime.sendMessage` mocked, in all three vault states, and asserts teardown, focus
+  trapping and secret hygiene. It cannot see layout, real focus rings, canvas output or the side
+  panel. Those are `docs/MANUAL_SMOKE_CHECKLIST.md`, and it is a required runbook, not a nicety.
+  jsdom is deliberately not a dependency (Hard rule: no new deps).
 
 ## Reporting
 

@@ -401,15 +401,20 @@ re-authenticate only at the final signing/security-change step and keep password
 
 Purpose: safely support UI refactors.
 
-1. Add jsdom route mount smoke tests for all 14 routes.
-2. Assert no mnemonic/private key appears in route text, attributes, URLs, or detached nodes after
-   `destroy()`.
-3. Assert listener cleanup using disposer instrumentation.
+1. ~~Add jsdom route mount smoke tests for all 14 routes.~~ Done as `test-route-lifecycle.mjs` —
+   all 14 routes, three vault states, real Router/guards/bridge, no jsdom (no new dependencies).
+2. ~~Assert no mnemonic/private key appears in route text, attributes, URLs, or detached nodes after
+   `destroy()`.~~ Done, including dataset values and input values, plus a negative control that
+   plants a phrase in `dataset.raw` to prove the scan is not vacuous.
+3. ~~Assert listener cleanup using disposer instrumentation.~~ Done by counting listeners on every
+   element that is no longer in the document after each navigation and after `router.stop()`. It
+   caught a real leak in `reset.js` (untracked `PageHeader`).
 4. ~~Extend DOM sink scan to `src/launchpad/**` or stop bundling launchpad while disabled.~~ Done — both, in effect: the scan covers all of `src/` and the launchpad is no longer bundled because it no longer exists.
 5. Add direct API-router tests for reset/signing/security preference bypasses.
 
-Risk: jsdom dependency/install instability was previously noted. Mitigation: clean partial installs,
-pin dependency exactly if added, and keep tests small.
+Risk: ~~jsdom dependency/install instability.~~ Avoided entirely — the harness is a hand-rolled DOM
+shim, so there is no dependency to install. Residual risk is fidelity: a shim cannot prove layout,
+real focus or canvas output, which is what `docs/MANUAL_SMOKE_CHECKLIST.md` is for.
 
 ### Phase C — Formal route registry and frontend state
 
@@ -501,7 +506,7 @@ Do not begin DEX, prediction, dApp connector, NFTs, or hardware/passkey flows un
 | --- | --- | --- |
 | UI-only password gates for signing/destructive/security operations | Critical/High | Backend-enforced `auth: 'password'` or equivalent direct verification tests. |
 | Launchpad is disabled in navigation but still built | High | Exclude from build or migrate into guarded feature module. |
-| No automated route mount coverage | High | Add jsdom smoke/security cleanup test before UI redesign. |
+| ~~No automated route mount coverage~~ | High | Closed by `test-route-lifecycle.mjs` (mount, secret hygiene, listener teardown). Browser-only behaviour moved to `docs/MANUAL_SMOKE_CHECKLIST.md`. |
 | Protocol semantics guessed for token/DEX/dApp features | High | Stop and document uncertainty; use official Thru packages only after verification. |
 | Store introduction creates stale global state | Medium | Introduce read-only store first; bridge events + explicit invalidation. |
 | Over-engineering through broad folder moves | Medium | Add thin interfaces around existing modules; avoid churn to `vault.js`/`thru-client.js`. |
@@ -522,7 +527,8 @@ The next code change should be small and security-first:
    opt-out is itself password-gated.
 3. Run full `npm test && npm run build` after each small security change.
 
-Only after that should the jsdom route mount test and state/store refactor begin.
+The route mount test is now done (`test-route-lifecycle.mjs`). The state/store refactor remains
+outstanding, and the browser-level runbook is `docs/MANUAL_SMOKE_CHECKLIST.md`.
 
 ---
 

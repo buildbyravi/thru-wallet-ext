@@ -10,6 +10,17 @@
 
 body {
   width: var(--popup-width);
+  /* The same document is registered as the side panel (manifest `side_panel.default_path`), and a
+     panel is user-resizable, so it can be narrower than 408px. Scrollbars are hidden globally just
+     below, which means a body wider than its viewport clips content with nothing to show that it
+     did. `max-width: 100%` is a no-op in the toolbar popup — a percentage max-width is treated as
+     `none` while the viewport sizes itself to the body, so the popup is still exactly 408px — and
+     it caps the body at the panel width everywhere else.
+
+     A panel WIDER than 408px still shows a 408px column with empty space beside it. Whether that
+     should become fluid is a layout decision that needs a browser to make, so it is written up as
+     the first item in docs/MANUAL_SMOKE_CHECKLIST.md rather than guessed at here. */
+  max-width: 100%;
   background: var(--bg);
   color: var(--text-1);
   font-family: var(--font-ui);

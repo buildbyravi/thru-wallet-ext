@@ -22,6 +22,14 @@ Purpose: single map for every maintained Markdown document in this repository. U
 3. `docs/THRU_NATIVE_DEFI_TAB_UX.md` — Thru-native launchpad/DEX/full-tab UX.
 4. `docs/MIGRATION_MAP.md` — Rabby-class migration strategy and risk register.
 
+### For UI or browser verification work
+
+1. `docs/MANUAL_SMOKE_CHECKLIST.md` — what only Chrome can prove: popup + side panel, narrow + wide
+   widths, all 14 routes, focus, secret hygiene.
+2. `test-route-lifecycle.mjs` — the automated half: every route mounts, tears down and keeps
+   secrets out of the DOM.
+3. `docs/UI_REBUILD_PLAN.md` — historical rationale for the current stack.
+
 ### For security work
 
 1. `docs/AUDIT_REPORT.md` — findings and remediation state.
@@ -53,6 +61,8 @@ Purpose: single map for every maintained Markdown document in this repository. U
 | What is quarantined and must not return? | `docs/STATUS_AND_ROADMAP.md` Step 1, `CONTEXT.md` §9, `test-launchpad-quarantine.mjs` |
 | What popular-wallet UX patterns matter? | `docs/WALLET_FEATURES_PERFORMANCE_STUDY.md` |
 | What bugs have happened before? | `docs/DEFECT_LOG.md` |
+| What needs a browser to verify? | `docs/MANUAL_SMOKE_CHECKLIST.md` |
+| Is a route actually mounted by a test? | `test-route-lifecycle.mjs`, then `docs/STATUS_AND_ROADMAP.md` Step 2 |
 | What backend capability is missing? | `docs/BACKEND_GAPS.md` |
 | What docs are historical only? | `docs/archive/**`, `docs/UI_REBUILD_PLAN.md`, `docs/UI_REBUILD_AGENT_PROMPT.md` unless explicitly cited by current docs |
 
@@ -88,6 +98,7 @@ Purpose: single map for every maintained Markdown document in this repository. U
 | `docs/AUDIT_REPORT.md` | current audit record | security findings/remediation state | Keep separate from `DEFECT_LOG`: audit findings vs historical defect lessons. |
 | `docs/DEFECT_LOG.md` | current historical lessons | root causes and guardrails | Historical defects can mention deleted code, but current-state claims must point to `STATUS`. |
 | `docs/BACKEND_GAPS.md` | current capability gaps | backend missing pieces and verified unsupported states | Keep capability-focused; do not duplicate roadmap details. |
+| `docs/MANUAL_SMOKE_CHECKLIST.md` | current runbook | browser-only verification before merging UI changes | Not a test and not a spec. If an item becomes automatable, move it into `test-route-lifecycle.mjs` and delete the checkbox. |
 | `docs/BUILD_SPEC.md` | current policy/spec | product requirements, security policy, QA matrix | Status ledger inside it is now summarized; exact current state lives in `STATUS`. |
 | `docs/UI_REBUILD_PLAN.md` | historical plan/reference | original rebuild audit and phase plan | Marked historical; use only for rationale, not current file facts. |
 | `docs/UI_REBUILD_AGENT_PROMPT.md` | historical prompt/reference | original autonomous rebuild prompt | Do not execute as current plan without checking `STATUS`. |

@@ -13,6 +13,7 @@ import { h, disposer } from '../kit/dom.js';
 import { Field } from '../kit/field.js';
 import { Button } from '../kit/button.js';
 import { icon } from '../kit/icon.js';
+import { focusTrap } from '../kit/focus-trap.js';
 
 /**
  * Open a modal that collects the master password and runs one guarded action.
@@ -35,6 +36,7 @@ export function requirePassword({
   return new Promise((resolve) => {
     const d = disposer();
     let settled = false;
+    let trap = null;
 
     const password = Field({
       label: 'Password',
@@ -48,6 +50,10 @@ export function requirePassword({
     function finish(value) {
       if (settled) return;
       settled = true;
+      // Releases the Tab trap and puts focus back on whatever opened the dialog, so a keyboard
+      // user is not left on <body> with the next Tab starting from the top of the document.
+      trap?.destroy();
+      trap = null;
       // Overwrite then clear before the node leaves the document, so the string is not
       // left addressable in a detached subtree.
       password.clearSecret();
@@ -112,11 +118,22 @@ export function requirePassword({
     d.on(overlay, 'mousedown', (event) => {
       if (event.target === overlay) finish(null);
     });
-    d.on(document, 'keydown', (event) => {
-      if (event.key === 'Escape') finish(null);
+
+    // `aria-modal="true"` above is a promise that focus stays in this dialog. This is what keeps
+    // it: Tab wraps between the first and last control instead of walking into the page behind
+    // the overlay, and Escape cancels. See src/ui/kit/focus-trap.js.
+    trap = focusTrap(card, {
+      onEscape: () => finish(null),
+      initial: password.control,
     });
 
     document.body.appendChild(overlay);
-    requestAnimationFrame(() => overlay.classList.add('open'));
+    requestAnimationFrame(() => {
+      overlay.classList.add('open');
+      // Deferred for the same reason Field defers its own autofocus: focusing before the node is
+      // in the document does nothing. The trap owns the decision so Escape/Tab work even if the
+      // field's own autofocus was suppressed.
+      trap?.focusFirst();
+    });
   });
 }

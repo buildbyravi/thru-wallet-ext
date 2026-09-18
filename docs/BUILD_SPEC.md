@@ -103,8 +103,10 @@ the whole suite. Never weaken or skip a test to make it pass.
 
 ### Do not over-engineer
 
-No React, Vue, or Tailwind. No dependency added merely because Rabby uses it. The only sanctioned
-new dependency is `jsdom` (dev-only, for route smoke tests). Vanilla ES modules + esbuild stays.
+No React, Vue, or Tailwind. No dependency added merely because Rabby uses it. `jsdom` was once
+sanctioned as the only new dev dependency; it was never needed — `test-route-lifecycle.mjs` mounts
+every route against a hand-rolled DOM shim, so the dependency budget is still zero. Vanilla ES
+modules + esbuild stays.
 
 ---
 
@@ -647,8 +649,9 @@ in one commit.
 4. `test-contract.mjs` — manifest ⇄ handlers, both directions
 5. `scripts/check-layering.mjs` — the four import rules
 6. `scripts/check-css.mjs` — no class used-but-undefined or defined-but-unused
-7. `test-ui-smoke.mjs` — every registered route mounts under jsdom with a mocked bridge in
-   locked / unlocked / no-vault states
+7. `test-route-lifecycle.mjs` — every registered route mounts through the real Router, guards and
+   bridge (only `chrome.runtime.sendMessage` is mocked) in locked / unlocked / no-vault states, and
+   asserts secret hygiene, listener teardown, focus trapping and the side-panel action
 8. grep gates — no `innerHTML =` in UI dirs; no `chrome.runtime.sendMessage` outside the bridge
 
 Note: `test-auto-sponsor.mjs` exists but is absent from `package.json`'s test script. Either wire it

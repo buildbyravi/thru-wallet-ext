@@ -117,21 +117,45 @@ What was removed, and what deliberately was not:
    available to a future feature module. No DEX, swap, launchpad, perp or prediction feature was
    built in this cleanup.
 
-### Step 2 — jsdom route mount test  ← ACTIVE
+### Step 2 — route lifecycle test  ← DONE (`test-route-lifecycle.mjs`)
 
-The largest remaining test gap. `check-routes.mjs` proves a route is *reachable* and
-its classes are *defined*; nothing proves it *mounts*. For each of the 14 routes, with a mocked
-bridge, in locked / unlocked / no-vault states:
+This was the largest remaining test gap: `check-routes.mjs` proves a route is *reachable* and its
+classes are *defined*; nothing proved it *mounts*. All three requirements are now asserted, for all
+14 routes, in no-vault / locked / unlocked states (680 checks, ~1s):
 
-1. mount and assert no throw;
-2. walk the rendered tree for a seeded mnemonic or private key and assert neither appears in text
-   or in any attribute;
-3. call `destroy()` and assert every listener was removed and no secret survives in the detached
-   subtree.
+1. mount through the real Router, guards, bridge and kit, and assert no throw plus the landing path
+   the guard actually specifies;
+2. walk the rendered tree for a seeded mnemonic, private key or password and assert none appears in
+   text, in any attribute, in any dataset value, in any input value, or in the URL/history — and
+   none survives in the subtree a destroyed route hands back;
+3. assert teardown removes every listener: no handler survives on any element that is no longer in
+   the document, and `router.stop()` returns document/window listeners to their baseline.
 
-Item 2 matters because the old stack wrote a mnemonic into `grid.dataset.raw` and never removed
-it. Note that `npm install jsdom` timed out once here and left a corrupt partial
-`node_modules/jsdom` with only a `lib` directory; remove it before retrying.
+Item 2 matters because the old stack wrote a mnemonic into `grid.dataset.raw` and never removed it.
+The test found one live instance of item 3 failing: `reset.js` built its `PageHeader` inline and
+discarded the instance, so the back button's click listener outlived the screen. Fixed and now
+guarded.
+
+**jsdom was deliberately not added.** The hard rule is no new dependencies, the house style is
+already a hand-rolled shim (`test-ui-dom.mjs`), and the shim only needs the DOM surface this
+codebase actually touches. Only `chrome.runtime.sendMessage` is mocked; every response shape was
+read from the service that really produces it.
+
+What a shim still cannot prove is browser behaviour: layout at real widths, real focus rings, canvas
+output, the side panel, service-worker eviction, the clipboard permission prompt. That is
+`docs/MANUAL_SMOKE_CHECKLIST.md`, and it is a required runbook before merging UI changes.
+
+### Step 2b — custom-network decision  ← DONE (withdrawn from the UI)
+
+The "Add custom network" form is removed from Settings. `network.upsertCustom` accepted any http(s)
+endpoint while the manifest CSP allows `connect-src` only to the Thru RPC hosts and localhost, and
+the network service falls back to the DEFAULT transfer/token program ids for a custom network — so a
+saved network could look configured and then build transactions against the wrong programs.
+Networks saved earlier are still listed, still switchable away from, and still removable; hiding them
+would strand the user. Re-enabling needs all four of: an HTTPS-only policy with an explicit localhost
+exception, narrow user-granted host permission, a verified per-network capability record instead of
+silent defaults, and password re-auth plus a warning before the wallet talks to a user-supplied
+endpoint. `test-route-lifecycle.mjs` fails if any shipped UI file calls the method again.
 
 ### Step 3 — feature-module quarantine before DeFi expansion
 

@@ -96,6 +96,8 @@ Fix: the fallback delegates to `handleAction('go-<screen>')` and hydrates `activ
 | 2.12 | Account labels length-capped only by HTML `maxlength` | client-side validation trusted | `READ` |
 | 2.13 | `clipboardRead` missing from permissions while `readText()` was called — Paste silently always failed | — | `READ` |
 | 2.14 | Seed/private-key textareas lacked `spellcheck="false"`; with Chrome Enhanced Spell Check the contents are transmitted to Google | a documented exfiltration path, missed | `READ` |
+| 2.15 | The password dialog declared `role="dialog"` + `aria-modal="true"` with **no focus trap**: Tab walked into the page behind the overlay, so a user could keep typing a password into a field that was no longer on screen and activate controls they could not see | an ARIA attribute was treated as the mechanism instead of the claim | `READ` |
+| 2.16 | Settings offered "Add custom network" for any http(s) endpoint while the manifest CSP allows `connect-src` only to the Thru RPC hosts and localhost, and the network service silently falls back to the DEFAULT transfer/token program ids for a custom network — a saved network could look configured and then build transactions against the wrong programs | a backend capability was surfaced as a feature before its safety design existed | `READ` |
 
 **The structural response**, rather than fixing 20 sites and hoping:
 
@@ -131,6 +133,8 @@ These are the most dangerous category, because reading them gives false confiden
 | `.w-100`, `.mt-*`, `.tag-accent`, `.status-dot`, `.spinning` at ~80 sites | defined nowhere. With `* { margin: 0 }` and non-flex wrappers, nothing supplied vertical spacing at all. |
 | `router.navigate('account-detail')` | `popup.html` had no `#screen-account-detail`, so `if (container)` failed silently and `mount()` never ran. |
 | Secret export | `data-action="go-export-password"` existed only *inside* `#screen-accounts`, and every path into that screen required already being inside it. A user could not retrieve their own recovery phrase. |
+| `manifest.json` `side_panel.default_path: popup.html` | The panel was declared and built, and nothing in the app could open it — the only way in was the browser's own menu. A declared capability with no caller, in the same family as `bridge.onEvent()`. Now Settings > Window > **Open side panel**, which calls `chrome.sidePanel.open({ windowId })` from a real user gesture and deliberately never calls `setPanelBehavior` (that would swap the toolbar popup for the panel for every user). |
+| `network.upsertCustom` | A contract method with a form, where the form was the unsafe part. Withdrawn from the UI rather than shipped; the method stays because the contract is append-only. |
 
 > **Lesson:** an API with no callers is not "ready for later", it is unverified code that reads
 > as working. Delete it or wire it.
@@ -158,6 +162,9 @@ Recording these matters more than the ones I inherited.
 | Base64url padding appended as `'=='` in my own test | `TEST` | — |
 | Margin utilities stacking on `.screen`'s gap | `BROWSER` | Defining the missing utilities fixed the flush-together screens but created 16/20/24/28px inconsistency. Resolved by making `gap` the single source of rhythm. |
 | `initialSupply` shown in the balance column | `READ` | Inherited, but I carried it forward initially. A mint's total supply is not your balance. |
+| `reset.js` built its `PageHeader` inline (`PageHeader({...}).el`) and discarded the instance | `TEST` (`test-route-lifecycle.mjs`) | The route's `destroy()` disposed its own listeners and the banner's, but the header's back-button click listener stayed attached to a node that was no longer in the document. Twelve other routes keep their header instance for exactly this reason; this one did not, and nothing caught it until a test counted listeners on detached nodes. |
+| `isFocusable()` first checked only the element's own `.hidden` class | `TEST` | This codebase hides sections with a `display:none` utility class on a *parent*, so controls inside a hidden section counted as Tab stops and focus would have gone somewhere invisible — reading to a keyboard user as "Tab stopped working". Now walks ancestors. |
+| A synchronous `requestAnimationFrame` in the test shim | `TEST` | The shim ran rAF callbacks inline, which changed ordering the app relies on: `requirePassword` captures the element to restore focus to when it builds its trap, *before* its rAF callback focuses the field. Inline rAF made the trap capture its own input, so focus was "restored" to a detached field. Browsers run rAF after the current task; the shim now queues a microtask. A fidelity bug in a test harness produces false failures that look like product bugs. |
 
 > **Lesson:** three of these were shipped-control-before-destination or stale-list problems.
 > Both are symptoms of the same thing — **no check that the graph is connected.**
@@ -194,17 +201,29 @@ teardown was broken in *both*.
 
 Stated plainly, because the gaps predict the next round of bugs.
 
-1. **Reachability.** Nothing verifies a route can be navigated to from the UI. This caused §1.2.
-2. **Rendering.** `test-ui-dom.mjs` uses a DOM shim with no `innerHTML` property. It proves
-   *which DOM APIs are called*, not what a browser paints. No route is ever mounted.
-3. **CSS.** No check that a class used in JS exists in CSS. This is why ~80 undefined-class
-   usages shipped. `docs/UI_REBUILD_PLAN.md` specifies `scripts/check-css.mjs`; it is not built.
+1. ~~**Reachability.** Nothing verifies a route can be navigated to from the UI.~~ Closed twice
+   over: `scripts/check-routes.mjs` proves every navigated path exists and every registered route is
+   reachable, and `test-route-lifecycle.mjs` clicks the real controls (topbar settings, topbar lock,
+   the four dashboard tiles, the account pill, Back) and asserts where each one lands.
+2. ~~**Rendering.** No route is ever mounted.~~ Closed: all 14 routes mount through the real Router,
+   guards, bridge and kit in no-vault / locked / unlocked states, with only
+   `chrome.runtime.sendMessage` mocked. Still true that no shim proves *what a browser paints* —
+   that residue is `docs/MANUAL_SMOKE_CHECKLIST.md`.
+3. ~~**CSS.** No check that a class used in JS exists in CSS.~~ Closed by `scripts/check-routes.mjs`,
+   which reports every class the new stack uses and whether all are defined (a separate
+   `check-css.mjs` was never needed).
 4. **Live chain.** Faucet/transfer program addresses, instruction layouts, the amount-unit
    question and explorer URL patterns remain unverified against a running network.
 5. ~~**Legacy launchpad surface.**~~ Closed. `src/launchpad/**` is deleted rather than flagged off,
    the DOM-sink ratchet now covers all of `src/`, and `test-launchpad-quarantine.mjs` asserts the
    surface stays out of the source, the flags, the routes and a real `dist/` build.
 
-The single highest-value addition is a **jsdom route smoke test**: mount every registered route
-in locked / unlocked / no-vault states with a mocked bridge, assert no throw, and assert every
-class it uses is defined. That covers gaps 1, 2 and 3 at once.
+The **route smoke test** that this section used to call the single highest-value addition now
+exists as `test-route-lifecycle.mjs` — built on a hand-rolled shim rather than jsdom, because the
+hard rule is no new dependencies and the shim only needs the DOM surface this codebase touches. It
+covers gaps 1, 2 and 3, adds listener-teardown and secret-hygiene assertions, and ships a negative
+control for each security claim so a vacuous assertion fails loudly.
+
+What remains uncovered is item 4 (live chain) and everything a browser owns: layout at narrow and
+wide widths, real focus rings, canvas QR output, side-panel behaviour, service-worker eviction. Those
+are checkboxes in `docs/MANUAL_SMOKE_CHECKLIST.md`, not test gaps to close in Node.

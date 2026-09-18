@@ -1,8 +1,12 @@
 // Settings route — including the network switcher.
 //
 // Exposes backend capability that has existed with no UI: network.list / setActive /
-// upsertCustom / removeCustom, and system.setAutoLock. Until now the only way to change
-// network was the legacy drawer, and custom RPC endpoints were unreachable entirely.
+// removeCustom, and system.setAutoLock. Until now the only way to change network was the legacy
+// drawer, and custom RPC endpoints were unreachable entirely.
+//
+// `network.upsertCustom` is deliberately NOT exposed here — see renderCustomNetworkNotice for
+// the reasoning and the four preconditions for bringing it back. The backend method stays (the
+// contract is append-only); the UI does not offer it.
 //
 // The network section is deliberately first. Once mainnet exists, "which chain am I on" is the
 // most consequential setting in the wallet.
@@ -10,7 +14,6 @@
 import { h, disposer } from '../../kit/dom.js';
 import { icon } from '../../kit/icon.js';
 import { Button } from '../../kit/button.js';
-import { Field } from '../../kit/field.js';
 import { PageHeader, Banner, Spinner } from '../../kit/feedback.js';
 import { requirePassword } from '../../domain/password-prompt.js';
 import * as bridge from '../bridge.js';
@@ -105,66 +108,38 @@ export function SettingsRoute({ navigate, back }) {
     return wrap;
   }
 
-  // ---- Add a custom RPC ---------------------------------------------------
-  function renderAddCustom(hostEl) {
-    const idField = track(Field({
-      label: 'Network id',
-      placeholder: 'my-devnet',
-      hint: 'Letters, numbers and dashes. Cannot replace a built-in network.',
-      maxLength: 32,
-    }));
-    const nameField = track(Field({ label: 'Display name', placeholder: 'My devnet', maxLength: 32 }));
-    const rpcField = track(Field({ label: 'RPC URL', type: 'url', placeholder: 'http://127.0.0.1:8899' }));
-    const explorerField = track(Field({
-      label: 'Explorer URL (optional)',
-      type: 'url',
-      placeholder: 'https://…',
-      hint: 'Leave empty and explorer links are hidden rather than broken.',
-    }));
-
-    const saveBtn = track(Button({
-      label: 'Add network',
-      variant: 'secondary',
-      iconName: 'plus',
-      onClick: async () => {
-        banner.clear();
-        const id = idField.value.trim();
-        const rpcUrl = rpcField.value.trim();
-        if (!id) { idField.setError('An id is required.'); return; }
-        if (!rpcUrl) { rpcField.setError('An RPC URL is required.'); return; }
-        try {
-          await bridge.send('network.upsertCustom', {
-            id,
-            name: nameField.value.trim() || id,
-            rpcUrl,
-            explorerUrl: explorerField.value.trim(),
-            environment: 'devnet',
-          });
-          load();
-        } catch (error) {
-          // The background validates the id and both URLs, so surface its message rather
-          // than duplicating the rules here and letting the two drift apart.
-          banner.set(error.message || 'Could not add that network.');
-        }
-      },
-    }));
-
-    const form = h('div', { class: ['stack', 'stack-3', 'hidden'] }, [
-      idField.el, nameField.el, rpcField.el, explorerField.el, saveBtn.el,
-    ]);
-
-    const toggle = track(Button({
-      label: 'Add custom network',
-      variant: 'text',
-      iconName: 'plus',
-      onClick: () => {
-        const hidden = form.classList.toggle('hidden');
-        toggle.update({ label: hidden ? 'Add custom network' : 'Cancel' });
-      },
-    }));
-
-    hostEl.appendChild(toggle.el);
-    hostEl.appendChild(form);
+  // ---- Custom networks: deliberately not offered --------------------------
+  /**
+   * Why there is no "Add custom network" control here.
+   *
+   * `network.upsertCustom` accepts any `http(s)` endpoint, but the manifest CSP allows
+   * `connect-src` only to the Thru RPC hosts plus localhost, so most networks a user could save
+   * were unreachable the moment they were saved — the row appeared in the list, selected fine,
+   * and every call failed. The network service also falls back to the DEFAULT transfer/token
+   * program IDs for a custom network, which is only correct on a chain that is program-for-program
+   * equivalent to the built-ins; on any other network the wallet would construct transactions
+   * against the wrong programs. Tracked as the P0 custom-network decision in
+   * docs/PROJECT_LEDGER.md and item 3 of the remediation plan in docs/AUDIT_REPORT.md.
+   *
+   * Re-enabling this needs all four, designed and tested, not just the form back:
+   *   1. an HTTPS-only policy with an explicit localhost exception;
+   *   2. narrow, user-granted host permission for the one endpoint (optional_host_permissions),
+   *      because a CSP that allows every host is worse than no custom networks;
+   *   3. a verified capability record per network (chain id, program addresses actually present)
+   *      instead of silent defaults, with read-only mode until transaction semantics are verified;
+   *   4. an explicit warning plus password re-authentication before the wallet talks to a
+   *      user-supplied endpoint.
+   *
+   * Networks added BEFORE this are still listed above and can still be removed or switched away
+   * from. Hiding them would strand a user on a network they cannot leave, which is worse than the
+   * defect being fixed.
+   */
+  function renderCustomNetworkNotice(hostEl) {
+    hostEl.appendChild(h('p', { class: 'hint', text:
+      'Adding a custom network is temporarily unavailable. Before this wallet will build '
+      + 'transactions against an endpoint you supply, that endpoint has to be reachable under the '
+      + 'security policy of this extension, and its chain programs have to be verified rather than '
+      + 'assumed. Networks you already saved stay listed above and can still be removed.' }));
   }
 
   // ---- Auto-lock ----------------------------------------------------------
@@ -238,6 +213,55 @@ export function SettingsRoute({ navigate, back }) {
     hostEl.appendChild(h('div', { class: 'row-flex wrap' }, chips));
   }
 
+  // ---- Side panel ---------------------------------------------------------
+  //
+  // The manifest declares `side_panel.default_path: popup.html`, so the panel runs this exact UI —
+  // but until now nothing in the app could open it. The only way in was the browser's own menu,
+  // which no user finds, so the declared panel was unreachable from the wallet itself.
+  //
+  // Two things this deliberately does NOT do:
+  //   - no `chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })`. That replaces the
+  //     toolbar popup with the panel for every user — a behaviour change that needs real browser
+  //     testing before anyone opts users into it, and it is not needed for an explicit action.
+  //   - no manifest, permission or panel-path change.
+  //
+  // `sidePanel.open()` only works from a user gesture and only on Chromium 116+, so the windowId is
+  // fetched during load(): awaiting inside the click handler can cost the gesture and make the call
+  // fail for a reason that has nothing to do with the user's browser.
+  let sidePanelWindowId = null;
+
+  function prepareSidePanel() {
+    try {
+      if (!chrome.sidePanel?.open || !chrome.windows?.getCurrent) return;
+      Promise.resolve(chrome.windows.getCurrent())
+        .then((win) => { if (win?.id != null) sidePanelWindowId = win.id; })
+        .catch(() => {});
+    } catch {
+      // Not in an extension context, or a browser without the API: the button says so on click.
+    }
+  }
+
+  function openSidePanel() {
+    banner.clear();
+    if (!chrome.sidePanel?.open) {
+      banner.set('This browser has no side panel API. The popup keeps working as usual.', 'warning');
+      return;
+    }
+    const fallback = 'Could not open the side panel. Use the wallet icon in the toolbar instead.';
+    try {
+      const result = chrome.sidePanel.open(
+        sidePanelWindowId != null ? { windowId: sidePanelWindowId } : {},
+      );
+      // Chromium returns a promise; the usual rejections are "no user gesture" and "either tabId or
+      // windowId must be specified". Both are reported rather than swallowed.
+      Promise.resolve(result).catch((error) => {
+        banner.set(error?.message || fallback, 'warning');
+      });
+    } catch (error) {
+      banner.set(error?.message || fallback, 'warning');
+    }
+  }
+
   async function load() {
     banner.clear();
     try {
@@ -266,7 +290,7 @@ export function SettingsRoute({ navigate, back }) {
       h('div', { class: 'list' }, networks.map(networkRow)),
     ]);
     body.appendChild(networkSection);
-    renderAddCustom(networkSection);
+    renderCustomNetworkNotice(networkSection);
 
     // ---- Security ----
     const security = h('section', { class: 'stack stack-2' }, [SectionHeader('Security')]);
@@ -284,6 +308,20 @@ export function SettingsRoute({ navigate, back }) {
         variant: 'secondary',
         iconName: 'wallet',
         onClick: () => navigate('/accounts'),
+      })).el,
+    ]));
+
+    // ---- Window ----
+    body.appendChild(h('section', { class: 'stack stack-2' }, [
+      SectionHeader('Window'),
+      h('p', { class: 'hint', text:
+        'Open the same wallet beside your browser tab. The popup and the side panel share one '
+        + 'session, so locking in one locks both.' }),
+      track(Button({
+        label: 'Open side panel',
+        variant: 'secondary',
+        iconName: 'external',
+        onClick: () => openSidePanel(),
       })).el,
     ]));
 
@@ -323,6 +361,7 @@ export function SettingsRoute({ navigate, back }) {
   }
 
   load();
+  prepareSidePanel();
   d.add(bridge.onEvent('networkChanged', () => load()));
 
   return {

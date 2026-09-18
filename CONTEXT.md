@@ -73,6 +73,8 @@ Four rules, all enforced by `scripts/check-layering.mjs`:
 | `test-derivation.mjs` | **Runs first.** Golden vectors: a fixed phrase must derive fixed addresses. |
 | `test-contract.mjs` | Contract --! router agreement, both directions. 54 checks. |
 | `test-ui-dom.mjs` | `h()` security properties + ref codec. 89 checks, DOM shim. |
+| `test-route-lifecycle.mjs` | Mounts all 14 routes through the real Router/guards/bridge in no-vault, locked and unlocked states, plus settings, focus-trap, password-modal, export-secret, navigation and negative-control passes. 680 checks, richer DOM shim, mocked `chrome.runtime.sendMessage` only. |
+| `docs/MANUAL_SMOKE_CHECKLIST.md` | What only a browser can prove: popup + side panel, narrow + wide widths, all 14 routes, focus, secret hygiene. Not a test; a runbook. |
 | `test-vault.mjs` | Real vault against real `@thru/crypto`. |
 | `test-thru-client.mjs` | Instruction layouts, amount round-trips, network binding. |
 | `test-api-router.mjs` | Background integration + JSON-serializability probes. |
@@ -83,7 +85,8 @@ Four rules, all enforced by `scripts/check-layering.mjs`:
 | `legacy-ui-backup-*.zip` | The deleted legacy UI. Gitignored. |
 
 `npm test` order: derivation --  layering --  routes --  launchpad-quarantine --  contract --  dom -- 
-vault --  thru-client --  api-router. Guards first, so structural breakage fails fast.
+route-lifecycle --  vault --  thru-client --  api-router. Guards first, so structural breakage
+fails fast.
 
 ---
 
@@ -172,6 +175,7 @@ values: `tx.simulate`, `token.getBalances`.
 | `button.js` | 166 | `Button`, `IconButton`, `CopyButton` |
 | `field.js` | 193 | `Field` -- label + control + error + hint + password reveal |
 | `feedback.js` | 124 | `Banner`, `Empty`, `Spinner`, `PageHeader`, `Actions`, `Stack`, `Row` |
+| `focus-trap.js` | 189 | `focusTrap()`, `collectFocusable()`, `isFocusable()` -- Tab wrap, Escape, focus restore |
 
 **`dom.js` is the entire XSS defense.** Text only via `textContent`; `on*` attribute names throw;
 `javascript:`/`vbscript:`/`file:`/`about:`/`blob:` and non-image `data:` URLs are refused; there is
@@ -180,30 +184,30 @@ no prop that accepts markup.
 ### `src/ui/domain/` -- wallet-aware components
 
 `account-avatar.js` (59)  `account-row.js` (151)  `account-picker.js` (147, grouped by keyring)
- `asset-selector.js` (105)  `token-row.js` (88)  `password-prompt.js` (122,
-`requirePassword()`)  `seed-phrase-grid.js` (160, grid + backup challenge)
+ `asset-selector.js` (105)  `token-row.js` (88)  `password-prompt.js` (139,
+`requirePassword()`, focus-trapped)  `seed-phrase-grid.js` (160, grid + backup challenge)
 
 ### `src/ui/app/` -- router and routes
 
-`bridge.js` (138)  `router.js` (162)  `guards.js` (138)  `boot.js` (250)  `shell.js` (141,
+`bridge.js` (138)  `router.js` (175)  `guards.js` (138)  `boot.js` (250)  `shell.js` (141,
 topbar + network badge + footer)
 
 | Route | File | Lines |
 | --- | --- | --- |
 | `/welcome` | `routes/welcome.js` | 295 |
 | `/unlock` | `routes/unlock.js` | 191 |
-| `/dashboard` | `routes/dashboard.js` | 335 |
+| `/dashboard` | `routes/dashboard.js` | 311 |
 | `/accounts` | `routes/accounts.js` | 194 |
 | `/account?ref=` | `routes/account-detail.js` | 296 |
 | `/add-account` | `routes/add-account.js` | 392 |
 | `/keyring?id=` | `routes/keyring.js` | 190 |
 | `/export?ref=` | `routes/export.js` | 279 |
-| `/send` | `routes/send.js` | 671 |
+| `/send` | `routes/send.js` | 682 |
 | `/receive` | `routes/receive.js` | 137 |
-| `/faucet` | `routes/faucet.js` | 241 |
+| `/faucet` | `routes/faucet.js` | 252 |
 | `/history` | `routes/history.js` | 234 |
-| `/settings` | `routes/settings.js` | 287 |
-| `/reset` | `routes/reset.js` | 163 |
+| `/settings` | `routes/settings.js` | 375 |
+| `/reset` | `routes/reset.js` | 169 |
 
 **Component contract:** every component returns `{ el, update(props), destroy() }`, and
 `destroy()` removes the *same* handler references it added. Use `disposer()`.

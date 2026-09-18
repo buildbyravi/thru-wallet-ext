@@ -15,6 +15,10 @@ Chrome MV3 self-custody wallet extension for the Thru native Layer 1. Thru is no
 - Background owns auth, signing, services, and RPC coordination.
 - Vault and transaction/RPC code are sacred: `src/lib/vault.js`, `src/lib/thru-client.js`, `src/lib/networks.js`.
 - The legacy launchpad/DEX/prediction surface is quarantined: `src/launchpad/**` is deleted, no launchpad page is built, and `popup.html?launchpad=1` no longer does anything. `test-launchpad-quarantine.mjs` enforces this. Do not revive it; a future launchpad is a new `src/features/launchpad/**` module with `launchpad.*` backend namespaces.
+- All 14 routes are mounted by `test-route-lifecycle.mjs` (real Router/guards/bridge, only `chrome.runtime.sendMessage` mocked) in no-vault, locked and unlocked states: no throw, correct guard landing, no secret in text/attributes/dataset/input values/URLs, no listener left on a detached node. There is no jsdom dependency and there must not be one.
+- What a shim cannot prove (layout at narrow/wide widths, real focus, canvas QR, the side panel, service-worker eviction) is `docs/MANUAL_SMOKE_CHECKLIST.md`. Run it before merging UI changes.
+- Settings does not offer "Add custom network". `network.upsertCustom` remains in the contract with no UI caller and `test-route-lifecycle.mjs` fails if one returns. Do not re-add the form without the four preconditions in `docs/STATUS_AND_ROADMAP.md` Step 2b.
+- The side panel is opened by an explicit Settings control that calls `chrome.sidePanel.open({ windowId })`. Nothing may call `chrome.sidePanel.setPanelBehavior`: that would replace the toolbar popup for every user.
 
 ## Read first
 
@@ -60,9 +64,9 @@ Features must not import sibling features or vault internals.
 
 ## Current P0 work
 
-Done: signing re-authentication (contract v5), reset/auto-lock background hardening (contract v6), legacy launchpad quarantine.
+Done: signing re-authentication (contract v5), reset/auto-lock background hardening (contract v6), legacy launchpad quarantine, route lifecycle tests for all 14 routes with secret-hygiene and teardown assertions, custom-network UI withdrawal, modal focus trapping, and an explicit side-panel action.
 
-1. Custom-network decision: hide "Add custom network" until HTTPS/localhost policy, narrow user-granted host access, verified chain/program capabilities, and no default-program fallback exist.
-2. Add route mount tests for all 14 routes in no-vault, locked, and unlocked states; assert no mnemonic, private key, or password survives rendered or detached DOM.
+1. Run `docs/MANUAL_SMOKE_CHECKLIST.md` in Chrome (popup and side panel, narrow and wide). Decide whether a panel wider than 408px should be fluid; `body { max-width: 100% }` already handles the narrow case.
+2. Custom-network re-enablement: HTTPS-only policy with an explicit localhost exception, narrow user-granted host permission, a verified per-network capability record instead of default program ids, and password re-auth before the wallet talks to a user-supplied endpoint.
 3. Token portfolio and token transfer only after live Thru Token Program validation (account enumeration, decimals, mint metadata, balances, transfer, history decoding).
-4. Contacts CRUD UI and account pin/hide/order UI on top of the existing backend support.
+4. Contacts CRUD UI and account pin/hide/order UI on top of the existing backend support (`contacts.*`, `account.setOrder` / `setPinned` / `setHidden`, `settings.set`). These are new screens, so they belong in their own PR.

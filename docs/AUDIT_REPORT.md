@@ -254,8 +254,8 @@ Keep logs minimal, avoid addresses where possible, and consider a build-time deb
 ## Highest-priority remediation plan
 
 1. ~~**Exclude or migrate launchpad before enabling it.**~~ Done by deletion, and the DOM-sink ratchet now covers all of `src/` rather than needing a launchpad entry.
-2. **Add a jsdom route mount test** as already planned in `docs/STATUS_AND_ROADMAP.md` Step 2. The "assert launchpad is not shipped" half is already covered by `test-launchpad-quarantine.mjs`.
-3. **Resolve the custom-network security/capability decision** before promoting arbitrary RPC endpoints.
+2. ~~**Add a jsdom route mount test** as already planned in `docs/STATUS_AND_ROADMAP.md` Step 2.~~ Done as `test-route-lifecycle.mjs` (680 checks, no jsdom): all 14 routes mount through the real Router/guards/bridge in no-vault, locked and unlocked states; no secret appears in text, attributes, dataset values, input values or URLs; teardown leaves no listener on a detached node. It found and fixed one live leak (`reset.js` discarded its `PageHeader` instance). The "assert launchpad is not shipped" half remains `test-launchpad-quarantine.mjs`.
+3. ~~**Resolve the custom-network security/capability decision** before promoting arbitrary RPC endpoints.~~ Resolved by withdrawal: the "Add custom network" form is removed from Settings, saved custom networks remain listed and removable, and `test-route-lifecycle.mjs` fails if any shipped UI file calls `network.upsertCustom` again. The backend method stays (the contract is append-only). Re-enablement preconditions are written up in `docs/STATUS_AND_ROADMAP.md` Step 2b.
 4. **Keep dependency audit in release checks**; production dependency audit currently reports zero vulnerabilities.
 
 ---
@@ -270,6 +270,8 @@ Keep logs minimal, avoid addresses where possible, and consider a build-time deb
 - ~~DOM-sink scan extended to `src/launchpad/**`.~~ Done differently: the scan now covers all of `src/`, and the directory is deleted.
 - ~~Launchpad smoke test: deployment form produces `symbol`, not only `ticker`, and a 64-hex seed.~~ Moot — the form is deleted. Write it against `token.deploy` at the API-router boundary when a deploy UI returns.
 - Added instead: `test-launchpad-quarantine.mjs` — tree deleted, no source/manifest/route/flag reference, zero sinks in all of `src/`, and a real `dist/` build scanned by filename and content.
+- Added: `test-route-lifecycle.mjs` — route mount/no-throw, guard landing paths, secret hygiene across text/attributes/dataset/input values/URLs, listener teardown on detached nodes, modal focus trapping, and the Settings guarantees (no `network.upsertCustom` caller, no `setPanelBehavior`, an explicit `sidePanel.open`). Each security assertion ships with a negative control that breaks it on purpose.
+- Browser-only residue: layout at narrow/wide widths, real focus rings, canvas QR output, side-panel behaviour. `docs/MANUAL_SMOKE_CHECKLIST.md`.
 
 ---
 

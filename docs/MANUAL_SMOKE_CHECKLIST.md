@@ -1,0 +1,163 @@
+# Manual smoke checklist
+
+Everything `npm test` can prove without a browser, it does prove: `test-route-lifecycle.mjs` mounts
+all 14 routes in all three vault states through the real Router, guards, bridge and kit, and asserts
+teardown, focus trapping and secret hygiene. `scripts/check-routes.mjs` proves the route table is
+consistent and that every CSS class the UI uses is defined.
+
+What none of that can prove is **how the thing looks and behaves in Chrome**: real layout at real
+widths, real focus rings, the side panel, the toolbar popup, service-worker eviction, and the
+clipboard permission prompt. That gap is what this checklist is for. It is deliberately short enough
+to run in about 20 minutes, and every item is something that has either broken before or is new
+enough to have never been checked in a browser at all.
+
+Run it before merging any change to `src/ui/**`, `src/popup/**` or `src/manifest.json`, and after any
+change to the side panel, the popup width, or the modal/focus behaviour.
+
+---
+
+## 0. Load it, and do not get fooled by a stale build
+
+1. `npm run build` — `build.mjs` wipes `dist/` first, so a deleted file cannot survive in the
+   output. If the build fails, stop; nothing below is meaningful.
+2. `chrome://extensions` → **Developer mode** on → **Load unpacked** → select `dist/`.
+3. **The reload trap.** After *every* edit-and-rebuild cycle you must press the reload arrow on the
+   extension card, and then **close and reopen the popup**. Two failure modes hide here:
+   - The open popup keeps running the *old* bundle. It is a separate document and reloading the
+     extension does not refresh it, so you end up testing code you deleted.
+   - The service worker is evicted and restarted by the reload, which clears in-memory state and
+     fires `onStartup`-style paths a warm worker never runs.
+   If a result looks wrong, reload the extension and reopen the popup before believing it.
+4. Open DevTools on the popup (right-click the popup → Inspect) and keep the Console visible while
+   you work. Any red line is a failure, even if the screen looks right.
+
+## 1. Both contexts
+
+The same `popup.html` is registered twice in the manifest: as the toolbar popup and as
+`side_panel.default_path`. They are not the same environment — the panel is resizable, can stay open
+for hours, and shares one session with the popup.
+
+| Check | Toolbar popup | Side panel |
+| --- | --- | --- |
+| Opens and lands on the right screen | [ ] | [ ] |
+| Console clean | [ ] | [ ] |
+| Scrollbar hidden but content reachable by wheel/trackpad | [ ] | [ ] |
+| Locking in one context locks the other | [ ] | [ ] |
+
+To open the panel two ways, and check both:
+
+- **From the wallet**: Settings → *Window* → **Open side panel**. This is the deliberate, visible
+  action. It must open the panel on the current window without changing anything else.
+- **From the browser**: the toolbar icon's context menu / the side panel picker.
+
+Confirm what the button does **not** do: clicking the toolbar icon must still open the popup, not the
+panel. Nothing in the code calls `chrome.sidePanel.setPanelBehavior`, and `test-route-lifecycle.mjs`
+asserts that stays true. If the toolbar icon ever starts opening the panel instead of the popup,
+that is a regression, not a feature.
+
+## 2. Both widths
+
+`--popup-width` is **408px** and `--popup-min-height` is 580px. The popup is therefore always 408px
+wide; the side panel is whatever the user drags it to.
+
+1. **Narrow**: drag the side panel to its narrowest (roughly 300px, and below 408px in any case).
+   - [ ] No content is cut off at the right edge. `body { max-width: 100% }` exists for exactly this
+     case, and scrollbars are hidden globally, so clipping would be silent.
+   - [ ] Long addresses truncate with an ellipsis instead of pushing the layout wider.
+   - [ ] Buttons in a `.screen-actions` row wrap rather than overflow.
+   - [ ] The seed grid (Export → reveal) still shows its numbered words legibly.
+2. **Wide / desktop**: drag the panel to about 800px or more.
+   - [ ] The 408px column and the empty space beside it look intentional (border-right visible, no
+     stray stretch). **This is the known open question** — if it looks broken, the fix is to make the
+     width fluid in the panel only, and it must be decided with a browser open, not by guessing:
+     a plain `width: 100%` on `body` would change how Chrome sizes the toolbar popup.
+   - [ ] Nothing is centred oddly or stretched to full width.
+3. Resize the panel while a screen is open.
+   - [ ] No layout jump leaves a control unreachable, and no console error appears.
+
+## 3. Every route, in both contexts
+
+Visit each route in the popup and in the side panel, at the narrow width and the wide width. Use the
+hash directly (`#/send`) where the UI has no link, so unmigrated or unreachable screens cannot hide.
+
+| Route | What must be true | Popup | Panel |
+| --- | --- | --- | --- |
+| `/welcome` | Create/import steps advance; the phrase grid is blurred until revealed; nothing is written to the URL | [ ] | [ ] |
+| `/unlock` | Wrong password shows an inline error and keeps focus in the field; lockout countdown runs; Back/Reset reachable | [ ] | [ ] |
+| `/dashboard` | Balance, account pill, action tiles, health dot and network badge all populate | [ ] | [ ] |
+| `/accounts` | List, balances, pin/switch, "Add account" | [ ] | [ ] |
+| `/account` | Detail for a real ref (`#/account?ref=...` from the Accounts screen); invalid ref shows an error, not a blank screen | [ ] | [ ] |
+| `/add-account` | HD preview renders; adding an account returns to `/accounts` | [ ] | [ ] |
+| `/keyring` | Source list, rename, backed-up state; `#/keyring?id=<id>` from Accounts | [ ] | [ ] |
+| `/export` | Password prompt before any secret; reveal shows the phrase; navigating away removes it (see §5) | [ ] | [ ] |
+| `/send` | Recipient validation debounce, amount parsing, fee estimate, confirm step, receipt | [ ] | [ ] |
+| `/receive` | Address, QR canvas actually draws, copy button confirms | [ ] | [ ] |
+| `/faucet` | Claim state, disabled when already claimed, error when the network has no faucet | [ ] | [ ] |
+| `/history` | Entries, filter chips, "load more" appends instead of refetching | [ ] | [ ] |
+| `/settings` | Network list (including any saved custom network and its Remove button), auto-lock, security toggle, **Open side panel**, danger zone, version in About | [ ] | [ ] |
+| `/reset` | Warning copy, confirmation text required, reset returns to `/welcome` | [ ] | [ ] |
+
+Also check the redirects a browser can trigger but the tests cannot:
+
+- [ ] `#/welcome` with an unlocked wallet bounces to `/dashboard`.
+- [ ] `#/dashboard` with a locked wallet bounces to `/unlock?returnTo=%2Fdashboard`, and unlocking
+  lands back on `/dashboard`.
+- [ ] A garbage hash (`#/nope`) lands on `/unlock` rather than a blank panel.
+- [ ] Browser Back from a deep screen returns to the previous screen, not to a dead end.
+
+## 4. Keyboard and focus
+
+`src/ui/kit/focus-trap.js` is unit-tested against a DOM shim. These are the parts only a browser can
+confirm:
+
+- [ ] Open any password dialog (Export → reveal). Tab repeatedly: focus cycles **inside** the dialog
+  and never reaches the screen behind the overlay.
+- [ ] Shift+Tab from the first control wraps to the last.
+- [ ] Escape cancels the dialog.
+- [ ] After the dialog closes, focus is back on the control that opened it — not on the page body.
+- [ ] The dialog opens with focus already in the password field, and the field is not scrolled out of
+  view by that focus.
+- [ ] Navigating between routes moves focus to the new screen (a screen-reader user hears the new
+  title) without drawing a focus ring around a control they did not choose.
+- [ ] With the OS "reduce motion" setting on, nothing animates distractingly.
+- [ ] Zoom the browser to 150% and 200%: no control becomes unreachable, no text is clipped.
+
+## 5. Secret hygiene, in a real document
+
+The automated test asserts no password, phrase or private key survives in the DOM. Confirm it in the
+thing that actually persists — the side panel document, which can stay open for days:
+
+1. In the side panel, go to `/export`, reveal the phrase with your password.
+2. In DevTools, run `document.documentElement.outerHTML.includes('<one of your words>')` → must be
+  `false` for attributes and for the whole document only while the phrase is on screen.
+3. Navigate to `/dashboard`, then re-run the same check → must be `false`.
+4. Run `[...document.querySelectorAll('input')].map(i => i.value)` → no password anywhere.
+5. Trigger a background lock (wait out auto-lock, or lock from the popup) with the phrase on screen
+   → the phrase must disappear immediately and the screen must go to `/unlock`.
+6. Check the URL bar / `location.hash` at every step: no phrase, no key, no password.
+
+## 6. Network and service worker
+
+- [ ] Switch network in Settings: balances, history and pending transactions all change, and the
+  badge in the topbar matches.
+- [ ] Switch to a network whose RPC is unreachable: the health dot goes offline, screens show an
+  error state rather than an eternal spinner, and the wallet is still usable.
+- [ ] Let the service worker go idle (wait ~30s with the popup closed), then open the popup: it must
+  load without a "service did not respond" banner.
+- [ ] A saved custom network from before the Add-custom control was withdrawn is still listed and can
+  still be removed. There is deliberately **no** way to add one: see the comment in
+  `src/ui/app/routes/settings.js` and the P0 custom-network decision in `docs/PROJECT_LEDGER.md`.
+
+## 7. Recording the result
+
+Copy this block into the PR description and fill it in. An unchecked box with a reason is far more
+useful than a silently skipped section.
+
+```
+Manual smoke: <date>, Chrome <version>, build <git short sha>
+  contexts: popup [ ] side panel [ ]
+  widths:   narrow (<408px) [ ] wide (>=800px) [ ]
+  routes:   14/14 [ ]   redirects [ ]   keyboard/focus [ ]
+  secret hygiene [ ]   network/worker [ ]
+  failures found: <none | list, each with the route and the context>
+```
