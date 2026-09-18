@@ -71,9 +71,9 @@ Four rules, all enforced by `scripts/check-layering.mjs`:
 | --- | --- |
 | `build.mjs` | esbuild. 2 JS bundles + 1 CSS bundle + static copies. Wipes `dist/` first, so a removed entry point cannot linger in a stale `dist/`. |
 | `test-derivation.mjs` | **Runs first.** Golden vectors: a fixed phrase must derive fixed addresses. |
-| `test-contract.mjs` | Contract --! router agreement, both directions. 54 checks. |
+| `test-contract.mjs` | Contract --! router agreement, both directions. 56 checks. |
 | `test-ui-dom.mjs` | `h()` security properties + ref codec. 89 checks, DOM shim. |
-| `test-route-lifecycle.mjs` | Mounts all 14 routes through the real Router/guards/bridge in no-vault, locked and unlocked states, plus settings, focus-trap, password-modal, export-secret, navigation and negative-control passes. 680 checks, richer DOM shim, mocked `chrome.runtime.sendMessage` only. |
+| `test-route-lifecycle.mjs` | Mounts all 14 routes through the real Router/guards/bridge in no-vault, locked and unlocked states, plus settings (including custom-network quarantine), focus-trap, password-modal, export-secret, navigation and negative-control passes. 694 checks, richer DOM shim, mocked `chrome.runtime.sendMessage` only. |
 | `docs/MANUAL_SMOKE_CHECKLIST.md` | What only a browser can prove: popup + side panel, narrow + wide widths, all 14 routes, focus, secret hygiene. Not a test; a runbook. |
 | `test-vault.mjs` | Real vault against real `@thru/crypto`. |
 | `test-thru-client.mjs` | Instruction layouts, amount round-trips, network binding. |
@@ -116,8 +116,10 @@ Password-verified operations re-check against the **encrypted blob**, not sessio
 RPC, transaction construction, history decoding, token deployment.
 
 **Network binding matters here.** `configureNetwork(config)` sets the RPC URL and program
-addresses; `network-service` calls it on every config read and on switch. Before that existed the
-client memoized a hardcoded alphanet URL, so network switching was cosmetic.
+addresses; `network-service` calls it on every config read and enabled built-in switch. Contract v7
+refuses custom activation and rewrites any stale custom/disabled active id to Alphanet before this
+binding call. Before binding existed the client memoized a hardcoded alphanet URL, so network
+switching was cosmetic.
 
 Token derivation delegates to `@thru/programs/token` -- `deriveTokenMintAddress` needs a mint
 authority and a **64-hex-character** seed. `generateMintSeed()` produces exactly that.
@@ -141,7 +143,7 @@ program addresses, `faucetStateAccount`, `faucetMaxPerClaim`, `baseFeeUnits`, `f
 | File | Lines | Purpose |
 | --- | --- | --- |
 | `index.js` | 62 | Message listener (validates `sender.id`), inactivity auto-lock heartbeat |
-| `api-router.js` | 306 | Validates every method against the contract, enforces `auth`, catches unserializable payloads |
+| `api-router.js` | 328 | Validates every method against the contract, enforces `auth`, preserves explicit retry policy, catches unserializable payloads |
 | `services/wallet-service.js` | 204 | Lifecycle, unlock backoff, export, on-chain registration |
 | `services/keyring-service.js` | 119 | Multi-seed add/create/rename/remove/backup-state |
 | `services/account-service.js` | 203 | Public accounts, HD preview/batch/remove, preference ordering |
@@ -150,14 +152,13 @@ program addresses, `faucetStateAccount`, `faucetMaxPerClaim`, `baseFeeUnits`, `f
 | `services/balance-service.js` | 201 | Batched + cached balances, **per-network** |
 | `services/pending-tx-service.js` | 227 | Submitted-- confirmed tracking, badge, **per-network** |
 | `services/preferences-service.js` | 178 | Order/pin/hide, whitelist, settings |
-| `services/network-service.js` | 188 | Active network, custom RPCs, **binds thru-client** |
+| `services/network-service.js` | 266 | Enabled built-in selection, legacy custom-record quarantine/removal, **binds thru-client** |
 | `services/contacts-service.js` | 82 | Address book |
 | `services/auth-service.js` | 99 | Unlock throttling with persisted backoff |
 | `services/system-service.js` | 189 | Auto-lock, activity stamping, diagnostics |
 | `services/event-service.js` | 47 | The **only** inbound push channel |
 
-Contract v6, **74 methods**, append-only except the documented v5 signing-auth and v6 destructive-settings security breaks.
-`src/shared/contract/manifest.js` is the allowlist, not just documentation.
+Contract v7, **74 methods**, append-only except the documented v5 signing-auth, v6 destructive-settings, and v7 custom-network quarantine security breaks. `src/shared/contract/manifest.js` is the allowlist, not just documentation.
 
 Deliberately unimplemented, returning `{ supported: false, reason }` rather than fabricated
 values: `tx.simulate`, `token.getBalances`.
@@ -206,7 +207,7 @@ topbar + network badge + footer)
 | `/receive` | `routes/receive.js` | 137 |
 | `/faucet` | `routes/faucet.js` | 252 |
 | `/history` | `routes/history.js` | 234 |
-| `/settings` | `routes/settings.js` | 375 |
+| `/settings` | `routes/settings.js` | 395 |
 | `/reset` | `routes/reset.js` | 169 |
 
 **Component contract:** every component returns `{ el, update(props), destroy() }`, and
@@ -218,7 +219,7 @@ topbar + network badge + footer)
 
 No `chrome.*`, no DOM.
 
-`contract/manifest.js` (524)  `format.js` (42, the only money math)  `refs.js` (92, opaque
+`contract/manifest.js` (558)  `format.js` (42, the only money math)  `refs.js` (92, opaque
 account refs for URLs)  `network-scope.js` (87, the per-network vs global split) 
 `flags.js` (73)  `autolock.js` (36)
 

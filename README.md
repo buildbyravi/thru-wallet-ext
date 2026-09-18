@@ -11,12 +11,13 @@ Chrome MV3 self-custody wallet extension for the **Thru native Layer 1**. Built 
 
 - Single popup UI stack; no legacy popup fallback.
 - 14 popup routes: welcome, unlock, dashboard, accounts, account detail, add account, keyring, export, send, receive, faucet, history, settings, reset.
-- Contract version: **6**.
+- Contract version: **7**.
 - Contract method count: **74**.
 - Signing methods use `auth: 'signing'`: password re-authentication is required by default, with a password-gated user opt-out for session-only signing.
 - Reset and auto-lock changes are background-hardened in contract v6.
+- Contract v7 quarantines legacy custom networks at the background boundary: saved records stay listable/removable, but direct activation is permanently refused and a stale active selection self-heals to Alphanet before RPC binding.
 - Every route is mounted by a test: `test-route-lifecycle.mjs` drives all 14 routes through the real Router, guards and bridge in no-vault / locked / unlocked states, and asserts teardown, secret hygiene, modal focus trapping and the Settings guarantees. Layout, real focus and the side panel itself are a browser runbook: [`docs/MANUAL_SMOKE_CHECKLIST.md`](docs/MANUAL_SMOKE_CHECKLIST.md).
-- Settings no longer offers "Add custom network". `network.upsertCustom` still exists (the contract is append-only) but has no UI caller: a saved endpoint has to be reachable under the extension CSP and its chain programs verified before the wallet will build transactions against it. Networks saved earlier are still listed and can still be removed.
+- Settings no longer offers "Add custom network". `network.upsertCustom` remains for contract compatibility but has no UI caller. A legacy saved record is shown as **not selectable**, with Remove as its only action; `network.setActive` enforces the same quarantine in the background.
 - The manifest's side panel is reachable from the wallet: Settings > Window > **Open side panel**. It calls `chrome.sidePanel.open()` from a user gesture and never calls `setPanelBehavior`, so the toolbar icon still opens the popup.
 - Password dialogs trap keyboard focus (`src/ui/kit/focus-trap.js`): Tab wraps inside the dialog, Escape cancels, and focus returns to the control that opened it.
 - The legacy launchpad/DEX/prediction surface is **quarantined**: `src/launchpad/**` is deleted, no launchpad page is built into `dist/`, and the `?launchpad=1` override is gone. `test-launchpad-quarantine.mjs` keeps it out. Research docs are retained; backend `token.*` methods are unchanged.
@@ -99,7 +100,7 @@ src/lib/thru/*-adapter.js
 - Faucet claim where the active network supports a faucet.
 - Transaction history decoding where known.
 - Pending transaction tracking.
-- Network selection and custom dev networks.
+- Selection between enabled built-in networks; legacy custom-network records can be reviewed and removed but not activated.
 - Password-gated secret export.
 - Password-gated signing by default.
 - Token mint derivation/deploy helpers where verified, but token transfer/balances are still incomplete.
@@ -110,9 +111,9 @@ src/lib/thru/*-adapter.js
 
 Highest priority:
 
-1. Route mount tests are missing.
-2. Token transfer and token balances are not implemented.
-3. Custom-network UI needs a security/capability decision before being promoted.
+1. Run the browser-only smoke checklist for popup/side-panel layout, focus, canvas, and worker eviction.
+2. Token transfer and token balances remain blocked on live Thru Token Program verification.
+3. Custom networks remain quarantined until HTTPS/host-permission, verified chain-program capability, and re-authentication requirements are implemented together.
 4. Any future launchpad/DEX/prediction work must be built as isolated feature modules. The legacy surface is deleted and nothing of the kind ships today.
 5. `@thru/programs` should be exact-pinned in a follow-up cleanup.
 

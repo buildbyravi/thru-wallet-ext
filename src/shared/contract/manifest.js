@@ -14,6 +14,12 @@
 //      Contract v6 is the destructive-settings hardening break: reset now requires an explicit
 //      confirmation parameter and requires a password when the wallet is unlocked; auto-lock
 //      changes now require password re-authentication.
+//
+//      Contract v7 is the custom-network security break: `network.setActive` now refuses every id
+//      that is not an enabled built-in network. A saved custom id fails with
+//      CUSTOM_NETWORK_DISABLED, while a stored custom, disabled, or unknown active id self-heals to
+//      the default before the RPC client is bound. Custom records can still be stored, listed, and
+//      removed for compatibility; they can no longer become active.
 //   2. Every method the UI calls must appear here, and every handler registered in
 //      src/background/api-router.js must appear here. test-contract.mjs enforces both
 //      directions, so a rename on either side fails CI instead of failing silently at
@@ -31,7 +37,7 @@
 //                explicitly disabled signing re-authentication in Settings
 // `since` is the contract version in which the method first appeared.
 
-export const CONTRACT_VERSION = 6;
+export const CONTRACT_VERSION = 7;
 
 export const METHODS = {
   // ---- System ------------------------------------------------------------
@@ -487,13 +493,16 @@ export const METHODS = {
   },
   'network.setActive': {
     params: ['networkId'],
-    returns: 'the newly active NetworkConfig',
+    // Contract v7: enabled built-in ids only. A saved custom id fails permanently with
+    // CUSTOM_NETWORK_DISABLED; a declared-but-disabled or unknown id fails as unknown.
+    returns: 'the newly active NetworkConfig (enabled built-in networks only since v7)',
     auth: 'none',
     since: 1,
   },
   'network.list': {
     params: [],
-    returns: 'array of NetworkConfig, each flagged { custom: boolean }',
+    returns: 'array of NetworkConfig, each flagged { custom: boolean, selectable: boolean }; '
+      + 'a non-selectable entry carries unselectableReason',
     auth: 'none',
     since: 1,
   },
@@ -505,7 +514,8 @@ export const METHODS = {
   },
   'network.removeCustom': {
     params: ['networkId'],
-    returns: '{ removed } — switches to the default if it was active',
+    // Since v7 a custom record can never be active, so removal has nothing to switch away from.
+    returns: '{ removed }',
     auth: 'unlocked',
     since: 4,
   },
@@ -529,6 +539,8 @@ export const ERROR_CODES = {
   WALLET_LOCKED: 'Requires an unlocked wallet.',
   AUTH_REQUIRED: 'Requires the master password.',
   AUTH_LOCKED_OUT: 'Too many failed attempts; retry later.',
+  // Contract v7. Permanent policy refusal from network.setActive for a saved custom id.
+  CUSTOM_NETWORK_DISABLED: 'Custom networks cannot be activated; choose a built-in network.',
 };
 
 /** @param {string} method */

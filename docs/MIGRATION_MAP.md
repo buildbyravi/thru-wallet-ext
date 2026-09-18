@@ -183,7 +183,7 @@ These files should be treated as sensitive and changed only with targeted tests:
 | Wallet auth / throttling | `src/background/services/auth-service.js`, `src/background/services/wallet-service.js` | Unlock attempts, lockout, reset, export, lock/unlock eventing. |
 | Transaction operations | `src/background/services/tx-service.js`, `src/background/services/pending-tx-service.js` | Sends, faucet, duplicates, pending state, balance refresh after submit. |
 | Keyring/account mutation | `src/background/services/keyring-service.js`, `src/background/services/account-service.js` | Creates/removes/renames account sources and account refs. |
-| Network/RPC config | `src/lib/networks.js`, `src/background/services/network-service.js` | RPC URLs, explorer URLs, program ids, custom network switching. |
+| Network/RPC config | `src/lib/networks.js`, `src/background/services/network-service.js` | Built-in RPC/program config and contract-v7 quarantine/list/removal of legacy custom records. |
 | Preferences/security controls | `src/background/services/preferences-service.js`, `src/background/services/system-service.js`, `src/shared/autolock.js` | Auto-lock, whitelist, hidden/pinned/order state. |
 | UI secret entry/export | `src/ui/app/routes/welcome.js`, `src/ui/app/routes/add-account.js`, `src/ui/app/routes/export.js`, `src/ui/domain/password-prompt.js`, `src/ui/domain/seed-phrase-grid.js` | Secret capture/reveal and password prompts. |
 | DOM safety | `src/ui/kit/dom.js`, `scripts/check-layering.mjs`, `scripts/check-routes.mjs` | Injection prevention and route/CSS graph checks. |
@@ -197,7 +197,7 @@ These files should be treated as sensitive and changed only with targeted tests:
 | --- | --- |
 | `src/lib/thru-client.js` | Creates SDK client, calls Thru RPC, account info, account creation, faucet, transfer, history, token mint helpers. |
 | `src/lib/networks.js` | Defines RPC and explorer endpoints plus program addresses. |
-| `src/background/services/network-service.js` | Resolves active/custom network and rebinds `thru-client`. |
+| `src/background/services/network-service.js` | Resolves enabled built-ins, heals unsafe legacy active ids, rejects custom activation, and rebinds `thru-client`. |
 | `src/background/services/tx-service.js` | Calls `thru-client` for account info, faucet, send, history, health, auto-create, fee/sim stubs. |
 | `src/background/services/balance-service.js` | Batch balance reads and cache management. |
 | `src/background/services/token-service.js` | Token deployment/address derivation/local token registry through `thru-client`. |

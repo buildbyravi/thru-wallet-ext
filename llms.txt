@@ -9,7 +9,7 @@ Chrome MV3 self-custody wallet extension for the Thru native Layer 1. Thru is no
 ## Current state
 
 - Single popup route stack with 14 routes.
-- Contract version: 6.
+- Contract version: 7.
 - Contract source: `src/shared/contract/manifest.js`.
 - API seam: UI calls `bridge.send(method, params)` only.
 - Background owns auth, signing, services, and RPC coordination.
@@ -17,7 +17,7 @@ Chrome MV3 self-custody wallet extension for the Thru native Layer 1. Thru is no
 - The legacy launchpad/DEX/prediction surface is quarantined: `src/launchpad/**` is deleted, no launchpad page is built, and `popup.html?launchpad=1` no longer does anything. `test-launchpad-quarantine.mjs` enforces this. Do not revive it; a future launchpad is a new `src/features/launchpad/**` module with `launchpad.*` backend namespaces.
 - All 14 routes are mounted by `test-route-lifecycle.mjs` (real Router/guards/bridge, only `chrome.runtime.sendMessage` mocked) in no-vault, locked and unlocked states: no throw, correct guard landing, no secret in text/attributes/dataset/input values/URLs, no listener left on a detached node. There is no jsdom dependency and there must not be one.
 - What a shim cannot prove (layout at narrow/wide widths, real focus, canvas QR, the side panel, service-worker eviction) is `docs/MANUAL_SMOKE_CHECKLIST.md`. Run it before merging UI changes.
-- Settings does not offer "Add custom network". `network.upsertCustom` remains in the contract with no UI caller and `test-route-lifecycle.mjs` fails if one returns. Do not re-add the form without the four preconditions in `docs/STATUS_AND_ROADMAP.md` Step 2b.
+- Contract v7 quarantines custom networks in the background, not just Settings. `network.setActive` accepts enabled built-ins only; a saved custom id returns permanent `CUSTOM_NETWORK_DISABLED`, and a stale custom/disabled active id self-heals to Alphanet before `configureNetwork()`. Legacy records remain listable/removable and render as inert rows. `network.upsertCustom` stays in the contract with no UI caller. Do not re-enable custom endpoints without all four preconditions in `docs/STATUS_AND_ROADMAP.md` Step 2b.
 - The side panel is opened by an explicit Settings control that calls `chrome.sidePanel.open({ windowId })`. Nothing may call `chrome.sidePanel.setPanelBehavior`: that would replace the toolbar popup for every user.
 
 ## Read first
@@ -64,7 +64,7 @@ Features must not import sibling features or vault internals.
 
 ## Current P0 work
 
-Done: signing re-authentication (contract v5), reset/auto-lock background hardening (contract v6), legacy launchpad quarantine, route lifecycle tests for all 14 routes with secret-hygiene and teardown assertions, custom-network UI withdrawal, modal focus trapping, and an explicit side-panel action.
+Done: signing re-authentication (contract v5), reset/auto-lock background hardening (contract v6), custom-network background quarantine (contract v7), legacy launchpad quarantine, route lifecycle tests for all 14 routes with secret-hygiene and teardown assertions, modal focus trapping, and an explicit side-panel action.
 
 1. Run `docs/MANUAL_SMOKE_CHECKLIST.md` in Chrome (popup and side panel, narrow and wide). Decide whether a panel wider than 408px should be fluid; `body { max-width: 100% }` already handles the narrow case.
 2. Custom-network re-enablement: HTTPS-only policy with an explicit localhost exception, narrow user-granted host permission, a verified per-network capability record instead of default program ids, and password re-auth before the wallet talks to a user-supplied endpoint.

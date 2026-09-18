@@ -185,6 +185,11 @@ method requirements in place: `wallet.reset` now needs explicit confirmation and
 when unlocked; `system.setAutoLock` now requires password re-authentication. This prevents older
 callers from weakening auto-lock or resetting an unlocked wallet through stale UI assumptions.
 
+**Contract v7 exception:** `network.setActive` retains its method and parameter shape but no longer
+accepts saved custom ids. It returns permanent `CUSTOM_NETWORK_DISABLED`; stored custom, disabled,
+or unknown active ids heal to the default before RPC binding. This intentional security break keeps
+older callers from reaching an endpoint whose chain programs the wallet has not verified.
+
 **R3 — Layering is enforced by a script, not by discipline.** `scripts/check-layering.mjs` fails the
 build when:
 - `src/background/**` imports `src/ui/**`, `src/popup/**`, or legacy `src/desktop/**`

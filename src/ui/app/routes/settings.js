@@ -46,6 +46,10 @@ export function SettingsRoute({ navigate, back }) {
   function networkRow(network) {
     const isActive = network.id === activeNetworkId;
     const isLive = network.isTestnet === false;
+    // Contract v7: a saved custom network remains visible and removable, but can never become the
+    // active network. The background enforces this too; rendering an inert row avoids presenting an
+    // action that can only fail.
+    const selectable = !network.custom && network.selectable !== false;
 
     const children = [
       h('span', { class: ['status-dot', isActive ? 'healthy' : 'muted'].filter(Boolean) }),
@@ -54,8 +58,18 @@ export function SettingsRoute({ navigate, back }) {
           h('span', { class: 'row-title', text: network.label || network.id }),
           isLive ? h('span', { class: 'tag-accent', text: 'live' }) : null,
           network.custom ? h('span', { class: 'badge', text: 'custom' }) : null,
+          network.custom ? h('span', { class: 'tag-warning', text: 'not selectable' }) : null,
         ]),
         h('span', { class: 'row-sub', text: network.rpcUrl || '—' }),
+        network.custom
+          ? h('span', {
+            class: 'row-sub',
+            // The service supplies the same sentence used by its direct-call refusal. The fallback
+            // keeps this UI safe while an older service worker is still winding down after update.
+            text: network.unselectableReason
+              || 'Cannot be selected: the wallet will not sign against an unverified endpoint.',
+          })
+          : null,
       ]),
     ];
 
@@ -63,13 +77,15 @@ export function SettingsRoute({ navigate, back }) {
       children.push(h('span', { class: 'row-value' }, icon('check', 14)));
     }
 
-    const row = h('button', {
-      type: 'button',
-      class: ['row', isActive ? 'active' : null].filter(Boolean),
-      'aria-current': isActive ? 'true' : null,
-    }, children);
+    const row = selectable
+      ? h('button', {
+        type: 'button',
+        class: ['row', isActive ? 'active' : null].filter(Boolean),
+        'aria-current': isActive ? 'true' : null,
+      }, children)
+      : h('div', { class: 'row', 'aria-disabled': 'true' }, children);
 
-    if (!isActive) {
+    if (selectable && !isActive) {
       d.on(row, 'click', async () => {
         banner.clear();
         try {
@@ -130,16 +146,18 @@ export function SettingsRoute({ navigate, back }) {
    *   4. an explicit warning plus password re-authentication before the wallet talks to a
    *      user-supplied endpoint.
    *
-   * Networks added BEFORE this are still listed above and can still be removed or switched away
-   * from. Hiding them would strand a user on a network they cannot leave, which is worse than the
-   * defect being fixed.
+   * Networks added BEFORE this are still listed above and can still be removed. They can no longer
+   * be SELECTED: since contract v7 the background refuses `network.setActive` for a custom id and
+   * self-heals a legacy stored selection to the default network before the RPC client is bound.
+   * Hiding the rows instead would strand a user with a record they cannot delete.
    */
   function renderCustomNetworkNotice(hostEl) {
     hostEl.appendChild(h('p', { class: 'hint', text:
       'Adding a custom network is temporarily unavailable. Before this wallet will build '
       + 'transactions against an endpoint you supply, that endpoint has to be reachable under the '
       + 'security policy of this extension, and its chain programs have to be verified rather than '
-      + 'assumed. Networks you already saved stay listed above and can still be removed.' }));
+      + 'assumed. For the same reason a network you saved earlier stays listed but cannot be '
+      + 'selected; the wallet uses a built-in network and you can remove the saved one here.' }));
   }
 
   // ---- Auto-lock ----------------------------------------------------------

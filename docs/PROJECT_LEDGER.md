@@ -10,9 +10,9 @@ Purpose: canonical ledger for build phases, state identifiers, accepted constrai
 | Item | Value |
 | --- | --- |
 | Repository | `buildbyravi/thru-wallet-ext` |
-| Arena branch | `arena/01a0b4e5-thru-wallet-ext` |
-| Base main commit for this Arena branch | `c275fdd14197bd81d43d6f5ced747ff550cb99fb` |
-| Current contract version | `6` |
+| Arena branch | `arena/01a0b5b5-thru-wallet-ext` |
+| Base main commit for this Arena branch | `745f8abd851b07a9de6b4a639e4f6037258a3496` |
+| Current contract version | `7` |
 | Contract source | `src/shared/contract/manifest.js` |
 | Current route count | 14 popup routes |
 | Contract method count | 74 methods |
@@ -90,7 +90,8 @@ This table deduplicates the repeated local-agent timeline. Commit IDs before the
 | 20 | `1728db0` | PR docs | Wallet feature/performance study added. |
 | 21 | current docs audit | this phase | Docs index, project ledger, module boundaries, MCP/LLM docs, and stale duplicate cleanup. |
 | 22 | `c275fdd` | PR code (merged) | Contract v6: `wallet.reset` confirmation/password policy and password-gated `system.setAutoLock` enforced in the background. |
-| 23 | this PR | PR code | Legacy launchpad quarantined: `src/launchpad/**` deleted, no launchpad page built, `?launchpad=1` override removed, DOM-sink ratchet widened to all of `src/`, `test-launchpad-quarantine.mjs` added. |
+| 23 | `745f8ab` / PR #3 | merged | Legacy launchpad quarantined; route lifecycle coverage, focus trap, custom-network form withdrawal, and explicit side-panel action landed. |
+| 24 | this PR | PR security hotfix | Contract v7 rejects custom activation in the background, self-heals unsafe stored active ids before RPC binding, and leaves legacy records inert/removable. |
 
 ---
 
@@ -100,10 +101,11 @@ This table deduplicates the repeated local-agent timeline. Commit IDs before the
 | --- | --- |
 | `npm test` | Passing; includes derivation, layering, routes, launchpad quarantine, contract, DOM, vault, Thru client, API router. |
 | `npm run build` | Passing; wipes `dist/`, then generates the background and popup bundles plus `popup.css`, and copies `popup.html`, `manifest.json` and icons. |
-| Contract | v6, 74 methods. |
+| Contract | v7, 74 methods; custom-network activation is an intentional security break. |
 | Signing auth | `tx.send`, `tx.claimFaucet`, `tx.autoCreateAccount`, `token.deploy` use `auth: 'signing'`. |
 | Signing re-auth | Required by default; can be disabled only through password-gated `settings.setSecurity`. |
 | Reset/auto-lock hardening | Contract v6: reset requires explicit confirmation and password when unlocked; auto-lock changes are password-gated. |
+| Custom-network quarantine | Contract v7: enabled built-ins only; direct custom activation fails permanently and stale unsafe ids heal before RPC binding. |
 | Production dependency audit | `npm audit --omit=dev` reported `found 0 vulnerabilities` in this session. |
 | DOM sink ratchet | All of `src/` guarded at 0 sinks (`src/popup/vendor/` excluded). `src/launchpad/**`, the only directory outside the ratchet, is deleted. |
 | Live chain facts | Alphanet faucet units, transfer fee, program addresses, history decoding, and account registration were verified historically. |
@@ -114,7 +116,7 @@ This table deduplicates the repeated local-agent timeline. Commit IDs before the
 
 | Priority | Work | Why it matters | Owner doc |
 | ---: | --- | --- | --- |
-| P0 | Custom-network re-enablement design | The add-custom UI is withdrawn; the four preconditions for bringing it back (HTTPS policy, narrow host permission, verified capability record, re-auth) are designed but not built. | `docs/STATUS_AND_ROADMAP.md` Step 2b |
+| P0 | Custom-network re-enablement design | Contract v7 safely quarantines legacy records. Bringing activation back still requires HTTPS policy, narrow host permission, verified capability records, and re-auth together. | `docs/STATUS_AND_ROADMAP.md` Step 2b |
 | P1 | Browser smoke run | `test-route-lifecycle.mjs` mounts every route; layout, real focus, canvas and the side panel still need a human with Chrome. | `docs/MANUAL_SMOKE_CHECKLIST.md` |
 | P1 | Side-panel width beyond 408px | `body { max-width: 100% }` fixes a panel narrower than the popup width; a wider panel still shows a 408px column. Needs a browser to decide. | `docs/MANUAL_SMOKE_CHECKLIST.md` §2 |
 | P1 | Token transfer | Required for honest asset support. Must use official `@thru/programs/token`. | `docs/BACKEND_GAPS.md` |
@@ -191,6 +193,28 @@ NEXT PHASE:           run the manual smoke checklist in Chrome; contacts/account
                       token portfolio stay gated on their own preconditions.
 ```
 
+### Milestone — contract v7 custom-network quarantine
+
+```txt
+PHASE:                Security hotfix after the UI-only withdrawal proved bypassable.
+FILES MODIFIED:       network-service, api-router error normalization, Settings network rows,
+                      contract manifest, API/contract/lifecycle tests, and maintained docs.
+BACKEND CHANGES:      network.setActive accepts enabled built-ins only; a saved custom id returns
+                      non-retryable CUSTOM_NETWORK_DISABLED. Active-network reads rewrite unsafe
+                      stored ids to Alphanet before configureNetwork() runs.
+UI CHANGES:           legacy custom rows are inert and aria-disabled, explain why, and retain
+                      Remove as their only action.
+SECURITY IMPACT:      a stale UI, direct message request, or fresh worker cannot bind a custom
+                      endpoint whose transfer/token programs were never verified.
+TESTS:                API-router tests cover direct rejection, storage/client non-mutation,
+                      getActive/bootstrap healing, disabled ids and removal; lifecycle tests cover
+                      inert UI, the real bridge refusal and removal; contract v7/code are guarded.
+KNOWN LIMITATIONS:    custom endpoint activation is intentionally unavailable. Re-enablement needs
+                      all four prerequisites in STATUS_AND_ROADMAP Step 2b. No browser verification
+                      is claimed; use MANUAL_SMOKE_CHECKLIST §6.
+NEXT PHASE:           merge this security hotfix before the independent CSS-only wide-panel PR.
+```
+
 ### Milestone — legacy launchpad quarantine
 
 ```txt
@@ -227,7 +251,7 @@ When these change, update this ledger, `CONTEXT.md`, `docs/STATUS_AND_ROADMAP.md
 
 | Identifier | Current value |
 | --- | --- |
-| contract version | 6 |
+| contract version | 7 |
 | method count | 74 |
 | route count | 14 |
 | guarded DOM sink count (all of `src/`) | 0 |
@@ -235,4 +259,4 @@ When these change, update this ledger, `CONTEXT.md`, `docs/STATUS_AND_ROADMAP.md
 | disabled declared networks | testnet, mainnet |
 | built extension pages | popup only (`popup.html`) |
 | launchpad state | quarantined: deleted from `src/` and `dist/`; research docs retained |
-| next P0 work | custom-network security/capability decision |
+| next P0 work | custom-network re-enablement prerequisites (quarantine itself is enforced in v7) |
