@@ -20,7 +20,10 @@ globalThis.chrome = {
       set: async (obj) => {
         for (const [k, v] of Object.entries(obj)) storage.set(k, v);
       },
-      remove: async (key) => storage.delete(key),
+      remove: async (key) => {
+        const keys = Array.isArray(key) ? key : [key];
+        for (const k of keys) storage.delete(k);
+      },
       clear: async () => storage.clear(),
     },
     session: {
@@ -28,7 +31,10 @@ globalThis.chrome = {
       set: async (obj) => {
         for (const [k, v] of Object.entries(obj)) session.set(k, v);
       },
-      remove: async (key) => session.delete(key),
+      remove: async (key) => {
+        const keys = Array.isArray(key) ? key : [key];
+        for (const k of keys) session.delete(k);
+      },
       clear: async () => session.clear(),
     },
   },
@@ -92,19 +98,48 @@ assert.equal(res9.data, true);
 console.log('  ok - lock and unlock cycle works via API router');
 
 console.log('[7] Auto-lock configuration via API router');
-const resSet1 = await handleApiRequest({ method: 'system.setAutoLock', params: { minutes: 30 } });
+const autoLockMissingPassword = await handleApiRequest({ method: 'system.setAutoLock', params: { minutes: 30 } });
+assert.equal(autoLockMissingPassword.ok, false);
+assert.equal(autoLockMissingPassword.error.code, 'AUTH_REQUIRED');
+console.log('  ok - auto-lock change rejects missing password');
+
+const autoLockWrongPassword = await handleApiRequest({
+  method: 'system.setAutoLock',
+  params: { minutes: 30, password: 'WrongPassword!' },
+});
+assert.equal(autoLockWrongPassword.ok, false);
+assert.equal(autoLockWrongPassword.error.code, 'AUTH_REQUIRED');
+console.log('  ok - auto-lock change rejects wrong password');
+
+const resSet1 = await handleApiRequest({
+  method: 'system.setAutoLock',
+  params: { minutes: 30, password: 'Password123!' },
+});
 assert.equal(resSet1.ok, true);
 assert.equal(resSet1.data.autoLockMinutes, 30);
 const resGet1 = await handleApiRequest({ method: 'system.getAutoLock' });
 assert.equal(resGet1.data, 30);
-console.log('  ok - setting auto-lock to 30 min persists');
+console.log('  ok - setting auto-lock to 30 min persists after password re-auth');
 
-const resSetNever = await handleApiRequest({ method: 'system.setAutoLock', params: { minutes: 0 } });
+const resSetNever = await handleApiRequest({
+  method: 'system.setAutoLock',
+  params: { minutes: 0, password: 'Password123!' },
+});
 assert.equal(resSetNever.ok, true);
 assert.equal(resSetNever.data.autoLockMinutes, 0);
 const resGetNever = await handleApiRequest({ method: 'system.getAutoLock' });
 assert.equal(resGetNever.data, 0);
-console.log('  ok - setting auto-lock to 0 (Never) persists');
+console.log('  ok - setting auto-lock to 0 (Never) is password-gated');
+
+await handleApiRequest({ method: 'wallet.lock' });
+const autoLockWhileLocked = await handleApiRequest({
+  method: 'system.setAutoLock',
+  params: { minutes: 15, password: 'Password123!' },
+});
+assert.equal(autoLockWhileLocked.ok, false);
+assert.equal(autoLockWhileLocked.error.code, 'WALLET_LOCKED');
+await handleApiRequest({ method: 'wallet.unlock', params: { password: 'Password123!' } });
+console.log('  ok - auto-lock change is refused while locked');
 
 console.log('[8] Signing re-authentication defaults to on and is password-gated');
 const prefsDefault = await handleApiRequest({ method: 'settings.get' });
@@ -331,6 +366,44 @@ const labelAfterSwitch = (await handleApiRequest({ method: 'account.getActive' }
 assert.equal(labelAfterSwitch, 'CrossNet', 'account labels are global and survive a network switch');
 await handleApiRequest({ method: 'network.setActive', params: { networkId: 'alphanet' } });
 console.log('  ok - account labels are global and survive a network switch');
+
+console.log('[11] Reset is background-enforced');
+const resetMissingConfirmation = await handleApiRequest({ method: 'wallet.reset' });
+assert.equal(resetMissingConfirmation.ok, false);
+assert.equal(resetMissingConfirmation.error.code, 'AUTH_REQUIRED');
+console.log('  ok - reset rejects missing confirmation on a direct API call');
+
+const resetMissingPassword = await handleApiRequest({ method: 'wallet.reset', params: { confirmation: 'RESET' } });
+assert.equal(resetMissingPassword.ok, false);
+assert.equal(resetMissingPassword.error.code, 'AUTH_REQUIRED');
+console.log('  ok - reset rejects an unlocked session without password');
+
+const resetWrongPassword = await handleApiRequest({
+  method: 'wallet.reset',
+  params: { confirmation: 'RESET', password: 'WrongPassword!' },
+});
+assert.equal(resetWrongPassword.ok, false);
+assert.equal(resetWrongPassword.error.code, 'AUTH_REQUIRED');
+assert.equal((await handleApiRequest({ method: 'wallet.hasVault' })).data, true);
+console.log('  ok - reset rejects a wrong password and leaves the vault intact');
+
+session.clear(); // Simulates a service-worker/session restart while the encrypted vault remains.
+const unlockedAfterRestart = await handleApiRequest({ method: 'wallet.isUnlocked' });
+assert.equal(unlockedAfterRestart.data, false);
+const lockedReset = await handleApiRequest({ method: 'wallet.reset', params: { confirmation: 'RESET' } });
+assert.equal(lockedReset.ok, true);
+assert.equal((await handleApiRequest({ method: 'wallet.hasVault' })).data, false);
+console.log('  ok - locked forgotten-password reset succeeds with confirmation after worker restart');
+
+const recreated = await handleApiRequest({ method: 'wallet.create', params: { password: 'Password123!' } });
+assert.equal(recreated.ok, true);
+const unlockedReset = await handleApiRequest({
+  method: 'wallet.reset',
+  params: { confirmation: 'RESET', password: 'Password123!' },
+});
+assert.equal(unlockedReset.ok, true);
+assert.equal((await handleApiRequest({ method: 'wallet.hasVault' })).data, false);
+console.log('  ok - unlocked reset succeeds only with confirmation and password');
 
 console.log('\nAll background API router integration tests passed.');
 

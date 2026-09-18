@@ -1,7 +1,7 @@
 # Status and roadmap
 
 Single source of truth for **where the rebuild is** and **what happens next**.
-Last updated: docs audit + contract v5 signing-auth security fix.
+Last updated: contract v6 reset/auto-lock hardening.
 
 Companion docs: `docs/DOCS_INDEX.md` (which doc to trust) · `docs/PROJECT_LEDGER.md` (past/present/future build tracking) · `CONTEXT.md` (file map) · `docs/MODULE_BOUNDARIES.md` (feature separation) · `docs/DEFECT_LOG.md` (every defect + lesson) · `docs/BACKEND_GAPS.md` (capability tiers) · `docs/BUILD_SPEC.md` (product spec)
 
@@ -38,7 +38,7 @@ Structural properties now enforced by CI rather than by discipline:
 ```
 npm run build     clean, no warnings, dist/ reproducible
 npm test          derivation 16 · layering 60 files / 0 sinks · routes 14/14
-                  contract 48 · dom+refs 89 · vault · thru-client · api-router
+                  contract 54 · dom+refs 89 · vault · thru-client · api-router
 npm audit --omit=dev
                   found 0 vulnerabilities
 ```
@@ -52,6 +52,8 @@ npm audit --omit=dev
 - Users can explicitly opt into session-only signing from Settings, but that opt-out is itself
   password-gated via `settings.setSecurity`.
 - Generic `settings.set` rejects signing/whitelist security keys.
+- Contract v6 hardens `wallet.reset`: typed confirmation is always required, and password is required when the wallet is unlocked.
+- Contract v6 hardens `system.setAutoLock`: auto-lock changes are password-gated, including `Never`.
 
 ### Verified against a live chain
 
@@ -82,15 +84,14 @@ Confirmed on alphanet, not assumed:
 
 ## 2. What to do next, in order
 
-### Step 1 — finish remaining audit hardening
+### Step 1 — quarantine legacy launchpad
 
-The F-01 signing issue is fixed. Next security items before feature expansion:
+The F-01 signing issue and contract v6 reset/auto-lock hardening are fixed. Next security item before feature expansion:
 
-1. Move `wallet.reset` policy into the background API: explicit confirmation always, password
-   required when unlocked.
-2. Move auto-lock changes behind a password-gated method.
-3. Remove launchpad from the build while disabled or migrate it to the guarded DOM kit and expand
+1. Remove launchpad from the build while disabled or migrate it to the guarded DOM kit and expand
    the DOM-sink ratchet to cover it.
+2. Remove the `?launchpad=1` override if launchpad remains unshipped.
+3. Do not build DEX, swaps, launchpad, perps, or prediction features in this cleanup.
 
 ### Step 2 — jsdom route mount test
 
@@ -209,8 +210,9 @@ three token bugs that had absorbed significant probing effort.
 Each was earned by a defect in `docs/DEFECT_LOG.md`.
 
 1. New DOM is built with `kit/dom.js` `h()`. The sink ratchet is at **0** and must stay there.
-2. The contract is append-only and tested in both directions, except the documented contract v5
-   security break that moved existing signing methods to `auth: 'signing'`.
+2. The contract is append-only and tested in both directions, except documented security breaks:
+   contract v5 moved existing signing methods to `auth: 'signing'`; contract v6 hardened reset
+   and auto-lock requirements.
 3. Sensitive operations are `auth: 'password'` or `auth: 'signing'`, re-verified against the
    encrypted blob when password auth is required — never against session state.
 4. Secrets never enter URLs, router params, history, `data-*`, storage, `window` or `console`.

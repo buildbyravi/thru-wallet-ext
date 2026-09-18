@@ -49,8 +49,11 @@ export function ResetRoute({ navigate, back }) {
     },
   }));
 
-  async function performReset() {
-    await bridge.send('wallet.reset');
+  async function performReset(password) {
+    await bridge.send('wallet.reset', {
+      confirmation: confirmField.value.trim().toUpperCase(),
+      ...(password ? { password } : {}),
+    });
     invalidate();
     // Replace, so Back cannot return to a reset screen for a wallet that no longer exists.
     navigate('/welcome', { replace: true });
@@ -70,8 +73,8 @@ export function ResetRoute({ navigate, back }) {
       banner.clear();
 
       if (!isUnlocked) {
-        // Locked: the typed confirmation is the whole gate. wallet.verifyPassword is
-        // auth:'password' and would be refused with WALLET_LOCKED anyway.
+        // Locked: the typed confirmation is the whole gate. The background reset handler
+        // deliberately permits this forgotten-password path only when no unlocked session exists.
         try {
           await performReset();
         } catch (error) {
@@ -87,10 +90,8 @@ export function ResetRoute({ navigate, back }) {
         confirmLabel: 'Erase permanently',
         danger: true,
         verify: async (password) => {
-          // Verify BEFORE destroying. wallet.reset takes no password of its own, so without
-          // this an unlocked session alone would be enough to wipe the vault.
-          await bridge.send('wallet.verifyPassword', { password });
-          await performReset();
+          // The background verifies this password inside wallet.reset before destroying data.
+          await performReset(password);
           return true;
         },
       });

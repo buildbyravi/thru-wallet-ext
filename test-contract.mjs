@@ -50,6 +50,7 @@ const wired = new Set(listHandlerNames());
 
 section('Contract versioning');
 ok('contract v5 documents the signing-auth compatibility break', CONTRACT_VERSION >= 5);
+ok('contract v6 documents destructive-settings hardening', CONTRACT_VERSION >= 6);
 
 section('Contract and router agree in both directions');
 
@@ -108,6 +109,7 @@ const MUST_REQUIRE_PASSWORD = [
   'keyring.rename',
   'keyring.remove',
   'account.addImported',
+  'system.setAutoLock',
 ];
 for (const name of MUST_REQUIRE_PASSWORD) {
   ok(`${name} requires a password`, METHODS[name]?.auth === 'password', `auth is '${METHODS[name]?.auth}'`);
@@ -117,6 +119,18 @@ ok(
   METHODS['settings.setSecurity']?.since === 5,
   `since is '${METHODS['settings.setSecurity']?.since}'`,
 );
+ok(
+  'system.setAutoLock records authSince v6',
+  METHODS['system.setAutoLock']?.authSince === 6,
+  `authSince is '${METHODS['system.setAutoLock']?.authSince}'`,
+);
+ok(
+  'wallet.reset records hardeningSince v6',
+  METHODS['wallet.reset']?.hardeningSince === 6,
+  `hardeningSince is '${METHODS['wallet.reset']?.hardeningSince}'`,
+);
+ok('wallet.reset requires explicit confirmation param', METHODS['wallet.reset']?.params.includes('confirmation'));
+ok('wallet.reset can carry a password when unlocked', METHODS['wallet.reset']?.params.includes('password'));
 
 // Signing has its own auth mode because the user may explicitly opt out of re-authentication in
 // Settings. The secure default is still password-required, enforced inside api-router before a

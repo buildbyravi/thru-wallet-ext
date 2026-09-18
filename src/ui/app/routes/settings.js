@@ -178,12 +178,17 @@ export function SettingsRoute({ navigate, back }) {
       });
       d.on(chip, 'click', async () => {
         banner.clear();
-        try {
-          await bridge.send('system.setAutoLock', { minutes });
-          load();
-        } catch (error) {
-          banner.set(error.message || 'Could not change the auto-lock setting.');
-        }
+        if (minutes === current) return;
+        const result = await requirePassword({
+          title: minutes === 0 ? 'Disable auto-lock?' : 'Change auto-lock?',
+          body: minutes === 0
+            ? 'Enter your password to set auto-lock to Never. This keeps the wallet unlocked until you lock it or the browser closes.'
+            : `Enter your password to lock the wallet after ${label} of inactivity.`,
+          confirmLabel: minutes === 0 ? 'Set to Never' : 'Update auto-lock',
+          danger: minutes === 0,
+          verify: (password) => bridge.send('system.setAutoLock', { minutes, password }),
+        });
+        if (result) load();
       });
       return chip;
     });
