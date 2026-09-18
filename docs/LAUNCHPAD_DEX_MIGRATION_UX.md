@@ -1,5 +1,20 @@
 # Launchpad → DEX migration, charts, and market UX study
 
+> [!IMPORTANT]
+> **RESEARCH ONLY — no shipped code corresponds to this document.** There is no DEX, swap, pool,
+> quote, chart, bonding curve, migration or prediction-market code in this repository. The legacy
+> `src/launchpad/**` page that faked a DEX tab — `parseFloat()` quotes against a hard-coded
+> `23.5294` rate and a `setTimeout` "Execute Swap On-Chain" button that reported trades which never
+> happened — is **deleted**, not built, and not reachable by URL, flag or control.
+> `test-launchpad-quarantine.mjs` enforces that.
+>
+> Nothing below may be implemented as written: every flow here depends on Thru AMM/indexer surfaces
+> that are not yet verified. Do not fabricate quotes, pools, charts or market state. A future DEX is
+> an isolated `src/features/dex/**` module with `dex.*` backend namespaces per
+> `docs/MODULE_BOUNDARIES.md`, reading real data through a verified adapter.
+>
+> For current state read `docs/STATUS_AND_ROADMAP.md` and `CONTEXT.md` §9. Retained as UX research.
+
 Date: 2026-09-18  
 Scope: frontend/product architecture for the post-launch and post-graduation experience. This is a
 UX/design document only. It does **not** implement Thru AMM, DEX migration, market indexing, token

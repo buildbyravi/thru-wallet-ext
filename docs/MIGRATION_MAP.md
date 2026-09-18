@@ -4,6 +4,10 @@ Date: 2026-09-18
 Branch: `arena/01a06be7-thru-wallet-ext`  
 Status: planning / architecture map only. No destructive source changes in this step.
 
+Update (launchpad quarantine): every `src/launchpad/**` observation below is now historical — that
+tree is deleted, unbuilt and guarded by `test-launchpad-quarantine.mjs`. Phase B item 4 and Phase F
+are done. Inline notes mark each affected claim.
+
 This document records the required baseline inspection before continuing the Thru Wallet migration.
 It translates the supplied Rabby-class product brief into this repository's current reality and a
 safe incremental path forward.
@@ -77,8 +81,12 @@ Build result:
 - `dist/background.bundle.js`: 615.1kb
 - `dist/popup.bundle.js`: 420.9kb
 - `dist/popup.css`: 48.2kb
-- `dist/launchpad.bundle.js`: 28.5kb
-- `dist/launchpad.css`: 44.4kb
+- `dist/launchpad.bundle.js`: 28.5kb *(no longer produced — launchpad quarantined)*
+- `dist/launchpad.css`: 44.4kb *(no longer produced — launchpad quarantined)*
+
+`dist/` now holds `popup.html`, `manifest.json`, `background.bundle.js`, `popup.bundle.js`,
+`popup.css` and `icons/`. `build.mjs` wipes `dist/` first, so a checkout built before the
+quarantine cannot keep a stale `launchpad.html`.
 
 Non-fatal stderr during tests:
 
@@ -195,7 +203,7 @@ These files should be treated as sensitive and changed only with targeted tests:
 | `src/background/services/token-service.js` | Token deployment/address derivation/local token registry through `thru-client`. |
 | `src/background/services/account-service.js`, `wallet-service.js`, `keyring-service.js` | Fire-and-forget on-chain account registration after account/keyring creation. |
 | `src/ui/app/routes/*` | Never call RPC directly; only call background methods through `src/ui/app/bridge.js`. |
-| `src/launchpad/launchpad.js` | Calls background bridge; still a separate legacy-style page and not yet guarded like popup UI. |
+| `src/launchpad/launchpad.js` | **DELETED (quarantined).** Was a separate legacy-style page calling the background bridge, unguarded by the popup UI's DOM rules. |
 
 The extension CSP permits only the Thru RPC URLs and local development RPC hosts for `connect-src`.
 
@@ -208,7 +216,8 @@ The extension CSP permits only the Thru RPC URLs and local development RPC hosts
 `npm run build` runs `node build.mjs`, which:
 
 - Cleans and recreates `dist/`.
-- Bundles background, popup, and launchpad JS with esbuild.
+- Bundles background and popup JS with esbuild. *(The launchpad bundle is gone with the quarantine;
+  "cleans and recreates" is now literally true — `build.mjs` wipes `dist/` before emitting.)*
 - Bundles CSS.
 - Copies static extension files and icons.
 
@@ -255,8 +264,8 @@ src/
   popup/
     popup.html, popup.js       # shell entry and CSS imports
     styles/*.css               # tokens/base/components/screens/utilities
-  launchpad/
-    launchpad.html/js/css      # disabled future surface, still bundled
+  # launchpad/                 # DELETED (quarantined). Was: launchpad.html/js/css, a disabled
+  #                            # future surface that was still bundled into dist/.
 ```
 
 ### Existing dependency direction
@@ -291,7 +300,7 @@ stack.
    to use password-gated APIs. See `docs/AUDIT_REPORT.md`.
 2. **Route rendering is not tested:** route graph and classes are tested; actual route mounting in a
    browser-like DOM is still uncovered.
-3. **Launchpad bypasses UI guardrails:** it remains a separate bundled page with `innerHTML` sinks.
+3. ~~**Launchpad bypasses UI guardrails:** it remains a separate bundled page with `innerHTML` sinks.~~ **Resolved:** the page is deleted, the sink scan now covers all of `src/`, and `test-launchpad-quarantine.mjs` asserts a real `dist/` build contains no launchpad code.
 4. **No formal domain/application/infrastructure ports:** the service modules are practical seams,
    but the abstractions are not named or documented as stable interfaces yet.
 5. **Store/event model is partial:** background push events exist, but there is no single frontend
@@ -392,15 +401,20 @@ re-authenticate only at the final signing/security-change step and keep password
 
 Purpose: safely support UI refactors.
 
-1. Add jsdom route mount smoke tests for all 14 routes.
-2. Assert no mnemonic/private key appears in route text, attributes, URLs, or detached nodes after
-   `destroy()`.
-3. Assert listener cleanup using disposer instrumentation.
-4. Extend DOM sink scan to `src/launchpad/**` or stop bundling launchpad while disabled.
+1. ~~Add jsdom route mount smoke tests for all 14 routes.~~ Done as `test-route-lifecycle.mjs` —
+   all 14 routes, three vault states, real Router/guards/bridge, no jsdom (no new dependencies).
+2. ~~Assert no mnemonic/private key appears in route text, attributes, URLs, or detached nodes after
+   `destroy()`.~~ Done, including dataset values and input values, plus a negative control that
+   plants a phrase in `dataset.raw` to prove the scan is not vacuous.
+3. ~~Assert listener cleanup using disposer instrumentation.~~ Done by counting listeners on every
+   element that is no longer in the document after each navigation and after `router.stop()`. It
+   caught a real leak in `reset.js` (untracked `PageHeader`).
+4. ~~Extend DOM sink scan to `src/launchpad/**` or stop bundling launchpad while disabled.~~ Done — both, in effect: the scan covers all of `src/` and the launchpad is no longer bundled because it no longer exists.
 5. Add direct API-router tests for reset/signing/security preference bypasses.
 
-Risk: jsdom dependency/install instability was previously noted. Mitigation: clean partial installs,
-pin dependency exactly if added, and keep tests small.
+Risk: ~~jsdom dependency/install instability.~~ Avoided entirely — the harness is a hand-rolled DOM
+shim, so there is no dependency to install. Residual risk is fidelity: a shim cannot prove layout,
+real focus or canvas output, which is what `docs/MANUAL_SMOKE_CHECKLIST.md` is for.
 
 ### Phase C — Formal route registry and frontend state
 
@@ -453,18 +467,26 @@ Purpose: Rabby-class density and clarity with original Thru styling.
 Risk: visual work can accidentally break flows. Mitigation: one route/component per commit with
 build/test before and after.
 
-### Phase F — Launchpad isolation or removal from shipped build
+### Phase F — Launchpad isolation or removal from shipped build — DONE (removal)
 
 Purpose: prevent a disabled future product from weakening wallet core.
 
-Options:
+Options as written:
 
 1. Short-term: stop copying/bundling `src/launchpad/**` while `FEATURE_LAUNCHPAD` is false.
 2. Long-term: migrate launchpad under `src/features/launchpad/`, use UI kit DOM builders, use
    verified token seed/symbol contracts, and request signing through password-gated wallet APIs.
 
-Risk: breaking existing token deploy experiments. Mitigation: feature remains disabled until token
-program behaviour is verified and tested.
+**Taken: option 1, carried to deletion.** `src/launchpad/**` is removed along with
+`FEATURE_LAUNCHPAD`/`FEATURE_TOKEN_DEPLOY`, the `?launchpad=1` override, the dashboard banner, and
+the launchpad-only `src/popup/icons.js` + `src/popup/toast.js`. Migrating 2,052 lines of legacy
+markup-string rendering onto the kit would have rebuilt a surface whose token seed and symbol
+contracts were still wrong (audit F-05, F-06) and whose DEX tab fabricated quotes.
+
+Risk of breaking token deploy experiments: none in the shipped UI, because no shipped UI calls
+`token.deploy` now. The backend `token.*` contract methods are untouched (append-only contract), so
+option 2 remains available to a future `src/features/launchpad/` module — which must use kit DOM
+builders, verified token seed/symbol contracts, and password-gated signing.
 
 ### Phase G — Phase 2+ features only after wallet stability
 
@@ -472,7 +494,7 @@ Do not begin DEX, prediction, dApp connector, NFTs, or hardware/passkey flows un
 
 - Signing/security auth gaps are closed.
 - Route mount tests are green.
-- Launchpad is isolated or not shipped.
+- ~~Launchpad is isolated or not shipped.~~ Satisfied: not shipped, and enforced by `test-launchpad-quarantine.mjs`.
 - Asset abstraction has native THRU covered without fake token balances.
 - Thru semantics for the target feature are verified or explicitly stubbed as unsupported.
 
@@ -484,7 +506,7 @@ Do not begin DEX, prediction, dApp connector, NFTs, or hardware/passkey flows un
 | --- | --- | --- |
 | UI-only password gates for signing/destructive/security operations | Critical/High | Backend-enforced `auth: 'password'` or equivalent direct verification tests. |
 | Launchpad is disabled in navigation but still built | High | Exclude from build or migrate into guarded feature module. |
-| No automated route mount coverage | High | Add jsdom smoke/security cleanup test before UI redesign. |
+| ~~No automated route mount coverage~~ | High | Closed by `test-route-lifecycle.mjs` (mount, secret hygiene, listener teardown). Browser-only behaviour moved to `docs/MANUAL_SMOKE_CHECKLIST.md`. |
 | Protocol semantics guessed for token/DEX/dApp features | High | Stop and document uncertainty; use official Thru packages only after verification. |
 | Store introduction creates stale global state | Medium | Introduce read-only store first; bridge events + explicit invalidation. |
 | Over-engineering through broad folder moves | Medium | Add thin interfaces around existing modules; avoid churn to `vault.js`/`thru-client.js`. |
@@ -505,7 +527,8 @@ The next code change should be small and security-first:
    opt-out is itself password-gated.
 3. Run full `npm test && npm run build` after each small security change.
 
-Only after that should the jsdom route mount test and state/store refactor begin.
+The route mount test is now done (`test-route-lifecycle.mjs`). The state/store refactor remains
+outstanding, and the browser-level runbook is `docs/MANUAL_SMOKE_CHECKLIST.md`.
 
 ---
 

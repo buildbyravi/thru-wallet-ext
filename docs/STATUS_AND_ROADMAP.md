@@ -1,7 +1,7 @@
 # Status and roadmap
 
 Single source of truth for **where the rebuild is** and **what happens next**.
-Last updated: contract v6 reset/auto-lock hardening.
+Last updated: legacy launchpad quarantined (deleted from `src/` and `dist/`).
 
 Companion docs: `docs/DOCS_INDEX.md` (which doc to trust) · `docs/PROJECT_LEDGER.md` (past/present/future build tracking) · `CONTEXT.md` (file map) · `docs/MODULE_BOUNDARIES.md` (feature separation) · `docs/DEFECT_LOG.md` (every defect + lesson) · `docs/BACKEND_GAPS.md` (capability tiers) · `docs/BUILD_SPEC.md` (product spec)
 
@@ -23,7 +23,8 @@ Structural properties now enforced by CI rather than by discipline:
 
 | Property | Enforced by |
 | --- | --- |
-| No `innerHTML` anywhere in the UI | `check-layering.mjs` — **0 sinks, ratchet closed** |
+| No `innerHTML` anywhere in `src/` | `check-layering.mjs` — **0 sinks, ratchet closed, whole runtime** |
+| No launchpad/DEX/prediction surface in `src/`, flags, routes or `dist/` | `test-launchpad-quarantine.mjs` |
 | One file per direction across the seam | `check-layering.mjs` sendMessage allowlist |
 | UI never imports vault/background | `check-layering.mjs` import rules |
 | Every navigated route exists | `check-routes.mjs` |
@@ -36,9 +37,10 @@ Structural properties now enforced by CI rather than by discipline:
 ### Verified green
 
 ```
-npm run build     clean, no warnings, dist/ reproducible
-npm test          derivation 16 · layering 60 files / 0 sinks · routes 14/14
-                  contract 54 · dom+refs 89 · vault · thru-client · api-router
+npm run build     clean, no warnings, dist/ wiped and reproduced: popup.html + 2 bundles
+npm test          derivation 16 · layering 57 files / 0 sinks · routes 14/14 · CSS 123/123
+                  launchpad quarantine 45 · contract 54 · dom+refs 89
+                  vault · thru-client · api-router
 npm audit --omit=dev
                   found 0 vulnerabilities
 ```
@@ -54,6 +56,8 @@ npm audit --omit=dev
 - Generic `settings.set` rejects signing/whitelist security keys.
 - Contract v6 hardens `wallet.reset`: typed confirmation is always required, and password is required when the wallet is unlocked.
 - Contract v6 hardens `system.setAutoLock`: auto-lock changes are password-gated, including `Never`.
+- F-04 is closed by deletion: the legacy launchpad/DEX/prediction page no longer exists, is not
+  built, and cannot be re-enabled by URL, flag or control (`test-launchpad-quarantine.mjs`).
 
 ### Verified against a live chain
 
@@ -84,30 +88,74 @@ Confirmed on alphanet, not assumed:
 
 ## 2. What to do next, in order
 
-### Step 1 — quarantine legacy launchpad
+Step 1 is complete and kept here as the record of what was removed. **Step 2 is the active item.**
 
-The F-01 signing issue and contract v6 reset/auto-lock hardening are fixed. Next security item before feature expansion:
+### Step 1 — quarantine legacy launchpad — DONE
 
-1. Remove launchpad from the build while disabled or migrate it to the guarded DOM kit and expand
-   the DOM-sink ratchet to cover it.
-2. Remove the `?launchpad=1` override if launchpad remains unshipped.
-3. Do not build DEX, swaps, launchpad, perps, or prediction features in this cleanup.
+What was removed, and what deliberately was not:
 
-### Step 2 — jsdom route mount test
+1. `src/launchpad/launchpad.js` (552), `launchpad.html` (443), `launchpad.css` (1,057) deleted.
+   With them go the `innerHTML`/`insertAdjacentHTML` rendering of token names, tickers, mint
+   addresses and explorer URLs, the `parseFloat()` + hard-coded `23.5294` swap quote, the
+   `setTimeout` "Execute Swap On-Chain" button, and the simulated prediction orders.
+2. `build.mjs` no longer bundles or copies a launchpad page, and now wipes `dist/` first so a
+   stale `dist/launchpad.html` cannot survive in an existing checkout. `dist/` ships exactly one
+   page (`popup.html`) and two bundles.
+3. The `?launchpad=1` override, `FEATURE_LAUNCHPAD` and `FEATURE_TOKEN_DEPLOY` are gone from
+   `src/shared/flags.js`; the dashboard `.launchpad-banner` control (the tree's only
+   `chrome.tabs.create`) and its 62 lines of CSS are gone with it, plus `#toast-container`/
+   `.toast*` (50 lines) that only the launchpad toast helper filled.
+4. `src/popup/icons.js` and `src/popup/toast.js` deleted — `launchpad.js` was their only importer.
+5. The DOM-sink ratchet in `check-layering.mjs` widened from `src/ui/**` + `src/features/**` to
+   all of `src/` (vendor excluded), because the directory left outside the ratchet is exactly
+   where the sinks survived. 0 sinks, and now nothing can hide.
+6. `test-launchpad-quarantine.mjs` added to `npm test` (45 checks): tree deleted, no source or
+   manifest reference, flags inert, no route/control, zero sinks, and a real build whose `dist/`
+   is scanned by filename and by content. Verified to fail when the surface is restored.
+7. NOT touched: vault, signing, RPC/instruction construction, and token semantics. The backend
+   `token.*` contract methods stay — the contract is append-only, and `token.deploy` remains
+   available to a future feature module. No DEX, swap, launchpad, perp or prediction feature was
+   built in this cleanup.
 
-The remaining half of the original Step 1. `check-routes.mjs` proves a route is *reachable* and
-its classes are *defined*; nothing proves it *mounts*. For each of the 14 routes, with a mocked
-bridge, in locked / unlocked / no-vault states:
+### Step 2 — route lifecycle test  ← DONE (`test-route-lifecycle.mjs`)
 
-1. mount and assert no throw;
-2. walk the rendered tree for a seeded mnemonic or private key and assert neither appears in text
-   or in any attribute;
-3. call `destroy()` and assert every listener was removed and no secret survives in the detached
-   subtree.
+This was the largest remaining test gap: `check-routes.mjs` proves a route is *reachable* and its
+classes are *defined*; nothing proved it *mounts*. All three requirements are now asserted, for all
+14 routes, in no-vault / locked / unlocked states (680 checks, ~1s):
 
-Item 2 matters because the old stack wrote a mnemonic into `grid.dataset.raw` and never removed
-it. Note that `npm install jsdom` timed out once here and left a corrupt partial
-`node_modules/jsdom` with only a `lib` directory; remove it before retrying.
+1. mount through the real Router, guards, bridge and kit, and assert no throw plus the landing path
+   the guard actually specifies;
+2. walk the rendered tree for a seeded mnemonic, private key or password and assert none appears in
+   text, in any attribute, in any dataset value, in any input value, or in the URL/history — and
+   none survives in the subtree a destroyed route hands back;
+3. assert teardown removes every listener: no handler survives on any element that is no longer in
+   the document, and `router.stop()` returns document/window listeners to their baseline.
+
+Item 2 matters because the old stack wrote a mnemonic into `grid.dataset.raw` and never removed it.
+The test found one live instance of item 3 failing: `reset.js` built its `PageHeader` inline and
+discarded the instance, so the back button's click listener outlived the screen. Fixed and now
+guarded.
+
+**jsdom was deliberately not added.** The hard rule is no new dependencies, the house style is
+already a hand-rolled shim (`test-ui-dom.mjs`), and the shim only needs the DOM surface this
+codebase actually touches. Only `chrome.runtime.sendMessage` is mocked; every response shape was
+read from the service that really produces it.
+
+What a shim still cannot prove is browser behaviour: layout at real widths, real focus rings, canvas
+output, the side panel, service-worker eviction, the clipboard permission prompt. That is
+`docs/MANUAL_SMOKE_CHECKLIST.md`, and it is a required runbook before merging UI changes.
+
+### Step 2b — custom-network decision  ← DONE (withdrawn from the UI)
+
+The "Add custom network" form is removed from Settings. `network.upsertCustom` accepted any http(s)
+endpoint while the manifest CSP allows `connect-src` only to the Thru RPC hosts and localhost, and
+the network service falls back to the DEFAULT transfer/token program ids for a custom network — so a
+saved network could look configured and then build transactions against the wrong programs.
+Networks saved earlier are still listed, still switchable away from, and still removable; hiding them
+would strand the user. Re-enabling needs all four of: an HTTPS-only policy with an explicit localhost
+exception, narrow user-granted host permission, a verified per-network capability record instead of
+silent defaults, and password re-auth plus a warning before the wallet talks to a user-supplied
+endpoint. `test-route-lifecycle.mjs` fails if any shipped UI file calls the method again.
 
 ### Step 3 — feature-module quarantine before DeFi expansion
 
@@ -150,14 +198,20 @@ wrong when `popup.html` is opened in a tab for testing, where the 408px body lea
 blank to the right. One media query lets the working surface widen when it is not in a popup.
 Do the section-spacing pass at the same time.
 
-### Step 7 — launchpad
+### Step 7 — a future launchpad (nothing ships today)
 
-Flagged off (`FEATURE_LAUNCHPAD`). Its account/network switcher buttons currently point users at
-the popup, and it still uses `popup/icons.js` markup strings rather than `ui/kit/icon.js`.
-Migrate it onto the kit when it gets its own testing pass, then re-enable.
+The legacy surface is **deleted**, not flagged: `src/launchpad/**`, its `?launchpad=1` override,
+its dashboard banner, and `popup/icons.js` + `popup/toast.js` (whose only importer it was). See
+Step 1 for the record and `test-launchpad-quarantine.mjs` for the enforcement.
 
-Note `token.deriveAddress` now needs a mint authority and a 64-hex-character seed; the launchpad's
-deploy form predates both.
+A launchpad returns only as a new `src/features/launchpad/**` module with `launchpad.*` backend
+namespaces, guarded DOM, real quotes from a verified AMM/indexer, and its own tests — the shape
+in `docs/MODULE_BOUNDARIES.md`, informed by the retained research in `docs/LAUNCHPAD_UX_STUDY.md`,
+`docs/LAUNCHPAD_DEX_MIGRATION_UX.md` and `docs/THRU_NATIVE_DEFI_TAB_UX.md`.
+
+Note `token.deriveAddress` needs a mint authority and a 64-hex-character seed; the deleted
+deploy form predated both, and its `mintSeed` was `Math.random().toString(36)` — one of the
+reasons deletion was chosen over migration.
 
 ### Step 8 — remaining chain questions
 

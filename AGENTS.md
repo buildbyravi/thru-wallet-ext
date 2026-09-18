@@ -34,7 +34,7 @@ Conflict resolution: `STATUS_AND_ROADMAP.md` wins on **current engineering state
 ```
 npm install
 npm run build      # node build.mjs -> dist/
-npm test           # test-vault.mjs && test-thru-client.mjs && test-api-router.mjs
+npm test           # guards (derivation, layering, routes, launchpad quarantine, contract, dom, route lifecycle) then vault, thru-client, api-router
 ```
 
 Load `dist/` unpacked via `chrome://extensions` --  Developer mode --  Load unpacked.
@@ -62,8 +62,9 @@ is red. Never weaken or skip a test to make it pass.
    `docs/STATUS_AND_ROADMAP.md`.
 6. **Money is BigInt only.** Use `src/shared/format.js`. Never `parseFloat(x) * 1e9`.
 7. **All DOM is built with `src/ui/kit/dom.js` `h()`.** `innerHTML`, `insertAdjacentHTML` and
-   `outerHTML` under `src/ui/**` or `src/features/**` fail the build outright. The injection
-   ratchet is at 0 and must stay there.
+   `outerHTML` anywhere in `src/**` (outside `src/popup/vendor/`) fail the build outright. The
+   injection ratchet is at 0 and must stay there -- it now covers the whole shipped runtime, not
+   just `src/ui/**`, because the one directory left outside it was where the sinks survived.
 8. **No inline `style=""` or `on*=""` attributes.** The CSP is `default-src 'none'` with no
    `unsafe-inline`, so both are refused by the browser. CSSOM (`el.style.x = y`) and DOM
    properties (`el.onerror = fn`) are fine.
@@ -105,6 +106,11 @@ bare version, the failure is in the **request** direction.
 - **There is ONE UI stack.** The legacy `show()`/`#screen-*` tree is deleted. Screens are routes
   in `src/ui/app/routes/`, registered in `src/ui/app/boot.js`.
 - **`src/background.js` is deleted.** The service worker is `src/background/index.js`.
+- **`src/launchpad/**` is deleted, not flagged.** The legacy Launchpad/DEX/Predictions page, its
+  `?launchpad=1` override, its dashboard banner and its `innerHTML`/fake-quote code are gone, and
+  `test-launchpad-quarantine.mjs` fails the build if any of it returns. Do not "temporarily"
+  re-enable it: a launchpad comes back as a new `src/features/launchpad/**` module per
+  `docs/MODULE_BOUNDARIES.md`, with that test updated deliberately in the same PR.
 - **`removeEventListener` with a fresh arrow function removes nothing.** This killed dashboard
   buttons permanently after one navigation in the old stack. Always use `disposer()`.
 - **Do not ship a control before its destination route exists.** `scripts/check-routes.mjs`
@@ -122,8 +128,12 @@ bare version, the failure is in the **request** direction.
   extension reload. Run `system.diagnostics` before blaming auto-lock.
 - **Hand-maintained file lists rot.** `test-contract.mjs` walks directories for exactly this
   reason -- its old static list stopped covering new files and let a phantom method through.
-- **No test mounts a route yet.** `check-routes.mjs` proves reachability and CSS existence;
-  rendering is still uncovered. See `docs/STATUS_AND_ROADMAP.md` Step 1.
+- **`test-route-lifecycle.mjs` mounts every route, but not in a browser.** It drives the real
+  Router, guards, bridge and kit against a hand-rolled DOM shim with only
+  `chrome.runtime.sendMessage` mocked, in all three vault states, and asserts teardown, focus
+  trapping and secret hygiene. It cannot see layout, real focus rings, canvas output or the side
+  panel. Those are `docs/MANUAL_SMOKE_CHECKLIST.md`, and it is a required runbook, not a nicety.
+  jsdom is deliberately not a dependency (Hard rule: no new deps).
 
 ## Reporting
 

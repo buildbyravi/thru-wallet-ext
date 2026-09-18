@@ -21,7 +21,10 @@ What shipped, against the original list:
 - A5 whitelist → enforced inside `tx.send`, so a UI bug cannot bypass it
 - A6 preferences → `settings.get` / `settings.set`, unknown keys rejected
 - A7 history pagination → cursor form added without breaking the positional form
-- A8 custom networks → `network.upsertCustom` / `removeCustom`
+- A8 custom networks → `network.upsertCustom` / `removeCustom`. Both methods still exist; only
+  `removeCustom` has a UI caller. `upsertCustom` is deliberately unreachable from the UI until the
+  CSP/host-permission/capability-verification design lands — see `docs/STATUS_AND_ROADMAP.md`
+  Step 2b. Capability without a safe UI is a gap, not a feature.
 - A9 token registry → `token.import` / `setVisibility`, metadata normalized and scheme-allowlisted
 - A10 pending transactions → `pending-tx-service.js`, badge text, duplicate-submit protection
 - B1 derive-and-preview → `account.previewHd`, persists nothing

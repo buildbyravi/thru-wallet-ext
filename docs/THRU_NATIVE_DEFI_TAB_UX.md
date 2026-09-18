@@ -1,5 +1,18 @@
 # Thru-native launchpad, DEX, charts, and full-tab DeFi UX
 
+> [!IMPORTANT]
+> **DIRECTION / RESEARCH ONLY — no runtime code corresponds to this document.** The legacy
+> `src/launchpad/**` full-tab surface is **deleted** (quarantined): it is not built, is not in
+> `dist/`, and cannot be re-enabled by URL, flag or control. `test-launchpad-quarantine.mjs`
+> enforces that, and the wallet ships exactly one extension page, `popup.html`.
+>
+> The corrections below (Thru is a native L1, not EVM; use the Thru Token/AMM Programs and official
+> transport; do not fabricate quotes, charts or market state) remain the authoritative direction for
+> any future launchpad/DEX/full-tab work, which must be built as isolated `src/features/**` modules
+> per `docs/MODULE_BOUNDARIES.md`.
+>
+> For current state read `docs/STATUS_AND_ROADMAP.md` and `CONTEXT.md` §9.
+
 Date: 2026-09-18  
 Status: corrective product/architecture note after reviewing Thru docs. No runtime code changes.
 

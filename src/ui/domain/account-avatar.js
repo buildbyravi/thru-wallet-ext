@@ -4,8 +4,8 @@
 // so a user notices when the active account is not the one they expected. Square = derived
 // from a recovery phrase, round = imported private key.
 //
-// popup/icons.js byteMarkHtml() returns a markup string, which forces callers into
-// innerHTML. This builds nodes instead, and fixes a real defect in the original: for an
+// The deleted popup/icons.js byteMarkHtml() returned a markup string, which forced callers
+// into innerHTML. This builds nodes instead, and fixes a real defect in the original: for an
 // empty address `src.charCodeAt((i * 7 + 3) % src.length || 0)` evaluates `% 0` -> NaN -> 0
 // for every cell, so every unknown account rendered the SAME flat block. A checksum that
 // collides for all placeholder states is worse than none, because it looks like identity.

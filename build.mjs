@@ -1,5 +1,12 @@
 import * as esbuild from 'esbuild';
-import { copyFileSync, mkdirSync, readdirSync } from 'node:fs';
+import { copyFileSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
+
+// dist/ is generated and gitignored, and nothing in it is hand-edited, so it is wiped before
+// every build. Without this, a file an older build emitted survives the removal of its entry
+// point — every checkout built before the launchpad was quarantined would keep shipping a
+// stale, loadable dist/launchpad.html. `npm run build` now always reproduces dist/ from src/
+// exactly.
+rmSync('dist', { recursive: true, force: true });
 
 const shared = {
   bundle: true,
@@ -31,30 +38,17 @@ await esbuild.build({
   outfile: 'dist/popup.css',
 });
 
-// Launchpad full-tab bundles.
-//
-// The output is launchpad.* rather than desktop.*: `desktop.html` is deliberately reserved
-// for a future expanded-wallet-in-a-tab view (the sense in which Rabby uses that name), and
-// having the launchpad occupy it would guarantee a collision the moment we build that.
-await esbuild.build({
-  ...shared,
-  entryPoints: ['src/launchpad/launchpad.js'],
-  outfile: 'dist/launchpad.bundle.js',
-});
-
-await esbuild.build({
-  bundle: true,
-  minify: true,
-  logLevel: 'info',
-  entryPoints: ['src/launchpad/launchpad.css'],
-  outfile: 'dist/launchpad.css',
-});
+// The legacy launchpad/DEX/prediction full-tab bundles are gone with the rest of the
+// quarantined surface (src/launchpad/**). When a launchpad returns it comes back as an
+// isolated `src/features/launchpad/**` module per docs/MODULE_BOUNDARIES.md, with its own
+// entry point — and `desktop.html` stays reserved for the future expanded-wallet-in-a-tab
+// view (the sense in which Rabby uses that name), which is why the old output was named
+// launchpad.* rather than desktop.*.
 
 // Everything else in dist/ is a straight copy of authored files under src/ -- nothing is
-// hand-edited directly in dist/, so `rm -rf dist && npm run build` always reproduces it
+// hand-edited directly in dist/, and with the wipe above `npm run build` alone reproduces it
 // exactly.
 copyFileSync('src/popup/popup.html', 'dist/popup.html');
-copyFileSync('src/launchpad/launchpad.html', 'dist/launchpad.html');
 copyFileSync('src/manifest.json', 'dist/manifest.json');
 mkdirSync('dist/icons', { recursive: true });
 for (const file of readdirSync('src/icons')) {

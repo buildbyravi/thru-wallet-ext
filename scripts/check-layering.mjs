@@ -186,11 +186,19 @@ function stripCommentsAndStrings(source) {
 //
 // Target: every entry reaches 0 and this map becomes empty.
 // EMPTY. The legacy components that owned all 8 sinks are deleted, so the ratchet is closed:
-// any innerHTML/insertAdjacentHTML/outerHTML under src/ui or src/features now fails the build
+// any innerHTML/insertAdjacentHTML/outerHTML in the shipped runtime now fails the build
 // outright. Do not add entries back - the whole point of the ratchet was to reach this state.
 const DOM_SINK_BASELINE = {};
 
-const DOM_SINK_DIRS = ['src/ui/', 'src/features/'];
+// The scan covers ALL of src/ rather than just the rebuilt UI stack.
+//
+// It used to be ['src/ui/', 'src/features/'], which left every other directory unpoliced. That
+// gap was real: src/launchpad/launchpad.js interpolated token names, tickers, mint addresses
+// and explorer URLs into innerHTML/insertAdjacentHTML, outside the ratchet, and shipped inside
+// dist/launchpad.html. The launchpad is now quarantined (deleted, with test-launchpad-quarantine.mjs
+// asserting it stays out of the build), so the widest possible scope is affordable: vendor/ is
+// already skipped by walk(), and nothing else in src/ has a sink.
+const DOM_SINK_DIRS = ['src/'];
 const DOM_SINK_RE = /\.(innerHTML|outerHTML)\s*=|insertAdjacentHTML\s*\(|document\s*\.\s*write\s*\(/;
 
 const sinksByFile = new Map();

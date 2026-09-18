@@ -1,9 +1,9 @@
 // Icons as DATA, built into real SVG nodes.
 //
-// src/popup/icons.js returns SVG markup as template strings, which forces every caller
-// to use innerHTML. That is fine for trusted geometry but it means the icon set is a
-// standing reason to keep an innerHTML sink in the codebase, and sinks get reused for
-// untrusted values later (token-row.js already interpolates a remote image URL into one).
+// The deleted src/popup/icons.js returned SVG markup as template strings, which forced
+// every caller to use innerHTML. That was fine for trusted geometry but it made the icon set
+// a standing reason to keep an innerHTML sink in the codebase, and sinks get reused for
+// untrusted values later. It went with the launchpad quarantine; this is the replacement.
 //
 // So the geometry lives here as arrays of [tag, attrs] and is built with createElementNS.
 // Same paths, same visual result, no HTML parser involved.

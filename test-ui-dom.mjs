@@ -422,6 +422,7 @@ if (failures > 0) {
 console.log('h() cannot be coerced into producing an executable attribute or unsafe URL.');
 console.log(
   'NOTE: this uses a DOM shim with no innerHTML property, so it verifies which DOM APIs\n'
-  + '      dom.js calls, not how a real browser renders the result. Browser-level checks\n'
-  + '      belong in a jsdom route smoke test (docs/UI_REBUILD_PLAN.md Phase 0 item 4).',
+  + '      dom.js calls, not how a real browser renders the result. Route-level behaviour is\n'
+  + '      covered by test-route-lifecycle.mjs (same approach, no jsdom dependency); layout,\n'
+  + '      real focus and the side panel are docs/MANUAL_SMOKE_CHECKLIST.md.',
 );

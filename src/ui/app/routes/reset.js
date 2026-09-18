@@ -112,8 +112,13 @@ export function ResetRoute({ navigate, back }) {
     + 'screen exists for the case where you have forgotten it. Resetting cannot reveal your '
     + 'keys, only remove them from this device.' });
 
+  // Tracked like every other component here: PageHeader owns the back button's click listener,
+  // and an untracked instance leaves that listener on a detached node after destroy(). Every
+  // other route keeps its header for exactly this reason; test-route-lifecycle.mjs asserts it.
+  const header = track(PageHeader({ title: 'Reset wallet', onBack: () => back() }));
+
   const el = h('section', { class: 'screen' }, [
-    PageHeader({ title: 'Reset wallet', onBack: () => back() }).el,
+    header.el,
     banner.el,
 
     h('div', { class: 'notice danger' }, [

@@ -58,68 +58,6 @@
   padding: 3px 7px;
 }
 
-/* ---- Launchpad Banner in Popup ---------------------------- */
-
-.launchpad-banner {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--sp-3) var(--sp-4);
-  background: var(--surface-1);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  cursor: pointer;
-  transition: all var(--t-fast);
-}
-
-.launchpad-banner:hover {
-  background: var(--surface-2);
-  border-color: var(--accent-border);
-}
-
-.launchpad-banner-left {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-3);
-}
-
-.launchpad-banner-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: var(--radius-md);
-  background: var(--accent-tint);
-  border: 1px solid var(--accent-border);
-  color: var(--accent);
-}
-
-.launchpad-banner-text {
-  display: flex;
-  flex-direction: column;
-}
-
-.launchpad-banner-text strong {
-  font-size: var(--fs-sm);
-  color: var(--text-1);
-}
-
-.launchpad-banner-text .muted {
-  font-size: 11px;
-  color: var(--text-3);
-}
-
-.launchpad-banner-arrow {
-  color: var(--text-3);
-  display: flex;
-  align-items: center;
-}
-
-.launchpad-banner:hover .launchpad-banner-arrow {
-  color: var(--accent);
-}
-
 /* ---- Screen scaffold --------------------------------------- */
 
 /* The screen is the vertical rhythm owner for every module that renders

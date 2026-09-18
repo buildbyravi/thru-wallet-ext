@@ -23,32 +23,22 @@ export const FLAGS = {
    */
   NEXT_UI: true,
 
-  /**
-   * Token launchpad and DEX (src/launchpad/**).
-   *
-   * OFF while the core wallet is finished. The wallet must do the things a wallet is for —
-   * accounts, send, receive, history, settings, networks — before it grows a trading surface.
-   * Shipping both half-done means neither gets verified.
-   *
-   * This is a flag rather than a deletion so the code stays in the tree, keeps building, and
-   * keeps being covered by the layering and contract checks. It comes back when its own
-   * testing pass happens, not before.
-   *
-   * When off: the dashboard banner and the topbar expand button are hidden. launchpad.html
-   * is still built and still reachable by direct URL — it is not a security boundary, it is a
-   * product decision about what the UI advertises.
-   */
-  FEATURE_LAUNCHPAD: false,
-
-  /**
-   * Token deployment inside the launchpad. Separate from FEATURE_LAUNCHPAD so the launchpad
-   * can be shown read-only (browse/inspect) before write operations are trusted.
-   */
-  FEATURE_TOKEN_DEPLOY: false,
-
   /** Log route transitions and bridge calls. Never logs params — they can hold secrets. */
   DEBUG_ROUTING: false,
 };
+
+// There is deliberately no FEATURE_LAUNCHPAD / FEATURE_TOKEN_DEPLOY here any more.
+//
+// They gated src/launchpad/**, which was a flag rather than a deletion — so the page kept
+// building, kept shipping inside dist/, and stayed reachable by direct URL, with a query
+// override (`popup.html?launchpad=1`) that could turn the whole surface on for any user who
+// typed it. A flag is a product decision about what the UI advertises; it is not a security
+// boundary, and the legacy page under it interpolated token metadata into innerHTML and
+// quoted swaps from a hard-coded rate. The tree is deleted instead.
+//
+// When a launchpad returns it comes back as an isolated `src/features/launchpad/**` module
+// with its own namespace, its own flag and its own tests, per docs/MODULE_BOUNDARIES.md.
+// test-launchpad-quarantine.mjs fails the build if the legacy surface reappears.
 
 /** @param {keyof typeof FLAGS} name */
 export function isEnabled(name) {
@@ -59,6 +49,9 @@ export function isEnabled(name) {
  * Allow a flag to be forced on for a single session from the URL, e.g.
  * `popup.html?next=1#/unlock`. Query flags are dev conveniences only: they can turn a
  * flag ON but never off, and they are never persisted.
+ *
+ * Only the parameters handled below mean anything. An unknown one — including the retired
+ * `launchpad` — is ignored rather than mapped onto a flag that no longer exists.
  * @param {string} search
  */
 export function applyQueryOverrides(search = '') {
@@ -66,7 +59,6 @@ export function applyQueryOverrides(search = '') {
     const params = new URLSearchParams(search);
     if (params.get('next') === '1') FLAGS.NEXT_UI = true;
     if (params.get('debug') === '1') FLAGS.DEBUG_ROUTING = true;
-    if (params.get('launchpad') === '1') FLAGS.FEATURE_LAUNCHPAD = true;
   } catch {
     // ignore
   }

@@ -10,13 +10,13 @@ Purpose: canonical ledger for build phases, state identifiers, accepted constrai
 | Item | Value |
 | --- | --- |
 | Repository | `buildbyravi/thru-wallet-ext` |
-| Arena branch | `arena/01a06be7-thru-wallet-ext` |
-| Base main commit for this Arena branch | `e1eec74d4ef4e18e4759e8281af1391655cb37cd` |
+| Arena branch | `arena/01a0b4e5-thru-wallet-ext` |
+| Base main commit for this Arena branch | `c275fdd14197bd81d43d6f5ced747ff550cb99fb` |
 | Current contract version | `6` |
 | Contract source | `src/shared/contract/manifest.js` |
 | Current route count | 14 popup routes |
 | Contract method count | 74 methods |
-| Runtime surfaces today | popup route stack + built/flagged-off `launchpad.html` |
+| Runtime surfaces today | popup route stack only — one extension page, `popup.html` |
 | Dist directory | generated; do not edit |
 
 Always verify with:
@@ -50,11 +50,11 @@ Current popup routes:
 /export   /send    /receive    /faucet    /history  /settings     /reset
 ```
 
-Current feature gap:
+Quarantined surface (nothing ships):
 
 ```txt
-src/launchpad/* is still a built but feature-flagged legacy surface.
-DEX and prediction concepts are still tabs/sections in that surface, not isolated modules.
+src/launchpad/* is DELETED. No launchpad, DEX, swap or prediction page is built or reachable.
+A future one is a new src/features/<id>/ module with its own backend namespace, not a revival.
 ```
 
 Target feature architecture is defined in `docs/MODULE_BOUNDARIES.md`.
@@ -89,6 +89,8 @@ This table deduplicates the repeated local-agent timeline. Commit IDs before the
 | 19 | `3330e03` | PR code | Contract version bumped to v5 and signing-auth compatibility break documented/tested. |
 | 20 | `1728db0` | PR docs | Wallet feature/performance study added. |
 | 21 | current docs audit | this phase | Docs index, project ledger, module boundaries, MCP/LLM docs, and stale duplicate cleanup. |
+| 22 | `c275fdd` | PR code (merged) | Contract v6: `wallet.reset` confirmation/password policy and password-gated `system.setAutoLock` enforced in the background. |
+| 23 | this PR | PR code | Legacy launchpad quarantined: `src/launchpad/**` deleted, no launchpad page built, `?launchpad=1` override removed, DOM-sink ratchet widened to all of `src/`, `test-launchpad-quarantine.mjs` added. |
 
 ---
 
@@ -96,14 +98,14 @@ This table deduplicates the repeated local-agent timeline. Commit IDs before the
 
 | Area | Current state |
 | --- | --- |
-| `npm test` | Passing; includes derivation, layering, routes, contract, DOM, vault, Thru client, API router. |
-| `npm run build` | Passing; generates background, popup, launchpad bundles and CSS. |
+| `npm test` | Passing; includes derivation, layering, routes, launchpad quarantine, contract, DOM, vault, Thru client, API router. |
+| `npm run build` | Passing; wipes `dist/`, then generates the background and popup bundles plus `popup.css`, and copies `popup.html`, `manifest.json` and icons. |
 | Contract | v6, 74 methods. |
 | Signing auth | `tx.send`, `tx.claimFaucet`, `tx.autoCreateAccount`, `token.deploy` use `auth: 'signing'`. |
 | Signing re-auth | Required by default; can be disabled only through password-gated `settings.setSecurity`. |
 | Reset/auto-lock hardening | Contract v6: reset requires explicit confirmation and password when unlocked; auto-lock changes are password-gated. |
 | Production dependency audit | `npm audit --omit=dev` reported `found 0 vulnerabilities` in this session. |
-| DOM sink ratchet | `src/ui/**` guarded at 0 sinks. `src/launchpad/**` still outside the ratchet. |
+| DOM sink ratchet | All of `src/` guarded at 0 sinks (`src/popup/vendor/` excluded). `src/launchpad/**`, the only directory outside the ratchet, is deleted. |
 | Live chain facts | Alphanet faucet units, transfer fee, program addresses, history decoding, and account registration were verified historically. |
 
 ---
@@ -112,9 +114,9 @@ This table deduplicates the repeated local-agent timeline. Commit IDs before the
 
 | Priority | Work | Why it matters | Owner doc |
 | ---: | --- | --- | --- |
-| P0 | Remove/migrate launchpad DOM sinks before enabling launchpad | Built page still uses legacy rendering and is outside `src/ui/**` ratchet. | `docs/AUDIT_REPORT.md` |
-| P0 | Custom-network security/capability decision | Arbitrary RPCs need CSP/permission/capability handling before promotion. | `docs/STATUS_AND_ROADMAP.md` |
-| P1 | Route mount/browser smoke tests | Current tests prove routes exist but do not mount them in a browser-like DOM. | `docs/STATUS_AND_ROADMAP.md` |
+| P0 | Custom-network re-enablement design | The add-custom UI is withdrawn; the four preconditions for bringing it back (HTTPS policy, narrow host permission, verified capability record, re-auth) are designed but not built. | `docs/STATUS_AND_ROADMAP.md` Step 2b |
+| P1 | Browser smoke run | `test-route-lifecycle.mjs` mounts every route; layout, real focus, canvas and the side panel still need a human with Chrome. | `docs/MANUAL_SMOKE_CHECKLIST.md` |
+| P1 | Side-panel width beyond 408px | `body { max-width: 100% }` fixes a panel narrower than the popup width; a wider panel still shows a 408px column. Needs a browser to decide. | `docs/MANUAL_SMOKE_CHECKLIST.md` §2 |
 | P1 | Token transfer | Required for honest asset support. Must use official `@thru/programs/token`. | `docs/BACKEND_GAPS.md` |
 | P1 | Feature module split | Launchpad/DEX/prediction must be separated before serious DeFi work. | `docs/MODULE_BOUNDARIES.md` |
 | P1 | Exact-pin `@thru/programs` | Non-PR cleanup: `package.json` currently allows `^0.3.4`; align with the repo rule that Thru SDK/program package versions are exact-pinned. | `package.json` |
@@ -158,6 +160,65 @@ KNOWN LIMITATIONS:
 NEXT PHASE:
 ```
 
+### Milestone — route lifecycle coverage, custom-network withdrawal, side-panel action
+
+```txt
+PHASE:                Frontend reliability: prove every route mounts and cleans up, withdraw an
+                      unsafe capability, make the declared side panel reachable.
+FILES ADDED:          test-route-lifecycle.mjs (680 checks), src/ui/kit/focus-trap.js (189),
+                      docs/MANUAL_SMOKE_CHECKLIST.md.
+FILES MODIFIED:       src/ui/app/routes/settings.js (custom-network form out, Window section in),
+                      src/ui/domain/password-prompt.js (uses the shared trap),
+                      src/ui/app/routes/reset.js (PageHeader leak), src/popup/styles/base.css
+                      (body max-width), package.json, CONTEXT.md, AGENTS.md, and the docs set.
+BACKEND CHANGES:      none. network.upsertCustom stays in the contract (append-only) with no UI
+                      caller; vault, signing and RPC/instruction construction untouched.
+UI CHANGES:           Settings no longer offers "Add custom network" but still lists and removes
+                      saved ones; Settings > Window > "Open side panel" is an explicit user action
+                      that never calls setPanelBehavior; password dialogs trap Tab and restore
+                      focus.
+SECURITY IMPACT:      aria-modal="true" is now backed by a real trap; the custom-RPC path that
+                      could target the wrong program addresses is unreachable from the UI; a
+                      listener leak on a detached screen is fixed and guarded.
+TESTS:                npm test -> PASS (derivation 16, layering 58 files / 0 sinks, routes 14/14,
+                      quarantine 45, contract 54, dom+refs 89, route lifecycle 680, vault,
+                      thru-client, api-router).
+BUILD:                npm run build -> PASS; npm audit --omit=dev -> 0 vulnerabilities.
+KNOWN LIMITATIONS:    the lifecycle test is a shim, not a browser: layout, real focus, canvas and
+                      side-panel behaviour are the manual checklist. A side panel wider than 408px
+                      still shows a fixed-width column.
+NEXT PHASE:           run the manual smoke checklist in Chrome; contacts/account-order UI and the
+                      token portfolio stay gated on their own preconditions.
+```
+
+### Milestone — legacy launchpad quarantine
+
+```txt
+PHASE:                Remove the last legacy surface from the shipped extension.
+FILES ADDED:          test-launchpad-quarantine.mjs (45 checks).
+FILES DELETED:        src/launchpad/launchpad.js (552), src/launchpad/launchpad.html (443),
+                      src/launchpad/launchpad.css (1,057), src/popup/icons.js (79),
+                      src/popup/toast.js (60).
+FILES MODIFIED:       build.mjs, package.json, src/manifest.json, src/shared/flags.js,
+                      src/ui/app/routes/dashboard.js, src/popup/popup.html,
+                      src/popup/styles/screens.css (-62), src/popup/styles/components.css (-50),
+                      src/ui/kit/icon.js + src/ui/domain/account-avatar.js (comments),
+                      scripts/check-layering.mjs, and the docs set.
+BACKEND CHANGES:      none. No contract method added, renamed, removed or re-authed; vault,
+                      signing and RPC/instruction construction untouched.
+UI CHANGES:           the flag-gated dashboard launchpad banner is gone (dead while
+                      FEATURE_LAUNCHPAD was false); dist/ ships one page instead of two.
+SECURITY IMPACT:      closes AUDIT_REPORT F-04. No extension page interpolates token-controlled
+                      values into innerHTML any more, the ?launchpad=1 override cannot turn a
+                      legacy surface on, and the DOM-sink ratchet now covers all of src/.
+TESTS:                npm test -> PASS (derivation 16, layering 57 files / 0 sinks, routes 14/14,
+                      quarantine 45, contract 54, dom+refs 89, vault, thru-client, api-router).
+BUILD:                npm run build -> PASS, no warnings; npm audit --omit=dev -> 0 vulnerabilities.
+KNOWN LIMITATIONS:    no route is mounted by a test yet (Step 2). Research docs describe a
+                      launchpad/DEX that does not exist in code and must not be read as state.
+NEXT PHASE:           jsdom route mount tests, then the custom-network decision.
+```
+
 ---
 
 ## 8. Source identifiers to keep updated
@@ -166,12 +227,12 @@ When these change, update this ledger, `CONTEXT.md`, `docs/STATUS_AND_ROADMAP.md
 
 | Identifier | Current value |
 | --- | --- |
-| contract version | 5 |
+| contract version | 6 |
 | method count | 74 |
 | route count | 14 |
-| guarded UI DOM sink count | 0 |
+| guarded DOM sink count (all of `src/`) | 0 |
 | enabled networks | alphanet, localnet |
 | disabled declared networks | testnet, mainnet |
-| built extension pages | popup, launchpad |
-| launchpad state | built but feature-flagged off / legacy |
-| next P0 work | reset + auto-lock password gating |
+| built extension pages | popup only (`popup.html`) |
+| launchpad state | quarantined: deleted from `src/` and `dist/`; research docs retained |
+| next P0 work | custom-network security/capability decision |

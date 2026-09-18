@@ -13,15 +13,15 @@ The core popup rebuild has strong structural guardrails: one UI/background seam,
 
 Remediation update 2026-09-18: F-01 has been addressed after the audit. Transaction-signing methods now use `auth: 'signing'`, which requires password re-authentication by default and verifies it in the background router before any signing handler runs. A password-gated Settings opt-out exists for users who explicitly choose session-only signing. Contract v6 also hardens reset and auto-lock changes in the background.
 
-The disabled launchpad is also still built into `dist/launchpad.html` and contains legacy `innerHTML` rendering paths with token/user-controlled values; it is outside the current zero-sink ratchet.
+Remediation update (launchpad quarantine): F-04 is closed by deletion. `src/launchpad/**` is removed, no launchpad page is bundled or copied into `dist/`, the `?launchpad=1` override and both launchpad feature flags are gone, the dashboard banner that opened the page is gone, and the DOM-sink ratchet in `scripts/check-layering.mjs` now covers all of `src/` rather than only `src/ui/**` and `src/features/**`. `test-launchpad-quarantine.mjs` (45 checks, in `npm test`) rebuilds `dist/` and asserts by filename and by content that no launchpad, DEX-quote or prediction code ships. Research documents are retained; backend `token.*` contract methods are unchanged.
 
 ### Risk snapshot
 
 | Severity | Count | Theme |
 | --- | ---: | --- |
 | Critical | 0 | F-01 signing re-authentication is remediated in this branch. |
-| High | 3 | Reset/destructive operations and some security settings can bypass intended password gates; launchpad injection surface remains reachable. |
-| Medium | 2 | Launchpad deployment remains disabled/untested and still uses invalid mint seed generation; token deploy field drift is partially patched. |
+| High | 3 | Remediated: reset/auto-lock password gates are background-enforced in contract v6 (F-02, F-03), and the launchpad injection surface is deleted rather than reachable (F-04). |
+| Medium | 2 | Moot in shipped code: the launchpad deploy path that owned both findings is deleted (F-05, F-06). The backend `ticker`/`symbol` normalization note still applies to any future deploy UI. |
 | Low | 1 | Residual logging/noise. |
 
 ---
@@ -120,75 +120,80 @@ and locked-state refusal.
 
 ### F-04 — High — Disabled launchpad remains built and contains unguarded `innerHTML` with token-controlled data
 
-**Evidence**
+**Status: remediated by deletion (launchpad quarantine).**
 
-- `build.mjs` copies and bundles launchpad assets into `dist/launchpad.html` even while `FEATURE_LAUNCHPAD` is false.
-- `src/launchpad/launchpad.js` uses legacy sinks outside the current `src/ui/**` ratchet:
-  - `insertAdjacentHTML` for icons at line 46.
-  - `lp-account-mark.innerHTML` at line 119.
-  - `container.innerHTML` at lines 230 and 240.
-  - `card.innerHTML` with token fields at lines 252-277.
-  - `dexTradeBtn.innerHTML` at line 451.
-- Token fields interpolated into markup include `token.ticker`, `token.name`, `token.mintAddress`, `token.initialSupply`, and URLs.
+The recommendation was "remove launchpad from the build while disabled, or migrate it". Removal was
+chosen: a flagged-off page that still ships is not a security boundary, and migrating 2,052 lines of
+legacy markup-string rendering onto the guarded kit would have meant rebuilding a feature that has no
+verified chain semantics behind it (see F-05, F-06).
 
-**Why this matters**
+Deleted:
 
-The launchpad is feature-flagged off in navigation, but it is still an extension page that gets built. If a user opens it directly, or if a future UI path enables it before migration, token metadata and locally imported token records can reach string-built HTML. This bypasses the core popup's strongest XSS guardrail.
+- `src/launchpad/launchpad.js` (552), `launchpad.html` (443), `launchpad.css` (1,057) — including
+  every sink listed in the original evidence (`insertAdjacentHTML` icons, `lp-account-mark.innerHTML`,
+  `container.innerHTML`, `card.innerHTML` with `token.ticker`/`name`/`mintAddress`/`initialSupply`,
+  `dexTradeBtn.innerHTML`), the `parseFloat()` + hard-coded `23.5294` swap quote, the `setTimeout`
+  "Execute Swap On-Chain" button, and the simulated prediction orders.
+- `src/popup/icons.js` and `src/popup/toast.js`, whose only importer was `launchpad.js`. `icons.js`
+  was the last markup-string factory in the tree.
+- The launchpad entry points and copy step in `build.mjs`, which now wipes `dist/` first so an
+  existing checkout cannot keep a stale `dist/launchpad.html`.
+- `FEATURE_LAUNCHPAD`, `FEATURE_TOKEN_DEPLOY` and the `popup.html?launchpad=1` override in
+  `src/shared/flags.js`.
+- The dashboard `.launchpad-banner` control (the only `chrome.tabs.create` in the tree) and its CSS,
+  plus `#toast-container` and the `.toast*` rules.
 
-**Impact**
+Enforcement added:
 
-- Markup injection/UI-redress risk in an extension page.
-- Potential abuse of delegated `data-action` handlers by injected elements.
-- Launchpad can regress security without tripping `scripts/check-layering.mjs`, because that check does not cover `src/launchpad/**`.
+- `scripts/check-layering.mjs` DOM-sink scan widened from `src/ui/**` + `src/features/**` to all of
+  `src/` (`src/popup/vendor/` excluded). 0 sinks, and no directory is outside the ratchet any more.
+- `test-launchpad-quarantine.mjs` in `npm test`: the tree stays deleted, no shipped source or the
+  manifest references the surface, the flags cannot be re-enabled by query parameter, no route or
+  control points at it, `dist/` ships exactly one page and two bundles, and no `dist/` text file
+  contains a launchpad reference, the fabricated rate, the simulated-trade copy, or an injection sink.
+  Verified to fail (13, 8 and 6 checks respectively) when the tree, the override, or the dashboard
+  control is restored.
 
-**Recommendation**
+Retained: `docs/LAUNCHPAD_UX_STUDY.md`, `docs/LAUNCHPAD_DEX_MIGRATION_UX.md`,
+`docs/THRU_NATIVE_DEFI_TAB_UX.md` and `docs/MODULE_BOUNDARIES.md` as research/direction only.
 
-Either remove launchpad from the build while disabled, or migrate it to `src/ui/kit/dom.js` before shipping. Expand the DOM-sink ratchet to cover `src/launchpad/**` or relocate launchpad under the guarded UI stack. Validate token mint addresses before storing/rendering them.
+**Residual risk**
+
+None in shipped code. A future launchpad is a new `src/features/launchpad/**` module with guarded DOM,
+real quotes from a verified AMM/indexer, and its own tests; that PR must update
+`test-launchpad-quarantine.mjs` deliberately rather than weaken it. Token mint addresses returned by
+`token.list` are still rendered by `src/ui/domain/token-row.js`, which builds nodes and validates URLs
+through `h()`, so the "validate before rendering" half of the recommendation is already covered there.
 
 ---
 
 ### F-05 — Medium — Launchpad and token deployment API disagree on `ticker` vs `symbol`
 
-**Evidence**
+**Status: shipped surface deleted; backend note stands.**
 
-- The contract declares `token.deploy` parameters as `['mintSeed', 'name', 'symbol', 'decimals', 'description', 'imageUrl']`.
-- `src/background/services/token-service.js` forwards `params.symbol` to both `symbol` and `ticker` at lines 32-36.
-- Remediation update: `src/launchpad/launchpad.js` now submits both `symbol` and legacy `ticker` when it calls `token.deploy`, but the disabled launchpad still needs a full migration/test pass before it is treated as supported.
+The only caller that could hit the `ticker`/`symbol` disagreement was `src/launchpad/launchpad.js`,
+which is deleted. Nothing in the shipped runtime calls `token.deploy` now, so no user can reach the
+mismatch.
 
-**Why this matters**
-
-Launchpad deployment can submit undefined token symbols/tickers through the background service. This is consistent with the file comment noting previous stored records had empty ticker/image fields, but the current code still does not read `params.ticker`.
-
-**Impact**
-
-- Token deployment from launchpad is likely broken or stores incomplete metadata.
-- Deployed token list rendering may crash or show blank names if fields are missing.
-
-**Recommendation**
-
-Normalize at the background boundary: `const symbol = sanitizeSymbol(params.symbol ?? params.ticker)`. Update the contract/callers to one canonical parameter. Add an API-router test for `token.deploy` parameter normalization or reject missing symbols before chain submission.
+The backend boundary is unchanged on purpose — the contract is append-only and `token.deploy` stays
+declared for a future `launchpad.*` module. `token-service.js` still forwards `params.symbol` to both
+`symbol` and `ticker`. Before any deploy UI ships again: normalize at the background boundary
+(`sanitizeSymbol(params.symbol ?? params.ticker)`), reject a missing symbol before chain submission,
+and add the API-router test for it.
 
 ---
 
 ### F-06 — Medium — Launchpad mint seed generation is incompatible with the current token contract
 
-**Evidence**
+**Status: shipped surface deleted.**
 
-- `src/launchpad/launchpad.js` initializes `previewSeed` with base36 random substrings at line 17.
-- The contract says token mint seeds must be 64 hex characters at `src/shared/contract/manifest.js` lines 385-389.
-- `token.generateSeed` exists as a background method but launchpad does not use it.
+`previewSeed` — `Math.random().toString(36)` concatenated twice, neither 64 hex characters nor
+available from an audited helper — existed only in `src/launchpad/launchpad.js`, which is deleted. No
+shipped code generates a mint seed now.
 
-**Why this matters**
-
-A non-hex, non-64-character seed will fail derivation/deployment paths that require a 32-byte hex seed.
-
-**Impact**
-
-- Launchpad deploy is likely non-functional even before the `ticker`/`symbol` mismatch is fixed.
-
-**Recommendation**
-
-Use `bridge.send('token.generateSeed')` or an equivalent audited helper for all launchpad seed generation. Add tests that the launchpad submit path supplies a valid 64-hex seed.
+`token.generateSeed` remains in the contract. Any future deploy UI must call it (or an equivalent
+audited helper) and must be covered by a test asserting a valid 64-hex seed reaches `token.deploy`,
+which is the test this finding asked for and which could not be written against the deleted form.
 
 ---
 
@@ -248,9 +253,9 @@ Keep logs minimal, avoid addresses where possible, and consider a build-time deb
 
 ## Highest-priority remediation plan
 
-1. **Exclude or migrate launchpad before enabling it.** If it remains built, include `src/launchpad/**` in the DOM sink ratchet.
-2. **Add a jsdom route mount test** as already planned in `docs/STATUS_AND_ROADMAP.md`, and include launchpad or assert it is not shipped.
-3. **Resolve the custom-network security/capability decision** before promoting arbitrary RPC endpoints.
+1. ~~**Exclude or migrate launchpad before enabling it.**~~ Done by deletion, and the DOM-sink ratchet now covers all of `src/` rather than needing a launchpad entry.
+2. ~~**Add a jsdom route mount test** as already planned in `docs/STATUS_AND_ROADMAP.md` Step 2.~~ Done as `test-route-lifecycle.mjs` (680 checks, no jsdom): all 14 routes mount through the real Router/guards/bridge in no-vault, locked and unlocked states; no secret appears in text, attributes, dataset values, input values or URLs; teardown leaves no listener on a detached node. It found and fixed one live leak (`reset.js` discarded its `PageHeader` instance). The "assert launchpad is not shipped" half remains `test-launchpad-quarantine.mjs`.
+3. ~~**Resolve the custom-network security/capability decision** before promoting arbitrary RPC endpoints.~~ Resolved by withdrawal: the "Add custom network" form is removed from Settings, saved custom networks remain listed and removable, and `test-route-lifecycle.mjs` fails if any shipped UI file calls `network.upsertCustom` again. The backend method stays (the contract is append-only). Re-enablement preconditions are written up in `docs/STATUS_AND_ROADMAP.md` Step 2b.
 4. **Keep dependency audit in release checks**; production dependency audit currently reports zero vulnerabilities.
 
 ---
@@ -262,11 +267,14 @@ Keep logs minimal, avoid addresses where possible, and consider a build-time deb
 - Contract test: security preferences cannot be changed through generic unlocked-only `settings.set`.
 - API-router test: direct `wallet.reset` while unlocked without password is rejected.
 - API-router test: direct `tx.send` without password is rejected while `requirePasswordForSigning` is enabled.
-- DOM-sink scan extended to `src/launchpad/**`.
-- Launchpad smoke test: deployment form produces `symbol`, not only `ticker`, and a 64-hex seed.
+- ~~DOM-sink scan extended to `src/launchpad/**`.~~ Done differently: the scan now covers all of `src/`, and the directory is deleted.
+- ~~Launchpad smoke test: deployment form produces `symbol`, not only `ticker`, and a 64-hex seed.~~ Moot — the form is deleted. Write it against `token.deploy` at the API-router boundary when a deploy UI returns.
+- Added instead: `test-launchpad-quarantine.mjs` — tree deleted, no source/manifest/route/flag reference, zero sinks in all of `src/`, and a real `dist/` build scanned by filename and content.
+- Added: `test-route-lifecycle.mjs` — route mount/no-throw, guard landing paths, secret hygiene across text/attributes/dataset/input values/URLs, listener teardown on detached nodes, modal focus trapping, and the Settings guarantees (no `network.upsertCustom` caller, no `setPanelBehavior`, an explicit `sidePanel.open`). Each security assertion ships with a negative control that breaks it on purpose.
+- Browser-only residue: layout at narrow/wide widths, real focus rings, canvas QR output, side-panel behaviour. `docs/MANUAL_SMOKE_CHECKLIST.md`.
 
 ---
 
 ## Overall conclusion
 
-The repository is in a much better structural state than the legacy defect history suggests. F-01 signing re-authentication is now enforced in the background by default, with a password-gated user opt-out for session-only signing. Contract v6 also moves reset and auto-lock policy into backend-enforced checks. Remaining risk is concentrated in the disabled launchpad DOM surface, missing route-mount/browser coverage, and custom-network capability/CSP policy.
+The repository is in a much better structural state than the legacy defect history suggests. F-01 signing re-authentication is now enforced in the background by default, with a password-gated user opt-out for session-only signing. Contract v6 also moves reset and auto-lock policy into backend-enforced checks. The disabled launchpad DOM surface is no longer a risk: it is deleted, unbuilt, and guarded by `test-launchpad-quarantine.mjs` plus a DOM-sink ratchet that now covers all of `src/`. Remaining risk is concentrated in missing route-mount/browser coverage and custom-network capability/CSP policy.

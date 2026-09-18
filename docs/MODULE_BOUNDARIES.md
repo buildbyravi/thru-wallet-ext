@@ -25,13 +25,15 @@ Strengths:
 - Core wallet routes are separate files.
 - `src/lib/vault.js` and `src/lib/thru-client.js` are tested sacred layers.
 
-Current weakness for future DeFi/launchpad scale:
+Former weakness for future DeFi/launchpad scale — **resolved by deletion**:
 
 ```txt
-src/launchpad/launchpad.js
+src/launchpad/launchpad.js   (deleted)
 ```
 
-is still a single legacy, built-but-flagged-off area. DEX and prediction are concepts/tabs inside it, not isolated feature modules. That means a future DEX UI fix could accidentally touch launchpad state/rendering, and a launchpad backend fix could accidentally alter DEX code.
+was a single legacy, built-but-flagged-off area where DEX and prediction were tabs inside the launchpad rather than isolated feature modules, so a DEX UI fix could touch launchpad state/rendering and a launchpad backend fix could alter DEX code. It also rendered token-controlled values through `innerHTML` outside the DOM-sink ratchet and quoted swaps from `parseFloat()` and a hard-coded rate.
+
+That file no longer exists, is not built, and cannot be re-enabled by URL, flag or control (`test-launchpad-quarantine.mjs`). The wallet ships one page, `popup.html`. The target shape below is therefore not a migration path away from a legacy module any more — it is the only path by which a launchpad, DEX or prediction surface may return.
 
 ---
 
@@ -276,14 +278,11 @@ node test-feature-prediction.mjs
 - Add route mount tests.
 - Keep signing auth on contract v5 and destructive-settings hardening on contract v6.
 
-### Phase B — quarantine legacy launchpad
+### Phase B — quarantine legacy launchpad — DONE
 
-Choose one:
+Option 1 was taken, and further than "remove from build": `src/launchpad/**` is deleted, along with the `FEATURE_LAUNCHPAD`/`FEATURE_TOKEN_DEPLOY` flags, the `?launchpad=1` override, the dashboard banner, and `src/popup/icons.js` + `src/popup/toast.js` (launchpad-only). `build.mjs` wipes `dist/` so no stale `launchpad.html` survives, and `scripts/check-layering.mjs` now scans all of `src/` for DOM sinks.
 
-1. Remove launchpad from build while disabled, or
-2. Move it behind feature routing and migrate DOM to `h()` before enabling.
-
-No new launchpad/DEX behavior should be added inside the current monolithic `src/launchpad/launchpad.js`.
+No new launchpad/DEX behavior may be added anywhere except a Phase D feature module. `test-launchpad-quarantine.mjs` fails the build otherwise.
 
 ### Phase C — create adapter skeletons
 

@@ -15,7 +15,11 @@ Chrome MV3 self-custody wallet extension for the **Thru native Layer 1**. Built 
 - Contract method count: **74**.
 - Signing methods use `auth: 'signing'`: password re-authentication is required by default, with a password-gated user opt-out for session-only signing.
 - Reset and auto-lock changes are background-hardened in contract v6.
-- `src/launchpad/**` is still a built but feature-flagged legacy surface. Do not add real DEX/launchpad functionality there before module separation.
+- Every route is mounted by a test: `test-route-lifecycle.mjs` drives all 14 routes through the real Router, guards and bridge in no-vault / locked / unlocked states, and asserts teardown, secret hygiene, modal focus trapping and the Settings guarantees. Layout, real focus and the side panel itself are a browser runbook: [`docs/MANUAL_SMOKE_CHECKLIST.md`](docs/MANUAL_SMOKE_CHECKLIST.md).
+- Settings no longer offers "Add custom network". `network.upsertCustom` still exists (the contract is append-only) but has no UI caller: a saved endpoint has to be reachable under the extension CSP and its chain programs verified before the wallet will build transactions against it. Networks saved earlier are still listed and can still be removed.
+- The manifest's side panel is reachable from the wallet: Settings > Window > **Open side panel**. It calls `chrome.sidePanel.open()` from a user gesture and never calls `setPanelBehavior`, so the toolbar icon still opens the popup.
+- Password dialogs trap keyboard focus (`src/ui/kit/focus-trap.js`): Tab wraps inside the dialog, Escape cancels, and focus returns to the control that opened it.
+- The legacy launchpad/DEX/prediction surface is **quarantined**: `src/launchpad/**` is deleted, no launchpad page is built into `dist/`, and the `?launchpad=1` override is gone. `test-launchpad-quarantine.mjs` keeps it out. Research docs are retained; backend `token.*` methods are unchanged.
 - Thru is **not EVM**. Rabby/MetaMask/Phantom/Keplr/etc. are UX references only.
 
 ---
@@ -37,8 +41,11 @@ Start with the docs index:
 | [`docs/AUDIT_REPORT.md`](docs/AUDIT_REPORT.md) | Security audit findings and remediation status. |
 | [`docs/DEFECT_LOG.md`](docs/DEFECT_LOG.md) | Historical defects, root causes, and lessons. |
 | [`docs/BACKEND_GAPS.md`](docs/BACKEND_GAPS.md) | Capability gaps and unsupported backend states. |
+| [`docs/MANUAL_SMOKE_CHECKLIST.md`](docs/MANUAL_SMOKE_CHECKLIST.md) | Browser-only verification runbook: popup + side panel, narrow + wide widths, all 14 routes, focus, secret hygiene. |
 | [`docs/WALLET_FEATURES_PERFORMANCE_STUDY.md`](docs/WALLET_FEATURES_PERFORMANCE_STUDY.md) | Popular wallet feature study and no-lag popup/full-tab performance model. |
-| [`docs/THRU_NATIVE_DEFI_TAB_UX.md`](docs/THRU_NATIVE_DEFI_TAB_UX.md) | Thru-native launchpad/DEX/full-tab architecture direction. |
+| [`docs/THRU_NATIVE_DEFI_TAB_UX.md`](docs/THRU_NATIVE_DEFI_TAB_UX.md) | Thru-native launchpad/DEX/full-tab architecture direction. Research only; no shipped code corresponds to it. |
+| [`docs/LAUNCHPAD_UX_STUDY.md`](docs/LAUNCHPAD_UX_STUDY.md) | Launchpad UX study. Retained research only. |
+| [`docs/LAUNCHPAD_DEX_MIGRATION_UX.md`](docs/LAUNCHPAD_DEX_MIGRATION_UX.md) | Launchpad-to-DEX migration and charting study. Retained research only. |
 | [`docs/archive/`](docs/archive/) | Historical plans only; do not use as current state. |
 
 ---
@@ -103,12 +110,11 @@ src/lib/thru/*-adapter.js
 
 Highest priority:
 
-1. Built legacy launchpad must be removed from build or migrated to guarded DOM before enabling.
-2. Route mount tests are missing.
-3. Token transfer and token balances are not implemented.
-4. DEX/launchpad/prediction must be isolated into feature modules before adding real DeFi functionality.
-5. Custom-network UI needs a security/capability decision before being promoted.
-6. `@thru/programs` should be exact-pinned in a follow-up cleanup.
+1. Route mount tests are missing.
+2. Token transfer and token balances are not implemented.
+3. Custom-network UI needs a security/capability decision before being promoted.
+4. Any future launchpad/DEX/prediction work must be built as isolated feature modules. The legacy surface is deleted and nothing of the kind ships today.
+5. `@thru/programs` should be exact-pinned in a follow-up cleanup.
 
 See [`docs/STATUS_AND_ROADMAP.md`](docs/STATUS_AND_ROADMAP.md) for the live ordered list.
 
@@ -126,13 +132,14 @@ npm audit --omit=dev
 `npm test` runs:
 
 1. derivation checks,
-2. layering and DOM-sink checks,
+2. layering and DOM-sink checks (all of `src/`),
 3. route reachability/CSS checks,
-4. contract/router/caller checks,
-5. DOM helper security checks,
-6. vault integration checks,
-7. Thru client checks,
-8. API router integration checks.
+4. launchpad quarantine checks (source, flags, routes, manifest, and a real `dist/` build),
+5. contract/router/caller checks,
+6. DOM helper security checks,
+7. vault integration checks,
+8. Thru client checks,
+9. API router integration checks.
 
 Load `dist/` as an unpacked extension in Chrome/Chromium after `npm run build`.
 
