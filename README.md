@@ -169,7 +169,11 @@ Historical alphanet results are tracked in `docs/STATUS_AND_ROADMAP.md` and `doc
 - Signing requires password re-authentication by default.
 - Session-only signing is an explicit user setting and is less secure.
 - Do not implement unverified protocol behavior.
-- Do not invent a fake `window.thru` provider; future dApp integration must follow Thru's documented `connect()`, `getSigningContext()`, and `signTransaction()` flow.
+- Thru's current official wallet docs describe `@thru/wallet` connecting to the hosted
+  `wallet.thru.org/embedded` iframe; they do not establish an extension provider contract.
+- Do not invent a fake `window.thru` provider or infer extension compatibility from the hosted
+  `connect()`, `getSigningContext()`, and `signTransaction()` methods. Wait for a verified
+  extension/BYO-signer contract.
 
 ---
 

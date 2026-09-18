@@ -456,11 +456,20 @@ Thru exposes AMM bindings under `@thru/programs/amm` (pool derivation, instructi
 quoting) and a Token Program. Do not implement DEX or launchpad behaviour until those program
 interfaces are verified against the target network.
 
-**dApp connector:** do not invent a fake `window.thru` standard. Future integration must follow
-Thru's documented `connect()`, `getSigningContext()`, and `signTransaction()` lifecycle: connection
-is account approval/discovery, signing context explains the managed account vs fee payer/signer,
-and signing returns canonical transaction bytes after wallet approval. Define abstractions now, but
-implement an extension/dApp provider only after the official extension-compatible shape is verified.
+**dApp connector:** do not invent a fake `window.thru` standard. Thru's current official wallet
+docs describe `@thru/wallet` / `@thru/wallet/react` integrating a dApp with the hosted iframe at
+`https://wallet.thru.org/embedded`; they do not define a provider contract for an independently
+installed extension. That hosted flow uses `connect()` for approval/discovery,
+`getSigningContext()` for managed-account versus fee-payer/signer context, and
+`signTransaction()` for wallet-approved canonical raw bytes, which the dApp submits separately.
+See the official [overview](https://thru.org/docs/wallet/overview/),
+[embedded integration](https://thru.org/docs/wallet/embedded-wallet-integration/), and
+[approval/signing](https://thru.org/docs/wallet/approval-and-signing/) docs.
+
+Define only internal abstractions if useful. Do not implement an extension/dApp provider, inject
+`window.thru`, or copy the hosted iframe protocol until Thru publishes a bring-your-own-signer or
+extension-compatible contract with origin discovery, permissions, approval transport, signing
+ownership, and submission semantics.
 
 ---
 

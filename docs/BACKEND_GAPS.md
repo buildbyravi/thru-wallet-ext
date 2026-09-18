@@ -151,12 +151,22 @@ The send review needs a real "Network fee" line. Today the MAX button reserves a
 Rabby's signature feature — predicted balance changes before signing. Needs a simulate RPC.
 → `tx.simulate({ ... })` → `supported:false`.
 
-### C4. dApp signing integration
-Needed for any future dApp connector. Do not invent an injected `window.thru` provider standard.
-Future integration must follow Thru's documented wallet approval/signing lifecycle:
-`connect()` for account approval/discovery, `getSigningContext()` for managed-account/fee-payer/signer
-context, and `signTransaction()` for wallet approval and canonical transaction bytes. Endpoint,
-provider shape, and extension compatibility still need product/security validation before implementation.
+### C4. dApp signing integration — hosted wallet only; extension path unverified
+Thru's current official wallet documentation describes `@thru/wallet` as a browser SDK for the
+hosted embedded wallet at `https://wallet.thru.org/embedded` (see the official
+[wallet overview](https://thru.org/docs/wallet/overview/)), not as an interoperability contract for
+an independently installed browser extension. The documented
+path uses `@thru/wallet` / `@thru/wallet/react`, `connect()` for account approval and discovery,
+`getSigningContext()` for managed-account versus fee-payer/signer context, and `signTransaction()`
+for wallet approval and canonical raw transaction bytes. The dApp submits those bytes separately.
+See the official [embedded integration](https://thru.org/docs/wallet/embedded-wallet-integration/)
+and [approval/signing lifecycle](https://thru.org/docs/wallet/approval-and-signing/) pages.
+
+This extension is not the hosted iframe and must not pretend to be a drop-in provider. Do not invent
+an injected `window.thru` standard, copy the hosted iframe protocol, or treat the existence of
+`connect()`/`signTransaction()` as an extension trigger. An extension connector remains blocked until
+Thru documents a bring-your-own-signer or extension-compatible provider contract, including origin
+discovery, permissions, approval transport, signing ownership, and submission semantics.
 
 Every C item is also an entry in `BUILD_SPEC.md` Part X (open questions). The single
 highest-value verification remains the faucet/transfer **unit scale**.
