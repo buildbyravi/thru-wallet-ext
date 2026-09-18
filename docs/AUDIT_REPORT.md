@@ -44,7 +44,7 @@ npm audit --json
   - Derivation: 16/16
   - Layering: 60 files, 0 violations, 0 DOM sinks in guarded UI paths
   - Routes: 14/14 registered/reachable; 128 used CSS classes all defined
-  - Contract: 42/42
+  - Contract: 47/47 (current contract version is v5; see `src/shared/contract/manifest.js`)
   - DOM/refs: 89/89
   - Vault, thru-client, api-router integration suites passed
 - Historical `npm audit --json`: INCONCLUSIVE. The npm registry audit endpoint returned `503 Service Unavailable` during the original audit.

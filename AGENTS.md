@@ -11,18 +11,23 @@ bundled with esbuild. No framework. Real `@thru/sdk` + `@thru/crypto`.
 
 | Read when | File |
 | --- | --- |
-| always -- rules, commands, traps | `AGENTS.md` (this file) |
-| "where is X?" | `CONTEXT.md` -- file-by-file map with `file:line` refs |
-| "what's done, what's next?" | `docs/STATUS_AND_ROADMAP.md` -- **start here for any new work** |
-| "has this broken before?" | `docs/DEFECT_LOG.md` -- every defect, root cause and lesson |
+| always — rules, commands, traps | `AGENTS.md` (this file) |
+| docs map / avoid stale context | `docs/DOCS_INDEX.md` |
+| past, present, future build tracking | `docs/PROJECT_LEDGER.md` |
+| "what's done, what's next?" | `docs/STATUS_AND_ROADMAP.md` — **start here for active work** |
+| "where is X?" | `CONTEXT.md` — file-by-file map with `file:line` refs |
+| feature separation / SDK-adapter boundaries | `docs/MODULE_BOUNDARIES.md` |
+| AI-agent/MCP safety | `llms.txt`, then `docs/MCP_AGENT_INTEGRATION.md` |
+| "has this broken before?" | `docs/DEFECT_LOG.md` — every defect, root cause and lesson |
 | product intent, security policy, QA matrix | `docs/BUILD_SPEC.md` |
 | backend capability tiers | `docs/BACKEND_GAPS.md` |
-| target directory layout, phase plan | `docs/UI_REBUILD_PLAN.md` |
-| historical only, do not follow | `docs/archive/` |
+| historical rebuild plan only | `docs/UI_REBUILD_PLAN.md`, `docs/UI_REBUILD_AGENT_PROMPT.md` |
+| archived, do not follow for current state | `docs/archive/` |
 
-Conflict resolution: `STATUS_AND_ROADMAP.md` wins on **current state**;
-`UI_REBUILD_PLAN.md` wins on **structure**; `BUILD_SPEC.md` wins on **behaviour**;
-`CONTEXT.md` wins on **file facts**.
+Conflict resolution: `STATUS_AND_ROADMAP.md` wins on **current engineering state**;
+`PROJECT_LEDGER.md` wins on **phase/build tracking**; `MODULE_BOUNDARIES.md` wins on
+**future feature separation**; `BUILD_SPEC.md` wins on **product/security behaviour**;
+`CONTEXT.md` wins on **file facts**; `DOCS_INDEX.md` wins on **which doc to trust**.
 
 ## Commands
 

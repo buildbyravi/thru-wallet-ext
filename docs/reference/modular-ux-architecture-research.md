@@ -1,5 +1,9 @@
 # Modular UX Architecture 
 
+> [!NOTE]
+> Reference research only. Use `docs/MODULE_BOUNDARIES.md` for the current target architecture and `docs/STATUS_AND_ROADMAP.md` for current state.
+
+
 To future-proof the Thru wallet, structure it as **modular layers with feature flags**, not a monolithic rewrite.  For example, use a static feature flag (boolean) to *hide* incomplete features like the launchpad or DEX.  Martin Fowler’s feature-toggle pattern recommends decoupling *deploy* from *release*: new code can be shipped in “off” mode and later switched on without redeploying.  Practically, introduce a config flag (e.g. `FLAGS.FEATURE_LAUNCHPAD = false`) so the UI routes and banner are omitted until ready.  **Don’t create an empty `desktop.html`**; instead, reserve that name and keep the current code behind a flag.  This matches common practice: LaunchDarkly notes that feature flags let code exist in production without executing.  Once the feature is stable, remove the flag and integrate fully, then delete old code paths to avoid clutter.  (Long-lived static flags should be cleaned up post-launch to prevent technical debt.)
 
 # Multi-Network Support 

@@ -1,8 +1,8 @@
 # Backend gaps for a Rabby-class UI
 
-**STATUS: Tiers A and B are implemented.** Contract v4, 71 methods. This document is kept as the
+**STATUS: Tiers A and B are implemented.** Contract v5, 74 methods. This document is kept as the
 rationale record and as the live list of what remains (Tier C, blocked on chain verification).
-For current state and next steps see `docs/STATUS_AND_ROADMAP.md`.
+For current state and next steps see `docs/STATUS_AND_ROADMAP.md` and `docs/PROJECT_LEDGER.md`.
 
 | Tier | Blast radius | Status |
 | --- | --- | --- |

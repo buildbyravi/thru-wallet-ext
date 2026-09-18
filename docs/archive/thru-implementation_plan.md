@@ -1,5 +1,9 @@
 # Thru Wallet Extension — $100M Redesign
 
+> [!WARNING]
+> Archived historical document. Do not use this as current project state. Start with `docs/DOCS_INDEX.md`, `docs/PROJECT_LEDGER.md`, `docs/STATUS_AND_ROADMAP.md`, and `CONTEXT.md`.
+
+
 **Goal**: Transform the existing `thru-wallet-ext` from a functional MVP into the **reference wallet for the Thru ecosystem** — Rabby-quality UX, instrument-grade Industrial UI, and a modular architecture designed to absorb new features (tokens, NFTs, dApp connector, multi-network) without rewrites.
 
 > [!IMPORTANT]

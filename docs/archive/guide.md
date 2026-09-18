@@ -1,5 +1,9 @@
 # Thru Wallet — Rabby-Class Extension Autonomous Build Specification
 
+> [!WARNING]
+> Archived historical document. Do not use this as current project state. Start with `docs/DOCS_INDEX.md`, `docs/PROJECT_LEDGER.md`, `docs/STATUS_AND_ROADMAP.md`, and `CONTEXT.md`.
+
+
 ## 0. Mission
 
 You are the lead engineer, security engineer, product designer, UX engineer, and QA engineer for a Chrome/Chromium self-custody wallet extension for the **Thru Layer 1 blockchain**.

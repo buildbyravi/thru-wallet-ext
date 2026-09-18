@@ -1,11 +1,9 @@
 # Status and roadmap
 
 Single source of truth for **where the rebuild is** and **what happens next**.
-Last updated: legacy UI deleted, migration complete (`e77f3af`..`c0ba23a`).
+Last updated: docs audit + contract v5 signing-auth security fix.
 
-Companion docs: `AGENTS.md` (rules) · `CONTEXT.md` (file map) · `docs/DEFECT_LOG.md` (every
-defect + lesson) · `docs/BACKEND_GAPS.md` (capability tiers) · `docs/BUILD_SPEC.md` (product
-spec) · `docs/UI_REBUILD_PLAN.md` (original phase plan, §1 historical)
+Companion docs: `docs/DOCS_INDEX.md` (which doc to trust) · `docs/PROJECT_LEDGER.md` (past/present/future build tracking) · `CONTEXT.md` (file map) · `docs/MODULE_BOUNDARIES.md` (feature separation) · `docs/DEFECT_LOG.md` (every defect + lesson) · `docs/BACKEND_GAPS.md` (capability tiers) · `docs/BUILD_SPEC.md` (product spec)
 
 ---
 
@@ -40,7 +38,7 @@ Structural properties now enforced by CI rather than by discipline:
 ```
 npm run build     clean, no warnings, dist/ reproducible
 npm test          derivation 16 · layering 60 files / 0 sinks · routes 14/14
-                  contract 42 · dom+refs 89 · vault · thru-client · api-router
+                  contract 47 · dom+refs 89 · vault · thru-client · api-router
 npm audit --omit=dev
                   found 0 vulnerabilities
 ```
@@ -110,7 +108,19 @@ Item 2 matters because the old stack wrote a mnemonic into `grid.dataset.raw` an
 it. Note that `npm install jsdom` timed out once here and left a corrupt partial
 `node_modules/jsdom` with only a `lib` directory; remove it before retrying.
 
-### Step 3 — token transfer
+### Step 3 — feature-module quarantine before DeFi expansion
+
+Before adding real launchpad, DEX, prediction, chart, or portfolio behavior, follow
+`docs/MODULE_BOUNDARIES.md`:
+
+1. keep launchpad, DEX, and prediction in separate namespaces;
+2. keep feature UI separate from feature backend;
+3. introduce thin `src/lib/thru/*-adapter.js` wrappers around official Thru SDK/program surfaces;
+4. use transaction intents for any mutating feature so the shared signing gate remains central;
+5. treat `docs/MCP_AGENT_INTEGRATION.md` as intent/read-only planning, not permission for agents
+   to sign or export secrets.
+
+### Step 4 — token transfer
 
 `@thru/programs/token` is installed and provides everything needed:
 `createTransferInstruction`, `createInitializeAccountInstruction`, `deriveTokenAccountAddress`,
@@ -126,14 +136,14 @@ sendable, and `token.getBalances` (BACKEND_GAPS C1) stops returning `supported: 
 Also replace the hand-rolled `encodeInitializeMintInstructionData` with
 `createInitializeMintInstruction` while in there.
 
-### Step 4 — spacing and the tab-width question
+### Step 5 — spacing and the tab-width question
 
 Width is **fixed at 408px** on `body`; height is auto above a 580px floor. Correct for a popup,
 wrong when `popup.html` is opened in a tab for testing, where the 408px body leaves the viewport
 blank to the right. One media query lets the working surface widen when it is not in a popup.
 Do the section-spacing pass at the same time.
 
-### Step 5 — launchpad
+### Step 6 — launchpad
 
 Flagged off (`FEATURE_LAUNCHPAD`). Its account/network switcher buttons currently point users at
 the popup, and it still uses `popup/icons.js` markup strings rather than `ui/kit/icon.js`.
@@ -142,7 +152,7 @@ Migrate it onto the kit when it gets its own testing pass, then re-enable.
 Note `token.deriveAddress` now needs a mint authority and a 64-hex-character seed; the launchpad's
 deploy form predates both.
 
-### Step 6 — remaining chain questions
+### Step 7 — remaining chain questions
 
 1. **Explorer route patterns** `/tx/` and `/account/` — convention, unconfirmed. Worst case a
    dead link.
@@ -152,7 +162,7 @@ deploy form predates both.
    account it holds no key for, so `tx.send` reports `RECIPIENT_NOT_ACTIVATED`. Worth confirming
    with the Thru team whether that is intended protocol behaviour.
 
-### Step 7 — feature modules
+### Step 8 — feature modules
 
 `src/features/<id>/` + one registry line + its own backend namespace, per `BUILD_SPEC.md` §3.
 `@thru/programs` also ships **`clob`** and **`oracle`** alongside `amm`, which are directly
