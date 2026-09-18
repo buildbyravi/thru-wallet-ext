@@ -21,6 +21,10 @@
 // checksum validation before a recipient can be used.
 const MAX_REF_LENGTH = 512;
 
+function looksLikeAddressShape(value) {
+  return typeof value === 'string' && /^ta[A-Za-z0-9_-]{40,60}$/.test(value);
+}
+
 function toBase64Url(input) {
   const b64 = btoa(input);
   return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -96,5 +100,5 @@ export function refsEqual(a, b) {
 export function safeAddressParam(value) {
   const addr = String(value || '').trim();
   if (!addr || addr.length > 128) return null;
-  return /^ta[A-Za-z0-9_-]{40,60}$/.test(addr) ? addr : null;
+  return looksLikeAddressShape(addr) ? addr : null;
 }
