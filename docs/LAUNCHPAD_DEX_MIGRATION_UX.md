@@ -5,11 +5,6 @@ Scope: frontend/product architecture for the post-launch and post-graduation exp
 UX/design document only. It does **not** implement Thru AMM, DEX migration, market indexing, token
 trading, or charting.
 
-> Correction: Thru is a native Layer 1, not an EVM chain. External DEXs such as Uniswap,
-> Raydium, PancakeSwap, FOMO, and Pons are UX references only. The Thru implementation target is
-> Thru-native Token Program, AMM Program, RPC/gRPC-Web, replay/indexer, and explorer tooling. See
-> `docs/THRU_NATIVE_DEFI_TAB_UX.md` for the corrected architecture.
-
 Related docs:
 
 - `docs/LAUNCHPAD_UX_STUDY.md` — launchpad create/discover UX.

@@ -4,11 +4,6 @@ Date: 2026-09-18
 Scope: frontend/product study for a future Thru-native launchpad surface. This is a design and
 architecture document only; it does not verify or implement new Thru protocol semantics.
 
-> Correction: Thru is a native Layer 1, not an EVM or Solana clone. The launchpad should study
-> Pump.fun/Pons/Raydium/Meteora/Zora-style UX patterns, but implementation must target Thru-native
-> Token Program, AMM Program, RPC/gRPC-Web, replay/indexer, and explorer tooling. See
-> `docs/THRU_NATIVE_DEFI_TAB_UX.md`.
-
 ---
 
 ## 0. Purpose
