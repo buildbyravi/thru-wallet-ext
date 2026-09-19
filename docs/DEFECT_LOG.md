@@ -269,3 +269,9 @@ are checkboxes in `docs/MANUAL_SMOKE_CHECKLIST.md`, not test gaps to close in No
 > feature support (native nesting) turned what would once have been a build error into a
 > silent runtime no-op. Guardrails must encode *house intent* ("this repo's CSS is flat"),
 > not just "does the toolchain accept it".
+| P0 history feed: dupes on load-more + discarded `synced` flag | `BROWSER` (local agent code audit) | The merged feed paints fresh(15) + cached extras with cursor 15, but append was blind — a load-more page re-yielded already-painted signatures, rendering them twice in scrambled order. And the feed's offline honesty flag was returned to the UI and dropped on the floor, exactly the register-but-never-invoke class resurfacing one layer up (a *field* nobody used). Fixes: dedupe-on-append in history.js, and `synced:false` now drives a 'Showing cached activity — offline' label that clears when a synced page lands. Lifecycle reproduces the overlap fixture-side (35 unique entries, load-more re-yielding them) and verified the dedupe assertion FAILs when the fix is removed. |
+
+> **Lesson:** a merge in the backend is a *union*, a cursor is an *offset* — any frontend
+> appending to merged data must treat the append as dedupe-by-key, never as blind concat.
+> And every honesty field you mint (`synced`, `stale`, `fresh`) needs its UI consumer in the
+> same commit, or it is decorative.

@@ -323,14 +323,16 @@ textarea[aria-invalid="true"] {
    affordance. It must LOOK tappable — pointer cursor, a hover wash inside an
    already-bounded card, emphasis on the trailing copy icon — while keeping the
    monospace card read. .copied is the inline confirmation (positive tokens,
-   same idea as .icon-btn.copied). */
+   same idea as .icon-btn.copied), centered so the card becomes the badge. */
 .copy-address {
   display: flex;
-  align-items: flex-start;
-  gap: var(--sp-3);
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
   width: 100%;
   text-align: left;
   cursor: pointer;
+  padding: 10px 12px;
   transition: background var(--t-base), border-color var(--t-base), color var(--t-base);
 }
 .copy-address:hover {
@@ -339,19 +341,33 @@ textarea[aria-invalid="true"] {
 }
 .copy-address .copy-address-text {
   flex: 1;
+  font-size: 11px;
+  line-height: 1.4;
+  letter-spacing: -0.015em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .copy-address > .icon, .copy-address > svg {
   color: var(--text-3);
   flex-shrink: 0;
-  margin-top: 2px;
+  transition: color var(--t-base);
 }
 .copy-address:hover > .icon, .copy-address:hover > svg {
   color: var(--text-1);
 }
 .copy-address.copied {
+  justify-content: center;
   background: var(--positive-tint);
   border-color: var(--positive-border);
   color: var(--positive);
+}
+.copy-address.copied .copy-address-text {
+  flex: 0 0 auto;
+  text-align: center;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  letter-spacing: normal;
 }
 .copy-address.copied > .icon, .copy-address.copied > svg {
   color: var(--positive);

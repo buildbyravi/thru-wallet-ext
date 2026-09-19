@@ -2546,6 +2546,71 @@ async function navigationTest() {
       chromeLog.calls.includes('tx.listHistory'));
   }
 
+  // P0 audit finding 1: the merged feed paints fresh(15) + cached extras with cursor 15,
+  // so a raw append would render entries 15-29 twice after load-more. Fixed: dedupe on
+  // append. Fixture below reproduces the exact overlap the audit hit.
+  const DUP_ENTRIES = Array.from({ length: 35 }, (_, i) => ({
+    signature: `sigdup_${String(i).padStart(38, '0')}`,
+    slot: 20000 - i,
+    success: true,
+    programAddress: NETWORK_ALPHANET.transferProgramId,
+    kind: 'transfer',
+    amount: String(5000 + i),
+    counterparty: ADDRESS_B,
+    timestamp: 1750000500000 - i * 60000,
+  }));
+  const realFeed = FIXTURES['tx.getHistoryFeed'];
+  const realListHistory = FIXTURES['tx.listHistory'];
+  FIXTURES['tx.getHistoryFeed'] = () => ({
+    entries: DUP_ENTRIES.slice(0, 35).map((e) => ({ ...e })),
+    nextCursor: 15,
+    synced: true,
+  });
+  FIXTURES['tx.listHistory'] = ({ cursor = 0, limit = 15 } = {}) => {
+    const size = Math.max(0, Math.min(Number(limit) || 15, DUP_ENTRIES.length - cursor));
+    return {
+      entries: DUP_ENTRIES.slice(cursor, cursor + size).map((e) => ({ ...e })),
+      nextCursor: cursor + size < DUP_ENTRIES.length ? cursor + size : null,
+      hasMore: cursor + size < DUP_ENTRIES.length,
+    };
+  };
+  router.navigate('/history');
+  await settle();
+  const rowsAfterFeed = router.root.querySelectorAll('.row').length;
+  ok('the merged feed paints all 35 unique entries',
+    rowsAfterFeed === 35, String(rowsAfterFeed));
+  const dupeMore = buttons(router.root, /load more/i)[0];
+  ok('load-more is still offered when the cursor has more pages', Boolean(dupeMore));
+  if (dupeMore) {
+    click(dupeMore);
+    await settle();
+    ok('load-more re-yielding cached signatures never duplicates a row',
+      router.root.querySelectorAll('.row').length === 35,
+      String(router.root.querySelectorAll('.row').length));
+  }
+
+  // P0 audit finding 2: an unsynced (offline) feed must be labelled, not masquerade.
+  FIXTURES['tx.getHistoryFeed'] = () => ({
+    entries: DUP_ENTRIES.slice(0, 3).map((e) => ({ ...e })),
+    nextCursor: 3,
+    synced: false,
+  });
+  router.navigate('/history');
+  await settle();
+  ok('an unsynced feed is labelled as cached/offline in the UI',
+    /cached activity|offline/i.test(textOf(router.root)), textOf(router.root).slice(0, 200));
+  FIXTURES['tx.getHistoryFeed'] = () => ({
+    entries: DUP_ENTRIES.slice(0, 15).map((e) => ({ ...e })),
+    nextCursor: 15,
+    synced: true,
+  });
+  router.navigate('/history');
+  await settle();
+  ok('the offline label clears once a synced page lands',
+    !/cached activity/i.test(textOf(router.root)), textOf(router.root).slice(0, 160));
+  FIXTURES['tx.getHistoryFeed'] = realFeed;
+  FIXTURES['tx.listHistory'] = realListHistory;
+
   // The account pill is the dashboard's route into account management.
   router.navigate('/dashboard');
   await settle();

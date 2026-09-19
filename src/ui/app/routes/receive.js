@@ -91,7 +91,8 @@ export function ReceiveRoute({ back }) {
     body.appendChild(h('p', { class: 'muted center', text:
       `Send only THRU on ${network?.label || 'this network'} to this address.` }));
 
-    // Full address, never truncated — and the address box IS the copy affordance:
+    // Full address on one tuned line (ellipsis would only trigger below the popup's
+    // minimum width; the CLIPBOARD always receives the complete string) — and the
     // click/tap/Enter copies it and the box confirms inline ("Copied") for ~1s
     // before returning to the address. One surface for the one thing an address
     // is for, instead of address + separate button duplicating each other.

@@ -30,6 +30,7 @@ export function HistoryRoute({ back }) {
   let network = null;
   let entries = [];
   let pending = [];
+  let feedSynced = true;
   let cursor = null;
   let activeFilter = 'all';
 
@@ -228,6 +229,9 @@ export function HistoryRoute({ back }) {
           .catch(() => null);
         if (feed && Array.isArray(feed.entries)) {
           page = { entries: feed.entries, nextCursor: feed.nextCursor ?? null };
+          // The feed's offline honesty is the whole point of P0: a cache page served
+          // because the RPC was unreachable must say so, not masquerade as fresh.
+          feedSynced = feed.synced !== false;
         }
       }
       if (!page) {
@@ -242,7 +246,22 @@ export function HistoryRoute({ back }) {
 
       const batch = Array.isArray(page) ? page : (page?.entries || []);
       cursor = Array.isArray(page) ? null : (page?.nextCursor ?? null);
-      entries = append ? [...entries, ...batch] : batch;
+      if (append) {
+        // The merged feed paints more than the RPC cursor's first page (fresh + cached),
+        // so a load-more page can re-yield signatures already on screen. A signature must
+        // never render twice. (Found in the P0 local-agent audit.)
+        const seen = new Set(entries.map((e) => e?.signature).filter(Boolean));
+        entries = [...entries, ...batch.filter((e) => !e?.signature || !seen.has(e.signature))];
+      } else {
+        entries = batch;
+      }
+
+      if (!append && !feedSynced) {
+        banner.set('Showing cached activity — offline. Reconnect to sync.', 'warning');
+      } else if (!append) {
+        // A synced page supersedes any prior offline/cached or error label.
+        banner.clear();
+      }
 
       pending = await bridge.send('tx.getPending').catch(() => []);
 
