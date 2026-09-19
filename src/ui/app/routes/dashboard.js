@@ -279,7 +279,16 @@ export function DashboardRoute({ navigate }) {
       : null;
     renderAssets(nativeText, tokens, infoResult.status === 'rejected', tokenState);
 
-    if (pendingResult.status === 'fulfilled') renderPending(pendingResult.value);
+    if (pendingResult.status === 'fulfilled') {
+      let pendings = pendingResult.value;
+      // A view that is about to say "transaction pending" must first try to settle it — a
+      // send that confirmed while the popup was closed still carries status 'submitted'.
+      if ((pendings || []).some((r) => r?.status === 'submitted')) {
+        await bridge.send('tx.reconcilePending').catch(() => null);
+        pendings = await bridge.send('tx.getPending').catch(() => pendings);
+      }
+      renderPending(pendings);
+    }
   }
 
   const el = h('section', { class: 'screen' }, [

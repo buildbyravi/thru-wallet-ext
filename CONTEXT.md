@@ -156,7 +156,7 @@ program addresses, `faucetStateAccount`, `faucetMaxPerClaim`, `baseFeeUnits`, `f
 | `services/tx-service.js` | 378 | Faucet, transfer, history (+token direction resolution), validation, fee estimate |
 | `services/token-service.js` | 330 | Deploy, registry, derivation, visibility, **owned balances, token transfers** |
 | `services/balance-service.js` | 201 | Batched + cached balances, **per-network** |
-| `services/pending-tx-service.js` | 227 | Submitted--  confirmed tracking, badge, **per-network** |
+| `services/pending-tx-service.js` | 255 | Submitted--  confirmed tracking, badge, **per-network** |
 | `services/preferences-service.js` | 178 | Order/pin/hide, whitelist, settings |
 | `services/network-service.js` | 266 | Enabled built-in selection, legacy custom-record quarantine/removal, **binds thru-client** |
 | `services/contacts-service.js` | 82 | Address book |
@@ -203,7 +203,7 @@ topbar + network badge + footer)
 | --- | --- | --- |
 | `/welcome` | `routes/welcome.js` | 295 |
 | `/unlock` | `routes/unlock.js` | 191 |
-| `/dashboard` | `routes/dashboard.js` | 324 |
+| `/dashboard` | `routes/dashboard.js` | 333 |
 | `/accounts` | `routes/accounts.js` | 194 |
 | `/account?ref=` | `routes/account-detail.js` | 296 |
 | `/add-account` | `routes/add-account.js` | 392 |
@@ -212,7 +212,7 @@ topbar + network badge + footer)
 | `/send` | `routes/send.js` | 848 |
 | `/receive` | `routes/receive.js` | 137 |
 | `/faucet` | `routes/faucet.js` | 252 |
-| `/history` | `routes/history.js` | 262 |
+| `/history` | `routes/history.js` | 276 |
 | `/settings` | `routes/settings.js` | 395 |
 | `/reset` | `routes/reset.js` | 169 |
 

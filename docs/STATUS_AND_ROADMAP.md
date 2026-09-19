@@ -82,7 +82,7 @@ Confirmed on alphanet, not assumed:
 - **Browser rendering remains manual.** The lifecycle shim mounts every route, but cannot prove real
   popup/side-panel layout, focus rings, canvas output, extension reloads, or service-worker eviction.
   Run `docs/MANUAL_SMOKE_CHECKLIST.md` before merging UI changes.
-- **Lock-on-refresh is unresolved.** Run `system.diagnostics` and read `sessionPresent`. `false`
+- **Lock-on-refresh is unresolved.** Run `system.diagnostics` **from the popup's own console** (right-click the popup → Inspect) — running it in the service-worker console fails with "Receiving end does not exist", because a service worker cannot message *itself*. Then read `sessionPresent`. `false`
   right after a refresh means the session store is not persisting — a platform difference, since
   the reported browser is Comet rather than Chrome — and not auto-lock firing. The two need
   opposite fixes.

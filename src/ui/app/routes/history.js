@@ -148,7 +148,13 @@ export function HistoryRoute({ back }) {
 
   function paintPending() {
     while (pendingHost.firstChild) pendingHost.removeChild(pendingHost.firstChild);
-    const active = pending.filter((p) => p.status === 'submitted');
+    // Belt-and-braces with the reconcile-on-view above: a signature the history list already
+    // displays as confirmed is never ALSO a Waiting... row, whatever the timing window.
+    const displayed = new Set((entries || [])
+      .map((e) => String(e?.signature || ''))
+      .filter(Boolean));
+    const active = pending.filter((p) => p.status === 'submitted'
+      && !displayed.has(String(p.signature)));
     pendingHost.classList.toggle('hidden', active.length === 0);
     if (!active.length) return;
 
@@ -226,6 +232,14 @@ export function HistoryRoute({ back }) {
       entries = append ? [...entries, ...batch] : batch;
 
       pending = await bridge.send('tx.getPending').catch(() => []);
+
+      // A send that confirmed while the popup was closed still reads 'submitted'. Views must
+      // not render that as Pending next to its confirmed list entry — settle first, refetch,
+      // then paint. (The stuck-pending defect from the manual smoke run.)
+      if ((pending || []).some((p) => p?.status === 'submitted')) {
+        await bridge.send('tx.reconcilePending').catch(() => null);
+        pending = await bridge.send('tx.getPending').catch(() => pending);
+      }
 
       paintPending();
       paintList();

@@ -103,6 +103,18 @@ export async function track(tx) {
   const updated = await readAll();
   await updateBadge(updated);
   emit('pendingTxChanged', { pending: updated.filter((r) => r.status === TX_STATUS.SUBMITTED) });
+
+  // The only reconcile triggers were bootstrap and unlock, so a send whose sendAndTrack
+  // ALREADY returned confirmed stayed "pending" for the entire popup session — the
+  // stuck-pending defect the manual smoke run hit. Active self-service: one pass shortly
+  // after submit (covers the common already-confirmed case), one later pass (covers history
+  // lag). Both no-op once the record settled and swallow every error — a timer must never
+  // surface an offline failure. unref keeps Node-based tests from being held open.
+  for (const ms of [2_000, 10_000]) {
+    const timer = setTimeout(() => { reconcile().catch(() => {}); }, ms);
+    timer.unref?.();
+  }
+
   return record;
 }
 

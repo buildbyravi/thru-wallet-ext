@@ -1255,6 +1255,16 @@ const FIXTURES = {
   },
   'tx.getCachedBalances': ({ addresses } = {}) => FIXTURES['tx.getBalances']({ addresses }),
   'tx.getPending': () => backend.pending.map((p) => ({ ...p })),
+  // Mirrors pending-tx-service.reconcile(): submitted records settle to confirmed (the
+  // history fixture already "contains" their signatures). Records stay in the list with
+  // their new status, exactly like production list().
+  'tx.reconcilePending': () => {
+    const actives = backend.pending.filter((p) => p.status === 'submitted').length;
+    backend.pending = backend.pending.map((p) => (p.status === 'submitted'
+      ? { ...p, status: 'confirmed', settledAt: Date.now() }
+      : p));
+    return { checked: backend.pending.length, settled: actives };
+  },
   'tx.autoCreateAccount': () => ({ exists: true, created: false, signature: null }),
   'tx.listHistory': ({ limit } = {}) => {
     const size = Math.min(Number(limit) || 15, HISTORY_ENTRIES.length);
@@ -2400,6 +2410,47 @@ async function navigationTest() {
       ok('the send form offers the account picker shortcut', false, textOf(router.root).slice(0, 200));
     }
   }
+
+  // ---- Stuck-pending regression (manual smoke defect) -------------------------------------
+  // The send path awaits confirmation, then records the transaction as SUBMITTED — and no
+  // trigger ever settled it while the popup was open, so Dashboard/History showed the
+  // confirmed send as pending forever. Views now actively reconcile before saying
+  // "pending". The fixture's tx.reconcilePending settles submitted records to confirmed.
+  const STUCK = {
+    signature: 'sig_stuck_manual_smoke_aaaaaaaaaaaaaaaaaaaaa', kind: 'transfer',
+    from: activeAccount().address, to: ADDRESS_B,
+    amountUnits: '5000000000', mint: null, displayAmount: '5 THRU',
+    networkId: 'alphanet', status: 'submitted', submittedAt: Date.now(),
+    settledAt: null, error: null,
+  };
+
+  backend.pending = [{ ...STUCK }];
+  router.navigate('/dashboard');
+  await settle();
+  ok('the dashboard proactively reconciles a submitted transaction',
+    chromeLog.calls.includes('tx.reconcilePending'));
+  ok('the pending note clears once the dashboard settles',
+    !/transaction[s]? pending/i.test(textOf(router.root)), textOf(router.root).slice(0, 200));
+
+  backend.pending = [{ ...STUCK }];
+  router.navigate('/history');
+  await settle();
+  ok('the history view proactively reconciles a submitted transaction',
+    chromeLog.calls.filter((m) => m === 'tx.reconcilePending').length >= 2);
+  ok('a reconciled send never renders next to "Waiting for confirmation"',
+    !/Waiting for confirmation/.test(textOf(router.root)), textOf(router.root).slice(0, 220));
+
+  // Render-level belt-and-braces: even when reconcile settles nothing (history-list lag),
+  // a signature the list already displays cannot ALSO be a Pending row.
+  const realReconcile = FIXTURES['tx.reconcilePending'];
+  FIXTURES['tx.reconcilePending'] = () => ({ checked: 0, settled: 0 });
+  backend.pending = [{ ...STUCK, signature: 'sig1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' }];
+  router.navigate('/history');
+  await settle();
+  ok('a signature the list already shows as confirmed is not duplicated as Pending',
+    !/Waiting for confirmation/.test(textOf(router.root)), textOf(router.root).slice(0, 220));
+  FIXTURES['tx.reconcilePending'] = realReconcile;
+  backend.pending = [];
 
   // The account pill is the dashboard's route into account management.
   router.navigate('/dashboard');
