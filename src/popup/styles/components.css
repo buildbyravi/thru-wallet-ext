@@ -734,6 +734,21 @@ button.row { cursor: pointer; }
   border-radius: var(--radius-lg);
 }
 
+
+/* The QR is itself a button (tap to switch styled <-> plain for stubborn scanners).
+   No chip, no frame — the artwork is the affordance; only the cursor says "pressable". */
+.qr-toggle {
+  display: block;
+  padding: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  line-height: 0;
+}
+.qr-toggle canvas {
+  display: block;
+}
+
 /* ---- Field with inline validation indicator --------------- */
 
 .field-with-indicator {

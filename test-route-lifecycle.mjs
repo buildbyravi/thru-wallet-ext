@@ -2317,11 +2317,26 @@ async function navigationTest() {
   ok('the receive screen shows the full, untruncated address',
     Boolean(recvMono) && recvMono.textContent === activeAccount().address,
     recvMono?.textContent);
-  const qrCanvas = router.root.querySelector('canvas');
-  ok('the QR canvas carries an accessible name',
-    Boolean(qrCanvas) && qrCanvas.getAttribute('role') === 'img'
-      && /receive address/.test(qrCanvas.getAttribute('aria-label') || ''),
-    qrCanvas?.getAttribute?.('aria-label'));
+  // The QR is an interactive control: tap flips styled <-> plain for scanners that
+  // choke on artistic QRs. The accessible name therefore lives on the toggle button.
+  const qrToggle = buttons(router.root, /QR code of your receive address/i)[0];
+  ok('the QR toggle carries the receive-address description',
+    Boolean(qrToggle) && /styled.*plain/i.test(qrToggle.getAttribute('aria-label') || ''),
+    qrToggle?.getAttribute?.('aria-label'));
+  ok('a canvas renders inside the QR toggle',
+    Boolean(qrToggle) && Boolean(qrToggle.querySelector?.('canvas')));
+  if (qrToggle) {
+    click(qrToggle);
+    await settle();
+    ok('tapping the QR switches it to the plain scanner-safe style',
+      /plain.*Thru-styled/i.test(qrToggle.getAttribute('aria-label') || ''),
+      qrToggle.getAttribute('aria-label'));
+    click(qrToggle);
+    await settle();
+    ok('tapping again restores the styled Thru QR',
+      /styled.*plain/i.test(qrToggle.getAttribute('aria-label') || ''),
+      qrToggle.getAttribute('aria-label'));
+  }
   ok('no QR render warning under a minimal canvas',
     !/Could not render the QR/.test(textOf(router.root)), textOf(router.root).slice(0, 160));
   const copyAffordances = buttons(router.root, /copy address/i);

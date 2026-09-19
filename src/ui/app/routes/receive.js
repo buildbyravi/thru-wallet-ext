@@ -30,12 +30,14 @@ export function ReceiveRoute({ back }) {
   const body = h('div', { class: 'stack stack-4' }, Spinner({ label: 'Loading' }).el);
   let copyTimer = null;
   let removeAddressCopy = null;
+  let removeQrToggle = null;
   const header = PageHeader({ title: 'Receive', onBack: () => back() });
   const el = h('section', { class: 'screen' }, [header.el, banner.el, body]);
 
   function clearBody() {
     if (copyTimer) { clearTimeout(copyTimer); copyTimer = null; }
     if (removeAddressCopy) { removeAddressCopy(); removeAddressCopy = null; }
+    if (removeQrToggle) { removeQrToggle(); removeQrToggle = null; }
     for (const c of owned) c.destroy?.();
     owned.length = 0;
     while (body.firstChild) body.removeChild(body.firstChild);
@@ -44,20 +46,39 @@ export function ReceiveRoute({ back }) {
   function render() {
     clearBody();
 
-    const canvas = h('canvas', {
-      width: 200,
-      height: 200,
-      role: 'img',
-      'aria-label': 'QR code of your receive address',
-    });
-    body.appendChild(h('div', { class: 'qr-container' }, canvas));
+    const canvas = h('canvas', { width: 200, height: 200 });
+    // The artwork is nice until a scanner disagrees: some QR readers fail on rounded,
+    // graduated modules. Tap (or Enter) flips between the raised Thru style and a plain
+    // high-contrast version instantly — no settings trip, no leaving the screen.
+    let qrTheme = 'raised';
+    const qrBtn = h('button', {
+      type: 'button',
+      class: 'qr-toggle',
+      'aria-label': 'QR code of your receive address, styled — tap for a plain version',
+      title: 'Trouble scanning? Tap for a plain QR',
+    }, canvas);
 
-    // Canvas drawing only — no network fetch, no third-party image.
-    try {
-      renderQR(canvas, account.address);
-    } catch (error) {
-      banner.set('Could not render the QR code. The address below is still correct.', 'warning');
-    }
+    const drawQR = () => {
+      // Canvas drawing only — no network fetch, no third-party image.
+      try {
+        renderQR(canvas, account.address, { theme: qrTheme });
+      } catch {
+        banner.set('Could not render the QR code. The address below is still correct.', 'warning');
+      }
+    };
+    drawQR();
+
+    const onQrClick = () => {
+      qrTheme = qrTheme === 'raised' ? 'flat' : 'raised';
+      qrBtn.setAttribute('aria-label', qrTheme === 'raised'
+        ? 'QR code of your receive address, styled — tap for a plain version'
+        : 'QR code of your receive address, plain — tap for the Thru-styled version');
+      drawQR();
+    };
+    qrBtn.addEventListener('click', onQrClick);
+    removeQrToggle = () => qrBtn.removeEventListener('click', onQrClick);
+
+    body.appendChild(h('div', { class: 'qr-container' }, qrBtn));
 
     body.appendChild(h('div', { class: 'row-flex center' }, [
       AccountAvatar({ address: account.address, imported: account.keyring?.type === 'privateKey' }),
@@ -144,6 +165,7 @@ export function ReceiveRoute({ back }) {
     destroy() {
       if (copyTimer) clearTimeout(copyTimer);
       if (removeAddressCopy) removeAddressCopy();
+      if (removeQrToggle) removeQrToggle();
       for (const c of owned) c.destroy?.();
       owned.length = 0;
       header.destroy();
