@@ -11,8 +11,10 @@
 
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const STYLES_DIR = new URL('../src/popup/styles', import.meta.url).pathname;
+// fileURLToPath, not .pathname: on Windows the latter yields /C:/... and breaks.
+const STYLES_DIR = fileURLToPath(new URL('../src/popup/styles', import.meta.url));
 const ALLOWED_AT = /^@(media|supports|keyframes)\b/;
 
 let errors = 0;
