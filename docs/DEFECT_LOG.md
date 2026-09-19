@@ -263,3 +263,9 @@ control for each security claim so a vacuous assertion fails loudly.
 What remains uncovered is item 4 (live chain) and everything a browser owns: layout at narrow and
 wide widths, real focus rings, canvas QR output, side-panel behaviour, service-worker eviction. Those
 are checkboxes in `docs/MANUAL_SMOKE_CHECKLIST.md`, not test gaps to close in Node.
+| `.copy-address` nested inside `.monospace-block` | `BROWSER` (local agent audit) | A splitted edit dropped the interactive copy-box rules *inside* the unclosed `.monospace-block` rule. CSS nesting is VALID syntax — esbuild emitted 0 warnings and Chrome parsed it as the descendant selector `.monospace-block .copy-address`, which can never match `<button class="monospace-block copy-address">` (both classes on the same element). Result: `display:flex`, `cursor:pointer`, the hover wash, and the `.copied` green confirm were all silently dead in Chrome while every automated gate passed green. Fixed by closing `.monospace-block` first; `scripts/check-css-nesting.mjs` now bans nested rules outright and runs in both `npm test` chains. |
+
+> **Lesson:** "0 CSS warnings" certifies syntax, never semantics. Modern esbuild/Chrome
+> feature support (native nesting) turned what would once have been a build error into a
+> silent runtime no-op. Guardrails must encode *house intent* ("this repo's CSS is flat"),
+> not just "does the toolchain accept it".

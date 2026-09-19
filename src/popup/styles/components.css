@@ -313,6 +313,11 @@ textarea[aria-invalid="true"] {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   padding: var(--sp-4);
+  word-break: break-all;
+  font-size: var(--fs-md);
+  line-height: 1.65;
+  color: var(--text-1);
+}
 
 /* Interactive monospace box: the receive screen's address box is also the copy
    affordance. It must LOOK tappable — pointer cursor, a hover wash inside an
@@ -350,11 +355,6 @@ textarea[aria-invalid="true"] {
 }
 .copy-address.copied > .icon, .copy-address.copied > svg {
   color: var(--positive);
-}
-  word-break: break-all;
-  font-size: var(--fs-md);
-  line-height: 1.65;
-  color: var(--text-1);
 }
 
 .mnemonic-grid {
