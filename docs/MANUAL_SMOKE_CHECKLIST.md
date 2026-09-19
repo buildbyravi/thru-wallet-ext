@@ -92,7 +92,7 @@ hash directly (`#/send`) where the UI has no link, so unmigrated or unreachable 
 | `/export` | Password prompt before any secret; reveal shows the phrase; navigating away removes it (see §5) | [ ] | [ ] |
 | `/send` | Recipient validation debounce, amount parsing, fee estimate, confirm step, receipt | [ ] | [ ] |
 | `/send` (token) | Asset picker shows token as sendable; amount re-denominates to the symbol; review discloses recipient token-account init fee when the recipient has none; MAX excludes broken values | [ ] | [ ] |
-| `/receive` | Address, QR canvas actually draws, copy button confirms | [ ] | [ ] |
+| `/receive` | Address, QR renders in the raised Thru palette (gradient red tiles, slate finder eyes, ice paper) and scans from a phone, copy button confirms | [ ] | [ ] |
 | `/faucet` | Claim state, disabled when already claimed, error when the network has no faucet | [ ] | [ ] |
 | `/history` | Entries, filter chips, "load more" appends instead of refetching; token sends appear as "Sent \<amount\> \<SYM\>", receipts as "Received …", mints as "Minted …", and a token-account init never appears as a THRU transfer; a confirmed send never appears BOTH in the list AND as a "Waiting for confirmation" Pending row | [ ] | [ ] |
 | `/settings` | Built-in network controls; any saved custom row says **not selectable**, is inert, and exposes only Remove; auto-lock, security toggle, **Open side panel**, danger zone, version | [ ] | [ ] |

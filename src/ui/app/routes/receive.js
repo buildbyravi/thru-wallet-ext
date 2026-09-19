@@ -6,10 +6,13 @@
 //     omitted rather than rendered dead
 //   - the network is named explicitly. An address is only meaningful on the chain it is on, and
 //     "which network is this for" is the question a receive screen must answer.
+//   - the QR renders raised in the Thru palette (qr.js); the canvas carries an accessible name
+//   - a second, hidden CopyButton sat dead in the DOM ("for keyboard users" — but .hidden is
+//     display:none, so it reached nobody). Removed; the wide copy button is the affordance.
 
 import { h, disposer } from '../../kit/dom.js';
 import { icon } from '../../kit/icon.js';
-import { Button, CopyButton } from '../../kit/button.js';
+import { Button } from '../../kit/button.js';
 import { PageHeader, Banner, Spinner } from '../../kit/feedback.js';
 import { AccountAvatar } from '../../domain/account-avatar.js';
 import { renderQR } from '../../../popup/qr.js';
@@ -37,7 +40,12 @@ export function ReceiveRoute({ back }) {
   function render() {
     clearBody();
 
-    const canvas = h('canvas', { width: 200, height: 200, id: 'receive-qr' });
+    const canvas = h('canvas', {
+      width: 200,
+      height: 200,
+      role: 'img',
+      'aria-label': 'QR code of your receive address',
+    });
     body.appendChild(h('div', { class: 'qr-container' }, canvas));
 
     // Canvas drawing only — no network fetch, no third-party image.
@@ -58,18 +66,9 @@ export function ReceiveRoute({ back }) {
     body.appendChild(h('p', { class: 'muted center', text:
       `Send only THRU on ${network?.label || 'this network'} to this address.` }));
 
-    // Full address, never truncated: this is the value being copied.
-    body.appendChild(h('div', {
-      class: 'monospace-block',
-      style: { wordBreak: 'break-all' },
-      text: account.address,
-    }));
-
-    const copyBtn = track(CopyButton({
-      getValue: () => account.address,
-      title: 'Copy address',
-      onResult: (err) => banner.set(err ? 'Could not copy — clipboard permission denied.' : ''),
-    }));
+    // Full address, never truncated: this is the value being copied. The
+    // .monospace-block class already breaks anywhere — no per-instance styles.
+    body.appendChild(h('div', { class: 'monospace-block', text: account.address }));
 
     const copyWide = track(Button({
       label: 'Copy address',
@@ -100,9 +99,6 @@ export function ReceiveRoute({ back }) {
     }
 
     body.appendChild(h('div', { class: 'stack stack-2' }, actions));
-    // Keep the small copy button reachable for keyboard users next to the address block.
-    copyBtn.el.classList.add('hidden');
-    body.appendChild(copyBtn.el);
   }
 
   async function load() {

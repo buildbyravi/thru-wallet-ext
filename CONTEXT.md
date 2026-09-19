@@ -210,7 +210,7 @@ topbar + network badge + footer)
 | `/keyring?id=` | `routes/keyring.js` | 190 |
 | `/export?ref=` | `routes/export.js` | 279 |
 | `/send` | `routes/send.js` | 848 |
-| `/receive` | `routes/receive.js` | 137 |
+| `/receive` | `routes/receive.js` | 133 |
 | `/faucet` | `routes/faucet.js` | 252 |
 | `/history` | `routes/history.js` | 276 |
 | `/settings` | `routes/settings.js` | 395 |
@@ -237,7 +237,7 @@ account refs for URLs)  `network-scope.js` (87, the per-network vs global split)
 | --- | --- | --- |
 | `popup.js` | 50 | Boot stub. Was 1,118 lines. |
 | `popup.html` | 30 | Shell with one `#app`. Was ~430 lines of static screen markup. |
-| `qr.js` | 63 | Canvas only, no network. Used by `/receive`. |
+| `qr.js` | 130 | Canvas only, no network. Raised Thru-brand look (gradient worms, slate eyes, shadow) with a flat crimson degradation for contexts without roundRect/gradients. Used by `/receive`. |
 
 `icons.js` (79, markup-string icons) and `toast.js` (60) are **deleted** -- `launchpad.js` was
 their only importer. Replacements: `src/ui/kit/icon.js` (SVG as data) and

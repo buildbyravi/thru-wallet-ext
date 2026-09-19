@@ -2306,6 +2306,35 @@ async function navigationTest() {
       findSecrets(SECRETS).length === 0 && findSecretsInTornDown(SECRETS).length === 0);
   }
 
+  // ---- Receive: address copy, QR canvas, and audit cleanup ----------------
+  // The DOM-shim canvas exercises qr.js's flat degradation (no roundRect), which must
+  // render silently — no "Could not render the QR" warning. Audited cleanups below:
+  // the dead hidden CopyButton is gone (one affordance), the address block is the
+  // untruncated full address, and the canvas carries an accessible name.
+  router.navigate('/receive');
+  await settle();
+  const recvMono = router.root.querySelector('.monospace-block');
+  ok('the receive screen shows the full, untruncated address',
+    Boolean(recvMono) && recvMono.textContent === activeAccount().address,
+    recvMono?.textContent);
+  const qrCanvas = router.root.querySelector('canvas');
+  ok('the QR canvas carries an accessible name',
+    Boolean(qrCanvas) && qrCanvas.getAttribute('role') === 'img'
+      && /receive address/.test(qrCanvas.getAttribute('aria-label') || ''),
+    qrCanvas?.getAttribute?.('aria-label'));
+  ok('no QR render warning under a minimal canvas',
+    !/Could not render the QR/.test(textOf(router.root)), textOf(router.root).slice(0, 160));
+  const copyAffordances = buttons(router.root, /copy address/i);
+  ok('exactly one copy affordance for the address (the dead hidden button is gone)',
+    copyAffordances.length === 1, String(copyAffordances.length));
+  // (The shim's selector engine is deliberately tiny — walk anchors instead of a[href*=].)
+  const explorerLink = [...router.root.querySelectorAll?.('a') || []]
+    .find((a) => String(a.href || a.getAttribute?.('href') || '').includes('/account/'));
+  const explorerHref = String(explorerLink?.getAttribute?.('href') || '');
+  ok('the explorer link embeds the address on the active network',
+    explorerHref.includes(activeAccount().address),
+    explorerHref || 'no explorer anchor found');
+
   // ---- Send: selecting a token asset (contract v8) -------------------------
   // The asset picker used to list tokens as permanently "not sendable"; with token.transfer
   // behind it, a funded token is selectable and the whole form re-denominates. This drives
