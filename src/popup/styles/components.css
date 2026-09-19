@@ -331,7 +331,11 @@ textarea[aria-invalid="true"] {
   font-size: var(--fs-sm);
 }
 
-.mnemonic-grid span {
+/* Tiles are the DIRECT span children only. Without the `>` this rule also matched each word's
+   inner span and drew a second border inside the tile, sized per word — the "unequal boxes"
+   seen in the reveal grid. (Selector-vs-DOM drift: the component renders <em>/<span> children,
+   the CSS was written for flat text with a <b> number.) */
+.mnemonic-grid > span {
   display: flex;
   align-items: baseline;
   gap: 6px;
@@ -339,10 +343,15 @@ textarea[aria-invalid="true"] {
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  color: var(--text-3);
 }
 
-.mnemonic-grid span b {
+.mnemonic-grid > span em {
+  font-style: normal;
+  color: var(--text-3);
+  min-width: 2ch;
+}
+
+.mnemonic-grid > span > span {
   color: var(--text-1);
   font-weight: 500;
 }

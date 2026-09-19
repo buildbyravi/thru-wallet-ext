@@ -84,16 +84,17 @@ hash directly (`#/send`) where the UI has no link, so unmigrated or unreachable 
 | --- | --- | --- | --- |
 | `/welcome` | Create/import steps advance; the phrase grid is blurred until revealed; nothing is written to the URL | [ ] | [ ] |
 | `/unlock` | Wrong password shows an inline error and keeps focus in the field; lockout countdown runs; Back/Reset reachable | [ ] | [ ] |
-| `/dashboard` | Balance, account pill, action tiles, health dot and network badge all populate | [ ] | [ ] |
+| `/dashboard` | Balance, account pill, action tiles, health dot and network badge all populate; token rows show a real balance, a proven-zero (0), or a dash — never a fabricated number; a send that already confirmed shows NO "transaction pending" note | [ ] | [ ] |
 | `/accounts` | List, balances, pin/switch, "Add account" | [ ] | [ ] |
 | `/account` | Detail for a real ref (`#/account?ref=...` from the Accounts screen); invalid ref shows an error, not a blank screen | [ ] | [ ] |
 | `/add-account` | HD preview renders; adding an account returns to `/accounts` | [ ] | [ ] |
 | `/keyring` | Source list, rename, backed-up state; `#/keyring?id=<id>` from Accounts | [ ] | [ ] |
 | `/export` | Password prompt before any secret; reveal shows the phrase; navigating away removes it (see §5) | [ ] | [ ] |
 | `/send` | Recipient validation debounce, amount parsing, fee estimate, confirm step, receipt | [ ] | [ ] |
-| `/receive` | Address, QR canvas actually draws, copy button confirms | [ ] | [ ] |
+| `/send` (token) | Asset picker shows token as sendable; amount re-denominates to the symbol; review discloses recipient token-account init fee when the recipient has none; MAX excludes broken values | [ ] | [ ] |
+| `/receive` | Address, QR renders in the raised Thru palette (gradient red tiles, slate finder eyes, ice paper) and scans from a phone, copy button confirms | [ ] | [ ] |
 | `/faucet` | Claim state, disabled when already claimed, error when the network has no faucet | [ ] | [ ] |
-| `/history` | Entries, filter chips, "load more" appends instead of refetching | [ ] | [ ] |
+| `/history` | Entries, filter chips, "load more" appends instead of refetching; token sends appear as "Sent \<amount\> \<SYM\>", receipts as "Received …", mints as "Minted …", and a token-account init never appears as a THRU transfer; a confirmed send never appears BOTH in the list AND as a "Waiting for confirmation" Pending row | [ ] | [ ] |
 | `/settings` | Built-in network controls; any saved custom row says **not selectable**, is inert, and exposes only Remove; auto-lock, security toggle, **Open side panel**, danger zone, version | [ ] | [ ] |
 | `/reset` | Warning copy, confirmation text required, reset returns to `/welcome` | [ ] | [ ] |
 

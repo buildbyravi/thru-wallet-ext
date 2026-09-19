@@ -1,7 +1,8 @@
 # Status and roadmap
 
 Single source of truth for **where the rebuild is** and **what happens next**.
-Last updated: contract v7 quarantines legacy custom networks at the background boundary.
+Last updated: contract v8 adds token transfer (`token.transfer` + real `token.getBalances`) on
+the official `@thru/programs/token` bindings, pending one live-network verification run.
 
 Companion docs: `docs/DOCS_INDEX.md` (which doc to trust) · `docs/PROJECT_LEDGER.md` (past/present/future build tracking) · `CONTEXT.md` (file map) · `docs/MODULE_BOUNDARIES.md` (feature separation) · `docs/DEFECT_LOG.md` (every defect + lesson) · `docs/BACKEND_GAPS.md` (capability tiers) · `docs/BUILD_SPEC.md` (product spec)
 
@@ -39,9 +40,9 @@ Structural properties now enforced by CI rather than by discipline:
 
 ```
 npm run build     clean, no warnings, dist/ wiped and reproduced: popup.html + 2 bundles
-npm test          derivation 16 · layering 58 files / 0 sinks · routes 14/14 · CSS 123/123
-                  launchpad quarantine 45 · contract 56 · dom+refs 89 · route lifecycle 694
-                  vault · thru-client · api-router
+npm test          derivation 16 · layering 58 files / 0 sinks · routes 14/14 · CSS clean
+                  launchpad quarantine 45 · contract 59 · dom+refs 93 · route lifecycle 701
+                  vault · thru-client (incl. token goldens) · api-router
 npm audit --omit=dev
                   found 0 vulnerabilities
 ```
@@ -81,18 +82,24 @@ Confirmed on alphanet, not assumed:
 - **Browser rendering remains manual.** The lifecycle shim mounts every route, but cannot prove real
   popup/side-panel layout, focus rings, canvas output, extension reloads, or service-worker eviction.
   Run `docs/MANUAL_SMOKE_CHECKLIST.md` before merging UI changes.
-- **Lock-on-refresh is unresolved.** Run `system.diagnostics` and read `sessionPresent`. `false`
+- **Lock-on-refresh is unresolved.** Run `system.diagnostics` **from the popup's own console** (right-click the popup → Inspect) — running it in the service-worker console fails with "Receiving end does not exist", because a service worker cannot message *itself*. Then read `sessionPresent`. `false`
   right after a refresh means the session store is not persisting — a platform difference, since
   the reported browser is Comet rather than Chrome — and not auto-lock firing. The two need
   opposite fixes.
-- **Token transfer does not exist.** See Step 2.
+- **Token transfer has never executed against a live network from this codebase.** It is built
+  entirely on the official `@thru/programs/token` bindings, with golden wire-byte tests and a
+  scripted send flow in `test-route-lifecycle.mjs`, but the first end-to-end run is
+  `scripts/verify-token-transfer.mjs`, which needs an environment that can reach the RPC. Two
+  answers only it can give: whether a recipient *wallet* account must exist before its token
+  account initializes, and what a token-program transaction actually costs in fees (Step 8).
 
 ---
 
 ## 2. What to do next, in order
 
-Steps 1, 2, and 2b are complete and kept here as the security/reliability record. Remaining steps
-are independent follow-ups; custom-network re-enablement stays blocked on all four preconditions.
+Steps 1, 2, 2b and 4 are complete and kept here as the security/reliability record. Remaining
+steps are independent follow-ups; custom-network re-enablement stays blocked on all four
+preconditions.
 
 ### Step 1 — quarantine legacy launchpad — DONE
 
@@ -182,21 +189,68 @@ Before adding real launchpad, DEX, prediction, chart, or portfolio behavior, fol
 5. treat `docs/MCP_AGENT_INTEGRATION.md` as intent/read-only planning, not permission for agents
    to sign or export secrets.
 
-### Step 4 — token transfer
+### Step 4 — token transfer ← DONE (contract v8), pending one live run
 
-`@thru/programs/token` is installed and provides everything needed:
-`createTransferInstruction`, `createInitializeAccountInstruction`, `deriveTokenAccountAddress`,
-`parseTokenAccountData`.
+Built entirely on the official `@thru/programs/token` bindings (`createTransferInstruction`,
+`createInitializeAccountInstruction`, `createInitializeMintInstruction`,
+`deriveTokenAccountAddress`, `parseTokenAccountData`, `parseMintAccountData`) — the hand-rolled
+`encodeInitializeMintInstructionData` is deleted (docs/DEFECT_LOG.md: it could not have matched
+the real program, and the deploy path that called it was in fact always throwing on a missing
+mint authority).
 
-Thru keeps a wallet account separate from its per-mint token accounts, so a transfer needs both
-sides to have an initialized token account — the same "recipient must be activated" shape already
-handled for native sends.
+What shipped:
 
-This turns two things honest at once: the asset selector's `not sendable` state becomes genuinely
-sendable, and `token.getBalances` (BACKEND_GAPS C1) stops returning `supported: false`.
+1. **`token.transfer`** (contract v8, `auth: 'signing'`): sends raw units of the MINT — never
+   THRU — from the active account's token account. Same guard discipline as `tx.send`: format,
+   amount, self-send, whitelist, mint-aware duplicate window (a native send and a token send
+   of the same amount are NOT duplicates). The recipient's token account is initialized by the
+   sender in a preceding transaction when missing — program-derived addresses need no recipient
+   key, unlike native `RECIPIENT_NOT_ACTIVATED` sends.
+2. **`token.getBalances` is real** (BACKEND_GAPS C1 closed): owned balances for every registry
+   mint, read through the official parser. Honesty rules kept from the stub era: a missing
+   token account is a *proven* zero (explicit `tokenAccountExists: false`, never the number 0);
+   a failed read is `error: true` + `amountUnits: null` (unknown, never zero); decimals come
+   from the on-chain mint when a balance exists.
+3. **UI**: asset selector rows are selectable whenever a balance is known and positive
+   (unknown/zero say why, unselectable); the whole send form re-denominates per asset
+   (mint-scaled amount parsing via `parseTokenAmount`, MAX, spendable, fee honesty — token
+   program fees are declared *unmeasured*, not guessed); review discloses the recipient token
+   account creation and its extra THRU fee; the dashboard shows real token balances; history
+   decodes token entries (`token-sent`/`token-received`/`token-mint`/`token-account-init`)
+   with direction and symbol resolved against the viewer's own token accounts, and
+   unresolvable entries lose their raw amount rather than wear the wrong mint.
+4. **Tests**: golden 13-byte transfer / 15-byte mint_to wire formats pinned against the
+   official binding (the token ABI uses a ONE-byte tag, not the native 4-byte one — measured,
+   not assumed); decoder round-trips on real Transaction instances; golden mint/token-account
+   derivation vectors; amount parse/format round-trips at any decimal scale; router guards
+   fire before any network access; lifecycle mounts exercise a scripted token selection flow.
 
-Also replace the hand-rolled `encodeInitializeMintInstructionData` with
-`createInitializeMintInstruction` while in there.
+Open chain questions that need `scripts/verify-token-transfer.mjs` on a network-reachable
+machine (moved to Step 8): whether initialize-account tolerates a never-registered recipient
+owner, and the actual token-program fee.
+
+### Step 4c — passkey feasibility spike ← DONE (`docs/PASSKEY_SPIKE.md`)
+
+Time-boxed research spike, per the agreed order (spike first, implementation only with concrete
+answers). Verdict: **protocol-feasible, implementation-gated.** The pinned
+`@thru/programs/passkey-manager` bindings already carry the hard parts — challenge
+construction binding nonce + ordered accounts + wallet index + authority index + full target
+instruction bytes, a late-bound **index-0 fee payer** (the outer-fee-payer question is answered:
+someone else pays — a passkey account is a PDA with no private key and cannot be its own
+payer), authority records with expiry for real recovery (ADD/REMOVE_AUTHORITY), and low-S
+signature normalization. The earlier brief's "extension has no usable RP ID" claim does not
+hold: Chrome 122+ extensions can call WebAuthn against RP IDs covered by host permissions.
+
+Three probes gate any implementation, all answerable by throwaway-key verification scripts
+rather than research: (1) which on-chain program **revision** is live (bindings ship legacy and
+AuthorityRecord encoders side by side), (2) whether a distinct-account fee payer validates on
+alphanet, (3) one live VALIDATE proving extension-origin `clientDataJSON` is accepted. Held
+constraints: no keyring branch inside `checkAuth` (the challenge is only constructible after
+instruction building, at the tx/passkey service), full `PasskeyMetadata` storage (credentialId,
+X/Y, rpId, authIdx — never seed-derived), recovery-authority flow precedes any
+seed-replacement messaging, and ceremonies run in an extension tab/side panel rather than the
+auto-closing popup. Passkey implementation remains **not started** until the user green-lights
+the probe.
 
 ### Step 5 — dependency pin cleanup
 
@@ -236,6 +290,15 @@ reasons deletion was chosen over migration.
 3. **Whether an external unregistered recipient can ever receive.** The sender cannot register an
    account it holds no key for, so `tx.send` reports `RECIPIENT_NOT_ACTIVATED`. Worth confirming
    with the Thru team whether that is intended protocol behaviour.
+4. **Whether a token account can initialize for a never-registered owner.** Token transfers
+   deliberately probe this: the recipient's token account is program-derived and sender-created,
+   but whether the Token Program accepts an owner with no on-chain account is unverified. If it
+   does, "receive tokens before touching the chain" works out of the box; if it reverts, the UI
+   must pre-refuse the same way native sends do. `scripts/verify-token-transfer.mjs` answers it.
+5. **The token-program fee.** Only the NATIVE transfer fee (1 base unit) was ever measured, and
+   the send screen says so rather than quoting it for token sends. The verification script
+   measures the token fee as part of its run; once known, it belongs in per-network config with
+   `environment`-appropriate `source:` provenance, the same shape as `baseFeeUnits`.
 
 ### Step 9 — feature modules
 
@@ -283,7 +346,7 @@ breakage fails fast before the slower integration suites.
 **Live verification scripts are under `scripts/` and are NOT part of `npm test`.** They report
 against a real node rather than asserting, and use throwaway in-memory keys that never touch a
 real vault: `verify-live-e2e`, `verify-autoregister`, `verify-chain`, `measure-fee`,
-`diagnose-faucet`, `probe-transfer-*`.
+`diagnose-faucet`, `probe-transfer-*`, `verify-token-transfer`.
 
 **Install the docs skill.** `npx skills add https://thru.org/docs`. Reading one docs page fixed
 three token bugs that had absorbed significant probing effort.

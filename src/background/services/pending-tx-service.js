@@ -73,7 +73,14 @@ async function updateBadge(list) {
 
 /**
  * Record a freshly submitted transaction.
- * @param {{ signature: string, kind: string, from: string, to?: string, amountUnits?: string, networkId?: string }} tx
+ *
+ * `mint` distinguishes a token transfer from a native one: the same addresses sending the
+ * same amount of THRU and of a token within the dedupe window are two different transactions,
+ * not a double-click. `displayAmount` is a preformatted display string (e.g. "5 ABC") for
+ * kinds whose raw units are not THRU and must never pass through format().
+ *
+ * @param {{ signature: string, kind: string, from: string, to?: string, amountUnits?: string,
+ *   mint?: string, displayAmount?: string, networkId?: string }} tx
  */
 export async function track(tx) {
   if (!tx?.signature) return null;
@@ -84,6 +91,8 @@ export async function track(tx) {
     from: tx.from || null,
     to: tx.to || null,
     amountUnits: tx.amountUnits != null ? String(tx.amountUnits) : null,
+    mint: tx.mint || null,
+    displayAmount: tx.displayAmount || null,
     networkId: tx.networkId || null,
     status: TX_STATUS.SUBMITTED,
     submittedAt: Date.now(),
@@ -94,6 +103,18 @@ export async function track(tx) {
   const updated = await readAll();
   await updateBadge(updated);
   emit('pendingTxChanged', { pending: updated.filter((r) => r.status === TX_STATUS.SUBMITTED) });
+
+  // The only reconcile triggers were bootstrap and unlock, so a send whose sendAndTrack
+  // ALREADY returned confirmed stayed "pending" for the entire popup session — the
+  // stuck-pending defect the manual smoke run hit. Active self-service: one pass shortly
+  // after submit (covers the common already-confirmed case), one later pass (covers history
+  // lag). Both no-op once the record settled and swallow every error — a timer must never
+  // surface an offline failure. unref keeps Node-based tests from being held open.
+  for (const ms of [2_000, 10_000]) {
+    const timer = setTimeout(() => { reconcile().catch(() => {}); }, ms);
+    timer.unref?.();
+  }
+
   return record;
 }
 
@@ -115,18 +136,25 @@ export async function listPending() {
 /**
  * Whether an identical transfer was submitted within the last few seconds.
  * Used to block a double-click from broadcasting twice.
- * @param {{ from: string, to: string, amountUnits: string }} candidate
+ *
+ * `mint` is part of identity: a native send and a token send with the same from/to/amount
+ * are NOT duplicates of each other. Legacy records carry no mint (null) and only ever match
+ * native (mintless) candidates.
+ *
+ * @param {{ from: string, to: string, amountUnits: string, mint?: string }} candidate
  * @param {number} [windowMs=15000]
  */
 export async function isProbableDuplicate(candidate, windowMs = 15_000) {
   const all = await readAll();
   const cutoff = Date.now() - windowMs;
+  const mint = candidate.mint || null;
   return all.some((r) => (
     r.submittedAt >= cutoff
     && r.status === TX_STATUS.SUBMITTED
     && r.from === candidate.from
     && r.to === candidate.to
     && r.amountUnits === String(candidate.amountUnits)
+    && (r.mint || null) === mint
   ));
 }
 

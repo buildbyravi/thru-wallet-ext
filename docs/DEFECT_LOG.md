@@ -169,12 +169,44 @@ Recording these matters more than the ones I inherited.
 | `reset.js` built its `PageHeader` inline (`PageHeader({...}).el`) and discarded the instance | `TEST` (`test-route-lifecycle.mjs`) | The route's `destroy()` disposed its own listeners and the banner's, but the header's back-button click listener stayed attached to a node that was no longer in the document. Twelve other routes keep their header instance for exactly this reason; this one did not, and nothing caught it until a test counted listeners on detached nodes. |
 | `isFocusable()` first checked only the element's own `.hidden` class | `TEST` | This codebase hides sections with a `display:none` utility class on a *parent*, so controls inside a hidden section counted as Tab stops and focus would have gone somewhere invisible — reading to a keyboard user as "Tab stopped working". Now walks ancestors. |
 | A synchronous `requestAnimationFrame` in the test shim | `TEST` | The shim ran rAF callbacks inline, which changed ordering the app relies on: `requirePassword` captures the element to restore focus to when it builds its trap, *before* its rAF callback focuses the field. Inline rAF made the trap capture its own input, so focus was "restored" to a detached field. Browsers run rAF after the current task; the shim now queues a microtask. A fidelity bug in a test harness produces false failures that look like product bugs. |
+| `knownTokenAccounts` surviving a network switch (PR #6 review) | `READ` | The cache is chain state keyed only by address. Switching networks left it warm, so a send on a fresh chain would have skipped initializing the recipient's token account and reverted on-chain. `configureNetwork` now clears both caches whenever the chain identity changes. The worst of the four findings: silent, cross-network, and money-facing. |
+| Review button disabled forever after amount-first typing (PR #6 review) | `READ` + `TEST` | `validateRecipient` mutated `recipientState` asynchronously but nothing re-evaluated the Review gate afterwards — only input handlers did. It survived because the lifecycle suite never exercised the *order* of form interactions. `refreshReviewEnabled` is now route-scoped and runs in a `finally` on every validation completion; the lifecycle test types amount-then-recipient and asserts the button activates (verified to fail pre-fix). |
+| Recipient picker discarding a pre-typed amount (PR #6 review) | `READ` + `TEST` | Both picker exits (`onPick` and Back) passed `amount: ''`, clobbering `formState.amount`, because nothing asserted retention through an excursion. The lifecycle test now round-trips both exits with an amount typed and asserts the value survives (verified to fail pre-fix). |
+| No sequence guard on async recipient checks (PR #6 review) | `READ` | A slow earlier validation could resolve after a newer one and overwrite both `recipientState` and the status line. Checks now carry a monotonically increasing sequence; stale results return without touching state or DOM, and typing invalidates in-flight work immediately. |
+| `.mnemonic-grid span` styling the word's inner span | `BROWSER` (user, first manual run) | The tile rule used a descendant selector but the component nests `<em>` + `<span>` inside each tile — so every word drew its **own** second border inside the tile, sized per word, and the reveals looked like uneven input boxes. Meanwhile the number rule targeted a `<b>` the component has never emitted, so numbers were italic UA default. Selector-vs-DOM drift between kit component and stylesheet: **class-name checks can't see it** — `mnemonic-grid` "existed in CSS" the whole time. Scoped to `> span` with `em` and `> span > span` rules that match the real DOM. Only a rendered pixel catches this class; no guardrail in the repo could. |
+| Confirmed sends stuck as "pending" for the whole popup session | `BROWSER` (local agent, manual smoke) | `sendTransfer` waits for on-chain confirmation, then `pending.track()` records SUBMITTED — and `reconcile()` was only called from bootstrap and unlock, so nothing settled the record while the popup stayed open. History rendered the transaction **twice**: confirmed in the list, and "Waiting for confirmation" in Pending. `tx.reconcilePending` existed in the manifest and router **with zero callers** — a method shipped without a destination, cousin of "shipped control before destination". Fix at three layers: deferred passes scheduled inside `track()` (2s/10s, error-swallowing, unref'd), reconcile-on-view in Dashboard/History with a refetch, and render-level dedupe so a signature the list shows can never also be a Pending row. Lifecycle asserts all of it, verified to fail with the view triggers removed. |
+
+> **Lesson:** existence checks stop too early — "the method is in the manifest and the router"
+> does not mean the behaviour exists. The question that matters is "what calls this, and when."
+> Register-but-never-invoke is the async twin of ship-control-before-destination.
+
+> **Lesson:** CSS drift is the DOM's version of a changed wire format — when a component's
+> markup structure evolves, its stylesheet is a *callsite* and must be re-checked like one.
+
+> **Lesson:** the class shared by three of these is *async UI state with no defined refresh
+> owner*. Any state mutated by an awaited path must name the call site that re-renders from it;
+> "the input handler does it" is not enough the moment the mutation is asynchronous.
 
 > **Lesson:** three of these were shipped-control-before-destination or stale-list problems.
 > Both are symptoms of the same thing — **no check that the graph is connected.**
 >
 > **Lesson:** a guardrail with an inconsistency (stripping comments in one scan but not
 > another) will eventually flag the very file that documents the rule.
+
+### 4.7 The deploy-authority derivation that could never have worked — `READ`
+
+`deriveTokenMintAddress(mintSeed)` was called with **no mint authority**, so the wallet derived
+the trivial-authority mint address while the InitializeMint instruction it then broadcast was
+built with real authority bytes — two different programs' worth of state that could never meet
+on-chain. And the hand-rolled `encodeInitializeMintInstructionData` sitting next to it had no
+official binding to be pinned against, so nothing could have caught its wire layout either. The
+deploy path was in fact always-throwing on the first live call. Both halves were retired in the
+same change: `deriveTokenMintAddress(mintSeed, address)` (authority mandatory) plus
+`createInitializeMintInstruction` from `@thru/programs/token`, with derivation goldens pinned in
+test-thru-client.mjs.
+
+> **Lesson:** a "sacred" hand-rolled encoder is only as trustworthy as its verifier. A wire
+> format that no official binding reproduces is not sacred — it is simply untested.
 
 ---
 

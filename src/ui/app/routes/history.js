@@ -13,7 +13,7 @@ import { icon } from '../../kit/icon.js';
 import { Button } from '../../kit/button.js';
 import { PageHeader, Banner, Spinner, Empty } from '../../kit/feedback.js';
 import * as bridge from '../bridge.js';
-import { formatThru, truncateAddress } from '../../../shared/format.js';
+import { formatThru, formatTokenAmount, truncateAddress } from '../../../shared/format.js';
 
 const FILTERS = [
   { id: 'all', label: 'All' },
@@ -70,16 +70,31 @@ export function HistoryRoute({ back }) {
   function matches(entry) {
     if (activeFilter === 'all') return true;
     if (activeFilter === 'failed') return entry.success === false;
+    // Token sends/receives group under the same chips as native ones — from the user's
+    // perspective "Sent" means value left this account, whatever it was denominated in.
+    if (activeFilter === 'sent') return entry.kind === 'sent' || entry.kind === 'token-sent';
+    if (activeFilter === 'received') return entry.kind === 'received' || entry.kind === 'token-received';
     return entry.kind === activeFilter;
   }
 
   // ---- Rows ---------------------------------------------------------------
   function glyphFor(entry) {
     if (entry.success === false) return { name: 'x', cls: 'failed' };
-    if (entry.kind === 'sent') return { name: 'send', cls: 'sent' };
-    if (entry.kind === 'received') return { name: 'receive', cls: 'received' };
+    if (entry.kind === 'sent' || entry.kind === 'token-sent') return { name: 'send', cls: 'sent' };
+    if (entry.kind === 'received' || entry.kind === 'token-received' || entry.kind === 'token-mint') {
+      return { name: 'receive', cls: 'received' };
+    }
+    if (entry.kind === 'token-account-init') return { name: 'coins', cls: 'received' };
     if (entry.kind === 'faucet') return { name: 'faucet', cls: 'faucet' };
     return { name: 'info', cls: '' };
+  }
+
+  /** Token amounts carry their own decimals; throwing them through formatThru would mislabel them. */
+  function tokenAmountText(entry) {
+    if (entry.amount == null) return null;
+    const decimals = Number.isInteger(entry.tokenDecimals) ? entry.tokenDecimals : 0;
+    const formatted = formatTokenAmount(BigInt(entry.amount), decimals);
+    return entry.tokenSymbol ? `${formatted} ${entry.tokenSymbol}` : `${formatted} base units`;
   }
 
   function describe(entry) {
@@ -88,6 +103,17 @@ export function HistoryRoute({ back }) {
     if (entry.kind === 'sent') return amount ? `Sent ${amount} THRU${other ? ` to ${other}` : ''}` : 'Sent';
     if (entry.kind === 'received') return amount ? `Received ${amount} THRU${other ? ` from ${other}` : ''}` : 'Received';
     if (entry.kind === 'faucet') return amount ? `Claimed ${amount} THRU from the faucet` : 'Faucet claim';
+
+    const tokenAmount = tokenAmountText(entry);
+    if (entry.kind === 'token-sent') return tokenAmount ? `Sent ${tokenAmount}` : 'Token sent';
+    if (entry.kind === 'token-received') return tokenAmount ? `Received ${tokenAmount}` : 'Token received';
+    if (entry.kind === 'token-mint') return tokenAmount ? `Minted ${tokenAmount}` : 'Token mint';
+    if (entry.kind === 'token-transfer') {
+      return tokenAmount ? `Token transfer of ${tokenAmount}` : 'Token transfer';
+    }
+    if (entry.kind === 'token-account-init') {
+      return entry.tokenSymbol ? `Created ${entry.tokenSymbol} token account` : 'Created token account';
+    }
     // Inventing a meaning for an unrecognised program would be worse than admitting it.
     return 'Unknown transaction';
   }
@@ -122,7 +148,13 @@ export function HistoryRoute({ back }) {
 
   function paintPending() {
     while (pendingHost.firstChild) pendingHost.removeChild(pendingHost.firstChild);
-    const active = pending.filter((p) => p.status === 'submitted');
+    // Belt-and-braces with the reconcile-on-view above: a signature the history list already
+    // displays as confirmed is never ALSO a Waiting... row, whatever the timing window.
+    const displayed = new Set((entries || [])
+      .map((e) => String(e?.signature || ''))
+      .filter(Boolean));
+    const active = pending.filter((p) => p.status === 'submitted'
+      && !displayed.has(String(p.signature)));
     pendingHost.classList.toggle('hidden', active.length === 0);
     if (!active.length) return;
 
@@ -135,7 +167,9 @@ export function HistoryRoute({ back }) {
         h('span', { class: 'row-glyph pending' }, icon('spinner', 13, { className: 'spinning' })),
         h('span', { class: 'row-body' }, [
           h('span', { class: 'row-title', text: p.amountUnits
-            ? `${p.kind === 'faucet' ? 'Claiming' : 'Sending'} ${formatThru(BigInt(p.amountUnits))} THRU`
+            ? (p.displayAmount
+                ? `${p.kind === 'faucet' ? 'Claiming' : 'Sending'} ${p.displayAmount}`
+                : `${p.kind === 'faucet' ? 'Claiming' : 'Sending'} ${formatThru(BigInt(p.amountUnits))} THRU`)
             : 'Transaction in flight' }),
           h('span', { class: 'row-sub', text: 'Waiting for confirmation' }),
         ]),
@@ -198,6 +232,14 @@ export function HistoryRoute({ back }) {
       entries = append ? [...entries, ...batch] : batch;
 
       pending = await bridge.send('tx.getPending').catch(() => []);
+
+      // A send that confirmed while the popup was closed still reads 'submitted'. Views must
+      // not render that as Pending next to its confirmed list entry — settle first, refetch,
+      // then paint. (The stuck-pending defect from the manual smoke run.)
+      if ((pending || []).some((p) => p?.status === 'submitted')) {
+        await bridge.send('tx.reconcilePending').catch(() => null);
+        pending = await bridge.send('tx.getPending').catch(() => pending);
+      }
 
       paintPending();
       paintList();

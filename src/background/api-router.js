@@ -155,6 +155,7 @@ const handlers = Object.assign(Object.create(null), {
   'token.import': ({ mintAddress, symbol, name, decimals }) => tokenService.importToken({ mintAddress, symbol, name, decimals }),
   'token.setVisibility': ({ mintAddress, hidden }) => tokenService.setVisibility(mintAddress, hidden),
   'token.getBalances': ({ address }) => tokenService.getTokenBalances({ address }),
+  'token.transfer': (params) => tokenService.transferToken(params),
 
   // ---- Preferences -----------------------------------------------------
   'settings.get': () => preferencesService.getPreferences(),

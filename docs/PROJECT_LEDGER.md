@@ -10,14 +10,25 @@ Purpose: canonical ledger for build phases, state identifiers, accepted constrai
 | Item | Value |
 | --- | --- |
 | Repository | `buildbyravi/thru-wallet-ext` |
-| Arena branch | `arena/01a0b5b5-thru-wallet-ext` |
+| Arena branch | `arena/01a0b665-thru-wallet-ext` |
 | Base main commit for this Arena branch | `745f8abd851b07a9de6b4a639e4f6037258a3496` |
-| Current contract version | `7` |
+| Current contract version | `8` |
 | Contract source | `src/shared/contract/manifest.js` |
 | Current route count | 14 popup routes |
-| Contract method count | 74 methods |
+| Contract method count | 75 methods |
 | Runtime surfaces today | popup route stack only — one extension page, `popup.html` |
 | Dist directory | generated; do not edit |
+| Chrome Web Store | Published: 1.1.0 (legacy build, predates this ledger's audit work); a pre-audit 1.2.0 submission was canceled from review 2026-09-19 without shipping |
+
+Chrome Web Store mechanics, checked against Google's docs 2026-09-19 (kept here because chat
+state evaporates and this bites at release time): the store reads the version from
+`src/manifest.json` — never `package.json` — and `build.mjs` does not keep the two in sync, so
+bumping is a deliberate one-line manifest edit at submission time (both sit at 1.2.0 today). A
+new upload's version must exceed the previous **uploaded** version, published or not
+(`developer.chrome.com/docs/webstore/update`), so plan the post-PR-#6 submission to be >1.2.0.
+Hard gate before any store submission: one full human run of `docs/MANUAL_SMOKE_CHECKLIST.md`
+against the real merged build — Node-side green has never proven popup rendering, side-panel
+behaviour, or a completed live send.
 
 Always verify with:
 
@@ -92,6 +103,9 @@ This table deduplicates the repeated local-agent timeline. Commit IDs before the
 | 22 | `c275fdd` | PR code (merged) | Contract v6: `wallet.reset` confirmation/password policy and password-gated `system.setAutoLock` enforced in the background. |
 | 23 | `745f8ab` / PR #3 | merged | Legacy launchpad quarantined; route lifecycle coverage, focus trap, custom-network form withdrawal, and explicit side-panel action landed. |
 | 24 | this PR | PR security hotfix | Contract v7 rejects custom activation in the background, self-heals unsafe stored active ids before RPC binding, and leaves legacy records inert/removable. |
+| 25 | PR #5 | merged | Audit remediation: harden dependencies, CSP, and popup bundle (post-quarantine hygiene). |
+| 26 | contract v8 work | this phase | Token transfer built on official `@thru/programs/token` bindings: `token.transfer` (signing-auth) + real `token.getBalances` (closes BACKEND_GAPS C1); asset selector/send/dashboard/history token paths; golden wire-byte and decoder tests; recipient token-account init sent as a preceding sender-signed transaction; `scripts/verify-token-transfer.mjs` live probe (alphanet run pending — sandbox RPC unreachable). |
+| 27 | passkey spike | this phase | Time-boxed feasibility spike on the pinned `@thru/programs/passkey-manager` bindings (`docs/PASSKEY_SPIKE.md`): protocol feasible (challenge binds nonce+accounts+indices+instruction bytes; fee payer is a late-bound separate account; authority records give recovery), implementation gated on three probes — live program revision, distinct-account fee-payer validation, extension-origin `clientDataJSON` acceptance. No keyring branch, no `checkAuth` fork; not started pending user green-light. |
 
 ---
 
@@ -99,10 +113,10 @@ This table deduplicates the repeated local-agent timeline. Commit IDs before the
 
 | Area | Current state |
 | --- | --- |
-| `npm test` | Passing; includes derivation, layering, routes, launchpad quarantine, contract, DOM, vault, Thru client, API router. |
+| `npm test` | Passing; includes derivation, layering, routes, launchpad quarantine, contract, DOM, vault, Thru client (incl. token wire goldens), API router. |
 | `npm run build` | Passing; wipes `dist/`, then generates the background and popup bundles plus `popup.css`, and copies `popup.html`, `manifest.json` and icons. |
-| Contract | v7, 74 methods; custom-network activation is an intentional security break. |
-| Signing auth | `tx.send`, `tx.claimFaucet`, `tx.autoCreateAccount`, `token.deploy` use `auth: 'signing'`. |
+| Contract | v8, 75 methods; custom-network activation is an intentional security break; v8 adds `token.transfer` and a real `token.getBalances`. |
+| Signing auth | `tx.send`, `tx.claimFaucet`, `tx.autoCreateAccount`, `token.deploy`, `token.transfer` use `auth: 'signing'`. |
 | Signing re-auth | Required by default; can be disabled only through password-gated `settings.setSecurity`. |
 | Reset/auto-lock hardening | Contract v6: reset requires explicit confirmation and password when unlocked; auto-lock changes are password-gated. |
 | Custom-network quarantine | Contract v7: enabled built-ins only; direct custom activation fails permanently and stale unsafe ids heal before RPC binding. |
@@ -119,7 +133,8 @@ This table deduplicates the repeated local-agent timeline. Commit IDs before the
 | P0 | Custom-network re-enablement design | Contract v7 safely quarantines legacy records. Bringing activation back still requires HTTPS policy, narrow host permission, verified capability records, and re-auth together. | `docs/STATUS_AND_ROADMAP.md` Step 2b |
 | P1 | Browser smoke run | `test-route-lifecycle.mjs` mounts every route; layout, real focus, canvas and the side panel still need a human with Chrome. | `docs/MANUAL_SMOKE_CHECKLIST.md` |
 | P1 | Side-panel width beyond 408px | `body { max-width: 100% }` fixes a panel narrower than the popup width; a wider panel still shows a 408px column. Needs a browser to decide. | `docs/MANUAL_SMOKE_CHECKLIST.md` §2 |
-| P1 | Token transfer | Required for honest asset support. Must use official `@thru/programs/token`. | `docs/BACKEND_GAPS.md` |
+| P1 | Token transfer live verification | Feature is code-complete and unit-tested (contract v8); the one open item is running `scripts/verify-token-transfer.mjs` where alphanet is reachable, then recording the two open chain answers (unregistered recipient owner; token-program fee). | `docs/STATUS_AND_ROADMAP.md` Step 4 |
+| P2 | Store re-submission | Store has a live legacy 1.1.0 while the canceled 1.2.0 never shipped. Sequence: merge PR #6 → human smoke-checklist run → bump `src/manifest.json` above 1.2.0 → submit. No urgency at current user count. | §1 Chrome Web Store note; `docs/MANUAL_SMOKE_CHECKLIST.md` |
 | P1 | Feature module split | Launchpad/DEX/prediction must be separated before serious DeFi work. | `docs/MODULE_BOUNDARIES.md` |
 | P1 | Exact-pin `@thru/programs` | Completed in the 2026-09-18 audit pass: `@thru/programs` and `@thru/sdk` are exact-pinned at `0.3.16`; derivation uses `@thru/sdk/crypto` and golden vectors are unchanged. | `package.json`, `test-derivation.mjs` |
 | P2 | Full-tab shell | Required for launchpad/DEX/charts without slowing popup. | `docs/WALLET_FEATURES_PERFORMANCE_STUDY.md` |
@@ -241,7 +256,9 @@ TESTS:                npm test -> PASS (derivation 16, layering 57 files / 0 sin
 BUILD:                npm run build -> PASS, no warnings; npm audit --omit=dev -> 0 vulnerabilities.
 KNOWN LIMITATIONS:    no route is mounted by a test yet (Step 2). Research docs describe a
                       launchpad/DEX that does not exist in code and must not be read as state.
-NEXT PHASE:           jsdom route mount tests, then the custom-network decision.
+NEXT PHASE:           run `scripts/verify-token-transfer.mjs` where alphanet is reachable;
+                      passkey implementation stays gated on the probes in
+                      `docs/PASSKEY_SPIKE.md` (user green-light required).
 ```
 
 ---
@@ -252,8 +269,8 @@ When these change, update this ledger, `CONTEXT.md`, `docs/STATUS_AND_ROADMAP.md
 
 | Identifier | Current value |
 | --- | --- |
-| contract version | 7 |
-| method count | 74 |
+| contract version | 8 |
+| method count | 75 |
 | route count | 14 |
 | guarded DOM sink count (all of `src/`) | 0 |
 | enabled networks | alphanet, localnet |

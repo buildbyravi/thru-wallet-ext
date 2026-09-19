@@ -21,6 +21,12 @@ import {
   deriveMintAddress as sdkDeriveMintAddress,
   deriveTokenAccountAddress as sdkDeriveTokenAccountAddress,
   bytesToHex as sdkBytesToHex,
+  createTransferInstruction as sdkCreateTokenTransferInstruction,
+  createInitializeAccountInstruction as sdkCreateInitializeAccountInstruction,
+  createInitializeMintInstruction as sdkCreateInitializeMintInstruction,
+  parseTokenAccountData as sdkParseTokenAccountData,
+  parseMintAccountData as sdkParseMintAccountData,
+  isAccountNotFoundError as sdkIsAccountNotFoundError,
 } from '@thru/programs/token';
 import { scopedKey } from '../shared/network-scope.js';
 
@@ -41,6 +47,13 @@ const DEFAULT_NETWORK = Object.freeze({
 });
 
 let activeNetwork = DEFAULT_NETWORK;
+
+// Chain-state caches. Token-account existence is a property of a CHAIN, not of this process:
+// these must be emptied by configureNetwork whenever the chain identity changes, or a send on
+// a fresh network could skip account initialization against an account that only exists on the
+// old one and revert on-chain.
+const inFlightTokenAccountInits = new Map();
+const knownTokenAccounts = new Set();
 
 /**
  * Point this module at a network.
@@ -67,6 +80,13 @@ export function configureNetwork(config) {
   if (next.rpcUrl !== activeNetwork.rpcUrl) {
     // Drop the memoized client so the next call builds one against the new endpoint.
     client = undefined;
+  }
+  if (next.id !== activeNetwork.id || next.rpcUrl !== activeNetwork.rpcUrl) {
+    // Chain identity changed: forget everything the previous chain said about token accounts.
+    // Without this, a recipient token account that existed on the old network would be
+    // skipped by initializeTokenAccount on the new one, and the transfer would revert.
+    knownTokenAccounts.clear();
+    inFlightTokenAccountInits.clear();
   }
   activeNetwork = next;
   return activeNetwork;
@@ -451,6 +471,43 @@ export function decodeHistoryEntry(tx, viewerAddress) {
   // entry as "unknown" rather than as a transfer.
   const faucetProgram = activeNetwork.faucetProgramId;
   const transferProgram = activeNetwork.transferProgramId;
+  const tokenProgram = activeNetwork.tokenProgramId;
+
+  // Token program entries have their own wire format: a ONE-byte instruction tag (the ABI's
+  // TokenInstruction discriminant), unlike the 4-byte tags of the faucet/transfer programs.
+  // Measured from @thru/programs 0.3.16 output, not assumed symmetric with the native layout.
+  if (programAddress === tokenProgram && tx.instructionData?.length >= 1) {
+    const data = tx.instructionData;
+    const viewOf = (offset) => new DataView(data.buffer, data.byteOffset + offset, data.byteLength - offset);
+    const allAccounts = [tx.feePayer, tx.program, ...(tx.readWriteAccounts || []), ...(tx.readOnlyAccounts || [])];
+    const addrAt = (idx) => allAccounts[idx]?.toThruFmt() || null;
+    const tag = data[0];
+
+    if (tag === 2 && data.length === 13) {
+      // transfer: [tag u8][sourceIdx u16][destIdx u16][amount u64]
+      const view = viewOf(1);
+      entry.kind = 'token-transfer';
+      entry.amount = view.getBigUint64(4, true);
+      entry.tokenSource = addrAt(view.getUint16(0, true));
+      entry.tokenDest = addrAt(view.getUint16(2, true));
+    } else if (tag === 3 && data.length === 15) {
+      // mint_to: [tag u8][mintIdx u16][destIdx u16][authorityIdx u16][amount u64]
+      const view = viewOf(1);
+      entry.kind = 'token-mint';
+      entry.amount = view.getBigUint64(6, true);
+      entry.tokenMint = addrAt(view.getUint16(0, true));
+      entry.tokenDest = addrAt(view.getUint16(2, true));
+    } else if (tag === 1 && data.length >= 39) {
+      // initialize_account: [tag u8][tokenIdx u16][mintIdx u16][ownerIdx u16][seed 32][proof…]
+      const view = viewOf(1);
+      entry.kind = 'token-account-init';
+      entry.tokenMint = addrAt(view.getUint16(2, true));
+      entry.tokenDest = addrAt(view.getUint16(0, true)); // the token account being created
+      entry.counterparty = addrAt(view.getUint16(4, true)); // its owner
+      entry.amount = null;
+    }
+    return entry;
+  }
 
   const canDecode = tx.instructionData?.length === 16
     && (programAddress === transferProgram || programAddress === faucetProgram);
@@ -560,29 +617,274 @@ export async function deriveTokenAccountAddress(ownerAddress, mintAddress) {
   return result?.address ?? String(result);
 }
 
-/** Pure byte-layout encoder for INITIALIZE_MINT (Tag 0) instruction. */
-export function encodeInitializeMintInstructionData(accountIdx, mintSeed, proofSizeBytes, authorityPubkeyBytes, decimals, proofBytes) {
-  const seedBytes = new TextEncoder().encode(mintSeed);
-  const totalLength = 4 + 2 + 32 + 4 + 32 + 1 + proofBytes.length;
-  const payload = new Uint8Array(totalLength);
-  const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
+/**
+ * Read a token account's on-chain state.
+ *
+ * Strict about failure kinds: a genuinely-absent account returns { exists: false }, but an
+ * RPC failure THROWS rather than masquerading as a zero balance. A zero that is real and a
+ * balance that is unknown are different things in a wallet — showing the wrong one is how
+ * people think they received funds they never got (or vice versa).
+ *
+ * @param {string} tokenAccountAddress
+ * @returns {Promise<{ exists: boolean, mint?: string, owner?: string, amount?: bigint, isFrozen?: boolean }>}
+ */
+export async function readTokenAccount(tokenAccountAddress) {
+  let account;
+  try {
+    account = await getClient().accounts.get(tokenAccountAddress);
+  } catch (err) {
+    if (sdkIsAccountNotFoundError(err)) return { exists: false };
+    throw err;
+  }
+  // Throws when the account exists but is not a token account — that is a programming error
+  // (wrong address), not a "zero balance", and it must not be smoothed over.
+  const info = sdkParseTokenAccountData(account);
+  return {
+    exists: true,
+    mint: info.mint,
+    owner: info.owner,
+    amount: info.amount,
+    isFrozen: info.isFrozen,
+  };
+}
 
-  // Tag 0: INITIALIZE_MINT
-  view.setUint32(0, 0, true);
-  // Account Index
-  view.setUint16(4, accountIdx, true);
-  // Seed (32 bytes)
-  payload.set(seedBytes.subarray(0, 32), 6);
-  // Proof size
-  view.setUint32(38, proofSizeBytes, true);
-  // Mint Authority Pubkey (32 bytes)
-  payload.set(authorityPubkeyBytes.subarray(0, 32), 42);
-  // Decimals (uint8)
-  payload[74] = decimals;
-  // Append raw proof bytes
-  payload.set(proofBytes, 75);
+/**
+ * Read a token mint's on-chain metadata (decimals, supply, ticker, authorities).
+ * Same absence-versus-failure discipline as readTokenAccount.
+ *
+ * @param {string} mintAddress
+ */
+export async function readMintAccount(mintAddress) {
+  let account;
+  try {
+    account = await getClient().accounts.get(mintAddress);
+  } catch (err) {
+    if (sdkIsAccountNotFoundError(err)) return { exists: false };
+    throw err;
+  }
+  const info = sdkParseMintAccountData(account);
+  return {
+    exists: true,
+    decimals: info.decimals,
+    supply: info.supply,
+    ticker: info.ticker,
+    creator: info.creator,
+    mintAuthority: info.mintAuthority,
+    freezeAuthority: info.freezeAuthority,
+    hasFreezeAuthority: info.hasFreezeAuthority,
+  };
+}
 
-  return payload;
+/**
+ * One owner's balance of one mint: derive the token account address, then read it.
+ *
+ * @returns {Promise<{ tokenAccount: string, exists: boolean, amount: bigint|null }>}
+ *   amount is null only when the token account does not exist (which is EXACTLY zero — a
+ *   provably-empty answer, not an unknown one).
+ */
+export async function getTokenBalance(ownerAddress, mintAddress) {
+  const derived = await sdkDeriveTokenAccountAddress(
+    getClient(),
+    ownerAddress,
+    mintAddress,
+    activeNetwork.tokenProgramId,
+  );
+  const info = await readTokenAccount(derived.address);
+  return {
+    tokenAccount: derived.address,
+    exists: info.exists,
+    amount: info.exists ? info.amount : null,
+  };
+}
+
+// ---- Token transfers ------------------------------------------------------
+//
+// Thru keeps a wallet account separate from its per-mint token accounts, so moving a token
+// touches the SENDER's token account and the RECIPIENT's token account — never the wallet
+// accounts directly. The recipient's token account is a program-derived address, which means
+// the sender can initialize it in a preceding transaction without holding the recipient's key
+// (unlike native transfers, where an unregistered recipient is a hard failure the sender can
+// do nothing about).
+//
+// One OPEN CHAIN QUESTION remains (docs/BACKEND_GAPS.md): whether the recipient's WALLET
+// account must already exist for their token account to initialize. initialize-account may
+// only need the token account's own creation proof. scripts/verify-token-transfer.mjs probes
+// exactly this against a live network; until it reports, the UI does not promise either way.
+
+/**
+ * Initialize one owner's token account for one mint, paid for by feePayer.
+ * No-op (and no transaction) when the account already exists. Concurrent calls for the same
+ * address share one in-flight transaction instead of racing two creations.
+ *
+ * @returns {Promise<{ tokenAccount: string, created: boolean, signature: string|null }>}
+ */
+export async function initializeTokenAccount(feePayer, ownerAddress, mintAddress) {
+  const derived = await sdkDeriveTokenAccountAddress(
+    getClient(),
+    ownerAddress,
+    mintAddress,
+    activeNetwork.tokenProgramId,
+  );
+  const tokenAccountAddress = derived.address;
+  if (knownTokenAccounts.has(tokenAccountAddress)) {
+    return { tokenAccount: tokenAccountAddress, created: false, signature: null };
+  }
+  if (inFlightTokenAccountInits.has(tokenAccountAddress)) {
+    return inFlightTokenAccountInits.get(tokenAccountAddress);
+  }
+
+  const promise = (async () => {
+    try {
+      const existing = await readTokenAccount(tokenAccountAddress);
+      if (existing.exists) {
+        knownTokenAccounts.add(tokenAccountAddress);
+        return { tokenAccount: tokenAccountAddress, created: false, signature: null };
+      }
+
+      const proofObj = await getClient().proofs.generate({ address: tokenAccountAddress, proofType: 1 });
+      const tokenAccountBytes = Pubkey.from(tokenAccountAddress).toBytes();
+      const mintBytes = Pubkey.from(mintAddress).toBytes();
+      const ownerBytes = Pubkey.from(ownerAddress).toBytes();
+
+      // The instruction references the token account (writable), the mint (read-only) and the
+      // owner (read-only). The fee payer is already at index 0, so the owner only needs an
+      // explicit slot when it is someone else (initializing the RECIPIENT's account).
+      const ownerIsPayer = ownerAddress === (feePayer.address || Pubkey.from(feePayer.publicKey).toThruFmt());
+      const readOnly = ownerIsPayer ? [mintAddress] : [mintAddress, ownerAddress];
+
+      const { rawTransaction } = await getClient().transactions.buildAndSign({
+        feePayer: { publicKey: feePayer.publicKey, privateKey: feePayer.privateKey },
+        program: activeNetwork.tokenProgramId,
+        accounts: { readWrite: [tokenAccountAddress], readOnly },
+        instructionData: sdkCreateInitializeAccountInstruction({
+          tokenAccountBytes,
+          mintAccountBytes: mintBytes,
+          ownerAccountBytes: ownerBytes,
+          // The default derivation seed, matching deriveTokenAccountAddress's default.
+          seedBytes: new Uint8Array(32),
+          stateProof: proofObj.proof,
+        }),
+      });
+
+      for await (const update of getClient().transactions.sendAndTrack(rawTransaction)) {
+        if (update.executionResult) {
+          if (update.executionResult.vmError === 0) {
+            knownTokenAccounts.add(tokenAccountAddress);
+            const signature = update.signature?.value
+              ? Signature.from(update.signature.value).toThruFmt()
+              : null;
+            return { tokenAccount: tokenAccountAddress, created: true, signature };
+          }
+          const err = new Error(
+            `Token account initialization reverted on-chain (vmError=${update.executionResult.vmError}).`,
+          );
+          err.code = 'TOKEN_INIT_FAILED';
+          throw err;
+        }
+      }
+      throw new Error('Token account initialization never returned an execution result (timed out?).');
+    } finally {
+      inFlightTokenAccountInits.delete(tokenAccountAddress);
+    }
+  })();
+
+  inFlightTokenAccountInits.set(tokenAccountAddress, promise);
+  return promise;
+}
+
+/**
+ * Send a token transfer: moves `amountUnits` of `mintAddress` from the fee payer's token
+ * account to the recipient's token account, initializing the recipient's token account first
+ * when it does not exist.
+ *
+ * Error codes thrown (stable, the UI may branch on them):
+ *   TOKEN_ACCOUNT_MISSING  fee payer has no token account for this mint at all
+ *   TOKEN_FROZEN           fee payer's token account is frozen
+ *   TOKEN_BALANCE_TOO_LOW  source balance below the requested amount
+ *   TOKEN_INIT_FAILED      recipient token account creation reverted on-chain
+ *
+ * @returns {Promise<{ signature: string|null, recipientTokenAccountCreated: boolean, initSignature: string|null }>}
+ */
+export async function sendTokenTransfer({ feePayer, mintAddress, recipientAddress, amountUnits }) {
+  const amount = BigInt(amountUnits);
+  if (amount <= 0n) {
+    throw new Error('Amount must be a positive whole number of base units.');
+  }
+
+  const source = await sdkDeriveTokenAccountAddress(
+    getClient(),
+    feePayer.address,
+    mintAddress,
+    activeNetwork.tokenProgramId,
+  );
+  const sourceState = await readTokenAccount(source.address);
+  if (!sourceState.exists) {
+    const err = new Error('You have no token account for this mint, so there is no balance to send from.');
+    err.code = 'TOKEN_ACCOUNT_MISSING';
+    throw err;
+  }
+  if (sourceState.isFrozen) {
+    const err = new Error('Your token account for this mint is frozen by its freeze authority.');
+    err.code = 'TOKEN_FROZEN';
+    throw err;
+  }
+  if (sourceState.amount < amount) {
+    const err = new Error(
+      'This token account holds less than the amount you are trying to send.'
+        + ` Balance: ${sourceState.amount.toString()} base units.`,
+    );
+    err.code = 'TOKEN_BALANCE_TOO_LOW';
+    throw err;
+  }
+
+  const dest = await sdkDeriveTokenAccountAddress(
+    getClient(),
+    recipientAddress,
+    mintAddress,
+    activeNetwork.tokenProgramId,
+  );
+  const destState = await readTokenAccount(dest.address);
+  let recipientTokenAccountCreated = false;
+  let initSignature = null;
+  if (!destState.exists) {
+    const init = await initializeTokenAccount(feePayer, recipientAddress, mintAddress);
+    recipientTokenAccountCreated = init.created;
+    initSignature = init.signature;
+  }
+
+  const sourceBytes = Pubkey.from(source.address).toBytes();
+  const destBytes = Pubkey.from(dest.address).toBytes();
+
+  const { rawTransaction } = await getClient().transactions.buildAndSign({
+    feePayer: { publicKey: feePayer.publicKey, privateKey: feePayer.privateKey },
+    program: activeNetwork.tokenProgramId,
+    accounts: {
+      readWrite: source.address === dest.address
+        ? [source.address]
+        : [source.address, dest.address],
+    },
+    instructionData: sdkCreateTokenTransferInstruction({
+      sourceAccountBytes: sourceBytes,
+      destinationAccountBytes: destBytes,
+      amount,
+    }),
+  });
+
+  for await (const update of getClient().transactions.sendAndTrack(rawTransaction)) {
+    if (update.executionResult) {
+      if (update.executionResult.vmError === 0) {
+        return {
+          signature: update.signature?.value ? Signature.from(update.signature.value).toThruFmt() : null,
+          recipientTokenAccountCreated,
+          initSignature,
+        };
+      }
+      const err = new Error(`Token transfer reverted on-chain (vmError=${update.executionResult.vmError}).`);
+      err.code = 'TOKEN_TRANSFER_FAILED';
+      throw err;
+    }
+  }
+  throw new Error('Token transfer never returned an execution result (timed out?).');
 }
 
 /**
@@ -645,24 +947,30 @@ export async function deployTokenMint({
     await createOnChainAccount(feePayer);
   }
 
-  // 2. Derive deterministic mint address
+  // 2. Derive deterministic mint address. The authority is REQUIRED — derivation is over
+  //    [authorityBytes, seedBytes]. deployTokenMint previously called this with only the seed,
+  //    which threw on every deploy; the failure was invisible because no deploy UI survived
+  //    the launchpad deletion and the path was never exercised end to end.
   onProgress({ step: 'deriving_mint', message: 'Deriving Token Mint address on ThruVM…' });
-  const mintAddress = await deriveTokenMintAddress(mintSeed);
+  const mintAddress = await deriveTokenMintAddress(mintSeed, address);
 
   // 3. Generate creating state proof for the mint account
   onProgress({ step: 'generating_proof', message: 'Generating cryptographic state proof…' });
   const proofObj = await client.proofs.generate({ address: mintAddress, proofType: 1 });
 
-  // 4. Construct INITIALIZE_MINT instruction payload
+  // 4. Construct INITIALIZE_MINT via the official binding. The hand-rolled encoder this
+  //    replaced cannot have been right against the real program: it had no ticker, no creator
+  //    and no freeze-authority slot, all of which the on-chain TokenMintAccount layout carries
+  //    and parseMintAccountData expects to read back.
   const authorityPubkeyBytes = Pubkey.from(feePayer.publicKey).toBytes();
-  const instructionPayload = encodeInitializeMintInstructionData(
-    2,
-    mintSeed,
-    proofObj.proof.length,
-    authorityPubkeyBytes,
-    decimals,
-    proofObj.proof
-  );
+  const instructionData = sdkCreateInitializeMintInstruction({
+    mintAccountBytes: Pubkey.from(mintAddress).toBytes(),
+    decimals: Number(decimals),
+    mintAuthorityBytes: authorityPubkeyBytes,
+    ticker: (ticker || '').toUpperCase().trim(),
+    seedHex: mintSeed,
+    stateProof: proofObj.proof,
+  });
 
   // 5. Build, sign, and broadcast transaction
   onProgress({ step: 'submitting_tx', message: 'Broadcasting Token Deployment transaction…' });
@@ -670,7 +978,7 @@ export async function deployTokenMint({
     feePayer: { publicKey: feePayer.publicKey, privateKey: feePayer.privateKey },
     program: activeNetwork.tokenProgramId,
     accounts: { readWrite: [mintAddress] },
-    instructionData: () => instructionPayload,
+    instructionData,
   });
 
   let signatureStr = '';

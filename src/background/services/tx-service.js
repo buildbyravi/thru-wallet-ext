@@ -6,6 +6,7 @@ import { getActiveNetworkConfig } from './network-service.js';
 import { assertWhitelisted } from './preferences-service.js';
 import * as pending from './pending-tx-service.js';
 import * as balances from './balance-service.js';
+import * as tokenService from './token-service.js';
 
 /**
  * Fetch on-chain balance and status for an address.
@@ -149,6 +150,65 @@ export async function sendTransfer(toAddress, amountUnits) {
 }
 
 /**
+ * Second pass over decoded history. A raw token-program entry only carries the ADDRESSES of
+ * token accounts, which say nothing about whose balance moved or in which mint. Resolve them
+ * against the viewer's own derived token accounts for the mints this wallet knows (deployed on
+ * the active network or imported). Anything that cannot be resolved keeps its generic kind and
+ * drops its raw amount — an unattributed raw-unit number under the wrong mint is worse than no
+ * number at all.
+ */
+async function resolveTokenHistory(entries, viewerAddress) {
+  if (!entries.some((e) => typeof e.kind === 'string' && e.kind.startsWith('token'))) return;
+
+  let registry = [];
+  try {
+    registry = await tokenService.listDeployedTokens();
+  } catch {
+    return; // registry unreadable — leave entries unresolved rather than guessing
+  }
+  if (!registry.length) return;
+
+  // The viewer's OWN token-account addresses, one per known mint. Direction can only be
+  // decided for these; anyone else's token account is not reversibly mapped to its owner.
+  const mine = new Map();
+  for (const token of registry) {
+    if (!token.mintAddress) continue;
+    try {
+      const addr = await thruClient.deriveTokenAccountAddress(viewerAddress, token.mintAddress);
+      mine.set(addr, token);
+    } catch {
+      // a registry record with an undecodable mint address contributes nothing
+    }
+  }
+  const byMint = new Map(registry.filter((t) => t.mintAddress).map((t) => [t.mintAddress, t]));
+
+  for (const entry of entries) {
+    if (entry.kind === 'token-transfer' || entry.kind === 'token-mint') {
+      const fromMine = entry.tokenSource ? mine.get(entry.tokenSource) : null;
+      const toMine = entry.tokenDest ? mine.get(entry.tokenDest) : null;
+      const token = fromMine || toMine;
+      if (token) {
+        entry.kind = fromMine ? 'token-sent' : 'token-received';
+        entry.tokenSymbol = token.symbol || null;
+        entry.tokenDecimals = Number.isInteger(token.decimals) ? token.decimals : null;
+        entry.tokenMint = token.mintAddress;
+        entry.counterparty = null; // the other side is a token account, not a known owner
+      } else if (entry.tokenMint && byMint.has(entry.tokenMint)) {
+        // Mintable by a known registry record, but neither side is the viewer (e.g. an
+        // incoming mint_to observed on a watch address): symbol yes, direction no.
+        const known = byMint.get(entry.tokenMint);
+        entry.tokenSymbol = known.symbol || null;
+        entry.tokenDecimals = Number.isInteger(known.decimals) ? known.decimals : null;
+      } else {
+        entry.amount = null;
+      }
+    } else if (entry.kind === 'token-account-init' && entry.tokenMint && byMint.has(entry.tokenMint)) {
+      entry.tokenSymbol = byMint.get(entry.tokenMint).symbol || null;
+    }
+  }
+}
+
+/**
  * List recent transaction history for an address.
  *
  * Accepts either the original positional form (address, pageSize) or a cursor-based options
@@ -179,7 +239,17 @@ export async function listHistory(address, pageSizeOrOptions = 15) {
     kind: entry.kind || 'other',
     amount: entry.amount != null ? String(entry.amount) : null,
     counterparty: entry.counterparty ? String(entry.counterparty) : null,
+    // Token-program fields (null for non-token entries). tokenMint is an address string;
+    // tokenSymbol/tokenDecimals are only attached by the resolution pass below, when the mint
+    // is one this wallet knows about.
+    tokenSource: entry.tokenSource ? String(entry.tokenSource) : null,
+    tokenDest: entry.tokenDest ? String(entry.tokenDest) : null,
+    tokenMint: entry.tokenMint ? String(entry.tokenMint) : null,
+    tokenSymbol: null,
+    tokenDecimals: null,
   }));
+
+  await resolveTokenHistory(serialized, address);
 
   const page = serialized.slice(cursor, cursor + limit);
   const nextCursor = serialized.length > cursor + limit ? cursor + limit : null;

@@ -74,6 +74,20 @@ const SECRET_PASSWORD = 'Hunter2!correct-horse';
 const ADDRESS_A = 'ta1addressaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 const ADDRESS_B = 'ta1addressbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
 
+/** A deployed token the active account actually holds (contract v8 asset flows). */
+const TOKEN_FIXTURE = {
+  mintAddress: 'ta1smkfixturemint000000000000000000000000000',
+  symbol: 'SMK',
+  name: 'Smoke Token',
+  decimals: 6,
+  imageUrl: '',
+  hidden: false,
+  source: 'deployed',
+  deployedAt: 1750000000000,
+  initialSupply: '1000000000',
+};
+const TOKEN_ACCOUNT_FIXTURE = 'ta1smktokenaccount0000000000000000000000';
+
 /** Every string that must never appear in the DOM, by kind. */
 const SECRETS = [
   ['mnemonic', SECRET_MNEMONIC],
@@ -1009,7 +1023,7 @@ const backend = {
   contacts: [{ address: ADDRESS_B, label: 'Spending wallet', createdAt: 1750000003000 }],
   lockout: { locked: false, failedAttempts: 0, retryInMs: 0 },
   pending: [],
-  tokens: [],
+  tokens: [TOKEN_FIXTURE],
 };
 
 function activeNetwork() {
@@ -1191,6 +1205,31 @@ const FIXTURES = {
   'contacts.list': () => backend.contacts.map((c) => ({ ...c })),
 
   'token.list': () => backend.tokens.map((t) => ({ ...t })),
+  'token.getBalances': () => ({
+    supported: true,
+    networkId: activeNetwork().id,
+    balances: backend.tokens.map((t) => ({
+      mintAddress: t.mintAddress,
+      symbol: t.symbol,
+      name: t.name,
+      decimals: t.decimals,
+      imageUrl: t.imageUrl || '',
+      hidden: Boolean(t.hidden),
+      source: t.source || 'deployed',
+      tokenAccount: TOKEN_ACCOUNT_FIXTURE,
+      tokenAccountExists: true,
+      amountUnits: '250000000',
+      error: false,
+    })),
+    reason: null,
+  }),
+  'token.deriveTokenAccount': () => TOKEN_ACCOUNT_FIXTURE,
+  'token.transfer': () => ({
+    signature: 'sig_token_cccccccccccccccccccccccccccccccccccc',
+    blockHeight: null,
+    recipientTokenAccountCreated: false,
+    initSignature: null,
+  }),
 
   'tx.checkHealth': () => ({
     status: 'ok',
@@ -1216,6 +1255,16 @@ const FIXTURES = {
   },
   'tx.getCachedBalances': ({ addresses } = {}) => FIXTURES['tx.getBalances']({ addresses }),
   'tx.getPending': () => backend.pending.map((p) => ({ ...p })),
+  // Mirrors pending-tx-service.reconcile(): submitted records settle to confirmed (the
+  // history fixture already "contains" their signatures). Records stay in the list with
+  // their new status, exactly like production list().
+  'tx.reconcilePending': () => {
+    const actives = backend.pending.filter((p) => p.status === 'submitted').length;
+    backend.pending = backend.pending.map((p) => (p.status === 'submitted'
+      ? { ...p, status: 'confirmed', settledAt: Date.now() }
+      : p));
+    return { checked: backend.pending.length, settled: actives };
+  },
   'tx.autoCreateAccount': () => ({ exists: true, created: false, signature: null }),
   'tx.listHistory': ({ limit } = {}) => {
     const size = Math.min(Number(limit) || 15, HISTORY_ENTRIES.length);
@@ -1409,6 +1458,10 @@ async function settle(rounds = 8) {
   }
 }
 
+// Real-time wait — needed when production code debounces on a real timer (the send route's
+// recipient check waits 350ms before firing).
+const sleep = (ms) => new Promise((resolve) => realSetTimeout(resolve, ms));
+
 function resetBackend(scenario) {
   backend.hasVault = scenario.hasVault;
   backend.unlocked = scenario.unlocked;
@@ -1422,7 +1475,7 @@ function resetBackend(scenario) {
   backend.contacts = [{ address: ADDRESS_B, label: 'Spending wallet', createdAt: 1750000003000 }];
   backend.lockout = { locked: false, failedAttempts: 0, retryInMs: 0 };
   backend.pending = [];
-  backend.tokens = [];
+  backend.tokens = [TOKEN_FIXTURE];
 }
 
 /** Fresh document, window and #app, plus cleared logs. */
@@ -2252,6 +2305,181 @@ async function navigationTest() {
     ok(`no secret appears on the ${path} round trip`,
       findSecrets(SECRETS).length === 0 && findSecretsInTornDown(SECRETS).length === 0);
   }
+
+  // ---- Receive: address copy, QR canvas, and audit cleanup ----------------
+  // The DOM-shim canvas exercises qr.js's flat degradation (no roundRect), which must
+  // render silently — no "Could not render the QR" warning. Audited cleanups below:
+  // the dead hidden CopyButton is gone (one affordance), the address block is the
+  // untruncated full address, and the canvas carries an accessible name.
+  router.navigate('/receive');
+  await settle();
+  const recvMono = router.root.querySelector('.monospace-block');
+  ok('the receive screen shows the full, untruncated address',
+    Boolean(recvMono) && recvMono.textContent === activeAccount().address,
+    recvMono?.textContent);
+  const qrCanvas = router.root.querySelector('canvas');
+  ok('the QR canvas carries an accessible name',
+    Boolean(qrCanvas) && qrCanvas.getAttribute('role') === 'img'
+      && /receive address/.test(qrCanvas.getAttribute('aria-label') || ''),
+    qrCanvas?.getAttribute?.('aria-label'));
+  ok('no QR render warning under a minimal canvas',
+    !/Could not render the QR/.test(textOf(router.root)), textOf(router.root).slice(0, 160));
+  const copyAffordances = buttons(router.root, /copy address/i);
+  ok('exactly one copy affordance for the address (the dead hidden button is gone)',
+    copyAffordances.length === 1, String(copyAffordances.length));
+  // (The shim's selector engine is deliberately tiny — walk anchors instead of a[href*=].)
+  const explorerLink = [...router.root.querySelectorAll?.('a') || []]
+    .find((a) => String(a.href || a.getAttribute?.('href') || '').includes('/account/'));
+  const explorerHref = String(explorerLink?.getAttribute?.('href') || '');
+  ok('the explorer link embeds the address on the active network',
+    explorerHref.includes(activeAccount().address),
+    explorerHref || 'no explorer anchor found');
+
+  // ---- Send: selecting a token asset (contract v8) -------------------------
+  // The asset picker used to list tokens as permanently "not sendable"; with token.transfer
+  // behind it, a funded token is selectable and the whole form re-denominates. This drives
+  // the real click path: asset card → picker → token row → form.
+  router.navigate('/send');
+  await settle();
+  const assetCard = buttons(router.root, /thru native token/i)[0];
+  ok('the send screen offers the asset card', Boolean(assetCard));
+  if (assetCard) {
+    click(assetCard);
+    await settle();
+    const tokenRow = buttons(router.root, /smoke token/i)[0];
+    ok('a funded token is selectable in the asset picker', Boolean(tokenRow));
+    ok('the picker no longer declares tokens fundamentally unsendable',
+      !/Token transfers are not supported yet/.test(textOf(router.root)));
+    if (tokenRow) {
+      click(tokenRow);
+      await settle();
+      ok('the amount field re-denominates to the token', textOf(router.root).includes('Amount (SMK)'));
+      ok('the spendable line shows the token balance', textOf(router.root).includes('Spendable: 250 SMK'),
+        textOf(router.root).slice(0, 240));
+
+      // The recipient probe is mint-dependent: picking a recipient must check THIS mint's
+      // token account, not reuse the native wallet-existence answer.
+      const pickBtn = buttons(router.root, /my accounts/i)[0];
+      if (pickBtn) {
+        click(pickBtn);
+        await settle();
+        const accountRow = buttons(router.root, /spending/i)[0];
+        if (accountRow) {
+          click(accountRow);
+          await settle();
+          ok('the token recipient check runs against the token account',
+            /SMK account|token account/i.test(textOf(router.root)), textOf(router.root).slice(0, 260));
+        } else {
+          ok('a recipient row exists in the account picker', false, textOf(router.root).slice(0, 200));
+        }
+      } else {
+        ok('the send form offers the account picker shortcut', false, textOf(router.root).slice(0, 200));
+      }
+    }
+  }
+  ok('no secret appears on the token send flow',
+    findSecrets(SECRETS).length === 0 && findSecretsInTornDown(SECRETS).length === 0);
+
+  // ---- Send: inverted input order + picker round-trips (PR review findings) --------------
+  // Two regressions found by the PR #6 adversarial review, each asserted to fail pre-fix:
+  //  (1) refreshReviewEnabled only ran from input handlers, so typing the amount BEFORE the
+  //      recipient left Review disabled forever after async validation finished. Post-fix
+  //      validateRecipient re-evaluates the gate in a finally on every completion.
+  //  (3) the recipient picker's onPick and its Back button discarded a pre-typed amount.
+  router.navigate('/send');
+  await settle();
+  const amtInput = router.root.querySelector('input[placeholder="0.0"]');
+  const rcptInput = router.root.querySelector('input[placeholder="ta…"]');
+  ok('the send form exposes amount and recipient inputs', Boolean(amtInput && rcptInput));
+  if (amtInput && rcptInput) {
+    // Amount first, recipient second — exactly the order the bug bit.
+    type(amtInput, '5');
+    const reviewInitially = buttons(router.root, /^review$/i)[0];
+    ok('review starts disabled with only an amount typed',
+      Boolean(reviewInitially && reviewInitially.disabled));
+    type(rcptInput, 'ta1validrecipient00000000000000000000000000000000000000000');
+    await sleep(450); // the recipient check debounce is a real 350ms timer
+    await settle();
+    const reviewAfter = buttons(router.root, /^review$/i)[0];
+    ok('review activates when recipient validation resolves after the amount was typed',
+      Boolean(reviewAfter && !reviewAfter.disabled), textOf(router.root).slice(0, 220));
+
+    const myAccounts = buttons(router.root, /my accounts/i)[0];
+    if (myAccounts) {
+      click(myAccounts);
+      await settle();
+      const accRow = buttons(router.root, /spending/i)[0];
+      if (accRow) {
+        click(accRow);
+        await sleep(20); // the prefilled recipient was NOT debounced; it validates at once
+        await settle();
+        const amtAgain = router.root.querySelector('input[placeholder="0.0"]');
+        ok('picking a recipient keeps the typed amount', amtAgain && amtAgain.value === '5',
+          `amount read back: "${amtAgain?.value ?? 'field missing'}"`);
+        const myAccounts2 = buttons(router.root, /my accounts/i)[0];
+        if (myAccounts2) {
+          click(myAccounts2);
+          await settle();
+          const backBtn = buttons(router.root, /^back$/i)[0];
+          if (backBtn) {
+            click(backBtn);
+            await settle();
+            const amtAgain2 = router.root.querySelector('input[placeholder="0.0"]');
+            ok('backing out of the picker also keeps the amount',
+              amtAgain2 && amtAgain2.value === '5');
+          } else {
+            ok('the picker offers a Back control', false, textOf(router.root).slice(0, 200));
+          }
+        }
+      } else {
+        ok('the account picker lists a selectable non-active account', false,
+          textOf(router.root).slice(0, 200));
+      }
+    } else {
+      ok('the send form offers the account picker shortcut', false, textOf(router.root).slice(0, 200));
+    }
+  }
+
+  // ---- Stuck-pending regression (manual smoke defect) -------------------------------------
+  // The send path awaits confirmation, then records the transaction as SUBMITTED — and no
+  // trigger ever settled it while the popup was open, so Dashboard/History showed the
+  // confirmed send as pending forever. Views now actively reconcile before saying
+  // "pending". The fixture's tx.reconcilePending settles submitted records to confirmed.
+  const STUCK = {
+    signature: 'sig_stuck_manual_smoke_aaaaaaaaaaaaaaaaaaaaa', kind: 'transfer',
+    from: activeAccount().address, to: ADDRESS_B,
+    amountUnits: '5000000000', mint: null, displayAmount: '5 THRU',
+    networkId: 'alphanet', status: 'submitted', submittedAt: Date.now(),
+    settledAt: null, error: null,
+  };
+
+  backend.pending = [{ ...STUCK }];
+  router.navigate('/dashboard');
+  await settle();
+  ok('the dashboard proactively reconciles a submitted transaction',
+    chromeLog.calls.includes('tx.reconcilePending'));
+  ok('the pending note clears once the dashboard settles',
+    !/transaction[s]? pending/i.test(textOf(router.root)), textOf(router.root).slice(0, 200));
+
+  backend.pending = [{ ...STUCK }];
+  router.navigate('/history');
+  await settle();
+  ok('the history view proactively reconciles a submitted transaction',
+    chromeLog.calls.filter((m) => m === 'tx.reconcilePending').length >= 2);
+  ok('a reconciled send never renders next to "Waiting for confirmation"',
+    !/Waiting for confirmation/.test(textOf(router.root)), textOf(router.root).slice(0, 220));
+
+  // Render-level belt-and-braces: even when reconcile settles nothing (history-list lag),
+  // a signature the list already displays cannot ALSO be a Pending row.
+  const realReconcile = FIXTURES['tx.reconcilePending'];
+  FIXTURES['tx.reconcilePending'] = () => ({ checked: 0, settled: 0 });
+  backend.pending = [{ ...STUCK, signature: 'sig1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' }];
+  router.navigate('/history');
+  await settle();
+  ok('a signature the list already shows as confirmed is not duplicated as Pending',
+    !/Waiting for confirmation/.test(textOf(router.root)), textOf(router.root).slice(0, 220));
+  FIXTURES['tx.reconcilePending'] = realReconcile;
+  backend.pending = [];
 
   // The account pill is the dashboard's route into account management.
   router.navigate('/dashboard');

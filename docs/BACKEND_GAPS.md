@@ -96,10 +96,10 @@ listing/removal and limits activation to enabled built-ins. A real CustomRPC fea
 preconditions in `docs/STATUS_AND_ROADMAP.md` Step 2b; the overlay alone is not a feature.
 
 ### A9. Token visibility and manual import
-`token.list` returns only tokens **this wallet deployed** — not tokens the account owns. It is a
-launchpad registry mislabelled as an asset list.
-→ `token.import`, `token.setVisibility`, `token.remove` for the local registry now; owned
-balances are C1.
+`token.list` returns the local registry (tokens **this wallet deployed** plus manual imports) —
+it is a registry of *known mints*, not an asset list. Owned balances are layered on top by
+`token.getBalances`, which reads the account's real token accounts for exactly those mints
+(contract v8; was the C1 stub).
 
 ### A10. Pending transaction lifecycle
 `tx.send` returns a signature and forgets. Nothing tracks confirmation, so the UI cannot show
@@ -138,14 +138,21 @@ Adding 10 accounts costs 10 sequential `persistVaultUpdate` calls, each a full A
 Build the interface and return `{ supported: false, reason }`. **Do not fabricate values.** A
 wrong fee or a fake balance in a wallet loses money.
 
-### C1. Owned token balances
-Requires Token Program account-read semantics we have not verified against a live network.
-Rabby's asset list depends on this. → `token.getBalances({ address })` → `supported:false`.
+### C1. Owned token balances — RESOLVED (contract v8)
+The official `@thru/programs/token` bindings (`deriveTokenAccountAddress` +
+`parseTokenAccountData`) made `token.getBalances` real for every mint in the local registry:
+`{ supported: true, balances: [...] }`, with proven-zero distinguished from unknown and
+decimals read from the on-chain mint whenever a balance exists. Remaining sub-questions moved
+to `docs/STATUS_AND_ROADMAP.md` Step 8 (recipient-owner existence, token-program fee), each
+with a live probe in `scripts/verify-token-transfer.mjs`.
 
 ### C2. Fee estimation
-The send review needs a real "Network fee" line. Today the MAX button reserves a hardcoded
-`10_000n`. Whether transfers are even non-zero-fee is unconfirmed.
-→ `tx.estimateFee({ toAddress, amountUnits })` → `supported:false` until verified.
+The send review needs a real "Network fee" line. The NATIVE transfer fee is measured (1 base
+unit on alphanet, per-network `baseFeeUnits`), and `tx.estimateFee` reports that with
+provenance. The TOKEN-program fee is a separate, still-unmeasured quantity — the token send
+UI declares it unmeasured rather than inheriting the native number.
+→ remaining: measure the token fee live (`scripts/verify-token-transfer.mjs`), then record it
+in per-network config.
 
 ### C3. Transaction simulation
 Rabby's signature feature — predicted balance changes before signing. Needs a simulate RPC.

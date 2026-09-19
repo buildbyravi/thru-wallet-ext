@@ -30,7 +30,7 @@ import { Banner, Empty } from '../../kit/feedback.js';
 import { AccountAvatar, AddressText } from '../../domain/account-avatar.js';
 import { AssetRow } from '../../domain/token-row.js';
 import * as bridge from '../bridge.js';
-import { formatThru } from '../../../shared/format.js';
+import { formatThru, formatTokenAmount } from '../../../shared/format.js';
 
 /**
  * One button in the quick-action grid.
@@ -158,7 +158,7 @@ export function DashboardRoute({ navigate }) {
     while (assetsHost.firstChild) assetsHost.removeChild(assetsHost.firstChild);
   }
 
-  function renderAssets(nativeText, tokens, stale) {
+  function renderAssets(nativeText, tokens, stale, tokenState) {
     disposeAssets();
 
     assetRows.push(AssetRow({
@@ -171,15 +171,24 @@ export function DashboardRoute({ navigate }) {
 
     for (const token of tokens || []) {
       if (token.hidden) continue;
+      // token.getBalances (contract v8) reads the account's real token accounts. Three honest
+      // states: a formatted balance, a proven ZERO for a token account that does not exist
+      // (explicitly not "unknown"), and — for a failed read.
+      const state = tokenState?.get(token.mintAddress);
+      let balanceText = null;
+      if (state && state.error !== true && state.amountUnits != null) {
+        const decimals = Number.isInteger(state.decimals) ? state.decimals
+          : (Number.isInteger(token.decimals) ? token.decimals : 0);
+        balanceText = `${formatTokenAmount(BigInt(state.amountUnits), decimals)} ${token.symbol || 'TOKEN'}`;
+      } else if (state && state.error !== true && state.tokenAccountExists === false) {
+        balanceText = `0 ${token.symbol || 'TOKEN'}`;
+      }
       assetRows.push(AssetRow({
         // The token service normalizes ticker -> symbol. popup.js still read t.ticker, which
         // is why every deployed token rendered as "TOKEN".
         symbol: token.symbol,
         name: token.name,
-        // A deployed mint's supply is NOT this account's balance. Labelling it as a balance
-        // would be a lie; owned token balances need Token Program reads that are not verified
-        // on Thru yet (docs/BACKEND_GAPS.md C1).
-        balanceText: null,
+        balanceText,
         mintAddress: token.mintAddress,
         imageUrl: token.imageUrl,
       }));
@@ -236,13 +245,14 @@ export function DashboardRoute({ navigate }) {
       // cache miss is not an error
     }
 
-    const [infoResult, tokensResult, pendingResult] = await Promise.allSettled([
+    const [infoResult, tokensResult, pendingResult, tokenBalancesResult] = await Promise.allSettled([
       force
         ? bridge.send('tx.getBalances', { addresses: [account.address] })
           .then((m) => m?.[account.address])
         : bridge.send('tx.getAccountInfo', { address: account.address }),
       bridge.send('token.list'),
       bridge.send('tx.getPending'),
+      bridge.send('token.getBalances', { address: account.address }),
     ]);
 
     refreshBtn.el.classList.remove('spinning');
@@ -264,9 +274,21 @@ export function DashboardRoute({ navigate }) {
     }
 
     const tokens = tokensResult.status === 'fulfilled' ? tokensResult.value : [];
-    renderAssets(nativeText, tokens, infoResult.status === 'rejected');
+    const tokenState = tokenBalancesResult.status === 'fulfilled'
+      ? new Map((tokenBalancesResult.value?.balances || []).map((b) => [b.mintAddress, b]))
+      : null;
+    renderAssets(nativeText, tokens, infoResult.status === 'rejected', tokenState);
 
-    if (pendingResult.status === 'fulfilled') renderPending(pendingResult.value);
+    if (pendingResult.status === 'fulfilled') {
+      let pendings = pendingResult.value;
+      // A view that is about to say "transaction pending" must first try to settle it — a
+      // send that confirmed while the popup was closed still carries status 'submitted'.
+      if ((pendings || []).some((r) => r?.status === 'submitted')) {
+        await bridge.send('tx.reconcilePending').catch(() => null);
+        pendings = await bridge.send('tx.getPending').catch(() => pendings);
+      }
+      renderPending(pendings);
+    }
   }
 
   const el = h('section', { class: 'screen' }, [
