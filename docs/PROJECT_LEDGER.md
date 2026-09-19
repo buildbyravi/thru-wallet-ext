@@ -18,6 +18,17 @@ Purpose: canonical ledger for build phases, state identifiers, accepted constrai
 | Contract method count | 75 methods |
 | Runtime surfaces today | popup route stack only — one extension page, `popup.html` |
 | Dist directory | generated; do not edit |
+| Chrome Web Store | Published: 1.1.0 (legacy build, predates this ledger's audit work); a pre-audit 1.2.0 submission was canceled from review 2026-09-19 without shipping |
+
+Chrome Web Store mechanics, checked against Google's docs 2026-09-19 (kept here because chat
+state evaporates and this bites at release time): the store reads the version from
+`src/manifest.json` — never `package.json` — and `build.mjs` does not keep the two in sync, so
+bumping is a deliberate one-line manifest edit at submission time (both sit at 1.2.0 today). A
+new upload's version must exceed the previous **uploaded** version, published or not
+(`developer.chrome.com/docs/webstore/update`), so plan the post-PR-#6 submission to be >1.2.0.
+Hard gate before any store submission: one full human run of `docs/MANUAL_SMOKE_CHECKLIST.md`
+against the real merged build — Node-side green has never proven popup rendering, side-panel
+behaviour, or a completed live send.
 
 Always verify with:
 
@@ -123,6 +134,7 @@ This table deduplicates the repeated local-agent timeline. Commit IDs before the
 | P1 | Browser smoke run | `test-route-lifecycle.mjs` mounts every route; layout, real focus, canvas and the side panel still need a human with Chrome. | `docs/MANUAL_SMOKE_CHECKLIST.md` |
 | P1 | Side-panel width beyond 408px | `body { max-width: 100% }` fixes a panel narrower than the popup width; a wider panel still shows a 408px column. Needs a browser to decide. | `docs/MANUAL_SMOKE_CHECKLIST.md` §2 |
 | P1 | Token transfer live verification | Feature is code-complete and unit-tested (contract v8); the one open item is running `scripts/verify-token-transfer.mjs` where alphanet is reachable, then recording the two open chain answers (unregistered recipient owner; token-program fee). | `docs/STATUS_AND_ROADMAP.md` Step 4 |
+| P2 | Store re-submission | Store has a live legacy 1.1.0 while the canceled 1.2.0 never shipped. Sequence: merge PR #6 → human smoke-checklist run → bump `src/manifest.json` above 1.2.0 → submit. No urgency at current user count. | §1 Chrome Web Store note; `docs/MANUAL_SMOKE_CHECKLIST.md` |
 | P1 | Feature module split | Launchpad/DEX/prediction must be separated before serious DeFi work. | `docs/MODULE_BOUNDARIES.md` |
 | P1 | Exact-pin `@thru/programs` | Completed in the 2026-09-18 audit pass: `@thru/programs` and `@thru/sdk` are exact-pinned at `0.3.16`; derivation uses `@thru/sdk/crypto` and golden vectors are unchanged. | `package.json`, `test-derivation.mjs` |
 | P2 | Full-tab shell | Required for launchpad/DEX/charts without slowing popup. | `docs/WALLET_FEATURES_PERFORMANCE_STUDY.md` |
