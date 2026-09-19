@@ -2646,6 +2646,18 @@ async function navigationTest() {
   ok('copying a signature writes the full signature to the clipboard',
     clipboardLog.writes.includes('tsCARD_A_sent_today_aaaaaaaaaaaaaaaaaaaaaaa'),
     JSON.stringify(clipboardLog.writes));
+
+  // P1 audit finding: the day-boundary badge used listHost.lastChild, which is the
+  // PREVIOUS section's last card — headers lost their count and cards swallowed it.
+  const dayHeaders = [...router.root.querySelectorAll('.list-group-header')];
+  ok('every day header receives its count badge',
+    dayHeaders.length >= 3 && dayHeaders.every((hdr) => hdr.querySelector('.list-group-count')),
+    String(dayHeaders.length));
+  const allCountChips = [...router.root.querySelectorAll('.list-group-count')];
+  ok('no transaction card receives a misplaced count badge',
+    allCountChips.length > 0
+      && allCountChips.every((chip) => chip.parentNode?.localName === 'header')
+      && allCountChips.every((chip) => chip.parentNode === null || !chip.parentNode?.classList?.contains('tx-card')));
   FIXTURES['tx.getHistoryFeed'] = realFeed;
 
   // The account pill is the dashboard's route into account management.

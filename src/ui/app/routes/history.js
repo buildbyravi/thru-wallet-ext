@@ -135,16 +135,21 @@ export function HistoryRoute({ back }) {
     // Entries are newest-first, so day boundaries appear in order: compare against the
     // previous entry's local-calendar day and open a section whenever it changes.
     let lastKey = null;
+    let currentHeader = null;
     let sectionCount = 0;
     for (const entry of shown) {
       const key = dayKey(entry.timestamp);
       if (key !== lastKey) {
-        if (lastKey !== null) {
-          listHost.lastChild.appendChild(h('span', { class: 'list-group-count', text: String(sectionCount) }));
+        // Positional access (listHost.lastChild) was the shipped bug: at a day boundary
+        // that node is the previous section's LAST CARD, so its count badge ended up
+        // inside a transaction card. Identity reference always: the header, by name.
+        if (currentHeader) {
+          currentHeader.appendChild(h('span', { class: 'list-group-count', text: String(sectionCount) }));
         }
-        listHost.appendChild(h('header', { class: 'list-group-header' }, [
+        currentHeader = h('header', { class: 'list-group-header' }, [
           h('span', { text: dayLabel(entry.timestamp) }),
-        ]));
+        ]);
+        listHost.appendChild(currentHeader);
         lastKey = key;
         sectionCount = 0;
       }
@@ -153,9 +158,8 @@ export function HistoryRoute({ back }) {
       listHost.appendChild(card.el);
       sectionCount += 1;
     }
-    if (lastKey !== null) {
-      const headers = listHost.querySelectorAll('.list-group-header');
-      headers[headers.length - 1].appendChild(h('span', { class: 'list-group-count', text: String(sectionCount) }));
+    if (currentHeader) {
+      currentHeader.appendChild(h('span', { class: 'list-group-count', text: String(sectionCount) }));
     }
   }
 

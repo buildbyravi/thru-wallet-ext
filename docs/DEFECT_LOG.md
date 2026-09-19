@@ -275,3 +275,9 @@ are checkboxes in `docs/MANUAL_SMOKE_CHECKLIST.md`, not test gaps to close in No
 > appending to merged data must treat the append as dedupe-by-key, never as blind concat.
 > And every honesty field you mint (`synced`, `stale`, `fresh`) needs its UI consumer in the
 > same commit, or it is decorative.
+| Day-group count badge appended into the previous section's last card | `BROWSER` (local agent P1 audit) | At a day boundary the loop did `listHost.lastChild.appendChild(badge)` — but `lastChild` at that moment is the prior section's last `.tx-card`, not its `<header>`. Every header except the final one lost its count, and cards acquired a stray chip. Both failure modes are invisible to class-name checks and to the DOM shim's text assertions (the chip text rendered — in the wrong parent). Fix: identity reference (`currentHeader`) instead of positional access; lifecycle now asserts every header owns its badge AND every chip's parent is exactly a header. Both FAIL against the positional variant. |
+
+> **Lesson:** in incrementally-built DOM, `lastChild` is a positional guess, and positional
+> guesses decay the moment a sibling starts carrying structure of its own. Keep the node you
+> intend to mutate by identity. The shim DOES see this class — assert parent identity, not
+> just text presence ("the text was on screen" is not "the text was in the right parent").
