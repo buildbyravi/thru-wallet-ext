@@ -247,6 +247,15 @@ form > .btn.text {
   margin-bottom: 2px;
 }
 
+/* The hero refresh is an inline icon next to the balance, not a standalone control. The
+   shared ghost-hover draws a bordered box on hover — inside this hero that reads as a stray
+   framed chip (flagged by the user, same "unequal box" complaint as the mnemonic drift).
+   Keep the hover cue as fill only, no border outline. */
+.balance-hero .icon-btn-ghost:hover {
+  background: var(--surface-3);
+  border-color: transparent;
+}
+
 .balance-hero-row {
   display: flex;
   align-items: baseline;
