@@ -213,7 +213,7 @@ topbar + network badge + footer)
 | `/send` | `routes/send.js` | 848 |
 | `/receive` | `routes/receive.js` | 176 |
 | `/faucet` | `routes/faucet.js` | 252 |
-| `/history` | `routes/history.js` | 289 |
+| `/history` | `routes/history.js` | 274 |
 | `/settings` | `routes/settings.js` | 395 |
 | `/reset` | `routes/reset.js` | 169 |
 

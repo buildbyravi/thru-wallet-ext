@@ -13,7 +13,8 @@ import { icon } from '../../kit/icon.js';
 import { Button } from '../../kit/button.js';
 import { PageHeader, Banner, Spinner, Empty } from '../../kit/feedback.js';
 import * as bridge from '../bridge.js';
-import { formatThru, formatTokenAmount, truncateAddress } from '../../../shared/format.js';
+import { formatThru } from '../../../shared/format.js';
+import { TxCard, dayKey, dayLabel } from '../../domain/tx-card.js';
 
 const FILTERS = [
   { id: 'all', label: 'All' },
@@ -78,75 +79,8 @@ export function HistoryRoute({ back }) {
     return entry.kind === activeFilter;
   }
 
-  // ---- Rows ---------------------------------------------------------------
-  function glyphFor(entry) {
-    if (entry.success === false) return { name: 'x', cls: 'failed' };
-    if (entry.kind === 'sent' || entry.kind === 'token-sent') return { name: 'send', cls: 'sent' };
-    if (entry.kind === 'received' || entry.kind === 'token-received' || entry.kind === 'token-mint') {
-      return { name: 'receive', cls: 'received' };
-    }
-    if (entry.kind === 'token-account-init') return { name: 'coins', cls: 'received' };
-    if (entry.kind === 'faucet') return { name: 'faucet', cls: 'faucet' };
-    return { name: 'info', cls: '' };
-  }
-
-  /** Token amounts carry their own decimals; throwing them through formatThru would mislabel them. */
-  function tokenAmountText(entry) {
-    if (entry.amount == null) return null;
-    const decimals = Number.isInteger(entry.tokenDecimals) ? entry.tokenDecimals : 0;
-    const formatted = formatTokenAmount(BigInt(entry.amount), decimals);
-    return entry.tokenSymbol ? `${formatted} ${entry.tokenSymbol}` : `${formatted} base units`;
-  }
-
-  function describe(entry) {
-    const amount = entry.amount != null ? formatThru(BigInt(entry.amount)) : null;
-    const other = entry.counterparty ? truncateAddress(entry.counterparty) : null;
-    if (entry.kind === 'sent') return amount ? `Sent ${amount} THRU${other ? ` to ${other}` : ''}` : 'Sent';
-    if (entry.kind === 'received') return amount ? `Received ${amount} THRU${other ? ` from ${other}` : ''}` : 'Received';
-    if (entry.kind === 'faucet') return amount ? `Claimed ${amount} THRU from the faucet` : 'Faucet claim';
-
-    const tokenAmount = tokenAmountText(entry);
-    if (entry.kind === 'token-sent') return tokenAmount ? `Sent ${tokenAmount}` : 'Token sent';
-    if (entry.kind === 'token-received') return tokenAmount ? `Received ${tokenAmount}` : 'Token received';
-    if (entry.kind === 'token-mint') return tokenAmount ? `Minted ${tokenAmount}` : 'Token mint';
-    if (entry.kind === 'token-transfer') {
-      return tokenAmount ? `Token transfer of ${tokenAmount}` : 'Token transfer';
-    }
-    if (entry.kind === 'token-account-init') {
-      return entry.tokenSymbol ? `Created ${entry.tokenSymbol} token account` : 'Created token account';
-    }
-    // Inventing a meaning for an unrecognised program would be worse than admitting it.
-    return 'Unknown transaction';
-  }
-
-  function entryRow(entry) {
-    const glyph = glyphFor(entry);
-    const explorer = network?.explorerUrl && entry.signature
-      ? `${network.explorerUrl}/tx/${entry.signature}`
-      : '';
-
-    const children = [
-      h('span', { class: ['row-glyph', glyph.cls].filter(Boolean) }, icon(glyph.name, 14)),
-      h('span', { class: 'row-body' }, [
-        h('span', { class: 'row-title', text: describe(entry) }),
-        h('span', { class: 'row-sub', text: entry.success === false
-          ? 'Failed on-chain'
-          : entry.signature ? truncateAddress(entry.signature) : '' }),
-      ]),
-    ];
-    if (explorer) {
-      children.push(h('a', {
-        class: 'icon-btn icon-btn-ghost sm',
-        href: explorer,
-        target: '_blank',
-        rel: 'noopener noreferrer',
-        title: 'View on explorer',
-        'aria-label': 'View on explorer',
-      }, icon('external', 13)));
-    }
-    return h('div', { class: 'row' }, children);
-  }
-
+  // ---- Day-grouped cards (P1) ---------------------------------------------
+  // Row-era rendering (describe/glyphFor/entryRow) is gone: tx-card.js owns the card.
   function paintPending() {
     while (pendingHost.firstChild) pendingHost.removeChild(pendingHost.firstChild);
     // Belt-and-braces with the reconcile-on-view above: a signature the history list already
@@ -178,7 +112,12 @@ export function HistoryRoute({ back }) {
     }
   }
 
+  const cards = [];
   function paintList() {
+    // Cards own kit components (signature CopyButton), so they must be destroyed with the
+    // same rigor as every other owned component — per repaint, not only at teardown.
+    for (const c of cards) c.destroy?.();
+    cards.length = 0;
     while (listHost.firstChild) listHost.removeChild(listHost.firstChild);
     const shown = entries.filter(matches);
 
@@ -192,7 +131,32 @@ export function HistoryRoute({ back }) {
       }).el);
       return;
     }
-    for (const entry of shown) listHost.appendChild(entryRow(entry));
+
+    // Entries are newest-first, so day boundaries appear in order: compare against the
+    // previous entry's local-calendar day and open a section whenever it changes.
+    let lastKey = null;
+    let sectionCount = 0;
+    for (const entry of shown) {
+      const key = dayKey(entry.timestamp);
+      if (key !== lastKey) {
+        if (lastKey !== null) {
+          listHost.lastChild.appendChild(h('span', { class: 'list-group-count', text: String(sectionCount) }));
+        }
+        listHost.appendChild(h('header', { class: 'list-group-header' }, [
+          h('span', { text: dayLabel(entry.timestamp) }),
+        ]));
+        lastKey = key;
+        sectionCount = 0;
+      }
+      const card = TxCard({ entry, network });
+      cards.push(card);
+      listHost.appendChild(card.el);
+      sectionCount += 1;
+    }
+    if (lastKey !== null) {
+      const headers = listHost.querySelectorAll('.list-group-header');
+      headers[headers.length - 1].appendChild(h('span', { class: 'list-group-count', text: String(sectionCount) }));
+    }
   }
 
   function paintMore() {
@@ -298,6 +262,8 @@ export function HistoryRoute({ back }) {
   return {
     el,
     destroy() {
+      for (const c of cards) c.destroy?.();
+      cards.length = 0;
       for (const c of owned) c.destroy?.();
       owned.length = 0;
       header.destroy();

@@ -1,0 +1,177 @@
+// Transaction card — the Rabby-inspired P1 render unit for Activity.
+//
+// One transaction per card: head carries the relative time on the left and the
+// network + shortened signature + copy/explorer actions on the right; the body carries
+// the method glyph and verb on the left and the signed, right-aligned amount delta on
+// the right. Honesty rules carried over from the row era:
+//   - a failed entry states it (badge + red glyph), never masquerades as a silent row;
+//   - unrecognised programs render "Unknown transaction", never an invented protocol;
+//   - token amounts keep their own decimals/symbol — never re-denominated into THRU;
+//   - there is no per-transaction fee field on Thru's history wire today, so no fee line
+//     is fabricated. When the explorer detail fetch lands (P2), this card gets it lazily.
+
+import { h } from '../kit/dom.js';
+import { icon } from '../kit/icon.js';
+import { CopyButton } from '../kit/button.js';
+import { formatThru, formatTokenAmount, truncateAddress } from '../../shared/format.js';
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** Relative time for the card head: minutes/hours while young, then date+time. */
+export function relTime(ts) {
+  const t = Number(ts);
+  if (!Number.isFinite(t)) return '';
+  const age = Date.now() - t;
+  if (age < 0) return 'just now';
+  const mins = Math.floor(age / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ${mins % 60}m ago`;
+  const d = new Date(t);
+  const hhmm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  return `${d.getDate()} ${MONTHS[d.getMonth()]} ${hhmm}`;
+}
+
+/** Stable day key for sectioning: local-calendar day, not a rolling 24h window. */
+export function dayKey(ts) {
+  const d = new Date(Number(ts));
+  if (!Number.isFinite(d.getTime())) return '';
+  return `${d.getFullYear()}-${String(d.getMonth()).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+export function dayLabel(ts) {
+  const key = dayKey(ts), now = dayKey(Date.now()), y = dayKey(Date.now() - 86400000);
+  if (key === now) return 'Today';
+  if (key === y) return 'Yesterday';
+  const d = new Date(Number(ts));
+  return `${d.getDate()} ${MONTHS[d.getMonth()]}`;
+}
+
+function glyphFor(entry) {
+  if (entry.success === false) return { name: 'x', cls: 'failed' };
+  if (entry.kind === 'sent' || entry.kind === 'token-sent') return { name: 'send', cls: 'sent' };
+  if (entry.kind === 'received' || entry.kind === 'token-received' || entry.kind === 'token-mint') {
+    return { name: 'receive', cls: 'received' };
+  }
+  if (entry.kind === 'token-account-init') return { name: 'coins', cls: 'received' };
+  if (entry.kind === 'faucet') return { name: 'faucet', cls: 'faucet' };
+  return { name: 'info', cls: '' };
+}
+
+/** Token amounts carry their own decimals; throwing them through formatThru would mislabel. */
+function tokenAmountText(entry) {
+  if (entry.amount == null) return null;
+  const decimals = Number.isInteger(entry.tokenDecimals) ? entry.tokenDecimals : 0;
+  const formatted = formatTokenAmount(BigInt(entry.amount), decimals);
+  return entry.tokenSymbol ? `${formatted} ${entry.tokenSymbol}` : `${formatted} base units`;
+}
+
+/** The verb for the card title: what DID this account do. */
+function verbFor(entry) {
+  switch (entry.kind) {
+    case 'sent': return 'Send';
+    case 'received': return 'Receive';
+    case 'faucet': return 'Claim';
+    case 'token-sent': return 'Send';
+    case 'token-received': return 'Receive';
+    case 'token-mint': return 'Mint';
+    case 'token-transfer': return 'Token transfer';
+    case 'token-account-init': return 'Create token account';
+    default: return 'Unknown transaction'; // honesty, not guesswork
+  }
+}
+
+/** Context line under the verb: counterparty or the honest origin note. */
+function contextFor(entry) {
+  const other = entry.counterparty ? truncateAddress(entry.counterparty) : null;
+  if (entry.kind === 'sent' || entry.kind === 'token-sent') return other ? `to ${other}` : '';
+  if (entry.kind === 'received' || entry.kind === 'token-received') return other ? `from ${other}` : '';
+  if (entry.kind === 'faucet') return 'from the faucet';
+  return '';
+}
+
+/** Signed, right-aligned delta. Sends leave, receipts arrive; null for init/unknown. */
+function deltaFor(entry) {
+  const isTokenish = String(entry.kind || '').startsWith('token-') && entry.kind !== 'token-account-init';
+  const amount = isTokenish ? tokenAmountText(entry) : (entry.amount != null ? `${formatThru(BigInt(entry.amount))} THRU` : null);
+  if (entry.kind === 'sent' || entry.kind === 'token-sent') return amount ? { text: `-${amount}`, cls: 'sent' } : null;
+  if (entry.kind === 'received' || entry.kind === 'token-received' || entry.kind === 'faucet'
+      || entry.kind === 'token-mint' || entry.kind === 'token-transfer') {
+    return amount ? { text: `+${amount}`, cls: 'positive' } : null;
+  }
+  return null;
+}
+
+function shortSignature(signature) {
+  const s = String(signature || '');
+  return s.length > 11 ? `${s.slice(0, 4)}…${s.slice(-4)}` : s;
+}
+
+/**
+ * @param {object} opts
+ * @param {object} opts.entry — decoded history entry (tx-service shape)
+ * @param {object|null} opts.network — active network (label + explorerUrl when available)
+ * @returns {{ el: HTMLElement, destroy(): void }}
+ */
+export function TxCard({ entry, network } = {}) {
+  const glyph = glyphFor(entry);
+  const delta = deltaFor(entry);
+  const failed = entry.success === false;
+  const owned = [];
+
+  const head = h('div', { class: 'tx-card-head' }, [
+    h('span', { class: 'tx-card-time', text: relTime(entry.timestamp) }),
+    h('span', { class: 'tx-card-meta' }, (() => {
+      const bits = [];
+      if (network?.label) bits.push(h('span', { class: 'tx-card-net', text: network.label }));
+      if (entry.signature) {
+        bits.push(h('span', { class: 'tx-card-sig', text: shortSignature(entry.signature) }));
+        const copy = CopyButton({
+          getValue: () => String(entry.signature),
+          title: 'Copy transaction signature',
+        });
+        copy.el.classList.add('sm', 'icon-btn-ghost');
+        owned.push(copy);
+        bits.push(copy.el);
+      }
+      const explorer = network?.explorerUrl && entry.signature
+        ? `${network.explorerUrl}/tx/${entry.signature}` : '';
+      if (explorer) {
+        bits.push(h('a', {
+          class: 'icon-btn icon-btn-ghost sm',
+          href: explorer,
+          target: '_blank',
+          rel: 'noopener noreferrer',
+          title: 'View on explorer',
+          'aria-label': 'View on explorer',
+        }, icon('external', 12)));
+      }
+      return bits;
+    })()),
+  ]);
+
+  const titleRow = h('span', { class: 'tx-card-title' }, verbFor(entry));
+  const sub = contextFor(entry);
+
+  const body = h('div', { class: 'tx-card-body' }, [
+    h('span', { class: ['row-glyph', glyph.cls].filter(Boolean) }, icon(glyph.name, 14)),
+    h('span', { class: 'tx-card-main' }, (() => {
+      const pieces = [titleRow];
+      if (failed) pieces.push(h('span', { class: 'tx-card-badge failed', text: 'Failed on-chain' }));
+      if (sub) pieces.push(h('span', { class: 'tx-card-sub', text: sub }));
+      return pieces;
+    })()),
+    h('span', { class: 'tx-card-amounts' }, delta
+      ? [h('span', { class: ['tx-amount', delta.cls].join(' '), text: delta.text })]
+      : []),
+  ]);
+
+  return {
+    el: h('div', { class: 'tx-card' }, [head, body]),
+    destroy() {
+      for (const c of owned) c.destroy?.();
+      owned.length = 0;
+    },
+  };
+}

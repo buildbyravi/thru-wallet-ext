@@ -1,6 +1,6 @@
 # History / Transaction tab redesign — study of Rabby + plan
 
-Status: **P0 shipped** (`services/history-service.js`, contract v9 `tx.getHistoryFeed`; first page cache-merged, load-more still RPC-cursor). Next: P1 card UI + day grouping.
+Status: **P0 + P1 shipped**. P0: `services/history-service.js` + contract v9 `tx.getHistoryFeed` (cache-merged, offline-labelled, append-deduped). P1: `domain/tx-card.js` + day-grouped Activity (Today/Yesterday/date headers, verb + context, signed right-aligned deltas, rel-time head, network + short-signature meta with copy/explorer actions, failed badge). Honest omission: no per-tx fee line yet (no fee field on the history wire; P2's lazy detail fetch is where it belongs). Next: P2 detail sheet, then P2.5 explorer-enrichment spike.
 Reference screenshots: Rabby's Transactions tab (cards with protocol glyph, method,
 token deltas, gas line, chain badge, short tx id + copy, time).
 

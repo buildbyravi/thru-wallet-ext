@@ -2576,7 +2576,7 @@ async function navigationTest() {
   };
   router.navigate('/history');
   await settle();
-  const rowsAfterFeed = router.root.querySelectorAll('.row').length;
+  const rowsAfterFeed = router.root.querySelectorAll('.tx-card').length;
   ok('the merged feed paints all 35 unique entries',
     rowsAfterFeed === 35, String(rowsAfterFeed));
   const dupeMore = buttons(router.root, /load more/i)[0];
@@ -2584,9 +2584,9 @@ async function navigationTest() {
   if (dupeMore) {
     click(dupeMore);
     await settle();
-    ok('load-more re-yielding cached signatures never duplicates a row',
-      router.root.querySelectorAll('.row').length === 35,
-      String(router.root.querySelectorAll('.row').length));
+    ok('load-more re-yielding cached signatures never duplicates a card',
+      router.root.querySelectorAll('.tx-card').length === 35,
+      String(router.root.querySelectorAll('.tx-card').length));
   }
 
   // P0 audit finding 2: an unsynced (offline) feed must be labelled, not masquerade.
@@ -2609,7 +2609,44 @@ async function navigationTest() {
   ok('the offline label clears once a synced page lands',
     !/cached activity/i.test(textOf(router.root)), textOf(router.root).slice(0, 160));
   FIXTURES['tx.getHistoryFeed'] = realFeed;
-  FIXTURES['tx.listHistory'] = realListHistory;
+
+  // ---- P1 cards: day grouping, verbs/deltas, failed badge, signature copy ----
+  const NOW = Date.now();
+  const CARD_ENTRIES = [
+    { signature: 'tsCARD_A_sent_today_aaaaaaaaaaaaaaaaaaaaaaa', slot: 30000,
+      success: true, programAddress: NETWORK_ALPHANET.transferProgramId, kind: 'sent',
+      amount: '100000', counterparty: ADDRESS_B, timestamp: NOW - 2 * 3600000 },
+    { signature: 'tsCARD_B_received_yesterday_aaaaaaaaaaaaaaaaa', slot: 29900,
+      success: true, programAddress: NETWORK_ALPHANET.transferProgramId, kind: 'received',
+      amount: '250000', counterparty: ADDRESS_B, timestamp: NOW - 26 * 3600000 },
+    { signature: 'tsCARD_C_failed_older_aaaaaaaaaaaaaaaaaaaaaaa', slot: 29800,
+      success: false, programAddress: NETWORK_ALPHANET.transferProgramId, kind: 'sent',
+      amount: '1', counterparty: ADDRESS_B, timestamp: NOW - 49 * 3600000 },
+  ];
+  FIXTURES['tx.getHistoryFeed'] = () => ({
+    entries: CARD_ENTRIES.map((e) => ({ ...e })), nextCursor: null, synced: true,
+  });
+  router.navigate('/history');
+  await settle();
+  const histText = textOf(router.root);
+  ok('activity is day-grouped with Today and Yesterday sections',
+    /Today/.test(histText) && /Yesterday/.test(histText), histText.slice(0, 220));
+  ok('a send shows its signed negative delta',
+    histText.includes('-0.0001 THRU'), histText.slice(0, 220));
+  ok('a receipt shows its signed positive delta',
+    histText.includes('+0.00025 THRU'), histText.slice(0, 220));
+  ok('a failed entry wears the "Failed on-chain" badge',
+    /Failed on-chain/.test(histText));
+  ok('every card offers a copy-signature action',
+    buttons(router.root, /copy transaction signature/i).length === 3,
+    String(buttons(router.root, /copy transaction signature/i).length));
+  clipboardLog.writes.length = 0;
+  click(buttons(router.root, /copy transaction signature/i)[0]);
+  await settle();
+  ok('copying a signature writes the full signature to the clipboard',
+    clipboardLog.writes.includes('tsCARD_A_sent_today_aaaaaaaaaaaaaaaaaaaaaaa'),
+    JSON.stringify(clipboardLog.writes));
+  FIXTURES['tx.getHistoryFeed'] = realFeed;
 
   // The account pill is the dashboard's route into account management.
   router.navigate('/dashboard');
