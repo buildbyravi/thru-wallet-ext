@@ -24,6 +24,7 @@ import * as systemService from './services/system-service.js';
 import * as preferencesService from './services/preferences-service.js';
 import * as balanceService from './services/balance-service.js';
 import * as pendingTxService from './services/pending-tx-service.js';
+import * as historyService from './services/history-service.js';
 import { isKnownMethod, getMethodSpec, CONTRACT_VERSION } from '../shared/contract/manifest.js';
 
 const handlers = Object.assign(Object.create(null), {
@@ -141,6 +142,7 @@ const handlers = Object.assign(Object.create(null), {
   'tx.getCachedBalances': ({ addresses }) => balanceService.getCachedBalances(addresses),
   'tx.getTotalBalance': ({ addresses }) => balanceService.getTotalBalance(addresses),
   'tx.getPending': () => pendingTxService.list(),
+  'tx.getHistoryFeed': ({ address } = {}) => historyService.getHistoryFeed(address),
   'tx.reconcilePending': () => pendingTxService.reconcile(),
   'tx.clearSettled': () => pendingTxService.clearSettled(),
   'tx.estimateFee': ({ toAddress, amountUnits }) => txService.estimateFee({ toAddress, amountUnits }),

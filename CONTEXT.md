@@ -157,6 +157,7 @@ program addresses, `faucetStateAccount`, `faucetMaxPerClaim`, `baseFeeUnits`, `f
 | `services/token-service.js` | 330 | Deploy, registry, derivation, visibility, **owned balances, token transfers** |
 | `services/balance-service.js` | 201 | Batched + cached balances, **per-network** |
 | `services/pending-tx-service.js` | 255 | Submitted--  confirmed tracking, badge, **per-network** |
+| `services/history-service.js` | 81 | Per-(network,address) history cache + merge feed (contract v9 `tx.getHistoryFeed`), explorer-free baseline |
 | `services/preferences-service.js` | 178 | Order/pin/hide, whitelist, settings |
 | `services/network-service.js` | 266 | Enabled built-in selection, legacy custom-record quarantine/removal, **binds thru-client** |
 | `services/contacts-service.js` | 82 | Address book |
@@ -212,7 +213,7 @@ topbar + network badge + footer)
 | `/send` | `routes/send.js` | 848 |
 | `/receive` | `routes/receive.js` | 176 |
 | `/faucet` | `routes/faucet.js` | 252 |
-| `/history` | `routes/history.js` | 276 |
+| `/history` | `routes/history.js` | 289 |
 | `/settings` | `routes/settings.js` | 395 |
 | `/reset` | `routes/reset.js` | 169 |
 

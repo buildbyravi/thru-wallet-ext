@@ -53,6 +53,7 @@ ok('contract v5 documents the signing-auth compatibility break', CONTRACT_VERSIO
 ok('contract v6 documents destructive-settings hardening', CONTRACT_VERSION >= 6);
 ok('contract v7 documents the custom-network quarantine break', CONTRACT_VERSION >= 7);
 ok('contract v8 documents the token-transfer addition', CONTRACT_VERSION >= 8);
+ok('contract v9 documents the history-feed cache addition', CONTRACT_VERSION >= 9);
 
 // Contract v8 invariants: the new signing surface exists with the right gate, and the
 // capability stub it replaces did not silently change shape into something else.

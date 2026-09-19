@@ -219,13 +219,26 @@ export function HistoryRoute({ back }) {
         ]);
       }
 
-      // Options form returns { entries, nextCursor, hasMore }; the positional form returns a
-      // bare array. Using the cursor form means "load more" pages instead of refetching.
-      const page = await bridge.send('tx.listHistory', {
-        address: account.address,
-        limit: 15,
-        cursor: append ? cursor ?? 0 : 0,
-      });
+      let page = null;
+      if (!append) {
+        // P0 (history-service): the feed is the per-network cache merged with a fresh page,
+        // so the first paint is instant and offline-honest (synced flag). Fall back to a
+        // plain RPC page when the background predates the method.
+        const feed = await bridge.send('tx.getHistoryFeed', { address: account.address })
+          .catch(() => null);
+        if (feed && Array.isArray(feed.entries)) {
+          page = { entries: feed.entries, nextCursor: feed.nextCursor ?? null };
+        }
+      }
+      if (!page) {
+        // Options form returns { entries, nextCursor, hasMore }; the positional form returns a
+        // bare array. Using the cursor form means "load more" pages instead of refetching.
+        page = await bridge.send('tx.listHistory', {
+          address: account.address,
+          limit: 15,
+          cursor: append ? cursor ?? 0 : 0,
+        });
+      }
 
       const batch = Array.isArray(page) ? page : (page?.entries || []);
       cursor = Array.isArray(page) ? null : (page?.nextCursor ?? null);

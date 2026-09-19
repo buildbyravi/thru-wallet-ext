@@ -1,6 +1,6 @@
 # History / Transaction tab redesign — study of Rabby + plan
 
-Status: **P0/P1 green-lit** (2026-09-20). P0 (background history-service) in progress.
+Status: **P0 shipped** (`services/history-service.js`, contract v9 `tx.getHistoryFeed`; first page cache-merged, load-more still RPC-cursor). Next: P1 card UI + day grouping.
 Reference screenshots: Rabby's Transactions tab (cards with protocol glyph, method,
 token deltas, gas line, chain badge, short tx id + copy, time).
 

@@ -1274,6 +1274,15 @@ const FIXTURES = {
       hasMore: size < HISTORY_ENTRIES.length,
     };
   },
+  // Mirrors history-service.getHistoryFeed: cache-merged first page, honestly labelled.
+  'tx.getHistoryFeed': () => {
+    const size = Math.min(15, HISTORY_ENTRIES.length);
+    return {
+      entries: HISTORY_ENTRIES.slice(0, size).map((e) => ({ ...e })),
+      nextCursor: size,
+      synced: true,
+    };
+  },
   'tx.estimateFee': () => ({
     supported: true,
     networkId: activeNetwork().id,
@@ -2516,6 +2525,26 @@ async function navigationTest() {
     !/Waiting for confirmation/.test(textOf(router.root)), textOf(router.root).slice(0, 220));
   FIXTURES['tx.reconcilePending'] = realReconcile;
   backend.pending = [];
+
+  // P0 history feed: the first page comes from the cache-backed feed (instant,
+  // offline-honest), while "load more" keeps paging the raw RPC cursor.
+  chromeLog.calls.length = 0;
+  router.navigate('/history');
+  await settle();
+  ok('the history first page is served by the cache-merged feed',
+    chromeLog.calls.includes('tx.getHistoryFeed'));
+  ok('the feed-served page still renders the familiar entries',
+    /sig1|transfer|faucet/i.test(textOf(router.root)), textOf(router.root).slice(0, 200));
+  ok('the feed path does not burn an RPC page for page one',
+    chromeLog.calls.filter((m) => m === 'tx.listHistory').length === 0,
+    chromeLog.calls.join(',').slice(-120));
+  const feedMore = buttons(router.root, /load more/i)[0];
+  if (feedMore) {
+    click(feedMore);
+    await settle();
+    ok('"load more" still pages through tx.listHistory after the feed',
+      chromeLog.calls.includes('tx.listHistory'));
+  }
 
   // The account pill is the dashboard's route into account management.
   router.navigate('/dashboard');

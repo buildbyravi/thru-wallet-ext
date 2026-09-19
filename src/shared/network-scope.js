@@ -58,6 +58,7 @@ export const SCOPED_KEYS = Object.freeze([
   'thru_balance_cache',
   'thru_pending_txs',
   'thru_deployed_tokens',
+  'thru_history_cache',
 ]);
 
 /**

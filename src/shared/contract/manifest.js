@@ -42,7 +42,9 @@
 //                explicitly disabled signing re-authentication in Settings
 // `since` is the contract version in which the method first appeared.
 
-export const CONTRACT_VERSION = 8;
+// v9 appends tx.getHistoryFeed (cache-merged first history page, offline-honest). Append-only:
+// no existing method's name, params, or auth changed.
+export const CONTRACT_VERSION = 9;
 
 export const METHODS = {
   // ---- System ------------------------------------------------------------
@@ -326,6 +328,12 @@ export const METHODS = {
     returns: 'array (positional form) or { entries, nextCursor, hasMore } (options form)',
     auth: 'none',
     since: 1,
+  },
+  'tx.getHistoryFeed': {
+    params: ['address'],
+    returns: '{ entries, nextCursor, synced } — cache-merged first page; synced=false when served from cache offline',
+    auth: 'none',
+    since: 9,
   },
   'tx.checkHealth': {
     params: [],
