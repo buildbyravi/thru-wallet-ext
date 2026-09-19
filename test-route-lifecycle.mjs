@@ -1448,6 +1448,10 @@ async function settle(rounds = 8) {
   }
 }
 
+// Real-time wait — needed when production code debounces on a real timer (the send route's
+// recipient check waits 350ms before firing).
+const sleep = (ms) => new Promise((resolve) => realSetTimeout(resolve, ms));
+
 function resetBackend(scenario) {
   backend.hasVault = scenario.hasVault;
   backend.unlocked = scenario.unlocked;
@@ -2336,6 +2340,66 @@ async function navigationTest() {
   }
   ok('no secret appears on the token send flow',
     findSecrets(SECRETS).length === 0 && findSecretsInTornDown(SECRETS).length === 0);
+
+  // ---- Send: inverted input order + picker round-trips (PR review findings) --------------
+  // Two regressions found by the PR #6 adversarial review, each asserted to fail pre-fix:
+  //  (1) refreshReviewEnabled only ran from input handlers, so typing the amount BEFORE the
+  //      recipient left Review disabled forever after async validation finished. Post-fix
+  //      validateRecipient re-evaluates the gate in a finally on every completion.
+  //  (3) the recipient picker's onPick and its Back button discarded a pre-typed amount.
+  router.navigate('/send');
+  await settle();
+  const amtInput = router.root.querySelector('input[placeholder="0.0"]');
+  const rcptInput = router.root.querySelector('input[placeholder="ta…"]');
+  ok('the send form exposes amount and recipient inputs', Boolean(amtInput && rcptInput));
+  if (amtInput && rcptInput) {
+    // Amount first, recipient second — exactly the order the bug bit.
+    type(amtInput, '5');
+    const reviewInitially = buttons(router.root, /^review$/i)[0];
+    ok('review starts disabled with only an amount typed',
+      Boolean(reviewInitially && reviewInitially.disabled));
+    type(rcptInput, 'ta1validrecipient00000000000000000000000000000000000000000');
+    await sleep(450); // the recipient check debounce is a real 350ms timer
+    await settle();
+    const reviewAfter = buttons(router.root, /^review$/i)[0];
+    ok('review activates when recipient validation resolves after the amount was typed',
+      Boolean(reviewAfter && !reviewAfter.disabled), textOf(router.root).slice(0, 220));
+
+    const myAccounts = buttons(router.root, /my accounts/i)[0];
+    if (myAccounts) {
+      click(myAccounts);
+      await settle();
+      const accRow = buttons(router.root, /spending/i)[0];
+      if (accRow) {
+        click(accRow);
+        await sleep(20); // the prefilled recipient was NOT debounced; it validates at once
+        await settle();
+        const amtAgain = router.root.querySelector('input[placeholder="0.0"]');
+        ok('picking a recipient keeps the typed amount', amtAgain && amtAgain.value === '5',
+          `amount read back: "${amtAgain?.value ?? 'field missing'}"`);
+        const myAccounts2 = buttons(router.root, /my accounts/i)[0];
+        if (myAccounts2) {
+          click(myAccounts2);
+          await settle();
+          const backBtn = buttons(router.root, /^back$/i)[0];
+          if (backBtn) {
+            click(backBtn);
+            await settle();
+            const amtAgain2 = router.root.querySelector('input[placeholder="0.0"]');
+            ok('backing out of the picker also keeps the amount',
+              amtAgain2 && amtAgain2.value === '5');
+          } else {
+            ok('the picker offers a Back control', false, textOf(router.root).slice(0, 200));
+          }
+        }
+      } else {
+        ok('the account picker lists a selectable non-active account', false,
+          textOf(router.root).slice(0, 200));
+      }
+    } else {
+      ok('the send form offers the account picker shortcut', false, textOf(router.root).slice(0, 200));
+    }
+  }
 
   // The account pill is the dashboard's route into account management.
   router.navigate('/dashboard');

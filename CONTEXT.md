@@ -112,7 +112,7 @@ Notable functions: `createVault`, `unlock`, `lock`, `resetWallet`, `listKeyrings
 
 Password-verified operations re-check against the **encrypted blob**, not session state.
 
-### `src/lib/thru-client.js` --  999 lines
+### `src/lib/thru-client.js` --  1010 lines
 
 RPC, transaction construction, history decoding (native + token entries), token deployment,
 token account reads and token transfers.
@@ -209,7 +209,7 @@ topbar + network badge + footer)
 | `/add-account` | `routes/add-account.js` | 392 |
 | `/keyring?id=` | `routes/keyring.js` | 190 |
 | `/export?ref=` | `routes/export.js` | 279 |
-| `/send` | `routes/send.js` | 822 |
+| `/send` | `routes/send.js` | 848 |
 | `/receive` | `routes/receive.js` | 137 |
 | `/faucet` | `routes/faucet.js` | 252 |
 | `/history` | `routes/history.js` | 262 |

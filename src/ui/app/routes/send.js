@@ -62,6 +62,24 @@ export function SendRoute({ params, navigate, back }) {
   // Form state survives an excursion into a sub-view. Without this, opening the asset or
   // recipient picker and coming back cleared whatever had been typed.
   let formState = { to: '', amount: '' };
+  let liveReviewBtn = null;         // the Review control of the currently mounted form
+  let recipientValidationSeq = 0;   // invalidates stale async recipient checks (typed-over)
+
+  /**
+   * Enable the Review control iff the form is currently submittable. Lives at route scope so
+   * validateRecipient can re-evaluate when its async work finishes — the regression this
+   * guards was amount-first typing leaving the button disabled forever, because only input
+   * handlers refreshed it.
+   */
+  function refreshReviewEnabled() {
+    // The owner-existence gate is native-only: a token recipient needs no registered wallet
+    // account, only (eventually) a token account the sender can create.
+    const ready = amountUnits > 0n
+      && recipientState?.valid === true
+      && recipientState?.isSelf !== true
+      && (asset.isNative ? recipientState?.exists !== false : true);
+    liveReviewBtn?.update({ disabled: !ready });
+  }
 
   // The asset / From / recipient views are INTERNAL states of this one route, not separate
   // routes. The header was built once with `onBack: () => back()`, so its arrow always left the
@@ -195,6 +213,8 @@ export function SendRoute({ params, navigate, back }) {
         recipient.setError('');
         recipientStatus.classList.add('hidden');
         recipientState = null;
+        // Any in-flight async check below refers to an address the user already typed past.
+        recipientValidationSeq += 1;
         // Keep the shared state current so an excursion into a picker and back does not lose it.
         formState.to = recipient.value;
         refreshReviewEnabled();
@@ -296,7 +316,7 @@ export function SendRoute({ params, navigate, back }) {
     ]));
 
     // -- Review --
-    const reviewBtn = track(Button({
+    const reviewBtn = liveReviewBtn = track(Button({
       label: 'Review',
       variant: 'primary',
       disabled: true,
@@ -306,16 +326,6 @@ export function SendRoute({ params, navigate, back }) {
       },
     }));
     body.appendChild(h('div', { class: 'screen-actions' }, reviewBtn.el));
-
-    function refreshReviewEnabled() {
-      // The owner-existence gate is native-only: a token recipient needs no registered wallet
-      // account, only (eventually) a token account the sender can create.
-      const ready = amountUnits > 0n
-        && recipientState?.valid === true
-        && recipientState?.isSelf !== true
-        && (asset.isNative ? recipientState?.exists !== false : true);
-      reviewBtn.update({ disabled: !ready });
-    }
 
     // Re-validate a prefilled recipient (e.g. arriving from a contact link).
     if (prefill.to) validateRecipient(prefill.to, recipientStatus);
@@ -377,72 +387,87 @@ export function SendRoute({ params, navigate, back }) {
    * Surfacing that here turns an unexplained failure into something the user can act on.
    */
   async function validateRecipient(value, statusEl) {
-    const addr = String(value || '').trim();
-    if (!addr) return;
-
-    let result;
+    const seq = ++recipientValidationSeq;
+    const stale = () => seq !== recipientValidationSeq;
     try {
-      result = await bridge.send('tx.validateAddress', { address: addr });
-    } catch (error) {
-      statusEl.textContent = error.message || 'Could not validate that address.';
-      statusEl.classList.remove('hidden');
-      return;
-    }
+      const addr = String(value || '').trim();
+      if (!addr) return;
 
-    recipientState = { ...result, exists: null };
-
-    if (!result.valid) {
-      statusEl.textContent = result.reason || 'That is not a valid Thru address.';
-      statusEl.classList.remove('hidden');
-      return;
-    }
-    if (result.isSelf) {
-      statusEl.textContent = result.reason || "That's the address you're sending from.";
-      statusEl.classList.remove('hidden');
-      return;
-    }
-
-    statusEl.textContent = 'Checking the recipient…';
-    statusEl.classList.remove('hidden');
-
-    if (!asset.isNative) {
-      // Token sends do NOT require the recipient's wallet account to be registered: their
-      // token account is a program-derived address the sender can initialize in the same
-      // flow. Whether initialize-account tolerates a never-registered OWNER is an open chain
-      // question (docs/BACKEND_GAPS.md) verified by scripts/verify-token-transfer.mjs — the
-      // chain decides, and this screen neither promises nor pre-refuses.
+      let result;
       try {
-        const tokenAccount = await bridge.send('token.deriveTokenAccount', {
-          ownerAddress: addr,
-          mintAddress: asset.mintAddress,
-        });
-        const info = await bridge.send('tx.getAccountInfo', { address: tokenAccount });
-        recipientState.tokenAccountExists = Boolean(info.exists);
-        statusEl.textContent = info.exists
-          ? `Recipient already has a ${asset.symbol || 'token'} account.`
-          : `First ${asset.symbol || 'TOKEN'} for this recipient — their token account will be`
-            + ' created with this send.';
-      } catch {
-        recipientState.tokenAccountExists = null;
-        statusEl.textContent = 'Could not check the recipient\'s token account. The send may '
-          + 'still create it, or fail clearly.';
+        result = await bridge.send('tx.validateAddress', { address: addr });
+      } catch (error) {
+        if (stale()) return;
+        statusEl.textContent = error.message || 'Could not validate that address.';
+        statusEl.classList.remove('hidden');
+        return;
       }
-      return;
-    }
 
-    try {
-      const info = await bridge.send('tx.getAccountInfo', { address: addr });
-      recipientState.exists = Boolean(info.exists);
-      if (!info.exists) {
-        statusEl.textContent = 'This address has never been used on this network, so it cannot '
-          + 'receive a transfer yet. The owner needs to activate it first.';
-      } else {
-        statusEl.textContent = `Recipient is active. Balance ${formatThru(BigInt(info.balance))} THRU.`;
+      if (stale()) return;
+      recipientState = { ...result, exists: null };
+
+      if (!result.valid) {
+        statusEl.textContent = result.reason || 'That is not a valid Thru address.';
+        statusEl.classList.remove('hidden');
+        return;
       }
-    } catch {
-      // Unknown is not the same as absent; allow the attempt and let the background decide.
-      recipientState.exists = null;
-      statusEl.textContent = 'Could not confirm the recipient exists. The transfer may fail.';
+      if (result.isSelf) {
+        statusEl.textContent = result.reason || "That's the address you're sending from.";
+        statusEl.classList.remove('hidden');
+        return;
+      }
+
+      statusEl.textContent = 'Checking the recipient…';
+      statusEl.classList.remove('hidden');
+
+      if (!asset.isNative) {
+        // Token sends do NOT require the recipient's wallet account to be registered: their
+        // token account is a program-derived address the sender can initialize in the same
+        // flow. Whether initialize-account tolerates a never-registered OWNER is an open chain
+        // question (docs/BACKEND_GAPS.md) verified by scripts/verify-token-transfer.mjs — the
+        // chain decides, and this screen neither promises nor pre-refuses.
+        try {
+          const tokenAccount = await bridge.send('token.deriveTokenAccount', {
+            ownerAddress: addr,
+            mintAddress: asset.mintAddress,
+          });
+          if (stale()) return;
+          const info = await bridge.send('tx.getAccountInfo', { address: tokenAccount });
+          if (stale()) return;
+          recipientState.tokenAccountExists = Boolean(info.exists);
+          statusEl.textContent = info.exists
+            ? `Recipient already has a ${asset.symbol || 'token'} account.`
+            : `First ${asset.symbol || 'TOKEN'} for this recipient — their token account will be`
+              + ' created with this send.';
+        } catch {
+          if (stale()) return;
+          recipientState.tokenAccountExists = null;
+          statusEl.textContent = 'Could not check the recipient\'s token account. The send may '
+            + 'still create it, or fail clearly.';
+        }
+        return;
+      }
+
+      try {
+        const info = await bridge.send('tx.getAccountInfo', { address: addr });
+        if (stale()) return;
+        recipientState.exists = Boolean(info.exists);
+        if (!info.exists) {
+          statusEl.textContent = 'This address has never been used on this network, so it cannot '
+            + 'receive a transfer yet. The owner needs to activate it first.';
+        } else {
+          statusEl.textContent = `Recipient is active. Balance ${formatThru(BigInt(info.balance))} THRU.`;
+        }
+      } catch {
+        if (stale()) return;
+        // Unknown is not the same as absent; allow the attempt and let the background decide.
+        recipientState.exists = null;
+        statusEl.textContent = 'Could not confirm the recipient exists. The transfer may fail.';
+      }
+    } finally {
+      // Whatever path this took (valid, invalid, self, token or native), the Review gate
+      // re-evaluates — unless a newer check superseded this one, in which case it stays put.
+      if (seq === recipientValidationSeq) refreshReviewEnabled();
     }
   }
 
@@ -551,7 +576,7 @@ export function SendRoute({ params, navigate, back }) {
       // index, unlike the legacy picker which compared the OLD ref shape and could mis-match.
       excludeRef: account.ref,
       emptyText: 'No other accounts or saved contacts yet.',
-      onPick: (pick) => renderForm({ to: pick.address, amount: '' }),
+      onPick: (pick) => renderForm({ to: pick.address, amount: formState.amount }),
     }));
     body.appendChild(picker.el);
 
@@ -559,7 +584,7 @@ export function SendRoute({ params, navigate, back }) {
       track(Button({
         label: 'Back',
         variant: 'text',
-        onClick: () => renderForm({ to: recipientField?.value || '', amount: '' }),
+        onClick: () => renderForm({ to: recipientField?.value || '', amount: formState.amount }),
       })).el));
   }
 
@@ -812,6 +837,7 @@ export function SendRoute({ params, navigate, back }) {
   return {
     el,
     destroy() {
+      liveReviewBtn = null;
       for (const c of owned) c.destroy?.();
       owned.length = 0;
       header.destroy();

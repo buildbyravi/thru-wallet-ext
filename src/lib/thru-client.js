@@ -48,6 +48,13 @@ const DEFAULT_NETWORK = Object.freeze({
 
 let activeNetwork = DEFAULT_NETWORK;
 
+// Chain-state caches. Token-account existence is a property of a CHAIN, not of this process:
+// these must be emptied by configureNetwork whenever the chain identity changes, or a send on
+// a fresh network could skip account initialization against an account that only exists on the
+// old one and revert on-chain.
+const inFlightTokenAccountInits = new Map();
+const knownTokenAccounts = new Set();
+
 /**
  * Point this module at a network.
  *
@@ -73,6 +80,13 @@ export function configureNetwork(config) {
   if (next.rpcUrl !== activeNetwork.rpcUrl) {
     // Drop the memoized client so the next call builds one against the new endpoint.
     client = undefined;
+  }
+  if (next.id !== activeNetwork.id || next.rpcUrl !== activeNetwork.rpcUrl) {
+    // Chain identity changed: forget everything the previous chain said about token accounts.
+    // Without this, a recipient token account that existed on the old network would be
+    // skipped by initializeTokenAccount on the new one, and the transfer would revert.
+    knownTokenAccounts.clear();
+    inFlightTokenAccountInits.clear();
   }
   activeNetwork = next;
   return activeNetwork;
@@ -696,9 +710,6 @@ export async function getTokenBalance(ownerAddress, mintAddress) {
 // account must already exist for their token account to initialize. initialize-account may
 // only need the token account's own creation proof. scripts/verify-token-transfer.mjs probes
 // exactly this against a live network; until it reports, the UI does not promise either way.
-
-const inFlightTokenAccountInits = new Map();
-const knownTokenAccounts = new Set();
 
 /**
  * Initialize one owner's token account for one mint, paid for by feePayer.
