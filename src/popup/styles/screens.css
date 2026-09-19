@@ -247,13 +247,17 @@ form > .btn.text {
   margin-bottom: 2px;
 }
 
-/* The hero refresh is an inline icon next to the balance, not a standalone control. The
-   shared ghost-hover draws a bordered box on hover — inside this hero that reads as a stray
-   framed chip (flagged by the user, same "unequal box" complaint as the mnemonic drift).
-   Keep the hover cue as fill only, no border outline. */
+/* The hero refresh is an inline icon next to the balance, not a standalone control — so on
+   hover it must NOT materialize any chip at all: a filled box next to display text reads as
+   a framed artifact (user-flagged twice). Hover cues via icon color only. The spin during
+   an active refresh stays: it is the only "busy" signal for a silent background fetch. */
+.balance-hero .icon-btn-ghost,
 .balance-hero .icon-btn-ghost:hover {
-  background: var(--surface-3);
+  background: transparent;
   border-color: transparent;
+}
+.balance-hero .icon-btn-ghost:hover {
+  color: var(--text-1);
 }
 
 .balance-hero-row {
