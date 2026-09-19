@@ -2327,6 +2327,27 @@ async function navigationTest() {
   const copyAffordances = buttons(router.root, /copy address/i);
   ok('exactly one copy affordance for the address (the dead hidden button is gone)',
     copyAffordances.length === 1, String(copyAffordances.length));
+  ok('the address box itself is the copy affordance (not a sibling button)',
+    Boolean(copyAffordances[0]) && copyAffordances[0].classList.contains('copy-address'));
+
+  // Clickable-address copy flow: click -> clipboard write of the FULL address ->
+  // inline "Copied" confirmation -> auto-restore to the address after ~1s.
+  clipboardLog.writes.length = 0;
+  click(copyAffordances[0]);
+  await settle();
+  ok('clicking the address box copies the full address to the clipboard',
+    clipboardLog.writes.includes(activeAccount().address), JSON.stringify(clipboardLog.writes));
+  ok('the box confirms with an inline "Copied"',
+    /Copied/.test(copyAffordances[0].textContent), copyAffordances[0].textContent);
+  ok('the box announces the copy to assistive tech',
+    /copied to clipboard/i.test(copyAffordances[0].getAttribute('aria-label') || ''));
+  await new Promise((r) => setTimeout(r, 1250));
+  await settle();
+  ok('the box restores the full address about a second later',
+    copyAffordances[0].textContent.includes(activeAccount().address),
+    copyAffordances[0].textContent.slice(0, 60));
+  ok('the aria label returns to the copy description after restoring',
+    /^Copy address:/.test(copyAffordances[0].getAttribute('aria-label') || ''));
   // (The shim's selector engine is deliberately tiny — walk anchors instead of a[href*=].)
   const explorerLink = [...router.root.querySelectorAll?.('a') || []]
     .find((a) => String(a.href || a.getAttribute?.('href') || '').includes('/account/'));

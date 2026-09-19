@@ -210,7 +210,7 @@ topbar + network badge + footer)
 | `/keyring?id=` | `routes/keyring.js` | 190 |
 | `/export?ref=` | `routes/export.js` | 279 |
 | `/send` | `routes/send.js` | 848 |
-| `/receive` | `routes/receive.js` | 133 |
+| `/receive` | `routes/receive.js` | 154 |
 | `/faucet` | `routes/faucet.js` | 252 |
 | `/history` | `routes/history.js` | 276 |
 | `/settings` | `routes/settings.js` | 395 |

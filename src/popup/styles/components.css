@@ -313,6 +313,44 @@ textarea[aria-invalid="true"] {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   padding: var(--sp-4);
+
+/* Interactive monospace box: the receive screen's address box is also the copy
+   affordance. It must LOOK tappable — pointer cursor, a hover wash inside an
+   already-bounded card, emphasis on the trailing copy icon — while keeping the
+   monospace card read. .copied is the inline confirmation (positive tokens,
+   same idea as .icon-btn.copied). */
+.copy-address {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--t-base), border-color var(--t-base), color var(--t-base);
+}
+.copy-address:hover {
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+}
+.copy-address .copy-address-text {
+  flex: 1;
+}
+.copy-address > .icon, .copy-address > svg {
+  color: var(--text-3);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.copy-address:hover > .icon, .copy-address:hover > svg {
+  color: var(--text-1);
+}
+.copy-address.copied {
+  background: var(--positive-tint);
+  border-color: var(--positive-border);
+  color: var(--positive);
+}
+.copy-address.copied > .icon, .copy-address.copied > svg {
+  color: var(--positive);
+}
   word-break: break-all;
   font-size: var(--fs-md);
   line-height: 1.65;

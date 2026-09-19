@@ -8,11 +8,11 @@
 //     "which network is this for" is the question a receive screen must answer.
 //   - the QR renders raised in the Thru palette (qr.js); the canvas carries an accessible name
 //   - a second, hidden CopyButton sat dead in the DOM ("for keyboard users" — but .hidden is
-//     display:none, so it reached nobody). Removed; the wide copy button is the affordance.
+//     display:none, so it reached nobody). Removed entirely later, when the address box
+//     itself became the copy affordance (click copies, box confirms inline).
 
 import { h, disposer } from '../../kit/dom.js';
 import { icon } from '../../kit/icon.js';
-import { Button } from '../../kit/button.js';
 import { PageHeader, Banner, Spinner } from '../../kit/feedback.js';
 import { AccountAvatar } from '../../domain/account-avatar.js';
 import { renderQR } from '../../../popup/qr.js';
@@ -28,10 +28,14 @@ export function ReceiveRoute({ back }) {
 
   const banner = Banner({ tone: 'error' });
   const body = h('div', { class: 'stack stack-4' }, Spinner({ label: 'Loading' }).el);
+  let copyTimer = null;
+  let removeAddressCopy = null;
   const header = PageHeader({ title: 'Receive', onBack: () => back() });
   const el = h('section', { class: 'screen' }, [header.el, banner.el, body]);
 
   function clearBody() {
+    if (copyTimer) { clearTimeout(copyTimer); copyTimer = null; }
+    if (removeAddressCopy) { removeAddressCopy(); removeAddressCopy = null; }
     for (const c of owned) c.destroy?.();
     owned.length = 0;
     while (body.firstChild) body.removeChild(body.firstChild);
@@ -66,26 +70,41 @@ export function ReceiveRoute({ back }) {
     body.appendChild(h('p', { class: 'muted center', text:
       `Send only THRU on ${network?.label || 'this network'} to this address.` }));
 
-    // Full address, never truncated: this is the value being copied. The
-    // .monospace-block class already breaks anywhere — no per-instance styles.
-    body.appendChild(h('div', { class: 'monospace-block', text: account.address }));
+    // Full address, never truncated — and the address box IS the copy affordance:
+    // click/tap/Enter copies it and the box confirms inline ("Copied") for ~1s
+    // before returning to the address. One surface for the one thing an address
+    // is for, instead of address + separate button duplicating each other.
+    const addrText = h('span', { class: 'copy-address-text', text: account.address });
+    const addressBox = h('button', {
+      type: 'button',
+      class: 'monospace-block copy-address',
+      'aria-label': `Copy address: ${account.address}`,
+    }, [addrText, icon('copy', 14)]);
+    body.appendChild(addressBox);
 
-    const copyWide = track(Button({
-      label: 'Copy address',
-      variant: 'secondary',
-      iconName: 'copy',
-      onClick: async () => {
-        try {
-          await navigator.clipboard.writeText(account.address);
-          copyWide.update({ label: 'Copied' });
-          setTimeout(() => copyWide.update({ label: 'Copy address' }), 1200);
-        } catch {
-          banner.set('Could not copy — clipboard permission denied.');
-        }
-      },
-    }));
+    // Raw listeners are bound to the box's own lifetime (clearBody), not the route's —
+    // a re-rendered box that outlives its listener would be a detached-listener leak.
+    const onAddressClick = async () => {
+      try {
+        await navigator.clipboard.writeText(account.address);
+      } catch {
+        banner.set('Could not copy — clipboard permission denied.');
+        return;
+      }
+      addrText.textContent = 'Copied';
+      addressBox.setAttribute('aria-label', 'Address copied to clipboard');
+      addressBox.classList.add('copied');
+      if (copyTimer) clearTimeout(copyTimer);
+      copyTimer = setTimeout(() => {
+        addrText.textContent = account.address;
+        addressBox.setAttribute('aria-label', `Copy address: ${account.address}`);
+        addressBox.classList.remove('copied');
+      }, 1100);
+    };
+    addressBox.addEventListener('click', onAddressClick);
+    removeAddressCopy = () => addressBox.removeEventListener('click', onAddressClick);
 
-    const actions = [copyWide.el];
+    const actions = [];
 
     // '' when the network declares no explorer, in which case no link is shown at all.
     const explorer = network?.explorerUrl ? `${network.explorerUrl}/account/${account.address}` : '';
@@ -123,6 +142,8 @@ export function ReceiveRoute({ back }) {
   return {
     el,
     destroy() {
+      if (copyTimer) clearTimeout(copyTimer);
+      if (removeAddressCopy) removeAddressCopy();
       for (const c of owned) c.destroy?.();
       owned.length = 0;
       header.destroy();
