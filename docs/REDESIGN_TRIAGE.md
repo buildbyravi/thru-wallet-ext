@@ -66,7 +66,7 @@ Proposed split — each independently shippable, each keeping gates green:
 |---|---|---|---|
 | **R1** | Tokens + de-bordering (A, B, part of #01/#02) | Low, wide blast radius | Pure CSS. No JS, no contract. Visual diff is the whole point — needs the preview harness. |
 | **R2** | Typography + eyebrow removal + balance hero (C, #03) | Low | Touches 7 files; `check-routes.mjs` enforces every class is defined. |
-| **R3** | `kit/sheet.js` **extracted** from `tx-detail-sheet.js`, + Skeleton, + screen animation (E) | Medium | Must not regress the 802 P2 assertions. |
+| **R3** | `kit/sheet.js` **extracted** from `tx-detail-sheet.js`, + Skeleton, + screen animation (E) | Medium | Must not regress the route-lifecycle suite (802+, of which the P2 sheet assertions are a subset) nor the stylesheet flex-shrink invariant — that one asserts on built `popup.css` text, so it must still pass and still be falsifiable. |
 | **R4** | Shell restructure (D) + avatar (F) | Medium | **Rewrites the lock-control test.** Lock must remain reachable or it is a security regression. |
 | **R5** | Send redesign (G) + dashboard (H) | High | Must preserve BigInt parsing, recipient-exists gate, dead-Enter on confirm. |
 | **R6** | Backend: `pageState.*` + `tx.preflight` → **contract v11** (I) | High | Append-only. `pageState` in `chrome.storage.session` only — never `local`. |
