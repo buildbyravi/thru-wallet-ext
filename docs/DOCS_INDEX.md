@@ -64,6 +64,8 @@ Purpose: single map for every maintained Markdown document in this repository. U
 | What needs a browser to verify? | `docs/MANUAL_SMOKE_CHECKLIST.md` |
 | Is a route actually mounted by a test? | `test-route-lifecycle.mjs`, then `docs/STATUS_AND_ROADMAP.md` Step 2 |
 | What backend capability is missing? | `docs/BACKEND_GAPS.md` |
+| What can a per-transaction fetch honestly tell us (fee? timestamp?) | `docs/TX_DETAIL_SPIKE.md` |
+| Where is the Activity/history redesign up to? | `docs/HISTORY_REDESIGN_PLAN.md` |
 | What docs are historical only? | `docs/archive/**`, `docs/UI_REBUILD_PLAN.md`, `docs/UI_REBUILD_AGENT_PROMPT.md` unless explicitly cited by current docs |
 
 ---
@@ -98,6 +100,8 @@ Purpose: single map for every maintained Markdown document in this repository. U
 | `docs/AUDIT_REPORT.md` | current audit record | security findings/remediation state | Keep separate from `DEFECT_LOG`: audit findings vs historical defect lessons. |
 | `docs/DEFECT_LOG.md` | current historical lessons | root causes and guardrails | Historical defects can mention deleted code, but current-state claims must point to `STATUS`. |
 | `docs/BACKEND_GAPS.md` | current capability gaps | backend missing pieces and verified unsupported states | Keep capability-focused; do not duplicate roadmap details. |
+| `docs/TX_DETAIL_SPIKE.md` | current findings record | what the RPC surface can/cannot answer for ONE transaction (fee, timestamp) | Records SDK/protobuf contract facts, re-checkable by reading the same files. Nothing in it was confirmed against a live node; that is the manual smoke run's job. |
+| `docs/HISTORY_REDESIGN_PLAN.md` | current phase plan | Activity/history redesign (P0–P3) and its honest omissions | Status line at the top wins on which phases have shipped. |
 | `docs/MANUAL_SMOKE_CHECKLIST.md` | current runbook | browser-only verification before merging UI changes | Not a test and not a spec. If an item becomes automatable, move it into `test-route-lifecycle.mjs` and delete the checkbox. |
 | `docs/BUILD_SPEC.md` | current policy/spec | product requirements, security policy, QA matrix | Status ledger inside it is now summarized; exact current state lives in `STATUS`. |
 | `docs/UI_REBUILD_PLAN.md` | historical plan/reference | original rebuild audit and phase plan | Marked historical; use only for rationale, not current file facts. |

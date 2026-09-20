@@ -154,6 +154,34 @@ UI declares it unmeasured rather than inheriting the native number.
 → remaining: measure the token fee live (`scripts/verify-token-transfer.mjs`), then record it
 in per-network config.
 
+### C2b. Per-transaction CHARGED fee — not on the RPC surface at all
+Distinct from C2, which is about *estimating* a fee before sending. This is about reporting
+what a transaction in history actually cost, and the answer from the spike
+(`docs/TX_DETAIL_SPIKE.md` §3.3) is that the chain does not report it:
+`TransactionExecutionResult` has no charged-fee field (compute/memory/state units, `vm_error`,
+events, `fee_payer_expected_nonce` — nothing else). `Transaction.fee` exists but is the
+sender's HEADER DECLARATION, an input to execution, not a receipt.
+
+→ `tx.getDetail` returns `feeDeclaredUnits` (never `feeUnits`) plus `feeCharged: false`, and
+  the P2 detail sheet labels the row "Fee (declared)" and states inline that the network
+  reports no charged fee. It is **not** filled in from `network.baseFeeUnits`, even though
+  that measured value (1 unit on alphanet) currently agrees with the SDK's default — that
+  agreement is a coincidence of today's default, not a published invariant.
+→ remaining: the P2.5 explorer spike. If a charged fee exists anywhere it is behind the typed
+  (undocumented) API under `scan.thru.org`'s MCP tools. Until that is validated, the honest
+  answer stays "not reported".
+
+### C2c. Per-transaction wall-clock time — block-level only, and optional
+Transactions carry no time field. The containing block does (`BlockHeader.block_time` →
+`Block.blockTimeNs`), but it is optional on the wire and `@thru/sdk` only populates it when
+the node sent it.
+→ `tx.getDetail` fetches it via `blocks.get({slot})` and returns `blockTimeMs: null` when
+  absent; the sheet renders "Not available". Never substituted with the local clock, and
+  never inherited from a neighbouring entry (the list's day-grouping inference is
+  display-only and does not write timestamps — see `docs/HISTORY_REDESIGN_PLAN.md`).
+→ remaining: confirm on a live node whether alphanet populates `header.blockTime` at all.
+  That is a `docs/MANUAL_SMOKE_CHECKLIST.md` item, not a code gap.
+
 ### C3. Transaction simulation
 Rabby's signature feature — predicted balance changes before signing. Needs a simulate RPC.
 → `tx.simulate({ ... })` → `supported:false`.
