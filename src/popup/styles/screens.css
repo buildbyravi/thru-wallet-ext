@@ -227,14 +227,15 @@ form > .btn.text {
 
 /* Balance: a readout, not a box. The number is the hero of the screen;
    anything drawn around it competes with it. */
+/* Typographic hero, not a card. The number is the object; a card around it competed
+   with the four control wells below it, and when everything is a card nothing is.
+   The page backdrop is a surface too — see rule 1 in tokens.css. */
 .balance-hero {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: var(--sp-5) var(--sp-4) var(--sp-4);
-  background: var(--surface-1);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-card);
+  padding: var(--sp-2) 0 0;
+  background: transparent;
   text-align: left;
 }
 
@@ -269,15 +270,16 @@ form > .btn.text {
   font-variant-numeric: tabular-nums;
   font-size: var(--fs-display);
   font-weight: 650;
-  letter-spacing: -0.025em;
+  letter-spacing: -0.03em;
   color: var(--text-1);
   line-height: 1.05;
 }
 
+/* No margin here: .balance-hero-row is already a flex row with a gap. */
 .balance-hero-unit {
   font-family: var(--font-ui);
-  font-size: var(--fs-md);
-  font-weight: 600;
+  font-size: var(--fs-lg);
+  font-weight: 500;
   color: var(--text-3);
 }
 
@@ -328,19 +330,24 @@ form > .btn.text {
   transition: color var(--t-base);
 }
 
+/* The well is the object: a white 44px target with the brand glyph in it. It is the
+   one place an icon gets the brand colour, because these four are the dashboard's
+   primary navigation. */
 .action-btn-icon {
   display: grid;
   place-items: center;
   width: 44px;
   height: 44px;
-  border-radius: var(--radius-md);
-  background: var(--surface-2);
-  color: var(--text-1);
-  transition: background var(--t-base), color var(--t-base);
+  border-radius: var(--radius-lg);
+  background: var(--surface-1);
+  color: var(--brand);
+  box-shadow: var(--shadow-card);
+  transition: background var(--t-base), color var(--t-base), transform var(--t-fast);
 }
 
 .action-btn:hover { color: var(--text-1); }
-.action-btn:hover .action-btn-icon { background: var(--brand-tint); color: var(--brand); }
+.action-btn:hover .action-btn-icon { background: var(--brand-tint); }
+.action-btn:active .action-btn-icon { transform: scale(0.96); }
 
 /* ---- Accounts / history rows ------------------------------- */
 

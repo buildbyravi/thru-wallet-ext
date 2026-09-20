@@ -108,18 +108,32 @@ one wrapper span, and it is guarded like R1.
   10px floor was raised to `--fs-xs`. `check-design-tokens.mjs` now fails on any
   `font-size: <n>px|rem` outside `tokens.css`, and on `text-transform: uppercase` — the rule
   that removed the terminal styling is the rule that keeps it removed.
-- **The hero is the loudest thing on the dashboard.** 38px, sans, `font-variant-numeric:
-  tabular-nums` (the reason mono was there, kept), tracking −0.025em, unit at 13px/600, and the
-  card is roomier (`--sp-5`). The class name in the DOM is unchanged.
+- **The hero is the loudest thing on the dashboard, and it is not a card.** 38px, sans,
+  `font-variant-numeric: tabular-nums` (the reason mono was there, kept), tracking −0.03em, unit
+  at 15px/500. An unboxed hero is the supplied direction and it is the right one here: with a
+  card around the number *and* a card around each of the four controls, five surfaces competed,
+  and the ones that should win a dashboard are the ones you can press. The page backdrop is a
+  surface (rule 1 in `tokens.css`).
 - **`display: none` was not used on the balance label.** The incoming snippet hid
   `.balance-hero-label`; that would have deleted the only accessible name of the number
   ("Balance" is the label; "12,480.0001 THRU" is the value). It is restyled instead, so it now
   reads as a small grey label rather than a terminal stamp. This repo has no `sr-only` utility,
   which is why the label could not simply be visually hidden either.
-- **Quick actions are wells, not four cards.** `.action-btn` is flat on the page backdrop and
-  `dashboard.js`'s `ActionTile` wraps its icon in `.action-btn-icon` — a 44×44 well that turns
-  brand-tinted on hover. Four shadowed cards were competing with the one card that should win
-  the screen.
+- **Quick actions are wells.** `.action-btn` is flat on the page backdrop and `dashboard.js`'s
+  `ActionTile` wraps its icon in `.action-btn-icon`: a white 44×44 well carrying `--shadow-card`
+  with the glyph in `--brand` — the one place an icon takes the brand colour, because these four
+  are the dashboard's primary navigation. Hover tints the well, press scales it to 0.96.
+
+### Where R2 adapted the supplied snippet instead of pasting it
+
+| Snippet said | Shipped | Why |
+| --- | --- | --- |
+| `.balance-hero-label { display: none }` | restyled, still in the DOM | It is the only accessible name of the number ("Balance" labels the figure; "12,480.0001 THRU" is the value). There is no `sr-only` utility in this repo to hide it visually either. |
+| add `.balance-hero-sub` under the hero | not added | It has no honest content: the only candidate is a fiat figure, and there is no price feed (`connect-src` is pinned to `rpc.alphanet.thru.org`), so it would be the fabricated-number defect the repo's honesty rule calls a merge blocker. |
+| `.action-grid { gap: 0; padding: 0 16px 16px }` | grid spacing kept | Those paddings belong to the mockup's page container. Here `.screen` already owns the padding (`--sp-4`/`--sp-5`), and adding both would double it. |
+| `.action-btn svg { box-sizing: content-box; padding: 12px }` | `.action-btn-icon` wrapper, 44×44 | The content-box trick makes the hit target depend on the icon's intrinsic size. An explicit 44px well is what `--control-height` means everywhere else in the system. |
+| `.balance-hero-unit { font-size: 16px; margin-left: 6px }` | `--fs-lg` (15px), no margin | 16px is not a step on the scale; and `.balance-hero-row` is already a flex row with a gap, so a margin would double the space. |
+| `.btn.primary { height: 44px; font-weight: 550 }` | `min-height: var(--control-height)`, weight 600 | `height` clips a two-line label, and 550 is a variable-font weight that only three of the candidate stacks support. |
 
 Two things R2 deliberately did **not** do. It removed no `.eyebrow` elements from the DOM: the
 reviewer's instruction was "remove `.eyebrow` except in `export.js`", and `export.js` does not
