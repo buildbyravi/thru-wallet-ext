@@ -1,103 +1,113 @@
 /* ============================================================
-   Design tokens — light theme, matched to the thru.org homepage.
-   
-   The site reads as an instrument panel, not a web app: pale steel
-   chrome, white working surfaces, hairline borders, near-zero radius,
-   monospace micro-labels, and brick red used sparingly as a signal
-   rather than as decoration.
+   Design tokens — the whole visual system, in one file.
 
-   Only surface/text/border assignments changed from the dark theme.
-   The underlying thru.org colour scales are untouched, so every
-   component keeps referring to the same semantic variables.
+   DIRECTION: consumer wallet (Rabby-class), NOT an instrument panel.
+   This file replaces the earlier "pale steel chrome, near-zero radius,
+   monospace micro-labels" reading of thru.org. The previous direction is
+   what made every surface a 1px-outlined box on a white page: with no
+   surface hierarchy, an outline was the only way to say "this is a card",
+   and 57 of them said it at the same volume. See
+   `docs/RABBY_UPGRADE_SPEC.md` for the change and its scope.
+
+   THE FOUR RULES THIS FILE ENCODES
+   --------------------------------
+   1. HIERARCHY BY CONTRAST AND ELEVATION, NOT BY OUTLINE.
+      The page backdrop is --bg. A card is --surface-1 on top of it and is
+      separated by that contrast plus --shadow-card. An inset INSIDE a card
+      is --surface-2 / --surface-inset. A hover on a card is --surface-3.
+      A 1px border is the exception; it survives only where it is genuinely
+      a divider (between rows in a list/table) or chrome (under the
+      topbar). `border: 1px solid var(--border)` around a card is a bug.
+   2. ONE SATURATED COLOUR MEANS "DO THIS".
+      --brand drives primary CTAs, links and active states. --negative is a
+      red reserved for errors and destructive intent, --positive and --gold
+      are status only. Before this file, the CTA colour was black (--ink)
+      and the only saturated thing on a screen was a red warning: the
+      "tap me" colour and the "careful" colour were backwards.
+   3. COLOUR LITERALS LIVE HERE AND NOWHERE ELSE.
+      Every other stylesheet reaches colour through var(). Recolouring the
+      wallet is a one-file change, and `scripts/check-design-tokens.mjs`
+      fails the build on a hex/rgb()/hsl() literal anywhere else. The same
+      script asserts the shape scale, the brand ramp and --shadow-card
+      exist, and that both themes define every theme-varying name.
+   4. TWO THEMES, ONE SET OF NAMES.
+      Dark overrides values, never names, so no component stylesheet is
+      theme-aware. text-1..3 are the only text colours; pick by emphasis,
+      never by literal.
    ============================================================ */
 
 :root {
-  /* ---- thru.org Official Color Scales ---- */
-  --steel-0: #f7f8f8;
-  --steel-100: #eaeef0;
-  --steel-200: #cdd5db;
-  --steel-300: #a4b3bc;
-  --steel-400: #7e93a0;
-  --steel-500: #5b6f7b;
-  --steel-600: #43515b;
-  --steel-700: #2b353b;
-  --steel-800: #151b1e;
-
-  --teal-0: #f9fbfb;
-  --teal-100: #eaf2f2;
-  --teal-200: #d1e1e1;
-  --teal-300: #a9c3c5;
-  --teal-400: #81a7a7;
-  --teal-500: #5e8787;
-  --teal-600: #456063;
-  --teal-700: #2d3e3e;
-  --teal-800: #151e1e;
-
-  --brick-100: #fbdadc;
-  --brick-200: #f6acb0;
-  --brick-300: #ed787e;
-  --brick-400: #d33c43;
-  --brick-500: #a82c33;
-
-  --yellow-100: #fdefdd;
-  --yellow-200: #fde0ba;
-  --yellow-300: #fbc784;
-  --yellow-400: #ffad42;
-  --golden: #ffffbd;
-
-  /* ---- Application surfaces (light instrument panel) ----
-     bg        page / chrome, the pale steel-teal of the site frame
-     surface-1 the white working surface: cards, inputs, rows
-     surface-2 recessed panel: sidebars, grouped list backgrounds
-     surface-3 pressed / hover state on a recessed panel          */
-  --bg: #dfe8ea;
+  /* ---- Surfaces ------------------------------------------------
+     bg             page backdrop — everything floats on this
+     surface-1      card / raised surface
+     surface-2      inset inside a card (list wells, tiles)
+     surface-3      hover wash over a card or a row
+     surface-inset  form fields and data wells (a touch deeper than 2) */
+  --bg: #f2f4f7;
   --surface-1: #ffffff;
-  --surface-2: #eef3f4;
-  --surface-3: #e2eaec;
-  --surface-inset: #f7f9fa;
+  --surface-2: #f7f9fb;
+  --surface-3: #eef2f6;
+  --surface-inset: #f1f4f8;
 
-  /* Hairlines. The site leans on 1px borders instead of shadows to
-     separate things, which is what gives it the drafting-table feel. */
-  --border: #c8d5d9;
-  --border-strong: #a4b3bc;
-  --border-hairline: #dde5e8;
+  /* ---- Hairlines ----------------------------------------------
+     Not a card outline. --border is a divider between siblings;
+     --border-hairline separates chrome (topbar/footer) from content. */
+  --border: #e2e7ee;
+  --border-strong: #d0d7e2;
+  --border-hairline: #edf1f6;
 
-  /* ---- Text ---- */
-  --text-1: #151b1e;
-  --text-2: #43515b;
-  --text-3: #6c8290;
-  --text-inverse: #ffffff;
+  /* ---- Text (three steps of emphasis, nothing else) ---- */
+  --text-1: #192945;
+  --text-2: #3e495e;
+  --text-3: #5f6b7d;
 
-  /* ---- Accent (Thru signature red) ---- */
-  --accent: #d33c43;
-  --accent-bright: #a82c33;
-  --accent-ink: #ffffff;
-  --accent-tint: #fdf0f1;
-  --accent-border: #f0b8bb;
+  /* ---- Brand ramp (the CTA) ----
+     `scripts/check-design-tokens.mjs` asserts white-on-brand >= 4.5:1, which is
+     why the fill is a deep brick rather than a lighter coral: #e04e4e with white
+     text measures 3.9:1 and fails AA for the label on the wallet's most
+     important button. In dark the brand is a bright coral instead, so the LABEL
+     inverts (--brand-ink goes near-black) rather than the fill going muddy. */
+  --brand: #c8323a;
+  --brand-hover: #a82c33;
+  --brand-ink: #ffffff;
+  --brand-tint: #fdf0f1;
+  --brand-border: #eec3c6;
 
-  /* ---- Ink: the black used for primary CTAs on the site ---- */
-  --ink: #151b1e;
-  --ink-hover: #2b353b;
-  --ink-ink: #ffffff;
+  /* ---- Accent: the SAME ramp under the names the existing rules use.
+     There is deliberately one saturated hue in the system, so these are
+     aliases rather than a second palette that can drift out of sync.
+     Retire these names as components are migrated to --brand-*. */
+  --accent: var(--brand);
+  --accent-bright: var(--brand-hover);
+  --accent-ink: var(--brand-ink);
+  --accent-tint: var(--brand-tint);
+  --accent-border: var(--brand-border);
 
-  /* ---- Gold / highlight ---- */
-  --gold: #b26a00;
-  --gold-tint: #fdf4e6;
-  --gold-border: #f0d5a8;
+  /* ---- Ink: maximum-emphasis neutral.
+     Used for the focus ring and the focused-field border, NOT for CTAs.
+     A brand-red focus ring is indistinguishable from the error border
+     (see base.css), so the ring stays neutral. Aliased to --text-1 so it
+     inverts with the theme for free. */
+  --ink: var(--text-1);
 
-  /* ---- Semantic ---- */
-  --positive: #1c7d76;
+  /* ---- Status ---- */
+  --positive: #156e68;
   --positive-tint: #e8f5f4;
   --positive-border: #a8d8d4;
   --negative: #c0343b;
   --negative-tint: #fdf0f1;
   --negative-border: #f0b8bb;
+  --gold: #8f5500;
+  --gold-tint: #fdf4e6;
 
-  /* ---- Byte-mark identicon ramp (light) ---- */
-  --mark-0: #e2eaec;
-  --mark-1: #a9c3c5;
-  --mark-2: #5e8787;
-  --mark-3: #d33c43;
+  /* ---- Byte-mark identicon ramp (light).
+     A 4-state cell ramp, not a fourth palette: two neutrals, one slate,
+     and the brand for the "loud" cell. The mark's job is to differ from
+     account to account, so the steps are chosen for separability at 4px. */
+  --mark-0: #e6ecf3;
+  --mark-1: #b9c8da;
+  --mark-2: #5f7fa8;
+  --mark-3: var(--brand);
 
   /* ---- Typography ----
      Inter Tight and JetBrains Mono are thru.org's faces. They are listed
@@ -113,8 +123,7 @@
   --fs-md: 13px;
   --fs-lg: 15px;
   --fs-xl: 18px;
-  --fs-2xl: 22px;
-  --fs-display: 34px;
+  --fs-display: 38px;   /* the balance. One hero per screen, never two. */
 
   --eyebrow-tracking: 0.09em;
 
@@ -125,25 +134,44 @@
   --sp-4: 16px;
   --sp-5: 20px;
   --sp-6: 24px;
-  --sp-7: 28px;
   --sp-8: 32px;
 
-  /* ---- Shape. The site is nearly square-cornered; keeping radii
-     small is most of what separates "instrument" from "consumer app". */
-  --radius-sm: 2px;
-  --radius-md: 3px;
-  --radius-lg: 4px;
+  /* ---- Shape ----
+     Consumer-wallet rounding. The old scale was 2/3/4px, which reads as a
+     spreadsheet; these steps are what make a card feel like an object.
+       xs  micro elements (badges, tags, field indicators)
+       sm  small tiles (avatars, glyphs, nested rows)
+       md  controls (buttons, inputs, tappable cards)
+       lg  cards and wells
+       xl  sheets and modals (the floated surfaces)
+
+     Below xs there is deliberately no step. A 1px radius on a ~5px grid
+     cell (the byte-mark), the 2px grab bar on a drawer handle and the 2px
+     corner on the focus ring are proportional geometry, not shape-scale
+     sizes — turning them into tokens would invent three tokens with one
+     caller each. `border-radius: 50%` circles are the same case. */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
   --radius-pill: 999px;
 
-  /* ---- Elevation. Used only for things that genuinely float. ---- */
-  --shadow-sheet: 0 -1px 0 var(--border), 0 -12px 32px rgba(21, 27, 30, 0.12);
-  --shadow-pop: 0 1px 2px rgba(21, 27, 30, 0.06), 0 8px 24px rgba(21, 27, 30, 0.1);
-  --overlay-bg: rgba(21, 27, 30, 0.32);
+  /* ---- Control metrics ---- */
+  --control-height: 44px;
+
+  /* ---- Elevation ----
+     --shadow-card is the default separation for a card. Everything that
+     floats above the page (sheet, popover) gets a taller shadow than a
+     resting card; nothing gets a border instead of a shadow. */
+  --shadow-card: 0 1px 2px rgba(25, 41, 69, 0.04), 0 4px 16px rgba(25, 41, 69, 0.06);
+  --shadow-pop: 0 2px 8px rgba(25, 41, 69, 0.08), 0 12px 32px rgba(25, 41, 69, 0.14);
+  --shadow-sheet: 0 -8px 32px rgba(25, 41, 69, 0.16);
+  --overlay-bg: rgba(25, 41, 69, 0.36);
 
   /* ---- Motion ---- */
   --t-fast: 100ms ease-out;
   --t-base: 150ms ease-out;
-  --t-screen: 200ms cubic-bezier(0.2, 0, 0.2, 1);
 
   /* ---- Dimensions ---- */
   --popup-width: 408px;
@@ -152,58 +180,58 @@
 }
 
 /* ============================================================
-   Dark theme — same thru.org scales, inverted. Nothing here invents
-   a new colour: every value is pulled from the official steel/teal/
-   brick ramps above, remapped so surfaces step lighter as they rise
-   and text inverts to the ice end of the scale. Semantic names stay
-   identical, so no component CSS is theme-aware.
+   Dark theme — same names, same roles, values only. Every semantic
+   variable is remapped so no component CSS knows which theme is active.
+   Applied by src/popup/theme.js via documentElement[data-theme];
+   'system' resolves at apply time.
 
-   Applied by src/popup/theme.js via document.documentElement
-   [data-theme="dark"|"light"]; 'system' resolves at apply time.
+   Note the deliberate direction change: in light, hover is DARKER than
+   the surface under it; in dark, hover is LIGHTER. Both read as "this
+   responded to you" because both increase contrast with the resting
+   surface. That is why --surface-3 is not simply "a bit more contrast".
    ============================================================ */
 [data-theme="dark"] {
-  --bg: #101517;
-  --surface-1: #1b2226;
-  --surface-2: #232c31;
-  --surface-3: #2c373d;
-  --surface-inset: #141a1d;
+  --bg: #1c1f2b;
+  --surface-1: #2a2d3c;
+  --surface-2: #232636;
+  --surface-3: #333748;
+  --surface-inset: #1f2230;
 
-  --border: #2f3a40;
-  --border-strong: #45535b;
-  --border-hairline: #242e33;
+  --border: #3d4251;
+  --border-strong: #4e5466;
+  --border-hairline: #2f3342;
 
-  --text-1: #eef4f5;
-  --text-2: #a9bcc4;
-  --text-3: #7d939e;
-  --text-inverse: #151b1e;
+  --text-1: #f7fafc;
+  --text-2: #d3d8e0;
+  --text-3: #babec5;
 
-  --accent: #e65b62;
-  --accent-bright: #f0767c;
-  --accent-ink: #ffffff;
-  --accent-tint: rgba(237, 120, 126, 0.13);
-  --accent-border: rgba(237, 120, 126, 0.38);
+  --brand: #ff6b6b;
+  --brand-hover: #ff8282;
+  --brand-ink: #26100f;
+  --brand-tint: rgba(255, 107, 107, 0.14);
+  --brand-border: rgba(255, 107, 107, 0.38);
 
-  --ink: #eef4f5;
-  --ink-hover: #ffffff;
-  --ink-ink: #151b1e;
+  /* --accent-* and --ink are aliases and need no dark override. */
 
-  --gold: #f0b35a;
-  --gold-tint: rgba(240, 179, 90, 0.1);
-  --gold-border: rgba(240, 179, 90, 0.3);
-
+  /* An error must not read as the brand. --brand in dark is a soft coral;
+     the error is a deeper, more saturated red so the two are separable by
+     hue and by weight even when both are on screen. */
   --positive: #3fbfae;
   --positive-tint: rgba(63, 191, 174, 0.1);
   --positive-border: rgba(63, 191, 174, 0.3);
-  --negative: #e9646b;
-  --negative-tint: rgba(233, 100, 107, 0.1);
-  --negative-border: rgba(233, 100, 107, 0.3);
+  --negative: #ff7a80;
+  --negative-tint: rgba(255, 122, 128, 0.1);
+  --negative-border: rgba(255, 122, 128, 0.34);
+  --gold: #f0b35a;
+  --gold-tint: rgba(240, 179, 90, 0.1);
 
-  --mark-0: #2c373d;
-  --mark-1: #54676f;
-  --mark-2: #3fbfae;
-  --mark-3: #e65b62;
+  --mark-0: #2f3444;
+  --mark-1: #55617a;
+  --mark-2: #9fb4d4;
+  --mark-3: var(--brand);
 
-  --shadow-sheet: 0 -1px 0 var(--border), 0 -12px 32px rgba(0, 0, 0, 0.5);
-  --shadow-pop: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.45);
-  --overlay-bg: rgba(16, 21, 23, 0.55);
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.2), 0 4px 16px rgba(0, 0, 0, 0.25);
+  --shadow-pop: 0 2px 8px rgba(0, 0, 0, 0.3), 0 12px 32px rgba(0, 0, 0, 0.4);
+  --shadow-sheet: 0 -8px 32px rgba(0, 0, 0, 0.35);
+  --overlay-bg: rgba(10, 12, 20, 0.6);
 }

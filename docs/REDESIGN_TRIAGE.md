@@ -1,6 +1,8 @@
 # Rabby-parity redesign proposal — triage
 
-Status: **assessment only, nothing implemented.** Reviewer-supplied plan (tasks A–K + items
+Status: **R1 of the proposed split is implemented** (`docs/RABBY_UPGRADE_SPEC.md`); R2–R8 are not.
+The triage below is unchanged and is still the reference for what each remaining PR must
+respect. Original status line follows: assessment only when written. Reviewer-supplied plan (tasks A–K + items
 #01–#14) checked line by line against the repo at `c3992ae`. This is suggestion set 1 of 4;
 three more are pending, so this file records verdicts, not a commitment.
 

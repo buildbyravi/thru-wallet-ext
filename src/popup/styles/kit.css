@@ -25,7 +25,6 @@
 
 .badge-live {
   background: var(--accent-tint);
-  border-color: var(--accent);
   color: var(--accent-bright);
   font-weight: 600;
 }
@@ -90,7 +89,6 @@
 .password-toggle:hover {
   color: var(--text-1);
   background: var(--surface-3);
-  border-color: var(--border);
 }
 
 /* ---- Modal (password re-auth) ----------------------------- */
@@ -118,9 +116,7 @@
   gap: var(--sp-4);
   padding: var(--sp-5);
   background: var(--surface-1);
-  border: 1px solid var(--border-strong);
-  border-top: 2px solid var(--ink);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-xl);
   box-shadow: var(--shadow-pop);
   transform: translateY(6px);
   transition: transform var(--t-base);
@@ -141,15 +137,13 @@
   width: 34px;
   height: 34px;
   flex-shrink: 0;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   background: var(--surface-2);
   color: var(--text-2);
 }
 
 .modal-icon.danger {
   color: var(--negative);
-  border-color: var(--negative-border);
   background: var(--negative-tint);
 }
 
@@ -161,7 +155,6 @@
   gap: var(--sp-3);
   padding: var(--sp-3);
   background: var(--surface-2);
-  border: 1px solid var(--border);
   border-radius: var(--radius-md);
 }
 
@@ -178,7 +171,7 @@
 .detail-table {
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--border);
+  background: var(--surface-2);
   border-radius: var(--radius-md);
   overflow: hidden;
 }
@@ -189,9 +182,10 @@
   justify-content: space-between;
   gap: var(--sp-3);
   padding: var(--sp-3) var(--sp-3);
-  background: var(--surface-1);
 }
 
+/* The hairline survives here on purpose: it is a divider BETWEEN rows,
+   which is exactly the case a border is still for. */
 .detail-row + .detail-row {
   border-top: 1px solid var(--border-hairline);
 }
@@ -257,7 +251,6 @@
   gap: var(--sp-1);
   padding: var(--sp-3);
   background: var(--surface-inset);
-  border: 1px solid var(--border);
   border-radius: var(--radius-md);
 }
 
@@ -293,18 +286,17 @@
   width: 100%;
   padding: var(--sp-3) var(--sp-4);
   background: var(--surface-1);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
   text-align: left;
   cursor: pointer;
   color: var(--text-1);
-  transition: background var(--t-base), border-color var(--t-base), box-shadow var(--t-base);
+  transition: background var(--t-base), box-shadow var(--t-base);
 }
 
 .option-card:hover {
   background: var(--surface-2);
-  border-color: var(--border-strong);
-  box-shadow: inset 2px 0 0 var(--accent);
+  box-shadow: var(--shadow-card), inset 3px 0 0 var(--accent);
 }
 
 .option-card-icon {
@@ -314,8 +306,7 @@
   width: 34px;
   height: 34px;
   flex-shrink: 0;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   background: var(--surface-2);
   color: var(--text-2);
 }
@@ -374,24 +365,19 @@
 
 .chip-option {
   padding: 6px 12px;
-  background: var(--surface-1);
-  border: 1px solid var(--border);
+  background: var(--surface-2);
   border-radius: var(--radius-sm);
   font-family: var(--font-mono);
   font-size: var(--fs-sm);
   color: var(--text-1);
   cursor: pointer;
-  transition: background var(--t-fast), border-color var(--t-fast);
+  transition: background var(--t-fast), color var(--t-fast);
 }
 
-.chip-option:hover {
-  background: var(--surface-2);
-  border-color: var(--border-strong);
-}
+.chip-option:hover { background: var(--surface-3); }
 
 .chip-option.selected {
   background: var(--accent-tint);
-  border-color: var(--accent);
   color: var(--accent-bright);
   font-weight: 600;
 }
@@ -406,8 +392,7 @@
   padding: 1px 5px;
   background: var(--gold-tint);
   color: var(--gold);
-  border: 1px solid var(--gold-border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   white-space: nowrap;

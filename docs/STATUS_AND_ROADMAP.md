@@ -1,7 +1,18 @@
 # Status and roadmap
 
 Single source of truth for **where the rebuild is** and **what happens next**.
-Last updated: contract v10 adds `tx.getDetail`, the lazy per-signature fetch behind the P2
+
+Last updated: **R1 of the Rabby-style upgrade is implemented and gate-green; the one step left
+is a human look** (`docs/RABBY_UPGRADE_SPEC.md` §5 — open `scripts/preview-dashboard.html`).
+The design system is now tokens-only: page/card/inset surfaces, one brand ramp, a shape scale,
+44px controls, and opaque `border: 1px solid` down from 70 declarations to 12 (the survivors all
+divide rows or chrome). It touches no DOM, no route and no contract version. Enforced by the new
+`scripts/check-design-tokens.mjs` — no colour literal outside `tokens.css`, dark redefines every
+colour token (derived, not a hand-kept list), 40 asserted contrast pairs at 4.5:1 text / 3:1
+graphic, no dead tokens. R2 (typography, `.eyebrow` removal, balance hero + action wells) is
+next.
+
+Earlier: contract v10 adds `tx.getDetail`, the lazy per-signature fetch behind the P2
 transaction detail sheet (Activity history P0+P1+P2 now shipped). It is explorer-free: the
 sheet runs on the RPC we already depend on, states the header-declared fee as such, and
 renders "Not available" for anything the network does not report — see
@@ -37,6 +48,10 @@ Structural properties now enforced by CI rather than by discipline:
 | Every navigated route exists | `check-routes.mjs` |
 | Every registered route is reachable | `check-routes.mjs` |
 | Every CSS class used is defined | `check-routes.mjs` |
+| No colour literal outside `tokens.css`; both themes define every themed token | `check-design-tokens.mjs` |
+| Text and status colours clear 4.5:1 (3:1 for graphics) in **both** themes | `check-design-tokens.mjs` |
+| No token is defined without a caller | `check-design-tokens.mjs` |
+| No named colour (`white`, `black`, …) outside `tokens.css` | `check-design-tokens.mjs` |
 | Contract agrees in both directions | `test-contract.mjs` |
 | Key derivation cannot change silently | `test-derivation.mjs` |
 | Nothing unserializable crosses the port | `test-api-router.mjs` |

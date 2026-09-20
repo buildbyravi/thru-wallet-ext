@@ -5,16 +5,17 @@
    ============================================================ */
 
 /* ---- Top bar -----------------------------------------------
-   Chrome sits on the recessed steel surface with a hairline under it,
-   separating it from the white working area below. */
+   Chrome is a raised surface with a hairline under it. The hairline is
+   load-bearing: it is the one place a border still separates two regions
+   rather than decorating a box. */
 
 .topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: var(--sp-3) var(--sp-4);
-  background: var(--surface-2);
-  border-bottom: 1px solid var(--border);
+  background: var(--surface-1);
+  border-bottom: 1px solid var(--border-hairline);
   min-height: var(--topbar-height);
 }
 
@@ -52,10 +53,9 @@
   letter-spacing: var(--eyebrow-tracking);
   text-transform: uppercase;
   color: var(--text-2);
-  background: var(--surface-1);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 3px 7px;
+  background: var(--surface-3);
+  border-radius: var(--radius-pill);
+  padding: 3px 9px;
 }
 
 /* ---- Screen scaffold --------------------------------------- */
@@ -158,8 +158,8 @@ form > .btn.text {
   align-items: center;
   justify-content: center;
   gap: var(--sp-2);
-  background: var(--surface-2);
-  border-top: 1px solid var(--border);
+  background: var(--surface-1);
+  border-top: 1px solid var(--border-hairline);
   padding: var(--sp-3) var(--sp-4);
   font-family: var(--font-mono);
   font-size: 10px;
@@ -211,35 +211,31 @@ form > .btn.text {
   align-items: center;
   gap: var(--sp-2);
   background: var(--surface-1);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: 4px 10px 4px 4px;
+  border-radius: var(--radius-pill);
+  box-shadow: var(--shadow-card);
+  padding: 4px 12px 4px 4px;
   cursor: pointer;
   min-width: 0;
-  transition: background var(--t-base), border-color var(--t-base);
+  transition: background var(--t-base);
 }
 
-.account-pill:hover {
-  background: var(--surface-2);
-  border-color: var(--border-strong);
-}
+.account-pill:hover { background: var(--surface-2); }
 
 .account-pill-chevron {
   color: var(--text-3);
   flex-shrink: 0;
 }
 
-/* Balance: the ledger hero. Presented as a bordered readout panel on the
-   recessed surface, the way thru.org frames its TYPE / LANGUAGES values —
-   the number is data in an instrument, not marketing copy. */
+/* Balance: a readout, not a box. The number is the hero of the screen;
+   anything drawn around it competes with it. */
 .balance-hero {
   display: flex;
   flex-direction: column;
   gap: var(--sp-1);
   padding: var(--sp-4);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  background: var(--surface-1);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
   text-align: left;
 }
 
@@ -298,7 +294,6 @@ form > .btn.text {
   justify-content: space-between;
   gap: var(--sp-2);
   padding-bottom: var(--sp-1);
-  border-bottom: 1px solid var(--border);
 }
 
 .dash-tokens-list {
@@ -319,19 +314,18 @@ form > .btn.text {
   align-items: center;
   gap: var(--sp-2);
   background: var(--surface-1);
-  border: 1px solid var(--border);
   border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
   padding: var(--sp-4) var(--sp-1) var(--sp-3);
   cursor: pointer;
   color: var(--text-2);
   font-size: var(--fs-sm);
   font-weight: 600;
-  transition: background var(--t-base), border-color var(--t-base), color var(--t-base);
+  transition: background var(--t-base), color var(--t-base);
 }
 
 .action-btn:hover {
   background: var(--surface-2);
-  border-color: var(--border-strong);
   color: var(--text-1);
 }
 
@@ -409,7 +403,7 @@ form > .btn.text {
   align-items: center;
   justify-content: space-between;
   padding: var(--sp-3) 0;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-hairline);
   gap: var(--sp-3);
 }
 
@@ -454,7 +448,6 @@ form > .btn.text {
 
 .settings-select {
   background: var(--surface-2);
-  border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   color: var(--text-1);
   font-family: var(--font-ui);
@@ -466,7 +459,7 @@ form > .btn.text {
 
 .settings-select:focus {
   outline: none;
-  border-color: var(--accent-border);
+  border-color: var(--ink);
 }
 
 .settings-danger .settings-icon { color: var(--negative); }
@@ -492,27 +485,19 @@ form > .btn.text {
 .filter-chip {
   font-family: var(--font-ui);
   font-size: var(--fs-xs);
-  font-weight: 500;
-  color: var(--text-3);
-  background: transparent;
-  border: 1px solid var(--border);
+  font-weight: 600;
+  color: var(--text-2);
+  background: var(--surface-1);
   border-radius: var(--radius-pill);
   padding: var(--sp-1) var(--sp-3);
   cursor: pointer;
   white-space: nowrap;
-  transition: all var(--t-fast);
+  transition: background var(--t-fast), color var(--t-fast);
 }
 
-.filter-chip:hover {
-  color: var(--text-1);
-  border-color: var(--border-strong);
-}
+.filter-chip:hover { color: var(--text-1); background: var(--surface-2); }
 
-.filter-chip.active {
-  color: var(--accent-ink);
-  background: var(--accent);
-  border-color: var(--accent);
-}
+.filter-chip.active { color: var(--accent-ink); background: var(--accent); }
 
 /* ---- Unlock Screen ----
    This screen wraps its content instead of rendering straight into
@@ -540,10 +525,9 @@ form > .btn.text {
   justify-content: center;
   width: 52px;
   height: 52px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  color: var(--accent);
+  background: var(--brand-tint);
+  border-radius: var(--radius-lg);
+  color: var(--brand);
 }
 
 .unlock-form {
@@ -592,7 +576,6 @@ form > .btn.text {
   gap: var(--sp-3);
   padding: var(--sp-3) var(--sp-4);
   background: var(--surface-2);
-  border: 1px solid var(--border);
   border-radius: var(--radius-md);
 }
 
@@ -622,7 +605,6 @@ form > .btn.text {
   text-align: center;
   padding: var(--sp-4);
   background: var(--negative-tint);
-  border: 1px solid var(--negative-border);
   border-radius: var(--radius-md);
 }
 
@@ -664,16 +646,15 @@ form > .btn.text {
   font-size: var(--fs-xs);
   font-family: var(--font-mono);
   color: var(--text-3);
-  background: var(--surface-2);
-  padding: 2px var(--sp-3);
+  background: var(--surface-3);
+  padding: 3px var(--sp-3);
   border-radius: var(--radius-pill);
-  border: 1px solid var(--border);
 }
 
 .account-detail-card {
   background: var(--surface-1);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
   padding: var(--sp-3) var(--sp-4);
   margin-top: var(--sp-3);
 }
@@ -683,7 +664,7 @@ form > .btn.text {
   align-items: center;
   justify-content: space-between;
   padding: var(--sp-2) 0;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-hairline);
   font-size: var(--fs-sm);
 }
 
@@ -748,8 +729,8 @@ form > .btn.text {
    wear a badge. P2: .tx-card-open marks a card that opens the detail sheet. */
 .tx-card {
   background: var(--surface-1);
-  border: 1px solid var(--border);
   border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
   padding: var(--sp-3);
   margin-bottom: var(--sp-2);
 }
@@ -759,10 +740,9 @@ form > .btn.text {
    :focus-visible rule, which already targets any focusable element. */
 .tx-card-open {
   cursor: pointer;
-  transition: border-color var(--t-fast), background var(--t-fast);
+  transition: background var(--t-fast);
 }
 .tx-card-open:hover {
-  border-color: var(--border-strong);
   background: var(--surface-2);
 }
 .tx-card-head {
@@ -830,7 +810,6 @@ form > .btn.text {
 .tx-card-badge.failed {
   color: var(--negative);
   background: var(--negative-tint);
-  border: 1px solid var(--negative-border);
 }
 .tx-card-amounts {
   margin-left: auto;

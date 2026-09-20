@@ -21,6 +21,7 @@ Purpose: single map for every maintained Markdown document in this repository. U
 2. `docs/WALLET_FEATURES_PERFORMANCE_STUDY.md` — wallet feature set and no-lag scaling model.
 3. `docs/THRU_NATIVE_DEFI_TAB_UX.md` — Thru-native launchpad/DEX/full-tab UX.
 4. `docs/MIGRATION_MAP.md` — Rabby-class migration strategy and risk register.
+5. `docs/RABBY_UPGRADE_SPEC.md` — the design system and the R1–R8 visual plan (before any UI change).
 
 ### For UI or browser verification work
 
@@ -102,6 +103,7 @@ Purpose: single map for every maintained Markdown document in this repository. U
 | `docs/BACKEND_GAPS.md` | current capability gaps | backend missing pieces and verified unsupported states | Keep capability-focused; do not duplicate roadmap details. |
 | `docs/TX_DETAIL_SPIKE.md` | current findings record | what the RPC surface can/cannot answer for ONE transaction (fee, timestamp) | Records SDK/protobuf contract facts, re-checkable by reading the same files. Nothing in it was confirmed against a live node; that is the manual smoke run's job. |
 | `docs/HISTORY_REDESIGN_PLAN.md` | current phase plan | Activity/history redesign (P0–P3) and its honest omissions | Status line at the top wins on which phases have shipped. |
+| `docs/RABBY_UPGRADE_SPEC.md` | current design-direction spec | the visual system (tokens, surfaces, brand ramp, shape scale), the corrections applied to the externally supplied Rabby-style package, and the R1–R8 phase plan | Read before any visual change. R1 is implemented; R2–R8 are not. |
 | `docs/REDESIGN_TRIAGE.md` | current findings record | line-by-line triage of external Rabby-parity design suggestions (set 1 of 4) | Records which suggestions are stale/unsafe vs actionable; re-verify claims against the tree before acting on any future set. |
 | `docs/handoff/P2_TX_DETAIL_HANDOFF.md` | current handoff | auditor entry point for the P2 detail sheet (PR #7) | Gate results, honesty claims + falsification, known gaps. Read before auditing the sheet. |
 | `docs/handoff/P25_EXPLORER_SPIKE_PROMPT.md` | current prompt | self-contained prompt for the P2.5 explorer-enrichment spike | Durable home for a prompt that previously lived only in chat. Already carries the two 2026-09-20 amendments (layout-must-be-seen line; question 2 rewritten now that C2c is closed). |

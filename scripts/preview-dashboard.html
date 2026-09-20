@@ -1,0 +1,367 @@
+<!doctype html>
+<!--
+  Visual harness for the design system + the dashboard. NOT shipped — dev only, not referenced
+  by manifest.json and not copied into dist/ by build.mjs.
+
+  Why this exists: `npm test` runs against a hand-rolled DOM shim with no layout or colour
+  engine, so it cannot tell you whether a card reads as a card, whether the balance is the
+  loudest thing on the screen, or whether a dark-theme surface is missing. R1 changed every
+  surface in the app; R2 changes the hero. Neither can be verified by a green suite
+  (AGENTS.md hard rule 14).
+
+  Usage:
+    npm run build
+    python3 -m http.server 4173        # any static server rooted at the repo
+    open http://localhost:4173/scripts/preview-dashboard.html
+
+  It loads the REAL built stylesheet (../dist/popup.css), so what you see is what ships. The
+  markup mirrors src/ui/app/shell.js + src/ui/app/routes/dashboard.js + src/ui/domain/row
+  shapes: if those change, update this file or it stops being a truthful preview.
+
+  What to look at, in order:
+    1. Is the balance the loudest thing on the dashboard? (It should be, in both themes.)
+    2. Is a card separated by SURFACE + SHADOW rather than by an outline?
+    3. Does the primary button read as the only "tap me" colour on screen?
+    4. Does dark mode have any surface that stayed white, or text that vanished into its panel?
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>design system + dashboard preview</title>
+<link rel="stylesheet" href="../dist/popup.css" />
+<style>
+  /* Harness chrome only. None of this describes shipped UI. */
+  body {
+    width: auto;
+    padding: 24px;
+    font-family: system-ui, sans-serif;
+    background: #33404d;
+  }
+  .harness-row { display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-start; }
+  .harness-col { display: flex; flex-direction: column; gap: 10px; }
+  .harness-label { font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: #fff; }
+  .harness-note { font-size: 12px; line-height: 1.5; color: #dfe6ee; max-width: 408px; }
+  .harness-controls { margin-bottom: 20px; display: flex; gap: 12px; align-items: center; }
+  .harness-controls button {
+    font: inherit; font-size: 13px; padding: 8px 14px; border-radius: 8px;
+    border: 1px solid #7b8a9a; background: #f7f9fb; cursor: pointer;
+  }
+  /* The popup viewport, reproduced: 408px wide, scrolled top-anchored. */
+  .viewport {
+    width: 408px;
+    height: 700px;
+    overflow-y: auto;
+    background: #888;
+    border: 1px solid #7b8a9a;
+  }
+  .swatches { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .swatch { font-size: 11px; font-family: ui-monospace, monospace; padding: 8px; border-radius: 8px; }
+</style>
+</head>
+<body>
+
+<div class="harness-controls">
+  <button id="toggle-theme">Toggle dark</button>
+  <span class="harness-note">Both panes load the real built <code>dist/popup.css</code>. The dark
+  pane follows the same toggle as the light one — flip it and look for a surface that did not
+  follow, or text that stopped being readable.</span>
+</div>
+
+<div class="harness-row">
+  <div class="harness-col">
+    <div class="harness-label">Dashboard (408 × 700 popup viewport)</div>
+    <div class="viewport" id="vp-dashboard"></div>
+  </div>
+  <div class="harness-col">
+    <div class="harness-label">System</div>
+    <div class="viewport" id="vp-system" style="height: 700px"></div>
+  </div>
+</div>
+
+<script>
+// ---- tiny DOM helpers so the markup below stays readable ----
+function el(tag, cls, text) {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text != null) n.textContent = text;
+  return n;
+}
+function svg(d) {
+  const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  s.setAttribute('viewBox', '0 0 24 24');
+  s.setAttribute('width', '17');
+  s.setAttribute('height', '17');
+  s.setAttribute('fill', 'none');
+  s.setAttribute('stroke', 'currentColor');
+  s.setAttribute('stroke-width', '1.8');
+  s.setAttribute('stroke-linecap', 'round');
+  s.setAttribute('stroke-linejoin', 'round');
+  const p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  p.setAttribute('d', d);
+  s.appendChild(p);
+  return s;
+}
+const ICONS = {
+  send: 'M4 12l16-8-6 16-3-6-7-2z',
+  receive: 'M12 4v12m0 0l-4-4m4 4l4-4M4 20h16',
+  faucet: 'M12 3v10m0 0c0 4-3 6-6 6 0-4 3-6 6-6zm0 0c0 4 3 6 6 6 0-4-3-6-6-6z',
+  history: 'M12 8v5l4 2M4 12a8 8 0 1 0 3-6.2M4 4v4h4',
+  refresh: 'M4 12a8 8 0 0 1 13.6-5.7M20 12a8 8 0 0 1-13.6 5.7M18 3v3.5h-3.5M6 21v-3.5h3.5',
+  settings: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19 12l2-1-2-4-2 .5-2-1V4H9v2.5l-2 1L5 7l-2 4 2 1-2 1 2 4 2-.5 2 1V20h4v-2.5l2-1 2 .5 2-4-2-1z',
+  lock: 'M6 11V8a6 6 0 1 1 12 0v3M5 11h14v9H5z',
+  copy: 'M9 9h10v12H9zM5 15V3h10',
+  chevronRight: 'M9 5l7 7-7 7',
+};
+// Mirrors AccountAvatar() in src/ui/domain/account-avatar.js: a 4x4 grid whose cell
+// shade is derived from the address, and an `empty` slot when there is no address yet.
+function accountMark(address, { imported = false, size = 'md' } = {}) {
+  const classes = ['byte-mark'];
+  if (imported) classes.push('imported');
+  if (size === 'sm') classes.push('sm');
+  const src = String(address || '');
+  if (src.length < 2) return el('span', [...classes, 'empty'].join(' '));
+  const mark = el('span', classes.join(' '));
+  for (let i = 0; i < 16; i += 1) {
+    const code = src.charCodeAt((i * 7 + 3) % src.length) || 0;
+    mark.appendChild(el('i', `m${code % 4}`));
+  }
+  return mark;
+}
+
+// ---- dashboard: mirrors src/ui/app/shell.js + src/ui/app/routes/dashboard.js ----
+function dashboard() {
+  const app = el('div', 'app');
+  const shell = el('div', 'app-shell');
+
+  const topbar = el('header', 'topbar');
+  const left = el('div', 'row-flex');
+  const wordmark = el('div', 'wordmark');
+  wordmark.appendChild(el('span', null, 'thru wallet'));
+  left.appendChild(wordmark);
+  left.appendChild(el('span', 'badge', 'Alphanet'));
+  const right = el('div', 'topbar-right');
+  right.appendChild(el('button', 'icon-btn', null)).appendChild(svg(ICONS.settings));
+  right.appendChild(el('button', 'icon-btn danger-hover', null)).appendChild(svg(ICONS.lock));
+  topbar.appendChild(left);
+  topbar.appendChild(right);
+
+  const outlet = el('main', 'app-outlet');
+  const screen = el('section', 'screen');
+
+  // Account pill + copy
+  const dashTop = el('div', 'dash-topbar');
+  const group = el('div', 'dash-account-group');
+  const pill = el('button', 'account-pill');
+  const pillMark = el('span', 'shrink-0');
+  pillMark.appendChild(accountMark(''));   // dashboard.js renders AccountAvatar({ address: '' })
+  pill.appendChild(pillMark);
+  const meta = el('span', 'account-pill-meta');
+  meta.appendChild(el('span', 'account-pill-name', 'Primary'));
+  meta.appendChild(el('span', 'account-pill-address', 'thru1q…kf9s'));
+  pill.appendChild(meta);
+  const chev = el('span', 'account-pill-chevron');
+  chev.appendChild(svg(ICONS.chevronRight));
+  pill.appendChild(chev);
+  group.appendChild(pill);
+  const copyBtn = el('button', 'icon-btn', null);   // CopyButton -> IconButton('copy', 14)
+  copyBtn.appendChild(svg(ICONS.copy));
+  group.appendChild(copyBtn);
+  dashTop.appendChild(group);
+
+  // Balance hero
+  const hero = el('div', 'balance-hero');
+  const heroHead = el('div', 'row-flex between');
+  heroHead.appendChild(el('span', 'eyebrow balance-hero-label', 'Balance'));
+  const refresh = el('button', 'icon-btn icon-btn-ghost', null);   // IconButton, variant ghost
+  refresh.appendChild(svg(ICONS.refresh));
+  heroHead.appendChild(refresh);
+  hero.appendChild(heroHead);
+  const heroRow = el('div', 'balance-hero-row');
+  heroRow.appendChild(el('span', 'balance-hero-value', '12,480.0001'));
+  heroRow.appendChild(el('span', 'balance-hero-unit', 'THRU'));
+  hero.appendChild(heroRow);
+
+  // Quick actions
+  const grid = el('div', 'action-grid');
+  [['send', 'Send'], ['receive', 'Receive'], ['faucet', 'Faucet'], ['history', 'History']]
+    .forEach(([iconName, label]) => {
+      const btn = el('button', 'action-btn');
+      btn.appendChild(svg(ICONS[iconName]));
+      btn.appendChild(el('span', null, label));
+      grid.appendChild(btn);
+    });
+
+  // Assets
+  const assets = el('section', 'dash-assets-section');
+  const assetsHead = el('header', 'dash-assets-header');
+  assetsHead.appendChild(el('span', 'eyebrow', 'Assets'));
+  assets.appendChild(assetsHead);
+  const list = el('div', 'dash-tokens-list');
+
+  // AssetRow() in src/ui/domain/token-row.js: (avatar, row-body, row-value) inside .row.
+  function assetRow({ symbol, name, balanceText, isNative = false, stale = false }) {
+    const row = el('div', 'row');
+    const avatar = el('div', 'token-row-avatar');
+    if (isNative) avatar.appendChild(svg(ICONS.bolt));
+    else avatar.appendChild(el('span', null, symbol.slice(0, 3).toUpperCase()));
+    row.appendChild(avatar);
+    const body = el('span', 'row-body');
+    const line = el('span', 'row-flex');
+    line.style.gap = '6px';
+    line.appendChild(el('span', 'row-title', symbol));
+    if (isNative) line.appendChild(el('span', 'tag-native', 'Native'));
+    body.appendChild(line);
+    body.appendChild(el('span', 'row-sub', name));
+    row.appendChild(body);
+    row.appendChild(el('span', 'row-value' + (stale ? ' stale' : ''), balanceText == null ? '—' : balanceText));
+    return row;
+  }
+  list.appendChild(assetRow({
+    symbol: 'THRU', name: 'Thru Native Token', balanceText: '12,480.0001 THRU', isNative: true,
+  }));
+  list.appendChild(assetRow({
+    symbol: 'MYT', name: 'My Token', balanceText: '—', stale: true,
+  }));
+
+  const pending = el('div', 'notice warning');
+  pending.appendChild(el('strong', null, '1 transaction pending'));
+  pending.appendChild(el('p', 'hint', 'Waiting for on-chain confirmation.'));
+  list.appendChild(pending);
+
+  assets.appendChild(list);
+
+  screen.appendChild(dashTop);
+  screen.appendChild(hero);
+  screen.appendChild(grid);
+  screen.appendChild(assets);
+  outlet.appendChild(screen);
+
+  const foot = el('button', 'foot clickable');
+  foot.appendChild(el('span', 'foot-dot healthy'));
+  foot.appendChild(el('span', null, 'Alphanet'));
+  foot.appendChild(el('span', 'foot-latency', '128ms'));
+
+  shell.appendChild(topbar);
+  shell.appendChild(outlet);
+  shell.appendChild(foot);
+  app.appendChild(shell);
+  return app;
+}
+
+// ---- system: every primitive R1 touched ----
+function system() {
+  const app = el('div', 'app');
+  const shell = el('div', 'app-shell');
+  const outlet = el('main', 'app-outlet');
+  const screen = el('section', 'screen');
+
+  const buttons = el('div', 'stack stack-2');
+  buttons.appendChild(el('button', 'btn primary', 'Primary (brand CTA)'));
+  buttons.appendChild(el('button', 'btn secondary', 'Secondary (card button)'));
+  const disabled = el('button', 'btn primary', 'Primary disabled');
+  disabled.disabled = true;
+  buttons.appendChild(disabled);
+  buttons.appendChild(el('button', 'btn danger', 'Destructive'));
+  buttons.appendChild(el('button', 'btn text', 'Text / link button'));
+  const small = el('div', 'row-flex');
+  small.appendChild(el('button', 'btn secondary sm', 'Small'));
+  const chip = el('button', 'btn-chip', 'Chip');
+  small.appendChild(chip);
+  const icon = el('button', 'icon-btn', null);
+  icon.appendChild(svg(ICONS.copy));
+  small.appendChild(icon);
+  buttons.appendChild(small);
+
+  const fields = el('div', 'stack stack-2');
+  const field = el('label', 'field');
+  field.appendChild(el('span', null, 'Recipient'));
+  const input = el('input');
+  input.type = 'text';
+  input.placeholder = 'thru1…';
+  input.value = 'thru1qq…kf9s';
+  field.appendChild(input);
+  const badField = el('label', 'field');
+  badField.appendChild(el('span', null, 'Amount'));
+  const badInput = el('input');
+  badInput.type = 'text';
+  badInput.value = '0';
+  badInput.setAttribute('aria-invalid', 'true');
+  badField.appendChild(badInput);
+  badField.appendChild(el('span', 'hint', 'Amount must be greater than zero.'));
+  fields.appendChild(field);
+  fields.appendChild(badField);
+
+  const messages = el('div', 'stack stack-2');
+  messages.appendChild(el('div', 'error', 'Could not reach the network.'));
+  messages.appendChild(el('div', 'notice', 'A notice with an accent rule.'));
+  messages.appendChild(el('div', 'notice warning', 'Waiting for on-chain confirmation.'));
+  const monoBlock = el('div', 'monospace-block', 'thru1qq7x2m4kf9s0p3vw8n6d5rt2hq1jz9c4b7l0a8e');
+  messages.appendChild(monoBlock);
+
+  const detail = el('div', 'detail-table');
+  [['Status', 'Succeeded'], ['Amount', '+0.00001 THRU'], ['Block', '12871764'], ['Program', 'thru1qq…kf9s']]
+    .forEach(([k, v]) => {
+      const row = el('div', 'detail-row');
+      row.appendChild(el('span', 'detail-label', k));
+      row.appendChild(el('div', 'detail-val detail-sheet-mono', v));
+      detail.appendChild(row);
+    });
+
+  const option = el('button', 'option-card');
+  const optionIcon = el('span', 'option-card-icon', null);
+  optionIcon.appendChild(svg(ICONS.receive));
+  option.appendChild(optionIcon);
+  const optionBody = el('span', 'option-card-body');
+  optionBody.appendChild(el('span', 'option-card-title', 'Import a private key'));
+  optionBody.appendChild(el('span', 'option-card-sub', 'Import an account you already hold the key for.'));
+  option.appendChild(optionBody);
+
+  const tags = el('div', 'row-flex');
+  tags.appendChild(el('span', 'tag-warning', 'unverified'));
+  tags.appendChild(el('span', 'tag-native', 'native'));
+  tags.appendChild(el('span', 'badge', 'Alphanet'));
+
+  screen.appendChild(el('h1', null, 'System'));
+  screen.appendChild(buttons);
+  screen.appendChild(fields);
+  screen.appendChild(messages);
+  screen.appendChild(detail);
+  screen.appendChild(option);
+  screen.appendChild(tags);
+
+  const modal = el('div', 'modal-card');
+  const head = el('div', 'modal-head');
+  head.appendChild(el('span', 'modal-icon', null)).appendChild(svg(ICONS.lock));
+  head.appendChild(el('h2', null, 'Confirm password'));
+  modal.appendChild(head);
+  const pw = el('div', 'password-input-wrap');
+  const pwInput = el('input');
+  pwInput.type = 'password';
+  pwInput.value = 'hunter22hunter22';
+  pw.appendChild(pwInput);
+  const toggle = el('button', 'password-toggle', null);
+  toggle.appendChild(svg(ICONS.receive));
+  pw.appendChild(toggle);
+  modal.appendChild(pw);
+  modal.appendChild(el('button', 'btn primary', 'Unlock'));
+  screen.appendChild(modal);
+
+  outlet.appendChild(screen);
+  shell.appendChild(outlet);
+  app.appendChild(shell);
+  return app;
+}
+
+document.getElementById('vp-dashboard').appendChild(dashboard());
+document.getElementById('vp-system').appendChild(system());
+
+document.getElementById('toggle-theme').addEventListener('click', () => {
+  const root = document.documentElement;
+  const next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+  root.setAttribute('data-theme', next);
+  document.getElementById('toggle-theme').textContent = next === 'dark' ? 'Show light' : 'Show dark';
+});
+document.documentElement.setAttribute('data-theme', 'light');
+</script>
+</body>
+</html>

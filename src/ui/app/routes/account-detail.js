@@ -222,7 +222,7 @@ export function AccountDetailRoute({ params, navigate, back }) {
     if (isSeed && keyring?.origin === 'generated' && !keyring?.backedUpAt) {
       actions.push(track(Button({
         label: 'Back up recovery phrase',
-        variant: 'accent',
+        variant: 'primary',
         iconName: 'shield',
         onClick: () => navigate(`/export?ref=${encodeRef(account.ref)}&mode=backup`),
       })).el);

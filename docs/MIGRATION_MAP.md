@@ -444,7 +444,10 @@ have no caller.
 
 ### Phase E — Component consolidation and UX polish
 
-Purpose: Rabby-class density and clarity with original Thru styling.
+Purpose: Rabby-class density and clarity. The visual system for this is now specified in
+`docs/RABBY_UPGRADE_SPEC.md` (consumer-wallet direction: contrast + elevation instead of
+outlines, one brand ramp, 44px controls) and enforced by `scripts/check-design-tokens.mjs`;
+R1 (tokens + de-bordering) has shipped.
 
 1. Fill component gaps only where there is duplication:
    - copyable address

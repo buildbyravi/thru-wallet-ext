@@ -34,16 +34,15 @@ body {
 * { scrollbar-width: none; }
 *::-webkit-scrollbar { display: none; }
 
-/* The app is a white working surface inside the pale steel page frame,
-   with a hairline rule on each side — the same framing thru.org uses
-   around its content column. */
+/* The app is the page backdrop, not a framed document. Cards are
+   --surface-1 surfaces floating on it (see tokens.css rule 1); the old
+   frame drew a hairline down each edge of a white column, which is what
+   made every screen read as a bordered form rather than a wallet. */
 .app {
   display: flex;
   flex-direction: column;
   min-height: var(--popup-min-height);
-  background: var(--surface-1);
-  border-left: 1px solid var(--border);
-  border-right: 1px solid var(--border);
+  background: var(--bg);
 }
 
 h1 {
