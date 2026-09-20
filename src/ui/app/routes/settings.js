@@ -17,6 +17,7 @@ import { Button } from '../../kit/button.js';
 import { PageHeader, Banner, Spinner } from '../../kit/feedback.js';
 import { requirePassword } from '../../domain/password-prompt.js';
 import * as bridge from '../bridge.js';
+import { getTheme, setTheme } from '../../../popup/theme.js';
 import { AUTO_LOCK_CHOICES } from '../../../shared/autolock.js';
 
 function SectionHeader(text) {
@@ -29,6 +30,7 @@ export function SettingsRoute({ navigate, back }) {
   let networks = [];
   let activeNetworkId = null;
   let preferences = null;
+  let theme = 'system';
 
   const banner = Banner({ tone: 'error' });
   const body = h('div', { class: 'stack stack-5' }, Spinner({ label: 'Loading settings' }).el);
@@ -231,6 +233,35 @@ export function SettingsRoute({ navigate, back }) {
     hostEl.appendChild(h('div', { class: 'row-flex wrap' }, chips));
   }
 
+
+  // ---- Appearance ------------------------------------------------------
+  // Theme is popup-local rendering state (popup/theme.js), not a backend or
+  // security decision: no password gate, no bridge call, no load() round-trip.
+  function themeChips() {
+    const options = [
+      { value: 'light', label: 'Light' },
+      { value: 'dark', label: 'Dark' },
+      { value: 'system', label: 'System' },
+    ];
+    const chips = options.map((option) => {
+      const selected = option.value === theme;
+      const chip = h('button', {
+        type: 'button',
+        class: ['chip-option', selected ? 'selected' : null].filter(Boolean),
+        text: option.label,
+      });
+      d.on(chip, 'click', async () => {
+        banner.clear();
+        theme = option.value;
+        await setTheme(option.value).catch(() => {});
+        // Reflow the selected state by identity — never by DOM position.
+        options.forEach((o, i) => chips[i].classList.toggle('selected', o.value === theme));
+      });
+      return chip;
+    });
+    return chips;
+  }
+
   // ---- Side panel ---------------------------------------------------------
   //
   // The manifest declares `side_panel.default_path: popup.html`, so the panel runs this exact UI —
@@ -292,6 +323,7 @@ export function SettingsRoute({ navigate, back }) {
       networks = netList || [];
       activeNetworkId = active?.id || null;
       preferences = prefs || {};
+      theme = await getTheme().catch(() => 'system');
       render(autoLock);
     } catch (error) {
       clearBody();
@@ -341,6 +373,14 @@ export function SettingsRoute({ navigate, back }) {
         iconName: 'external',
         onClick: () => openSidePanel(),
       })).el,
+    ]));
+
+    // ---- Appearance ----
+    body.appendChild(h('section', { class: 'stack stack-2' }, [
+      SectionHeader('Appearance'),
+      h('p', { class: 'hint', text:
+        'Choose how the wallet looks. “System” follows your device and switches live.' }),
+      h('div', { class: 'row-flex wrap' }, themeChips()),
     ]));
 
     // ---- Danger ----

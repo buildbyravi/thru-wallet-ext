@@ -33,6 +33,7 @@
 // Run: node test-route-lifecycle.mjs
 
 import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { applyTheme } from './src/popup/theme.js';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -1882,6 +1883,70 @@ async function settingsTest() {
     textOf(tree).slice(0, 300));
 }
 
+// ---- Theme ----------------------------------------------------------------
+
+async function themeTest() {
+  section('theme: the user chooses light/dark/system and the choice applies and persists');
+
+  resetBackend(SCENARIOS[2]);
+  resetDom();
+  guards.invalidate();
+
+  // A stored preference is honoured at boot, before any routed content paints.
+  await chrome.storage.local.set({ thru_theme: 'dark' });
+  const app = DOC.getElementById('app');
+  const router = await boot({ root: app });
+  await settle();
+  ok('a stored dark preference applies at boot', DOC.documentElement.dataset.theme === 'dark',
+    `data-theme=${DOC.documentElement.dataset.theme}`);
+
+  router.navigate('/settings');
+  await settle();
+  const tree = router.root;
+  const text = textOf(tree);
+
+  ok('settings offers a user-facing Appearance section', /appearance/i.test(text));
+  const lightChip = buttons(tree, /^light$/i)[0];
+  const darkChip = buttons(tree, /^dark$/i)[0];
+  const systemChip = buttons(tree, /^system$/i)[0];
+  ok('all three theme choices are real buttons', [lightChip, darkChip, systemChip].every(Boolean));
+  ok('the stored choice renders as the selected chip', darkChip?.classList.contains('selected'),
+    `dark.selected=${darkChip?.classList.contains('selected')}`);
+
+  click(lightChip);
+  await settle();
+  ok('switching to Light applies immediately', DOC.documentElement.dataset.theme === 'light',
+    `data-theme=${DOC.documentElement.dataset.theme}`);
+  ok('the choice persists in popup-local storage',
+    (await chrome.storage.local.get('thru_theme'))?.thru_theme === 'light',
+    JSON.stringify(await chrome.storage.local.get('thru_theme')));
+  ok('the selection moves to the newly chosen chip',
+    buttons(tree, /^light$/i)[0]?.classList.contains('selected')
+      && !buttons(tree, /^dark$/i)[0]?.classList.contains('selected'));
+
+  click(systemChip);
+  await settle();
+  ok('System resolves through the OS preference, here to Light',
+    DOC.documentElement.dataset.theme === 'light',
+    `data-theme=${DOC.documentElement.dataset.theme}`);
+  ok('the persisted value is the word “system”, not the resolved theme',
+    (await chrome.storage.local.get('thru_theme'))?.thru_theme === 'system');
+
+  // An unrecognised stored value never reaches the DOM.
+  await chrome.storage.local.set({ thru_theme: 'midnight-blue' });
+  guards.invalidate();
+  const app2 = DOC.getElementById('app');
+  await boot({ root: app2 });
+  await settle();
+  ok('an unrecognised stored value falls back to system',
+    DOC.documentElement.dataset.theme === 'light',
+    `data-theme=${DOC.documentElement.dataset.theme}`);
+
+  // Leave the shared fixture storage at the default for the scenarios that follow.
+  await chrome.storage.local.set({ thru_theme: 'system' });
+  applyTheme('system');
+}
+
 // ---- Focus trap ------------------------------------------------------------
 
 function focusTrapTest() {
@@ -2660,6 +2725,35 @@ async function navigationTest() {
       && allCountChips.every((chip) => chip.parentNode === null || !chip.parentNode?.classList?.contains('tx-card')));
   FIXTURES['tx.getHistoryFeed'] = realFeed;
 
+  // Production wire reality: entries carry NO wall-clock timestamp (slots only). Cards
+  // must group them under an honest "Activity" section and fall back to slot text —
+  // never crash, never render a blank head. Counterparties that are another account in
+  // THIS wallet resolve by name instead of a truncated address.
+  const SELF_B = backend.accounts[1] || backend.accounts[0];
+  FIXTURES['tx.getHistoryFeed'] = () => ({
+    entries: [
+      { signature: 'tsNOTIME1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', slot: 41000,
+        success: true, programAddress: NETWORK_ALPHANET.transferProgramId, kind: 'sent',
+        amount: '90000', counterparty: SELF_B.address, timestamp: null },
+      { signature: 'tsNOTIME2aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', slot: 40900,
+        success: true, programAddress: NETWORK_ALPHANET.transferProgramId, kind: 'received',
+        amount: '40000', counterparty: ADDRESS_B, timestamp: null },
+    ],
+    nextCursor: null,
+    synced: true,
+  });
+  router.navigate('/history');
+  await settle();
+  const noTimeText = textOf(router.root);
+  ok('timestampless wire entries group under an honest section label',
+    /Activity/.test(noTimeText), noTimeText.slice(0, 200));
+  ok('timestampless cards show their slot instead of a blank time',
+    /Slot 41000/.test(noTimeText));
+  const selfLabel = SELF_B.label || 'Account 2';
+  ok('a counterparty that is another wallet account renders by name',
+    noTimeText.includes(`to ${selfLabel}`), `"to ${selfLabel}"`);
+  FIXTURES['tx.getHistoryFeed'] = realFeed;
+
   // The account pill is the dashboard's route into account management.
   router.navigate('/dashboard');
   await settle();
@@ -2803,6 +2897,7 @@ try {
     await runScenario(scenario);
   }
   await settingsTest();
+  await themeTest();
   focusTrapTest();
   await passwordModalTest();
   await exportSecretTest();

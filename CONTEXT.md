@@ -74,7 +74,7 @@ Four rules, all enforced by `scripts/check-layering.mjs`:
 | `test-derivation.mjs` | **Runs first.** Golden vectors: a fixed phrase must derive fixed addresses. |
 | `test-contract.mjs` | Contract --!  router agreement, both directions. 56 checks. |
 | `test-ui-dom.mjs` | `h()` security properties + ref codec. 89 checks, DOM shim. |
-| `test-route-lifecycle.mjs` | Mounts all 14 routes through the real Router/guards/bridge in no-vault, locked and unlocked states, plus settings (including custom-network quarantine), focus-trap, password-modal, export-secret, navigation and negative-control passes. 694 checks, richer DOM shim, mocked `chrome.runtime.sendMessage` only. |
+| `test-route-lifecycle.mjs` | Mounts all 14 routes through the real Router/guards/bridge in no-vault, locked and unlocked states, plus settings (including custom-network quarantine), focus-trap, password-modal, export-secret, navigation and negative-control passes. 755 checks, richer DOM shim, mocked `chrome.runtime.sendMessage` only. |
 | `docs/MANUAL_SMOKE_CHECKLIST.md` | What only a browser can prove: popup + side panel, narrow + wide widths, all 14 routes, focus, secret hygiene. Not a test; a runbook. |
 | `test-vault.mjs` | Real vault against real `@thru/sdk/crypto`. |
 | `test-thru-client.mjs` | Instruction layouts, amount round-trips, network binding. |
@@ -247,7 +247,7 @@ their only importer. Replacements: `src/ui/kit/icon.js` (SVG as data) and
 
 ### `src/popup/styles/` --  3,274 lines
 
-`tokens.css` (152) light theme matched to thru.org  `base.css` (128)  `utilities.css` (194)
+`tokens.css` light + dark themes matched to thru.org (`[data-theme]`, user choice via `popup/theme.js`)  `base.css` (128)  `utilities.css` (194)
 `components.css` (1,724)  `kit.css` (345)  `screens.css` (731)
 
 Import order matters: tokens --   base --   utilities --   components --   kit --   screens. `kit.css` loads
