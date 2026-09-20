@@ -100,7 +100,7 @@ export function ExportRoute({ params, navigate, back }) {
 
     const revealBtn = Button({
       label: 'Enter password to reveal',
-      variant: 'primary',
+      variant: 'accent',
       iconName: 'key',
       onClick: async () => {
         const result = await requirePassword({

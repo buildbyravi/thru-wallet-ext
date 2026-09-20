@@ -127,7 +127,7 @@ export function KeyringRoute({ params, navigate, back }) {
       const firstRef = accounts[0].ref;
       actions.push(track(Button({
         label: keyring.backedUpAt ? 'View recovery phrase' : 'Back up recovery phrase',
-        variant: keyring.backedUpAt ? 'secondary' : 'primary',
+        variant: keyring.backedUpAt ? 'secondary' : 'accent',
         iconName: 'shield',
         onClick: () => navigate(
           `/export?ref=${encodeRef(firstRef)}${keyring.backedUpAt ? '' : '&mode=backup'}`,

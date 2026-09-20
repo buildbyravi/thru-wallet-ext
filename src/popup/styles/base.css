@@ -34,15 +34,16 @@ body {
 * { scrollbar-width: none; }
 *::-webkit-scrollbar { display: none; }
 
-/* The app is the page backdrop, not a framed document. Cards are
-   --surface-1 surfaces floating on it (see tokens.css rule 1); the old
-   frame drew a hairline down each edge of a white column, which is what
-   made every screen read as a bordered form rather than a wallet. */
+/* The app is a white working surface inside the pale steel page frame,
+   with a hairline rule on each side — the same framing thru.org uses
+   around its content column. */
 .app {
   display: flex;
   flex-direction: column;
   min-height: var(--popup-min-height);
-  background: var(--bg);
+  background: var(--surface-1);
+  border-left: 1px solid var(--border);
+  border-right: 1px solid var(--border);
 }
 
 h1 {
@@ -59,16 +60,16 @@ h2 {
   color: var(--text-1);
 }
 
-/* Labels. R2 removed the terminal styling from this class: monospace, uppercase and
-   0.09em tracking together made every screen read as an instrument readout, and the
-   class is used for section headers ("Assets"), detail-table keys ("Network fee") and
-   the balance label — none of which are machine output. Monospace now means "this is a
-   string you might copy" (addresses, signatures, amounts), which is a meaning, not a mood. */
+/* Eyebrow: uppercase micro-label. Used for section headers,
+   field labels, and data captions — the system's structural voice.
+   Monospace here because thru.org sets every micro-label in mono, and
+   that single choice carries most of the technical character. */
 .eyebrow {
-  font-family: var(--font-ui);
-  font-size: var(--fs-sm);
-  font-weight: 600;
-  letter-spacing: var(--label-tracking);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: var(--eyebrow-tracking);
   color: var(--text-3);
 }
 

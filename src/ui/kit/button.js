@@ -10,7 +10,7 @@ import { icon } from './icon.js';
 /**
  * @param {Object} props
  *   label      string
- *   variant    'primary' | 'secondary' | 'text' | 'danger'  (default 'secondary')
+ *   variant    'primary' | 'secondary' | 'accent' | 'text' | 'danger'  (default 'secondary')
  *   size       'sm' | 'md' | 'lg'  (default 'md')
  *   type       'button' | 'submit'  (default 'button')
  *   iconName   optional kit icon name, rendered before the label

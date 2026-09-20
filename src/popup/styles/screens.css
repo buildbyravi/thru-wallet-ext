@@ -5,17 +5,16 @@
    ============================================================ */
 
 /* ---- Top bar -----------------------------------------------
-   Chrome is a raised surface with a hairline under it. The hairline is
-   load-bearing: it is the one place a border still separates two regions
-   rather than decorating a box. */
+   Chrome sits on the recessed steel surface with a hairline under it,
+   separating it from the white working area below. */
 
 .topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: var(--sp-3) var(--sp-4);
-  background: var(--surface-1);
-  border-bottom: 1px solid var(--border-hairline);
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
   min-height: var(--topbar-height);
 }
 
@@ -31,7 +30,7 @@
   gap: 9px;
   font-family: var(--font-mono);
   font-weight: 700;
-  font-size: var(--fs-lg);
+  font-size: 16px;
   letter-spacing: -0.02em;
   color: var(--text-1);
 }
@@ -47,14 +46,16 @@
 }
 
 .badge {
-  font-family: var(--font-ui);
-  font-size: var(--fs-xs);
-  font-weight: 600;
-  letter-spacing: var(--label-tracking);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: var(--eyebrow-tracking);
+  text-transform: uppercase;
   color: var(--text-2);
-  background: var(--surface-3);
-  border-radius: var(--radius-pill);
-  padding: 3px 9px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 3px 7px;
 }
 
 /* ---- Screen scaffold --------------------------------------- */
@@ -157,12 +158,12 @@ form > .btn.text {
   align-items: center;
   justify-content: center;
   gap: var(--sp-2);
-  background: var(--surface-1);
-  border-top: 1px solid var(--border-hairline);
+  background: var(--surface-2);
+  border-top: 1px solid var(--border);
   padding: var(--sp-3) var(--sp-4);
-  font-family: var(--font-ui);
-  font-size: var(--fs-xs);
-  letter-spacing: var(--label-tracking);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.02em;
   color: var(--text-2);
 }
 
@@ -183,7 +184,7 @@ form > .btn.text {
 
 .foot-latency {
   font-family: var(--font-mono);
-  font-size: var(--fs-xs);
+  font-size: 10px;
   color: var(--text-3);
   font-variant-numeric: tabular-nums;
 }
@@ -210,32 +211,35 @@ form > .btn.text {
   align-items: center;
   gap: var(--sp-2);
   background: var(--surface-1);
-  border-radius: var(--radius-pill);
-  box-shadow: var(--shadow-card);
-  padding: 4px 12px 4px 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 4px 10px 4px 4px;
   cursor: pointer;
   min-width: 0;
-  transition: background var(--t-base);
+  transition: background var(--t-base), border-color var(--t-base);
 }
 
-.account-pill:hover { background: var(--surface-2); }
+.account-pill:hover {
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+}
 
 .account-pill-chevron {
   color: var(--text-3);
   flex-shrink: 0;
 }
 
-/* Balance: a readout, not a box. The number is the hero of the screen;
-   anything drawn around it competes with it. */
-/* Typographic hero, not a card. The number is the object; a card around it competed
-   with the four control wells below it, and when everything is a card nothing is.
-   The page backdrop is a surface too — see rule 1 in tokens.css. */
+/* Balance: the ledger hero. Presented as a bordered readout panel on the
+   recessed surface, the way thru.org frames its TYPE / LANGUAGES values —
+   the number is data in an instrument, not marketing copy. */
 .balance-hero {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: var(--sp-2) 0 0;
-  background: transparent;
+  gap: var(--sp-1);
+  padding: var(--sp-4);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
   text-align: left;
 }
 
@@ -262,22 +266,18 @@ form > .btn.text {
   gap: var(--sp-2);
 }
 
-/* The one hero per screen. Sans, not mono: at 38px a monospaced figure reads as a
-   printout, and this number is the thing the user opens the wallet to see. Tabular
-   figures keep it from jittering as it updates, which is the reason mono was there. */
 .balance-hero-value {
-  font-family: var(--font-ui);
+  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   font-size: var(--fs-display);
-  font-weight: 650;
-  letter-spacing: -0.03em;
+  font-weight: 600;
+  letter-spacing: -0.035em;
   color: var(--text-1);
-  line-height: 1.05;
+  line-height: 1.1;
 }
 
-/* No margin here: .balance-hero-row is already a flex row with a gap. */
 .balance-hero-unit {
-  font-family: var(--font-ui);
+  font-family: var(--font-mono);
   font-size: var(--fs-lg);
   font-weight: 500;
   color: var(--text-3);
@@ -298,6 +298,7 @@ form > .btn.text {
   justify-content: space-between;
   gap: var(--sp-2);
   padding-bottom: var(--sp-1);
+  border-bottom: 1px solid var(--border);
 }
 
 .dash-tokens-list {
@@ -312,42 +313,30 @@ form > .btn.text {
   gap: var(--sp-2);
 }
 
-/* Four cards were competing with the hero. The icon well is the object now, and the
-   tile itself is flat on the page backdrop — the same "hierarchy by contrast, not by
-   outline" rule the token file states, applied to the one grid where it matters most. */
 .action-btn {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: var(--sp-2);
-  background: transparent;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: var(--sp-1);
+  padding: var(--sp-4) var(--sp-1) var(--sp-3);
   cursor: pointer;
   color: var(--text-2);
   font-size: var(--fs-sm);
   font-weight: 600;
-  transition: color var(--t-base);
+  transition: background var(--t-base), border-color var(--t-base), color var(--t-base);
 }
 
-/* The well is the object: a white 44px target with the brand glyph in it. It is the
-   one place an icon gets the brand colour, because these four are the dashboard's
-   primary navigation. */
-.action-btn-icon {
-  display: grid;
-  place-items: center;
-  width: 44px;
-  height: 44px;
-  border-radius: var(--radius-lg);
-  background: var(--surface-1);
-  color: var(--brand);
-  box-shadow: var(--shadow-card);
-  transition: background var(--t-base), color var(--t-base), transform var(--t-fast);
+.action-btn:hover {
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+  color: var(--text-1);
 }
 
-.action-btn:hover { color: var(--text-1); }
-.action-btn:hover .action-btn-icon { background: var(--brand-tint); }
-.action-btn:active .action-btn-icon { transform: scale(0.96); }
+.action-btn svg { color: var(--text-2); transition: color var(--t-base); }
+.action-btn:hover svg { color: var(--accent); }
 
 /* ---- Accounts / history rows ------------------------------- */
 
@@ -407,11 +396,11 @@ form > .btn.text {
 }
 
 .settings-group-label {
-  font-family: var(--font-ui);
-  font-size: var(--fs-sm);
+  font-size: var(--fs-xs);
   font-weight: 600;
   color: var(--text-3);
-  letter-spacing: var(--label-tracking);
+  letter-spacing: var(--eyebrow-tracking);
+  text-transform: uppercase;
   padding: var(--sp-3) 0 var(--sp-2);
 }
 
@@ -420,7 +409,7 @@ form > .btn.text {
   align-items: center;
   justify-content: space-between;
   padding: var(--sp-3) 0;
-  border-bottom: 1px solid var(--border-hairline);
+  border-bottom: 1px solid var(--border);
   gap: var(--sp-3);
 }
 
@@ -465,6 +454,7 @@ form > .btn.text {
 
 .settings-select {
   background: var(--surface-2);
+  border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   color: var(--text-1);
   font-family: var(--font-ui);
@@ -476,7 +466,7 @@ form > .btn.text {
 
 .settings-select:focus {
   outline: none;
-  border-color: var(--ink);
+  border-color: var(--accent-border);
 }
 
 .settings-danger .settings-icon { color: var(--negative); }
@@ -502,19 +492,27 @@ form > .btn.text {
 .filter-chip {
   font-family: var(--font-ui);
   font-size: var(--fs-xs);
-  font-weight: 600;
-  color: var(--text-2);
-  background: var(--surface-1);
+  font-weight: 500;
+  color: var(--text-3);
+  background: transparent;
+  border: 1px solid var(--border);
   border-radius: var(--radius-pill);
   padding: var(--sp-1) var(--sp-3);
   cursor: pointer;
   white-space: nowrap;
-  transition: background var(--t-fast), color var(--t-fast);
+  transition: all var(--t-fast);
 }
 
-.filter-chip:hover { color: var(--text-1); background: var(--surface-2); }
+.filter-chip:hover {
+  color: var(--text-1);
+  border-color: var(--border-strong);
+}
 
-.filter-chip.active { color: var(--accent-ink); background: var(--accent); }
+.filter-chip.active {
+  color: var(--accent-ink);
+  background: var(--accent);
+  border-color: var(--accent);
+}
 
 /* ---- Unlock Screen ----
    This screen wraps its content instead of rendering straight into
@@ -542,9 +540,10 @@ form > .btn.text {
   justify-content: center;
   width: 52px;
   height: 52px;
-  background: var(--brand-tint);
-  border-radius: var(--radius-lg);
-  color: var(--brand);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--accent);
 }
 
 .unlock-form {
@@ -593,6 +592,7 @@ form > .btn.text {
   gap: var(--sp-3);
   padding: var(--sp-3) var(--sp-4);
   background: var(--surface-2);
+  border: 1px solid var(--border);
   border-radius: var(--radius-md);
 }
 
@@ -622,6 +622,7 @@ form > .btn.text {
   text-align: center;
   padding: var(--sp-4);
   background: var(--negative-tint);
+  border: 1px solid var(--negative-border);
   border-radius: var(--radius-md);
 }
 
@@ -663,15 +664,16 @@ form > .btn.text {
   font-size: var(--fs-xs);
   font-family: var(--font-mono);
   color: var(--text-3);
-  background: var(--surface-3);
-  padding: 3px var(--sp-3);
+  background: var(--surface-2);
+  padding: 2px var(--sp-3);
   border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
 }
 
 .account-detail-card {
   background: var(--surface-1);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
   padding: var(--sp-3) var(--sp-4);
   margin-top: var(--sp-3);
 }
@@ -681,7 +683,7 @@ form > .btn.text {
   align-items: center;
   justify-content: space-between;
   padding: var(--sp-2) 0;
-  border-bottom: 1px solid var(--border-hairline);
+  border-bottom: 1px solid var(--border);
   font-size: var(--fs-sm);
 }
 
@@ -692,7 +694,8 @@ form > .btn.text {
 .detail-label {
   color: var(--text-3);
   font-size: var(--fs-xs);
-  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+  letter-spacing: var(--eyebrow-tracking);
 }
 
 .detail-val-copy {
@@ -745,8 +748,8 @@ form > .btn.text {
    wear a badge. P2: .tx-card-open marks a card that opens the detail sheet. */
 .tx-card {
   background: var(--surface-1);
+  border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-card);
   padding: var(--sp-3);
   margin-bottom: var(--sp-2);
 }
@@ -756,9 +759,10 @@ form > .btn.text {
    :focus-visible rule, which already targets any focusable element. */
 .tx-card-open {
   cursor: pointer;
-  transition: background var(--t-fast);
+  transition: border-color var(--t-fast), background var(--t-fast);
 }
 .tx-card-open:hover {
+  border-color: var(--border-strong);
   background: var(--surface-2);
 }
 .tx-card-head {
@@ -826,6 +830,7 @@ form > .btn.text {
 .tx-card-badge.failed {
   color: var(--negative);
   background: var(--negative-tint);
+  border: 1px solid var(--negative-border);
 }
 .tx-card-amounts {
   margin-left: auto;

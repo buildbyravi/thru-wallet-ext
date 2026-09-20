@@ -664,14 +664,13 @@ export function SendRoute({ params, navigate, back }) {
 
     body.appendChild(h('div', { class: 'detail-table' }, rows));
 
-    // Broadcasting requires a deliberate click. The legacy global Enter handler (which clicked
-    // the first enabled .btn.primary on the screen) is gone, and no field on the review step
-    // passes onEnter — the only onEnter in this route is on the form's amount field, where it
-    // advances to review. So Enter cannot reach this button, and the confirm control is free to
-    // carry the primary variant like every other commit action in the wallet.
+    // The confirm control is `accent`, not `primary`. The legacy global Enter handler clicked the
+    // first enabled .btn.primary in the visible screen, which on this step was Sign & Broadcast.
+    // Nothing on this step is .btn.primary, and this route registers no Enter handler here, so
+    // broadcasting requires a deliberate click.
     const confirmBtn = track(Button({
       label: 'Sign & send',
-      variant: 'primary',
+      variant: 'accent',
       iconName: 'send',
       busyLabel: 'Sending…',
       onClick: () => submit(to),

@@ -1,21 +1,7 @@
 # Status and roadmap
 
 Single source of truth for **where the rebuild is** and **what happens next**.
-
-Last updated: **R1 and R2 of the Rabby-style upgrade are implemented and gate-green; the one
-step left is a human look** (`docs/RABBY_UPGRADE_SPEC.md` §5 — open
-`scripts/preview-dashboard.html`). R1 made the design system tokens-only: page/card/inset
-surfaces, one brand ramp, a shape scale, 44px controls, and opaque `border: 1px solid` down from
-70 declarations to 12 (the survivors all divide rows or chrome). R2 did the typography: the
-twelve monospace-uppercase micro-label classes became one sentence-case label treatment, every
-`font-size` literal moved onto the `--fs-*` scale, the balance is a 38px sans hero, and the
-quick actions are flat tiles around a 44px icon well. Neither phase touches a route, a bridge
-method or the contract. Enforced by the new `scripts/check-design-tokens.mjs` — no colour or
-`font-size` literal outside `tokens.css`, no `text-transform: uppercase`, dark redefines every
-colour token (derived, not a hand-kept list), 40 asserted contrast pairs at 4.5:1 text / 3:1
-graphic, no dead tokens. R3 (extract `kit/sheet.js`, Skeleton, screen animation) is next.
-
-Earlier: contract v10 adds `tx.getDetail`, the lazy per-signature fetch behind the P2
+Last updated: contract v10 adds `tx.getDetail`, the lazy per-signature fetch behind the P2
 transaction detail sheet (Activity history P0+P1+P2 now shipped). It is explorer-free: the
 sheet runs on the RPC we already depend on, states the header-declared fee as such, and
 renders "Not available" for anything the network does not report — see
@@ -51,11 +37,6 @@ Structural properties now enforced by CI rather than by discipline:
 | Every navigated route exists | `check-routes.mjs` |
 | Every registered route is reachable | `check-routes.mjs` |
 | Every CSS class used is defined | `check-routes.mjs` |
-| No colour literal outside `tokens.css`; both themes define every themed token | `check-design-tokens.mjs` |
-| Text and status colours clear 4.5:1 (3:1 for graphics) in **both** themes | `check-design-tokens.mjs` |
-| No token is defined without a caller | `check-design-tokens.mjs` |
-| No named colour (`white`, `black`, …) outside `tokens.css` | `check-design-tokens.mjs` |
-| No `font-size` literal and no `text-transform: uppercase` outside `tokens.css` | `check-design-tokens.mjs` |
 | Contract agrees in both directions | `test-contract.mjs` |
 | Key derivation cannot change silently | `test-derivation.mjs` |
 | Nothing unserializable crosses the port | `test-api-router.mjs` |
