@@ -675,20 +675,17 @@ export async function addHdAccount(keyringId = null) {
   return externalRef(vaultData, ref);
 }
 
-// Legacy popup compatibility: adds a private-key keyring without re-authentication. The
-// background API exposes addPrivateKeyKeyring instead and always requires a password check.
-export async function addImportedKey(privateKeyHex) {
-  const vaultData = await getVaultData();
-  const ring = privateKeyKeyring(privateKeyHex, `Imported key ${vaultData.keyrings.filter((item) => item.type === 'privateKey').length + 1}`);
-  await sdkKeys.fromPrivateKey(parsePrivateKeyHex(ring.privateKeyHex));
-  if (vaultData.keyrings.some((item) => item.type === 'privateKey' && item.privateKeyHex === ring.privateKeyHex)) {
-    throw new Error('That private key is already in this wallet.');
-  }
-  vaultData.keyrings.push(ring);
-  await persistVaultUpdate(vaultData);
-  const ref = accountRef(ring.id);
-  await setActiveRef(ref);
-  return externalRef(vaultData, ref);
+// SEALED legacy trap (security review): this popup-era import path added a private-key
+// keyring WITHOUT re-authentication — key material into the wallet from an unlocked session
+// alone. Production routes through account-service.addImportedKey -> addPrivateKeyKeyring,
+// which verifies the password at the vault layer. Keeping an exported no-auth path is a
+// maintenance trap (it only needs one wrong caller), so it now fails loudly instead of
+// silently bypassing the gate. No production code called it when sealed.
+export async function addImportedKey() {
+  throw new Error(
+    'vault.addImportedKey is sealed: it skipped password verification. '
+    + 'Use vault.addPrivateKeyKeyring(privateKeyHex, password, label) instead.'
+  );
 }
 
 // ---- Export ---------------------------------------------------------------
