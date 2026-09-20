@@ -179,8 +179,16 @@ the node sent it.
   absent; the sheet renders "Not available". Never substituted with the local clock, and
   never inherited from a neighbouring entry (the list's day-grouping inference is
   display-only and does not write timestamps — see `docs/HISTORY_REDESIGN_PLAN.md`).
-→ remaining: confirm on a live node whether alphanet populates `header.blockTime` at all.
-  That is a `docs/MANUAL_SMOKE_CHECKLIST.md` item, not a code gap.
+→ **RESOLVED on alphanet (2026-09-20, live manual smoke).** The open question was whether
+  alphanet populates `header.blockTime` at all — if it did not, every real sheet would read
+  "Block time: Not available", which is honest but useless. It does populate it: a faucet-claim
+  sheet against a live alphanet transaction (block 12871764) rendered a real wall-clock time,
+  confirming `BlockHeader.block_time` → `Block.blockTimeNs` → `blocks.get({slot})` carries
+  through end to end. The `null` branch remains the correct fallback for nodes that omit it and
+  is still exercised by fixtures; it is a degraded path, not the normal one.
+→ remaining: nothing on alphanet. Re-confirm per network when a second network goes live —
+  `blockTime` is optional on the wire, so its presence is a per-node property, not a protocol
+  guarantee. The `docs/MANUAL_SMOKE_CHECKLIST.md` row stays for that reason.
 
 ### C3. Transaction simulation
 Rabby's signature feature — predicted balance changes before signing. Needs a simulate RPC.

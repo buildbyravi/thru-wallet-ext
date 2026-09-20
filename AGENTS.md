@@ -80,6 +80,17 @@ is red. Never weaken or skip a test to make it pass.
 12. **Delete the old copy in the same commit** as the replacement. This codebase is in its
     current state because that rule was not followed.
 13. **Small commits.** Never mix a security fix + a UI redesign + a new feature.
+14. **Layout must be SEEN, not reasoned about.** Any change touching modal, sheet, drawer or
+    overlay layout must be visually validated in a real browser -- or in a visual harness that
+    loads the real built `dist/popup.css`, e.g. `scripts/preview-tx-sheet.html` -- before the PR
+    is opened. `npm test` runs on a hand-rolled DOM shim with **no layout engine**: it cannot
+    compute a height, resolve `max-height`, run the flexbox algorithm or read `scrollHeight`, so
+    it is structurally incapable of detecting flex shrinking, `overflow` clipping or a scroll
+    container that does not scroll. "The CSS reads correctly" is not evidence about layout, and
+    a green suite is not evidence about layout. This rule exists because a detail sheet shipped
+    that silently amputated its last two rows and drew no scrollbar -- it passed every automated
+    gate and two independent code audits, and was found by a user on a real popup
+    (`docs/DEFECT_LOG.md`).
 
 ## Stop and ask instead of guessing
 
@@ -133,6 +144,12 @@ bare version, the failure is in the **request** direction.
   trapping and secret hygiene. It cannot see layout, real focus rings, canvas output or the side
   panel. Those are `docs/MANUAL_SMOKE_CHECKLIST.md`, and it is a required runbook, not a nicety.
   jsdom is deliberately not a dependency (Hard rule: no new deps).
+- **A green suite says nothing about layout.** Following from the point above: the shim has no
+  layout engine, so `overflow`, `max-height`, flex shrinking and scrollability are all invisible
+  to it. Where an invariant CAN be expressed against the stylesheet text, assert it there --
+  `test-route-lifecycle.mjs` now checks that any flex-column scroll container pins its children
+  against `flex-shrink`, because that specific bug reached a user. Everything else needs eyes on
+  a browser (Hard rule 14).
 
 ## Reporting
 

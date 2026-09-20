@@ -159,16 +159,26 @@ the sheet's blast radius.
 1. **H8 is not asserted.** A `success: null` entry (decoded before the execution result
    landed) should render "Not available" for status. The code branches correctly but no
    fixture exercises it. Cheap to add if you want it gated.
-2. **Nothing is verified against a live chain.** In particular: does alphanet send
-   `header.blockTime`? If it does not, every real sheet will show "Block time: Not
-   available" — which is correct behaviour, but worth knowing before it surprises anyone.
-   This is the PVR item.
+2. ~~**Nothing is verified against a live chain.**~~ **CLOSED 2026-09-20.** Alphanet DOES
+   send `header.blockTime`: a live faucet-claim sheet at block 12871764 rendered a real
+   wall-clock time. `docs/BACKEND_GAPS.md` C2c is resolved for alphanet. Inverted
+   consequence worth noting: on alphanet, "Block time: Not available" now signals a fetch
+   failure or a node regression rather than expected behaviour.
 3. **The declared-vs-charged fee question is open.** `scripts/measure-fee.mjs` measures the
    charged fee as `spent − amount`; comparing that to `Transaction.fee` on the same signature
    would settle whether the declaration is ever misleading. Not run here (no network).
 4. **Slot-ratio day weighting still parked**, deliberately — see the plan doc for why it was
    not a 10-line change.
-5. **Two RPC round trips per sheet open** (`transactions.get`, then `blocks.get`). Fine for a
+5. **LAYOUT WAS NOT VERIFIED IN A BROWSER — and a defect escaped because of it.** The sheet
+   shipped with tall content compressed rather than scrolled: flex children defaulted to
+   `flex-shrink: 1`, `.detail-table`'s `overflow: hidden` clipped its own last rows, and
+   because nothing overflowed there was no scrollbar. "Fee (declared)" and "Program"
+   disappeared silently. Found by a user on a real popup; fixed in `c3992ae` with
+   `.tx-sheet > * { flex-shrink: 0 }`, a stylesheet-level invariant in
+   `test-route-lifecycle.mjs` (falsified by reverting the fix), and
+   `scripts/preview-tx-sheet.html` for visual checks. **When auditing, open that harness —
+   do not re-derive layout from the CSS.** AGENTS.md hard rule 14 now requires this.
+6. **Two RPC round trips per sheet open** (`transactions.get`, then `blocks.get`). Fine for a
    tap-triggered action; would not be fine if it ever moved to the list path. It has not.
 
 ## 6. Suggested audit path

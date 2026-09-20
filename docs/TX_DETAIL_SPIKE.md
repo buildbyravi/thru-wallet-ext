@@ -157,7 +157,11 @@ paints synchronously from the entry the user tapped, then fills the lazy rows.
 ## 5. What this spike did NOT establish
 
 - Nothing was confirmed against a live node from this environment. Whether alphanet
-  actually populates `header.blockTime` is a manual-smoke question.
+  actually populates `header.blockTime` was a manual-smoke question.
+  **ANSWERED 2026-09-20 (live alphanet):** it does. A faucet-claim sheet at block 12871764
+  rendered a real wall-clock time, so the `blocks.get({slot})` → `blockTimeNs` path carries
+  through end to end on alphanet. The `null` branch is the degraded path, not the normal one.
+  Still per-node, not a protocol guarantee — re-confirm on any new network.
 - Whether the declared header fee ever differs from what is debited. Answering that needs
   a live before/after balance measurement (`scripts/measure-fee.mjs` is the tool) across
   more than the single sample already taken.
