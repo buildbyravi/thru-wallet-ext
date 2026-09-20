@@ -1,6 +1,6 @@
 # Rabby-style upgrade spec (design system, R1 forward)
 
-Status: **R1 implemented on `arena/01a0c008-thru-wallet-ext`; R2–R8 not started.**
+Status: **R1 and R2 implemented on `arena/01a0c008-thru-wallet-ext`; R3–R8 not started.**
 This document is the durable record of the direction change and of every claim in the
 external "upgrade wallet to Rabby style" package that was checked against this tree.
 Companion docs: `docs/REDESIGN_TRIAGE.md` (line-by-line verdicts on suggestion set 1 of 4),
@@ -86,6 +86,48 @@ were deepened by the same check.
 `node scripts/check-design-tokens.mjs --table` prints every pair and its measured ratio; the
 guard is the reason the palette cannot silently drift back.
 
+## 2b. What R2 shipped (typography, the hero, the quick actions)
+
+R2 is where the critique's "Terminal Typography" point is answered. It is CSS-only except for
+one wrapper span, and it is guarded like R1.
+
+- **One label treatment, twelve classes.** `.eyebrow`, `.field > span`, `.list-group-header`,
+  `.drawer-section-label`, `.tag-accent`, `.tx-review-eyebrow`, `.send-section-label`,
+  `.send-token-avail-label`, `.tag-warning`, `.badge`, `.settings-group-label` and
+  `.detail-label` were monospace, uppercase, 10–11px and tracked 0.04–0.09em. They are now the
+  UI font at 11–12px, weight 600, `--label-tracking` (0.01em), sentence case. Twelve classes
+  sold as "structural voice" were the single most consistent thing making the wallet read as a
+  machine panel.
+- **Monospace keeps a meaning, loses a mood.** It survives only where the content is a string
+  the user might copy or compare: addresses, signatures, amounts, `.monospace-block`. The
+  footer, the network badge, field labels, the balance, row sub-lines and chips were mono for
+  style, not for content — a row's second line is prose as often as it is an address, and the
+  address case brings its own `.mono` (via `AddressText`) rather than inheriting one.
+- **The type scale is real and enforced.** Nineteen `font-size` literals (10px ×7, 11px ×6,
+  13px, 16px, 28px, 32px) were replaced by `--fs-*` steps; `--fs-2xl: 24px` was added and the
+  10px floor was raised to `--fs-xs`. `check-design-tokens.mjs` now fails on any
+  `font-size: <n>px|rem` outside `tokens.css`, and on `text-transform: uppercase` — the rule
+  that removed the terminal styling is the rule that keeps it removed.
+- **The hero is the loudest thing on the dashboard.** 38px, sans, `font-variant-numeric:
+  tabular-nums` (the reason mono was there, kept), tracking −0.025em, unit at 13px/600, and the
+  card is roomier (`--sp-5`). The class name in the DOM is unchanged.
+- **`display: none` was not used on the balance label.** The incoming snippet hid
+  `.balance-hero-label`; that would have deleted the only accessible name of the number
+  ("Balance" is the label; "12,480.0001 THRU" is the value). It is restyled instead, so it now
+  reads as a small grey label rather than a terminal stamp. This repo has no `sr-only` utility,
+  which is why the label could not simply be visually hidden either.
+- **Quick actions are wells, not four cards.** `.action-btn` is flat on the page backdrop and
+  `dashboard.js`'s `ActionTile` wraps its icon in `.action-btn-icon` — a 44×44 well that turns
+  brand-tinted on hover. Four shadowed cards were competing with the one card that should win
+  the screen.
+
+Two things R2 deliberately did **not** do. It removed no `.eyebrow` elements from the DOM: the
+reviewer's instruction was "remove `.eyebrow` except in `export.js`", and `export.js` does not
+use the class — its real users are section headers ("Assets"), detail-table keys ("Network fee",
+"Amount", "From", "To") and data captions, and in a detail table those keys *are* the left
+column, not decoration. Deleting them is an information-architecture change that needs eyes on
+a browser, so it is left for a review pass rather than bundled here.
+
 ## 3. Claims in the external package that are wrong for this tree
 
 Each of these would break a gate, a rule, or a user-visible promise. They are recorded here so a
@@ -113,7 +155,7 @@ the side-panel width behaviour in `base.css` re-checked.
 | PR | Scope | State |
 | --- | --- | --- |
 | **R1** | Tokens + de-bordering | **done here** |
-| **R2** | Typography + eyebrow removal + balance hero + action wells | in progress |
+| **R2** | Typography + eyebrow removal + balance hero + action wells | **done here**; no DOM removals (see §2b) |
 | R3 | Extract `kit/sheet.js` from `tx-detail-sheet.js`, Skeleton, screen animation | not started |
 | R4 | Shell restructure + avatar | not started — rewrites the lock-control test |
 | R5 | Send redesign + dashboard | not started — preserve BigInt parsing, the recipient-exists gate, dead-Enter |
@@ -125,9 +167,9 @@ the side-panel width behaviour in `base.css` re-checked.
 
 ```
 npm run build                    clean, no CSS warnings; dist/popup.css 51.1kb -> 48.2kb
-npm test                         all gates green, incl. the new design-token guard
+npm test                         all gates green, incl. the design-token guard
 node scripts/check-design-tokens.mjs --table
-                                 66 tokens, 40 contrast pairs, both themes complete
+                                 67 tokens, 40 contrast pairs, both themes complete
 ```
 
 **The one thing no gate can check is how it looks.** `npm test` runs on a DOM shim with no
@@ -160,10 +202,10 @@ has done that, R1 is merged-but-unconfirmed.
 
 ## 6. Known debt this intentionally does not fix
 
-- **Typography** is still instrument-flavoured: monospace uppercase `.eyebrow` labels on seven
-  screens, and ~20 hardcoded `font-size` literals (10–32px) that bypass the scale. That is R2.
-- **The dashboard hero** is 34px inside its own card and the quick actions are four bordered
-  tiles; R1 only removed the borders. R2 turns them into the hero + action wells.
+- **The roadmap leans on visual review.** Two phases of a design change have shipped with no
+  browser in the loop; every number above is text-verified, but "does the hero read as the
+  loudest thing on the screen" is a judgement only a human looking at
+  `scripts/preview-dashboard.html` can make.
 - **Dead-CSS measurement does not exist.** `check-routes.mjs` proves every class used is
   defined; nothing proves every class defined is used. `.drawer-*`, `.account-drawer-item`,
   `.network-drawer-item` and `.btn-chip` look unreferenced from `src/ui/**` but were left alone:

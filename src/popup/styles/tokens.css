@@ -123,9 +123,10 @@
   --fs-md: 13px;
   --fs-lg: 15px;
   --fs-xl: 18px;
+  --fs-2xl: 24px;       /* a money figure in a card (tx preview) — below the hero */
   --fs-display: 38px;   /* the balance. One hero per screen, never two. */
 
-  --eyebrow-tracking: 0.09em;
+  --label-tracking: 0.01em;   /* a label is a label, not a terminal stamp: no wide tracking */
 
   /* ---- Spacing (4px base) ---- */
   --sp-1: 4px;

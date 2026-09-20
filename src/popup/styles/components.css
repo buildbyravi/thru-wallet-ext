@@ -184,11 +184,10 @@
 }
 
 .field > span {
-  font-family: var(--font-mono);
-  font-size: var(--fs-xs);
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: var(--eyebrow-tracking);
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  letter-spacing: var(--label-tracking);
   color: var(--text-3);
 }
 
@@ -326,7 +325,7 @@ textarea[aria-invalid="true"] {
 }
 .copy-address .copy-address-text {
   flex: 1;
-  font-size: 11px;
+  font-size: var(--fs-xs);
   line-height: 1.4;
   letter-spacing: -0.015em;
   white-space: nowrap;
@@ -530,8 +529,11 @@ button.row { cursor: pointer; }
   white-space: nowrap;
 }
 
+/* The second line of a row carries both prose ("Waiting for confirmation") and
+   addresses. It reads in the UI font; an address that must be scanned character by
+   character brings its own .mono (AddressText does exactly that). */
 .row-sub {
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--fs-xs);
   color: var(--text-3);
   overflow: hidden;
@@ -589,11 +591,10 @@ button.row { cursor: pointer; }
   gap: var(--sp-2);
   padding: var(--sp-2) var(--sp-1);
   background: transparent;
-  font-family: var(--font-mono);
-  font-size: var(--fs-xs);
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: var(--eyebrow-tracking);
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  letter-spacing: var(--label-tracking);
   color: var(--text-2);
 }
 
@@ -676,7 +677,7 @@ button.row { cursor: pointer; }
 .tx-preview-amount {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
-  font-size: 28px;
+  font-size: var(--fs-2xl);
   font-weight: 600;
   letter-spacing: -0.02em;
   color: var(--text-1);
@@ -793,7 +794,7 @@ button.row { cursor: pointer; }
 }
 
 .disclaimer-icon {
-  font-size: 32px;
+  font-size: var(--fs-2xl);
   line-height: 1;
 }
 
@@ -960,11 +961,11 @@ button.row { cursor: pointer; }
 }
 
 .drawer-section-label {
+  font-family: var(--font-ui);
   font-size: var(--fs-xs);
   font-weight: 600;
   color: var(--text-3);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: var(--label-tracking);
   margin-bottom: var(--sp-2);
 }
 
@@ -1109,8 +1110,8 @@ button.row { cursor: pointer; }
 }
 
 .tag-native {
-  font-size: 10px;
-  padding: 1px 5px;
+  font-size: var(--fs-xs);
+  padding: 2px 7px;
   background: var(--positive-tint);
   color: var(--positive);
   border-radius: var(--radius-sm);
@@ -1145,15 +1146,13 @@ button.row { cursor: pointer; }
 .tag-accent {
   display: inline-flex;
   align-items: center;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  padding: 1px 5px;
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
+  padding: 2px 7px;
   background: var(--accent-tint);
   color: var(--accent);
   border-radius: var(--radius-sm);
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  font-weight: 600;
 }
 
 /* ---- Token List Rows ---- */
@@ -1186,7 +1185,7 @@ button.row { cursor: pointer; }
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
+  font-size: var(--fs-xs);
   font-weight: 700;
   color: var(--accent);
 }
@@ -1300,11 +1299,11 @@ button.row { cursor: pointer; }
 }
 
 .tx-review-eyebrow {
-  font-size: 10px;
-  font-weight: 700;
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
+  font-weight: 600;
   color: var(--text-3);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  letter-spacing: var(--label-tracking);
   margin-bottom: var(--sp-2);
   display: block;
 }
@@ -1332,7 +1331,7 @@ button.row { cursor: pointer; }
 }
 
 .change-tag {
-  font-size: 11px;
+  font-size: var(--fs-xs);
   font-weight: 600;
   padding: 2px 8px;
   border-radius: var(--radius-xs);
@@ -1400,7 +1399,7 @@ button.row { cursor: pointer; }
 
 .risk-copy strong {
   color: var(--text-1);
-  font-size: 11px;
+  font-size: var(--fs-xs);
 }
 
 /* ---- Rabby Dashboard Tabs ---- */
@@ -1447,11 +1446,11 @@ button.row { cursor: pointer; }
    ============================================================ */
 
 .send-section-label {
-  font-size: 10px;
-  font-weight: 700;
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
+  font-weight: 600;
   color: var(--text-3);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  letter-spacing: var(--label-tracking);
 }
 
 .send-from-box {
@@ -1535,7 +1534,7 @@ button.row { cursor: pointer; }
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 16px;
+  font-size: var(--fs-lg);
   color: var(--accent);
 }
 
@@ -1568,9 +1567,10 @@ button.row { cursor: pointer; }
 }
 
 .send-token-avail-label {
-  font-size: 10px;
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
   color: var(--text-3);
-  text-transform: uppercase;
+  letter-spacing: var(--label-tracking);
 }
 
 .send-token-balance {
@@ -1647,7 +1647,7 @@ button.row { cursor: pointer; }
 .fraction-chips-row .btn-chip {
   padding: 6px 0;
   text-align: center;
-  font-size: 11px;
+  font-size: var(--fs-xs);
 }
 
 /* Token Selector Drawer */
@@ -1681,7 +1681,7 @@ button.row { cursor: pointer; }
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
+  font-size: var(--fs-xs);
   font-weight: 700;
   color: var(--accent);
 }
@@ -1730,7 +1730,7 @@ button.row { cursor: pointer; }
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 13px;
+  font-size: var(--fs-md);
   color: var(--text-3);
 }
 

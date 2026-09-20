@@ -363,11 +363,12 @@
   gap: var(--sp-2);
 }
 
+/* Filter chips, time chips, mnemonic words: labels and choices, not machine output. */
 .chip-option {
   padding: 6px 12px;
   background: var(--surface-2);
   border-radius: var(--radius-sm);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--fs-sm);
   color: var(--text-1);
   cursor: pointer;
@@ -387,14 +388,13 @@
 .tag-warning {
   display: inline-flex;
   align-items: center;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  padding: 1px 5px;
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
+  padding: 2px 7px;
   background: var(--gold-tint);
   color: var(--gold);
   border-radius: var(--radius-xs);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  font-weight: 600;
   white-space: nowrap;
 }
 

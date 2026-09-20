@@ -31,7 +31,7 @@
   gap: 9px;
   font-family: var(--font-mono);
   font-weight: 700;
-  font-size: 16px;
+  font-size: var(--fs-lg);
   letter-spacing: -0.02em;
   color: var(--text-1);
 }
@@ -47,11 +47,10 @@
 }
 
 .badge {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 500;
-  letter-spacing: var(--eyebrow-tracking);
-  text-transform: uppercase;
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: var(--label-tracking);
   color: var(--text-2);
   background: var(--surface-3);
   border-radius: var(--radius-pill);
@@ -161,9 +160,9 @@ form > .btn.text {
   background: var(--surface-1);
   border-top: 1px solid var(--border-hairline);
   padding: var(--sp-3) var(--sp-4);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.02em;
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
+  letter-spacing: var(--label-tracking);
   color: var(--text-2);
 }
 
@@ -184,7 +183,7 @@ form > .btn.text {
 
 .foot-latency {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--fs-xs);
   color: var(--text-3);
   font-variant-numeric: tabular-nums;
 }
@@ -231,8 +230,8 @@ form > .btn.text {
 .balance-hero {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-1);
-  padding: var(--sp-4);
+  gap: 2px;
+  padding: var(--sp-5) var(--sp-4) var(--sp-4);
   background: var(--surface-1);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-card);
@@ -262,20 +261,23 @@ form > .btn.text {
   gap: var(--sp-2);
 }
 
+/* The one hero per screen. Sans, not mono: at 38px a monospaced figure reads as a
+   printout, and this number is the thing the user opens the wallet to see. Tabular
+   figures keep it from jittering as it updates, which is the reason mono was there. */
 .balance-hero-value {
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-variant-numeric: tabular-nums;
   font-size: var(--fs-display);
-  font-weight: 600;
-  letter-spacing: -0.035em;
+  font-weight: 650;
+  letter-spacing: -0.025em;
   color: var(--text-1);
-  line-height: 1.1;
+  line-height: 1.05;
 }
 
 .balance-hero-unit {
-  font-family: var(--font-mono);
-  font-size: var(--fs-lg);
-  font-weight: 500;
+  font-family: var(--font-ui);
+  font-size: var(--fs-md);
+  font-weight: 600;
   color: var(--text-3);
 }
 
@@ -308,29 +310,37 @@ form > .btn.text {
   gap: var(--sp-2);
 }
 
+/* Four cards were competing with the hero. The icon well is the object now, and the
+   tile itself is flat on the page backdrop — the same "hierarchy by contrast, not by
+   outline" rule the token file states, applied to the one grid where it matters most. */
 .action-btn {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: var(--sp-2);
-  background: var(--surface-1);
+  background: transparent;
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-card);
-  padding: var(--sp-4) var(--sp-1) var(--sp-3);
+  padding: var(--sp-1);
   cursor: pointer;
   color: var(--text-2);
   font-size: var(--fs-sm);
   font-weight: 600;
+  transition: color var(--t-base);
+}
+
+.action-btn-icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  color: var(--text-1);
   transition: background var(--t-base), color var(--t-base);
 }
 
-.action-btn:hover {
-  background: var(--surface-2);
-  color: var(--text-1);
-}
-
-.action-btn svg { color: var(--text-2); transition: color var(--t-base); }
-.action-btn:hover svg { color: var(--accent); }
+.action-btn:hover { color: var(--text-1); }
+.action-btn:hover .action-btn-icon { background: var(--brand-tint); color: var(--brand); }
 
 /* ---- Accounts / history rows ------------------------------- */
 
@@ -390,11 +400,11 @@ form > .btn.text {
 }
 
 .settings-group-label {
-  font-size: var(--fs-xs);
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm);
   font-weight: 600;
   color: var(--text-3);
-  letter-spacing: var(--eyebrow-tracking);
-  text-transform: uppercase;
+  letter-spacing: var(--label-tracking);
   padding: var(--sp-3) 0 var(--sp-2);
 }
 
@@ -675,8 +685,7 @@ form > .btn.text {
 .detail-label {
   color: var(--text-3);
   font-size: var(--fs-xs);
-  text-transform: uppercase;
-  letter-spacing: var(--eyebrow-tracking);
+  letter-spacing: var(--label-tracking);
 }
 
 .detail-val-copy {

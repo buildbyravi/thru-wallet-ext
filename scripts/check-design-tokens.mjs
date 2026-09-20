@@ -15,6 +15,11 @@
 //      which is how "the dark theme has one white card" defects ship.
 //   3. A token pair stops being readable. Nothing in CSS says that `--text-3` sitting
 //      on `--bg` is 4.2:1, and no test in this repo could see it.
+//   4. The type scale leaks. `font-size: 13px` in one rule is a size nothing else shares,
+//      and it is how the stylesheets ended up with ten sizes between 10px and 16px.
+//   5. The terminal styling comes back. Monospace uppercase micro-labels were removed in
+//      R2 because they made every screen read as an instrument readout; one new
+//      `text-transform: uppercase` would start the drift again, so it is asserted.
 //
 // This script fails the build on all three. It is deliberately a TEXT check over
 // the stylesheets (like check-css-nesting.mjs) rather than a rendered check: the DOM
@@ -51,6 +56,25 @@ for (const file of files) {
   text.split('\n').forEach((line, i) => {
     if (COLOUR_LITERAL.test(line) || NAMED_COLOUR.test(line)) {
       fail(`${file}:${i + 1}: colour literal outside tokens.css — use a var(--token) (${line.trim()})`);
+    }
+  });
+}
+
+/* ---------------- 1b. the type scale, and no terminal micro-labels ---------------- */
+
+// Sized values only: `font-size: inherit`, `font-size: 100%` and `font-size: 1em` are
+// relative and carry no scale decision, so they stay legal.
+const FONT_SIZE_LITERAL = /font-size:\s*\d+(\.\d+)?(px|rem)\b/;
+const UPPERCASE = /text-transform:\s*uppercase/;
+for (const file of files) {
+  if (file === TOKENS_FILE) continue;
+  const text = readFileSync(join(STYLES, file), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  text.split('\n').forEach((line, i) => {
+    if (FONT_SIZE_LITERAL.test(line)) {
+      fail(`${file}:${i + 1}: font-size literal — use a --fs-* step (${line.trim()})`);
+    }
+    if (UPPERCASE.test(line)) {
+      fail(`${file}:${i + 1}: text-transform: uppercase — labels are sentence case since R2 (${line.trim()})`);
     }
   });
 }
@@ -103,7 +127,8 @@ for (const name of dark.keys()) {
 
 /** The shape scale, elevation recipe and control metric the system depends on. */
 for (const name of ['--radius-xs', '--radius-sm', '--radius-md', '--radius-lg', '--radius-xl', '--radius-pill',
-  '--shadow-card', '--shadow-pop', '--shadow-sheet', '--control-height', '--fs-display']) {
+  '--shadow-card', '--shadow-pop', '--shadow-sheet', '--control-height',
+  '--fs-xs', '--fs-sm', '--fs-md', '--fs-lg', '--fs-xl', '--fs-2xl', '--fs-display', '--label-tracking']) {
   if (!light?.has(name)) fail(`${TOKENS_FILE}: ${name} missing — the design system depends on it`);
 }
 

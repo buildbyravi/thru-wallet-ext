@@ -183,10 +183,13 @@ function dashboard() {
 
   // Quick actions
   const grid = el('div', 'action-grid');
+  // ActionTile(): the icon lives in its own .action-btn-icon well, the tile is flat.
   [['send', 'Send'], ['receive', 'Receive'], ['faucet', 'Faucet'], ['history', 'History']]
     .forEach(([iconName, label]) => {
       const btn = el('button', 'action-btn');
-      btn.appendChild(svg(ICONS[iconName]));
+      const well = el('span', 'action-btn-icon');
+      well.appendChild(svg(ICONS[iconName]));
+      btn.appendChild(well);
       btn.appendChild(el('span', null, label));
       grid.appendChild(btn);
     });

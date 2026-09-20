@@ -35,14 +35,15 @@ import { formatThru, formatTokenAmount } from '../../../shared/format.js';
 /**
  * One button in the quick-action grid.
  *
- * Uses the existing .action-btn class and its exact child shape (svg + span) rather than
- * inventing .action-tile. Duplicating a style that already exists is how stylesheets grow
- * dead rules, and screens.css already had ~200 unreachable lines.
+ * Uses the existing .action-btn class rather than inventing .action-tile: duplicating a
+ * style that already exists is how stylesheets grow dead rules, and screens.css already
+ * had ~200 unreachable lines. The icon sits in its own .action-btn-icon well so the tile
+ * can be flat on the page — see the comment on .action-btn in screens.css.
  */
 function ActionTile({ iconName, label, onClick }) {
   const d = disposer();
   const el = h('button', { type: 'button', class: 'action-btn' }, [
-    icon(iconName, 17),
+    h('span', { class: 'action-btn-icon' }, icon(iconName, 18)),
     h('span', { text: label }),
   ]);
   d.on(el, 'click', onClick);
