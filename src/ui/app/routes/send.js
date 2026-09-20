@@ -34,7 +34,7 @@ import { AccountPicker } from '../../domain/account-picker.js';
 import { AssetSelector } from '../../domain/asset-selector.js';
 import { requirePassword } from '../../domain/password-prompt.js';
 import * as bridge from '../bridge.js';
-import { formatThru, parseThruAmount, truncateAddress } from '../../../shared/format.js';
+import { formatThru, parseThruAmount, formatTokenAmount, parseTokenAmount, truncateAddress } from '../../../shared/format.js';
 import { safeAddressParam } from '../../../shared/refs.js';
 
 export function SendRoute({ params, navigate, back }) {
@@ -45,11 +45,13 @@ export function SendRoute({ params, navigate, back }) {
   let accounts = [];           // every account, for the From and To pickers
   let keyrings = [];           // for grouping both pickers by source
   let contacts = [];
-  let tokens = [];
+  let tokens = [];             // registry records from token.list
+  let tokenBalanceState = new Map(); // mintAddress -> token.getBalances entry for the active account
+  let asset = { isNative: true, symbol: 'THRU', mintAddress: null }; // what this send moves
   let balanceUnits = 0n;
   let network = null;
-  let feeInfo = null;          // from tx.estimateFee
-  let recipientState = null;   // { valid, isSelf, exists, reason }
+  let feeInfo = null;          // from tx.estimateFee (native THRU fee only)
+  let recipientState = null;   // { valid, isSelf, exists, reason, tokenAccountExists }
   let amountUnits = 0n;
 
   function track(c) { owned.push(c); return c; }
@@ -60,6 +62,24 @@ export function SendRoute({ params, navigate, back }) {
   // Form state survives an excursion into a sub-view. Without this, opening the asset or
   // recipient picker and coming back cleared whatever had been typed.
   let formState = { to: '', amount: '' };
+  let liveReviewBtn = null;         // the Review control of the currently mounted form
+  let recipientValidationSeq = 0;   // invalidates stale async recipient checks (typed-over)
+
+  /**
+   * Enable the Review control iff the form is currently submittable. Lives at route scope so
+   * validateRecipient can re-evaluate when its async work finishes — the regression this
+   * guards was amount-first typing leaving the button disabled forever, because only input
+   * handlers refreshed it.
+   */
+  function refreshReviewEnabled() {
+    // The owner-existence gate is native-only: a token recipient needs no registered wallet
+    // account, only (eventually) a token account the sender can create.
+    const ready = amountUnits > 0n
+      && recipientState?.valid === true
+      && recipientState?.isSelf !== true
+      && (asset.isNative ? recipientState?.exists !== false : true);
+    liveReviewBtn?.update({ disabled: !ready });
+  }
 
   // The asset / From / recipient views are INTERNAL states of this one route, not separate
   // routes. The header was built once with `onBack: () => back()`, so its arrow always left the
@@ -86,10 +106,43 @@ export function SendRoute({ params, navigate, back }) {
     while (body.firstChild) body.removeChild(body.firstChild);
   }
 
-  /** Base units the user may actually send: balance minus whatever the network reserves. */
+  /** Base units the user may actually send of the CURRENT asset. */
   function spendableUnits() {
+    if (!asset.isNative) {
+      // Token spendable is the token account balance, in the mint's own units. The THRU fee is
+      // a separate constraint on the THRU balance, not deducted from the token amount.
+      const state = tokenBalanceState.get(asset.mintAddress);
+      return state?.tokenAccountExists && state.amountUnits != null ? BigInt(state.amountUnits) : 0n;
+    }
     const reserve = feeInfo?.reserveUnits ? BigInt(feeInfo.reserveUnits) : 0n;
     return balanceUnits > reserve ? balanceUnits - reserve : 0n;
+  }
+
+  /** Registry records merged with this account's balance state, for the asset picker. */
+  function mergedTokens() {
+    return (tokens || []).map((token) => {
+      const state = tokenBalanceState.get(token.mintAddress);
+      return state ? { ...token, ...state } : token;
+    });
+  }
+
+  /** Display balance of the currently selected asset, as an already-formatted string. */
+  function assetBalanceText() {
+    if (asset.isNative) return `${formatThru(balanceUnits)} THRU`;
+    const symbol = asset.symbol || 'TOKEN';
+    const state = tokenBalanceState.get(asset.mintAddress);
+    if (state?.error === true) return 'balance unknown';
+    if (state?.tokenAccountExists && state.amountUnits != null) {
+      return `${formatTokenAmount(BigInt(state.amountUnits), tokenDecimals())} ${symbol}`;
+    }
+    return `0 ${symbol}`;
+  }
+
+  function tokenDecimals() {
+    if (asset.isNative) return 9;
+    const state = tokenBalanceState.get(asset.mintAddress);
+    if (Number.isInteger(state?.decimals)) return state.decimals;
+    return Number.isInteger(asset.decimals) ? asset.decimals : 0;
   }
 
   // ---- Step 1: compose ----------------------------------------------------
@@ -125,17 +178,20 @@ export function SendRoute({ params, navigate, back }) {
       fromCard,
     ]));
 
-    // -- Asset --
+    // -- Asset: reflects the selected asset (native THRU or a funded token) --
+    const assetTitleChildren = [
+      h('span', { class: 'row-title', text: asset.symbol || 'TOKEN' }),
+    ];
+    if (asset.isNative) assetTitleChildren.push(h('span', { class: 'tag-native', text: 'Native' }));
     const assetCard = h('button', { type: 'button', class: 'row clickable' }, [
-      h('div', { class: 'token-row-avatar' }, icon('bolt', 15)),
+      h('div', { class: 'token-row-avatar' }, asset.isNative
+        ? icon('bolt', 15)
+        : h('span', { text: (asset.symbol || 'TOKEN').slice(0, 3).toUpperCase() })),
       h('span', { class: 'row-body' }, [
-        h('span', { class: 'row-flex', style: { gap: '6px' } }, [
-          h('span', { class: 'row-title', text: 'THRU' }),
-          h('span', { class: 'tag-native', text: 'Native' }),
-        ]),
-        h('span', { class: 'row-sub', text: 'Thru Native Token' }),
+        h('span', { class: 'row-flex', style: { gap: '6px' } }, assetTitleChildren),
+        h('span', { class: 'row-sub', text: asset.isNative ? 'Thru Native Token' : (asset.name || 'Token') }),
       ]),
-      h('span', { class: 'row-value', text: `${formatThru(balanceUnits)} THRU` }),
+      h('span', { class: 'row-value', text: assetBalanceText() }),
       h('span', { class: 'account-pill-chevron' }, icon('chevronRight', 13)),
     ]);
     d.on(assetCard, 'click', () => renderAssetPicker());
@@ -157,6 +213,8 @@ export function SendRoute({ params, navigate, back }) {
         recipient.setError('');
         recipientStatus.classList.add('hidden');
         recipientState = null;
+        // Any in-flight async check below refers to an address the user already typed past.
+        recipientValidationSeq += 1;
         // Keep the shared state current so an excursion into a picker and back does not lose it.
         formState.to = recipient.value;
         refreshReviewEnabled();
@@ -208,7 +266,7 @@ export function SendRoute({ params, navigate, back }) {
     // 100%-wide Max read as heavily as the primary Review action, which made a convenience
     // shortcut compete visually with the thing that actually advances the flow.
     const amount = track(Field({
-      label: 'Amount (THRU)',
+      label: `Amount (${asset.symbol || 'TOKEN'})`,
       type: 'text',
       inputMode: 'decimal',
       placeholder: '0.0',
@@ -230,11 +288,15 @@ export function SendRoute({ params, navigate, back }) {
       onClick: () => {
         const spendable = spendableUnits();
         if (spendable <= 0n) {
-          amount.setError('Balance is too low to cover the network fee.');
+          amount.setError(asset.isNative
+            ? 'Balance is too low to cover the network fee.'
+            : `No ${asset.symbol || 'token'} balance to send.`);
           return;
         }
         // BigInt formatting only. The legacy MAX did Math.floor(bigint * 10000), which throws.
-        amount.value = formatThru(spendable);
+        amount.value = asset.isNative
+          ? formatThru(spendable)
+          : formatTokenAmount(spendable, tokenDecimals());
         formState.amount = amount.value;
         parseAmount(amount);
         refreshReviewEnabled();
@@ -245,14 +307,16 @@ export function SendRoute({ params, navigate, back }) {
     body.appendChild(h('div', { class: 'stack stack-2' }, [
       amount.el,
       h('div', { class: 'row-flex between' }, [
-        h('span', { class: 'hint', text: `Spendable: ${formatThru(spendableUnits())} THRU` }),
+        h('span', { class: 'hint', text: `Spendable: ${asset.isNative
+          ? `${formatThru(spendableUnits())} THRU`
+          : `${formatTokenAmount(spendableUnits(), tokenDecimals())} ${asset.symbol || 'TOKEN'}`}` }),
         maxBtn.el,
       ]),
       h('p', { class: 'hint' }, feeText()),
     ]));
 
     // -- Review --
-    const reviewBtn = track(Button({
+    const reviewBtn = liveReviewBtn = track(Button({
       label: 'Review',
       variant: 'primary',
       disabled: true,
@@ -263,14 +327,6 @@ export function SendRoute({ params, navigate, back }) {
     }));
     body.appendChild(h('div', { class: 'screen-actions' }, reviewBtn.el));
 
-    function refreshReviewEnabled() {
-      const ready = amountUnits > 0n
-        && recipientState?.valid === true
-        && recipientState?.isSelf !== true
-        && recipientState?.exists !== false;
-      reviewBtn.update({ disabled: !ready });
-    }
-
     // Re-validate a prefilled recipient (e.g. arriving from a contact link).
     if (prefill.to) validateRecipient(prefill.to, recipientStatus);
     if (prefill.amount) parseAmount(amount);
@@ -278,6 +334,18 @@ export function SendRoute({ params, navigate, back }) {
   }
 
   function feeText() {
+    if (!asset.isNative) {
+      // The fee is paid in THRU, and only the NATIVE transfer fee has been measured. Token
+      // program fees are a distinct, unmeasured quantity — stating a number here would be
+      // fabrication (docs/BACKEND_GAPS.md C2), so the text says what is known and no more.
+      let text = 'Network fee is paid in THRU and has not been measured for token transfers yet.';
+      if (recipientState?.tokenAccountExists === false) {
+        text += ` This send also creates the recipient's ${asset.symbol || 'token'} account,`
+          + ' which costs one additional THRU fee.';
+      }
+      if (balanceUnits === 0n) text += ' This account holds no THRU to pay it.';
+      return text;
+    }
     if (!feeInfo) return 'Checking the network fee…';
     if (!feeInfo.supported) {
       // Honest rather than reassuring: quoting a devnet fee on an unmeasured network would be
@@ -289,20 +357,24 @@ export function SendRoute({ params, navigate, back }) {
       + (feeInfo.source === 'assumed' ? ' (assumed, not measured on this network)' : '');
   }
 
-  /** Parse the amount field into BigInt base units, surfacing its own errors. */
+  /** Parse the amount field into BigInt base units of the CURRENT asset, surfacing its own errors. */
   function parseAmount(amountField) {
     const raw = amountField.value.trim();
     amountUnits = 0n;
     if (!raw) return;
     try {
-      amountUnits = parseThruAmount(raw);
+      amountUnits = asset.isNative
+        ? parseThruAmount(raw)
+        : parseTokenAmount(raw, tokenDecimals());
     } catch (error) {
       amountField.setError(error.message || 'Enter a valid amount.');
       return;
     }
     if (amountUnits > spendableUnits()) {
       amountField.setError(
-        `More than you can send. Spendable: ${formatThru(spendableUnits())} THRU.`,
+        asset.isNative
+          ? `More than you can send. Spendable: ${formatThru(spendableUnits())} THRU.`
+          : `More than you hold. Balance: ${formatTokenAmount(spendableUnits(), tokenDecimals())} ${asset.symbol || 'TOKEN'}.`,
       );
     }
   }
@@ -315,47 +387,87 @@ export function SendRoute({ params, navigate, back }) {
    * Surfacing that here turns an unexplained failure into something the user can act on.
    */
   async function validateRecipient(value, statusEl) {
-    const addr = String(value || '').trim();
-    if (!addr) return;
-
-    let result;
+    const seq = ++recipientValidationSeq;
+    const stale = () => seq !== recipientValidationSeq;
     try {
-      result = await bridge.send('tx.validateAddress', { address: addr });
-    } catch (error) {
-      statusEl.textContent = error.message || 'Could not validate that address.';
-      statusEl.classList.remove('hidden');
-      return;
-    }
+      const addr = String(value || '').trim();
+      if (!addr) return;
 
-    recipientState = { ...result, exists: null };
-
-    if (!result.valid) {
-      statusEl.textContent = result.reason || 'That is not a valid Thru address.';
-      statusEl.classList.remove('hidden');
-      return;
-    }
-    if (result.isSelf) {
-      statusEl.textContent = result.reason || "That's the address you're sending from.";
-      statusEl.classList.remove('hidden');
-      return;
-    }
-
-    statusEl.textContent = 'Checking the recipient…';
-    statusEl.classList.remove('hidden');
-
-    try {
-      const info = await bridge.send('tx.getAccountInfo', { address: addr });
-      recipientState.exists = Boolean(info.exists);
-      if (!info.exists) {
-        statusEl.textContent = 'This address has never been used on this network, so it cannot '
-          + 'receive a transfer yet. The owner needs to activate it first.';
-      } else {
-        statusEl.textContent = `Recipient is active. Balance ${formatThru(BigInt(info.balance))} THRU.`;
+      let result;
+      try {
+        result = await bridge.send('tx.validateAddress', { address: addr });
+      } catch (error) {
+        if (stale()) return;
+        statusEl.textContent = error.message || 'Could not validate that address.';
+        statusEl.classList.remove('hidden');
+        return;
       }
-    } catch {
-      // Unknown is not the same as absent; allow the attempt and let the background decide.
-      recipientState.exists = null;
-      statusEl.textContent = 'Could not confirm the recipient exists. The transfer may fail.';
+
+      if (stale()) return;
+      recipientState = { ...result, exists: null };
+
+      if (!result.valid) {
+        statusEl.textContent = result.reason || 'That is not a valid Thru address.';
+        statusEl.classList.remove('hidden');
+        return;
+      }
+      if (result.isSelf) {
+        statusEl.textContent = result.reason || "That's the address you're sending from.";
+        statusEl.classList.remove('hidden');
+        return;
+      }
+
+      statusEl.textContent = 'Checking the recipient…';
+      statusEl.classList.remove('hidden');
+
+      if (!asset.isNative) {
+        // Token sends do NOT require the recipient's wallet account to be registered: their
+        // token account is a program-derived address the sender can initialize in the same
+        // flow. Whether initialize-account tolerates a never-registered OWNER is an open chain
+        // question (docs/BACKEND_GAPS.md) verified by scripts/verify-token-transfer.mjs — the
+        // chain decides, and this screen neither promises nor pre-refuses.
+        try {
+          const tokenAccount = await bridge.send('token.deriveTokenAccount', {
+            ownerAddress: addr,
+            mintAddress: asset.mintAddress,
+          });
+          if (stale()) return;
+          const info = await bridge.send('tx.getAccountInfo', { address: tokenAccount });
+          if (stale()) return;
+          recipientState.tokenAccountExists = Boolean(info.exists);
+          statusEl.textContent = info.exists
+            ? `Recipient already has a ${asset.symbol || 'token'} account.`
+            : `First ${asset.symbol || 'TOKEN'} for this recipient — their token account will be`
+              + ' created with this send.';
+        } catch {
+          if (stale()) return;
+          recipientState.tokenAccountExists = null;
+          statusEl.textContent = 'Could not check the recipient\'s token account. The send may '
+            + 'still create it, or fail clearly.';
+        }
+        return;
+      }
+
+      try {
+        const info = await bridge.send('tx.getAccountInfo', { address: addr });
+        if (stale()) return;
+        recipientState.exists = Boolean(info.exists);
+        if (!info.exists) {
+          statusEl.textContent = 'This address has never been used on this network, so it cannot '
+            + 'receive a transfer yet. The owner needs to activate it first.';
+        } else {
+          statusEl.textContent = `Recipient is active. Balance ${formatThru(BigInt(info.balance))} THRU.`;
+        }
+      } catch {
+        if (stale()) return;
+        // Unknown is not the same as absent; allow the attempt and let the background decide.
+        recipientState.exists = null;
+        statusEl.textContent = 'Could not confirm the recipient exists. The transfer may fail.';
+      }
+    } finally {
+      // Whatever path this took (valid, invalid, self, token or native), the Review gate
+      // re-evaluates — unless a newer check superseded this one, in which case it stays put.
+      if (seq === recipientValidationSeq) refreshReviewEnabled();
     }
   }
 
@@ -378,7 +490,9 @@ export function SendRoute({ params, navigate, back }) {
       return false;
     }
     if (amountUnits > spendableUnits()) {
-      amountField.setError(`More than you can send. Spendable: ${formatThru(spendableUnits())} THRU.`);
+      amountField.setError(asset.isNative
+        ? `More than you can send. Spendable: ${formatThru(spendableUnits())} THRU.`
+        : `More than you hold. Balance: ${formatTokenAmount(spendableUnits(), tokenDecimals())} ${asset.symbol || 'TOKEN'}.`);
       return false;
     }
     return true;
@@ -426,9 +540,17 @@ export function SendRoute({ params, navigate, back }) {
 
     const selector = track(AssetSelector({
       nativeBalance: balanceUnits.toString(),
-      tokens,
-      selectedMint: null,
-      onSelect: () => renderForm(),
+      tokens: mergedTokens(),
+      selectedMint: asset.mintAddress,
+      onSelect: (picked) => {
+        asset = picked?.isNative
+          ? { isNative: true, symbol: 'THRU', mintAddress: null }
+          : { ...picked, isNative: false };
+        // The amount is denominated in the newly selected asset now, and the recipient check
+        // depends on the mint — passing them as prefill forces renderForm to re-run both.
+        recipientState = null;
+        renderForm({ to: formState.to, amount: formState.amount });
+      },
     }));
     body.appendChild(selector.el);
 
@@ -454,7 +576,7 @@ export function SendRoute({ params, navigate, back }) {
       // index, unlike the legacy picker which compared the OLD ref shape and could mis-match.
       excludeRef: account.ref,
       emptyText: 'No other accounts or saved contacts yet.',
-      onPick: (pick) => renderForm({ to: pick.address, amount: '' }),
+      onPick: (pick) => renderForm({ to: pick.address, amount: formState.amount }),
     }));
     body.appendChild(picker.el);
 
@@ -462,7 +584,7 @@ export function SendRoute({ params, navigate, back }) {
       track(Button({
         label: 'Back',
         variant: 'text',
-        onClick: () => renderForm({ to: recipientField?.value || '', amount: '' }),
+        onClick: () => renderForm({ to: recipientField?.value || '', amount: formState.amount }),
       })).el));
   }
 
@@ -471,6 +593,10 @@ export function SendRoute({ params, navigate, back }) {
     clearBody();
     header.setTitle('Confirm send');
 
+    const symbol = asset.isNative ? 'THRU' : (asset.symbol || 'TOKEN');
+    const displayAmount = asset.isNative
+      ? `${formatThru(amountUnits)} THRU`
+      : `${formatTokenAmount(amountUnits, tokenDecimals())} ${symbol}`;
     const feeUnits = feeInfo?.supported ? BigInt(feeInfo.feeUnits) : 0n;
     const total = amountUnits + feeUnits;
 
@@ -482,7 +608,7 @@ export function SendRoute({ params, navigate, back }) {
       h('p', { class: 'hint', text: 'Check the address carefully. There is no way to undo a send.' }),
     ]));
 
-    body.appendChild(h('div', { class: 'detail-table' }, [
+    const rows = [
       h('div', { class: 'detail-row' }, [
         h('span', { class: 'eyebrow', text: 'From' }),
         h('div', { class: 'detail-val' }, [
@@ -498,27 +624,45 @@ export function SendRoute({ params, navigate, back }) {
       ]),
       h('div', { class: 'detail-row' }, [
         h('span', { class: 'eyebrow', text: 'Amount' }),
-        h('div', { class: 'detail-val mono', text: `${formatThru(amountUnits)} THRU` }),
+        h('div', { class: 'detail-val mono', text: displayAmount }),
       ]),
-      h('div', { class: 'detail-row' }, [
-        h('span', { class: 'eyebrow', text: 'Network fee' }),
-        h('div', {
-          class: 'detail-val mono',
-          text: feeInfo?.supported ? `${formatThru(feeUnits)} THRU` : 'unknown',
-        }),
-      ]),
-      h('div', { class: 'detail-row' }, [
-        h('span', { class: 'eyebrow', text: 'Total' }),
-        h('div', {
-          class: 'detail-val mono strong',
-          text: feeInfo?.supported ? `${formatThru(total)} THRU` : `${formatThru(amountUnits)} THRU + fee`,
-        }),
-      ]),
-      h('div', { class: 'detail-row' }, [
-        h('span', { class: 'eyebrow', text: 'Network' }),
-        h('div', { class: 'detail-val', text: network?.label || '—' }),
-      ]),
+    ];
+
+    if (!asset.isNative && recipientState?.tokenAccountExists === false) {
+      // A real, user-visible consequence: this send is two chain transactions, not one, and
+      // the second fee is part of the cost of sending to a first-time holder.
+      rows.push(h('div', { class: 'detail-row' }, [
+        h('span', { class: 'eyebrow', text: 'Recipient token account' }),
+        h('div', { class: 'detail-val', text: `Will be created for them — one extra THRU fee applies.` }),
+      ]));
+    }
+
+    rows.push(h('div', { class: 'detail-row' }, [
+      h('span', { class: 'eyebrow', text: 'Network fee' }),
+      h('div', {
+        class: 'detail-val mono',
+        text: asset.isNative
+          ? (feeInfo?.supported ? `${formatThru(feeUnits)} THRU` : 'unknown')
+          : 'paid in THRU · unmeasured for token transfers',
+      }),
     ]));
+
+    rows.push(h('div', { class: 'detail-row' }, [
+      h('span', { class: 'eyebrow', text: 'Total' }),
+      h('div', {
+        class: 'detail-val mono strong',
+        text: asset.isNative
+          ? (feeInfo?.supported ? `${formatThru(total)} THRU` : `${formatThru(amountUnits)} THRU + fee`)
+          : `${displayAmount} + THRU fee`,
+      }),
+    ]));
+
+    rows.push(h('div', { class: 'detail-row' }, [
+      h('span', { class: 'eyebrow', text: 'Network' }),
+      h('div', { class: 'detail-val', text: network?.label || '—' }),
+    ]));
+
+    body.appendChild(h('div', { class: 'detail-table' }, rows));
 
     // The confirm control is `accent`, not `primary`. The legacy global Enter handler clicked the
     // first enabled .btn.primary in the visible screen, which on this step was Sign & Broadcast.
@@ -545,24 +689,26 @@ export function SendRoute({ params, navigate, back }) {
   async function submit(to) {
     banner.clear();
     try {
-      const params = {
-        toAddress: to,
-        amountUnits: amountUnits.toString(),
-      };
+      const method = asset.isNative ? 'tx.send' : 'token.transfer';
+      const params = asset.isNative
+        ? { toAddress: to, amountUnits: amountUnits.toString() }
+        : { mintAddress: asset.mintAddress, toAddress: to, amountUnits: amountUnits.toString() };
+      const symbol = asset.isNative ? 'THRU' : (asset.symbol || 'TOKEN');
       const prefs = await bridge.send('settings.get').catch(() => null);
       const result = prefs?.requirePasswordForSigning === false
-        ? await bridge.send('tx.send', params)
+        ? await bridge.send(method, params)
         : await requirePassword({
           title: 'Confirm send',
-          body: 'Re-enter your password to sign and broadcast this transfer.',
+          body: `Re-enter your password to sign and broadcast this ${symbol} transfer.`,
           confirmLabel: 'Sign & send',
-          verify: (password) => bridge.send('tx.send', { ...params, password }),
+          verify: (password) => bridge.send(method, { ...params, password }),
         });
       if (!result) return;
       renderSuccess(to, result);
     } catch (error) {
       // The background owns the authoritative guards (whitelist, duplicate submission,
-      // recipient activation), so its message is shown rather than re-derived here.
+      // recipient activation, mint existence, token balance), so its message is shown rather
+      // than re-derived here.
       if (error.code === 'RECIPIENT_NOT_ACTIVATED') {
         banner.set(error.message, 'warning');
       } else if (error.code === 'DUPLICATE_SUBMISSION') {
@@ -577,13 +723,22 @@ export function SendRoute({ params, navigate, back }) {
     clearBody();
     header.setTitle('Sent');
 
+    const sentText = asset.isNative
+      ? `${formatThru(amountUnits)} THRU sent`
+      : `${formatTokenAmount(amountUnits, tokenDecimals())} ${asset.symbol || 'TOKEN'} sent`;
+
     body.appendChild(h('div', { class: 'notice' }, [
       h('div', { class: 'row-flex' }, [
         icon('check', 16),
-        h('strong', { text: `${formatThru(amountUnits)} THRU sent` }),
+        h('strong', { text: sentText }),
       ]),
       h('p', { class: 'hint', text: `to ${truncateAddress(to)}` }),
     ]));
+
+    if (result?.recipientTokenAccountCreated) {
+      body.appendChild(h('p', { class: 'hint', text:
+        `A ${asset.symbol || 'token'} account was created for the recipient as part of this send.` }));
+    }
 
     if (result?.signature) {
       body.appendChild(h('div', { class: 'detail-table' }, [
@@ -660,6 +815,16 @@ export function SendRoute({ params, navigate, back }) {
       const info = await bridge.send('tx.getAccountInfo', { address: account.address });
       balanceUnits = info.balance != null ? BigInt(info.balance) : 0n;
 
+      // Token balances drive the asset picker's sendable states and the token spendable
+      // line. A failure here degrades tokens to "unknown" (unselectable) rather than
+      // pretending they hold zero.
+      try {
+        const tb = await bridge.send('token.getBalances', { address: account.address });
+        tokenBalanceState = new Map((tb?.balances || []).map((b) => [b.mintAddress, b]));
+      } catch {
+        tokenBalanceState = new Map();
+      }
+
       renderForm({ to: safeAddressParam(params.to) || '', amount: '' });
     } catch (error) {
       clearBody();
@@ -672,6 +837,7 @@ export function SendRoute({ params, navigate, back }) {
   return {
     el,
     destroy() {
+      liveReviewBtn = null;
       for (const c of owned) c.destroy?.();
       owned.length = 0;
       header.destroy();

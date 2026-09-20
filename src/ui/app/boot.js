@@ -9,6 +9,7 @@ import * as guards from './guards.js';
 import * as bridge from './bridge.js';
 import { AppShell } from './shell.js';
 import { FLAGS } from '../../shared/flags.js';
+import { initTheme } from '../../popup/theme.js';
 import { UnlockRoute } from './routes/unlock.js';
 import { DashboardRoute } from './routes/dashboard.js';
 import { AccountsRoute } from './routes/accounts.js';
@@ -143,6 +144,9 @@ export const POPUP_ROUTES = [
  * @returns {Promise<Router|null>}
  */
 export async function boot({ root, legacyFallback, onMigratedRoute } = {}) {
+  // Theme first: any first paint that already honours [data-theme] avoids a light->dark
+  // flash on open. Pure popup-local state — see popup/theme.js.
+  await initTheme().catch(() => {});
   const mount = root || document.getElementById('app');
   if (!mount) {
     console.error('[boot] no #app mount point; leaving the legacy UI in place.');

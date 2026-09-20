@@ -20,6 +20,11 @@
 //      CUSTOM_NETWORK_DISABLED, while a stored custom, disabled, or unknown active id self-heals to
 //      the default before the RPC client is bound. Custom records can still be stored, listed, and
 //      removed for compatibility; they can no longer become active.
+//
+//      Contract v8 is purely additive (no existing method changed): `token.transfer` adds a
+//      signing-gated token send, and `token.getBalances` now returns real owned balances for
+//      registry mints instead of the capability stub (`docs/BACKEND_GAPS.md` C1 resolved) —
+//      same method, same params, strictly richer `balances` payload.
 //   2. Every method the UI calls must appear here, and every handler registered in
 //      src/background/api-router.js must appear here. test-contract.mjs enforces both
 //      directions, so a rename on either side fails CI instead of failing silently at
@@ -37,7 +42,9 @@
 //                explicitly disabled signing re-authentication in Settings
 // `since` is the contract version in which the method first appeared.
 
-export const CONTRACT_VERSION = 7;
+// v9 appends tx.getHistoryFeed (cache-merged first history page, offline-honest). Append-only:
+// no existing method's name, params, or auth changed.
+export const CONTRACT_VERSION = 9;
 
 export const METHODS = {
   // ---- System ------------------------------------------------------------
@@ -322,6 +329,12 @@ export const METHODS = {
     auth: 'none',
     since: 1,
   },
+  'tx.getHistoryFeed': {
+    params: ['address'],
+    returns: '{ entries, nextCursor, synced } — cache-merged first page; synced=false when served from cache offline',
+    auth: 'none',
+    since: 9,
+  },
   'tx.checkHealth': {
     params: [],
     returns: '{ status, latencyMs, ... }',
@@ -439,9 +452,25 @@ export const METHODS = {
   },
   'token.getBalances': {
     params: ['address'],
-    returns: '{ supported: false, balances: null, reason } — UNVERIFIED on Thru, see docs/BACKEND_GAPS.md C1',
+    returns: '{ supported, networkId, balances: [{ mintAddress, symbol, name, decimals, imageUrl, hidden, '
+      + 'source, tokenAccount, tokenAccountExists, amountUnits, error }], reason } — since contract v8 '
+      + 'these are REAL owned balances for registry mints (official Token Program reads). '
+      + 'amountUnits is a base-unit string or null; null with tokenAccountExists:false is a proven '
+      + 'zero, null with error:true is an unknown. Before v8 this returned { supported: false }. '
+      + 'See docs/BACKEND_GAPS.md C1.',
     auth: 'none',
     since: 4,
+  },
+  'token.transfer': {
+    params: ['mintAddress', 'toAddress', 'amountUnits', 'password'],
+    returns: '{ signature, blockHeight, recipientTokenAccountCreated, initSignature } — sends raw '
+      + 'units of the MINT (never THRU) from the active account\'s token account, initializing '
+      + 'the recipient\'s token account first when missing. Errors carry stable codes: '
+      + 'MINT_NOT_FOUND, TOKEN_ACCOUNT_MISSING, TOKEN_FROZEN, TOKEN_BALANCE_TOO_LOW, '
+      + 'TOKEN_INIT_FAILED, DUPLICATE_SUBMISSION.',
+    auth: 'signing',
+    since: 8,
+    authSince: 8,
   },
 
   // ---- Preferences -----------------------------------------------------

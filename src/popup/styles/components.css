@@ -319,6 +319,60 @@ textarea[aria-invalid="true"] {
   color: var(--text-1);
 }
 
+/* Interactive monospace box: the receive screen's address box is also the copy
+   affordance. It must LOOK tappable — pointer cursor, a hover wash inside an
+   already-bounded card, emphasis on the trailing copy icon — while keeping the
+   monospace card read. .copied is the inline confirmation (positive tokens,
+   same idea as .icon-btn.copied), centered so the card becomes the badge. */
+.copy-address {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  padding: 10px 12px;
+  transition: background var(--t-base), border-color var(--t-base), color var(--t-base);
+}
+.copy-address:hover {
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+}
+.copy-address .copy-address-text {
+  flex: 1;
+  font-size: 11px;
+  line-height: 1.4;
+  letter-spacing: -0.015em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.copy-address > .icon, .copy-address > svg {
+  color: var(--text-3);
+  flex-shrink: 0;
+  transition: color var(--t-base);
+}
+.copy-address:hover > .icon, .copy-address:hover > svg {
+  color: var(--text-1);
+}
+.copy-address.copied {
+  justify-content: center;
+  background: var(--positive-tint);
+  border-color: var(--positive-border);
+  color: var(--positive);
+}
+.copy-address.copied .copy-address-text {
+  flex: 0 0 auto;
+  text-align: center;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  letter-spacing: normal;
+}
+.copy-address.copied > .icon, .copy-address.copied > svg {
+  color: var(--positive);
+}
+
 .mnemonic-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -331,7 +385,11 @@ textarea[aria-invalid="true"] {
   font-size: var(--fs-sm);
 }
 
-.mnemonic-grid span {
+/* Tiles are the DIRECT span children only. Without the `>` this rule also matched each word's
+   inner span and drew a second border inside the tile, sized per word — the "unequal boxes"
+   seen in the reveal grid. (Selector-vs-DOM drift: the component renders <em>/<span> children,
+   the CSS was written for flat text with a <b> number.) */
+.mnemonic-grid > span {
   display: flex;
   align-items: baseline;
   gap: 6px;
@@ -339,10 +397,15 @@ textarea[aria-invalid="true"] {
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  color: var(--text-3);
 }
 
-.mnemonic-grid span b {
+.mnemonic-grid > span em {
+  font-style: normal;
+  color: var(--text-3);
+  min-width: 2ch;
+}
+
+.mnemonic-grid > span > span {
   color: var(--text-1);
   font-weight: 500;
 }
@@ -685,6 +748,21 @@ button.row { cursor: pointer; }
 .qr-container canvas {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
+}
+
+
+/* The QR is itself a button (tap to switch styled <-> plain for stubborn scanners).
+   No chip, no frame — the artwork is the affordance; only the cursor says "pressable". */
+.qr-toggle {
+  display: block;
+  padding: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  line-height: 0;
+}
+.qr-toggle canvas {
+  display: block;
 }
 
 /* ---- Field with inline validation indicator --------------- */

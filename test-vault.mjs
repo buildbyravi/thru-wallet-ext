@@ -64,8 +64,17 @@ console.log('\n[3] Import an extra private key into the SAME vault');
 const { keys } = await import('@thru/sdk');
 const generated = await keys.generateKeyPair();
 const importedHex = Buffer.from(generated.privateKey).toString('hex');
-const refImported = await vault.addImportedKey(importedHex);
-assert(refImported.kind === 'imported' && refImported.keyIndex === 0, 'imported key gets keyIndex 0');
+// The sealed vault.addImportedKey path (no password) must throw now; the production path
+// is the password-gated keyring primitive the router has always used.
+let sealedThrew = false;
+try {
+  await vault.addImportedKey(importedHex);
+} catch {
+  sealedThrew = true;
+}
+assert(sealedThrew, 'sealed legacy addImportedKey throws instead of bypassing the password');
+const refImported = await vault.addPrivateKeyKeyring(importedHex, 'correct horse battery staple');
+assert(refImported.type === 'privateKey' && refImported.id, 'password-gated import returns a keyring descriptor');
 const accImported = await vault.getActiveAccount();
 assert(accImported.address === generated.address, 'resolved imported account address matches the generated one');
 console.log('    imported account address:', accImported.address);
@@ -90,7 +99,7 @@ const exported = await vault.exportAccountSecret({ kind: 'hd', index: 0 }, 'corr
 assert(exported.mnemonic === mnemonic, 'export with correct password returns the original mnemonic');
 
 console.log('\n[6] Export the imported key specifically (should be the private key, not the mnemonic)');
-const exportedImported = await vault.exportAccountSecret({ kind: 'imported', keyIndex: 0 }, 'correct horse battery staple');
+const exportedImported = await vault.exportAccountSecret({ keyringId: refImported.id }, 'correct horse battery staple');
 assert(exportedImported.privateKeyHex === importedHex, 'exported private key matches what was imported');
 
 console.log('\n[7] Lock, confirm locked state blocks account resolution, then unlock and confirm data persisted');

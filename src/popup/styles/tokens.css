@@ -150,3 +150,60 @@
   --popup-min-height: 580px;
   --topbar-height: 48px;
 }
+
+/* ============================================================
+   Dark theme — same thru.org scales, inverted. Nothing here invents
+   a new colour: every value is pulled from the official steel/teal/
+   brick ramps above, remapped so surfaces step lighter as they rise
+   and text inverts to the ice end of the scale. Semantic names stay
+   identical, so no component CSS is theme-aware.
+
+   Applied by src/popup/theme.js via document.documentElement
+   [data-theme="dark"|"light"]; 'system' resolves at apply time.
+   ============================================================ */
+[data-theme="dark"] {
+  --bg: #101517;
+  --surface-1: #1b2226;
+  --surface-2: #232c31;
+  --surface-3: #2c373d;
+  --surface-inset: #141a1d;
+
+  --border: #2f3a40;
+  --border-strong: #45535b;
+  --border-hairline: #242e33;
+
+  --text-1: #eef4f5;
+  --text-2: #a9bcc4;
+  --text-3: #7d939e;
+  --text-inverse: #151b1e;
+
+  --accent: #e65b62;
+  --accent-bright: #f0767c;
+  --accent-ink: #ffffff;
+  --accent-tint: rgba(237, 120, 126, 0.13);
+  --accent-border: rgba(237, 120, 126, 0.38);
+
+  --ink: #eef4f5;
+  --ink-hover: #ffffff;
+  --ink-ink: #151b1e;
+
+  --gold: #f0b35a;
+  --gold-tint: rgba(240, 179, 90, 0.1);
+  --gold-border: rgba(240, 179, 90, 0.3);
+
+  --positive: #3fbfae;
+  --positive-tint: rgba(63, 191, 174, 0.1);
+  --positive-border: rgba(63, 191, 174, 0.3);
+  --negative: #e9646b;
+  --negative-tint: rgba(233, 100, 107, 0.1);
+  --negative-border: rgba(233, 100, 107, 0.3);
+
+  --mark-0: #2c373d;
+  --mark-1: #54676f;
+  --mark-2: #3fbfae;
+  --mark-3: #e65b62;
+
+  --shadow-sheet: 0 -1px 0 var(--border), 0 -12px 32px rgba(0, 0, 0, 0.5);
+  --shadow-pop: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.45);
+  --overlay-bg: rgba(16, 21, 23, 0.55);
+}

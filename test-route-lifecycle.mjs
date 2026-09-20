@@ -33,6 +33,7 @@
 // Run: node test-route-lifecycle.mjs
 
 import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { applyTheme } from './src/popup/theme.js';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -73,6 +74,20 @@ const SECRET_PRIVATE_KEY = 'b'.repeat(64);
 const SECRET_PASSWORD = 'Hunter2!correct-horse';
 const ADDRESS_A = 'ta1addressaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 const ADDRESS_B = 'ta1addressbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+
+/** A deployed token the active account actually holds (contract v8 asset flows). */
+const TOKEN_FIXTURE = {
+  mintAddress: 'ta1smkfixturemint000000000000000000000000000',
+  symbol: 'SMK',
+  name: 'Smoke Token',
+  decimals: 6,
+  imageUrl: '',
+  hidden: false,
+  source: 'deployed',
+  deployedAt: 1750000000000,
+  initialSupply: '1000000000',
+};
+const TOKEN_ACCOUNT_FIXTURE = 'ta1smktokenaccount0000000000000000000000';
 
 /** Every string that must never appear in the DOM, by kind. */
 const SECRETS = [
@@ -1009,7 +1024,7 @@ const backend = {
   contacts: [{ address: ADDRESS_B, label: 'Spending wallet', createdAt: 1750000003000 }],
   lockout: { locked: false, failedAttempts: 0, retryInMs: 0 },
   pending: [],
-  tokens: [],
+  tokens: [TOKEN_FIXTURE],
 };
 
 function activeNetwork() {
@@ -1191,6 +1206,31 @@ const FIXTURES = {
   'contacts.list': () => backend.contacts.map((c) => ({ ...c })),
 
   'token.list': () => backend.tokens.map((t) => ({ ...t })),
+  'token.getBalances': () => ({
+    supported: true,
+    networkId: activeNetwork().id,
+    balances: backend.tokens.map((t) => ({
+      mintAddress: t.mintAddress,
+      symbol: t.symbol,
+      name: t.name,
+      decimals: t.decimals,
+      imageUrl: t.imageUrl || '',
+      hidden: Boolean(t.hidden),
+      source: t.source || 'deployed',
+      tokenAccount: TOKEN_ACCOUNT_FIXTURE,
+      tokenAccountExists: true,
+      amountUnits: '250000000',
+      error: false,
+    })),
+    reason: null,
+  }),
+  'token.deriveTokenAccount': () => TOKEN_ACCOUNT_FIXTURE,
+  'token.transfer': () => ({
+    signature: 'sig_token_cccccccccccccccccccccccccccccccccccc',
+    blockHeight: null,
+    recipientTokenAccountCreated: false,
+    initSignature: null,
+  }),
 
   'tx.checkHealth': () => ({
     status: 'ok',
@@ -1216,6 +1256,16 @@ const FIXTURES = {
   },
   'tx.getCachedBalances': ({ addresses } = {}) => FIXTURES['tx.getBalances']({ addresses }),
   'tx.getPending': () => backend.pending.map((p) => ({ ...p })),
+  // Mirrors pending-tx-service.reconcile(): submitted records settle to confirmed (the
+  // history fixture already "contains" their signatures). Records stay in the list with
+  // their new status, exactly like production list().
+  'tx.reconcilePending': () => {
+    const actives = backend.pending.filter((p) => p.status === 'submitted').length;
+    backend.pending = backend.pending.map((p) => (p.status === 'submitted'
+      ? { ...p, status: 'confirmed', settledAt: Date.now() }
+      : p));
+    return { checked: backend.pending.length, settled: actives };
+  },
   'tx.autoCreateAccount': () => ({ exists: true, created: false, signature: null }),
   'tx.listHistory': ({ limit } = {}) => {
     const size = Math.min(Number(limit) || 15, HISTORY_ENTRIES.length);
@@ -1223,6 +1273,15 @@ const FIXTURES = {
       entries: HISTORY_ENTRIES.slice(0, size).map((e) => ({ ...e })),
       nextCursor: size,
       hasMore: size < HISTORY_ENTRIES.length,
+    };
+  },
+  // Mirrors history-service.getHistoryFeed: cache-merged first page, honestly labelled.
+  'tx.getHistoryFeed': () => {
+    const size = Math.min(15, HISTORY_ENTRIES.length);
+    return {
+      entries: HISTORY_ENTRIES.slice(0, size).map((e) => ({ ...e })),
+      nextCursor: size,
+      synced: true,
     };
   },
   'tx.estimateFee': () => ({
@@ -1409,6 +1468,10 @@ async function settle(rounds = 8) {
   }
 }
 
+// Real-time wait — needed when production code debounces on a real timer (the send route's
+// recipient check waits 350ms before firing).
+const sleep = (ms) => new Promise((resolve) => realSetTimeout(resolve, ms));
+
 function resetBackend(scenario) {
   backend.hasVault = scenario.hasVault;
   backend.unlocked = scenario.unlocked;
@@ -1422,7 +1485,7 @@ function resetBackend(scenario) {
   backend.contacts = [{ address: ADDRESS_B, label: 'Spending wallet', createdAt: 1750000003000 }];
   backend.lockout = { locked: false, failedAttempts: 0, retryInMs: 0 };
   backend.pending = [];
-  backend.tokens = [];
+  backend.tokens = [TOKEN_FIXTURE];
 }
 
 /** Fresh document, window and #app, plus cleared logs. */
@@ -1818,6 +1881,70 @@ async function settingsTest() {
   ok('the removed custom row disappears while the quarantine notice remains',
     !/My node/.test(textOf(tree)) && /temporarily unavailable/i.test(textOf(tree)),
     textOf(tree).slice(0, 300));
+}
+
+// ---- Theme ----------------------------------------------------------------
+
+async function themeTest() {
+  section('theme: the user chooses light/dark/system and the choice applies and persists');
+
+  resetBackend(SCENARIOS[2]);
+  resetDom();
+  guards.invalidate();
+
+  // A stored preference is honoured at boot, before any routed content paints.
+  await chrome.storage.local.set({ thru_theme: 'dark' });
+  const app = DOC.getElementById('app');
+  const router = await boot({ root: app });
+  await settle();
+  ok('a stored dark preference applies at boot', DOC.documentElement.dataset.theme === 'dark',
+    `data-theme=${DOC.documentElement.dataset.theme}`);
+
+  router.navigate('/settings');
+  await settle();
+  const tree = router.root;
+  const text = textOf(tree);
+
+  ok('settings offers a user-facing Appearance section', /appearance/i.test(text));
+  const lightChip = buttons(tree, /^light$/i)[0];
+  const darkChip = buttons(tree, /^dark$/i)[0];
+  const systemChip = buttons(tree, /^system$/i)[0];
+  ok('all three theme choices are real buttons', [lightChip, darkChip, systemChip].every(Boolean));
+  ok('the stored choice renders as the selected chip', darkChip?.classList.contains('selected'),
+    `dark.selected=${darkChip?.classList.contains('selected')}`);
+
+  click(lightChip);
+  await settle();
+  ok('switching to Light applies immediately', DOC.documentElement.dataset.theme === 'light',
+    `data-theme=${DOC.documentElement.dataset.theme}`);
+  ok('the choice persists in popup-local storage',
+    (await chrome.storage.local.get('thru_theme'))?.thru_theme === 'light',
+    JSON.stringify(await chrome.storage.local.get('thru_theme')));
+  ok('the selection moves to the newly chosen chip',
+    buttons(tree, /^light$/i)[0]?.classList.contains('selected')
+      && !buttons(tree, /^dark$/i)[0]?.classList.contains('selected'));
+
+  click(systemChip);
+  await settle();
+  ok('System resolves through the OS preference, here to Light',
+    DOC.documentElement.dataset.theme === 'light',
+    `data-theme=${DOC.documentElement.dataset.theme}`);
+  ok('the persisted value is the word “system”, not the resolved theme',
+    (await chrome.storage.local.get('thru_theme'))?.thru_theme === 'system');
+
+  // An unrecognised stored value never reaches the DOM.
+  await chrome.storage.local.set({ thru_theme: 'midnight-blue' });
+  guards.invalidate();
+  const app2 = DOC.getElementById('app');
+  await boot({ root: app2 });
+  await settle();
+  ok('an unrecognised stored value falls back to system',
+    DOC.documentElement.dataset.theme === 'light',
+    `data-theme=${DOC.documentElement.dataset.theme}`);
+
+  // Leave the shared fixture storage at the default for the scenarios that follow.
+  await chrome.storage.local.set({ thru_theme: 'system' });
+  applyTheme('system');
 }
 
 // ---- Focus trap ------------------------------------------------------------
@@ -2253,6 +2380,409 @@ async function navigationTest() {
       findSecrets(SECRETS).length === 0 && findSecretsInTornDown(SECRETS).length === 0);
   }
 
+  // ---- Receive: address copy, QR canvas, and audit cleanup ----------------
+  // The DOM-shim canvas exercises qr.js's flat degradation (no roundRect), which must
+  // render silently — no "Could not render the QR" warning. Audited cleanups below:
+  // the dead hidden CopyButton is gone (one affordance), the address block is the
+  // untruncated full address, and the canvas carries an accessible name.
+  router.navigate('/receive');
+  await settle();
+  const recvMono = router.root.querySelector('.monospace-block');
+  ok('the receive screen shows the full, untruncated address',
+    Boolean(recvMono) && recvMono.textContent === activeAccount().address,
+    recvMono?.textContent);
+  // The QR is an interactive control: tap flips styled <-> plain for scanners that
+  // choke on artistic QRs. The accessible name therefore lives on the toggle button.
+  const qrToggle = buttons(router.root, /QR code of your receive address/i)[0];
+  ok('the QR toggle carries the receive-address description',
+    Boolean(qrToggle) && /styled.*plain/i.test(qrToggle.getAttribute('aria-label') || ''),
+    qrToggle?.getAttribute?.('aria-label'));
+  ok('a canvas renders inside the QR toggle',
+    Boolean(qrToggle) && Boolean(qrToggle.querySelector?.('canvas')));
+  if (qrToggle) {
+    click(qrToggle);
+    await settle();
+    ok('tapping the QR switches it to the plain scanner-safe style',
+      /plain.*Thru-styled/i.test(qrToggle.getAttribute('aria-label') || ''),
+      qrToggle.getAttribute('aria-label'));
+    click(qrToggle);
+    await settle();
+    ok('tapping again restores the styled Thru QR',
+      /styled.*plain/i.test(qrToggle.getAttribute('aria-label') || ''),
+      qrToggle.getAttribute('aria-label'));
+  }
+  ok('no QR render warning under a minimal canvas',
+    !/Could not render the QR/.test(textOf(router.root)), textOf(router.root).slice(0, 160));
+  const copyAffordances = buttons(router.root, /copy address/i);
+  ok('exactly one copy affordance for the address (the dead hidden button is gone)',
+    copyAffordances.length === 1, String(copyAffordances.length));
+  ok('the address box itself is the copy affordance (not a sibling button)',
+    Boolean(copyAffordances[0]) && copyAffordances[0].classList.contains('copy-address'));
+
+  // Clickable-address copy flow: click -> clipboard write of the FULL address ->
+  // inline "Copied" confirmation -> auto-restore to the address after ~1s.
+  clipboardLog.writes.length = 0;
+  click(copyAffordances[0]);
+  await settle();
+  ok('clicking the address box copies the full address to the clipboard',
+    clipboardLog.writes.includes(activeAccount().address), JSON.stringify(clipboardLog.writes));
+  ok('the box confirms with an inline "Copied"',
+    /Copied/.test(copyAffordances[0].textContent), copyAffordances[0].textContent);
+  ok('the box announces the copy to assistive tech',
+    /copied to clipboard/i.test(copyAffordances[0].getAttribute('aria-label') || ''));
+  await new Promise((r) => setTimeout(r, 1250));
+  await settle();
+  ok('the box restores the full address about a second later',
+    copyAffordances[0].textContent.includes(activeAccount().address),
+    copyAffordances[0].textContent.slice(0, 60));
+  ok('the aria label returns to the copy description after restoring',
+    /^Copy address:/.test(copyAffordances[0].getAttribute('aria-label') || ''));
+  // (The shim's selector engine is deliberately tiny — walk anchors instead of a[href*=].)
+  const explorerLink = [...router.root.querySelectorAll?.('a') || []]
+    .find((a) => String(a.href || a.getAttribute?.('href') || '').includes('/account/'));
+  const explorerHref = String(explorerLink?.getAttribute?.('href') || '');
+  ok('the explorer link embeds the address on the active network',
+    explorerHref.includes(activeAccount().address),
+    explorerHref || 'no explorer anchor found');
+
+  // ---- Send: selecting a token asset (contract v8) -------------------------
+  // The asset picker used to list tokens as permanently "not sendable"; with token.transfer
+  // behind it, a funded token is selectable and the whole form re-denominates. This drives
+  // the real click path: asset card → picker → token row → form.
+  router.navigate('/send');
+  await settle();
+  const assetCard = buttons(router.root, /thru native token/i)[0];
+  ok('the send screen offers the asset card', Boolean(assetCard));
+  if (assetCard) {
+    click(assetCard);
+    await settle();
+    const tokenRow = buttons(router.root, /smoke token/i)[0];
+    ok('a funded token is selectable in the asset picker', Boolean(tokenRow));
+    ok('the picker no longer declares tokens fundamentally unsendable',
+      !/Token transfers are not supported yet/.test(textOf(router.root)));
+    if (tokenRow) {
+      click(tokenRow);
+      await settle();
+      ok('the amount field re-denominates to the token', textOf(router.root).includes('Amount (SMK)'));
+      ok('the spendable line shows the token balance', textOf(router.root).includes('Spendable: 250 SMK'),
+        textOf(router.root).slice(0, 240));
+
+      // The recipient probe is mint-dependent: picking a recipient must check THIS mint's
+      // token account, not reuse the native wallet-existence answer.
+      const pickBtn = buttons(router.root, /my accounts/i)[0];
+      if (pickBtn) {
+        click(pickBtn);
+        await settle();
+        const accountRow = buttons(router.root, /spending/i)[0];
+        if (accountRow) {
+          click(accountRow);
+          await settle();
+          ok('the token recipient check runs against the token account',
+            /SMK account|token account/i.test(textOf(router.root)), textOf(router.root).slice(0, 260));
+        } else {
+          ok('a recipient row exists in the account picker', false, textOf(router.root).slice(0, 200));
+        }
+      } else {
+        ok('the send form offers the account picker shortcut', false, textOf(router.root).slice(0, 200));
+      }
+    }
+  }
+  ok('no secret appears on the token send flow',
+    findSecrets(SECRETS).length === 0 && findSecretsInTornDown(SECRETS).length === 0);
+
+  // ---- Send: inverted input order + picker round-trips (PR review findings) --------------
+  // Two regressions found by the PR #6 adversarial review, each asserted to fail pre-fix:
+  //  (1) refreshReviewEnabled only ran from input handlers, so typing the amount BEFORE the
+  //      recipient left Review disabled forever after async validation finished. Post-fix
+  //      validateRecipient re-evaluates the gate in a finally on every completion.
+  //  (3) the recipient picker's onPick and its Back button discarded a pre-typed amount.
+  router.navigate('/send');
+  await settle();
+  const amtInput = router.root.querySelector('input[placeholder="0.0"]');
+  const rcptInput = router.root.querySelector('input[placeholder="ta…"]');
+  ok('the send form exposes amount and recipient inputs', Boolean(amtInput && rcptInput));
+  if (amtInput && rcptInput) {
+    // Amount first, recipient second — exactly the order the bug bit.
+    type(amtInput, '5');
+    const reviewInitially = buttons(router.root, /^review$/i)[0];
+    ok('review starts disabled with only an amount typed',
+      Boolean(reviewInitially && reviewInitially.disabled));
+    type(rcptInput, 'ta1validrecipient00000000000000000000000000000000000000000');
+    await sleep(450); // the recipient check debounce is a real 350ms timer
+    await settle();
+    const reviewAfter = buttons(router.root, /^review$/i)[0];
+    ok('review activates when recipient validation resolves after the amount was typed',
+      Boolean(reviewAfter && !reviewAfter.disabled), textOf(router.root).slice(0, 220));
+
+    const myAccounts = buttons(router.root, /my accounts/i)[0];
+    if (myAccounts) {
+      click(myAccounts);
+      await settle();
+      const accRow = buttons(router.root, /spending/i)[0];
+      if (accRow) {
+        click(accRow);
+        await sleep(20); // the prefilled recipient was NOT debounced; it validates at once
+        await settle();
+        const amtAgain = router.root.querySelector('input[placeholder="0.0"]');
+        ok('picking a recipient keeps the typed amount', amtAgain && amtAgain.value === '5',
+          `amount read back: "${amtAgain?.value ?? 'field missing'}"`);
+        const myAccounts2 = buttons(router.root, /my accounts/i)[0];
+        if (myAccounts2) {
+          click(myAccounts2);
+          await settle();
+          const backBtn = buttons(router.root, /^back$/i)[0];
+          if (backBtn) {
+            click(backBtn);
+            await settle();
+            const amtAgain2 = router.root.querySelector('input[placeholder="0.0"]');
+            ok('backing out of the picker also keeps the amount',
+              amtAgain2 && amtAgain2.value === '5');
+          } else {
+            ok('the picker offers a Back control', false, textOf(router.root).slice(0, 200));
+          }
+        }
+      } else {
+        ok('the account picker lists a selectable non-active account', false,
+          textOf(router.root).slice(0, 200));
+      }
+    } else {
+      ok('the send form offers the account picker shortcut', false, textOf(router.root).slice(0, 200));
+    }
+  }
+
+  // ---- Stuck-pending regression (manual smoke defect) -------------------------------------
+  // The send path awaits confirmation, then records the transaction as SUBMITTED — and no
+  // trigger ever settled it while the popup was open, so Dashboard/History showed the
+  // confirmed send as pending forever. Views now actively reconcile before saying
+  // "pending". The fixture's tx.reconcilePending settles submitted records to confirmed.
+  const STUCK = {
+    signature: 'sig_stuck_manual_smoke_aaaaaaaaaaaaaaaaaaaaa', kind: 'transfer',
+    from: activeAccount().address, to: ADDRESS_B,
+    amountUnits: '5000000000', mint: null, displayAmount: '5 THRU',
+    networkId: 'alphanet', status: 'submitted', submittedAt: Date.now(),
+    settledAt: null, error: null,
+  };
+
+  backend.pending = [{ ...STUCK }];
+  router.navigate('/dashboard');
+  await settle();
+  ok('the dashboard proactively reconciles a submitted transaction',
+    chromeLog.calls.includes('tx.reconcilePending'));
+  ok('the pending note clears once the dashboard settles',
+    !/transaction[s]? pending/i.test(textOf(router.root)), textOf(router.root).slice(0, 200));
+
+  backend.pending = [{ ...STUCK }];
+  router.navigate('/history');
+  await settle();
+  ok('the history view proactively reconciles a submitted transaction',
+    chromeLog.calls.filter((m) => m === 'tx.reconcilePending').length >= 2);
+  ok('a reconciled send never renders next to "Waiting for confirmation"',
+    !/Waiting for confirmation/.test(textOf(router.root)), textOf(router.root).slice(0, 220));
+
+  // Render-level belt-and-braces: even when reconcile settles nothing (history-list lag),
+  // a signature the list already displays cannot ALSO be a Pending row.
+  const realReconcile = FIXTURES['tx.reconcilePending'];
+  FIXTURES['tx.reconcilePending'] = () => ({ checked: 0, settled: 0 });
+  backend.pending = [{ ...STUCK, signature: 'sig1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' }];
+  router.navigate('/history');
+  await settle();
+  ok('a signature the list already shows as confirmed is not duplicated as Pending',
+    !/Waiting for confirmation/.test(textOf(router.root)), textOf(router.root).slice(0, 220));
+  FIXTURES['tx.reconcilePending'] = realReconcile;
+  backend.pending = [];
+
+  // P0 history feed: the first page comes from the cache-backed feed (instant,
+  // offline-honest), while "load more" keeps paging the raw RPC cursor.
+  chromeLog.calls.length = 0;
+  router.navigate('/history');
+  await settle();
+  ok('the history first page is served by the cache-merged feed',
+    chromeLog.calls.includes('tx.getHistoryFeed'));
+  ok('the feed-served page still renders the familiar entries',
+    /sig1|transfer|faucet/i.test(textOf(router.root)), textOf(router.root).slice(0, 200));
+  ok('the feed path does not burn an RPC page for page one',
+    chromeLog.calls.filter((m) => m === 'tx.listHistory').length === 0,
+    chromeLog.calls.join(',').slice(-120));
+  const feedMore = buttons(router.root, /load more/i)[0];
+  if (feedMore) {
+    click(feedMore);
+    await settle();
+    ok('"load more" still pages through tx.listHistory after the feed',
+      chromeLog.calls.includes('tx.listHistory'));
+  }
+
+  // P0 audit finding 1: the merged feed paints fresh(15) + cached extras with cursor 15,
+  // so a raw append would render entries 15-29 twice after load-more. Fixed: dedupe on
+  // append. Fixture below reproduces the exact overlap the audit hit.
+  const DUP_ENTRIES = Array.from({ length: 35 }, (_, i) => ({
+    signature: `sigdup_${String(i).padStart(38, '0')}`,
+    slot: 20000 - i,
+    success: true,
+    programAddress: NETWORK_ALPHANET.transferProgramId,
+    kind: 'transfer',
+    amount: String(5000 + i),
+    counterparty: ADDRESS_B,
+    timestamp: 1750000500000 - i * 60000,
+  }));
+  const realFeed = FIXTURES['tx.getHistoryFeed'];
+  const realListHistory = FIXTURES['tx.listHistory'];
+  FIXTURES['tx.getHistoryFeed'] = () => ({
+    entries: DUP_ENTRIES.slice(0, 35).map((e) => ({ ...e })),
+    nextCursor: 15,
+    synced: true,
+  });
+  FIXTURES['tx.listHistory'] = ({ cursor = 0, limit = 15 } = {}) => {
+    const size = Math.max(0, Math.min(Number(limit) || 15, DUP_ENTRIES.length - cursor));
+    return {
+      entries: DUP_ENTRIES.slice(cursor, cursor + size).map((e) => ({ ...e })),
+      nextCursor: cursor + size < DUP_ENTRIES.length ? cursor + size : null,
+      hasMore: cursor + size < DUP_ENTRIES.length,
+    };
+  };
+  router.navigate('/history');
+  await settle();
+  const rowsAfterFeed = router.root.querySelectorAll('.tx-card').length;
+  ok('the merged feed paints all 35 unique entries',
+    rowsAfterFeed === 35, String(rowsAfterFeed));
+  const dupeMore = buttons(router.root, /load more/i)[0];
+  ok('load-more is still offered when the cursor has more pages', Boolean(dupeMore));
+  if (dupeMore) {
+    click(dupeMore);
+    await settle();
+    ok('load-more re-yielding cached signatures never duplicates a card',
+      router.root.querySelectorAll('.tx-card').length === 35,
+      String(router.root.querySelectorAll('.tx-card').length));
+  }
+
+  // P0 audit finding 2: an unsynced (offline) feed must be labelled, not masquerade.
+  FIXTURES['tx.getHistoryFeed'] = () => ({
+    entries: DUP_ENTRIES.slice(0, 3).map((e) => ({ ...e })),
+    nextCursor: 3,
+    synced: false,
+  });
+  router.navigate('/history');
+  await settle();
+  ok('an unsynced feed is labelled as cached/offline in the UI',
+    /cached activity|offline/i.test(textOf(router.root)), textOf(router.root).slice(0, 200));
+  FIXTURES['tx.getHistoryFeed'] = () => ({
+    entries: DUP_ENTRIES.slice(0, 15).map((e) => ({ ...e })),
+    nextCursor: 15,
+    synced: true,
+  });
+  router.navigate('/history');
+  await settle();
+  ok('the offline label clears once a synced page lands',
+    !/cached activity/i.test(textOf(router.root)), textOf(router.root).slice(0, 160));
+  FIXTURES['tx.getHistoryFeed'] = realFeed;
+
+  // ---- P1 cards: day grouping, verbs/deltas, failed badge, signature copy ----
+  const NOW = Date.now();
+  const CARD_ENTRIES = [
+    { signature: 'tsCARD_A_sent_today_aaaaaaaaaaaaaaaaaaaaaaa', slot: 30000,
+      success: true, programAddress: NETWORK_ALPHANET.transferProgramId, kind: 'sent',
+      amount: '100000', counterparty: ADDRESS_B, timestamp: NOW - 2 * 3600000 },
+    { signature: 'tsCARD_B_received_yesterday_aaaaaaaaaaaaaaaaa', slot: 29900,
+      success: true, programAddress: NETWORK_ALPHANET.transferProgramId, kind: 'received',
+      amount: '250000', counterparty: ADDRESS_B, timestamp: NOW - 26 * 3600000 },
+    { signature: 'tsCARD_C_failed_older_aaaaaaaaaaaaaaaaaaaaaaa', slot: 29800,
+      success: false, programAddress: NETWORK_ALPHANET.transferProgramId, kind: 'sent',
+      amount: '1', counterparty: ADDRESS_B, timestamp: NOW - 49 * 3600000 },
+  ];
+  FIXTURES['tx.getHistoryFeed'] = () => ({
+    entries: CARD_ENTRIES.map((e) => ({ ...e })), nextCursor: null, synced: true,
+  });
+  router.navigate('/history');
+  await settle();
+  const histText = textOf(router.root);
+  ok('activity is day-grouped with Today and Yesterday sections',
+    /Today/.test(histText) && /Yesterday/.test(histText), histText.slice(0, 220));
+  ok('a send shows its signed negative delta',
+    histText.includes('-0.0001 THRU'), histText.slice(0, 220));
+  ok('a receipt shows its signed positive delta',
+    histText.includes('+0.00025 THRU'), histText.slice(0, 220));
+  ok('a failed entry wears the "Failed on-chain" badge',
+    /Failed on-chain/.test(histText));
+  ok('every card offers a copy-signature action',
+    buttons(router.root, /copy transaction signature/i).length === 3,
+    String(buttons(router.root, /copy transaction signature/i).length));
+  clipboardLog.writes.length = 0;
+  click(buttons(router.root, /copy transaction signature/i)[0]);
+  await settle();
+  ok('copying a signature writes the full signature to the clipboard',
+    clipboardLog.writes.includes('tsCARD_A_sent_today_aaaaaaaaaaaaaaaaaaaaaaa'),
+    JSON.stringify(clipboardLog.writes));
+
+  // P1 audit finding: the day-boundary badge used listHost.lastChild, which is the
+  // PREVIOUS section's last card — headers lost their count and cards swallowed it.
+  const dayHeaders = [...router.root.querySelectorAll('.list-group-header')];
+  ok('every day header receives its count badge',
+    dayHeaders.length >= 3 && dayHeaders.every((hdr) => hdr.querySelector('.list-group-count')),
+    String(dayHeaders.length));
+  const allCountChips = [...router.root.querySelectorAll('.list-group-count')];
+  ok('no transaction card receives a misplaced count badge',
+    allCountChips.length > 0
+      && allCountChips.every((chip) => chip.parentNode?.localName === 'header')
+      && allCountChips.every((chip) => chip.parentNode === null || !chip.parentNode?.classList?.contains('tx-card')));
+  FIXTURES['tx.getHistoryFeed'] = realFeed;
+
+  // Production wire reality: entries carry NO wall-clock timestamp (slots only). Cards
+  // must group them under an honest "Activity" section and fall back to slot text —
+  // never crash, never render a blank head. Counterparties that are another account in
+  // THIS wallet resolve by name instead of a truncated address.
+  const SELF_B = backend.accounts[1] || backend.accounts[0];
+  FIXTURES['tx.getHistoryFeed'] = () => ({
+    entries: [
+      { signature: 'tsNOTIME1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', slot: 41000,
+        success: true, programAddress: NETWORK_ALPHANET.transferProgramId, kind: 'sent',
+        amount: '90000', counterparty: SELF_B.address, timestamp: null },
+      { signature: 'tsNOTIME2aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', slot: 40900,
+        success: true, programAddress: NETWORK_ALPHANET.transferProgramId, kind: 'received',
+        amount: '40000', counterparty: ADDRESS_B, timestamp: null },
+    ],
+    nextCursor: null,
+    synced: true,
+  });
+  router.navigate('/history');
+  await settle();
+  const noTimeText = textOf(router.root);
+  ok('timestampless wire entries group under an honest section label',
+    /Activity/.test(noTimeText), noTimeText.slice(0, 200));
+  ok('timestampless cards show Block <slot> — explorer wording, never "Slot"',
+    /Block 41000/.test(noTimeText) && !/Slot \d/.test(noTimeText), noTimeText.slice(0, 200));
+
+  // Day-section splinter fix: a timestampless wire entry sandwiched between two same-day
+  // sends inherits its neighbours' day — one "Today" section, never Today -> Activity -> Today.
+  FIXTURES['tx.getHistoryFeed'] = () => ({
+    entries: [
+      { signature: 'tsMIX1_newer_today_aaaaaaaaaaaaaaaaaaaaaaa', slot: 30500,
+        success: true, programAddress: NETWORK_ALPHANET.transferProgramId, kind: 'sent',
+        amount: '90000', counterparty: ADDRESS_B, timestamp: NOW - 20 * 60000 },
+      { signature: 'tsMIX2_wire_no_time_aaaaaaaaaaaaaaaaaaaaaaaa', slot: 30400,
+        success: true, programAddress: NETWORK_ALPHANET.transferProgramId, kind: 'received',
+        amount: '40000', counterparty: ADDRESS_B, timestamp: null },
+      { signature: 'tsMIX3_older_today_aaaaaaaaaaaaaaaaaaaaaaa', slot: 30300,
+        success: true, programAddress: NETWORK_ALPHANET.transferProgramId, kind: 'sent',
+        amount: '90000', counterparty: ADDRESS_B, timestamp: NOW - 120 * 60000 },
+    ],
+    nextCursor: null,
+    synced: true,
+  });
+  router.navigate('/history');
+  await settle();
+  const mixHeaders = [...router.root.querySelectorAll('.list-group-header')];
+  const mixHeaderText = mixHeaders.map((hdr) => textOf(hdr)).join(' | ');
+  ok('a timestampless entry between same-day sends coalesces into a single Today section',
+    mixHeaders.length === 1 && /Today/.test(mixHeaderText)
+      && mixHeaders[0]?.querySelector('.list-group-count')?.textContent === '3',
+    mixHeaderText);
+  ok('the coalesced middle card still shows its block, not an invented time',
+    /Block 30400/.test(textOf(router.root)),
+    textOf(router.root).slice(0, 400));
+  const selfLabel = SELF_B.label || 'Account 2';
+  ok('a counterparty that is another wallet account renders by name',
+    noTimeText.includes(`to ${selfLabel}`), `"to ${selfLabel}"`);
+  FIXTURES['tx.getHistoryFeed'] = realFeed;
+
   // The account pill is the dashboard's route into account management.
   router.navigate('/dashboard');
   await settle();
@@ -2396,6 +2926,7 @@ try {
     await runScenario(scenario);
   }
   await settingsTest();
+  await themeTest();
   focusTrapTest();
   await passwordModalTest();
   await exportSecretTest();

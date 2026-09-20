@@ -247,6 +247,19 @@ form > .btn.text {
   margin-bottom: 2px;
 }
 
+/* The hero refresh is an inline icon next to the balance, not a standalone control — so on
+   hover it must NOT materialize any chip at all: a filled box next to display text reads as
+   a framed artifact (user-flagged twice). Hover cues via icon color only. The spin during
+   an active refresh stays: it is the only "busy" signal for a silent background fetch. */
+.balance-hero .icon-btn-ghost,
+.balance-hero .icon-btn-ghost:hover {
+  background: transparent;
+  border-color: transparent;
+}
+.balance-hero .icon-btn-ghost:hover {
+  color: var(--text-1);
+}
+
 .balance-hero-row {
   display: flex;
   align-items: baseline;
@@ -729,3 +742,97 @@ form > .btn.text {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* ---- Activity cards (P1, Rabby-inspired) --------------------------------
+   One transaction per card: calm time + net/signature meta on top, the method
+   glyph and verb on the left, the signed delta right-aligned. Failed entries
+   wear a badge; nothing here is clickable yet (detail sheet is P2). */
+.tx-card {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--sp-3);
+  margin-bottom: var(--sp-2);
+}
+.tx-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-2);
+  font-size: var(--fs-xs);
+}
+.tx-card-time {
+  color: var(--text-3);
+}
+.tx-card-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+.tx-card-net {
+  color: var(--text-3);
+}
+.tx-card-net::after {
+  content: " ·";
+}
+.tx-card-sig {
+  font-family: var(--font-mono);
+  color: var(--text-3);
+}
+.tx-card-body {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+.tx-card-main {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+/* line-height:1 on both lines removes the inherited 1.5 half-leading, so the 11px
+   counterparty no longer hangs top-level with the 13px verb; inline-flex centres the
+   sub's cap-height against the title's own. */
+.tx-card-title {
+  font-weight: 600;
+  font-size: var(--fs-md);
+  color: var(--text-1);
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+}
+.tx-card-sub {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+}
+.tx-card-badge {
+  font-size: var(--fs-xs);
+  padding: 1px var(--sp-2);
+  border-radius: var(--radius-md);
+}
+.tx-card-badge.failed {
+  color: var(--negative);
+  background: var(--negative-tint);
+  border: 1px solid var(--negative-border);
+}
+.tx-card-amounts {
+  margin-left: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+.tx-amount {
+  font-family: var(--font-mono);
+  font-size: var(--fs-md);
+  color: var(--text-1);
+  white-space: nowrap;
+}
+.tx-amount.positive {
+  color: var(--positive);
+}
+
