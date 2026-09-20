@@ -224,8 +224,27 @@
   gap: var(--sp-3);
   max-height: 88%;
   overflow-y: auto;
+  /* Scrolling this sheet must not chain to the Activity list behind the backdrop: reaching
+     the bottom of the sheet should stop, not start scrolling the page underneath it. */
+  overscroll-behavior: contain;
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   transform: translateY(16px);
+}
+
+/* DEFECT FIX (P2): the sheet is a flex COLUMN (inherited from .modal-card) that is also the
+   scroll container. A flex item defaults to `flex-shrink: 1`, so when the content exceeded
+   `max-height` the children were COMPRESSED to fit instead of overflowing. `.detail-table`
+   carries `overflow: hidden` for its rounded corners, so it absorbed the shrink and silently
+   clipped its own last rows — "Block time" was sliced through the middle and "Fee (declared)"
+   and "Program" disappeared entirely. Because the children had been shrunk to fit,
+   scrollHeight === clientHeight and `overflow-y: auto` had nothing to scroll: the content was
+   not merely unreachable, it was gone, with no scrollbar to hint otherwise.
+
+   Pinning every direct child to its natural height is what makes the OVERFLOW real, which is
+   what makes the scroll real. Do not remove this without re-testing a sheet tall enough to
+   overflow (all rows present + a wrapped signature). */
+.tx-sheet > * {
+  flex-shrink: 0;
 }
 
 .modal-overlay.open .tx-sheet { transform: translateY(0); }

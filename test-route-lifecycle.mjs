@@ -2370,6 +2370,43 @@ function sourceTest() {
   ok('password-prompt uses the shared trap instead of its own Escape handler',
     /focusTrap\(/.test(prompt) && !/if \(event\.key === 'Escape'\)/.test(prompt));
 
+  // ---- Scroll containers that are also flex columns -------------------------
+  //
+  // DEFECT (found by a user on a real popup, not by this suite): .tx-sheet is a flex column
+  // AND the scroll container. Flex items default to `flex-shrink: 1`, so content past
+  // `max-height` was COMPRESSED rather than overflowed; .detail-table's `overflow: hidden`
+  // then clipped its own last rows, and because nothing overflowed, `overflow-y: auto`
+  // produced no scrollbar. Rows vanished silently.
+  //
+  // The DOM shim has no layout engine, so no amount of rendering in this file can catch
+  // this. The invariant is therefore asserted against the STYLESHEET: any rule that is both
+  // a flex column and a scroll container must pin its children against shrink. This is a
+  // real guard — deleting the `.tx-sheet > *` rule fails the run.
+  const kitCss = readFileSync(join(ROOT, 'src', 'popup', 'styles', 'kit.css'), 'utf8');
+
+  function cssBlock(source, selector) {
+    const at = source.indexOf(`\n${selector} {`);
+    if (at === -1) return '';
+    return source.slice(at, source.indexOf('}', at));
+  }
+
+  const modalCard = cssBlock(kitCss, '.modal-card');
+  const txSheet = cssBlock(kitCss, '.tx-sheet');
+  const txSheetKids = cssBlock(kitCss, '.tx-sheet > *');
+
+  ok('.modal-card is a flex column (the premise the sheet inherits)',
+    /flex-direction:\s*column/.test(modalCard) && /display:\s*flex/.test(modalCard));
+  ok('.tx-sheet is a scroll container with a height cap',
+    /overflow-y:\s*auto/.test(txSheet) && /max-height:/.test(txSheet));
+  ok('.tx-sheet pins its children against flex-shrink, so overflow is real and scrollable',
+    /flex-shrink:\s*0/.test(txSheetKids),
+    'without this, tall sheets compress and .detail-table clips its own rows instead of scrolling');
+  ok('.tx-sheet contains its scroll chain so the list behind the backdrop does not move',
+    /overscroll-behavior:\s*contain/.test(txSheet));
+  // Negative control: the assertions above must be capable of failing.
+  ok('NEGATIVE CONTROL: a sheet without the shrink guard would be detected',
+    !/flex-shrink:\s*0/.test('.tx-sheet > * { flex-shrink: 1; }'));
+
   const checklist = join(ROOT, 'docs', 'MANUAL_SMOKE_CHECKLIST.md');
   let doc = '';
   try {

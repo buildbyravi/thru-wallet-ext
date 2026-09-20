@@ -300,3 +300,23 @@ are checkboxes in `docs/MANUAL_SMOKE_CHECKLIST.md`, not test gaps to close in No
 > surfacing any chain value, check whether it is an INPUT the sender chose or an OUTPUT the
 > network reported — they read identically in a type signature and differently to a user.
 > Encode the distinction in the identifier, not in a comment, so a rename cannot erase it.
+
+| P2 detail sheet: tall sheets silently amputated their last rows instead of scrolling | `BROWSER` (user, on a real popup — **escaped every automated gate and two code audits**) | `.tx-sheet` inherits `display:flex; flex-direction:column` from `.modal-card` and adds `max-height:88%; overflow-y:auto`. Flex items default to `flex-shrink:1`, so once content exceeded the cap the children were **compressed to fit** rather than overflowing. `.detail-table` carries `overflow:hidden` (for its border-radius), so it absorbed the shrink and clipped its own last rows: "Block time" was sliced through the middle, "Fee (declared)" and "Program" vanished entirely, and the fee note sat flush against the wound. And because the children had been shrunk to fit, `scrollHeight === clientHeight` — `overflow-y:auto` had nothing to scroll and drew no scrollbar, so the missing rows gave no hint they existed. Fixed with `.tx-sheet > * { flex-shrink: 0 }` (plus `overscroll-behavior: contain` so the sheet does not scroll the list behind the backdrop). Verified by reverting the fix: `test-route-lifecycle.mjs` exits 1. |
+
+> **Lesson:** `overflow-y: auto` on a flex column is not a scroll container — it is a scroll
+> container *only if its children refuse to shrink*. Otherwise the browser resolves the
+> height conflict by compressing content, and an inner `overflow: hidden` (which every
+> rounded-corner container has) turns that compression into silent data loss. Whenever
+> `overflow-y: auto`, `max-height` and `display: flex` appear on the same element, the
+> children need `flex-shrink: 0` or the scroll is decorative.
+>
+> **The process failure matters more than the CSS.** This shipped because the sheet was
+> never rendered — it was reasoned about. `npm test` runs on a hand-rolled DOM shim with no
+> layout engine, so it cannot compute a height and structurally *cannot* catch this class of
+> bug; both code audits read the CSS and agreed it looked right, because it does look right.
+> Two mitigations, both in this commit: a stylesheet-level invariant in
+> `test-route-lifecycle.mjs` (any flex-column scroll container must pin its children —
+> falsified by reverting the fix), and `scripts/preview-tx-sheet.html`, a dev-only harness
+> that renders the real built CSS at the true 408x600 popup size so a human can *look* at
+> overflow states. **Any change touching modal or sheet layout must be viewed in that
+> harness before it is called done.** "The CSS reads correctly" is not evidence about layout.

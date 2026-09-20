@@ -1,0 +1,148 @@
+<!doctype html>
+<!--
+  Visual harness for the P2 transaction detail sheet. NOT shipped — dev only, not referenced
+  by manifest.json and not copied into dist/ by build.mjs.
+
+  Why this exists: the transaction sheet shipped with a layout defect (children compressed
+  instead of overflowing, so .detail-table silently clipped its own last rows and the sheet
+  produced no scrollbar). The DOM shim used by npm test has no layout engine, so no unit test
+  in this repo could have caught it. A stylesheet guard now asserts the invariant, but a
+  human still needs to be able to LOOK at the thing.
+
+  Usage:
+    npm run build
+    node scripts/serve-dist.mjs        # or any static server on this directory
+    open scripts/preview-tx-sheet.html
+
+  It loads the REAL built stylesheet (../dist/popup.css) so what you see is what ships.
+  The markup mirrors src/ui/domain/tx-detail-sheet.js — if that component's structure
+  changes, update this file to match or it stops being a truthful preview.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>tx-detail-sheet preview</title>
+<link rel="stylesheet" href="../dist/popup.css" />
+<style>
+  /* Harness chrome only — none of this describes the shipped sheet. */
+  body { width: auto; padding: 24px; font-family: system-ui, sans-serif; }
+  .harness-row { display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-start; }
+  .harness-col { display: flex; flex-direction: column; gap: 8px; }
+  .harness-label { font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+  .harness-note { font-size: 12px; max-width: 408px; line-height: 1.5; opacity: .75; }
+  /* The popup viewport, reproduced exactly: 408 x 600 with the sheet positioned inside it
+     rather than against the browser window. */
+  .viewport {
+    position: relative;
+    width: 408px;
+    height: 600px;
+    border: 1px solid #888;
+    overflow: hidden;
+  }
+  .viewport .modal-overlay { position: absolute; }
+  .harness-controls { margin-bottom: 20px; display: flex; gap: 12px; align-items: center; }
+</style>
+</head>
+<body>
+
+<div class="harness-controls">
+  <button id="toggle-theme">Toggle dark</button>
+  <span class="harness-note">Both panes use the real built CSS. Scroll the right-hand sheet.</span>
+</div>
+
+<div class="harness-row">
+  <div class="harness-col">
+    <div class="harness-label">Short sheet (fits)</div>
+    <div class="viewport" id="vp-short"></div>
+  </div>
+  <div class="harness-col">
+    <div class="harness-label">Tall sheet (must scroll)</div>
+    <div class="viewport" id="vp-tall"></div>
+    <div class="harness-note">
+      This is the regression case. Every row must be reachable by scrolling, and
+      <strong>Program</strong> — the last row — must be readable in full. If rows are clipped
+      or the pane will not scroll, the <code>.tx-sheet &gt; *</code> shrink guard is gone.
+    </div>
+  </div>
+</div>
+
+<script>
+// Mirrors the element structure of src/ui/domain/tx-detail-sheet.js.
+function el(tag, cls, text) {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text != null) n.textContent = text;
+  return n;
+}
+
+function row(label, value, mono, tone) {
+  const r = el('div', 'detail-row');
+  r.appendChild(el('span', 'detail-label', label));
+  const v = el('div', 'detail-val' + (mono ? ' detail-sheet-mono' : '') + (tone ? ' ' + tone : ''), value);
+  r.appendChild(v);
+  return r;
+}
+
+function buildSheet(rows) {
+  const overlay = el('div', 'modal-overlay tx-sheet-overlay open');
+  const card = el('div', 'modal-card tx-sheet');
+  card.setAttribute('role', 'dialog');
+
+  const head = el('div', 'modal-head');
+  head.appendChild(el('span', 'modal-icon', '\u25F4'));
+  head.appendChild(el('h2', null, 'Faucet claim'));
+  card.appendChild(head);
+
+  const sig = el('div', 'tx-sheet-sig');
+  sig.appendChild(el('span', 'detail-label', 'Signature'));
+  const sigVal = el('div', 'tx-sheet-sig-value');
+  sigVal.appendChild(el('code', 'detail-sheet-mono',
+    'ts5qrB2mGP3L_iQtu-tqS-n7JH5q8lxBGQgQ8cTXhKmOp2g6DeLboU_l0-f2Kan_oaPKI22kS_wjdqDM1K2L53DiIU'));
+  sigVal.appendChild(el('button', 'icon-btn sm icon-btn-ghost', '\u29C9'));
+  sig.appendChild(sigVal);
+  card.appendChild(sig);
+
+  const table = el('div', 'detail-table');
+  rows.forEach((r) => table.appendChild(r));
+  card.appendChild(table);
+
+  card.appendChild(el('p', 'tx-sheet-note',
+    "Fee shown is the amount declared in the transaction header. Thru's execution result "
+    + 'carries no charged-fee field, so the amount actually debited is not reported by the network.'));
+
+  const actions = el('div', 'stack stack-2');
+  actions.appendChild(el('a', 'btn text w-100', 'View on explorer'));
+  actions.appendChild(el('button', 'btn text w-100', 'Close'));
+  card.appendChild(actions);
+
+  overlay.appendChild(card);
+  return overlay;
+}
+
+// Short: the sheet as it looks when it comfortably fits.
+document.getElementById('vp-short').appendChild(buildSheet([
+  row('Status', 'Succeeded'),
+  row('Amount', '+0.00001 THRU', true, 'positive'),
+  row('Network', 'Alphanet'),
+]));
+
+// Tall: every row the component can emit. This is the configuration that was broken.
+document.getElementById('vp-tall').appendChild(buildSheet([
+  row('Status', 'Succeeded'),
+  row('Amount', '+0.00001 THRU', true, 'positive'),
+  row('To', 'Spending'),
+  row('Network', 'Alphanet'),
+  row('Block', '12871764', true),
+  row('Block time', '20 Sep 2026, 02:58:35'),
+  row('Fee (declared)', '0.000001 THRU', true),
+  row('Program', 'thru1qq\u2026kf9s', true),
+]));
+
+document.getElementById('toggle-theme').addEventListener('click', () => {
+  const root = document.documentElement;
+  root.setAttribute('data-theme', root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+});
+document.documentElement.setAttribute('data-theme', 'dark');
+</script>
+</body>
+</html>
