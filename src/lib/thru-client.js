@@ -544,6 +544,66 @@ export async function listAccountHistory(address, pageSize = 15) {
   return transactions.map((tx) => decodeHistoryEntry(tx, address));
 }
 
+/**
+ * ADDITIVE (P2 detail sheet): fetch ONE transaction by signature and report only what the
+ * node actually returned. Nothing here is inferred, defaulted or carried over from a
+ * neighbouring entry — every field is `null` when the wire did not carry it, and the caller
+ * is expected to say "Not available" rather than fill the gap.
+ *
+ * This reuses decodeHistoryEntry (same Transaction class, same decoder) so the detail view
+ * cannot disagree with the list view about kind/amount/counterparty. What it ADDS over a
+ * list entry is exactly two things, both spiked in docs/TX_DETAIL_SPIKE.md:
+ *
+ *   feeDeclaredUnits — `Transaction.fee`, the fee DECLARED IN THE TRANSACTION HEADER. It is
+ *       deliberately NOT named `feeUnits`: Thru's TransactionExecutionResult carries no
+ *       charged-fee field at all (verified against the generated protobuf field list), so
+ *       "what this transaction cost" is not answerable from this RPC. Presenting a header
+ *       declaration as the amount debited would be a fabrication of exactly the kind this
+ *       codebase treats as a defect. The caller must label the provenance.
+ *
+ *   blockTimeMs — the containing BLOCK's time, fetched separately via blocks.get({slot}).
+ *       Transactions carry no time field; BlockHeader.block_time is optional on the wire and
+ *       @thru/sdk only populates Block.blockTimeNs when the node sent it. Absent stays null.
+ *
+ * Both lookups are best-effort and isolated: a failure of the block fetch must not lose the
+ * transaction facts we already have, so it degrades to null rather than throwing.
+ *
+ * @param {string} signature
+ * @param {string} viewerAddress — whose point of view decides sent/received
+ * @returns {Promise<object>} decoded entry plus { feeDeclaredUnits, blockTimeMs, nonce } —
+ *   BigInts stay BigInt here; the service layer serializes them for the wire.
+ */
+export async function getTransactionDetail(signature, viewerAddress) {
+  const sig = String(signature || '').trim();
+  if (!sig) throw new Error('A transaction signature is required.');
+
+  const tx = await getClient().transactions.get(sig);
+  const entry = decodeHistoryEntry(tx, viewerAddress);
+
+  // Transaction.fee is always present on a decoded Transaction (fromProto defaults it to 0n),
+  // so there is no "missing" case to distinguish — but 0n is a legitimate declared fee and
+  // must not be coerced into "unknown".
+  entry.feeDeclaredUnits = typeof tx.fee === 'bigint' ? tx.fee : null;
+  entry.nonce = typeof tx.nonce === 'bigint' ? tx.nonce : null;
+
+  // Wall-clock time lives on the block, not the transaction. One extra call, on demand only.
+  entry.blockTimeMs = null;
+  if (tx.slot != null) {
+    try {
+      const block = await getClient().blocks.get({ slot: tx.slot });
+      // blockTimeNs is optional: absent on a node that did not send header.blockTime, and
+      // 0n is what the SDK writes when a wire block had no time — both mean "unknown".
+      if (typeof block?.blockTimeNs === 'bigint' && block.blockTimeNs > 0n) {
+        entry.blockTimeMs = Number(block.blockTimeNs / 1_000_000n);
+      }
+    } catch {
+      // A node that answers getTransaction but not getBlock still gives a useful sheet.
+    }
+  }
+
+  return entry;
+}
+
 // ---- Native Token Launchpad (v1.2) -----------------------------------------
 // Native built-in Token Program address on ThruVM (similar to SPL Token Program)
 export const TOKEN_PROGRAM_ID = 'taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKqq';

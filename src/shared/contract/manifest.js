@@ -44,7 +44,12 @@
 
 // v9 appends tx.getHistoryFeed (cache-merged first history page, offline-honest). Append-only:
 // no existing method's name, params, or auth changed.
-export const CONTRACT_VERSION = 9;
+//
+// v10 appends tx.getDetail (lazy per-signature detail for the P2 transaction sheet). Also
+// append-only. It is a READ, callable while locked like every other tx.* query, and it adds
+// no new secret to the seam. Its return shape follows the established capability convention:
+// unknown fields arrive as null with the absence stated, never as a plausible-looking number.
+export const CONTRACT_VERSION = 10;
 
 export const METHODS = {
   // ---- System ------------------------------------------------------------
@@ -334,6 +339,16 @@ export const METHODS = {
     returns: '{ entries, nextCursor, synced } — cache-merged first page; synced=false when served from cache offline',
     auth: 'none',
     since: 9,
+  },
+  'tx.getDetail': {
+    params: ['signature', 'address'],
+    returns: '{ supported, signature, slot, success, kind, amount, counterparty, programAddress, '
+      + 'feeDeclaredUnits, feeCharged: false, nonce, blockTimeMs } — lazy per-signature detail for '
+      + 'the transaction sheet. feeDeclaredUnits is the HEADER-DECLARED fee, not an amount debited '
+      + '(Thru carries no charged-fee field); blockTimeMs is the containing block\'s time and is '
+      + 'null when the node did not send one. Unknown => null, never a guess. See docs/TX_DETAIL_SPIKE.md.',
+    auth: 'none',
+    since: 10,
   },
   'tx.checkHealth': {
     params: [],

@@ -451,5 +451,50 @@ console.log('\n[15] formatTokenAmount / parseTokenAmount convert exactly at any 
   }
 }
 
+// ---------------------------------------------------------------------------
+// getTransactionDetail (P2, additive to the sacred client)
+//
+// The network call itself cannot run here (no RPC in the test environment), so what is
+// tested is the part that can be wrong WITHOUT a network: the promise this function makes
+// about which fields exist and what they mean. A regression that renamed feeDeclaredUnits
+// to feeUnits, or that let a missing block time become 0 or Date.now(), would be a fabricated
+// value in a wallet — the exact failure this whole design exists to prevent.
+{
+  console.log('\n[11] getTransactionDetail is additive and names the fee honestly');
+
+  const { getTransactionDetail } = await import('./src/lib/thru-client.js');
+
+  assert(typeof getTransactionDetail === 'function',
+    'getTransactionDetail is exported (additive: no existing export changed)');
+
+  let threw = null;
+  try { await getTransactionDetail('', 'ta1whoever'); } catch (e) { threw = e; }
+  assert(threw instanceof Error, 'an empty signature is refused before any network access');
+
+  // The source is the contract here: these strings are what stop a future edit from
+  // quietly turning a header declaration into a claim about what the user was charged.
+  const { readFileSync } = await import('node:fs');
+  const source = readFileSync('./src/lib/thru-client.js', 'utf8');
+  // Bound the slice to THIS function. Reading to end-of-file would drag in every later
+  // function's Date.now() and turn a real check into one that can never pass.
+  const fnStart = source.indexOf('export async function getTransactionDetail');
+  assert(fnStart > 0, 'getTransactionDetail is present in the client source');
+  const after = source.indexOf('\nexport ', fnStart + 1);
+  const fn = source.slice(fnStart, after > 0 ? after : source.length);
+
+  assert(/entry\.feeDeclaredUnits\s*=/.test(fn),
+    'the fee is surfaced as feeDeclaredUnits, not feeUnits');
+  assert(!/entry\.feeUnits\s*=/.test(fn),
+    'no bare feeUnits field is emitted that a caller could read as an amount charged');
+  assert(/entry\.blockTimeMs = null;/.test(fn),
+    'blockTimeMs starts null, so an unavailable block time stays unavailable');
+  assert(!/Date\.now\(\)/.test(fn),
+    'the detail path never substitutes the local clock for a chain timestamp');
+  assert(/block\.blockTimeNs > 0n/.test(fn),
+    'a zero blockTimeNs is treated as unknown rather than as the epoch');
+  assert(/decodeHistoryEntry\(tx, viewerAddress\)/.test(fn),
+    'the detail reuses the existing decoder, so it cannot disagree with the list view');
+}
+
 console.log('\nAll thru-client.js encoding checks passed.');
 
