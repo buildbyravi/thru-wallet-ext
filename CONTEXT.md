@@ -192,7 +192,8 @@ no prop that accepts markup.
 ### `src/ui/domain/` --  wallet-aware components
 
 `account-avatar.js` (59)  `account-row.js` (151)  `account-picker.js` (147, grouped by keyring)
- `asset-selector.js` (143)  `tx-card.js` (177, P1 transaction card: verb, context, signed delta, rel-time head, sig/meta actions, failed badge)
+ `asset-selector.js` (143)  `tx-card.js` (243, P1 transaction card: verb, context, signed delta, rel-time head, sig/meta actions, failed badge; P2 `onOpen` makes it a keyboard-operable control)
+ `tx-detail-sheet.js` (308, P2 detail sheet: full signature + copy, explorer link, status/amount/counterparty/block, lazily-filled block time and header-DECLARED fee, "Not available" for everything the chain does not report)
  `asset-selector.js` (143)  `token-row.js` (88)  `password-prompt.js` (139,
 `requirePassword()`, focus-trapped)  `seed-phrase-grid.js` (160, grid + backup challenge)
 

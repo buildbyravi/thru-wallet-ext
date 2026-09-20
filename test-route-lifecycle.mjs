@@ -1010,6 +1010,49 @@ const HISTORY_ENTRIES = [
   },
 ];
 
+/** A fixed block time the detail fixture reports, so the assertion is exact. */
+const DETAIL_BLOCK_TIME_MS = 1750000010000;
+
+/**
+ * Entries used only by the P2 detail-sheet tests. Kept separate from HISTORY_ENTRIES so the
+ * P0/P1 assertions above keep their exact counts, and deliberately NOT in slot order with
+ * them: the sheet must open against the entry by IDENTITY, never by list position.
+ */
+const DETAIL_ENTRIES = [
+  {
+    signature: 'sigDETAIL_first_aaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    slot: 50100,
+    success: true,
+    programAddress: NETWORK_ALPHANET.transferProgramId,
+    kind: 'sent',
+    amount: '750000',
+    counterparty: ADDRESS_B,
+    timestamp: 1750000020000,
+  },
+  {
+    signature: 'sigDETAIL_second_bbbbbbbbbbbbbbbbbbbbbbbbbbb',
+    slot: 50050,
+    success: false,
+    programAddress: NETWORK_ALPHANET.transferProgramId,
+    kind: 'received',
+    amount: '1250000',
+    counterparty: ADDRESS_B,
+    timestamp: 1750000015000,
+  },
+  {
+    // Nothing is known about this one beyond the wire minimum: no timestamp, and the detail
+    // fixture will answer { supported: false } for it.
+    signature: 'sigDETAIL_absent_ccccccccccccccccccccccccccc',
+    slot: 50010,
+    success: true,
+    programAddress: NETWORK_ALPHANET.transferProgramId,
+    kind: 'sent',
+    amount: '333000',
+    counterparty: ADDRESS_B,
+    timestamp: null,
+  },
+];
+
 /** Per-run backend state. Reset before each scenario. */
 const backend = {
   hasVault: false,
@@ -1282,6 +1325,37 @@ const FIXTURES = {
       entries: HISTORY_ENTRIES.slice(0, size).map((e) => ({ ...e })),
       nextCursor: size,
       synced: true,
+    };
+  },
+  // P2 lazy detail fetch. Mirrors tx-service.getTransactionDetail: everything the node did
+  // not supply arrives as null, and the fee is the HEADER-DECLARED one (feeCharged: false),
+  // never a receipt. Individual tests override this to exercise the absent cases.
+  'tx.getDetail': ({ signature } = {}) => {
+    const entry = [...HISTORY_ENTRIES, ...DETAIL_ENTRIES]
+      .find((e) => e.signature === signature);
+    // The unreachable case is a first-class answer, not an error: the sheet must render
+    // "Not available" rather than inventing rows or blanking the facts it already had.
+    if (!entry || /_absent_/.test(String(signature))) {
+      return { supported: false, signature, reason: 'Transaction not found on this network.' };
+    }
+    return {
+      supported: true,
+      signature: entry.signature,
+      slot: String(entry.slot),
+      success: entry.success,
+      programAddress: entry.programAddress,
+      kind: entry.kind,
+      amount: entry.amount,
+      counterparty: entry.counterparty,
+      tokenSource: null,
+      tokenDest: null,
+      tokenMint: null,
+      tokenSymbol: null,
+      tokenDecimals: null,
+      feeDeclaredUnits: '1',
+      feeCharged: false,
+      nonce: '7',
+      blockTimeMs: DETAIL_BLOCK_TIME_MS,
     };
   },
   'tx.estimateFee': () => ({
@@ -1621,6 +1695,10 @@ installGlobals();
 const { h, on } = await import('./src/ui/kit/dom.js');
 const { encodeRef } = await import('./src/shared/refs.js');
 const { focusTrap, collectFocusable, isFocusable } = await import('./src/ui/kit/focus-trap.js');
+// The sheet renders a counterparty through the same formatter the card uses, so the
+// assertion compares against the real function rather than a re-implementation that could
+// drift from it and quietly stop testing anything.
+const { truncateAddress: truncateAddressForTest } = await import('./src/shared/format.js');
 const { requirePassword } = await import('./src/ui/domain/password-prompt.js');
 const { boot, POPUP_ROUTES } = await import('./src/ui/app/boot.js');
 const guards = await import('./src/ui/app/guards.js');
@@ -2783,6 +2861,224 @@ async function navigationTest() {
     noTimeText.includes(`to ${selfLabel}`), `"to ${selfLabel}"`);
   FIXTURES['tx.getHistoryFeed'] = realFeed;
 
+  // ---- P2 detail sheet -------------------------------------------------------
+  //
+  // What these protect, in order of how badly each would hurt if it broke:
+  //   1. the sheet opens against the entry the user TAPPED, resolved by identity. A
+  //      positional lookup is the exact bug class that put a day-count badge inside a card
+  //      in P1; here it would show a user someone else's transaction.
+  //   2. every unknown field says "Not available" — never a plausible number. Fabricating
+  //      a fee in a wallet is a merge-blocker, so the absent case is asserted directly
+  //      against a { supported: false } fixture.
+  //   3. the declared/charged fee distinction survives into the rendered text.
+  //   4. Escape closes and focus returns to the card, and no signature or address string
+  //      leaks into the URL or history.
+  FIXTURES['tx.getHistoryFeed'] = () => ({
+    entries: DETAIL_ENTRIES.map((e) => ({ ...e })), nextCursor: null, synced: true,
+  });
+  router.navigate('/history');
+  await settle();
+
+  const detailCards = [...router.root.querySelectorAll('.tx-card')];
+  ok('P2: every activity card is an openable control',
+    detailCards.length === 3 && detailCards.every((c) => c.classList.contains('tx-card-open')),
+    `${detailCards.length} cards`);
+  ok('P2: an openable card is reachable by keyboard and announces itself as a control',
+    detailCards.every((c) => c.getAttribute('tabindex') === '0'
+      && c.getAttribute('role') === 'button'
+      && (c.getAttribute('aria-label') || '').length > 0),
+    detailCards.map((c) => `${c.getAttribute('role')}/${c.getAttribute('tabindex')}`).join(','));
+
+  // Open the SECOND card. Choosing a non-first card is the point: a positional bug that
+  // always opened entries[0] would pass against the first one.
+  const secondCard = detailCards[1];
+  secondCard.focus();
+  chromeLog.calls.length = 0;
+  click(secondCard);
+  await settle();
+
+  let sheetEl = DOC.body.lastChild;
+  ok('P2: activating a card opens a modal sheet',
+    Boolean(sheetEl) && sheetEl.classList.contains('modal-overlay') && isConnected(sheetEl),
+    `${sheetEl?.className}`);
+  ok('P2: the sheet declares itself a modal dialog',
+    sheetEl.firstChild.getAttribute('role') === 'dialog'
+      && sheetEl.firstChild.getAttribute('aria-modal') === 'true');
+
+  let sheetText = textOf(sheetEl);
+  ok('P2: the sheet opens against the tapped entry BY IDENTITY, not by position',
+    sheetText.includes(DETAIL_ENTRIES[1].signature)
+      && !sheetText.includes(DETAIL_ENTRIES[0].signature),
+    sheetText.slice(0, 260));
+  ok('P2: the sheet shows the FULL signature, not the truncated card form',
+    sheetText.includes('sigDETAIL_second_bbbbbbbbbbbbbbbbbbbbbbbbbbb'),
+    sheetText.slice(0, 200));
+  ok('P2: the sheet states the on-chain status of a failed transaction',
+    /Failed on-chain/.test(sheetText), sheetText.slice(0, 260));
+  ok('P2: the sheet shows the signed amount for the tapped entry',
+    sheetText.includes('+0.00125 THRU'), sheetText.slice(0, 300));
+  // ADDRESS_B is another account in THIS wallet, so it must read by name — the same
+  // resolution the card already does against account.list. Asserting the truncated form
+  // here would have been asserting a bug.
+  const partyLabel = backend.accounts[1]?.label || 'Spending';
+  ok('P2: a counterparty that is another wallet account renders by name in the sheet',
+    sheetText.includes(partyLabel)
+      && !sheetText.includes(truncateAddressForTest(ADDRESS_B)),
+    sheetText.slice(0, 320));
+  ok('P2: the sheet shows the block number of the tapped entry',
+    sheetText.includes(String(DETAIL_ENTRIES[1].slot)), sheetText.slice(0, 300));
+  ok('P2: the sheet offers a copy action for the full signature',
+    buttons(sheetEl, /copy transaction signature/i).length === 1,
+    String(buttons(sheetEl, /copy transaction signature/i).length));
+  clipboardLog.writes.length = 0;
+  click(buttons(sheetEl, /copy transaction signature/i)[0]);
+  await settle();
+  ok('P2: copying from the sheet writes the full signature',
+    clipboardLog.writes.includes(DETAIL_ENTRIES[1].signature),
+    JSON.stringify(clipboardLog.writes));
+
+  ok('P2: the sheet fetches its lazy rows through tx.getDetail, not at list time',
+    chromeLog.calls.includes('tx.getDetail'), chromeLog.calls.join(','));
+  ok('P2: a resolved block time renders as an absolute wall-clock time',
+    /Block time/.test(sheetText) && !/Block time\s+Not available/.test(sheetText),
+    sheetText.slice(0, 400));
+  ok('P2: the fee row is labelled as DECLARED, never presented as an amount charged',
+    /Fee \(declared\)/.test(sheetText) && /declared in the transaction header/i.test(sheetText),
+    sheetText.slice(0, 500));
+  ok('P2: the sheet states that Thru reports no charged fee, rather than implying one',
+    /no charged-fee field/i.test(sheetText), sheetText.slice(-320));
+
+  const sheetExplorer = [...(sheetEl.querySelectorAll?.('a') || [])]
+    .find((a) => /explorer/i.test(labelOf(a)));
+  ok('P2: the sheet links to the explorer using the short-sig explorer URL logic',
+    Boolean(sheetExplorer)
+      && sheetExplorer.getAttribute('href') === `${NETWORK_ALPHANET.explorerUrl}/tx/${DETAIL_ENTRIES[1].signature}`,
+    sheetExplorer?.getAttribute('href'));
+  ok('P2: no secret and no full address string reaches the URL or session history',
+    secretInUrls().length === 0
+      && ![WIN.location.hash, WIN.location.href, ...HISTORY_URLS]
+        .some((u) => String(u).includes(ADDRESS_B) || String(u).includes(DETAIL_ENTRIES[1].signature)),
+    `${WIN.location.href} | ${HISTORY_URLS.slice(-3).join(' ')}`);
+
+  // Escape closes and focus goes back to the card that opened it — not to <body>, which is
+  // where a keyboard user loses their place.
+  pressKey(sheetEl.firstChild, 'Escape');
+  await settle();
+  ok('P2: Escape closes the sheet', !isConnected(sheetEl));
+  ok('P2: closing restores focus to the card that opened the sheet',
+    DOC.activeElement === secondCard,
+    `activeElement=${DOC.activeElement?.localName}.${DOC.activeElement?.className}`);
+  ok('P2: the sheet released its document keydown listener',
+    DOC.listeners.filter((l) => l.type === 'keydown').length === 0,
+    String(DOC.listeners.filter((l) => l.type === 'keydown').length));
+
+  // Keyboard open: Enter on a focused card must do what a click does.
+  const firstCard = [...router.root.querySelectorAll('.tx-card')][0];
+  firstCard.focus();
+  pressKey(firstCard, 'Enter');
+  await settle();
+  sheetEl = DOC.body.lastChild;
+  ok('P2: Enter on a focused card opens the sheet',
+    Boolean(sheetEl) && sheetEl.classList?.contains('modal-overlay')
+      && textOf(sheetEl).includes(DETAIL_ENTRIES[0].signature),
+    textOf(sheetEl).slice(0, 160));
+  pressKey(sheetEl.firstChild, 'Escape');
+  await settle();
+  const spaceCard = [...router.root.querySelectorAll('.tx-card')][0];
+  spaceCard.focus();
+  const spacePrevented = pressKey(spaceCard, ' ') === false;
+  await settle();
+  ok('P2: Space also opens the sheet and does not scroll the list',
+    spacePrevented && DOC.body.lastChild?.classList?.contains('modal-overlay'),
+    `prevented=${spacePrevented}`);
+  pressKey(DOC.body.lastChild.firstChild, 'Escape');
+  await settle();
+
+  // THE HONESTY ASSERTION. A backend that cannot answer must produce "Not available" rows,
+  // not blanks and certainly not plausible numbers.
+  const absentCard = [...router.root.querySelectorAll('.tx-card')][2];
+  absentCard.focus();
+  click(absentCard);
+  await settle();
+  sheetEl = DOC.body.lastChild;
+  sheetText = textOf(sheetEl);
+  ok('P2: an unsupported detail fetch renders "Not available", never a fabricated value',
+    (sheetText.match(/Not available/g) || []).length >= 2, sheetText.slice(0, 400));
+  ok('P2: an unsupported fetch leaves the block time absent rather than using a local clock',
+    /Block time\s+Not available/.test(sheetText.replace(/\s+/g, ' ')),
+    sheetText.replace(/\s+/g, ' ').slice(0, 400));
+  ok('P2: an unsupported fetch leaves the fee absent rather than quoting the network default',
+    /Fee \(declared\)\s+Not available/.test(sheetText.replace(/\s+/g, ' ')),
+    sheetText.replace(/\s+/g, ' ').slice(0, 400));
+  ok('P2: the facts the list already knew survive a failed detail fetch',
+    sheetText.includes(DETAIL_ENTRIES[2].signature)
+      && sheetText.includes(String(DETAIL_ENTRIES[2].slot))
+      && sheetText.includes('-0.000333 THRU'),
+    sheetText.slice(0, 400));
+
+  // The other half of the counterparty rule: an address this wallet does NOT own has no
+  // name to render, so it must show as a truncated address — not blank, and not an
+  // invented label.
+  pressKey(sheetEl.firstChild, 'Escape');
+  await settle();
+  const STRANGER = 'ta1strangerzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz';
+  FIXTURES['tx.getHistoryFeed'] = () => ({
+    entries: [{
+      signature: 'sigDETAIL_stranger_ddddddddddddddddddddddddd',
+      slot: 50200,
+      success: true,
+      programAddress: NETWORK_ALPHANET.transferProgramId,
+      kind: 'sent',
+      amount: '100000',
+      counterparty: STRANGER,
+      timestamp: 1750000030000,
+    }],
+    nextCursor: null,
+    synced: true,
+  });
+  router.navigate('/history');
+  await settle();
+  click([...router.root.querySelectorAll('.tx-card')][0]);
+  await settle();
+  const strangerText = textOf(DOC.body.lastChild);
+  ok('P2: an unknown counterparty renders as a truncated address, not blank or invented',
+    strangerText.includes(truncateAddressForTest(STRANGER))
+      && !strangerText.includes(STRANGER),
+    strangerText.slice(0, 300));
+  pressKey(DOC.body.lastChild.firstChild, 'Escape');
+  await settle();
+  FIXTURES['tx.getHistoryFeed'] = () => ({
+    entries: DETAIL_ENTRIES.map((e) => ({ ...e })), nextCursor: null, synced: true,
+  });
+  router.navigate('/history');
+  await settle();
+
+  // A card whose head controls are clicked must NOT open the sheet: the explorer anchor
+  // would otherwise open a tab behind a modal the user never asked for.
+  const copyInCard = buttons(router.root, /copy transaction signature/i)[0];
+  click(copyInCard);
+  await settle();
+  ok('P2: clicking the in-card copy button does not also open the sheet',
+    !DOC.body.lastChild?.classList?.contains('modal-overlay'),
+    `${DOC.body.lastChild?.className}`);
+
+  // Navigating away must take the sheet with it: it lives on document.body, so a route that
+  // forgot to close it would leave a modal floating over the next screen.
+  const strayCard = [...router.root.querySelectorAll('.tx-card')][0];
+  click(strayCard);
+  await settle();
+  const strayOverlay = DOC.body.lastChild;
+  ok('P2: a sheet is open before navigating away',
+    strayOverlay?.classList?.contains('modal-overlay'));
+  router.navigate('/dashboard');
+  await settle();
+  ok('P2: leaving the route tears the sheet down with it', !isConnected(strayOverlay));
+  ok('P2: a torn-down sheet leaves no listener on a detached node',
+    detachedListeners().filter((l) => /modal-overlay|modal-card|tx-sheet/.test(l.where)).length === 0,
+    JSON.stringify(detachedListeners().slice(0, 3)));
+
+  FIXTURES['tx.getHistoryFeed'] = realFeed;
+
   // The account pill is the dashboard's route into account management.
   router.navigate('/dashboard');
   await settle();
@@ -2893,7 +3189,79 @@ function negativeControls() {
   ok('control: the same dialog with a trap prevents the escape', wrapped === false);
   trapped.destroy();
 
-  // 5. A route that throws must be reported, not silently mounted as blank.
+  // 5. P2 honesty controls. The "Not available" assertions above are the ones standing
+  //    between a user and a fabricated fee, so they must be shown to be capable of failing.
+  //    Each control below builds the WRONG sheet and confirms the same predicate catches it.
+  resetDom();
+  {
+    // 5a. A sheet that fabricated a fee instead of admitting ignorance. The absent-case
+    //     predicate is /Fee \(declared\)\s+Not available/ over collapsed whitespace.
+    const honest = h('div', { class: 'detail-row' }, [
+      h('span', { class: 'detail-label', text: 'Fee (declared)' }),
+      h('span', { class: 'detail-val', text: 'Not available' }),
+    ]);
+    const fabricated = h('div', { class: 'detail-row' }, [
+      h('span', { class: 'detail-label', text: 'Fee (declared)' }),
+      h('span', { class: 'detail-val', text: '0.000000001 THRU' }),
+    ]);
+    const collapse = (node) => textOf(node).replace(/\s+/g, ' ');
+    const absentPredicate = (node) => /Fee \(declared\)\s+Not available/.test(collapse(node));
+    ok('control: the fee-absent assertion passes on an honest row',
+      absentPredicate(honest), collapse(honest));
+    ok('control: the same assertion FAILS on a fabricated fee value',
+      !absentPredicate(fabricated), collapse(fabricated));
+
+    // 5b. A local clock standing in for a block time the chain never sent.
+    const timeHonest = h('div', { class: 'detail-row' }, [
+      h('span', { class: 'detail-label', text: 'Block time' }),
+      h('span', { class: 'detail-val', text: 'Not available' }),
+    ]);
+    const timeGuessed = h('div', { class: 'detail-row' }, [
+      h('span', { class: 'detail-label', text: 'Block time' }),
+      h('span', { class: 'detail-val', text: new Date().toISOString() }),
+    ]);
+    const timePredicate = (node) => /Block time\s+Not available/.test(collapse(node));
+    ok('control: the block-time-absent assertion passes on an honest row',
+      timePredicate(timeHonest));
+    ok('control: the same assertion FAILS when a local clock is substituted',
+      !timePredicate(timeGuessed), collapse(timeGuessed));
+  }
+
+  // 5c. The identity assertion. A sheet built from the WRONG entry — the positional bug —
+  //     must be caught by the same "contains the tapped signature, not the other one" check.
+  {
+    const tapped = DETAIL_ENTRIES[1].signature;
+    const other = DETAIL_ENTRIES[0].signature;
+    const correct = h('div', {}, h('code', { text: tapped }));
+    const positional = h('div', {}, h('code', { text: other }));
+    const identityPredicate = (node) => textOf(node).includes(tapped)
+      && !textOf(node).includes(other);
+    ok('control: the identity assertion passes on the tapped entry',
+      identityPredicate(correct));
+    ok('control: the same assertion FAILS on a sheet built from the wrong entry',
+      !identityPredicate(positional), textOf(positional).slice(0, 60));
+  }
+
+  // 5d. Keyboard operability. A plain div with a click handler is the thing the P2 card
+  //     replaces, so proving it still fails the control predicate proves the change matters.
+  {
+    const inert = h('div', { class: 'tx-card' });
+    const operable = h('article', {
+      class: ['tx-card', 'tx-card-open'],
+      role: 'button',
+      tabindex: '0',
+      'aria-label': 'Sent — transaction details',
+    });
+    const operablePredicate = (el) => el.getAttribute('tabindex') === '0'
+      && el.getAttribute('role') === 'button'
+      && (el.getAttribute('aria-label') || '').length > 0;
+    ok('control: the keyboard-operability assertion passes on a real control',
+      operablePredicate(operable) && isFocusable(operable));
+    ok('control: the same assertion FAILS on the inert div it replaced',
+      !operablePredicate(inert) && !isFocusable(inert));
+  }
+
+  // 6. A route that throws must be reported, not silently mounted as blank.
   resetDom();
   consoleErrors.length = 0;
   const brokenRoot = DOC.createElement('div');

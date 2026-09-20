@@ -745,13 +745,25 @@ form > .btn.text {
 /* ---- Activity cards (P1, Rabby-inspired) --------------------------------
    One transaction per card: calm time + net/signature meta on top, the method
    glyph and verb on the left, the signed delta right-aligned. Failed entries
-   wear a badge; nothing here is clickable yet (detail sheet is P2). */
+   wear a badge. P2: .tx-card-open marks a card that opens the detail sheet. */
 .tx-card {
   background: var(--surface-1);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   padding: var(--sp-3);
   margin-bottom: var(--sp-2);
+}
+
+/* An openable card must LOOK openable — a card that responds to Enter but gives no hover
+   or focus feedback reads as broken. The focus ring is inherited from base.css's
+   :focus-visible rule, which already targets any focusable element. */
+.tx-card-open {
+  cursor: pointer;
+  transition: border-color var(--t-fast), background var(--t-fast);
+}
+.tx-card-open:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-2);
 }
 .tx-card-head {
   display: flex;

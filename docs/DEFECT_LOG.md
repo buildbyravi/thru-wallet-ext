@@ -281,3 +281,22 @@ are checkboxes in `docs/MANUAL_SMOKE_CHECKLIST.md`, not test gaps to close in No
 > guesses decay the moment a sibling starts carrying structure of its own. Keep the node you
 > intend to mutate by identity. The shim DOES see this class — assert parent identity, not
 > just text presence ("the text was on screen" is not "the text was in the right parent").
+| P2 detail sheet: in-card controls would double-fire the open handler | `CAUGHT PRE-MERGE` (P2 implementation) | Making `.tx-card` an openable control put a click handler on an element that already CONTAINED a copy `<button>` and an explorer `<a>`. Because the kit's shim and the real DOM both bubble, clicking either would have run the card's open handler too — the copy button would silently open a sheet, and worse, the explorer link would open a background tab *and* a modal the user never asked for. Caught before it shipped by walking the event path from `target` up to the card and bailing on any `<button>`/`<a>` in between. Lifecycle asserts a copy click does NOT open the sheet. |
+
+> **Lesson:** promoting a container to a control inherits every descendant's clicks. A card
+> that grows an affordance must decide what its existing affordances mean *in the same
+> change*, or the outer handler quietly swallows the inner ones. The same applies to the
+> keyboard path: `Enter`/`Space` on a nested button must activate the button, not the card.
+
+| P2: a detail sheet parented to its card would vanish mid-read | `CAUGHT PRE-MERGE` (P2 implementation) | The Activity list repaints wholesale on a filter change, a `pendingTxChanged` event or load-more — `paintList()` destroys every card and rebuilds. A sheet appended inside the tapped card would have been torn out from under the user by a background event they did not trigger. Fixed by parenting the sheet to `document.body` (as `password-prompt.js` already does) and having the ROUTE own its lifetime, closing it explicitly in `destroy()`. Lifecycle asserts a sheet open at navigation time is gone afterwards and leaves no listener on a detached node. |
+
+> **Lesson:** a modal's lifetime is the ROUTE's, never a list row's. Any surface that must
+> survive a repaint has to live outside the subtree that repaints, with its owner holding
+> the reference — `{el, update, destroy}` plus an explicit close in the owner's `destroy()`.
+
+| P2: "fee" was one rename away from becoming a fabricated number | `CAUGHT PRE-MERGE` (P2 spike) | `Transaction.fee` is populated and reads like the answer to "what did this cost?" — it is not. The spike against the generated protobuf established that `TransactionExecutionResult` has NO charged-fee field at all (compute/memory/state units, vm_error, events, nonce — nothing else), so `Transaction.fee` is the sender's HEADER DECLARATION, an input to execution. Shipping it as "Fee" would have put a number in front of users that is not what they were debited. Mitigated structurally, not by comment: the field is named `feeDeclaredUnits` end to end, the wire carries `feeCharged: false`, the row is labelled "Fee (declared)", the sheet states inline that the network reports no charged fee, and `test-contract.mjs` fails if the return shape is ever renamed to a bare `feeUnits`. |
+
+> **Lesson:** a field that exists is not a field that means what its name suggests. Before
+> surfacing any chain value, check whether it is an INPUT the sender chose or an OUTPUT the
+> network reported — they read identically in a type signature and differently to a user.
+> Encode the distinction in the identifier, not in a comment, so a rename cannot erase it.

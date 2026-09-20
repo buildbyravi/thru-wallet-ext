@@ -203,6 +203,68 @@
   min-width: 0;
 }
 
+/* Tone modifiers on a detail value. Colour comes from tokens only, so both themes are
+   covered by tokens.css's [data-theme="dark"] block without a second declaration here. */
+.detail-val.positive { color: var(--positive); }
+.detail-val.negative { color: var(--negative); }
+
+/* ---- Transaction detail sheet (P2) -------------------------
+   A bottom-anchored variant of the existing modal, reusing .modal-overlay/.modal-card
+   wholesale: same backdrop, same open transition, same focus-trapped card. Only the
+   anchoring and the internal type scale differ, because a detail table is taller than a
+   password prompt and wants the popup's full width. */
+
+.tx-sheet-overlay {
+  align-items: flex-end;
+  padding: 0;
+}
+
+.tx-sheet {
+  max-width: none;
+  gap: var(--sp-3);
+  max-height: 88%;
+  overflow-y: auto;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  transform: translateY(16px);
+}
+
+.modal-overlay.open .tx-sheet { transform: translateY(0); }
+
+/* The full signature is the reason this sheet exists, so it gets its own block rather than
+   a table row: 64+ characters need to wrap, and a right-aligned table cell cannot. */
+.tx-sheet-sig {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  padding: var(--sp-3);
+  background: var(--surface-inset);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.tx-sheet-sig-value {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+
+.detail-sheet-mono {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--text-1);
+  word-break: break-all;
+  line-height: 1.5;
+}
+
+/* Provenance note under the fee row. Deliberately not .muted-small or a tooltip: the
+   distinction between a declared fee and a charged one is load-bearing, not a footnote. */
+.tx-sheet-note {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  line-height: 1.5;
+}
+
 /* ---- Option cards (add-account menu) --------------------- */
 
 .option-card {
