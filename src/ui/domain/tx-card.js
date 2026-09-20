@@ -17,10 +17,12 @@ import { formatThru, formatTokenAmount, truncateAddress } from '../../shared/for
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-/** Relative time for the card head: minutes/hours while young, then date+time. */
-export function relTime(ts) {
+/** Relative time for the card head: minutes/hours while young, then date+time. Falls back to slot. */
+export function relTime(ts, slot) {
   const t = Number(ts);
-  if (!Number.isFinite(t)) return '';
+  if (!Number.isFinite(t) || t <= 0) {
+    return slot != null ? `Slot ${slot}` : '';
+  }
   const age = Date.now() - t;
   if (age < 0) return 'just now';
   const mins = Math.floor(age / 60000);
@@ -35,13 +37,16 @@ export function relTime(ts) {
 
 /** Stable day key for sectioning: local-calendar day, not a rolling 24h window. */
 export function dayKey(ts) {
-  const d = new Date(Number(ts));
-  if (!Number.isFinite(d.getTime())) return '';
+  const t = Number(ts);
+  if (!Number.isFinite(t) || t <= 0) return 'recent'; // no wall-clock time on the wire
+  const d = new Date(t);
   return `${d.getFullYear()}-${String(d.getMonth()).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 export function dayLabel(ts) {
-  const key = dayKey(ts), now = dayKey(Date.now()), y = dayKey(Date.now() - 86400000);
+  const key = dayKey(ts);
+  if (key === 'recent') return 'Activity';
+  const now = dayKey(Date.now()), y = dayKey(Date.now() - 86400000);
   if (key === now) return 'Today';
   if (key === y) return 'Yesterday';
   const d = new Date(Number(ts));
@@ -83,8 +88,9 @@ function verbFor(entry) {
 }
 
 /** Context line under the verb: counterparty or the honest origin note. */
-function contextFor(entry) {
-  const other = entry.counterparty ? truncateAddress(entry.counterparty) : null;
+function contextFor(entry, knownAccounts) {
+  const localName = entry.counterparty && knownAccounts?.get?.(entry.counterparty);
+  const other = localName || (entry.counterparty ? truncateAddress(entry.counterparty) : null);
   if (entry.kind === 'sent' || entry.kind === 'token-sent') return other ? `to ${other}` : '';
   if (entry.kind === 'received' || entry.kind === 'token-received') return other ? `from ${other}` : '';
   if (entry.kind === 'faucet') return 'from the faucet';
@@ -114,14 +120,14 @@ function shortSignature(signature) {
  * @param {object|null} opts.network — active network (label + explorerUrl when available)
  * @returns {{ el: HTMLElement, destroy(): void }}
  */
-export function TxCard({ entry, network } = {}) {
+export function TxCard({ entry, network, knownAccounts } = {}) {
   const glyph = glyphFor(entry);
   const delta = deltaFor(entry);
   const failed = entry.success === false;
   const owned = [];
 
   const head = h('div', { class: 'tx-card-head' }, [
-    h('span', { class: 'tx-card-time', text: relTime(entry.timestamp) }),
+    h('span', { class: 'tx-card-time', text: relTime(entry.timestamp, entry.slot) }),
     h('span', { class: 'tx-card-meta' }, (() => {
       const bits = [];
       if (network?.label) bits.push(h('span', { class: 'tx-card-net', text: network.label }));
@@ -152,7 +158,7 @@ export function TxCard({ entry, network } = {}) {
   ]);
 
   const titleRow = h('span', { class: 'tx-card-title' }, verbFor(entry));
-  const sub = contextFor(entry);
+  const sub = contextFor(entry, knownAccounts);
 
   const body = h('div', { class: 'tx-card-body' }, [
     h('span', { class: ['row-glyph', glyph.cls].filter(Boolean) }, icon(glyph.name, 14)),

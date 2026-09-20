@@ -29,6 +29,7 @@ export function HistoryRoute({ back }) {
   const owned = [];
   let account = null;
   let network = null;
+  let knownAccounts = new Map();
   let entries = [];
   let pending = [];
   let feedSynced = true;
@@ -153,7 +154,7 @@ export function HistoryRoute({ back }) {
         lastKey = key;
         sectionCount = 0;
       }
-      const card = TxCard({ entry, network });
+      const card = TxCard({ entry, network, knownAccounts });
       cards.push(card);
       listHost.appendChild(card.el);
       sectionCount += 1;
@@ -182,10 +183,20 @@ export function HistoryRoute({ back }) {
     }
     try {
       if (!account) {
-        [account, network] = await Promise.all([
+        const [activeAcc, activeNet, accountList] = await Promise.all([
           bridge.send('account.getActive'),
           bridge.send('network.getActive'),
+          bridge.send('account.list').catch(() => []),
         ]);
+        account = activeAcc;
+        network = activeNet;
+        // Cards resolve a counterparty that is another account in THIS wallet by name
+        // ("to Alice") instead of a truncated address — sends between own accounts read right.
+        knownAccounts = new Map(
+          (Array.isArray(accountList) ? accountList : [])
+            .filter((a) => a?.address)
+            .map((a) => [a.address, a.label || a.keyring?.label || 'Account']),
+        );
       }
 
       let page = null;
@@ -259,8 +270,8 @@ export function HistoryRoute({ back }) {
       // A settled transaction should appear in the list, not just vanish from Pending.
       load();
     }),
-    bridge.onEvent('accountsChanged', () => { account = null; cursor = null; load(); }),
-    bridge.onEvent('networkChanged', () => { account = null; cursor = null; load(); }),
+    bridge.onEvent('accountsChanged', () => { account = null; knownAccounts = new Map(); cursor = null; load(); }),
+    bridge.onEvent('networkChanged', () => { account = null; knownAccounts = new Map(); cursor = null; load(); }),
   );
 
   return {

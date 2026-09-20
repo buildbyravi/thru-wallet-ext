@@ -56,6 +56,28 @@ export async function getHistoryFeed(address) {
     // older history available without another round-trip. Signatures dedupe; cap is a bound,
     // not a suggestion — storage writes must stay bounded forever.
     const seen = new Set(fresh.map((e) => e?.signature).filter(Boolean));
+    const cachedMap = new Map((cached.entries || [])
+      .map((e) => [e?.signature, e])
+      .filter(([sig]) => Boolean(sig)));
+
+    // The history wire carries NO wall-clock timestamp (slots only — production reality).
+    // Backfill what we honestly know: our own submittedAt/settledAt for transactions this
+    // wallet sent (pending-tx-service records them), or a previously cached timestamp.
+    const netId = await getActiveNetworkId();
+    const pendingKey = scopedKey('thru_pending_txs', netId);
+    const pendingRes = await chrome.storage.local.get(pendingKey).catch(() => ({}));
+    const pendingList = Array.isArray(pendingRes?.[pendingKey]) ? pendingRes[pendingKey] : [];
+    const pendingTimestamps = new Map(
+      pendingList
+        .filter((p) => p?.signature && (p.submittedAt || p.settledAt))
+        .map((p) => [p.signature, p.submittedAt || p.settledAt]),
+    );
+    for (const e of fresh) {
+      if (!e.timestamp) {
+        e.timestamp = pendingTimestamps.get(e.signature) || cachedMap.get(e.signature)?.timestamp || null;
+      }
+    }
+
     const merged = [
       ...fresh,
       ...(cached.entries || []).filter((e) => e?.signature && !seen.has(e.signature)),
