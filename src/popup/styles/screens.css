@@ -792,14 +792,23 @@ form > .btn.text {
   gap: var(--sp-2);
   min-width: 0;
 }
+/* line-height:1 on both lines removes the inherited 1.5 half-leading, so the 11px
+   counterparty no longer hangs top-level with the 13px verb; inline-flex centres the
+   sub's cap-height against the title's own. */
 .tx-card-title {
   font-weight: 600;
   font-size: var(--fs-md);
   color: var(--text-1);
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
 }
 .tx-card-sub {
   font-size: var(--fs-xs);
   color: var(--text-3);
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
 }
 .tx-card-badge {
   font-size: var(--fs-xs);

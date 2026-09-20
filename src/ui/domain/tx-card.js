@@ -17,11 +17,13 @@ import { formatThru, formatTokenAmount, truncateAddress } from '../../shared/for
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-/** Relative time for the card head: minutes/hours while young, then date+time. Falls back to slot. */
+/** Relative time for the card head: minutes/hours while young, then date+time.
+ *  Wire entries carry no wall-clock time, so their head falls back to the block number —
+ *  "Block", matching Thru Explorer (scan.thru.org) terminology. */
 export function relTime(ts, slot) {
   const t = Number(ts);
   if (!Number.isFinite(t) || t <= 0) {
-    return slot != null ? `Slot ${slot}` : '';
+    return slot != null ? `Block ${slot}` : '';
   }
   const age = Date.now() - t;
   if (age < 0) return 'just now';
@@ -44,13 +46,17 @@ export function dayKey(ts) {
 }
 
 export function dayLabel(ts) {
-  const key = dayKey(ts);
+  return dayLabelForKey(dayKey(ts));
+}
+
+/** Human label for an already-resolved day key ('recent' → the honest catch-all). */
+export function dayLabelForKey(key) {
   if (key === 'recent') return 'Activity';
   const now = dayKey(Date.now()), y = dayKey(Date.now() - 86400000);
   if (key === now) return 'Today';
   if (key === y) return 'Yesterday';
-  const d = new Date(Number(ts));
-  return `${d.getDate()} ${MONTHS[d.getMonth()]}`;
+  const [, mm, dd] = key.split('-').map(Number);
+  return `${dd} ${MONTHS[mm]}`;
 }
 
 function glyphFor(entry) {

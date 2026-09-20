@@ -6,6 +6,8 @@
 //     transfer that has not yet confirmed is exactly what a user opens History to look for.
 //   - a failed entry rendered like any other. success:false is now stated.
 //   - explorerTxUrl returns '' on a network with no explorer, so the link is omitted.
+
+
 //   - uses the cursor form of tx.listHistory for "load more" rather than refetching a bigger page.
 
 import { h, disposer } from '../../kit/dom.js';
@@ -14,7 +16,31 @@ import { Button } from '../../kit/button.js';
 import { PageHeader, Banner, Spinner, Empty } from '../../kit/feedback.js';
 import * as bridge from '../bridge.js';
 import { formatThru } from '../../../shared/format.js';
-import { TxCard, dayKey, dayLabel } from '../../domain/tx-card.js';
+import { TxCard, dayKey, dayLabelForKey } from '../../domain/tx-card.js';
+
+// Wire entries carry no wall-clock time (slots only — see thru-client decodeHistoryEntry), so a
+// bare dayKey() returned 'recent' for them. One timestampless wire entry interleaved between
+// same-day local sends then splintered a single day into Today (1) -> Activity (1) -> Today (1).
+// Resolve a display day per entry instead: a timestampless entry inherits the day of its newest
+// dated neighbour (slot order bounds the truth — it cannot be later than that neighbour's day),
+// a leading timestampless cluster carries from its older neighbour, and only a list with no dated
+// entry anywhere stays under the honest "Activity" group. entry.timestamp is NEVER mutated here;
+// the card head still shows Block <slot>, and this inference scopes to sectioning only.
+function displayDayKeys(entries) {
+  const keys = new Array(entries.length).fill(null);
+  let carry = null;
+  for (let i = 0; i < entries.length; i += 1) { // newest-first: fill from the newer side
+    const real = dayKey(entries[i].timestamp);
+    if (real !== 'recent') { keys[i] = real; carry = real; continue; }
+    keys[i] = carry;
+  }
+  carry = null;
+  for (let i = entries.length - 1; i >= 0; i -= 1) { // oldest-first: catch leading clusters
+    if (keys[i] && dayKey(entries[i].timestamp) !== 'recent') carry = keys[i];
+    else if (keys[i] === null) keys[i] = carry;
+  }
+  return keys.map((key) => key || 'recent');
+}
 
 const FILTERS = [
   { id: 'all', label: 'All' },
@@ -134,12 +160,16 @@ export function HistoryRoute({ back }) {
     }
 
     // Entries are newest-first, so day boundaries appear in order: compare against the
-    // previous entry's local-calendar day and open a section whenever it changes.
+    // previous entry's RESOLVED display day and open a section whenever it changes.
+    // displayDayKeys() coalesces timestampless wire entries into their dated neighbours'
+    // day instead of splintering the section — see the helper above.
     let lastKey = null;
     let currentHeader = null;
     let sectionCount = 0;
-    for (const entry of shown) {
-      const key = dayKey(entry.timestamp);
+    const keys = displayDayKeys(shown);
+    for (let i = 0; i < shown.length; i += 1) {
+      const entry = shown[i];
+      const key = keys[i];
       if (key !== lastKey) {
         // Positional access (listHost.lastChild) was the shipped bug: at a day boundary
         // that node is the previous section's LAST CARD, so its count badge ended up
@@ -148,7 +178,7 @@ export function HistoryRoute({ back }) {
           currentHeader.appendChild(h('span', { class: 'list-group-count', text: String(sectionCount) }));
         }
         currentHeader = h('header', { class: 'list-group-header' }, [
-          h('span', { text: dayLabel(entry.timestamp) }),
+          h('span', { text: dayLabelForKey(key) }),
         ]);
         listHost.appendChild(currentHeader);
         lastKey = key;

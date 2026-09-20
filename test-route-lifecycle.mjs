@@ -2747,8 +2747,37 @@ async function navigationTest() {
   const noTimeText = textOf(router.root);
   ok('timestampless wire entries group under an honest section label',
     /Activity/.test(noTimeText), noTimeText.slice(0, 200));
-  ok('timestampless cards show their slot instead of a blank time',
-    /Slot 41000/.test(noTimeText));
+  ok('timestampless cards show Block <slot> — explorer wording, never "Slot"',
+    /Block 41000/.test(noTimeText) && !/Slot \d/.test(noTimeText), noTimeText.slice(0, 200));
+
+  // Day-section splinter fix: a timestampless wire entry sandwiched between two same-day
+  // sends inherits its neighbours' day — one "Today" section, never Today -> Activity -> Today.
+  FIXTURES['tx.getHistoryFeed'] = () => ({
+    entries: [
+      { signature: 'tsMIX1_newer_today_aaaaaaaaaaaaaaaaaaaaaaa', slot: 30500,
+        success: true, programAddress: NETWORK_ALPHANET.transferProgramId, kind: 'sent',
+        amount: '90000', counterparty: ADDRESS_B, timestamp: NOW - 20 * 60000 },
+      { signature: 'tsMIX2_wire_no_time_aaaaaaaaaaaaaaaaaaaaaaaa', slot: 30400,
+        success: true, programAddress: NETWORK_ALPHANET.transferProgramId, kind: 'received',
+        amount: '40000', counterparty: ADDRESS_B, timestamp: null },
+      { signature: 'tsMIX3_older_today_aaaaaaaaaaaaaaaaaaaaaaa', slot: 30300,
+        success: true, programAddress: NETWORK_ALPHANET.transferProgramId, kind: 'sent',
+        amount: '90000', counterparty: ADDRESS_B, timestamp: NOW - 120 * 60000 },
+    ],
+    nextCursor: null,
+    synced: true,
+  });
+  router.navigate('/history');
+  await settle();
+  const mixHeaders = [...router.root.querySelectorAll('.list-group-header')];
+  const mixHeaderText = mixHeaders.map((hdr) => textOf(hdr)).join(' | ');
+  ok('a timestampless entry between same-day sends coalesces into a single Today section',
+    mixHeaders.length === 1 && /Today/.test(mixHeaderText)
+      && mixHeaders[0]?.querySelector('.list-group-count')?.textContent === '3',
+    mixHeaderText);
+  ok('the coalesced middle card still shows its block, not an invented time',
+    /Block 30400/.test(textOf(router.root)),
+    textOf(router.root).slice(0, 400));
   const selfLabel = SELF_B.label || 'Account 2';
   ok('a counterparty that is another wallet account renders by name',
     noTimeText.includes(`to ${selfLabel}`), `"to ${selfLabel}"`);
