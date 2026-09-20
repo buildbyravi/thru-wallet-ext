@@ -17,6 +17,7 @@ import { PageHeader, Banner, Spinner, Empty } from '../../kit/feedback.js';
 import * as bridge from '../bridge.js';
 import { formatThru } from '../../../shared/format.js';
 import { TxCard, dayKey, dayLabelForKey } from '../../domain/tx-card.js';
+import { TxDetailSheet } from '../../domain/tx-detail-sheet.js';
 
 // Wire entries carry no wall-clock time (slots only — see thru-client decodeHistoryEntry), so a
 // bare dayKey() returned 'recent' for them. One timestampless wire entry interleaved between
@@ -139,6 +140,38 @@ export function HistoryRoute({ back }) {
     }
   }
 
+  // ---- Detail sheet (P2) ---------------------------------------------------
+  // One sheet at a time, owned by the route so a navigation away tears it down with
+  // everything else. It is NOT parented to the card: a repaint (filter change, pending
+  // event, load-more) removes cards from the document, and a sheet living inside one would
+  // vanish mid-read. The sheet appends itself to document.body and is destroyed by identity.
+  let sheet = null;
+
+  function closeSheet() {
+    if (!sheet) return;
+    const current = sheet;
+    sheet = null;
+    current.destroy();
+  }
+
+  function openDetail(entry) {
+    if (!entry?.signature) return; // nothing to show, and nothing to fetch
+    closeSheet();
+    sheet = TxDetailSheet({
+      entry,
+      network,
+      knownAccounts,
+      // The sheet never calls the bridge itself — domain components stay bridge-free
+      // (scripts/check-layering.mjs enforces it for kit; the same discipline applies here).
+      // The route owns the one call, and a backend that predates tx.getDetail simply leaves
+      // the lazy rows saying "Not available".
+      loadDetail: (signature) => bridge
+        .send('tx.getDetail', { signature, address: account?.address })
+        .catch(() => null),
+      onClose: () => { sheet = null; },
+    });
+  }
+
   const cards = [];
   function paintList() {
     // Cards own kit components (signature CopyButton), so they must be destroyed with the
@@ -184,7 +217,9 @@ export function HistoryRoute({ back }) {
         lastKey = key;
         sectionCount = 0;
       }
-      const card = TxCard({ entry, network, knownAccounts });
+      // `entry` is captured by identity, not by index: the sheet must open against the
+      // transaction the user actually tapped even after a filter change reorders the list.
+      const card = TxCard({ entry, network, knownAccounts, onOpen: openDetail });
       cards.push(card);
       listHost.appendChild(card.el);
       sectionCount += 1;
@@ -307,6 +342,9 @@ export function HistoryRoute({ back }) {
   return {
     el,
     destroy() {
+      // The sheet lives on document.body, so route teardown must close it explicitly or it
+      // outlives the screen that owns it.
+      closeSheet();
       for (const c of cards) c.destroy?.();
       cards.length = 0;
       for (const c of owned) c.destroy?.();

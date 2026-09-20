@@ -54,6 +54,29 @@ ok('contract v6 documents destructive-settings hardening', CONTRACT_VERSION >= 6
 ok('contract v7 documents the custom-network quarantine break', CONTRACT_VERSION >= 7);
 ok('contract v8 documents the token-transfer addition', CONTRACT_VERSION >= 8);
 ok('contract v9 documents the history-feed cache addition', CONTRACT_VERSION >= 9);
+ok('contract v10 documents the transaction-detail addition', CONTRACT_VERSION >= 10);
+
+// Contract v10 invariants. tx.getDetail is a read, so it must NOT have acquired an auth
+// gate it does not need — but more importantly its declared return shape must keep saying
+// that the fee is a header DECLARATION. If someone renames it to `feeUnits` or drops the
+// `feeCharged: false` marker, a future caller will present a declaration as a receipt.
+{
+  const detail = METHODS['tx.getDetail'];
+  ok('tx.getDetail exists since v10 and is callable while locked, like every tx.* read',
+    Boolean(detail) && detail.since === 10 && detail.auth === 'none',
+    JSON.stringify(detail));
+  ok('tx.getDetail declares signature and address params',
+    ['signature', 'address'].every((p) => detail.params.includes(p)),
+    (detail?.params || []).join(','));
+  ok('tx.getDetail names the fee as DECLARED, never as an amount charged',
+    /feeDeclaredUnits/.test(detail.returns)
+      && /feeCharged: false/.test(detail.returns)
+      && !/\bfeeUnits\b/.test(detail.returns),
+    detail.returns);
+  ok('tx.getDetail documents that unknown fields arrive as null rather than a guess',
+    /null/.test(detail.returns) && /never a guess/i.test(detail.returns),
+    detail.returns);
+}
 
 // Contract v8 invariants: the new signing surface exists with the right gate, and the
 // capability stub it replaces did not silently change shape into something else.

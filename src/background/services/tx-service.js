@@ -262,6 +262,81 @@ export async function listHistory(address, pageSizeOrOptions = 15) {
 }
 
 /**
+ * Detail for ONE transaction, fetched lazily when the user opens the P2 detail sheet.
+ *
+ * Shape mirrors the capability-stub convention already used by estimateFee/simulate: the
+ * response always arrives, and every field the chain did not supply is `null` with the
+ * absence stated rather than filled in. The UI renders "Not available" from those nulls.
+ * See docs/TX_DETAIL_SPIKE.md for what the RPC surface can and cannot answer.
+ *
+ * Deliberate naming: `feeDeclaredUnits`, not `feeUnits`. Thru's execution result carries no
+ * charged-fee field, so the only fee available is the one declared in the transaction
+ * header. `feeCharged: false` says so on the wire, so a future caller cannot mistake a
+ * declaration for a receipt.
+ *
+ * Money crosses the seam as a STRING, never BigInt (chrome.runtime.sendMessage JSON-encodes).
+ *
+ * @param {string} signature
+ * @param {string} [address] — viewer; defaults to the active account
+ */
+export async function getTransactionDetail(signature, address) {
+  const sig = String(signature || '').trim();
+  if (!sig) throw new Error('A transaction signature is required.');
+
+  let viewer = String(address || '').trim();
+  if (!viewer) {
+    try {
+      viewer = (await vault.getActiveAccount())?.address || '';
+    } catch {
+      // locked — direction cannot be resolved, but the rest of the detail still can
+    }
+  }
+
+  let entry;
+  try {
+    entry = await thruClient.getTransactionDetail(sig, viewer);
+  } catch (error) {
+    // Unreachable node or unknown signature: say so. An empty sheet with a reason beats a
+    // sheet of invented rows.
+    return {
+      supported: false,
+      signature: sig,
+      reason: error?.message || 'Could not load this transaction from the network.',
+    };
+  }
+
+  const serialized = {
+    signature: entry.signature ? String(entry.signature) : sig,
+    slot: entry.slot != null ? String(entry.slot) : null,
+    success: entry.success,
+    programAddress: entry.programAddress ? String(entry.programAddress) : '',
+    kind: entry.kind || 'other',
+    amount: entry.amount != null ? String(entry.amount) : null,
+    counterparty: entry.counterparty ? String(entry.counterparty) : null,
+    tokenSource: entry.tokenSource ? String(entry.tokenSource) : null,
+    tokenDest: entry.tokenDest ? String(entry.tokenDest) : null,
+    tokenMint: entry.tokenMint ? String(entry.tokenMint) : null,
+    tokenSymbol: null,
+    tokenDecimals: null,
+  };
+
+  // Same second pass the list uses, so the sheet can never disagree with the card it
+  // opened from about which mint moved or in which direction.
+  await resolveTokenHistory([serialized], viewer);
+
+  return {
+    supported: true,
+    ...serialized,
+    // Header declaration, NOT an amount debited — see the doc comment above.
+    feeDeclaredUnits: entry.feeDeclaredUnits != null ? entry.feeDeclaredUnits.toString() : null,
+    feeCharged: false,
+    nonce: entry.nonce != null ? entry.nonce.toString() : null,
+    // Block time, null when the node did not send one. Never substituted with a local clock.
+    blockTimeMs: Number.isFinite(entry.blockTimeMs) ? entry.blockTimeMs : null,
+  };
+}
+
+/**
  * Validate a recipient address server-side and report whether it is the active account.
  *
  * The UI does its own optimistic check for instant feedback, but the authoritative check

@@ -8,9 +8,15 @@
 //   - unrecognised programs render "Unknown transaction", never an invented protocol;
 //   - token amounts keep their own decimals/symbol — never re-denominated into THRU;
 //   - there is no per-transaction fee field on Thru's history wire today, so no fee line
-//     is fabricated. When the explorer detail fetch lands (P2), this card gets it lazily.
+//     is fabricated. The P2 detail sheet fetches what it can lazily and states the rest
+//     as "Not available" — see src/ui/domain/tx-detail-sheet.js.
+//
+// P2: the card is now a real control. `onOpen` makes it an <article> carrying an explicit
+// keyboard contract (tabindex + role="button" + Enter/Space), rather than a <div> with a
+// click handler that a keyboard user cannot reach. The nested copy/explorer controls keep
+// working because the open handler ignores events that originated inside them.
 
-import { h } from '../kit/dom.js';
+import { h, disposer } from '../kit/dom.js';
 import { icon } from '../kit/icon.js';
 import { CopyButton } from '../kit/button.js';
 import { formatThru, formatTokenAmount, truncateAddress } from '../../shared/format.js';
@@ -124,13 +130,18 @@ function shortSignature(signature) {
  * @param {object} opts
  * @param {object} opts.entry — decoded history entry (tx-service shape)
  * @param {object|null} opts.network — active network (label + explorerUrl when available)
+ * @param {Function} [opts.onOpen] — called with the entry when the card is activated; its
+ *   presence is what turns the card into a focusable control. Omit it and the card stays
+ *   the inert P1 render unit, so nothing announces an affordance that does not exist.
  * @returns {{ el: HTMLElement, destroy(): void }}
  */
-export function TxCard({ entry, network, knownAccounts } = {}) {
+export function TxCard({ entry, network, knownAccounts, onOpen } = {}) {
   const glyph = glyphFor(entry);
   const delta = deltaFor(entry);
   const failed = entry.success === false;
   const owned = [];
+  const d = disposer();
+  const interactive = typeof onOpen === 'function';
 
   const head = h('div', { class: 'tx-card-head' }, [
     h('span', { class: 'tx-card-time', text: relTime(entry.timestamp, entry.slot) }),
@@ -179,11 +190,54 @@ export function TxCard({ entry, network, knownAccounts } = {}) {
       : []),
   ]);
 
+  const el = h(interactive ? 'article' : 'div', {
+    class: ['tx-card', interactive ? 'tx-card-open' : null].filter(Boolean),
+    ...(interactive
+      ? {
+        role: 'button',
+        tabindex: '0',
+        'aria-label': `${verbFor(entry)} — transaction details`,
+      }
+      : {}),
+  }, [head, body]);
+
+  if (interactive) {
+    // The head holds a copy BUTTON and an explorer ANCHOR. Without this guard, clicking
+    // either would also open the sheet — and worse, the explorer link would open a tab
+    // behind a modal. Walk up from the event target to the card and bail if a real control
+    // is in the way; `closest` is not used because the shim-tested kit stays on plain nodes.
+    const cameFromControl = (target) => {
+      for (let n = target; n && n !== el; n = n.parentNode) {
+        const tag = String(n.localName || n.tagName || '').toLowerCase();
+        if (tag === 'button' || tag === 'a') return true;
+      }
+      return false;
+    };
+
+    const open = () => { onOpen(entry); };
+
+    d.on(el, 'click', (event) => {
+      if (cameFromControl(event.target)) return;
+      open();
+    });
+
+    // role="button" is a promise that Enter and Space activate it. This is what keeps that
+    // promise; a div with only a click handler is invisible to a keyboard user.
+    d.on(el, 'keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ' && event.key !== 'Spacebar') return;
+      if (cameFromControl(event.target)) return;
+      // Space scrolls the list otherwise, which is not what activating a control means.
+      event.preventDefault?.();
+      open();
+    });
+  }
+
   return {
-    el: h('div', { class: 'tx-card' }, [head, body]),
+    el,
     destroy() {
       for (const c of owned) c.destroy?.();
       owned.length = 0;
+      d.dispose();
     },
   };
 }

@@ -1,8 +1,14 @@
 # Status and roadmap
 
 Single source of truth for **where the rebuild is** and **what happens next**.
-Last updated: contract v8 adds token transfer (`token.transfer` + real `token.getBalances`) on
-the official `@thru/programs/token` bindings, pending one live-network verification run.
+Last updated: contract v10 adds `tx.getDetail`, the lazy per-signature fetch behind the P2
+transaction detail sheet (Activity history P0+P1+P2 now shipped). It is explorer-free: the
+sheet runs on the RPC we already depend on, states the header-declared fee as such, and
+renders "Not available" for anything the network does not report — see
+`docs/TX_DETAIL_SPIKE.md`. Open research thread: the P2.5 explorer spike, which is the only
+place a *charged* fee could come from. Earlier: contract v8 added token transfer
+(`token.transfer` + real `token.getBalances`) on the official `@thru/programs/token`
+bindings, and v9 added the cache-merged history feed.
 
 Companion docs: `docs/DOCS_INDEX.md` (which doc to trust) · `docs/PROJECT_LEDGER.md` (past/present/future build tracking) · `CONTEXT.md` (file map) · `docs/MODULE_BOUNDARIES.md` (feature separation) · `docs/DEFECT_LOG.md` (every defect + lesson) · `docs/BACKEND_GAPS.md` (capability tiers) · `docs/BUILD_SPEC.md` (product spec)
 

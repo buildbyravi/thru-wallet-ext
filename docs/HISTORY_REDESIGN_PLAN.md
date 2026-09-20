@@ -1,6 +1,8 @@
 # History / Transaction tab redesign — study of Rabby + plan
 
-Status: **P0 + P1 shipped**. P0: `services/history-service.js` + contract v9 `tx.getHistoryFeed` (cache-merged, offline-labelled, append-deduped). P1: `domain/tx-card.js` + day-grouped Activity (Today/Yesterday/date headers, verb + context, signed right-aligned deltas, rel-time head, network + short-signature meta with copy/explorer actions, failed badge). Honest omission: no per-tx fee line yet (no fee field on the history wire; P2's lazy detail fetch is where it belongs). Post-P1 honesty pass (wire reality: `decodeHistoryEntry` carries no timestamp): relative time falls back to “Slot N”, timestampless entries group under “Activity”, timestamps backfilled from own pending records in `history-service.js`, and own-account counterparties render by name via `account.list`. Boundary-day refinement parked for P2 (from the pr-6-review patch, not landed): when a timestampless entry sits between neighbours in DIFFERENT days, weight the inherited day by slot ratio ((newerSlot - cur)/(newerSlot - older)) rather than always taking the newer neighbour's day. Display-space only — wire entry timestamps stay null; the card head keeps showing Block. Next: P2 detail sheet, then P2.5 explorer-enrichment spike.
+Status: **P0 + P1 + P2 shipped**. P0: `services/history-service.js` + contract v9 `tx.getHistoryFeed` (cache-merged, offline-labelled, append-deduped). P1: `domain/tx-card.js` + day-grouped Activity (Today/Yesterday/date headers, verb + context, signed right-aligned deltas, rel-time head, network + short-signature meta with copy/explorer actions, failed badge). Honest omission: no per-tx fee line yet (no fee field on the history wire; P2's lazy detail fetch is where it belongs). Post-P1 honesty pass (wire reality: `decodeHistoryEntry` carries no timestamp): relative time falls back to “Slot N”, timestampless entries group under “Activity”, timestamps backfilled from own pending records in `history-service.js`, and own-account counterparties render by name via `account.list`. Boundary-day refinement **still parked** (from the pr-6-review patch, not landed): when a timestampless entry sits between neighbours in DIFFERENT days, weight the inherited day by slot ratio ((newerSlot - cur)/(newerSlot - older)) rather than always taking the newer neighbour's day. Display-space only — wire entry timestamps stay null; the card head keeps showing Block. Deliberately NOT bundled into P2: the correct version needs a bounded-neighbour scan with its own slot-validity edge cases (equal slots, missing slots, a cluster spanning three days), which is well past a 10-line change and outside the detail sheet's blast radius. It stays a standalone item.
+
+P2 (this cycle): `domain/tx-detail-sheet.js` + contract v10 `tx.getDetail` + `thru-client.getTransactionDetail` (additive; the sacred client gained one new export and changed zero existing lines). Tapping a card — now a real keyboard-operable control (`role="button"`, tabindex, Enter/Space, Escape closes, focus restores) — opens a bottom-anchored `.modal-card`/`.modal-overlay` sheet reusing the password-prompt focus-trap + disposer discipline. It paints synchronously from the tapped entry (full signature + copy, status, signed amount, counterparty resolved against `account.list`, network, block) and then lazily fills two rows from one on-demand `tx.getDetail` call. **Explorer-free**, as required: the enrichment lane runs entirely on the existing RPC surface. Honest omissions, spiked before any UI was written (`docs/TX_DETAIL_SPIKE.md`): Thru's `TransactionExecutionResult` carries **no charged-fee field**, so the sheet shows the header-DECLARED fee, labels it "Fee (declared)", and states inline that the amount actually debited is not reported by the network — `tx.getDetail` returns `feeCharged: false` so no future caller can mistake one for the other. Wall-clock time is not on the transaction either but IS on the containing block (`BlockHeader.block_time` → `Block.blockTimeNs`), so the sheet fetches it via `blocks.get({slot})` and labels it "Block time"; when the node omits it the row reads "Not available". Unknown → stated-absent, never guessed, with negative controls in `test-route-lifecycle.mjs` proving the fabricated-fee and local-clock cases would actually fail. Next: P2.5 explorer-enrichment spike (the only place a charged fee might exist).
 Reference screenshots: Rabby's Transactions tab (cards with protocol glyph, method,
 token deltas, gas line, chain badge, short tx id + copy, time).
 
@@ -80,9 +82,18 @@ openapi+db combination:
 **P1 — Card UI.** `domain/tx-card.js` kit component + `history.js` grouping by day;
 pending cards reuse the same shell. Keep "load more" cursor paging.
 
-**P2 — Detail sheet.** Modal with the decode breakdown + signature copy + explorer.
-Enrichment lane: lazily fetch the full trace for the one tapped transaction
-(explorer `get_transaction`) — one call on demand, not a list-time dependency.
+**P2 — Detail sheet.** ✅ SHIPPED. Modal with the decode breakdown + signature copy + explorer
+link. Enrichment lane: lazily fetch detail for the one tapped transaction — one call on
+demand, not a list-time dependency.
+
+Landed differently from the sketch above in one respect worth recording: the lazy fetch uses
+the **node's own** `transactions.get` + `blocks.get` (via contract v10 `tx.getDetail`), not
+the explorer's `get_transaction`. The spike (`docs/TX_DETAIL_SPIKE.md`) established that
+everything the sheet shows except a *charged* fee is obtainable from the RPC we already
+depend on, so P2 ships explorer-free and the explorer stays a P2.5 question. The one thing
+the RPC genuinely cannot answer — what a transaction actually cost — is rendered as a
+labelled header declaration plus an explicit statement that the network reports no charged
+fee, rather than being quietly filled with the declaration.
 
 **P2.5 — Explorer enrichment spike** (before any list-time enrichment ships):
 - Validate the typed (non-TOON) explorer API the MCP tools sit on; record shapes +

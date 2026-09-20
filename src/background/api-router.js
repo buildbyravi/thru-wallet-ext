@@ -135,6 +135,7 @@ const handlers = Object.assign(Object.create(null), {
       ? txService.listHistory(address, { limit, cursor })
       : txService.listHistory(address, pageSize)
   ),
+  'tx.getDetail': ({ signature, address } = {}) => txService.getTransactionDetail(signature, address),
   'tx.checkHealth': () => txService.checkNetworkHealth(),
   'tx.autoCreateAccount': () => txService.autoCreateAccount(),
   'tx.validateAddress': ({ address }) => txService.validateAddress(address),
