@@ -5,8 +5,11 @@ Last updated: contract v10 adds `tx.getDetail`, the lazy per-signature fetch beh
 transaction detail sheet (Activity history P0+P1+P2 now shipped). It is explorer-free: the
 sheet runs on the RPC we already depend on, states the header-declared fee as such, and
 renders "Not available" for anything the network does not report — see
-`docs/TX_DETAIL_SPIKE.md`. Open research thread: the P2.5 explorer spike, which is the only
-place a *charged* fee could come from. Earlier: contract v8 added token transfer
+`docs/TX_DETAIL_SPIKE.md`. The P2.5 explorer spike ran 2026-09-20 (partial: live RPC/MCP
+calls were impossible from the spike environment, but official docs, the MCP endpoint's
+liveness and the explorer's Oracle page were validated) — findings, prepared test vectors and
+a resume checklist are in `docs/EXPLORER_SPIKE.md`. A *charged* fee, if one exists anywhere,
+is still behind the undocumented explorer API; C2 stays open. Earlier: contract v8 added token transfer
 (`token.transfer` + real `token.getBalances`) on the official `@thru/programs/token`
 bindings, and v9 added the cache-merged history feed.
 

@@ -170,6 +170,10 @@ sender's HEADER DECLARATION, an input to execution, not a receipt.
 → remaining: the P2.5 explorer spike. If a charged fee exists anywhere it is behind the typed
   (undocumented) API under `scan.thru.org`'s MCP tools. Until that is validated, the honest
   answer stays "not reported".
+→ **Spike attempted 2026-09-20** (`docs/EXPLORER_SPIKE.md` §7): live validation was blocked in
+  the spike environment (no route to Thru hosts); the official `get_transaction` tool docs
+  describe status/accounts/instructions/events and no charged-fee field. Still open; resume
+  via that doc's §11 checklist.
 
 ### C2c. Per-transaction wall-clock time — block-level only, and optional
 Transactions carry no time field. The containing block does (`BlockHeader.block_time` →

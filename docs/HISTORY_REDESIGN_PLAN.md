@@ -114,5 +114,9 @@ grouped-day rendering, failed/pending card states, "unknown program" honesty row
 - No hand-written general instruction decoder for arbitrary programs in the baseline —
   recognized-program registry + explorer ABI reflection instead.
 - No price/USD lines (no price feed on alphanet; Rabby's `$` values come from DeBank).
+  *Fact updated 2026-09-20:* a live Oracle program DOES post price updates on alphanet, and
+  reading it is a CSP-clean RPC call via the already-shipped `@thru/programs/oracle` bindings
+  (`docs/EXPLORER_SPIKE.md` §5). Shipping fiat lines is therefore a product decision now, not
+  an impossibility — this cycle's non-goal stands until revisited deliberately.
 - No speed-up/cancel flows (Rabby's tx-group machinery exists for EVM nonce games;
   Thru's model doesn't need it).
