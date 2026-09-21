@@ -37,22 +37,32 @@
 }
 
 /* ---- App shell -------------------------------------------------
-   The persistent chrome the rebuilt stack renders around every route.
-   Routes mount into .app-outlet, which grows so a short screen's
-   .screen-actions can still pin to the bottom. */
+   The persistent chrome the rebuilt stack renders around every route,
+   locked to the dossier shell (Task T-05): a 56px header, a scrolling
+   body, and a 56px tab bar inside the 360×600 frame. Routes mount into
+   .app-outlet, which grows so a short screen's .screen-actions can
+   still pin to the bottom. */
 
 .app-shell {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-rows: var(--topbar-height) minmax(0, 1fr) var(--tabbar-height);
   flex: 1;
   min-height: var(--popup-min-height);
+}
+
+/* Unlock and onboarding own the whole viewport, so when the chrome is
+   hidden the fixed 56px tracks must collapse with it — otherwise two
+   empty bars would frame those screens. */
+.app-shell.no-chrome {
+  grid-template-rows: minmax(0, 1fr);
 }
 
 .app-outlet {
   display: flex;
   flex-direction: column;
-  flex: 1;
   min-height: 0;
+  /* The body scrolls inside the locked shell; header and tab bar never move. */
+  overflow-y: auto;
 }
 
 .app-outlet > .screen {

@@ -63,12 +63,14 @@
 /* The screen is the vertical rhythm owner for every module that renders
    straight into it. sp-4 between blocks, with the subheader pulled tighter
    to its content because a title and the thing it titles belong together. */
+/* A route screen is the popup's body (Task T-05): 16px gutters on every
+   edge and a 12px vertical rhythm between blocks. */
 .screen {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-4);
+  gap: var(--sp-3);
   flex: 1;
-  padding: var(--sp-4) var(--sp-5) var(--sp-5);
+  padding: var(--sp-4);
 }
 
 .subheader {

@@ -3,117 +3,132 @@
    should compose from these before inventing new styles.
    ============================================================ */
 
-/* ---- Buttons ----------------------------------------------
-   thru.org's primary CTA is black-on-white, not red. Red is reserved
-   as a signal colour (accent rules, active states, destructive intent),
-   which is what keeps it meaningful. */
+/* ---- Buttons (Task T-01 / Pane f2) ----------------------------
+   The button primitive is the product: one control, four variants,
+   three sizes, an inline spinner, and the scale(0.98) press depth.
+   kit/button.js adds the pending guard on top: any onClick that
+   returns a promise disables the button, sets aria-busy and shows
+   .btn__spinner until the promise settles, so a double-click can
+   never fire a second transaction.
+
+   `btn--*` is the dossier's BEM naming. The plain `.btn.primary`-style
+   selectors stay so legacy call sites that author `.btn <variant>`
+   markup directly (a few anchors and links) pick up the identical
+   styling; the kit component emits both. */
 
 .btn {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: var(--sp-2);
-  width: 100%;
-  border: 1px solid transparent;
+  gap: var(--sp-2); /* plain-authored svg + span pairs keep their spacing */
   border-radius: var(--radius-md);
-  padding: 11px 16px;
   font-family: var(--font-ui);
-  font-size: var(--fs-md);
-  font-weight: 600;
-  letter-spacing: -0.005em;
+  font-size: var(--fs-body);
+  font-weight: 500;
   cursor: pointer;
-  transition: background var(--t-base), border-color var(--t-base), color var(--t-base);
+  transition: all var(--dur-fast) var(--ease-out);
+  border: 1px solid transparent;
   text-decoration: none;
 }
 
-.btn.primary {
-  background: var(--ink);
-  color: var(--ink-ink);
-  border-color: var(--ink);
+.btn--block {
+  width: 100%;
 }
 
-.btn.primary:hover {
-  background: var(--ink-hover);
-  border-color: var(--ink-hover);
+/* Pre-primitive call sites relied on the old full-width base; only the
+   Block modifier names a width now, so the full-width intent of those
+   legacy variant classes is kept here. */
+.btn:is(.primary, .secondary, .accent, .danger) {
+  width: 100%;
 }
 
-.btn.primary:disabled {
-  background: var(--surface-3);
-  color: var(--text-3);
-  border-color: var(--border);
-  cursor: not-allowed;
+.btn--sm, .btn.sm {
+  min-height: 36px;
+  padding: 0 12px;
+  font-size: var(--fs-caption);
+}
+.btn--md {
+  min-height: 44px;
+  padding: 0 16px;
+}
+.btn--lg, .btn.lg {
+  min-height: 52px;
+  padding: 0 20px;
+  font-size: var(--fs-title);
 }
 
-/* Accent variant for the rare case where the action IS the signal —
-   e.g. confirming a broadcast. Use sparingly. */
-.btn.accent {
-  background: var(--accent);
-  color: var(--accent-ink);
-  border-color: var(--accent);
+/* Primary is the periwinkle CTA. `accent` merges into it: the dossier
+   palette has one accent CTA per screen region and it IS the primary. */
+.btn--primary, .btn.primary, .btn.accent {
+  background: var(--color-accent);
+  color: #ffffff;
+}
+.btn--primary:hover:not(:disabled),
+.btn.primary:hover:not(:disabled),
+.btn.accent:hover:not(:disabled) {
+  background: var(--color-accent-ink);
 }
 
-.btn.accent:hover {
-  background: var(--accent-bright);
-  border-color: var(--accent-bright);
+.btn--secondary, .btn.secondary {
+  background: var(--color-surface);
+  border-color: var(--color-border);
+  color: var(--color-text);
+  box-shadow: var(--shadow-1);
+}
+.btn--secondary:hover:not(:disabled), .btn.secondary:hover:not(:disabled) {
+  background: var(--color-accent-soft);
 }
 
-.btn.accent:disabled {
-  background: var(--surface-3);
-  color: var(--text-3);
-  border-color: var(--border);
-  cursor: not-allowed;
+.btn--danger, .btn.danger {
+  background: var(--color-danger);
+  color: #ffffff;
 }
 
-.btn.secondary {
-  background: var(--surface-1);
-  color: var(--text-1);
-  border-color: var(--border-strong);
-}
-
-.btn.secondary:hover {
-  background: var(--surface-2);
-  border-color: var(--text-3);
-}
-
-.btn.secondary:disabled {
-  color: var(--text-3);
-  border-color: var(--border);
-  cursor: not-allowed;
-}
-
-.btn.text {
+/* Ghost is the dossier name for the quiet, unpadded action that legacy
+   screens call `text`. */
+.btn--ghost, .btn.text {
   background: transparent;
-  color: var(--text-2);
+  color: var(--color-text-muted);
   padding: var(--sp-2) var(--sp-1);
   font-size: var(--fs-sm);
   width: auto;
   align-self: center;
 }
-
-.btn.text:hover { color: var(--text-1); }
-
-.btn.danger {
-  background: transparent;
-  color: var(--negative);
-  border-color: var(--negative-border);
+.btn--ghost:hover:not(:disabled), .btn.text:hover:not(:disabled) {
+  color: var(--color-text);
+  background: var(--color-accent-soft);
 }
 
-.btn.danger:hover { background: var(--negative-tint); }
-
-.btn.text.danger {
-  border: none;
-  color: var(--negative);
+.btn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
-/* Size variants — used by desktop.html at 6 sites with no definition. */
-.btn.lg {
-  padding: 14px 20px;
-  font-size: var(--fs-lg);
+.btn__face {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
-
-.btn.sm {
-  padding: 7px 12px;
-  font-size: var(--fs-sm);
+.btn__label {
+  /* A flex item that is allowed to shrink, so a long label truncates
+     instead of stretching its button past the 360px shell. */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.btn__spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  /* @keyframes spin already exists in utilities.css with an identical
+     0→360 rotation; the dossier block re-used that name, so one shared
+     definition serves both. */
+  animation: spin 600ms linear infinite;
 }
 
 /* ---- Icon button ------------------------------------------ */

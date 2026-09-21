@@ -19,6 +19,8 @@
 //   - Every route returns { destroy }. The router calls it before mounting the next one,
 //     and awaits nothing, so teardown is deterministic.
 
+import { enter } from '../kit/motion.js';
+
 const APP_ROOT_ID = 'app';
 
 /** @typedef {{ path: string, view: Function, guard?: Function, title?: string }} RouteDef */
@@ -144,6 +146,9 @@ export class Router {
 
       this.current = instance || null;
       if (instance?.el && this.root) this.root.appendChild(instance.el);
+      // The dossier motion contract (Task T-04): every route change enters with the same
+      // 200ms cross-fade. enter() is silent under prefers-reduced-motion.
+      if (instance?.el) enter(instance.el);
       if (route.title) document.title = `${route.title} — Thru Wallet`;
 
       // Move focus into the new view so keyboard and screen-reader users are not left where the

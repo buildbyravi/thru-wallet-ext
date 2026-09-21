@@ -131,6 +131,9 @@ export function AppShell({ navigate, onNetworkChange }) {
     setChromeVisible(visible) {
       topbar.classList.toggle('hidden', !visible);
       footer.classList.toggle('hidden', !visible);
+      // The shell grid is locked to fixed 56px chrome tracks (Task T-05), so hiding the
+      // chrome must also collapse its rows — otherwise two empty bars frame the screen.
+      el.classList.toggle('no-chrome', !visible);
     },
     refreshNetwork,
     destroy() {

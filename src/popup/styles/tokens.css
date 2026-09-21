@@ -1,124 +1,142 @@
 /* ============================================================
-   Design tokens — light theme, matched to the thru.org homepage.
-   
-   The site reads as an instrument panel, not a web app: pale steel
-   chrome, white working surfaces, hairline borders, near-zero radius,
-   monospace micro-labels, and brick red used sparingly as a signal
-   rather than as decoration.
+   Design tokens — Thru Wallet, "warm paper / vellum" system.
 
-   Only surface/text/border assignments changed from the dark theme.
-   The underlying thru.org colour scales are untouched, so every
-   component keeps referring to the same semantic variables.
+   Three layers, per the Rabby teardown dossier (Rev 2026.04,
+   Task T-04 / Pane f1 / Section 06):
+
+     1. Primitive ramps   — raw colour steps, never referenced
+                            directly by components.
+     2. Semantic aliases  — the --color-* names surfaces resolve.
+     3. Component recipes — radii, elevation, type scale, shell
+                            dimensions, and the motion contract.
+
+   The final section is a LEGACY BRIDGE: the token names the existing
+   component CSS was written against, re-anchored to the new layers so
+   this single change applies the palette to every screen at once. New
+   code references layers 1–3 directly; the bridge shrinks as components
+   migrate to --color-* names.
    ============================================================ */
 
+/* ============================================================
+   1 — PRIMITIVE RAMPS (never referenced directly by components)
+   ============================================================ */
 :root {
-  /* ---- thru.org Official Color Scales ---- */
-  --steel-0: #f7f8f8;
-  --steel-100: #eaeef0;
-  --steel-200: #cdd5db;
-  --steel-300: #a4b3bc;
-  --steel-400: #7e93a0;
-  --steel-500: #5b6f7b;
-  --steel-600: #43515b;
-  --steel-700: #2b353b;
-  --steel-800: #151b1e;
+  --v-500: #5c6bf5;  --v-600: #2e39b8;  --v-100: #e3e6ff;
+  --n-900: #16150f;  --n-600: #6b6659;  --n-400: #8d8779;
+  --n-200: #cbc4b3;  --n-050: #f3f0e9;  --n-000: #ffffff;
+  --d-500: #d93b1e;  --g-500: #1f8a5f;
+}
 
-  --teal-0: #f9fbfb;
-  --teal-100: #eaf2f2;
-  --teal-200: #d1e1e1;
-  --teal-300: #a9c3c5;
-  --teal-400: #81a7a7;
-  --teal-500: #5e8787;
-  --teal-600: #456063;
-  --teal-700: #2d3e3e;
-  --teal-800: #151e1e;
+/* ============================================================
+   2 — SEMANTIC ALIASES
+   ============================================================ */
+:root {
+  --color-bg:          var(--n-050); /* #F3F0E9 warm vellum page */
+  --color-surface:     var(--n-000); /* #FFFFFF cards and fields */
+  --color-surface-2:   var(--n-200);
+  --color-border:      var(--n-200); /* #CBC4B3 hairlines only (1px) */
+  --color-text:        var(--n-900); /* #16150F warm near-black ink */
+  --color-text-muted:  var(--n-600); /* #6B6659 secondary copy */
+  --color-accent:      var(--v-500); /* #5C6BF5 periwinkle CTA */
+  --color-accent-ink:  var(--v-600); /* #2E39B8 hover / pressed */
+  --color-accent-soft: var(--v-100); /* #E3E6FF selection / chip / focus halo */
+  --color-danger:      var(--d-500); /* #D93B1E destructive actions only */
+}
 
-  --brick-100: #fbdadc;
-  --brick-200: #f6acb0;
-  --brick-300: #ed787e;
-  --brick-400: #d33c43;
-  --brick-500: #a82c33;
+[data-theme='dark'] {
+  --color-bg:          #12120c;
+  --color-surface:     #1c1b14;
+  --color-border:      #33312a;
+  --color-text:        #f3f0e9;
+  --color-text-muted:  #a49e8f;
+  --color-accent:      #8e9bff;
+  --color-accent-ink:  #b2bcff;
+  --color-accent-soft: rgba(142, 155, 255, 0.15);
+  --color-danger:      #ff6b6b;
+}
 
-  --yellow-100: #fdefdd;
-  --yellow-200: #fde0ba;
-  --yellow-300: #fbc784;
-  --yellow-400: #ffad42;
-  --golden: #ffffbd;
+/* ============================================================
+   3 — COMPONENT RECIPES
+   ============================================================ */
+:root {
+  /* Radii: only 8, 12, 16px exist */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
 
-  /* ---- Application surfaces (light instrument panel) ----
-     bg        page / chrome, the pale steel-teal of the site frame
-     surface-1 the white working surface: cards, inputs, rows
-     surface-2 recessed panel: sidebars, grouped list backgrounds
-     surface-3 pressed / hover state on a recessed panel          */
-  --bg: #dfe8ea;
-  --surface-1: #ffffff;
-  --surface-2: #eef3f4;
-  --surface-3: #e2eaec;
-  --surface-inset: #f7f9fa;
+  /* Elevation */
+  --shadow-1: 0 1px 2px rgba(22, 21, 15, 0.06), 0 1px 1px rgba(22, 21, 15, 0.04);
+  --shadow-2: 0 12px 32px -12px rgba(22, 21, 15, 0.28);
 
-  /* Hairlines. The site leans on 1px borders instead of shadows to
-     separate things, which is what gives it the drafting-table feel. */
-  --border: #c8d5d9;
-  --border-strong: #a4b3bc;
-  --border-hairline: #dde5e8;
+  /* Type Scale (1.333 off 15px body) */
+  --fs-caption: 11px;
+  --fs-body:    15px;
+  --fs-title:   20px;
+  --fs-display: 32px;
+  --fs-hero:    clamp(34px, 9vw, 44px);
+  --lh-tight:   1.15;
+  --lh-body:    1.45;
+  --tracking-title: -0.012em;
+  --tracking-hero:  -0.03em;
 
-  /* ---- Text ---- */
-  --text-1: #151b1e;
-  --text-2: #43515b;
-  --text-3: #6c8290;
-  --text-inverse: #ffffff;
+  /* Motion contract */
+  --ease-out: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-fast: 120ms;
+  --dur-base: 200ms;
+  --dur-slow: 320ms;
 
-  /* ---- Accent (Thru signature red) ---- */
-  --accent: #d33c43;
-  --accent-bright: #a82c33;
-  --accent-ink: #ffffff;
-  --accent-tint: #fdf0f1;
-  --accent-border: #f0b8bb;
+  /* Locked popup shell (Task T-05): 360×600, 56px header, 56px tab bar */
+  --popup-width: 360px;
+  --popup-height: 600px;
+  --topbar-height: 56px;
+  --tabbar-height: 56px;
+}
 
-  /* ---- Ink: the black used for primary CTAs on the site ---- */
-  --ink: #151b1e;
-  --ink-hover: #2b353b;
-  --ink-ink: #ffffff;
+/* Focus visibility contract */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 3px;
+}
+button:focus:not(:focus-visible) {
+  outline: none;
+}
 
-  /* ---- Gold / highlight ---- */
-  --gold: #b26a00;
-  --gold-tint: #fdf4e6;
-  --gold-border: #f0d5a8;
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
 
-  /* ---- Semantic ---- */
-  --positive: #1c7d76;
-  --positive-tint: #e8f5f4;
-  --positive-border: #a8d8d4;
-  --negative: #c0343b;
-  --negative-tint: #fdf0f1;
-  --negative-border: #f0b8bb;
+/* Tabular figures: numbers never jitter on refresh */
+.amount, .balance, .fee, .delta, .num {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
 
-  /* ---- Byte-mark identicon ramp (light) ---- */
-  --mark-0: #e2eaec;
-  --mark-1: #a9c3c5;
-  --mark-2: #5e8787;
-  --mark-3: #d33c43;
-
-  /* ---- Typography ----
-     Inter Tight and JetBrains Mono are thru.org's faces. They are listed
-     first so they are used when installed locally or once the .woff2
-     files are vendored under src/popup/fonts/ (see popup.html). The
-     fallbacks are the platform equivalents, not generic defaults, so the
-     UI stays close to intent without any network request. */
+/* ============================================================
+   LEGACY BRIDGE — pre-dossier token names, re-anchored to layers 1–3.
+   Existing component CSS resolves through these; nothing below is a new
+   colour, every value derives from the ramps above.
+   ============================================================ */
+:root {
+  /* Type faces (unchanged: Inter Tight / JetBrains Mono stacks) */
   --font-ui: 'Inter Tight', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI Variable Text', 'Segoe UI', Roboto, system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Mono', 'SFMono-Regular', Menlo, Consolas, monospace;
-
-  --fs-xs: 11px;
-  --fs-sm: 12px;
-  --fs-md: 13px;
-  --fs-lg: 15px;
-  --fs-xl: 18px;
-  --fs-2xl: 22px;
-  --fs-display: 34px;
-
   --eyebrow-tracking: 0.09em;
 
-  /* ---- Spacing (4px base) ---- */
+  /* Legacy type scale → the dossier ramp. --fs-display deliberately
+     collides with layer 3 and now resolves to 32px. */
+  --fs-xs:  var(--fs-caption); /* 11px */
+  --fs-sm:  12px;
+  --fs-md:  var(--fs-body);    /* the dossier's 15px body */
+  --fs-lg:  var(--fs-body);
+  --fs-xl:  var(--fs-title);   /* 20px */
+  --fs-2xl: var(--fs-title);
+
+  /* Spacing (4px base). The dossier shell rhythm is built from these:
+     16px gutters = --sp-4, 12px rhythm = --sp-3. */
   --sp-1: 4px;
   --sp-2: 8px;
   --sp-3: 12px;
@@ -128,82 +146,118 @@
   --sp-7: 28px;
   --sp-8: 32px;
 
-  /* ---- Shape. The site is nearly square-cornered; keeping radii
-     small is most of what separates "instrument" from "consumer app". */
-  --radius-sm: 2px;
-  --radius-md: 3px;
-  --radius-lg: 4px;
+  /* Shape. Corner radii themselves come from layer 3 (8/12/16 only). */
   --radius-pill: 999px;
 
-  /* ---- Elevation. Used only for things that genuinely float. ---- */
-  --shadow-sheet: 0 -1px 0 var(--border), 0 -12px 32px rgba(21, 27, 30, 0.12);
-  --shadow-pop: 0 1px 2px rgba(21, 27, 30, 0.06), 0 8px 24px rgba(21, 27, 30, 0.1);
-  --overlay-bg: rgba(21, 27, 30, 0.32);
+  /* Surfaces. The vellum page is the recess; white is reserved for cards
+     and fields — the dossier's surface grammar. */
+  --bg:            var(--color-bg);
+  --surface-1:     var(--color-surface);
+  --surface-2:     var(--n-050);
+  --surface-3:     color-mix(in srgb, var(--n-050) 60%, var(--n-200));
+  --surface-inset: color-mix(in srgb, var(--n-000) 60%, var(--n-050));
 
-  /* ---- Motion ---- */
-  --t-fast: 100ms ease-out;
-  --t-base: 150ms ease-out;
-  --t-screen: 200ms cubic-bezier(0.2, 0, 0.2, 1);
+  /* Hairlines */
+  --border:          var(--color-border);
+  --border-strong:   var(--n-400);
+  --border-hairline: color-mix(in srgb, var(--n-050) 55%, var(--n-200));
 
-  /* ---- Dimensions ---- */
-  --popup-width: 408px;
-  --popup-min-height: 580px;
-  --topbar-height: 48px;
+  /* Text */
+  --text-1:       var(--color-text);
+  --text-2:       var(--color-text-muted);
+  --text-3:       var(--n-400);
+  --text-inverse: var(--n-000);
+
+  /* Accent — the single periwinkle signal, replacing the old brick red. */
+  --accent:        var(--color-accent);
+  --accent-bright: var(--color-accent-ink);
+  --accent-ink:    var(--n-000);
+  --accent-tint:   var(--color-accent-soft);
+  --accent-border: color-mix(in srgb, var(--color-accent) 35%, transparent);
+
+  /* Ink: what the old primary CTA was painted with. */
+  --ink:       var(--n-900);
+  --ink-hover: var(--n-600);
+  --ink-ink:   var(--n-000);
+
+  /* Gold / highlight (already warm-paper native, carried over) */
+  --gold:        #b26a00;
+  --gold-tint:   #fdf4e6;
+  --gold-border: #f0d5a8;
+
+  /* Semantic status: the dossier's green and danger primitives. */
+  --positive:        var(--g-500);
+  --positive-tint:   color-mix(in srgb, var(--g-500) 9%, var(--n-000));
+  --positive-border: color-mix(in srgb, var(--g-500) 40%, transparent);
+  --negative:        var(--color-danger);
+  --negative-tint:   color-mix(in srgb, var(--d-500) 9%, var(--n-000));
+  --negative-border: color-mix(in srgb, var(--d-500) 38%, transparent);
+
+  /* Byte-mark identicon ramp, re-voiced to the neutral/green/periwinkle
+     primitives (brick and teal are out of the palette). */
+  --mark-0: var(--n-200);
+  --mark-1: var(--n-400);
+  --mark-2: var(--g-500);
+  --mark-3: var(--v-500);
+
+  /* Elevation → layer 3 recipes. The sheet shadows upward because it
+     slides from the bottom edge. */
+  --shadow-sheet: 0 -1px 0 var(--border), 0 -12px 32px -12px rgba(22, 21, 15, 0.28);
+  --shadow-pop:   var(--shadow-2);
+  --overlay-bg:   rgba(22, 21, 15, 0.32);
+
+  /* Motion → the dossier contract */
+  --t-fast:   var(--dur-fast) var(--ease-out);
+  --t-base:   var(--dur-base) var(--ease-out);
+  --t-screen: var(--dur-base) var(--ease-out);
+
+  /* Shell lock compatibility */
+  --popup-min-height: var(--popup-height);
 }
 
-/* ============================================================
-   Dark theme — same thru.org scales, inverted. Nothing here invents
-   a new colour: every value is pulled from the official steel/teal/
-   brick ramps above, remapped so surfaces step lighter as they rise
-   and text inverts to the ice end of the scale. Semantic names stay
-   identical, so no component CSS is theme-aware.
+[data-theme='dark'] {
+  --bg:            var(--color-bg);
+  --surface-1:     var(--color-surface);
+  --surface-2:     #1c1b14;
+  --surface-3:     color-mix(in srgb, #1c1b14 82%, #f3f0e9);
+  --surface-inset: color-mix(in srgb, #12120c 70%, #1c1b14);
 
-   Applied by src/popup/theme.js via document.documentElement
-   [data-theme="dark"|"light"]; 'system' resolves at apply time.
-   ============================================================ */
-[data-theme="dark"] {
-  --bg: #101517;
-  --surface-1: #1b2226;
-  --surface-2: #232c31;
-  --surface-3: #2c373d;
-  --surface-inset: #141a1d;
+  --border:          var(--color-border);
+  --border-strong:   color-mix(in srgb, #33312a 55%, #f3f0e9);
+  --border-hairline: color-mix(in srgb, #33312a 55%, #12120c);
 
-  --border: #2f3a40;
-  --border-strong: #45535b;
-  --border-hairline: #242e33;
+  --text-1:       var(--color-text);
+  --text-2:       var(--color-text-muted);
+  --text-3:       color-mix(in srgb, #a49e8f 70%, #12120c);
+  --text-inverse: #16150f;
 
-  --text-1: #eef4f5;
-  --text-2: #a9bcc4;
-  --text-3: #7d939e;
-  --text-inverse: #151b1e;
+  --accent:        var(--color-accent);
+  --accent-bright: var(--color-accent-ink);
+  --accent-ink:    #16150f;
+  --accent-tint:   var(--color-accent-soft);
+  --accent-border: rgba(142, 155, 255, 0.38);
 
-  --accent: #e65b62;
-  --accent-bright: #f0767c;
-  --accent-ink: #ffffff;
-  --accent-tint: rgba(237, 120, 126, 0.13);
-  --accent-border: rgba(237, 120, 126, 0.38);
-
-  --ink: #eef4f5;
+  --ink:       #f3f0e9;
   --ink-hover: #ffffff;
-  --ink-ink: #151b1e;
+  --ink-ink:   #12120c;
 
-  --gold: #f0b35a;
-  --gold-tint: rgba(240, 179, 90, 0.1);
+  --gold:        #f0b35a;
+  --gold-tint:   rgba(240, 179, 90, 0.1);
   --gold-border: rgba(240, 179, 90, 0.3);
 
-  --positive: #3fbfae;
-  --positive-tint: rgba(63, 191, 174, 0.1);
-  --positive-border: rgba(63, 191, 174, 0.3);
-  --negative: #e9646b;
-  --negative-tint: rgba(233, 100, 107, 0.1);
-  --negative-border: rgba(233, 100, 107, 0.3);
+  --positive:        color-mix(in srgb, var(--g-500) 70%, #ffffff);
+  --positive-tint:   rgba(31, 138, 95, 0.16);
+  --positive-border: rgba(31, 138, 95, 0.42);
+  --negative:        var(--color-danger);
+  --negative-tint:   rgba(255, 107, 107, 0.1);
+  --negative-border: rgba(255, 107, 107, 0.3);
 
-  --mark-0: #2c373d;
-  --mark-1: #54676f;
-  --mark-2: #3fbfae;
-  --mark-3: #e65b62;
+  --mark-0: #33312a;
+  --mark-1: #6b6659;
+  --mark-2: var(--g-500);
+  --mark-3: var(--color-accent);
 
   --shadow-sheet: 0 -1px 0 var(--border), 0 -12px 32px rgba(0, 0, 0, 0.5);
-  --shadow-pop: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.45);
-  --overlay-bg: rgba(16, 21, 23, 0.55);
+  --shadow-pop:   0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.45);
+  --overlay-bg:   rgba(18, 18, 12, 0.55);
 }

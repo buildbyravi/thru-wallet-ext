@@ -10,17 +10,21 @@
 
 body {
   width: var(--popup-width);
-  /* The same document is registered as the side panel (manifest `side_panel.default_path`), and a
-     panel is user-resizable, so it can be narrower than 408px. Scrollbars are hidden globally just
-     below, which means a body wider than its viewport clips content with nothing to show that it
-     did. `max-width: 100%` is a no-op in the toolbar popup — a percentage max-width is treated as
-     `none` while the viewport sizes itself to the body, so the popup is still exactly 408px — and
-     it caps the body at the panel width everywhere else.
+  height: var(--popup-height);
+  /* The shell is locked to 360×600 (Task T-05). The same document is registered as the side
+     panel (manifest `side_panel.default_path`), and a panel is user-resizable, so it can be
+     smaller than the lock in either axis. Scrollbars are hidden globally just below, which
+     means a body wider than its viewport clips content with nothing to show that it did.
+     The `max-*` guards are no-ops in the toolbar popup — a percentage max is treated as
+     `none` while the viewport sizes itself to the body, so the popup is still exactly
+     360×600 — and they cap the body at the panel size everywhere else.
 
-     A panel WIDER than 408px still shows a 408px column with empty space beside it. Whether that
-     should become fluid is a layout decision that needs a browser to make, so it is written up as
-     the first item in docs/MANUAL_SMOKE_CHECKLIST.md rather than guessed at here. */
+     A panel LARGER than the lock still shows a locked column with empty space beside it.
+     Whether that should become fluid is a layout decision that needs a browser to make, so
+     it is written up as the first item in docs/MANUAL_SMOKE_CHECKLIST.md rather than guessed
+     at here. */
   max-width: 100%;
+  max-height: 100%;
   background: var(--bg);
   color: var(--text-1);
   font-family: var(--font-ui);
@@ -34,14 +38,15 @@ body {
 * { scrollbar-width: none; }
 *::-webkit-scrollbar { display: none; }
 
-/* The app is a white working surface inside the pale steel page frame,
-   with a hairline rule on each side — the same framing thru.org uses
-   around its content column. */
+/* The app is the warm vellum page: content sits directly on --color-bg,
+   and white (--color-surface) is reserved for cards and fields — the
+   dossier's surface grammar. A hairline rule on each side keeps the
+   column framed. */
 .app {
   display: flex;
   flex-direction: column;
   min-height: var(--popup-min-height);
-  background: var(--surface-1);
+  background: var(--bg);
   border-left: 1px solid var(--border);
   border-right: 1px solid var(--border);
 }
@@ -111,17 +116,10 @@ a:hover {
   color: var(--accent-ink);
 }
 
-/* Focus ring in INK, not accent.
-   --accent (#d33c43) and --negative (#c0343b) are nearly the same red, so an
-   accent-coloured focus ring was indistinguishable from an error border -- a red box
-   around your account name on a wallet reads as "something is wrong". Ink is
-   unambiguous, has strong contrast on the light theme, and keeps red reserved for
-   errors and destructive intent. */
-:focus-visible {
-  outline: 2px solid var(--ink);
-  outline-offset: 2px;
-  border-radius: 2px;
-}
+/* The focus ring lives in tokens.css as part of the dossier's focus
+   visibility contract: 2px accent, 3px offset. That contract was written
+   for the periwinkle accent; the old ink ring existed only because the
+   previous brick-red accent was indistinguishable from an error border. */
 
 /* A route container is focused programmatically on navigation so screen readers announce
    the new view. That is not a user-chosen focus, so it must not draw a ring. */
@@ -136,4 +134,51 @@ a:hover {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* ============================================================
+   Popup shell grammar (Task T-05 / Pane f3) — the locked 360×600
+   frame: 56px header, scrolling body with 16px gutters and a 12px
+   rhythm, 56px tab bar. `.popup` is the canonical dossier naming;
+   the live chrome (.app-shell in styles/kit.css) carries the same
+   lock on the existing topbar / outlet / footer elements.
+   ============================================================ */
+
+.popup {
+  width: 360px;
+  height: 600px;
+  display: grid;
+  grid-template-rows: 56px minmax(0, 1fr) 56px; /* header / body / tabbar */
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+.popup__header {
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--color-border);
+}
+.popup__body {
+  overflow-y: auto;
+  padding: 16px;
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  scrollbar-width: thin;
+}
+.popup__tabbar {
+  border-top: 1px solid var(--color-border);
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  align-items: center;
+}
+
+/* Card grammar */
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  box-shadow: var(--shadow-1);
 }
