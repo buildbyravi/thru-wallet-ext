@@ -28,7 +28,7 @@
   display: flex;
   align-items: center;
   gap: 9px;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-weight: 700;
   font-size: 16px;
   letter-spacing: -0.02em;
@@ -191,6 +191,406 @@ form > .btn.text {
 
 /* ---- Dashboard --------------------------------------------- */
 
+/* ---- 196px Ink Header -------------------------------------------------- */
+.dash-header {
+  position: relative;
+  height: 196px;
+  background: var(--header, #1a1214);
+  color: #ffffff;
+  padding: 12px 16px 14px;
+  overflow: hidden;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.dash-header-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  position: relative;
+  z-index: 2;
+}
+
+.dash-header-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.dash-header-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border: 0;
+  border-radius: 6px;
+  color: #ffffff;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+}
+.dash-header-btn:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+/* Account chip inside header */
+.dash-header .account-pill {
+  background: rgba(255, 255, 255, 0.08);
+  border: 0;
+  border-radius: 6px;
+  padding: 5px 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  color: #ffffff;
+  max-width: 200px;
+}
+.dash-header .account-pill:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+.dash-header .account-pill-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #ffffff;
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dash-header .account-pill-address {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.6);
+  font-family: var(--font-mono);
+}
+.dash-header .account-pill .byte-mark {
+  width: 20px;
+  height: 20px;
+  padding: 1px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* ---- Balance Hero inside header ---------------------------------------- */
+.dash-balance-hero {
+  position: relative;
+  z-index: 2;
+}
+.dash-balance-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.dash-balance-usd {
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  color: #ffffff;
+}
+.dash-balance-native {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.65);
+  margin-top: 4px;
+}
+.dash-balance-delta {
+  font-size: 12px;
+  font-weight: 500;
+  color: #3fbfae;
+  margin-top: 2px;
+}
+.dash-balance-delta.loss {
+  color: #e25a60;
+}
+.dash-balance-delta-fiat {
+  color: rgba(255, 255, 255, 0.45);
+  font-weight: 400;
+  margin-left: 4px;
+}
+
+.dash-pending-badge {
+  position: absolute;
+  right: 16px;
+  bottom: 14px;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.85);
+  z-index: 2;
+}
+
+/* ---- 3x2 Dashboard Panel Grid ------------------------------------------ */
+.dashboard-panel-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  background: var(--border-hairline, #e0e5ec);
+  border-radius: 0;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.panel-item {
+  position: relative;
+  height: 88px;
+  width: 100%;
+  background: #ffffff;
+  border: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.12s ease;
+}
+.panel-item:hover:not(:disabled) {
+  background: var(--blue-hover, #fdf0f1);
+}
+.panel-item:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.panel-item-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--title, #151b1e);
+}
+.panel-item-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--title, #151b1e);
+}
+.panel-item-badge {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  background: var(--accent, #c43a40);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 1px 5px;
+  line-height: 12px;
+}
+
+/* ---- Tabbed Token Ledger ----------------------------------------------- */
+.dash-tabs-bar {
+  display: flex;
+  gap: 8px;
+  padding: 12px 16px 6px;
+  background: var(--bg, #f2f4f7);
+}
+.dash-tab-btn {
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  padding: 2px 4px 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--foot, #6a7580);
+  cursor: pointer;
+}
+.dash-tab-btn.active {
+  border-bottom-color: var(--accent, #c43a40);
+  color: var(--title, #151b1e);
+}
+
+.token-ledger {
+  background: #ffffff;
+  border-radius: 8px;
+  margin: 0 12px 12px;
+  overflow: hidden;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+.token-ledger-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-top: 1px solid #f0f2f5;
+  background: #ffffff;
+}
+.token-ledger-row:first-child {
+  border-top: 0;
+}
+.token-ledger-row:hover {
+  background: #fafbfc;
+}
+
+.token-row-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--surface-2, #eef1f4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--title, #151b1e);
+  flex-shrink: 0;
+  overflow: hidden;
+  margin-right: 10px;
+}
+.token-row-avatar.native {
+  background: var(--accent, #c43a40);
+  color: #ffffff;
+}
+.token-row-logo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.token-row-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+.token-row-symbol-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.token-row-symbol {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--title, #151b1e);
+}
+.token-net-badge {
+  font-size: 10px;
+  font-weight: 500;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--surface-2, #eef1f4);
+  color: var(--foot, #6a7580);
+}
+.token-row-name {
+  font-size: 11px;
+  color: var(--foot, #6a7580);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.token-row-values {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.token-row-amount {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--title, #151b1e);
+  font-variant-numeric: tabular-nums;
+}
+.token-row-amount.stale {
+  color: var(--foot, #6a7580);
+}
+.token-row-subvalues {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.token-row-usd {
+  font-size: 11px;
+  color: var(--foot, #6a7580);
+}
+.token-row-change {
+  font-size: 11px;
+  font-weight: 500;
+  color: #1c7d76;
+}
+.token-row-change.loss {
+  color: #c43a40;
+}
+
+.dash-activity-container {
+  padding: 0 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.screen.dash-screen,
+.dash-screen {
+  padding: 0;
+  gap: 0;
+  background: var(--bg, #f2f4f7);
+}
+
+.loss {
+  color: #e25a60;
+}
+
+.native {
+  background: var(--accent, #c43a40);
+  color: #ffffff;
+}
+
+/* ---- Current Connection Footer ----------------------------------------- */
+.current-connection {
+  height: 40px;
+  border-top: 1px solid var(--border-hairline, #e0e5ec);
+  background: #ffffff;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border-left: 0;
+  border-right: 0;
+  border-bottom: 0;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+.current-connection-globe {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--surface-2, #eef1f4);
+  color: var(--foot, #6a7580);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.current-connection-text {
+  font-size: 12px;
+  color: var(--foot, #6a7580);
+  flex: 1;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.current-connection-net {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--accent, #c43a40);
+}
+.current-connection-pip {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--green, #1c7d76);
+}
+
+/* Legacy dashboard rules retained for fallback */
 .dash-topbar {
   display: flex;
   align-items: center;

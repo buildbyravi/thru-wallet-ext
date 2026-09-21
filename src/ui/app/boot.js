@@ -185,7 +185,7 @@ export async function boot({ root, legacyFallback, onMigratedRoute } = {}) {
   });
 
   function applyChrome(path) {
-    shell.setChromeVisible(!FULLSCREEN_ROUTES.has(path));
+    shell.setChromeVisible(!FULLSCREEN_ROUTES.has(path), path);
   }
 
   // Hand unmigrated hashes back to the legacy stack rather than bouncing to the fallback,

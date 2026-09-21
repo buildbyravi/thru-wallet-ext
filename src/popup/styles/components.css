@@ -454,9 +454,9 @@ textarea[aria-invalid="true"] {
   gap: 1px;
   width: 28px;
   height: 28px;
-  padding: 3px;
-  background: var(--surface-inset);
-  border: 1px solid var(--border-strong);
+  padding: 2px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-hairline);
   border-radius: var(--radius-sm);
   flex-shrink: 0;
   overflow: hidden;
@@ -481,9 +481,17 @@ textarea[aria-invalid="true"] {
 .byte-mark .m3 { background: var(--mark-3); }
 
 .byte-mark.sm {
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
+  padding: 1px;
+  border-radius: 4px;
+}
+
+.byte-mark.lg {
+  width: 32px;
+  height: 32px;
   padding: 2px;
+  border-radius: var(--radius-md);
 }
 
 /* ---- List rows (accounts, history, future assets) ----------
