@@ -2482,6 +2482,14 @@ async function navigationTest() {
   await settle();
   ok('boot lands on the dashboard', router.currentPath === '/dashboard', router.currentPath);
 
+  // The connection footer is dashboard-only (Rabby rule): pinned at the bottom of
+  // .app-shell on the dashboard, hidden everywhere else, where it used to crowd the
+  // 600px viewport and sit on top of each screen's own header/actions.
+  const footer = allElements(app).filter((el) => el.classList?.contains?.('current-connection'))[0];
+  ok('the connection footer is pinned on the dashboard',
+    Boolean(footer) && !footer.classList.contains('hidden'),
+    footer?.className || 'no footer element');
+
   // ---- Dashboard chrome audit ------------------------------------------------
   // The copy button must wear the same dark .dash-header-btn treatment as its header
   // siblings, not the white 32px .icon-btn card it used to be.
@@ -2558,6 +2566,8 @@ async function navigationTest() {
     await settle();
     ok(`clicking "${label}" reaches ${path}`, router.currentPath === path, router.currentPath);
     ok(`the ${path} screen rendered`, textOf(router.root).trim().length > 8);
+    ok(`the connection footer stays hidden on ${path}`,
+      footer?.classList?.contains('hidden'), footer?.className);
 
     const back = buttons(router.root, /^back$/i)[0];
     ok(`the ${path} screen has a Back control`, Boolean(back));
@@ -2570,6 +2580,9 @@ async function navigationTest() {
     ok(`no secret appears on the ${path} round trip`,
       findSecrets(SECRETS).length === 0 && findSecretsInTornDown(SECRETS).length === 0);
   }
+
+  ok('the connection footer is back on the dashboard after the round trip',
+    footer && !footer.classList.contains('hidden'), footer?.className);
 
   // ---- Receive: address copy, QR canvas, and audit cleanup ----------------
   // The DOM-shim canvas exercises qr.js's flat degradation (no roundRect), which must

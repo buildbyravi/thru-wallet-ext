@@ -118,12 +118,16 @@ export function AppShell({ navigate, onNetworkChange }) {
     },
     /**
      * Hide chrome on screens that own the whole viewport (unlock, onboarding).
-     * On dashboard, topbar is hidden because the 196px ink header owns the top.
+     * On dashboard, topbar is hidden because the 196px ink header owns the top —
+     * and the connection footer is the MIRROR of that rule: it belongs to the
+     * dashboard only. Sub-screens (send, receive, history, settings, accounts)
+     * keep their own headers and bottom actions, and the pinned 40px footer used
+     * to crowd the viewport and block those controls, so it stays hidden there.
      */
     setChromeVisible(visible, path) {
       const onDash = isDashboardPath(path);
       topbar.classList.toggle('hidden', !visible || onDash);
-      connectionFooter.el.classList.toggle('hidden', !visible);
+      connectionFooter.el.classList.toggle('hidden', !visible || !onDash);
     },
     refreshNetwork,
     destroy() {
