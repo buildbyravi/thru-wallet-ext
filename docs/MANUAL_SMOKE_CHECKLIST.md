@@ -46,9 +46,10 @@ for hours, and shares one session with the popup.
 
 To open the panel two ways, and check both:
 
-- **From the wallet**: Dashboard → header **side-panel icon** (the "i" beside it explains what it
-  does). This is the deliberate, visible action. It must open the panel on the current window
-  without changing anything else, and close the popup. Settings no longer has a Window section.
+- **From the wallet**: Dashboard → header **side-panel icon** (its hover title reads "Open in
+  side panel beside your tab" — no separate explainer UI). This is the deliberate, visible
+  action. It must open the panel on the current window without changing anything else, and close
+  the popup. Settings no longer has a Window section.
 - **From the browser**: the toolbar icon's context menu / the side panel picker.
 
 Confirm what the button does **not** do: clicking the toolbar icon must still open the popup, not the
@@ -85,7 +86,7 @@ hash directly (`#/send`) where the UI has no link, so unmigrated or unreachable 
 | --- | --- | --- | --- |
 | `/welcome` | Create/import steps advance; the phrase grid is blurred until revealed; nothing is written to the URL | [ ] | [ ] |
 | `/unlock` | Wrong password shows an inline error and keeps focus in the field; lockout countdown runs; Back/Reset reachable | [ ] | [ ] |
-| `/dashboard` | Balance, account pill, action tiles, health dot and network badge all populate; the header copy button is the same size and colour as its icon neighbours (no white 32px box); the balance refresh is a quiet frameless icon, not a grey card; the "i" beside the side-panel icon shows its one-line explanation on hover/click and disappears after ~1s; the token ledger has a single "Tokens" tab (no Activity tab — History owns that); no 24h delta or placeholder number is ever shown; token rows show a real balance, a proven-zero (0), or a dash — never a fabricated number; a send that already confirmed shows NO "transaction pending" note | [ ] | [ ] |
+| `/dashboard` | Balance, account pill, action tiles, health dot and network badge all populate; the header copy button is the same size and colour as its icon neighbours (no white 32px box); the balance refresh is a quiet frameless icon, not a grey card; the side-panel icon's hover title says "Open in side panel beside your tab"; the token ledger has a single "Tokens" tab (no Activity tab — History owns that); no 24h delta or placeholder number is ever shown; token rows show a real balance, a proven-zero (0), or a dash — never a fabricated number; a send that already confirmed shows NO "transaction pending" note | [ ] | [ ] |
 | `/accounts` | List, balances, pin/switch, "Add account" | [ ] | [ ] |
 | `/account` | Detail for a real ref (`#/account?ref=...` from the Accounts screen); invalid ref shows an error, not a blank screen | [ ] | [ ] |
 | `/add-account` | HD preview renders; adding an account returns to `/accounts` | [ ] | [ ] |

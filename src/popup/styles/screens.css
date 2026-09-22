@@ -247,54 +247,6 @@ form > .btn.text {
   animation: none;
 }
 
-/* ---- Info hint: circled "i" with a 1-second tooltip ----------------------
-   Replaces paragraph-long explanations in tight chrome. The tooltip is positioned
-   inside the element's own box context so it survives the header's overflow:hidden. */
-.info-hint {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-}
-
-.info-hint-btn {
-  background: transparent;
-  border: 0;
-  border-radius: 50%;
-  color: rgba(255, 255, 255, 0.45);
-  width: 20px;
-  height: 20px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  padding: 0;
-  transition: color 0.15s ease, background 0.15s ease;
-}
-
-.info-hint-btn:hover,
-.info-hint-btn:focus-visible {
-  background: rgba(255, 255, 255, 0.1);
-  color: #ffffff;
-  outline: none;
-}
-
-.info-hint-tip {
-  position: absolute;
-  top: calc(100% + 8px);
-  right: -6px;
-  width: 172px;
-  background: var(--header-2, #2a1618);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 6px;
-  padding: 8px 10px;
-  font-size: 11px;
-  line-height: 1.45;
-  color: rgba(255, 255, 255, 0.9);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
-  z-index: 30;
-  pointer-events: none;
-}
-
 /* Account chip inside header */
 .dash-header .account-pill {
   background: rgba(255, 255, 255, 0.08);

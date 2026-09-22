@@ -4,8 +4,8 @@
 //   1. 196px Ink Header (#1A1214):
 //      - Frosted AccountChip (.account-pill): Identicon + Account name + truncated address + chevron.
 //      - Top-right actions: Copy button (same .dash-header-btn treatment as its siblings,
-//        not the white .icon-btn surface) + Gas/Network icon + Side-panel icon (with an
-//        'i' info-hint, since the Settings Window section that once explained it is gone)
+//        not the white .icon-btn surface) + Gas/Network icon + Side-panel icon (its native
+//        hover title explains what it does — no extra chrome for a one-line explanation)
 //        + Settings gear icon + Lock wallet button.
 //      - USD-first BalanceHero: 32px bold USD amount + frameless refresh icon + native THRU
 //        caption. No 24h delta line — this wallet has no market-data source, so a delta
@@ -26,7 +26,7 @@
 import { h, disposer } from '../../kit/dom.js';
 import { icon } from '../../kit/icon.js';
 import { CopyButton } from '../../kit/button.js';
-import { Banner, InfoHint } from '../../kit/feedback.js';
+import { Banner } from '../../kit/feedback.js';
 import { AccountAvatar, AddressText } from '../../domain/account-avatar.js';
 import { AssetRow } from '../../domain/token-row.js';
 import { BalanceHero } from '../../domain/balance-hero.js';
@@ -117,11 +117,13 @@ export function DashboardRoute({ navigate }) {
     // Not in an extension context: the button says so on click.
   }
 
+  // The native hover title carries the explanation — the Settings paragraph that used to
+  // explain this is gone, and a one-line "why" does not need its own icon in the header.
   const sidePanelBtn = h('button', {
     type: 'button',
     class: 'dash-header-btn',
-    title: 'Open in side panel',
-    'aria-label': 'Open in side panel',
+    title: 'Open in side panel beside your tab',
+    'aria-label': 'Open in side panel beside your tab',
   }, icon('sidePanel', 14));
   d.on(sidePanelBtn, 'click', () => {
     try {
@@ -147,13 +149,6 @@ export function DashboardRoute({ navigate }) {
       banner.set(error?.message || 'Could not open the side panel.', 'warning');
     }
   });
-
-  // The explanation that used to be a paragraph in Settings → Window now lives in a
-  // circled "i": hover or click shows it for one second, then it disappears.
-  const sidePanelHint = track(InfoHint({
-    text: 'Opens this wallet in the side panel, beside your browser tab.',
-    label: 'About the side panel button',
-  }));
 
   const settingsBtn = h('button', {
     type: 'button',
@@ -181,7 +176,6 @@ export function DashboardRoute({ navigate }) {
   const headerActions = h('div', { class: 'dash-header-actions' }, [
     gasBtn,
     sidePanelBtn,
-    sidePanelHint.el,
     settingsBtn,
     lockBtn,
   ]);

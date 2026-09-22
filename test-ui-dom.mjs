@@ -596,35 +596,6 @@ ok('fresh footer pip is neutral until the first health check',
   !pip2.classList.contains('healthy') && !pip2.classList.contains('slow') && !pip2.classList.contains('offline'));
 conn2.destroy();
 
-section('InfoHint shows a transient tooltip on hover/click and hides after 1 second');
-
-const { InfoHint } = await import('./src/ui/kit/feedback.js');
-
-const hint = InfoHint({
-  text: 'Opens this wallet in the side panel, beside your browser tab.',
-  label: 'About the side panel button',
-});
-const hintBtn = hint.el.querySelector('.info-hint-btn');
-const hintTip = hint.el.querySelector('.info-hint-tip');
-
-ok('info hint carries an accessible name', hintBtn?.getAttribute('aria-label') === 'About the side panel button');
-ok('the hint tooltip starts hidden', hintTip?.classList?.contains('hidden') === true);
-ok('the tooltip carries the explanation text', Boolean(hintTip) && hintTip.textContent.includes('side panel'));
-
-hintBtn.listeners[0].handler(); // mouseenter
-ok('hovering shows the hint', hintTip.classList.contains('hidden') === false);
-
-await new Promise((resolve) => setTimeout(resolve, 1100));
-ok('the hint auto-hides after 1 second', hintTip.classList.contains('hidden') === true);
-
-hintBtn.listeners[0].handler(); // re-show
-ok('hovering again re-arms the hint', hintTip.classList.contains('hidden') === false);
-hintBtn.listeners[3].handler(); // mouseleave
-ok('mouse leave hides the hint immediately', hintTip.classList.contains('hidden') === true);
-
-hint.destroy();
-ok('info hint destroy() cleans up without throwing', true);
-
 // ---- Result ---------------------------------------------------------------
 
 console.log(`\ndom.js checks: ${checks - failures}/${checks} passed.`);
