@@ -105,7 +105,8 @@ export function DashboardRoute({ navigate }) {
   // chrome.sidePanel.open() only runs inside a transient user gesture, and an await
   // between the gesture and the call (the old code awaited chrome.windows.getCurrent()
   // on every click) is exactly how a perfectly supported browser reports "no user
-  // gesture". Same pattern the Settings route used before its Window section moved here.
+  // gesture". The Settings "Side Panel Mode" toggle only flips setPanelBehavior; this
+  // button is the one-off open, so it keeps its own gesture-safe path.
   let sidePanelWindowId = null;
   try {
     if (chrome?.sidePanel?.open && chrome?.windows?.getCurrent) {

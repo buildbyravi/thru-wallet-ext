@@ -262,23 +262,32 @@ export function SettingsRoute({ navigate, back }) {
     return chips;
   }
 
-  // The side panel no longer has a Settings section: the dashboard header owns the explicit
-  // "Open in side panel" action (with its 'i' hint), and the old "Side Panel Mode" toggle was
-  // removed because it was the only chrome.sidePanel.setPanelBehavior call in the app — the
-  // toolbar icon always opens the popup, full stop. Nothing here may call setPanelBehavior.
+  // ---- Side Panel Mode ------------------------------------------------------
+  //
+  // An explicit opt-in: when ON, clicking the wallet toolbar icon opens the side panel
+  // instead of the popup. It is the only chrome.sidePanel.setPanelBehavior call in the UI,
+  // and it fires only on this toggle's click — never at boot, never behind the user.
+  // (The background re-applies the stored choice on worker restart so the setting survives
+  // service-worker eviction; see src/background/index.js.)
+  //
+  // The redundant "Open side panel" button that lived here is gone: the dashboard header
+  // carries the explicit open action, and this section only owns the MODE.
+  let sidePanelMode = false;
 
   async function load() {
     banner.clear();
     try {
-      const [netList, active, autoLock, prefs] = await Promise.all([
+      const [netList, active, autoLock, prefs, panelStored] = await Promise.all([
         bridge.send('network.list'),
         bridge.send('network.getActive'),
         bridge.send('system.getAutoLock'),
         bridge.send('settings.get'),
+        chrome.storage?.local?.get ? chrome.storage.local.get('thru_side_panel_mode').catch(() => null) : null,
       ]);
       networks = netList || [];
       activeNetworkId = active?.id || null;
       preferences = prefs || {};
+      sidePanelMode = Boolean(panelStored?.thru_side_panel_mode);
       theme = await getTheme().catch(() => 'system');
       render(autoLock);
     } catch (error) {
@@ -315,6 +324,57 @@ export function SettingsRoute({ navigate, back }) {
         iconName: 'wallet',
         onClick: () => navigate('/accounts'),
       })).el,
+    ]));
+
+    // ---- Window ----
+    // The "Side Panel Mode" toggle only — the explicit "Open side panel" button is not
+    // restored here because the dashboard header already provides it.
+    const switchKnob = h('span', { class: 'toggle-knob' });
+    const sidePanelSwitch = h('button', {
+      type: 'button',
+      class: ['toggle-switch', sidePanelMode ? 'active' : null].filter(Boolean),
+      role: 'switch',
+      'aria-checked': String(sidePanelMode),
+      'aria-label': 'Side Panel Mode',
+    }, switchKnob);
+
+    d.on(sidePanelSwitch, 'click', async () => {
+      const next = !sidePanelMode;
+      banner.clear();
+      try {
+        if (!chrome?.sidePanel?.setPanelBehavior) {
+          banner.set('This browser has no side panel API. The popup keeps working as usual.', 'warning');
+          return;
+        }
+        // Both directions are applied explicitly: ON makes the toolbar icon open the
+        // panel; OFF restores the popup, so a user who turned it off is never left
+        // with a stale behaviour.
+        await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: next });
+        if (chrome.storage?.local?.set) {
+          await chrome.storage.local.set({ thru_side_panel_mode: next });
+        }
+        sidePanelMode = next;
+        sidePanelSwitch.classList.toggle('active', next);
+        sidePanelSwitch.setAttribute('aria-checked', String(next));
+      } catch (err) {
+        banner.set(err?.message || 'Could not update side panel mode.', 'warning');
+      }
+    });
+
+    const sidePanelRow = h('div', { class: 'toggle-row' }, [
+      h('div', { class: 'toggle-label-group' }, [
+        icon('sidePanel', 18),
+        h('span', { text: 'Side Panel Mode' }),
+      ]),
+      sidePanelSwitch,
+    ]);
+
+    body.appendChild(h('section', { class: 'stack stack-2' }, [
+      SectionHeader('Window'),
+      sidePanelRow,
+      h('p', { class: 'hint', text:
+        'When on, clicking the wallet toolbar icon opens the side panel instead of the popup. '
+        + 'The dashboard header has its own "Open in side panel" button for a one-off open.' }),
     ]));
 
     // ---- Appearance ----

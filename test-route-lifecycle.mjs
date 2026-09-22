@@ -34,7 +34,7 @@
 
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { applyTheme } from './src/popup/theme.js';
-import { join, dirname } from 'node:path';
+import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
@@ -1466,9 +1466,10 @@ function makeChrome() {
   return {
     runtime,
     storage: { local: memoryStore(), session: memoryStore(), sync: memoryStore() },
-    // The side panel API. `open` is recorded so Settings can be proven to use an explicit user
-    // action; `setPanelBehavior` is recorded so the test can prove it is NEVER called — that call
-    // would swap the toolbar popup for the panel for every user.
+    // The side panel API. `open` is recorded so the dashboard button can be proven to use an
+    // explicit user action; `setPanelBehavior` is recorded so the test can prove it is called
+    // ONLY by the explicit Settings "Side Panel Mode" toggle (with the exact option each
+    // direction must pass) — never by load(), boot, or anything else.
     sidePanel: {
       open: (options) => {
         chromeLog.sidePanelOpen.push(options);
@@ -1862,7 +1863,7 @@ async function runScenario(scenario) {
 // ---- Settings: custom networks withdrawn, side panel offered ---------------
 
 async function settingsTest() {
-  section('settings: no custom-network form and no side-panel section (the dashboard owns it)');
+  section('settings: no custom-network form; Side Panel Mode is an explicit opt-in');
 
   resetBackend(SCENARIOS[2]);
   resetDom();
@@ -1934,16 +1935,45 @@ async function settingsTest() {
   ok('no UI call reached network.upsertCustom',
     !chromeLog.calls.includes('network.upsertCustom') && chromeLog.unexpected.length === 0);
 
-  // The side panel no longer lives in Settings: the dashboard header owns the explicit
-  // "Open in side panel" action (with its 'i' hint), so nothing panel-shaped may remain
-  // on this screen — and nothing may still change the toolbar behaviour behind the user.
-  ok('settings offers no "Open side panel" control', buttons(tree, /side panel/i).length === 0,
+  // Side Panel Mode: an explicit user opt-in, so the ONLY panel-shaped control on this
+  // screen is the toggle itself. The redundant "Open side panel" button stays gone — the
+  // dashboard header owns the one-off open action.
+  const openSidePanelButtons = buttons(tree, /open side panel/i);
+  ok('settings offers no "Open side panel" button (the dashboard header owns it)',
+    openSidePanelButtons.length === 0, openSidePanelButtons.map(labelOf).join(', '));
+  const modeSwitch = buttons(tree, /^side panel mode$/i)[0];
+  ok('settings offers a "Side Panel Mode" switch', Boolean(modeSwitch),
     buttons(tree, /side panel/i).map(labelOf).join(', '));
-  ok('settings offers no "Side Panel Mode" toggle', !/side panel mode/i.test(text), text.slice(0, 300));
-  ok('the "beside your browser tab" copy moved to the dashboard info hint',
-    !/beside your browser tab/i.test(text), text.slice(0, 300));
-  ok('toolbar behaviour is never changed behind the user',
+  ok('the switch is exposed as an actual switch to assistive tech',
+    modeSwitch?.getAttribute('role') === 'switch');
+  ok('loading settings does not flip toolbar behaviour on its own',
     chromeLog.setPanelBehavior.length === 0, JSON.stringify(chromeLog.setPanelBehavior));
+  ok('the switch starts off when no stored mode exists',
+    modeSwitch?.getAttribute('aria-checked') === 'false'
+      && !modeSwitch.classList.contains('active'));
+
+  click(modeSwitch);
+  await settle();
+  ok('toggling ON calls setPanelBehavior({ openPanelOnActionClick: true }) exactly once',
+    chromeLog.setPanelBehavior.length === 1
+      && chromeLog.setPanelBehavior[0]?.openPanelOnActionClick === true,
+    JSON.stringify(chromeLog.setPanelBehavior));
+  ok('the ON choice persists to chrome.storage.local',
+    (await chrome.storage.local.get('thru_side_panel_mode'))?.thru_side_panel_mode === true);
+  ok('the switch reflects the new state',
+    modeSwitch.getAttribute('aria-checked') === 'true' && modeSwitch.classList.contains('active'));
+
+  click(modeSwitch);
+  await settle();
+  ok('toggling OFF calls setPanelBehavior({ openPanelOnActionClick: false })',
+    chromeLog.setPanelBehavior.length === 2
+      && chromeLog.setPanelBehavior[1]?.openPanelOnActionClick === false,
+    JSON.stringify(chromeLog.setPanelBehavior));
+  ok('the OFF choice persists to chrome.storage.local',
+    (await chrome.storage.local.get('thru_side_panel_mode'))?.thru_side_panel_mode === false);
+  ok('the switch reflects the off state again',
+    modeSwitch.getAttribute('aria-checked') === 'false'
+      && !modeSwitch.classList.contains('active'));
 
   // Removing the saved network still works end to end.
   click(buttons(tree, /remove my node/i)[0]);
@@ -2348,18 +2378,31 @@ function sourceTest() {
   const panelOffenders = [];
   let trapUsers = 0;
 
+  // "Side Panel Mode" (Settings → Window) is an EXPLICIT user opt-in that legitimately
+  // calls chrome.sidePanel.setPanelBehavior on the toggle's click. The guard therefore
+  // allows exactly that one file and still fails the build if any other UI file starts
+  // flipping the toolbar behaviour on its own.
+  const toPosixRel = (p) => relative(ROOT, p).split(/[\\/]/).join('/');
+  const PANEL_BEHAVIOR_ALLOWLIST = new Set(['src/ui/app/routes/settings.js']);
+
   for (const file of uiFiles) {
     const raw = readFileSync(file, 'utf8');
     const code = stripComments(raw);
     if (/network\.upsertCustom/.test(code)) offenders.push(file);
-    if (/setPanelBehavior\s*\(/.test(code)) panelOffenders.push(file);
+    if (/setPanelBehavior\s*\(/.test(code) && !PANEL_BEHAVIOR_ALLOWLIST.has(toPosixRel(file))) panelOffenders.push(file);
     if (/focus-trap\.js/.test(raw) && !file.endsWith('focus-trap.js')) trapUsers += 1;
   }
 
   ok(`no shipped UI file calls network.upsertCustom (${uiFiles.length} files scanned)`,
     offenders.length === 0, offenders.join(', '));
-  ok('no shipped file changes toolbar behaviour with setPanelBehavior',
+  ok('no shipped file changes toolbar behaviour with setPanelBehavior outside the explicit Side Panel Mode toggle',
     panelOffenders.length === 0, panelOffenders.join(', '));
+  // The allowlist must actually be load-bearing: the settings route really does call it,
+  // so if someone rewrites the call in a way the regex no longer sees, this stays green
+  // while the guard above silently stops protecting anything.
+  const settingsSource = stripComments(readFileSync(join(ROOT, 'src', 'ui', 'app', 'routes', 'settings.js'), 'utf8'));
+  ok('the allowlisted settings route still contains the setPanelBehavior call the guard whitelists',
+    /setPanelBehavior\s*\(/.test(settingsSource));
   ok('the focus trap is wired into at least one dialog', trapUsers >= 1, `${trapUsers} importers`);
 
   const prompt = readFileSync(join(ROOT, 'src', 'ui', 'domain', 'password-prompt.js'), 'utf8');
@@ -2825,16 +2868,22 @@ async function navigationTest() {
 
   // ---- P1 cards: day grouping, verbs/deltas, failed badge, signature copy ----
   const NOW = Date.now();
+  // Day sections are calendar-day based, so fixture times are anchored to the START of
+  // today instead of "N hours ago". A static offset drifts across midnight whenever a
+  // run starts in the early hours ("26h ago" at 01:00 is TWO days ago, not yesterday),
+  // which would splinter the Today/Yesterday grouping these assertions check. Every value
+  // below is guaranteed its intended calendar day at any run time, and none is in the future.
+  const startOfToday = new Date(NOW).setHours(0, 0, 0, 0);
   const CARD_ENTRIES = [
     { signature: 'tsCARD_A_sent_today_aaaaaaaaaaaaaaaaaaaaaaa', slot: 30000,
       success: true, programAddress: NETWORK_ALPHANET.transferProgramId, kind: 'sent',
-      amount: '100000', counterparty: ADDRESS_B, timestamp: NOW - 2 * 3600000 },
+      amount: '100000', counterparty: ADDRESS_B, timestamp: NOW },
     { signature: 'tsCARD_B_received_yesterday_aaaaaaaaaaaaaaaaa', slot: 29900,
       success: true, programAddress: NETWORK_ALPHANET.transferProgramId, kind: 'received',
-      amount: '250000', counterparty: ADDRESS_B, timestamp: NOW - 26 * 3600000 },
+      amount: '250000', counterparty: ADDRESS_B, timestamp: startOfToday - 3600000 },
     { signature: 'tsCARD_C_failed_older_aaaaaaaaaaaaaaaaaaaaaaa', slot: 29800,
       success: false, programAddress: NETWORK_ALPHANET.transferProgramId, kind: 'sent',
-      amount: '1', counterparty: ADDRESS_B, timestamp: NOW - 49 * 3600000 },
+      amount: '1', counterparty: ADDRESS_B, timestamp: startOfToday - 2 * 86400000 - 3600000 },
   ];
   FIXTURES['tx.getHistoryFeed'] = () => ({
     entries: CARD_ENTRIES.map((e) => ({ ...e })), nextCursor: null, synced: true,
@@ -2902,15 +2951,17 @@ async function navigationTest() {
   // sends inherits its neighbours' day — one "Today" section, never Today -> Activity -> Today.
   FIXTURES['tx.getHistoryFeed'] = () => ({
     entries: [
+      // startOfToday-anchored (see CARD_ENTRIES): at 00:30 the old "2h ago" value was
+      // already yesterday, which would have split this test into two sections.
       { signature: 'tsMIX1_newer_today_aaaaaaaaaaaaaaaaaaaaaaa', slot: 30500,
         success: true, programAddress: NETWORK_ALPHANET.transferProgramId, kind: 'sent',
-        amount: '90000', counterparty: ADDRESS_B, timestamp: NOW - 20 * 60000 },
+        amount: '90000', counterparty: ADDRESS_B, timestamp: NOW },
       { signature: 'tsMIX2_wire_no_time_aaaaaaaaaaaaaaaaaaaaaaaa', slot: 30400,
         success: true, programAddress: NETWORK_ALPHANET.transferProgramId, kind: 'received',
         amount: '40000', counterparty: ADDRESS_B, timestamp: null },
       { signature: 'tsMIX3_older_today_aaaaaaaaaaaaaaaaaaaaaaa', slot: 30300,
         success: true, programAddress: NETWORK_ALPHANET.transferProgramId, kind: 'sent',
-        amount: '90000', counterparty: ADDRESS_B, timestamp: NOW - 120 * 60000 },
+        amount: '90000', counterparty: ADDRESS_B, timestamp: startOfToday },
     ],
     nextCursor: null,
     synced: true,

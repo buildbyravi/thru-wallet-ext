@@ -49,13 +49,18 @@ To open the panel two ways, and check both:
 - **From the wallet**: Dashboard → header **side-panel icon** (its hover title reads "Open in
   side panel beside your tab" — no separate explainer UI). This is the deliberate, visible
   action. It must open the panel on the current window without changing anything else, and close
-  the popup. Settings no longer has a Window section.
+  the popup. Settings has a **Window** section with the "Side Panel Mode" toggle (an explicit
+  opt-in that swaps the toolbar icon to open the panel) but NO redundant "Open side panel"
+  button — the dashboard header owns the one-off open action.
 - **From the browser**: the toolbar icon's context menu / the side panel picker.
 
-Confirm what the button does **not** do: clicking the toolbar icon must still open the popup, not the
-panel. Nothing in the code calls `chrome.sidePanel.setPanelBehavior`, and `test-route-lifecycle.mjs`
-asserts that stays true. If the toolbar icon ever starts opening the panel instead of the popup,
-that is a regression, not a feature.
+Confirm what the toggle does and does not do. With Side Panel Mode **off** (the default),
+clicking the toolbar icon opens the **popup**, not the panel. With it **on**, the toolbar icon
+opens the panel — that is the explicit opt-in, applied on the toggle's click and re-applied by
+the background on every service-worker restart from the stored `thru_side_panel_mode` flag.
+`test-route-lifecycle.mjs` asserts that `setPanelBehavior` is called ONLY by that settings toggle
+(allowlist) and never by load/boot/anything else. If the toolbar icon ever starts opening the
+panel while the toggle is off, that is a regression, not a feature.
 
 ## 2. Both widths
 
@@ -100,7 +105,7 @@ hash directly (`#/send`) where the UI has no link, so unmigrated or unreachable 
 | `/history` detail sheet (P2) | Tapping a card opens the sheet from the bottom; it shows the tapped transaction (not a neighbour), full signature copies to clipboard, explorer link opens `scan.thru.org/tx/<sig>` in a new tab; Escape and the backdrop both close it and focus visibly returns to the card. **Honesty check — the one CI cannot run:** against a live alphanet transaction, confirm the fee row and block time. **Alphanet DOES populate `header.blockTime`** (verified 2026-09-20 on a live faucet claim at block 12871764 — a real wall-clock time rendered), so on alphanet "Block time: Not available" now indicates a FETCH FAILURE or a node regression, not expected behaviour. On any other network, absence is still legitimate: `blockTime` is optional on the wire and is a per-node property, and confirm the fee row says **"Fee (declared)"** with the note about no charged-fee field. If either ever shows a plausible number that is NOT what the chain returned, that is a merge-blocker — see `docs/TX_DETAIL_SPIKE.md`. | [ ] | [ ] |
 | `/history` detail sheet — overflow (REGRESSION) | Open a sheet with EVERY row present (status, amount, counterparty, network, block, block time, fee, program) and a signature long enough to wrap. The sheet must **scroll**, and the last row (`Program`) must be readable in full. No row may be sliced horizontally, and the fee note must not sit on top of a clipped row. This shipped broken once: flex children compressed instead of overflowing, so `.detail-table` clipped its own last rows and no scrollbar appeared — see `docs/DEFECT_LOG.md`. The DOM shim has no layout engine and **cannot** catch this; `scripts/preview-tx-sheet.html` renders both states side by side. | [ ] | [ ] |
 | `/history` detail sheet — keyboard | Tab reaches a card (visible focus ring), Enter AND Space both open it, Tab wraps inside the sheet without reaching the list behind it, Escape closes. Clicking the in-card copy button or explorer icon must NOT also open the sheet. | [ ] | [ ] |
-| `/settings` | Built-in network controls; any saved custom row says **not selectable**, is inert, and exposes only Remove; auto-lock, security toggle, appearance, danger zone, version. There is **no Window / side-panel section** — the dashboard header owns that action | [ ] | [ ] |
+| `/settings` | Built-in network controls; any saved custom row says **not selectable**, is inert, and exposes only Remove; auto-lock, security toggle, appearance, danger zone, version. Window section: **Side Panel Mode** toggle only (on → toolbar icon opens the panel, off → popup; persists across worker restarts) — and **no** "Open side panel" button (the dashboard header owns that) | [ ] | [ ] |
 | `/reset` | Warning copy, confirmation text required, reset returns to `/welcome` | [ ] | [ ] |
 
 Also check the redirects a browser can trigger but the tests cannot:
