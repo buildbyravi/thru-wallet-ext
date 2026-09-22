@@ -89,6 +89,32 @@ export function DashboardRoute({ navigate }) {
   }, icon('gas', 14));
   d.on(gasBtn, 'click', () => navigate('/settings'));
 
+  const sidePanelBtn = h('button', {
+    type: 'button',
+    class: 'dash-header-btn',
+    title: 'Open in side panel',
+    'aria-label': 'Open in side panel',
+  }, icon('sidePanel', 14));
+  d.on(sidePanelBtn, 'click', async () => {
+    try {
+      if (chrome?.sidePanel?.open) {
+        let winId = null;
+        if (chrome?.windows?.getCurrent) {
+          const win = await chrome.windows.getCurrent().catch(() => null);
+          if (win?.id != null) winId = win.id;
+        }
+        await chrome.sidePanel.open(winId != null ? { windowId: winId } : {});
+        if (typeof window !== 'undefined' && typeof window.close === 'function') {
+          window.close();
+        }
+      } else {
+        navigate('/settings');
+      }
+    } catch {
+      // safe fallback
+    }
+  });
+
   const settingsBtn = h('button', {
     type: 'button',
     class: 'dash-header-btn',
@@ -115,6 +141,7 @@ export function DashboardRoute({ navigate }) {
   const headerActions = h('div', { class: 'dash-header-actions' }, [
     copyBtn.el,
     gasBtn,
+    sidePanelBtn,
     settingsBtn,
     lockBtn,
   ]);

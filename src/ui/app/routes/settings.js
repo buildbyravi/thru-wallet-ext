@@ -278,6 +278,7 @@ export function SettingsRoute({ navigate, back }) {
   // fetched during load(): awaiting inside the click handler can cost the gesture and make the call
   // fail for a reason that has nothing to do with the user's browser.
   let sidePanelWindowId = null;
+  let sidePanelMode = false;
 
   function prepareSidePanel() {
     try {
@@ -314,15 +315,17 @@ export function SettingsRoute({ navigate, back }) {
   async function load() {
     banner.clear();
     try {
-      const [netList, active, autoLock, prefs] = await Promise.all([
+      const [netList, active, autoLock, prefs, panelStored] = await Promise.all([
         bridge.send('network.list'),
         bridge.send('network.getActive'),
         bridge.send('system.getAutoLock'),
         bridge.send('settings.get'),
+        chrome.storage?.local?.get ? chrome.storage.local.get('thru_side_panel_mode').catch(() => null) : null,
       ]);
       networks = netList || [];
       activeNetworkId = active?.id || null;
       preferences = prefs || {};
+      sidePanelMode = Boolean(panelStored?.thru_side_panel_mode);
       theme = await getTheme().catch(() => 'system');
       render(autoLock);
     } catch (error) {
@@ -362,16 +365,57 @@ export function SettingsRoute({ navigate, back }) {
     ]));
 
     // ---- Window ----
+    const switchKnob = h('span', { class: 'toggle-knob' });
+    const sidePanelSwitch = h('button', {
+      type: 'button',
+      class: ['toggle-switch', sidePanelMode ? 'active' : null].filter(Boolean),
+      role: 'switch',
+      'aria-checked': String(sidePanelMode),
+      'aria-label': 'Side Panel Mode',
+    }, switchKnob);
+
+    d.on(sidePanelSwitch, 'click', async () => {
+      const next = !sidePanelMode;
+      banner.clear();
+      try {
+        const setBehavior = chrome?.sidePanel?.['setPanelBehavior'];
+        if (typeof setBehavior === 'function') {
+          await setBehavior.call(chrome.sidePanel, { openPanelOnActionClick: next });
+        }
+        if (chrome.storage?.local?.set) {
+          await chrome.storage.local.set({ thru_side_panel_mode: next });
+        }
+        sidePanelMode = next;
+        sidePanelSwitch.classList.toggle('active', next);
+        sidePanelSwitch.setAttribute('aria-checked', String(next));
+      } catch (err) {
+        banner.set(err?.message || 'Could not update side panel mode.', 'warning');
+      }
+    });
+
+    const sidePanelRow = h('div', { class: 'toggle-row' }, [
+      h('div', { class: 'toggle-label-group' }, [
+        icon('sidePanel', 18),
+        h('span', { text: 'Side Panel Mode' }),
+      ]),
+      sidePanelSwitch,
+    ]);
+
     body.appendChild(h('section', { class: 'stack stack-2' }, [
       SectionHeader('Window'),
+      sidePanelRow,
       h('p', { class: 'hint', text:
-        'Open the same wallet beside your browser tab. The popup and the side panel share one '
-        + 'session, so locking in one locks both.' }),
+        'Open the same wallet beside your browser tab. When Side Panel Mode is on, clicking the wallet toolbar icon opens the side panel.' }),
       track(Button({
         label: 'Open side panel',
         variant: 'secondary',
         iconName: 'external',
-        onClick: () => openSidePanel(),
+        onClick: () => {
+          openSidePanel();
+          if (typeof window !== 'undefined' && typeof window.close === 'function') {
+            window.close();
+          }
+        },
       })).el,
     ]));
 
