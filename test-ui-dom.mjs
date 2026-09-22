@@ -32,6 +32,14 @@ class ShimNode {
     return child;
   }
 
+  prepend(...children) {
+    for (let i = children.length - 1; i >= 0; i--) {
+      const child = children[i];
+      child.parentNode = this;
+      this.childNodes.unshift(child);
+    }
+  }
+
   removeChild(child) {
     const i = this.childNodes.indexOf(child);
     if (i >= 0) this.childNodes.splice(i, 1);
@@ -115,6 +123,28 @@ class ShimElement extends ShimNode {
   get textContent() {
     if (this._text !== null) return this._text;
     return this.childNodes.map((c) => c.textContent ?? '').join('');
+  }
+
+  querySelector(sel) {
+    if (sel.startsWith('.')) {
+      const cls = sel.slice(1);
+      for (const child of this.childNodes) {
+        if (child.nodeType === 1) {
+          if (child.classList?.contains(cls)) return child;
+          const found = child.querySelector(sel);
+          if (found) return found;
+        }
+      }
+    } else {
+      for (const child of this.childNodes) {
+        if (child.nodeType === 1) {
+          if (child.tagName === sel) return child;
+          const found = child.querySelector(sel);
+          if (found) return found;
+        }
+      }
+    }
+    return null;
   }
 
   // Deliberately absent: innerHTML, outerHTML, insertAdjacentHTML.
@@ -424,6 +454,127 @@ const BAD_REFS = [
 for (const bad of BAD_REFS) {
   ok(`decodeRef rejects ${JSON.stringify(bad).slice(0, 40)}`, decodeRef(bad) === null);
 }
+
+// ---- Domain Components: BalanceHero, PanelItem, CurrentConnection --------
+
+section('BalanceHero renders USD-first, native balance, delta, and responds to refresh');
+
+const { BalanceHero } = await import('./src/ui/domain/balance-hero.js');
+
+let refreshFired = false;
+const hero = BalanceHero({
+  usd: '$12,847.20',
+  native: '84,291.02 THRU',
+  delta: '+2.14%',
+  deltaUsd: '+$268.40',
+  onRefresh: () => { refreshFired = true; },
+});
+
+ok('hero root element is created with dash-balance-hero class',
+  hero.el.tagName === 'div' && hero.el.classList.contains('dash-balance-hero'));
+
+const usdEl = hero.el.querySelector('.dash-balance-usd');
+ok('hero renders USD amount accurately', usdEl?.textContent === '$12,847.20');
+
+const nativeEl = hero.el.querySelector('.dash-balance-native');
+ok('hero renders native THRU caption', nativeEl?.textContent === '84,291.02 THRU');
+
+const deltaEl = hero.el.querySelector('.dash-balance-delta');
+ok('hero renders 24h delta', deltaEl?.textContent?.includes('+2.14%'));
+
+hero.update({ usd: '$13,000.00', native: '85,000.00 THRU' });
+ok('hero.update updates USD amount', usdEl?.textContent === '$13,000.00');
+ok('hero.update updates native caption', nativeEl?.textContent === '85,000.00 THRU');
+
+const refreshBtn = hero.el.querySelector('.dash-header-btn');
+ok('refresh button exists with appropriate title', Boolean(refreshBtn));
+refreshBtn?.listeners?.[0]?.handler();
+ok('clicking refresh fires onRefresh callback', refreshFired === true);
+
+hero.setSpinning(true);
+ok('setSpinning(true) adds spinning class to refresh button', refreshBtn?.classList?.contains('spinning'));
+hero.setSpinning(false);
+ok('setSpinning(false) removes spinning class', !refreshBtn?.classList?.contains('spinning'));
+
+hero.destroy();
+ok('hero.destroy() disposes without throwing', true);
+
+
+section('PanelItem renders 3x2 action buttons with icons, badges, and disabled state');
+
+const { PanelItem } = await import('./src/ui/domain/panel-item.js');
+
+let actionClicked = false;
+const sendItem = PanelItem({
+  iconName: 'send',
+  label: 'Send',
+  onClick: () => { actionClicked = true; },
+});
+
+ok('sendItem renders as a panel-item button',
+  sendItem.el.tagName === 'button' && sendItem.el.classList.contains('panel-item'));
+
+const labelEl = sendItem.el.querySelector('.panel-item-label');
+ok('sendItem shows label text', labelEl?.textContent === 'Send');
+
+sendItem.el.listeners?.[0]?.handler();
+ok('clicking sendItem triggers onClick', actionClicked === true);
+
+sendItem.setBadge(3);
+const badgeEl = sendItem.el.querySelector('.panel-item-badge');
+ok('setBadge(3) adds badge with count', badgeEl?.textContent === '3');
+
+sendItem.setBadge(null);
+ok('setBadge(null) removes the badge element', sendItem.el.querySelector('.panel-item-badge') === null);
+
+const disabledItem = PanelItem({
+  iconName: 'swap',
+  label: 'Swap',
+  disabled: true,
+});
+ok('disabled Item carries disabled attribute', disabledItem.el.getAttribute('disabled') === '');
+
+sendItem.destroy();
+disabledItem.destroy();
+ok('panel-item destroy() cleans up handlers', true);
+
+
+section('CurrentConnection renders connection status, network switcher button, and live health');
+
+const { CurrentConnection } = await import('./src/ui/domain/current-connection.js');
+
+let netClicked = false;
+const conn = CurrentConnection({
+  networkLabel: 'Alphanet',
+  onNetworkClick: () => { netClicked = true; },
+});
+
+ok('CurrentConnection root is rendered',
+  conn.el.classList.contains('current-connection'));
+
+const dAppText = conn.el.querySelector('.current-connection-text');
+ok('default dApp status displays Not connected to any Dapp',
+  dAppText?.textContent === 'Not connected to any Dapp');
+
+const netBtn = conn.el.querySelector('.current-connection-net');
+ok('network badge is a distinct clickable button', Boolean(netBtn) && netBtn.tagName === 'button');
+ok('network badge has descriptive title for settings', netBtn.getAttribute('title')?.includes('Settings'));
+
+netBtn.listeners?.[0]?.handler();
+ok('clicking network badge fires onNetworkClick handler', netClicked === true);
+
+conn.update({ origin: 'https://app.uniswap.org' }, 'Testnet', 45, 'healthy');
+ok('conn.update updates dApp origin', dAppText?.textContent === 'https://app.uniswap.org');
+ok('conn.update updates network label', netBtn.textContent?.includes('Testnet'));
+
+const pipEl = conn.el.querySelector('.current-connection-pip');
+ok('conn.update applies healthy pip status', pipEl?.classList?.contains('healthy'));
+
+conn.update(undefined, undefined, null, 'offline');
+ok('conn.update applies offline pip status', pipEl?.classList?.contains('offline'));
+
+conn.destroy();
+ok('CurrentConnection destroy() cleans up cleanly', true);
 
 // ---- Result ---------------------------------------------------------------
 

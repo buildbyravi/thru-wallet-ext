@@ -553,8 +553,14 @@ form > .btn.text {
   border-left: 0;
   border-right: 0;
   border-bottom: 0;
-  cursor: pointer;
   box-sizing: border-box;
+}
+.current-connection-dapp {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
 }
 .current-connection-globe {
   width: 22px;
@@ -565,12 +571,11 @@ form > .btn.text {
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
 }
 .current-connection-text {
   font-size: 12px;
   color: var(--foot, #6a7580);
-  flex: 1;
-  text-align: left;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -582,12 +587,35 @@ form > .btn.text {
   font-size: 11px;
   font-weight: 500;
   color: var(--accent, #c43a40);
+  background: transparent;
+  border: 0;
+  padding: 4px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.current-connection-net:hover {
+  background: var(--surface-2, #eef1f4);
 }
 .current-connection-pip {
   width: 6px;
   height: 6px;
   border-radius: 50%;
   background: var(--green, #1c7d76);
+}
+.current-connection-pip.healthy {
+  background: var(--green, #1c7d76);
+}
+.current-connection-pip.slow {
+  background: #f59e0b;
+}
+.current-connection-pip.offline {
+  background: #e25a60;
+}
+.current-connection-latency {
+  font-size: 10px;
+  color: var(--foot, #6a7580);
+  font-family: var(--font-mono);
 }
 
 /* Legacy dashboard rules retained for fallback */

@@ -39,13 +39,13 @@ export function PanelItem({ iconName, label, badge, disabled = false, onClick })
       if (nextBadge) {
         if (!badgeEl) {
           badgeEl = h('span', { class: 'panel-item-badge', text: String(nextBadge) });
-          el.prepend(badgeEl);
+          el.appendChild(badgeEl);
         } else {
           badgeEl.textContent = String(nextBadge);
-          badgeEl.classList.remove('hidden');
         }
       } else if (badgeEl) {
-        badgeEl.classList.add('hidden');
+        badgeEl.remove();
+        badgeEl = null;
       }
     },
     destroy() {

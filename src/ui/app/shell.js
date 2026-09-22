@@ -55,7 +55,7 @@ export function AppShell({ navigate, onNetworkChange }) {
   // ---- CurrentConnection Footer -------------------------------------------
   const connectionFooter = CurrentConnection({
     networkLabel: 'Alphanet',
-    onClick: () => navigate('/settings'),
+    onNetworkClick: () => navigate('/settings'),
   });
 
   // Where routes render.
@@ -88,8 +88,20 @@ export function AppShell({ navigate, onNetworkChange }) {
       currentNetwork = network;
       onNetworkChange?.(network);
     } catch {
-      connectionFooter.update(undefined, '—');
+      connectionFooter.update(undefined, '—', null, 'offline');
       networkBadge.textContent = '—';
+    }
+    try {
+      const health = await bridge.send('tx.checkHealth');
+      const ms = Number(health?.latencyMs);
+      const online = health?.status === 'ok' || health?.healthy === true || Number.isFinite(ms);
+      if (!online) {
+        connectionFooter.update(undefined, undefined, null, 'offline');
+      } else {
+        connectionFooter.update(undefined, undefined, Number.isFinite(ms) ? ms : null, ms > 800 ? 'slow' : 'healthy');
+      }
+    } catch {
+      connectionFooter.update(undefined, undefined, null, 'offline');
     }
   }
 
