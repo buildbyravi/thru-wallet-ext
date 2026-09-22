@@ -70,7 +70,9 @@ export function HistoryRoute({ back }) {
   const pendingHost = h('div', { class: ['stack', 'stack-2', 'hidden'] });
   const filterRow = h('div', { class: 'row-flex wrap' });
   const moreHost = h('div', {});
-  const header = PageHeader({ title: 'Activity', onBack: () => back() });
+  // "History", matching the dashboard tile that leads here. (The "Activity" day-group label
+  // in tx-card.js is a different thing — the honest catch-all for timestampless wire entries.)
+  const header = PageHeader({ title: 'History', onBack: () => back() });
 
   const el = h('section', { class: 'screen' }, [
     header.el,

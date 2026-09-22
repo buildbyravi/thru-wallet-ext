@@ -107,6 +107,57 @@ export function PageHeader({ title, onBack, right = null, backLabel = 'Back' } =
  * Bottom-pinned action row. Keeps a short form's buttons at the foot of the panel instead
  * of floating mid-screen, which is what .screen's flex:1 inside a 580px shell causes.
  */
+/**
+ * Info hint: a small circled "i" whose explanatory text is a transient tooltip instead of
+ * permanent prose. The tooltip appears on hover or click and disappears after 1 second (or
+ * immediately on mouse leave / blur), so a screen can carry its why without carrying its
+ * paragraph. Kept bridge-free like every kit primitive.
+ *
+ * @param {{ text: string, label?: string }} props
+ *   text   the explanation shown in the tooltip
+ *   label  accessible name for the button (default 'More info')
+ */
+export function InfoHint({ text: hintText, label = 'More info' } = {}) {
+  const d = disposer();
+  const tip = h('div', { class: 'info-hint-tip hidden', role: 'tooltip' }, h('span', { text: hintText }));
+  const btn = h('button', {
+    type: 'button',
+    class: 'info-hint-btn',
+    'aria-label': label,
+  }, icon('info', 12));
+
+  const el = h('span', { class: 'info-hint' }, [btn, tip]);
+  let hideTimer = null;
+
+  function hide() {
+    if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+    tip.classList.add('hidden');
+  }
+
+  function show() {
+    tip.classList.remove('hidden');
+    // Re-arming on every gesture keeps "read it again" possible; the 1s auto-hide is what
+    // keeps the hint from becoming a second paragraph.
+    if (hideTimer) clearTimeout(hideTimer);
+    hideTimer = setTimeout(hide, 1000);
+  }
+
+  d.on(btn, 'mouseenter', show);
+  d.on(btn, 'focus', show);
+  d.on(btn, 'click', show);
+  d.on(btn, 'mouseleave', hide);
+  d.on(btn, 'blur', hide);
+
+  return {
+    el,
+    destroy() {
+      hide();
+      d.dispose();
+      el.remove();
+    },
+  };
+}
+
 export function Actions(children) {
   return { el: h('div', { class: 'screen-actions' }, children) };
 }

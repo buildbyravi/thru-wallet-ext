@@ -34,7 +34,10 @@ export function CurrentConnection({
       : 'Not connected to any Dapp (connector planned in Phase 2)',
   }, [globe, text]);
 
-  const pip = h('span', { class: 'current-connection-pip healthy' });
+  // No status class on first paint: the health check has not run yet, so the pip stays
+  // neutral grey. The old version rendered green immediately, which claimed a connection
+  // health nobody had measured — the same offline-honesty rule the history feed follows.
+  const pip = h('span', { class: 'current-connection-pip' });
   const netLabelEl = h('span', { text: networkLabel });
   const latencyEl = h('span', { class: 'current-connection-latency' });
 
@@ -56,7 +59,32 @@ export function CurrentConnection({
 
   return {
     el,
-    update(nextSite, nextNet, latencyMs, healthStatus) {
+    /**
+     * Update any subset of the footer's state.
+     *
+     * Two call forms, one component:
+     *   conn.update({ network: 'Alphanet', healthStatus: 'healthy' })   — preferred
+     *   conn.update(site, network, latencyMs, healthStatus)             — legacy positional
+     *
+     * The positional form forced callers to pad with `undefined` for every earlier slot
+     * they did not want to touch (update(undefined, undefined, null, 'offline')), which
+     * is how an API turns into a footgun. The object form names what changes.
+     *
+     * @param {Object|{origin: string}} arg1  options object, or the next dApp site
+     * @param {string} [nextNet]              legacy: network label
+     * @param {number|null} [latencyMs]       legacy: measured latency
+     * @param {'healthy'|'slow'|'offline'} [healthStatus] legacy: health state
+     */
+    update(arg1, nextNet, latencyMs, healthStatus) {
+      let nextSite = arg1;
+      if (arg1 && typeof arg1 === 'object'
+          && !('origin' in arg1)
+          && ('site' in arg1 || 'network' in arg1 || 'latencyMs' in arg1 || 'healthStatus' in arg1)) {
+        nextSite = arg1.site;
+        nextNet = arg1.network;
+        latencyMs = arg1.latencyMs;
+        healthStatus = arg1.healthStatus;
+      }
       if (nextSite !== undefined) {
         text.textContent = nextSite?.origin || 'Not connected to any Dapp';
         dappGroup.title = nextSite?.origin

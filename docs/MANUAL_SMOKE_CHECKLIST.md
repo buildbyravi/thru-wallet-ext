@@ -46,8 +46,9 @@ for hours, and shares one session with the popup.
 
 To open the panel two ways, and check both:
 
-- **From the wallet**: Settings → *Window* → **Open side panel**. This is the deliberate, visible
-  action. It must open the panel on the current window without changing anything else.
+- **From the wallet**: Dashboard → header **side-panel icon** (the "i" beside it explains what it
+  does). This is the deliberate, visible action. It must open the panel on the current window
+  without changing anything else, and close the popup. Settings no longer has a Window section.
 - **From the browser**: the toolbar icon's context menu / the side panel picker.
 
 Confirm what the button does **not** do: clicking the toolbar icon must still open the popup, not the
@@ -57,17 +58,17 @@ that is a regression, not a feature.
 
 ## 2. Both widths
 
-`--popup-width` is **408px** and `--popup-min-height` is 580px. The popup is therefore always 408px
+`--popup-width` is **400px** and `--popup-height` is 600px. The popup is therefore always 400px
 wide; the side panel is whatever the user drags it to.
 
-1. **Narrow**: drag the side panel to its narrowest (roughly 300px, and below 408px in any case).
+1. **Narrow**: drag the side panel to its narrowest (roughly 300px, and below 400px in any case).
    - [ ] No content is cut off at the right edge. `body { max-width: 100% }` exists for exactly this
      case, and scrollbars are hidden globally, so clipping would be silent.
    - [ ] Long addresses truncate with an ellipsis instead of pushing the layout wider.
    - [ ] Buttons in a `.screen-actions` row wrap rather than overflow.
    - [ ] The seed grid (Export → reveal) still shows its numbered words legibly.
 2. **Wide / desktop**: drag the panel to about 800px or more.
-   - [ ] The 408px column and the empty space beside it look intentional (border-right visible, no
+   - [ ] The 400px column and the empty space beside it look intentional (border-right visible, no
      stray stretch). **This is the known open question** — if it looks broken, the fix is to make the
      width fluid in the panel only, and it must be decided with a browser open, not by guessing:
      a plain `width: 100%` on `body` would change how Chrome sizes the toolbar popup.
@@ -84,7 +85,7 @@ hash directly (`#/send`) where the UI has no link, so unmigrated or unreachable 
 | --- | --- | --- | --- |
 | `/welcome` | Create/import steps advance; the phrase grid is blurred until revealed; nothing is written to the URL | [ ] | [ ] |
 | `/unlock` | Wrong password shows an inline error and keeps focus in the field; lockout countdown runs; Back/Reset reachable | [ ] | [ ] |
-| `/dashboard` | Balance, account pill, action tiles, health dot and network badge all populate; token rows show a real balance, a proven-zero (0), or a dash — never a fabricated number; a send that already confirmed shows NO "transaction pending" note | [ ] | [ ] |
+| `/dashboard` | Balance, account pill, action tiles, health dot and network badge all populate; the header copy button is the same size and colour as its icon neighbours (no white 32px box); the balance refresh is a quiet frameless icon, not a grey card; the "i" beside the side-panel icon shows its one-line explanation on hover/click and disappears after ~1s; the token ledger has a single "Tokens" tab (no Activity tab — History owns that); no 24h delta or placeholder number is ever shown; token rows show a real balance, a proven-zero (0), or a dash — never a fabricated number; a send that already confirmed shows NO "transaction pending" note | [ ] | [ ] |
 | `/accounts` | List, balances, pin/switch, "Add account" | [ ] | [ ] |
 | `/account` | Detail for a real ref (`#/account?ref=...` from the Accounts screen); invalid ref shows an error, not a blank screen | [ ] | [ ] |
 | `/add-account` | HD preview renders; adding an account returns to `/accounts` | [ ] | [ ] |
@@ -98,7 +99,7 @@ hash directly (`#/send`) where the UI has no link, so unmigrated or unreachable 
 | `/history` detail sheet (P2) | Tapping a card opens the sheet from the bottom; it shows the tapped transaction (not a neighbour), full signature copies to clipboard, explorer link opens `scan.thru.org/tx/<sig>` in a new tab; Escape and the backdrop both close it and focus visibly returns to the card. **Honesty check — the one CI cannot run:** against a live alphanet transaction, confirm the fee row and block time. **Alphanet DOES populate `header.blockTime`** (verified 2026-09-20 on a live faucet claim at block 12871764 — a real wall-clock time rendered), so on alphanet "Block time: Not available" now indicates a FETCH FAILURE or a node regression, not expected behaviour. On any other network, absence is still legitimate: `blockTime` is optional on the wire and is a per-node property, and confirm the fee row says **"Fee (declared)"** with the note about no charged-fee field. If either ever shows a plausible number that is NOT what the chain returned, that is a merge-blocker — see `docs/TX_DETAIL_SPIKE.md`. | [ ] | [ ] |
 | `/history` detail sheet — overflow (REGRESSION) | Open a sheet with EVERY row present (status, amount, counterparty, network, block, block time, fee, program) and a signature long enough to wrap. The sheet must **scroll**, and the last row (`Program`) must be readable in full. No row may be sliced horizontally, and the fee note must not sit on top of a clipped row. This shipped broken once: flex children compressed instead of overflowing, so `.detail-table` clipped its own last rows and no scrollbar appeared — see `docs/DEFECT_LOG.md`. The DOM shim has no layout engine and **cannot** catch this; `scripts/preview-tx-sheet.html` renders both states side by side. | [ ] | [ ] |
 | `/history` detail sheet — keyboard | Tab reaches a card (visible focus ring), Enter AND Space both open it, Tab wraps inside the sheet without reaching the list behind it, Escape closes. Clicking the in-card copy button or explorer icon must NOT also open the sheet. | [ ] | [ ] |
-| `/settings` | Built-in network controls; any saved custom row says **not selectable**, is inert, and exposes only Remove; auto-lock, security toggle, **Open side panel**, danger zone, version | [ ] | [ ] |
+| `/settings` | Built-in network controls; any saved custom row says **not selectable**, is inert, and exposes only Remove; auto-lock, security toggle, appearance, danger zone, version. There is **no Window / side-panel section** — the dashboard header owns that action | [ ] | [ ] |
 | `/reset` | Warning copy, confirmation text required, reset returns to `/welcome` | [ ] | [ ] |
 
 Also check the redirects a browser can trigger but the tests cannot:
@@ -181,7 +182,7 @@ useful than a silently skipped section.
 ```
 Manual smoke: <date>, Chrome <version>, build <git short sha>
   contexts: popup [ ] side panel [ ]
-  widths:   narrow (<408px) [ ] wide (>=800px) [ ]
+  widths:   narrow (<400px) [ ] wide (>=800px) [ ]
   routes:   14/14 [ ]   redirects [ ]   keyboard/focus [ ]
   secret hygiene [ ]   network/worker [ ]
   failures found: <none | list, each with the route and the context>

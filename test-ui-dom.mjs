@@ -457,7 +457,7 @@ for (const bad of BAD_REFS) {
 
 // ---- Domain Components: BalanceHero, PanelItem, CurrentConnection --------
 
-section('BalanceHero renders USD-first, native balance, delta, and responds to refresh');
+section('BalanceHero renders USD-first, native balance, and responds to refresh');
 
 const { BalanceHero } = await import('./src/ui/domain/balance-hero.js');
 
@@ -465,8 +465,6 @@ let refreshFired = false;
 const hero = BalanceHero({
   usd: '$12,847.20',
   native: '84,291.02 THRU',
-  delta: '+2.14%',
-  deltaUsd: '+$268.40',
   onRefresh: () => { refreshFired = true; },
 });
 
@@ -479,8 +477,10 @@ ok('hero renders USD amount accurately', usdEl?.textContent === '$12,847.20');
 const nativeEl = hero.el.querySelector('.dash-balance-native');
 ok('hero renders native THRU caption', nativeEl?.textContent === '84,291.02 THRU');
 
-const deltaEl = hero.el.querySelector('.dash-balance-delta');
-ok('hero renders 24h delta', deltaEl?.textContent?.includes('+2.14%'));
+// There is no 24h-delta row: this wallet has no market-data source, so a delta would be
+// fabricated. The assertion is that the line does NOT exist at all.
+ok('hero renders no 24h delta (no market-data source exists)',
+  hero.el.querySelector('.dash-balance-delta') === null);
 
 hero.update({ usd: '$13,000.00', native: '85,000.00 THRU' });
 ok('hero.update updates USD amount', usdEl?.textContent === '$13,000.00');
@@ -573,8 +573,57 @@ ok('conn.update applies healthy pip status', pipEl?.classList?.contains('healthy
 conn.update(undefined, undefined, null, 'offline');
 ok('conn.update applies offline pip status', pipEl?.classList?.contains('offline'));
 
+// Object form: the preferred call style. No `undefined` padding for untouched slots.
+conn.update({ site: { origin: 'https://app.thru.org' }, network: 'Mainnet', latencyMs: 120, healthStatus: 'slow' });
+ok('conn.update(object) updates dApp origin', dAppText?.textContent === 'https://app.thru.org');
+ok('conn.update(object) updates network label', netBtn.textContent?.includes('Mainnet'));
+ok('conn.update(object) applies slow pip with latency', pipEl?.classList?.contains('slow')
+  && conn.el.querySelector('.current-connection-latency')?.textContent === '120ms');
+
+conn.update({ healthStatus: 'offline' });
+ok('conn.update({ healthStatus }) alone flips the pip to offline', pipEl?.classList?.contains('offline'));
+ok('a partial object update leaves the network label untouched', netBtn.textContent?.includes('Mainnet'));
+
 conn.destroy();
 ok('CurrentConnection destroy() cleans up cleanly', true);
+
+// First paint must be honest: before any health check runs, the pip carries no status
+// class at all (neutral grey in CSS), never a green "healthy" nobody measured.
+const { CurrentConnection: Conn2 } = await import('./src/ui/domain/current-connection.js');
+const conn2 = Conn2({ networkLabel: 'Alphanet' });
+const pip2 = conn2.el.querySelector('.current-connection-pip');
+ok('fresh footer pip is neutral until the first health check',
+  !pip2.classList.contains('healthy') && !pip2.classList.contains('slow') && !pip2.classList.contains('offline'));
+conn2.destroy();
+
+section('InfoHint shows a transient tooltip on hover/click and hides after 1 second');
+
+const { InfoHint } = await import('./src/ui/kit/feedback.js');
+
+const hint = InfoHint({
+  text: 'Opens this wallet in the side panel, beside your browser tab.',
+  label: 'About the side panel button',
+});
+const hintBtn = hint.el.querySelector('.info-hint-btn');
+const hintTip = hint.el.querySelector('.info-hint-tip');
+
+ok('info hint carries an accessible name', hintBtn?.getAttribute('aria-label') === 'About the side panel button');
+ok('the hint tooltip starts hidden', hintTip?.classList?.contains('hidden') === true);
+ok('the tooltip carries the explanation text', Boolean(hintTip) && hintTip.textContent.includes('side panel'));
+
+hintBtn.listeners[0].handler(); // mouseenter
+ok('hovering shows the hint', hintTip.classList.contains('hidden') === false);
+
+await new Promise((resolve) => setTimeout(resolve, 1100));
+ok('the hint auto-hides after 1 second', hintTip.classList.contains('hidden') === true);
+
+hintBtn.listeners[0].handler(); // re-show
+ok('hovering again re-arms the hint', hintTip.classList.contains('hidden') === false);
+hintBtn.listeners[3].handler(); // mouseleave
+ok('mouse leave hides the hint immediately', hintTip.classList.contains('hidden') === true);
+
+hint.destroy();
+ok('info hint destroy() cleans up without throwing', true);
 
 // ---- Result ---------------------------------------------------------------
 

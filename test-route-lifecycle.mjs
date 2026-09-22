@@ -1862,7 +1862,7 @@ async function runScenario(scenario) {
 // ---- Settings: custom networks withdrawn, side panel offered ---------------
 
 async function settingsTest() {
-  section('settings: no custom-network form, an explicit side-panel action');
+  section('settings: no custom-network form and no side-panel section (the dashboard owns it)');
 
   resetBackend(SCENARIOS[2]);
   resetDom();
@@ -1934,20 +1934,16 @@ async function settingsTest() {
   ok('no UI call reached network.upsertCustom',
     !chromeLog.calls.includes('network.upsertCustom') && chromeLog.unexpected.length === 0);
 
-  // The side panel: an explicit, user-initiated action.
-  const openButton = buttons(tree, /open side panel/i)[0];
-  ok('"Open side panel" is a real control', Boolean(openButton));
-  ok('the side-panel section explains what it does', /beside your browser tab/i.test(text));
-  ok('sidePanel.open has not been called before the user asks', chromeLog.sidePanelOpen.length === 0);
-  click(openButton);
-  await settle();
-  ok('clicking it calls chrome.sidePanel.open exactly once', chromeLog.sidePanelOpen.length === 1,
-    JSON.stringify(chromeLog.sidePanelOpen));
-  ok('the call carries a windowId, so no await sits between the gesture and the API',
-    chromeLog.sidePanelOpen[0]?.windowId === 42, JSON.stringify(chromeLog.sidePanelOpen[0]));
+  // The side panel no longer lives in Settings: the dashboard header owns the explicit
+  // "Open in side panel" action (with its 'i' hint), so nothing panel-shaped may remain
+  // on this screen — and nothing may still change the toolbar behaviour behind the user.
+  ok('settings offers no "Open side panel" control', buttons(tree, /side panel/i).length === 0,
+    buttons(tree, /side panel/i).map(labelOf).join(', '));
+  ok('settings offers no "Side Panel Mode" toggle', !/side panel mode/i.test(text), text.slice(0, 300));
+  ok('the "beside your browser tab" copy moved to the dashboard info hint',
+    !/beside your browser tab/i.test(text), text.slice(0, 300));
   ok('toolbar behaviour is never changed behind the user',
     chromeLog.setPanelBehavior.length === 0, JSON.stringify(chromeLog.setPanelBehavior));
-  ok('the side panel action reported no error banner', !/Could not open the side panel/i.test(textOf(tree)));
 
   // Removing the saved network still works end to end.
   click(buttons(tree, /remove my node/i)[0]);
@@ -2418,7 +2414,7 @@ function sourceTest() {
   ok('the checklist covers the popup and the side panel',
     /[Pp]opup/.test(doc) && /side panel/i.test(doc));
   ok('the checklist covers narrow and wide widths',
-    /408/.test(doc) && /(wide|800|desktop)/i.test(doc));
+    /400/.test(doc) && /(wide|800|desktop)/i.test(doc));
   ok('the checklist covers the reload-extension trap',
     /reload/i.test(doc));
   ok('the checklist names every route',
@@ -2442,6 +2438,43 @@ async function navigationTest() {
   const router = await boot({ root: app });
   await settle();
   ok('boot lands on the dashboard', router.currentPath === '/dashboard', router.currentPath);
+
+  // ---- Dashboard chrome audit ------------------------------------------------
+  // The copy button must wear the same dark .dash-header-btn treatment as its header
+  // siblings, not the white 32px .icon-btn card it used to be.
+  const dashCopy = buttons(app, /copy address/i)[0];
+  ok('the dashboard exposes a copy-address control', Boolean(dashCopy));
+  ok('the dashboard copy button wears the shared dash-header-btn treatment',
+    dashCopy?.classList?.contains('dash-header-btn'), dashCopy?.className);
+
+  // The "Activity" tab duplicated the History tile two rows up and the full /history
+  // screen; only "Tokens" remains on the ledger.
+  const dashTabs = allElements(app).filter((el) => el.classList?.contains?.('dash-tab-btn'));
+  ok('the dashboard token ledger has exactly one tab', dashTabs.length === 1,
+    dashTabs.map((t) => t.textContent).join(', '));
+  ok('the single dashboard tab is Tokens (no Activity tab)',
+    /^tokens$/i.test(dashTabs[0]?.textContent || ''), dashTabs[0]?.textContent);
+
+  // No fabricated numbers: the old first paint showed a placeholder "$12,847.20" balance
+  // and a static "+2.14%" 24h delta that no load() path ever updated.
+  const dashText = textOf(app);
+  ok('the dashboard shows no placeholder balance', !/12,847\.20/.test(dashText));
+  ok('the dashboard shows no fabricated 24h delta', !/\+2\.14%/.test(dashText));
+
+  // The side panel: an explicit user action with a pre-cached windowId, so no await sits
+  // between the gesture and chrome.sidePanel.open.
+  const panelBtn = buttons(app, /open in side panel/i)[0];
+  ok('the dashboard exposes an "Open in side panel" control', Boolean(panelBtn));
+  ok('sidePanel.open has not been called before the user asks', chromeLog.sidePanelOpen.length === 0);
+  click(panelBtn);
+  await settle();
+  ok('clicking it calls chrome.sidePanel.open exactly once', chromeLog.sidePanelOpen.length === 1,
+    JSON.stringify(chromeLog.sidePanelOpen));
+  ok('the call carries a windowId, so no await sits between the gesture and the API',
+    chromeLog.sidePanelOpen[0]?.windowId === 42, JSON.stringify(chromeLog.sidePanelOpen[0]));
+  ok('toolbar behaviour is never changed behind the user (dashboard button either)',
+    chromeLog.setPanelBehavior.length === 0, JSON.stringify(chromeLog.setPanelBehavior));
+  ok('the side panel action reported no error banner', !/Could not open the side panel/i.test(textOf(app)));
 
   const settingsButton = buttons(app, /settings/i)[0];
   ok('the topbar exposes a settings control', Boolean(settingsButton),

@@ -10,6 +10,13 @@ import { h, disposer, isSafeUrl } from '../kit/dom.js';
 import { icon } from '../kit/icon.js';
 import { AddressText } from './account-avatar.js';
 
+/** Class list for a supplied change value; a leading minus marks a loss. */
+function changePercentClasses(changePercent) {
+  const cls = ['token-row-change'];
+  if (changePercent.startsWith('-')) cls.push('loss');
+  return cls;
+}
+
 /**
  * Format display amount by stripping redundant unit text.
  * E.g. "84,291.02 THRU" -> "84,291.02", "123 TOKEN" -> "123"
@@ -26,8 +33,10 @@ function extractAmount(text) {
  *   symbol         display ticker (e.g. 'THRU', 'USDC')
  *   name           token name (e.g. 'Thru Native Token')
  *   balanceText    already-formatted balance string (e.g. '84,291.02 THRU'), or null when unknown
- *   usdValue       formatted USD value (e.g. '$12,847.20')
- *   changePercent  24h change string (default '+2.14%')
+ *   usdValue       formatted USD value, or null when unknown (rendered as '—')
+ *   changePercent  24h change string. Only pass it from a REAL source — the default is null
+ *                  (no cell at all). This wallet has no price feed, so a default value here
+ *                  would be fabricated market data.
  *   network        network label (default 'Alphanet')
  *   mintAddress    optional mint address
  *   imageUrl       optional remote logo URL
@@ -40,7 +49,7 @@ export function AssetRow({
   name,
   balanceText = null,
   usdValue = null,
-  changePercent = '+2.14%',
+  changePercent = null,
   network = 'Alphanet',
   mintAddress = null,
   imageUrl = null,
@@ -81,16 +90,18 @@ export function AssetRow({
     text: displayAmount,
   });
 
-  const displayUsd = usdValue != null
-    ? usdValue
-    : (isNative ? '$12,847.20' : '$0.00');
+  // Unknown means '—', never a made-up number: the old native fallback printed a fixed
+  // '$12,847.20' on any row that did not supply a value, which read as a real balance.
+  const displayUsd = usdValue != null ? usdValue : '—';
 
-  const isLoss = String(changePercent).startsWith('-');
   const usdEl = h('span', { class: 'token-row-usd', text: displayUsd });
-  const changeEl = h('span', {
-    class: ['token-row-change', isLoss ? 'loss' : null].filter(Boolean),
-    text: changePercent,
-  });
+  // The change cell exists only when a real change was supplied; null renders nothing.
+  const changeEl = changePercent == null
+    ? null
+    : h('span', {
+      class: changePercentClasses(String(changePercent)),
+      text: changePercent,
+    });
   const subvaluesRow = h('div', { class: 'token-row-subvalues' }, [usdEl, changeEl]);
 
   const valuesCol = h('div', { class: 'token-row-values' }, [amountEl, subvaluesRow]);

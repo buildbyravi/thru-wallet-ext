@@ -237,6 +237,64 @@ form > .btn.text {
   background: rgba(255, 255, 255, 0.16);
 }
 
+/* CopyButton's "copied" confirmation, dark-header edition. components.css's
+   .icon-btn.copied paints a light green CARD (border + tint) that belongs on the white
+   surface; on the ink header the confirmation is colour only. */
+.dash-header .dash-header-btn.copied {
+  background: rgba(63, 191, 174, 0.14);
+  color: #3fbfae;
+  border: 0;
+  animation: none;
+}
+
+/* ---- Info hint: circled "i" with a 1-second tooltip ----------------------
+   Replaces paragraph-long explanations in tight chrome. The tooltip is positioned
+   inside the element's own box context so it survives the header's overflow:hidden. */
+.info-hint {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.info-hint-btn {
+  background: transparent;
+  border: 0;
+  border-radius: 50%;
+  color: rgba(255, 255, 255, 0.45);
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.info-hint-btn:hover,
+.info-hint-btn:focus-visible {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+  outline: none;
+}
+
+.info-hint-tip {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: -6px;
+  width: 172px;
+  background: var(--header-2, #2a1618);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+  z-index: 30;
+  pointer-events: none;
+}
+
 /* Account chip inside header */
 .dash-header .account-pill {
   background: rgba(255, 255, 255, 0.08);
@@ -291,6 +349,29 @@ form > .btn.text {
   font-weight: 700;
   letter-spacing: -0.03em;
   line-height: 1.1;
+  color: #ffffff;
+}
+
+/* Balance Hero Refresh Button — frameless Rabby style. The generic .dash-header-btn is a
+   28px frosted card, which reads as a "cheap grey box" sitting on the balance number;
+   next to display type the refresh must be a quiet icon that only earns a surface on
+   hover. (The spin while refreshing stays — utilities.css's `.spinning svg` covers it.) */
+.dash-balance-hero .dash-header-btn {
+  background: transparent;
+  border: 0;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  color: rgba(255, 255, 255, 0.45);
+  border-radius: 4px;
+  align-self: center;
+  margin-bottom: 2px;
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.dash-balance-hero .dash-header-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
   color: #ffffff;
 }
 .dash-balance-native {
@@ -517,13 +598,6 @@ form > .btn.text {
   color: #c43a40;
 }
 
-.dash-activity-container {
-  padding: 0 12px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
 .screen.dash-screen,
 .dash-screen {
   padding: 0;
@@ -597,11 +671,13 @@ form > .btn.text {
 .current-connection-net:hover {
   background: var(--surface-2, #eef1f4);
 }
+/* Neutral until the first health check reports: the pip must never claim a connection
+   state nobody has measured (same offline-honesty rule the history feed follows). */
 .current-connection-pip {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--green, #1c7d76);
+  background: var(--text-3, #6a7580);
 }
 .current-connection-pip.healthy {
   background: var(--green, #1c7d76);
@@ -1276,53 +1352,6 @@ form > .btn.text {
   color: var(--positive);
 }
 
-/* ---- Toggle Switch (Side Panel Mode) ---- */
-.toggle-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 14px;
-  background: var(--surface-1, #ffffff);
-  border: 1px solid var(--border-hairline, #e0e5ec);
-  border-radius: var(--radius-md, 8px);
-  gap: 12px;
-}
-.toggle-label-group {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-weight: 600;
-  font-size: var(--fs-md, 13px);
-  color: var(--text-1, #151b1e);
-}
-.toggle-switch {
-  width: 42px;
-  height: 24px;
-  background: #43515b;
-  border-radius: 999px;
-  border: 0;
-  padding: 3px;
-  cursor: pointer;
-  position: relative;
-  transition: background 0.15s ease;
-  display: inline-flex;
-  align-items: center;
-}
-.toggle-switch.active {
-  background: #0090ff;
-}
-.toggle-knob {
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: #ffffff;
-  transition: transform 0.15s ease;
-  transform: translateX(0);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
-  display: block;
-}
-.toggle-switch.active .toggle-knob {
-  transform: translateX(18px);
-}
+
 
 

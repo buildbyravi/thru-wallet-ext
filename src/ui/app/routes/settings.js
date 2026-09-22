@@ -262,70 +262,23 @@ export function SettingsRoute({ navigate, back }) {
     return chips;
   }
 
-  // ---- Side panel ---------------------------------------------------------
-  //
-  // The manifest declares `side_panel.default_path: popup.html`, so the panel runs this exact UI —
-  // but until now nothing in the app could open it. The only way in was the browser's own menu,
-  // which no user finds, so the declared panel was unreachable from the wallet itself.
-  //
-  // Two things this deliberately does NOT do:
-  //   - no `chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })`. That replaces the
-  //     toolbar popup with the panel for every user — a behaviour change that needs real browser
-  //     testing before anyone opts users into it, and it is not needed for an explicit action.
-  //   - no manifest, permission or panel-path change.
-  //
-  // `sidePanel.open()` only works from a user gesture and only on Chromium 116+, so the windowId is
-  // fetched during load(): awaiting inside the click handler can cost the gesture and make the call
-  // fail for a reason that has nothing to do with the user's browser.
-  let sidePanelWindowId = null;
-  let sidePanelMode = false;
-
-  function prepareSidePanel() {
-    try {
-      if (!chrome.sidePanel?.open || !chrome.windows?.getCurrent) return;
-      Promise.resolve(chrome.windows.getCurrent())
-        .then((win) => { if (win?.id != null) sidePanelWindowId = win.id; })
-        .catch(() => {});
-    } catch {
-      // Not in an extension context, or a browser without the API: the button says so on click.
-    }
-  }
-
-  function openSidePanel() {
-    banner.clear();
-    if (!chrome.sidePanel?.open) {
-      banner.set('This browser has no side panel API. The popup keeps working as usual.', 'warning');
-      return;
-    }
-    const fallback = 'Could not open the side panel. Use the wallet icon in the toolbar instead.';
-    try {
-      const result = chrome.sidePanel.open(
-        sidePanelWindowId != null ? { windowId: sidePanelWindowId } : {},
-      );
-      // Chromium returns a promise; the usual rejections are "no user gesture" and "either tabId or
-      // windowId must be specified". Both are reported rather than swallowed.
-      Promise.resolve(result).catch((error) => {
-        banner.set(error?.message || fallback, 'warning');
-      });
-    } catch (error) {
-      banner.set(error?.message || fallback, 'warning');
-    }
-  }
+  // The side panel no longer has a Settings section: the dashboard header owns the explicit
+  // "Open in side panel" action (with its 'i' hint), and the old "Side Panel Mode" toggle was
+  // removed because it was the only chrome.sidePanel.setPanelBehavior call in the app — the
+  // toolbar icon always opens the popup, full stop. Nothing here may call setPanelBehavior.
 
   async function load() {
     banner.clear();
     try {
-      const [netList, active, autoLock, prefs, panelStored] = await Promise.all([
+      const [netList, active, autoLock, prefs] = await Promise.all([
         bridge.send('network.list'),
         bridge.send('network.getActive'),
         bridge.send('system.getAutoLock'),
         bridge.send('settings.get'),
-        chrome.storage?.local?.get ? chrome.storage.local.get('thru_side_panel_mode').catch(() => null) : null,
       ]);
       networks = netList || [];
       activeNetworkId = active?.id || null;
       preferences = prefs || {};
-      sidePanelMode = Boolean(panelStored?.thru_side_panel_mode);
       theme = await getTheme().catch(() => 'system');
       render(autoLock);
     } catch (error) {
@@ -361,61 +314,6 @@ export function SettingsRoute({ navigate, back }) {
         variant: 'secondary',
         iconName: 'wallet',
         onClick: () => navigate('/accounts'),
-      })).el,
-    ]));
-
-    // ---- Window ----
-    const switchKnob = h('span', { class: 'toggle-knob' });
-    const sidePanelSwitch = h('button', {
-      type: 'button',
-      class: ['toggle-switch', sidePanelMode ? 'active' : null].filter(Boolean),
-      role: 'switch',
-      'aria-checked': String(sidePanelMode),
-      'aria-label': 'Side Panel Mode',
-    }, switchKnob);
-
-    d.on(sidePanelSwitch, 'click', async () => {
-      const next = !sidePanelMode;
-      banner.clear();
-      try {
-        const setBehavior = chrome?.sidePanel?.['setPanelBehavior'];
-        if (typeof setBehavior === 'function') {
-          await setBehavior.call(chrome.sidePanel, { openPanelOnActionClick: next });
-        }
-        if (chrome.storage?.local?.set) {
-          await chrome.storage.local.set({ thru_side_panel_mode: next });
-        }
-        sidePanelMode = next;
-        sidePanelSwitch.classList.toggle('active', next);
-        sidePanelSwitch.setAttribute('aria-checked', String(next));
-      } catch (err) {
-        banner.set(err?.message || 'Could not update side panel mode.', 'warning');
-      }
-    });
-
-    const sidePanelRow = h('div', { class: 'toggle-row' }, [
-      h('div', { class: 'toggle-label-group' }, [
-        icon('sidePanel', 18),
-        h('span', { text: 'Side Panel Mode' }),
-      ]),
-      sidePanelSwitch,
-    ]);
-
-    body.appendChild(h('section', { class: 'stack stack-2' }, [
-      SectionHeader('Window'),
-      sidePanelRow,
-      h('p', { class: 'hint', text:
-        'Open the same wallet beside your browser tab. When Side Panel Mode is on, clicking the wallet toolbar icon opens the side panel.' }),
-      track(Button({
-        label: 'Open side panel',
-        variant: 'secondary',
-        iconName: 'external',
-        onClick: () => {
-          openSidePanel();
-          if (typeof window !== 'undefined' && typeof window.close === 'function') {
-            window.close();
-          }
-        },
       })).el,
     ]));
 
@@ -463,7 +361,6 @@ export function SettingsRoute({ navigate, back }) {
   }
 
   load();
-  prepareSidePanel();
   d.add(bridge.onEvent('networkChanged', () => load()));
 
   return {

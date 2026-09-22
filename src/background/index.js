@@ -27,29 +27,18 @@ function restrictSessionStorage() {
 
 restrictSessionStorage();
 
-async function syncSidePanelBehavior() {
-  try {
-    const setBehavior = chrome?.sidePanel?.['setPanelBehavior'];
-    if (typeof setBehavior !== 'function') return;
-    const res = await chrome.storage?.local?.get('thru_side_panel_mode');
-    if (res?.thru_side_panel_mode) {
-      await setBehavior.call(chrome.sidePanel, { openPanelOnActionClick: true });
-    }
-  } catch {
-    // safe fallback
-  }
-}
-
-syncSidePanelBehavior();
+// The side panel is opened ONLY by the explicit dashboard button (a real user gesture into
+// chrome.sidePanel.open). Nothing here or in the UI may call chrome.sidePanel.setPanelBehavior:
+// flipping openPanelOnActionClick would replace the toolbar popup with the panel for every
+// user behind their back. The old Settings "Side Panel Mode" toggle was the one such call and
+// is gone; this worker now never touches panel behaviour at all.
 
 chrome.runtime.onInstalled.addListener(() => {
   ensureAutoLockAlarm();
-  syncSidePanelBehavior();
 });
 
 chrome.runtime.onStartup.addListener(() => {
   ensureAutoLockAlarm();
-  syncSidePanelBehavior();
 });
 
 // The alarm is a heartbeat, not the lock timer itself. It wakes roughly every minute and

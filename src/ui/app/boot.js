@@ -105,7 +105,7 @@ export const POPUP_ROUTES = [
     path: '/history',
     view: HistoryRoute,
     guard: guards.requireUnlocked,
-    title: 'Activity',
+    title: 'History',
   },
   {
     // requireNoWallet: onboarding must bounce to the dashboard if a wallet already exists,

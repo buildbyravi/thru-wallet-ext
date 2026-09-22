@@ -77,7 +77,7 @@ export function AppShell({ navigate, onNetworkChange }) {
     try {
       const network = await bridge.send('network.getActive');
       const label = network?.label || network?.id || 'Unknown network';
-      connectionFooter.update(undefined, label);
+      connectionFooter.update({ network: label });
 
       networkBadge.textContent = label;
       networkBadge.classList.toggle('badge-live', network?.isTestnet === false);
@@ -88,7 +88,7 @@ export function AppShell({ navigate, onNetworkChange }) {
       currentNetwork = network;
       onNetworkChange?.(network);
     } catch {
-      connectionFooter.update(undefined, '—', null, 'offline');
+      connectionFooter.update({ network: '—', healthStatus: 'offline' });
       networkBadge.textContent = '—';
     }
     try {
@@ -96,12 +96,15 @@ export function AppShell({ navigate, onNetworkChange }) {
       const ms = Number(health?.latencyMs);
       const online = health?.status === 'ok' || health?.healthy === true || Number.isFinite(ms);
       if (!online) {
-        connectionFooter.update(undefined, undefined, null, 'offline');
+        connectionFooter.update({ healthStatus: 'offline' });
       } else {
-        connectionFooter.update(undefined, undefined, Number.isFinite(ms) ? ms : null, ms > 800 ? 'slow' : 'healthy');
+        connectionFooter.update({
+          latencyMs: Number.isFinite(ms) ? ms : null,
+          healthStatus: ms > 800 ? 'slow' : 'healthy',
+        });
       }
     } catch {
-      connectionFooter.update(undefined, undefined, null, 'offline');
+      connectionFooter.update({ healthStatus: 'offline' });
     }
   }
 
