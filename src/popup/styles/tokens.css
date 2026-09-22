@@ -6,9 +6,9 @@
    monospace micro-labels, and brick red used sparingly as a signal
    rather than as decoration.
 
-   Only surface/text/border assignments changed from the dark theme.
-   The underlying thru.org colour scales are untouched, so every
-   component keeps referring to the same semantic variables.
+   Integrated with Rabby structural information architecture:
+   196px ink header (#1A1214), 3x2 action grid (88px cells), tabbed
+   token ledger, and persistent connection status.
    ============================================================ */
 
 :root {
@@ -45,68 +45,74 @@
   --yellow-400: #ffad42;
   --golden: #ffffbd;
 
-  /* ---- Application surfaces (light instrument panel) ----
-     bg        page / chrome, the pale steel-teal of the site frame
+  /* ---- Application surfaces (Rabby structure, Thru identity) ----
+     bg        page / chrome
      surface-1 the white working surface: cards, inputs, rows
      surface-2 recessed panel: sidebars, grouped list backgrounds
      surface-3 pressed / hover state on a recessed panel          */
-  --bg: #dfe8ea;
+  --bg: #f2f4f7;
   --surface-1: #ffffff;
-  --surface-2: #eef3f4;
-  --surface-3: #e2eaec;
+  --surface-2: #eef1f4;
+  --surface-3: #e0e5ec;
   --surface-inset: #f7f9fa;
 
-  /* Hairlines. The site leans on 1px borders instead of shadows to
-     separate things, which is what gives it the drafting-table feel. */
-  --border: #c8d5d9;
-  --border-strong: #a4b3bc;
-  --border-hairline: #dde5e8;
+  /* Rabby structure tokens */
+  --header: #1a1214;
+  --header-2: #2a1618;
+  --line: #e0e5ec;
+  --blue-hover: #fdf0f1;
+  --title: #151b1e;
+  --body: #3e4a52;
+  --foot: #6a7580;
+  --brand: #c43a40;
+  --green: #1c7d76;
+  --red: #c43a40;
+  --orange: #d4922a;
 
-  /* ---- Text ---- */
+  /* Hairlines and borders */
+  --border: #e0e5ec;
+  --border-strong: #cdd5db;
+  --border-hairline: #e0e5ec;
+
+  /* Text */
   --text-1: #151b1e;
-  --text-2: #43515b;
-  --text-3: #6c8290;
+  --text-2: #3e4a52;
+  --text-3: #6a7580;
   --text-inverse: #ffffff;
 
-  /* ---- Accent (Thru signature red) ---- */
-  --accent: #d33c43;
-  --accent-bright: #a82c33;
+  /* Accent & CTAs */
+  --accent: #c43a40;
+  --accent-hover: #e25a60;
+  --accent-bright: #e25a60;
   --accent-ink: #ffffff;
   --accent-tint: #fdf0f1;
   --accent-border: #f0b8bb;
 
-  /* ---- Ink: the black used for primary CTAs on the site ---- */
   --ink: #151b1e;
   --ink-hover: #2b353b;
   --ink-ink: #ffffff;
 
-  /* ---- Gold / highlight ---- */
-  --gold: #b26a00;
-  --gold-tint: #fdf4e6;
-  --gold-border: #f0d5a8;
-
-  /* ---- Semantic ---- */
+  /* Semantic */
   --positive: #1c7d76;
   --positive-tint: #e8f5f4;
   --positive-border: #a8d8d4;
-  --negative: #c0343b;
+  --negative: #c43a40;
   --negative-tint: #fdf0f1;
   --negative-border: #f0b8bb;
+  --gold: #d4922a;
+  --gold-tint: #fdf4e6;
+  --gold-border: #f0d5a8;
 
-  /* ---- Byte-mark identicon ramp (light) ---- */
-  --mark-0: #e2eaec;
-  --mark-1: #a9c3c5;
-  --mark-2: #5e8787;
-  --mark-3: #d33c43;
+  /* Byte-mark identicon ramp */
+  --mark-0: #f2f4f7;
+  --mark-1: #3fbfae;
+  --mark-2: #c43a40;
+  --mark-3: #1a1214;
 
-  /* ---- Typography ----
-     Inter Tight and JetBrains Mono are thru.org's faces. They are listed
-     first so they are used when installed locally or once the .woff2
-     files are vendored under src/popup/fonts/ (see popup.html). The
-     fallbacks are the platform equivalents, not generic defaults, so the
-     UI stays close to intent without any network request. */
+  /* Typography */
   --font-ui: 'Inter Tight', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI Variable Text', 'Segoe UI', Roboto, system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Mono', 'SFMono-Regular', Menlo, Consolas, monospace;
+  --font-display: 'Inter Tight', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 
   --fs-xs: 11px;
   --fs-sm: 12px;
@@ -114,11 +120,11 @@
   --fs-lg: 15px;
   --fs-xl: 18px;
   --fs-2xl: 22px;
-  --fs-display: 34px;
+  --fs-display: 32px;
 
   --eyebrow-tracking: 0.09em;
 
-  /* ---- Spacing (4px base) ---- */
+  /* Spacing */
   --sp-1: 4px;
   --sp-2: 8px;
   --sp-3: 12px;
@@ -128,38 +134,32 @@
   --sp-7: 28px;
   --sp-8: 32px;
 
-  /* ---- Shape. The site is nearly square-cornered; keeping radii
-     small is most of what separates "instrument" from "consumer app". */
-  --radius-sm: 2px;
-  --radius-md: 3px;
-  --radius-lg: 4px;
+  /* Shape */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
   --radius-pill: 999px;
 
-  /* ---- Elevation. Used only for things that genuinely float. ---- */
+  /* Dimensions */
+  --popup-width: 400px;
+  --popup-height: 600px;
+  --popup-min-height: 600px;
+  --header-height: 196px;
+  --topbar-height: 48px;
+
+  /* Elevation */
   --shadow-sheet: 0 -1px 0 var(--border), 0 -12px 32px rgba(21, 27, 30, 0.12);
   --shadow-pop: 0 1px 2px rgba(21, 27, 30, 0.06), 0 8px 24px rgba(21, 27, 30, 0.1);
   --overlay-bg: rgba(21, 27, 30, 0.32);
 
-  /* ---- Motion ---- */
+  /* Motion */
   --t-fast: 100ms ease-out;
   --t-base: 150ms ease-out;
   --t-screen: 200ms cubic-bezier(0.2, 0, 0.2, 1);
-
-  /* ---- Dimensions ---- */
-  --popup-width: 408px;
-  --popup-min-height: 580px;
-  --topbar-height: 48px;
 }
 
 /* ============================================================
-   Dark theme — same thru.org scales, inverted. Nothing here invents
-   a new colour: every value is pulled from the official steel/teal/
-   brick ramps above, remapped so surfaces step lighter as they rise
-   and text inverts to the ice end of the scale. Semantic names stay
-   identical, so no component CSS is theme-aware.
-
-   Applied by src/popup/theme.js via document.documentElement
-   [data-theme="dark"|"light"]; 'system' resolves at apply time.
+   Dark theme — same thru.org scales, inverted.
    ============================================================ */
 [data-theme="dark"] {
   --bg: #101517;
@@ -167,18 +167,28 @@
   --surface-2: #232c31;
   --surface-3: #2c373d;
   --surface-inset: #141a1d;
+  --header: #101517;
+  --header-2: #1a1214;
+  --line: #242e33;
+  --border-hairline: #242e33;
 
   --border: #2f3a40;
   --border-strong: #45535b;
-  --border-hairline: #242e33;
 
   --text-1: #eef4f5;
   --text-2: #a9bcc4;
   --text-3: #7d939e;
   --text-inverse: #151b1e;
 
+  --title: #eef4f5;
+  --body: #a9bcc4;
+  --foot: #7d939e;
+
   --accent: #e65b62;
   --accent-bright: #f0767c;
+  --accent-hover: #f0767c;
+  --brand: #e65b62;
+  --blue-hover: rgba(230, 91, 98, 0.12);
   --accent-ink: #ffffff;
   --accent-tint: rgba(237, 120, 126, 0.13);
   --accent-border: rgba(237, 120, 126, 0.38);

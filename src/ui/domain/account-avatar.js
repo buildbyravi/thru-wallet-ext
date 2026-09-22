@@ -23,6 +23,7 @@ export function AccountAvatar({ address, imported = false, size = 'md' } = {}) {
   const classes = ['byte-mark'];
   if (imported) classes.push('imported');
   if (size === 'sm') classes.push('sm');
+  if (size === 'lg') classes.push('lg');
 
   // Fewer than 2 characters cannot produce a meaningful mark. Render an explicitly empty
   // slot so "no account yet" reads as absence rather than as a real identity.
