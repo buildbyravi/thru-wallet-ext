@@ -62,6 +62,13 @@ the background on every service-worker restart from the stored `thru_side_panel_
 (allowlist) and never by load/boot/anything else. If the toolbar icon ever starts opening the
 panel while the toggle is off, that is a regression, not a feature.
 
+**Mutual exclusion** — the popup and the side panel are never both open. With the panel open,
+click the toolbar icon: the popup must appear AND the panel must close on its own (the popup
+broadcasts `THRU_CLOSE_SIDE_PANEL` on open; a panel-shaped page closes on receipt — the panel is
+detected by its full-window viewport, the popup is always the fixed 400×600). The reverse
+direction is the existing dashboard button: it opens the panel and closes the popup. The
+background early-returns the broadcast instead of routing it as an API request.
+
 ## 2. Both widths
 
 `--popup-width` is **400px** and `--popup-height` is 600px. The popup is therefore always 400px

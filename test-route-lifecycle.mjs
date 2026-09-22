@@ -741,6 +741,15 @@ function makeWindow(doc) {
   const win = {
     listeners,
     document: doc,
+    // The popup is fixed-size (400x600, tokens.css). Tests may make this taller
+    // to simulate the side panel (full window height), and assert on `closed` to
+    // prove window.close() reached the page.
+    innerWidth: 400,
+    innerHeight: 600,
+    closed: false,
+    close() {
+      this.closed = true;
+    },
     addEventListener(type, handler, options) {
       listeners.push({
         type: String(type),
@@ -1390,6 +1399,8 @@ const chromeLog = {
   unexpected: [],
   sidePanelOpen: [],
   setPanelBehavior: [],
+  /** UI<->UI action broadcasts (popup/panel mutual exclusion), in order */
+  broadcasts: [],
   listeners: new Set(),
 };
 
@@ -1403,6 +1414,26 @@ function makeChrome() {
       version: '1.2.0',
     }),
     sendMessage(message, callback) {
+      // UI<->UI action broadcast (popup/panel mutual exclusion). In Chrome this is
+      // delivered to every OTHER extension context — modelled here as a fan-out to
+      // every registered onMessage listener. It is NOT an API call, so it must not
+      // touch calls/missing. (The harness has one shared context, so the sender
+      // "sees" its own broadcast too; in Chrome it does not. The exclusion listener
+      // guards against that with its own viewport check — the tests prove it.)
+      if (message && typeof message === 'object' && message.action && !message.method) {
+        chromeLog.broadcasts.push(message);
+        queueMicrotask(() => {
+          for (const listener of [...chromeLog.listeners]) {
+            try {
+              listener(message, { id: 'test-extension-id' });
+            } catch (error) {
+              consoleErrors.push(String(error));
+            }
+          }
+        });
+        return Promise.resolve();
+      }
+
       const method = String(message?.method || '');
       chromeLog.calls.push(method);
       // Async, like the real thing: the round-trip is a task boundary, so a route that renders
@@ -1704,6 +1735,8 @@ const { requirePassword } = await import('./src/ui/domain/password-prompt.js');
 const { boot, POPUP_ROUTES } = await import('./src/ui/app/boot.js');
 const guards = await import('./src/ui/app/guards.js');
 const bridge = await import('./src/ui/app/bridge.js');
+const { installSidePanelExclusion } = await import('./src/ui/app/side-panel-exclusion.js');
+const { isSidePanelViewport, CLOSE_SIDE_PANEL_ACTION } = await import('./src/shared/side-panel.js');
 const { Router } = await import('./src/ui/app/router.js');
 
 function isInside(node, root) {
@@ -2463,6 +2496,75 @@ function sourceTest() {
   ok('the checklist names every route',
     ROUTE_PATHS.every((path) => doc.includes(path)),
     ROUTE_PATHS.filter((path) => !doc.includes(path)).join(', '));
+}
+
+// ---- Popup / side-panel mutual exclusion ------------------------------------
+//
+// Both surfaces load the SAME popup.html, so the surface that just opened enforces
+// "exactly one surface at a time": the popup broadcasts THRU_CLOSE_SIDE_PANEL, and a
+// side-panel-shaped page (full window height, unlike the fixed 400x600 popup) closes
+// itself on receipt. The harness has ONE shared chrome context, so the sender also
+// receives its own broadcast — in Chrome it does not — which makes the listener's
+// viewport re-check the real guard, and these tests prove it holds.
+
+async function panelExclusionTest() {
+  section('mutual exclusion: the popup and the side panel are never both open');
+
+  resetBackend(SCENARIOS[2]);
+  resetDom();
+  guards.invalidate();
+  const app = DOC.getElementById('app');
+  await boot({ root: app });
+  await settle();
+
+  // Booting the (400x600) popup page broadcasts the close signal...
+  ok('booting the popup broadcasts THRU_CLOSE_SIDE_PANEL',
+    chromeLog.broadcasts.some((m) => m?.action === CLOSE_SIDE_PANEL_ACTION),
+    JSON.stringify(chromeLog.broadcasts));
+  ok('the broadcast is an action message, not an API call',
+    chromeLog.broadcasts.length > 0
+      && chromeLog.broadcasts.every((m) => Boolean(m?.action) && m?.method === undefined)
+      && !chromeLog.calls.includes('') && ![...chromeLog.missing].includes(''),
+    JSON.stringify({ calls: chromeLog.calls.slice(0, 5), missing: [...chromeLog.missing] }));
+
+  // ...and the popup-shaped page that received it (shared context!) must NOT close.
+  ok('a popup-shaped page ignores the close signal', WIN.closed === false);
+
+  // A side-panel-shaped page closes itself when another popup opens.
+  const panelWin = { innerHeight: 900, innerWidth: 320, closed: false, close() { this.closed = true; } };
+  installSidePanelExclusion(panelWin);
+  bridge.broadcastCloseSidePanel();
+  await settle();
+  ok('the side panel closes itself when a popup opens', panelWin.closed === true);
+
+  // The detector boundary: the popup is exactly 600px tall; the panel is the full
+  // window height. A missing viewport (e.g. an exotic context) stays a popup.
+  ok('the viewport detector treats exactly 600px as the popup',
+    isSidePanelViewport({ innerHeight: 600 }) === false);
+  ok('the viewport detector treats a taller viewport as the panel',
+    isSidePanelViewport({ innerHeight: 601 }) === true
+      && isSidePanelViewport({ innerHeight: 900 }) === true);
+  ok('the viewport detector tolerates a missing viewport', isSidePanelViewport({}) === false);
+
+  // Unrelated action messages never close a panel-shaped page.
+  const otherPanel = { innerHeight: 900, closed: false, close() { this.closed = true; } };
+  const disposeOther = installSidePanelExclusion(otherPanel);
+  chrome.runtime.sendMessage({ action: 'SOMETHING_ELSE' });
+  await settle();
+  ok('an unrelated action message does not close the panel', otherPanel.closed === false);
+
+  // The wiring is load-bearing: boot (both surfaces) must call the installer.
+  const bootSource = stripComments(readFileSync(join(ROOT, 'src', 'ui', 'app', 'boot.js'), 'utf8'));
+  ok('boot wires the exclusion into every surface',
+    /installSidePanelExclusion\s*\(/.test(bootSource));
+  const bgSource = stripComments(readFileSync(join(ROOT, 'src', 'background', 'index.js'), 'utf8'));
+  ok('the background early-returns the action instead of routing it as an API request',
+    /CLOSE_SIDE_PANEL_ACTION/.test(bgSource) && /request\?\.action === CLOSE_SIDE_PANEL_ACTION/.test(bgSource));
+
+  const beforeDispose = chromeLog.listeners.size;
+  disposeOther();
+  ok('dispose removes the message listener', chromeLog.listeners.size === beforeDispose - 1,
+    `${beforeDispose} -> ${chromeLog.listeners.size}`);
 }
 
 // ---- In-app navigation -----------------------------------------------------
@@ -3433,6 +3535,7 @@ try {
   await passwordModalTest();
   await exportSecretTest();
   await navigationTest();
+  await panelExclusionTest();
   negativeControls();
 } finally {
   releaseConsole();

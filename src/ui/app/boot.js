@@ -8,6 +8,7 @@ import { Router } from './router.js';
 import * as guards from './guards.js';
 import * as bridge from './bridge.js';
 import { AppShell } from './shell.js';
+import { installSidePanelExclusion } from './side-panel-exclusion.js';
 import { FLAGS } from '../../shared/flags.js';
 import { initTheme } from '../../popup/theme.js';
 import { UnlockRoute } from './routes/unlock.js';
@@ -174,6 +175,11 @@ export async function boot({ root, legacyFallback, onMigratedRoute } = {}) {
     navigate: (path, options) => router.navigate(path, options),
   });
   mount.appendChild(shell.el);
+
+  // Popup <-> side panel mutual exclusion (see side-panel-exclusion.js): the same
+  // popup.html runs in both surfaces, so the module self-detects. As the popup it
+  // broadcasts the close signal to any open panel; as the panel it only listens.
+  installSidePanelExclusion();
 
   const router = new Router({
     routes: POPUP_ROUTES,

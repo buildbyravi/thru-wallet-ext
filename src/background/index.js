@@ -5,6 +5,7 @@ import { lock } from '../lib/vault.js';
 import { handleApiRequest } from './api-router.js';
 import { ensureAutoLockAlarm, shouldAutoLock, touchActivity } from './services/system-service.js';
 import { emitLockStateChanged } from './services/event-service.js';
+import { CLOSE_SIDE_PANEL_ACTION } from '../shared/side-panel.js';
 
 const AUTO_LOCK_ALARM = 'thru-auto-lock';
 
@@ -77,6 +78,13 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   // Only accept messages originating from this extension's own pages.
   if (sender.id !== chrome.runtime.id) {
+    return false;
+  }
+
+  // UI<->UI broadcast from src/ui/app/side-panel-exclusion.js: a popup telling an
+  // open side panel to close (popup/panel mutual exclusion). The peer page handles
+  // it itself — there is nothing to route and nothing to respond to.
+  if (request?.action === CLOSE_SIDE_PANEL_ACTION) {
     return false;
   }
 
