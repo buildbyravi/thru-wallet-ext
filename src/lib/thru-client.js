@@ -552,7 +552,7 @@ export async function listAccountHistory(address, pageSize = 15) {
  *
  * This reuses decodeHistoryEntry (same Transaction class, same decoder) so the detail view
  * cannot disagree with the list view about kind/amount/counterparty. What it ADDS over a
- * list entry is exactly two things, both spiked in docs/TX_DETAIL_SPIKE.md:
+ * list entry is exactly two things, both spiked in docs/archive/TX_DETAIL_SPIKE.md:
  *
  *   feeDeclaredUnits — `Transaction.fee`, the fee DECLARED IN THE TRANSACTION HEADER. It is
  *       deliberately NOT named `feeUnits`: Thru's TransactionExecutionResult carries no

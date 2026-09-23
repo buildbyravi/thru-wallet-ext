@@ -1364,6 +1364,36 @@ form > .btn.text {
 .help-circle-icon:hover {
   color: var(--text-1, #151b1e);
 }
+/* ---- In-wallet "?" popover (replaces the native title tooltip) -------------
+   The native title tooltip belongs to the browser and can render outside the
+   fixed 400x600 popup. This card renders inside the screen instead: the host
+   row is position:relative, the card is right-aligned to that row and capped
+   at 240px, so it can never leave the popup boundary. Inherits no text styling
+   from its host (list-group-header is uppercase + tracked). */
+.help-tooltip-host {
+  position: relative;
+}
+.inline-tooltip {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  width: max-content;
+  max-width: 240px;
+  background: #1a1214;
+  color: #fff;
+  font-size: 11px;
+  line-height: 1.45;
+  font-weight: 400;
+  font-family: inherit;
+  text-transform: none;
+  letter-spacing: normal;
+  text-align: left;
+  padding: 6px 10px;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  z-index: 100;
+  pointer-events: none;
+}
 
 
 

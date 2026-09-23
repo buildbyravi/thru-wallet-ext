@@ -15,6 +15,7 @@ import { h, disposer } from '../../kit/dom.js';
 import { icon } from '../../kit/icon.js';
 import { Button } from '../../kit/button.js';
 import { PageHeader, Banner, Spinner } from '../../kit/feedback.js';
+import { HelpTooltip } from '../../kit/help-tooltip.js';
 import { requirePassword } from '../../domain/password-prompt.js';
 import * as bridge from '../bridge.js';
 import { getTheme, setTheme } from '../../../popup/theme.js';
@@ -188,9 +189,7 @@ export function SettingsRoute({ navigate, back }) {
       return chip;
     });
 
-    hostEl.appendChild(h('p', { class: 'hint', text:
-      'The wallet locks after this much inactivity. "Never" keeps it unlocked until the '
-      + 'browser closes.' }));
+    // The explanation is the (?) popover on the "Auto-lock" row above.
     hostEl.appendChild(h('div', { class: 'row-flex wrap' }, chips));
   }
 
@@ -306,19 +305,34 @@ export function SettingsRoute({ navigate, back }) {
     // ---- Security ----
     const security = h('section', { class: 'stack stack-2' }, [SectionHeader('Security')]);
     body.appendChild(security);
-    // The explanation lives in the (?) icon's native tooltip — no paragraph of
-    // small print on the screen. Session-only is the default; requiring the
-    // password again is the explicit opt-in.
-    security.appendChild(h('div', { class: 'row-flex align-center', style: { gap: '6px' } }, [
+    // The explanation lives in a (?) in-wallet popover (kit/help-tooltip.js), not a
+    // paragraph of small print and not the native title tooltip — the browser owns that
+    // one and it can render outside the 400x600 popup. Session-only is the default;
+    // requiring the password again is the explicit opt-in.
+    const signingRow = h('div', { class: 'row-flex align-center', style: { gap: '6px' } }, [
       h('strong', { text: 'Signing' }),
-      h('span', {
-        class: 'help-circle-icon',
-        title: 'Require password before every transaction is signed. Session-only allows signing from an already-unlocked session.',
-        'aria-label': 'About signing security',
-      }, icon('help', 13)),
-    ]));
+    ]);
+    const signingHelp = HelpTooltip({
+      host: signingRow,
+      label: 'About signing security',
+      text: 'Session-only allows signing freely while unlocked. Require password prompts before every transaction.',
+    });
+    owned.push(signingHelp);
+    signingRow.appendChild(signingHelp.trigger);
+    security.appendChild(signingRow);
     renderSigningReauth(security, preferences?.requirePasswordForSigning === true);
-    security.appendChild(h('strong', { text: 'Auto-lock' }));
+
+    const autoLockRow = h('div', { class: 'row-flex align-center', style: { gap: '6px' } }, [
+      h('strong', { text: 'Auto-lock' }),
+    ]);
+    const autoLockHelp = HelpTooltip({
+      host: autoLockRow,
+      label: 'About auto-lock',
+      text: 'Automatically locks your wallet after inactivity to protect decrypted keys.',
+    });
+    owned.push(autoLockHelp);
+    autoLockRow.appendChild(autoLockHelp.trigger);
+    security.appendChild(autoLockRow);
     renderAutoLock(security, Number(autoLockMinutes));
 
     // ---- Accounts shortcut ----
@@ -367,27 +381,35 @@ export function SettingsRoute({ navigate, back }) {
       }
     });
 
-    const sidePanelRow = h('div', { class: 'toggle-row' }, [
-      h('div', { class: 'toggle-label-group' }, [
-        icon('sidePanel', 18),
-        h('span', { text: 'Side Panel Mode' }),
-      ]),
-      sidePanelSwitch,
+    const sidePanelLabelGroup = h('div', { class: 'toggle-label-group' }, [
+      icon('sidePanel', 18),
+      h('span', { text: 'Side Panel Mode' }),
     ]);
+    const sidePanelRow = h('div', { class: 'toggle-row' }, [sidePanelLabelGroup, sidePanelSwitch]);
+    const sidePanelHelp = HelpTooltip({
+      host: sidePanelRow,
+      label: 'About Side Panel Mode',
+      text: 'When on, clicking the browser toolbar icon opens the side panel instead of the popup.',
+    });
+    owned.push(sidePanelHelp);
+    sidePanelLabelGroup.appendChild(sidePanelHelp.trigger);
 
     body.appendChild(h('section', { class: 'stack stack-2' }, [
       SectionHeader('Window'),
       sidePanelRow,
-      h('p', { class: 'hint', text:
-        'When on, clicking the wallet toolbar icon opens the side panel instead of the popup. '
-        + 'The dashboard header has its own "Open in side panel" button for a one-off open.' }),
     ]));
 
     // ---- Appearance ----
+    const appearanceHeader = SectionHeader('Appearance');
+    const appearanceHelp = HelpTooltip({
+      host: appearanceHeader,
+      label: 'About appearance',
+      text: 'Choose Light, Dark, or System to follow your device theme.',
+    });
+    owned.push(appearanceHelp);
+    appearanceHeader.appendChild(appearanceHelp.trigger);
     body.appendChild(h('section', { class: 'stack stack-2' }, [
-      SectionHeader('Appearance'),
-      h('p', { class: 'hint', text:
-        'Choose how the wallet looks. “System” follows your device and switches live.' }),
+      appearanceHeader,
       h('div', { class: 'row-flex wrap' }, themeChips()),
     ]));
 

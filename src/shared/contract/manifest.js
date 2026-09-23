@@ -346,7 +346,7 @@ export const METHODS = {
       + 'feeDeclaredUnits, feeCharged: false, nonce, blockTimeMs } — lazy per-signature detail for '
       + 'the transaction sheet. feeDeclaredUnits is the HEADER-DECLARED fee, not an amount debited '
       + '(Thru carries no charged-fee field); blockTimeMs is the containing block\'s time and is '
-      + 'null when the node did not send one. Unknown => null, never a guess. See docs/TX_DETAIL_SPIKE.md.',
+      + 'null when the node did not send one. Unknown => null, never a guess. See docs/archive/TX_DETAIL_SPIKE.md.',
     auth: 'none',
     since: 10,
   },

@@ -157,7 +157,7 @@ in per-network config.
 ### C2b. Per-transaction CHARGED fee — not on the RPC surface at all
 Distinct from C2, which is about *estimating* a fee before sending. This is about reporting
 what a transaction in history actually cost, and the answer from the spike
-(`docs/TX_DETAIL_SPIKE.md` §3.3) is that the chain does not report it:
+(`docs/archive/TX_DETAIL_SPIKE.md` §3.3) is that the chain does not report it:
 `TransactionExecutionResult` has no charged-fee field (compute/memory/state units, `vm_error`,
 events, `fee_payer_expected_nonce` — nothing else). `Transaction.fee` exists but is the
 sender's HEADER DECLARATION, an input to execution, not a receipt.
@@ -170,7 +170,7 @@ sender's HEADER DECLARATION, an input to execution, not a receipt.
 → remaining: the P2.5 explorer spike. If a charged fee exists anywhere it is behind the typed
   (undocumented) API under `scan.thru.org`'s MCP tools. Until that is validated, the honest
   answer stays "not reported".
-→ **Spike attempted 2026-09-20** (`docs/EXPLORER_SPIKE.md` §7): live validation was blocked in
+→ **Spike attempted 2026-09-20** (`docs/archive/EXPLORER_SPIKE.md` §7): live validation was blocked in
   the spike environment (no route to Thru hosts); the official `get_transaction` tool docs
   describe status/accounts/instructions/events and no charged-fee field. Still open; resume
   via that doc's §11 checklist.

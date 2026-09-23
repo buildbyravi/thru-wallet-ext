@@ -43,9 +43,9 @@ Start with the docs index:
 | [`docs/DEFECT_LOG.md`](docs/DEFECT_LOG.md) | Historical defects, root causes, and lessons. |
 | [`docs/BACKEND_GAPS.md`](docs/BACKEND_GAPS.md) | Capability gaps and unsupported backend states. |
 | [`docs/MANUAL_SMOKE_CHECKLIST.md`](docs/MANUAL_SMOKE_CHECKLIST.md) | Browser-only verification runbook: popup + side panel, narrow + wide widths, all 14 routes, focus, secret hygiene. |
-| [`docs/WALLET_FEATURES_PERFORMANCE_STUDY.md`](docs/WALLET_FEATURES_PERFORMANCE_STUDY.md) | Popular wallet feature study and no-lag popup/full-tab performance model. |
-| [`docs/THRU_NATIVE_DEFI_TAB_UX.md`](docs/THRU_NATIVE_DEFI_TAB_UX.md) | Thru-native launchpad/DEX/full-tab architecture direction. Research only; no shipped code corresponds to it. |
-| [`docs/LAUNCHPAD_UX_STUDY.md`](docs/LAUNCHPAD_UX_STUDY.md) | Launchpad UX study. Retained research only. |
+| [`docs/archive/WALLET_FEATURES_PERFORMANCE_STUDY.md`](docs/archive/WALLET_FEATURES_PERFORMANCE_STUDY.md) | Popular wallet feature study and no-lag popup/full-tab performance model. |
+| [`docs/archive/THRU_NATIVE_DEFI_TAB_UX.md`](docs/archive/THRU_NATIVE_DEFI_TAB_UX.md) | Thru-native launchpad/DEX/full-tab architecture direction. Research only; no shipped code corresponds to it. |
+| [`docs/archive/LAUNCHPAD_UX_STUDY.md`](docs/archive/LAUNCHPAD_UX_STUDY.md) | Launchpad UX study. Retained research only. |
 | [`docs/LAUNCHPAD_DEX_MIGRATION_UX.md`](docs/LAUNCHPAD_DEX_MIGRATION_UX.md) | Launchpad-to-DEX migration and charting study. Retained research only. |
 | [`docs/archive/`](docs/archive/) | Historical plans only; do not use as current state. |
 

@@ -2020,12 +2020,46 @@ async function settingsTest() {
     !/My node/.test(textOf(tree)) && /temporarily unavailable/i.test(textOf(tree)),
     textOf(tree).slice(0, 300));
 
-  // ---- Signing: the explanation lives in the (?) icon's tooltip, not a paragraph ----
-  const helpIcons = allElements(tree).filter((el) => el.getAttribute?.('aria-label') === 'About signing security');
-  ok('the signing explanation is the "?" icon tooltip',
-    helpIcons.length === 1
-      && /session-only allows signing/i.test(helpIcons[0].getAttribute('title') || ''),
-    helpIcons.map((el) => el.getAttribute('title')).join(' | '));
+  // ---- Signing & friends: the explanations are in-wallet "?" popovers, not paragraphs
+  // ---- and not the native title tooltip (the browser owns that one, and it can render
+  // ---- outside the fixed 400x600 popup).
+  const helpTriggers = allElements(tree).filter((el) => el.classList?.contains?.('help-circle-icon'));
+  ok('settings explains signing, auto-lock, side panel mode and appearance with "?" controls',
+    helpTriggers.length === 4
+      && helpTriggers.map((el) => el.getAttribute('aria-label')).sort().join(', ')
+        === ['About Side Panel Mode', 'About appearance', 'About auto-lock', 'About signing security'].join(', '),
+    helpTriggers.map((el) => el.getAttribute('aria-label')).join(', '));
+  ok('no "?" trigger carries a native title (the browser tooltip can overflow the popup)',
+    helpTriggers.every((el) => !el.hasAttribute('title')));
+  const tips = allElements(tree).filter((el) => el.classList?.contains?.('inline-tooltip'));
+  ok('each "?" owns an in-wallet popover, hidden at rest',
+    tips.length === 4 && tips.every((t) => t.hasAttribute('hidden')),
+    `tips=${tips.length}`);
+  const signingTip = tips.find((t) => /session-only allows signing/i.test(t.textContent || ''));
+  ok('the signing popover carries the session-only / require-password explanation',
+    Boolean(signingTip) && /require password prompts before every transaction/i.test(signingTip.textContent),
+    signingTip?.textContent || 'no signing popover found');
+  const signingTrigger = helpTriggers.find((el) => el.getAttribute('aria-label') === 'About signing security');
+  if (signingTip && signingTrigger) {
+    signingTrigger.dispatchEvent({ type: 'mouseenter' });
+    await settle();
+    ok('hovering the signing "?" reveals the popover inside the screen',
+      !signingTip.hasAttribute('hidden') && isConnected(signingTip));
+    ok('the open popover is announced on the trigger',
+      signingTrigger.getAttribute('aria-expanded') === 'true');
+    signingTrigger.dispatchEvent({ type: 'mouseleave' });
+    await settle();
+    ok('leaving the trigger hides the popover again',
+      signingTip.hasAttribute('hidden') && signingTrigger.getAttribute('aria-expanded') === 'false');
+  } else {
+    ok('the signing "?" trigger and popover exist to hover', false);
+  }
+  // The descriptive hint paragraphs are gone; the ONLY surviving hint text is the
+  // functional custom-network quarantine notice.
+  const hintParas = allElements(tree).filter((el) => el.classList?.contains?.('hint'));
+  ok('only the custom-network notice remains as hint text',
+    hintParas.length === 1 && /temporarily unavailable/i.test(hintParas[0].textContent),
+    hintParas.map((el) => (el.textContent || '').slice(0, 60)).join(' | '));
   ok('the old signing recommendation paragraph is gone from the screen',
     !/recommended: require the wallet password/i.test(textOf(tree)));
 
@@ -2644,19 +2678,35 @@ async function navigationTest() {
     chromeLog.setPanelBehavior.length === 0, JSON.stringify(chromeLog.setPanelBehavior));
   ok('the side panel action reported no error banner', !/Could not open the side panel/i.test(textOf(app)));
 
-  const settingsButton = buttons(app, /settings/i)[0];
-  ok('the topbar exposes a settings control', Boolean(settingsButton),
-    buttons(app, /.*/).slice(0, 6).map(labelOf).join(', '));
+  // The shell topbar is hidden on every screen now (each screen owns its own
+  // header), so the controls a user can actually reach on the dashboard are the
+  // .dash-header-btn ones. The test clicks those — not the hidden topbar's copies.
+  const topbar = allElements(app).filter((el) => el.classList?.contains?.('topbar'))[0];
+  ok('the shell topbar is hidden on the dashboard', topbar?.classList?.contains('hidden'),
+    topbar?.className || 'no topbar element');
+  const dashButtons = allElements(app)
+    .filter((el) => el.localName === 'button' && el.classList?.contains?.('dash-header-btn'));
+  const settingsButton = dashButtons.find((el) => /settings/i.test(labelOf(el)));
+  ok('the dashboard header exposes a settings control', Boolean(settingsButton),
+    dashButtons.map(labelOf).join(', '));
   click(settingsButton);
   await settle();
-  ok('the topbar settings control reaches /settings', router.currentPath === '/settings',
+  ok('the dashboard settings control reaches /settings', router.currentPath === '/settings',
     router.currentPath);
 
-  const lockButton = buttons(app, /lock/i)[0];
-  ok('the topbar exposes a lock control', Boolean(lockButton));
+  // The header buttons are route-owned: leaving the dashboard disposes them, so the
+  // lock is re-queried on the dashboard after navigating back — the flow a user runs.
+  // (The shell topbar used to outlive navigation, which is why its hidden copies used
+  // to be the ones this test clicked.)
+  router.navigate('/dashboard');
+  await settle();
+  const dashButtonsAfter = allElements(app)
+    .filter((el) => el.localName === 'button' && el.classList?.contains?.('dash-header-btn'));
+  const lockButton = dashButtonsAfter.find((el) => /lock/i.test(labelOf(el)));
+  ok('the dashboard header exposes a lock control', Boolean(lockButton));
   click(lockButton);
   await settle();
-  ok('locking from the topbar locks the vault', backend.unlocked === false);
+  ok('locking from the dashboard header locks the vault', backend.unlocked === false);
   ok('locking leaves the private screen and lands on /unlock', router.currentPath === '/unlock',
     router.currentPath);
   ok('locking leaves no secret in the document or in the destroyed screens',
@@ -2685,6 +2735,10 @@ async function navigationTest() {
     ok(`the ${path} screen rendered`, textOf(router.root).trim().length > 8);
     ok(`the connection footer stays hidden on ${path}`,
       footer?.classList?.contains('hidden'), footer?.className);
+    // Single header per screen: the shell topbar must not stack above this
+    // screen's own PageHeader (the 36px double-header it used to be).
+    ok(`the shell topbar stays hidden on ${path} (single header)`,
+      topbar?.classList?.contains('hidden'), topbar?.className);
 
     const back = buttons(router.root, /^back$/i)[0];
     ok(`the ${path} screen has a Back control`, Boolean(back));

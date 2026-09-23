@@ -18,9 +18,7 @@ Purpose: single map for every maintained Markdown document in this repository. U
 ### For architecture and feature planning
 
 1. `docs/MODULE_BOUNDARIES.md` — required feature/backend/adapter separation.
-2. `docs/WALLET_FEATURES_PERFORMANCE_STUDY.md` — wallet feature set and no-lag scaling model.
-3. `docs/THRU_NATIVE_DEFI_TAB_UX.md` — Thru-native launchpad/DEX/full-tab UX.
-4. `docs/MIGRATION_MAP.md` — Rabby-class migration strategy and risk register.
+2. `docs/MIGRATION_MAP.md` — Rabby-class migration strategy and risk register.
 
 ### For UI or browser verification work
 
@@ -57,14 +55,14 @@ Purpose: single map for every maintained Markdown document in this repository. U
 | What are the contract methods? | `src/shared/contract/manifest.js` |
 | What is the contract version? | `src/shared/contract/manifest.js` (`CONTRACT_VERSION`) |
 | What must never be guessed? | `AGENTS.md`, `docs/BUILD_SPEC.md` |
-| What launchpad/DEX direction is correct? | `docs/THRU_NATIVE_DEFI_TAB_UX.md` — research/direction only; **no launchpad, DEX or prediction code ships** |
+| What launchpad/DEX direction is correct? | `docs/archive/THRU_NATIVE_DEFI_TAB_UX.md` — research/direction only; **no launchpad, DEX or prediction code ships** |
 | What is quarantined and must not return? | `docs/STATUS_AND_ROADMAP.md` Step 1, `CONTEXT.md` §9, `test-launchpad-quarantine.mjs` |
-| What popular-wallet UX patterns matter? | `docs/WALLET_FEATURES_PERFORMANCE_STUDY.md` |
+| What popular-wallet UX patterns matter? | `docs/archive/WALLET_FEATURES_PERFORMANCE_STUDY.md` |
 | What bugs have happened before? | `docs/DEFECT_LOG.md` |
 | What needs a browser to verify? | `docs/MANUAL_SMOKE_CHECKLIST.md` |
 | Is a route actually mounted by a test? | `test-route-lifecycle.mjs`, then `docs/STATUS_AND_ROADMAP.md` Step 2 |
 | What backend capability is missing? | `docs/BACKEND_GAPS.md` |
-| What can a per-transaction fetch honestly tell us (fee? timestamp?) | `docs/TX_DETAIL_SPIKE.md` |
+| What can a per-transaction fetch honestly tell us (fee? timestamp?) | `docs/archive/TX_DETAIL_SPIKE.md` |
 | Where is the Activity/history redesign up to? | `docs/HISTORY_REDESIGN_PLAN.md` |
 | What docs are historical only? | `docs/archive/**`, `docs/UI_REBUILD_PLAN.md`, `docs/UI_REBUILD_AGENT_PROMPT.md` unless explicitly cited by current docs |
 
@@ -92,16 +90,11 @@ Purpose: single map for every maintained Markdown document in this repository. U
 | `docs/PROJECT_LEDGER.md` | current | past/present/future build ledger and identifiers | New canonical timeline; replaces duplicated local-agent phase tables. |
 | `docs/MODULE_BOUNDARIES.md` | current | frontend/backend/feature/adapter separation target | New canonical boundary doc for launchpad/DEX/prediction isolation. |
 | `docs/MCP_AGENT_INTEGRATION.md` | current | local MCP companion safety model | New planning doc; no MCP code shipped yet. |
-| `docs/WALLET_FEATURES_PERFORMANCE_STUDY.md` | current | general wallet features and no-lag performance model | Product research; references only, not implementation authority. |
-| `docs/THRU_NATIVE_DEFI_TAB_UX.md` | research / product direction | Thru-native launchpad/DEX/full-tab UX correction | Retained research. Describes a surface that does not exist in code; never read as current state. |
-| `docs/LAUNCHPAD_UX_STUDY.md` | research only | Launchpad create/discover UX study | Retained after the launchpad quarantine. Its "the wallet already has a disabled `src/launchpad/` surface" premise is stale — that tree is deleted. |
 | `docs/LAUNCHPAD_DEX_MIGRATION_UX.md` | research only | Launchpad-to-DEX migration, charts, market UX | Retained after the launchpad quarantine. Design study; no DEX, chart or market code ships. |
 | `docs/MIGRATION_MAP.md` | current strategy/risk register | Rabby-class migration strategy | Some older research context remains; defer to `MODULE_BOUNDARIES.md` for feature separation. |
 | `docs/AUDIT_REPORT.md` | current audit record | security findings/remediation state | Keep separate from `DEFECT_LOG`: audit findings vs historical defect lessons. |
 | `docs/DEFECT_LOG.md` | current historical lessons | root causes and guardrails | Historical defects can mention deleted code, but current-state claims must point to `STATUS`. |
 | `docs/BACKEND_GAPS.md` | current capability gaps | backend missing pieces and verified unsupported states | Keep capability-focused; do not duplicate roadmap details. |
-| `docs/TX_DETAIL_SPIKE.md` | current findings record | what the RPC surface can/cannot answer for ONE transaction (fee, timestamp) | Records SDK/protobuf contract facts, re-checkable by reading the same files. Nothing in it was confirmed against a live node; that is the manual smoke run's job. |
-| `docs/EXPLORER_SPIKE.md` | current findings record | P2.5 explorer/oracle/indexer spike: validated surfaces, wire evidence, blocked items, resume checklist | Environment-channel-aware: every claim tagged docs-vs-wire-vs-blocked. No fabricated shapes; contract stayed v10. |
 | `docs/HISTORY_REDESIGN_PLAN.md` | current phase plan | Activity/history redesign (P0–P3) and its honest omissions | Status line at the top wins on which phases have shipped. |
 | `docs/REDESIGN_TRIAGE.md` | current findings record | line-by-line triage of external Rabby-parity design suggestions (set 1 of 4) | Records which suggestions are stale/unsafe vs actionable; re-verify claims against the tree before acting on any future set. |
 | `docs/handoff/P2_TX_DETAIL_HANDOFF.md` | current handoff | auditor entry point for the P2 detail sheet (PR #7) | Gate results, honesty claims + falsification, known gaps. Read before auditing the sheet. |
@@ -117,6 +110,12 @@ Purpose: single map for every maintained Markdown document in this repository. U
 
 | File | Status | Rule |
 | --- | --- | --- |
+| `docs/archive/LAUNCHPAD_UX_STUDY.md` | archived | Launchpad create/discover UX study. Retained after the launchpad quarantine; its "the wallet already has a disabled `src/launchpad/` surface" premise is stale — that tree is deleted. |
+| `docs/archive/THRU_NATIVE_DEFI_TAB_UX.md` | archived | Thru-native launchpad/DEX/full-tab UX direction. Describes a surface that does not exist in code; never read as current state. |
+| `docs/archive/WALLET_FEATURES_PERFORMANCE_STUDY.md` | archived | General wallet features and no-lag performance model. Product research; references only, not implementation authority. |
+| `docs/archive/PASSKEY_SPIKE.md` | archived | Time-boxed passkey feasibility spike on the pinned `@thru/programs/passkey-manager` bindings. Protocol feasible; implementation stays gated on its three probes. |
+| `docs/archive/TX_DETAIL_SPIKE.md` | archived | What the RPC surface can/cannot answer for ONE transaction (fee, timestamp). Records SDK/protobuf contract facts; nothing in it was confirmed against a live node. |
+| `docs/archive/EXPLORER_SPIKE.md` | archived | P2.5 explorer/oracle/indexer spike: validated surfaces, wire evidence, blocked items, resume checklist. No fabricated shapes; contract stayed v10. |
 | `docs/archive/guide.md` | archived | Do not follow for current structure; kept for provenance. |
 | `docs/archive/task.md` | archived | Contains completed/obsolete phase claims; do not use as current status. |
 | `docs/archive/thru-implementation_plan.md` | archived | Historical redesign plan; not authoritative. |
@@ -134,6 +133,7 @@ Purpose: single map for every maintained Markdown document in this repository. U
 6. `CONTEXT.md` remains the current file map; historical line counts in archived docs are intentionally non-authoritative.
 7. Public docs (`README.md`, `SECURITY.md`, `PRIVACY.md`, `SUPPORT.md`) should not carry detailed internal research dumps.
 8. The launchpad/DEX UX studies were **retained, not deleted**, when `src/launchpad/**` was quarantined: research is cheap to keep and expensive to recreate. They are labelled research-only here and carry a top banner saying no shipped code corresponds to them, so an agent cannot mistake a design study for current state.
+9. On 2026-09-23 the dated spike/research docs (launchpad UX study, Thru-native DEX-tab UX, wallet-features/performance study, passkey spike, tx-detail spike, explorer spike) moved to `docs/archive/` once the work they informed was shipped or shelved. Nothing was deleted — only the location changed, and cross-references now point at `docs/archive/...`. `LAUNCHPAD_DEX_MIGRATION_UX.md` stays at the root as maintained research.
 
 ---
 

@@ -267,7 +267,7 @@ export async function listHistory(address, pageSizeOrOptions = 15) {
  * Shape mirrors the capability-stub convention already used by estimateFee/simulate: the
  * response always arrives, and every field the chain did not supply is `null` with the
  * absence stated rather than filled in. The UI renders "Not available" from those nulls.
- * See docs/TX_DETAIL_SPIKE.md for what the RPC surface can and cannot answer.
+ * See docs/archive/TX_DETAIL_SPIKE.md for what the RPC surface can and cannot answer.
  *
  * Deliberate naming: `feeDeclaredUnits`, not `feeUnits`. Thru's execution result carries no
  * charged-fee field, so the only fee available is the one declared in the transaction
