@@ -346,7 +346,7 @@ export function SettingsRoute({ navigate, back }) {
       })).el,
     ]));
 
-    // ---- Window ----
+    // ---- Side Panel Mode (no section header; the toggle is self-describing) ----
     // The "Side Panel Mode" toggle only — the explicit "Open side panel" button is not
     // restored here because the dashboard header already provides it.
     const switchKnob = h('span', { class: 'toggle-knob' });
