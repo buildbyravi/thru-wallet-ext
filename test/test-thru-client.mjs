@@ -8,7 +8,7 @@ import {
   UNITS_PER_THRU,
   FAUCET_PROGRAM_ID,
   TRANSFER_PROGRAM_ID,
-} from './src/lib/thru-client.js';
+} from '../src/lib/thru-client.js';
 import { Transaction, keys, Signature } from '@thru/sdk';
 
 const assert = (cond, msg) => {
@@ -159,7 +159,7 @@ import {
   deriveTokenMintAddress,
   deriveTokenAccountAddress,
   TOKEN_PROGRAM_ID,
-} from './src/lib/thru-client.js';
+} from '../src/lib/thru-client.js';
 import { Pubkey } from '@thru/sdk';
 
   const mockSeed = generateMintSeed();
@@ -208,7 +208,7 @@ console.log('\n[11] Every program address in every network config is SDK-parseab
 // entirely — so the bad value was only reachable once program ids started coming from the
 // network config. Validating every address in every declared network closes that off.
 {
-  const { listAllNetworks } = await import('./src/lib/networks.js');
+  const { listAllNetworks } = await import('../src/lib/networks.js');
   const { Pubkey } = await import('@thru/sdk');
 
   const ADDRESS_FIELDS = ['faucetProgramId', 'faucetStateAccount', 'transferProgramId', 'tokenProgramId'];
@@ -248,8 +248,8 @@ console.log('\n[12] configureNetwork actually rebinds the client');
 // so switching network changed the badge and the scoped storage while every RPC call still went
 // to alphanet. Network switching was cosmetic.
 {
-  const client = await import('./src/lib/thru-client.js');
-  const { getNetworkConfig } = await import('./src/lib/networks.js');
+  const client = await import('../src/lib/thru-client.js');
+  const { getNetworkConfig } = await import('../src/lib/networks.js');
 
   assert(
     client.getConfiguredNetwork().rpcUrl === client.ALPHANET_RPC,
@@ -423,7 +423,7 @@ console.log('\n[14] decodeHistoryEntry resolves token-program entries: transfer,
 
 console.log('\n[15] formatTokenAmount / parseTokenAmount convert exactly at any decimal scale');
 {
-  const { formatTokenAmount, parseTokenAmount } = await import('./src/shared/format.js');
+  const { formatTokenAmount, parseTokenAmount } = await import('../src/shared/format.js');
 
   assert(formatTokenAmount(123456789n, 6) === '123.456789', '123456789 @6 -> 123.456789');
   assert(formatTokenAmount(1500000000n, 9) === '1.5', '1.5e9 @9 -> 1.5 (native scale matches formatThru)');
@@ -462,7 +462,7 @@ console.log('\n[15] formatTokenAmount / parseTokenAmount convert exactly at any 
 {
   console.log('\n[11] getTransactionDetail is additive and names the fee honestly');
 
-  const { getTransactionDetail } = await import('./src/lib/thru-client.js');
+  const { getTransactionDetail } = await import('../src/lib/thru-client.js');
 
   assert(typeof getTransactionDetail === 'function',
     'getTransactionDetail is exported (additive: no existing export changed)');

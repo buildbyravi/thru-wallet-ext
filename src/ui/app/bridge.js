@@ -15,6 +15,7 @@
 // background's event service, so this stays the single auditable seam.
 
 import { isKnownMethod, EVENTS, listMethodNames } from '../../shared/contract/manifest.js';
+import { CLOSE_SIDE_PANEL_ACTION } from '../../shared/side-panel.js';
 
 let nextId = 1;
 
@@ -125,6 +126,25 @@ export function onEvent(eventName, callback) {
 export function onEvents(map) {
   const offs = Object.entries(map).map(([event, cb]) => onEvent(event, cb));
   return () => offs.forEach((off) => off());
+}
+
+/**
+ * Broadcast the "a popup just opened" signal to every other extension context
+ * (an open side panel, and the service worker, which early-returns the action).
+ *
+ * Not a contract RPC: there is no method to check and no response to wait for,
+ * and "no receiving end" (no panel open) is the NORMAL case, not an error —
+ * hence the swallowed rejection. The receiving side is
+ * src/ui/app/side-panel-exclusion.js; the protocol token lives in
+ * src/shared/side-panel.js so the background can recognise the same action.
+ */
+export function broadcastCloseSidePanel() {
+  try {
+    const result = chrome.runtime.sendMessage({ action: CLOSE_SIDE_PANEL_ACTION });
+    result?.catch?.(() => {});
+  } catch {
+    // chrome.runtime is absent outside a real extension context; nothing to broadcast to.
+  }
 }
 
 /** Full initial state in one round-trip. */

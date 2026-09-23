@@ -15,7 +15,7 @@
 >
 > Copy everything below the line into a fresh agent session only when starting P2.5. It is
 > written to fail safely: the agent stops and records rather than guessing. Companions:
-> `docs/HISTORY_REDESIGN_PLAN.md` §4 (spike scope), `docs/TX_DETAIL_SPIKE.md` (what the RPC can
+> `docs/HISTORY_REDESIGN_PLAN.md` §4 (spike scope), `docs/archive/TX_DETAIL_SPIKE.md` (what the RPC can
 > and cannot honestly answer), `docs/handoff/P2_TX_DETAIL_HANDOFF.md` (audit path style).
 
 ---
@@ -32,7 +32,7 @@ enrichment code ships. Enrichment is display-only and may never override what th
 1. `AGENTS.md` — hard rules (all 14), commands, traps. Rule 14 is new and load-bearing here.
 2. `docs/STATUS_AND_ROADMAP.md`, `docs/PROJECT_LEDGER.md`, `CONTEXT.md` — current state.
 3. `docs/HISTORY_REDESIGN_PLAN.md` §4 — the P2.5 scope this prompt implements.
-4. `docs/TX_DETAIL_SPIKE.md` — declared-vs-charged fee facts, `TransactionExecutionResult`
+4. `docs/archive/TX_DETAIL_SPIKE.md` — declared-vs-charged fee facts, `TransactionExecutionResult`
    field list, block-time path, and what "stated-absent" means in practice.
 5. `docs/BACKEND_GAPS.md` — C2 (fee provenance) and C2c (block time, recently RESOLVED on
    alphanet) and C3 (simulation: `supported: false`, do not revisit here).
@@ -56,7 +56,7 @@ enrichment code ships. Enrichment is display-only and may never override what th
 A. **Validate the typed explorer API.** The MCP tools sit on a typed (undocumented) API under
    `scan.thru.org`. Record real response shapes, alphanet availability, and offline/error
    behaviour for: transaction-by-signature, block-by-slot, account lookup, `get_program_abi`.
-   Write findings into `docs/EXPLORER_SPIKE.md` (same style as `TX_DETAIL_SPIKE.md`: file/line
+   Write findings into `docs/archive/EXPLORER_SPIKE.md` (same style as `TX_DETAIL_SPIKE.md`: file/line
    provenance for every claim). **No extension code before this validates.**
 B. **Charged fee.** Run `scripts/measure-fee.mjs` live: spent − amount on a real transfer,
    compared to the declared `Transaction.fee` on the same signature, across more than one
@@ -110,6 +110,6 @@ E. **Only if A validates:** sketch the enrichment lane as a design section in th
 
 - `npm test` green (all suites), `npm run build` with 0 warnings.
 - Contract version bumped **only** if methods actually ship in this PR (spike should not).
-- Findings live in `docs/EXPLORER_SPIKE.md`; register any new doc in `docs/DOCS_INDEX.md`.
+- Findings live in `docs/archive/EXPLORER_SPIKE.md`; register any new doc in `docs/DOCS_INDEX.md`.
 - Every claim in the findings doc carries provenance (file:line, live measurement, or explorer
   response excerpt). "I read it in the docs" is not provenance for a wire shape.

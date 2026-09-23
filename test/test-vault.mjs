@@ -37,7 +37,7 @@ const assert = (cond, msg) => {
   console.log('  ok -', msg);
 };
 
-const vault = await import('./src/lib/vault.js');
+const vault = await import('../src/lib/vault.js');
 
 console.log('\n[1] Create a seed-based wallet');
 const mnemonic = await vault.createVault('correct horse battery staple');
@@ -119,6 +119,39 @@ const afterUnlock = await vault.listAccounts();
 assert(afterUnlock.length === 3, 'all 3 accounts still present after lock/unlock cycle');
 const activeAfterUnlock = await vault.getActiveAccount();
 assert(activeAfterUnlock.address === acc0.address, 'active account pointer survived the lock/unlock cycle');
+
+console.log('\n[7b] Vault envelope: the KDF work factor is pinned per-vault, not in a module constant');
+const envelope = (await chrome.storage.local.get('vault')).vault;
+assert(envelope?.version === 1, 'new vaults store envelope version 1');
+assert(envelope?.kdf?.name === 'PBKDF2' && envelope?.kdf?.hash === 'SHA-256', 'the envelope names the KDF (PBKDF2-SHA-256)');
+assert(envelope?.kdf?.iterations === 600000, 'the envelope pins the 600k PBKDF2 work factor');
+
+// A legacy record (written before the envelope existed) has no kdf/version
+// fields and must keep unlocking via the shipped-default fallback.
+await vault.lock();
+const legacyRecord = (await chrome.storage.local.get('vault')).vault;
+await chrome.storage.local.set({ vault: { salt: legacyRecord.salt, iv: legacyRecord.iv, ciphertext: legacyRecord.ciphertext } });
+await vault.unlock('correct horse battery staple');
+assert(await vault.isUnlocked(), 'a legacy record without KDF metadata still unlocks');
+
+// The first re-encryption after a legacy unlock heals the envelope.
+await vault.addHdAccount();
+const healed = (await chrome.storage.local.get('vault')).vault;
+assert(healed?.version === 1 && healed?.kdf?.iterations === 600000, 'the first write after a legacy unlock heals the envelope');
+assert(healed.salt === legacyRecord.salt, 'healing re-encrypts under the SAME salt (no key change)');
+
+// Unknown KDFs and future envelope versions are refused loudly, not mis-derived.
+await vault.lock();
+await chrome.storage.local.set({ vault: { ...healed, kdf: { name: 'BLAKE2b', hash: 'SHA-256', iterations: 600000 } } });
+let kdfMsg = null;
+try { await vault.unlock('correct horse battery staple'); } catch (e) { kdfMsg = e.message; }
+assert(/unsupported vault kdf/i.test(kdfMsg || ''), 'an unknown KDF is refused before any key derivation');
+
+await chrome.storage.local.set({ vault: { ...healed, version: 2 } });
+let versionMsg = null;
+try { await vault.unlock('correct horse battery staple'); } catch (e) { versionMsg = e.message; }
+assert(/vault format 2/i.test(versionMsg || ''), 'a newer envelope version is refused with a clear error');
+assert(!(await vault.isUnlocked()), 'a refused envelope leaves the wallet locked');
 
 console.log('\n[8] A private-key-only vault cannot add HD accounts');
 await chrome.storage.local.remove(['vault', 'active_account_ref']);

@@ -54,7 +54,7 @@ DOM-sink ratchet still reports **0 sinks, fully closed**.
 
 | File | What it is |
 | --- | --- |
-| `docs/TX_DETAIL_SPIKE.md` | The read-only spike, written before any UI. Records what the RPC surface can/cannot answer and why the fee is a declaration. |
+| `docs/archive/TX_DETAIL_SPIKE.md` | The read-only spike, written before any UI. Records what the RPC surface can/cannot answer and why the fee is a declaration. |
 | `src/ui/domain/tx-detail-sheet.js` (308 lines) | The sheet. `{el, update, destroy}`, focus-trapped, `document.body`-parented. |
 | `docs/handoff/P2_TX_DETAIL_HANDOFF.md` | This file. |
 

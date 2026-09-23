@@ -13,7 +13,7 @@
 // Two rows carry provenance in the row itself rather than relying on the reader to know:
 //
 //   Fee   — Thru's TransactionExecutionResult has NO charged-fee field (verified against the
-//           generated protobuf; see docs/TX_DETAIL_SPIKE.md §3.3). The only fee obtainable is
+//           generated protobuf; see docs/archive/TX_DETAIL_SPIKE.md §3.3). The only fee obtainable is
 //           the one DECLARED IN THE HEADER by the sender. That is a different claim from
 //           "what this cost you", so the row says which one it is. Absent => "Not available".
 //   Time  — transactions carry no time; the containing BLOCK does, optionally. When the node

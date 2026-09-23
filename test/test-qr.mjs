@@ -2,7 +2,7 @@
 // QR renderer checks: brand palette, raised look, and the flat degradation path.
 // Renders onto a fake canvas whose 2D context records what the renderer asks for —
 // pure math, no DOM, no browser.
-import { renderQR, THRU_QR } from './src/popup/qr.js';
+import { renderQR, THRU_QR } from '../src/popup/qr.js';
 
 let pass = 0, fail = 0;
 function ok(cond, label, detail) {

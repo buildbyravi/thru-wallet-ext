@@ -37,6 +37,8 @@ npm run build      # node build.mjs -> dist/
 npm test           # guards (derivation, layering, CSP, routes, launchpad quarantine, contract, dom, route lifecycle) then vault, thru-client, api-router
 ```
 
+All test suites live in `test/` (`test/test-*.mjs`); the `npm test` chain runs them by path.
+
 Load `dist/` unpacked via `chrome://extensions` -- Developer mode -- Load unpacked.
 
 Run `npm run build && npm test` **before and after** every change. Never report success while either

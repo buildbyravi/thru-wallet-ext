@@ -33,11 +33,12 @@
 // Run: node test-route-lifecycle.mjs
 
 import { readFileSync, readdirSync, statSync } from 'node:fs';
-import { applyTheme } from './src/popup/theme.js';
-import { join, dirname } from 'node:path';
+import { applyTheme } from '../src/popup/theme.js';
+import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const ROOT = dirname(fileURLToPath(import.meta.url));
+// The suite lives in test/, so ROOT is the repository root one level up.
+const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 
 // ---- Harness --------------------------------------------------------------
 
@@ -741,6 +742,15 @@ function makeWindow(doc) {
   const win = {
     listeners,
     document: doc,
+    // The popup is fixed-size (400x600, tokens.css). Tests may make this taller
+    // to simulate the side panel (full window height), and assert on `closed` to
+    // prove window.close() reached the page.
+    innerWidth: 400,
+    innerHeight: 600,
+    closed: false,
+    close() {
+      this.closed = true;
+    },
     addEventListener(type, handler, options) {
       listeners.push({
         type: String(type),
@@ -970,7 +980,7 @@ const PREFERENCES = {
   hiddenAccounts: [],
   enforceWhitelist: false,
   whitelist: [],
-  requirePasswordForSigning: true,
+  requirePasswordForSigning: false,
   hiddenTokens: [],
   customTokens: [],
   disclaimerAcknowledgedAt: 1750000002000,
@@ -1390,6 +1400,8 @@ const chromeLog = {
   unexpected: [],
   sidePanelOpen: [],
   setPanelBehavior: [],
+  /** UI<->UI action broadcasts (popup/panel mutual exclusion), in order */
+  broadcasts: [],
   listeners: new Set(),
 };
 
@@ -1403,6 +1415,26 @@ function makeChrome() {
       version: '1.2.0',
     }),
     sendMessage(message, callback) {
+      // UI<->UI action broadcast (popup/panel mutual exclusion). In Chrome this is
+      // delivered to every OTHER extension context — modelled here as a fan-out to
+      // every registered onMessage listener. It is NOT an API call, so it must not
+      // touch calls/missing. (The harness has one shared context, so the sender
+      // "sees" its own broadcast too; in Chrome it does not. The exclusion listener
+      // guards against that with its own viewport check — the tests prove it.)
+      if (message && typeof message === 'object' && message.action && !message.method) {
+        chromeLog.broadcasts.push(message);
+        queueMicrotask(() => {
+          for (const listener of [...chromeLog.listeners]) {
+            try {
+              listener(message, { id: 'test-extension-id' });
+            } catch (error) {
+              consoleErrors.push(String(error));
+            }
+          }
+        });
+        return Promise.resolve();
+      }
+
       const method = String(message?.method || '');
       chromeLog.calls.push(method);
       // Async, like the real thing: the round-trip is a task boundary, so a route that renders
@@ -1466,9 +1498,10 @@ function makeChrome() {
   return {
     runtime,
     storage: { local: memoryStore(), session: memoryStore(), sync: memoryStore() },
-    // The side panel API. `open` is recorded so Settings can be proven to use an explicit user
-    // action; `setPanelBehavior` is recorded so the test can prove it is NEVER called — that call
-    // would swap the toolbar popup for the panel for every user.
+    // The side panel API. `open` is recorded so the dashboard button can be proven to use an
+    // explicit user action; `setPanelBehavior` is recorded so the test can prove it is called
+    // ONLY by the explicit Settings "Side Panel Mode" toggle (with the exact option each
+    // direction must pass) — never by load(), boot, or anything else.
     sidePanel: {
       open: (options) => {
         chromeLog.sidePanelOpen.push(options);
@@ -1692,18 +1725,20 @@ function secretInUrls() {
 
 installGlobals();
 
-const { h, on } = await import('./src/ui/kit/dom.js');
-const { encodeRef } = await import('./src/shared/refs.js');
-const { focusTrap, collectFocusable, isFocusable } = await import('./src/ui/kit/focus-trap.js');
+const { h, on } = await import('../src/ui/kit/dom.js');
+const { encodeRef } = await import('../src/shared/refs.js');
+const { focusTrap, collectFocusable, isFocusable } = await import('../src/ui/kit/focus-trap.js');
 // The sheet renders a counterparty through the same formatter the card uses, so the
 // assertion compares against the real function rather than a re-implementation that could
 // drift from it and quietly stop testing anything.
-const { truncateAddress: truncateAddressForTest } = await import('./src/shared/format.js');
-const { requirePassword } = await import('./src/ui/domain/password-prompt.js');
-const { boot, POPUP_ROUTES } = await import('./src/ui/app/boot.js');
-const guards = await import('./src/ui/app/guards.js');
-const bridge = await import('./src/ui/app/bridge.js');
-const { Router } = await import('./src/ui/app/router.js');
+const { truncateAddress: truncateAddressForTest } = await import('../src/shared/format.js');
+const { requirePassword } = await import('../src/ui/domain/password-prompt.js');
+const { boot, POPUP_ROUTES } = await import('../src/ui/app/boot.js');
+const guards = await import('../src/ui/app/guards.js');
+const bridge = await import('../src/ui/app/bridge.js');
+const { installSidePanelExclusion } = await import('../src/ui/app/side-panel-exclusion.js');
+const { isSidePanelViewport, CLOSE_SIDE_PANEL_ACTION } = await import('../src/shared/side-panel.js');
+const { Router } = await import('../src/ui/app/router.js');
 
 function isInside(node, root) {
   for (let n = node; n; n = n.parentNode) {
@@ -1862,7 +1897,7 @@ async function runScenario(scenario) {
 // ---- Settings: custom networks withdrawn, side panel offered ---------------
 
 async function settingsTest() {
-  section('settings: no custom-network form, an explicit side-panel action');
+  section('settings: no custom-network form; Side Panel Mode is an explicit opt-in');
 
   resetBackend(SCENARIOS[2]);
   resetDom();
@@ -1934,20 +1969,45 @@ async function settingsTest() {
   ok('no UI call reached network.upsertCustom',
     !chromeLog.calls.includes('network.upsertCustom') && chromeLog.unexpected.length === 0);
 
-  // The side panel: an explicit, user-initiated action.
-  const openButton = buttons(tree, /open side panel/i)[0];
-  ok('"Open side panel" is a real control', Boolean(openButton));
-  ok('the side-panel section explains what it does', /beside your browser tab/i.test(text));
-  ok('sidePanel.open has not been called before the user asks', chromeLog.sidePanelOpen.length === 0);
-  click(openButton);
-  await settle();
-  ok('clicking it calls chrome.sidePanel.open exactly once', chromeLog.sidePanelOpen.length === 1,
-    JSON.stringify(chromeLog.sidePanelOpen));
-  ok('the call carries a windowId, so no await sits between the gesture and the API',
-    chromeLog.sidePanelOpen[0]?.windowId === 42, JSON.stringify(chromeLog.sidePanelOpen[0]));
-  ok('toolbar behaviour is never changed behind the user',
+  // Side Panel Mode: an explicit user opt-in, so the ONLY panel-shaped control on this
+  // screen is the toggle itself. The redundant "Open side panel" button stays gone — the
+  // dashboard header owns the one-off open action.
+  const openSidePanelButtons = buttons(tree, /open side panel/i);
+  ok('settings offers no "Open side panel" button (the dashboard header owns it)',
+    openSidePanelButtons.length === 0, openSidePanelButtons.map(labelOf).join(', '));
+  const modeSwitch = buttons(tree, /^side panel mode$/i)[0];
+  ok('settings offers a "Side Panel Mode" switch', Boolean(modeSwitch),
+    buttons(tree, /side panel/i).map(labelOf).join(', '));
+  ok('the switch is exposed as an actual switch to assistive tech',
+    modeSwitch?.getAttribute('role') === 'switch');
+  ok('loading settings does not flip toolbar behaviour on its own',
     chromeLog.setPanelBehavior.length === 0, JSON.stringify(chromeLog.setPanelBehavior));
-  ok('the side panel action reported no error banner', !/Could not open the side panel/i.test(textOf(tree)));
+  ok('the switch starts off when no stored mode exists',
+    modeSwitch?.getAttribute('aria-checked') === 'false'
+      && !modeSwitch.classList.contains('active'));
+
+  click(modeSwitch);
+  await settle();
+  ok('toggling ON calls setPanelBehavior({ openPanelOnActionClick: true }) exactly once',
+    chromeLog.setPanelBehavior.length === 1
+      && chromeLog.setPanelBehavior[0]?.openPanelOnActionClick === true,
+    JSON.stringify(chromeLog.setPanelBehavior));
+  ok('the ON choice persists to chrome.storage.local',
+    (await chrome.storage.local.get('thru_side_panel_mode'))?.thru_side_panel_mode === true);
+  ok('the switch reflects the new state',
+    modeSwitch.getAttribute('aria-checked') === 'true' && modeSwitch.classList.contains('active'));
+
+  click(modeSwitch);
+  await settle();
+  ok('toggling OFF calls setPanelBehavior({ openPanelOnActionClick: false })',
+    chromeLog.setPanelBehavior.length === 2
+      && chromeLog.setPanelBehavior[1]?.openPanelOnActionClick === false,
+    JSON.stringify(chromeLog.setPanelBehavior));
+  ok('the OFF choice persists to chrome.storage.local',
+    (await chrome.storage.local.get('thru_side_panel_mode'))?.thru_side_panel_mode === false);
+  ok('the switch reflects the off state again',
+    modeSwitch.getAttribute('aria-checked') === 'false'
+      && !modeSwitch.classList.contains('active'));
 
   // Removing the saved network still works end to end.
   click(buttons(tree, /remove my node/i)[0]);
@@ -1959,6 +2019,54 @@ async function settingsTest() {
   ok('the removed custom row disappears while the quarantine notice remains',
     !/My node/.test(textOf(tree)) && /temporarily unavailable/i.test(textOf(tree)),
     textOf(tree).slice(0, 300));
+
+  // ---- Signing & friends: the explanations are in-wallet "?" popovers, not paragraphs
+  // ---- and not the native title tooltip (the browser owns that one, and it can render
+  // ---- outside the fixed 400x600 popup).
+  const helpTriggers = allElements(tree).filter((el) => el.classList?.contains?.('help-circle-icon'));
+  ok('settings explains signing, auto-lock, side panel mode and appearance with "?" controls',
+    helpTriggers.length === 4
+      && helpTriggers.map((el) => el.getAttribute('aria-label')).sort().join(', ')
+        === ['About Side Panel Mode', 'About appearance', 'About auto-lock', 'About signing security'].join(', '),
+    helpTriggers.map((el) => el.getAttribute('aria-label')).join(', '));
+  ok('no "?" trigger carries a native title (the browser tooltip can overflow the popup)',
+    helpTriggers.every((el) => !el.hasAttribute('title')));
+  const tips = allElements(tree).filter((el) => el.classList?.contains?.('inline-tooltip'));
+  ok('each "?" owns an in-wallet popover, hidden at rest',
+    tips.length === 4 && tips.every((t) => t.hasAttribute('hidden')),
+    `tips=${tips.length}`);
+  const signingTip = tips.find((t) => /session-only allows signing/i.test(t.textContent || ''));
+  ok('the signing popover carries the session-only / require-password explanation',
+    Boolean(signingTip) && /require password prompts before every transaction/i.test(signingTip.textContent),
+    signingTip?.textContent || 'no signing popover found');
+  const signingTrigger = helpTriggers.find((el) => el.getAttribute('aria-label') === 'About signing security');
+  if (signingTip && signingTrigger) {
+    signingTrigger.dispatchEvent({ type: 'mouseenter' });
+    await settle();
+    ok('hovering the signing "?" reveals the popover inside the screen',
+      !signingTip.hasAttribute('hidden') && isConnected(signingTip));
+    ok('the open popover is announced on the trigger',
+      signingTrigger.getAttribute('aria-expanded') === 'true');
+    signingTrigger.dispatchEvent({ type: 'mouseleave' });
+    await settle();
+    ok('leaving the trigger hides the popover again',
+      signingTip.hasAttribute('hidden') && signingTrigger.getAttribute('aria-expanded') === 'false');
+  } else {
+    ok('the signing "?" trigger and popover exist to hover', false);
+  }
+  // The descriptive hint paragraphs are gone; the ONLY surviving hint text is the
+  // functional custom-network quarantine notice.
+  const hintParas = allElements(tree).filter((el) => el.classList?.contains?.('hint'));
+  ok('only the custom-network notice remains as hint text',
+    hintParas.length === 1 && /temporarily unavailable/i.test(hintParas[0].textContent),
+    hintParas.map((el) => (el.textContent || '').slice(0, 60)).join(' | '));
+  ok('the old signing recommendation paragraph is gone from the screen',
+    !/recommended: require the wallet password/i.test(textOf(tree)));
+
+  // ---- No full reset on this screen: the lock screen is the only path ----
+  ok('settings offers no full-wallet reset and no danger zone',
+    buttons(tree, /reset wallet/i).length === 0 && !/danger zone/i.test(textOf(tree)),
+    buttons(tree, /reset/i).map(labelOf).join(', '));
 }
 
 // ---- Theme ----------------------------------------------------------------
@@ -2352,18 +2460,31 @@ function sourceTest() {
   const panelOffenders = [];
   let trapUsers = 0;
 
+  // "Side Panel Mode" (Settings) is an EXPLICIT user opt-in that legitimately
+  // calls chrome.sidePanel.setPanelBehavior on the toggle's click. The guard therefore
+  // allows exactly that one file and still fails the build if any other UI file starts
+  // flipping the toolbar behaviour on its own.
+  const toPosixRel = (p) => relative(ROOT, p).split(/[\\/]/).join('/');
+  const PANEL_BEHAVIOR_ALLOWLIST = new Set(['src/ui/app/routes/settings.js']);
+
   for (const file of uiFiles) {
     const raw = readFileSync(file, 'utf8');
     const code = stripComments(raw);
     if (/network\.upsertCustom/.test(code)) offenders.push(file);
-    if (/setPanelBehavior\s*\(/.test(code)) panelOffenders.push(file);
+    if (/setPanelBehavior\s*\(/.test(code) && !PANEL_BEHAVIOR_ALLOWLIST.has(toPosixRel(file))) panelOffenders.push(file);
     if (/focus-trap\.js/.test(raw) && !file.endsWith('focus-trap.js')) trapUsers += 1;
   }
 
   ok(`no shipped UI file calls network.upsertCustom (${uiFiles.length} files scanned)`,
     offenders.length === 0, offenders.join(', '));
-  ok('no shipped file changes toolbar behaviour with setPanelBehavior',
+  ok('no shipped file changes toolbar behaviour with setPanelBehavior outside the explicit Side Panel Mode toggle',
     panelOffenders.length === 0, panelOffenders.join(', '));
+  // The allowlist must actually be load-bearing: the settings route really does call it,
+  // so if someone rewrites the call in a way the regex no longer sees, this stays green
+  // while the guard above silently stops protecting anything.
+  const settingsSource = stripComments(readFileSync(join(ROOT, 'src', 'ui', 'app', 'routes', 'settings.js'), 'utf8'));
+  ok('the allowlisted settings route still contains the setPanelBehavior call the guard whitelists',
+    /setPanelBehavior\s*\(/.test(settingsSource));
   ok('the focus trap is wired into at least one dialog', trapUsers >= 1, `${trapUsers} importers`);
 
   const prompt = readFileSync(join(ROOT, 'src', 'ui', 'domain', 'password-prompt.js'), 'utf8');
@@ -2418,12 +2539,81 @@ function sourceTest() {
   ok('the checklist covers the popup and the side panel',
     /[Pp]opup/.test(doc) && /side panel/i.test(doc));
   ok('the checklist covers narrow and wide widths',
-    /408/.test(doc) && /(wide|800|desktop)/i.test(doc));
+    /400/.test(doc) && /(wide|800|desktop)/i.test(doc));
   ok('the checklist covers the reload-extension trap',
     /reload/i.test(doc));
   ok('the checklist names every route',
     ROUTE_PATHS.every((path) => doc.includes(path)),
     ROUTE_PATHS.filter((path) => !doc.includes(path)).join(', '));
+}
+
+// ---- Popup / side-panel mutual exclusion ------------------------------------
+//
+// Both surfaces load the SAME popup.html, so the surface that just opened enforces
+// "exactly one surface at a time": the popup broadcasts THRU_CLOSE_SIDE_PANEL, and a
+// side-panel-shaped page (full window height, unlike the fixed 400x600 popup) closes
+// itself on receipt. The harness has ONE shared chrome context, so the sender also
+// receives its own broadcast — in Chrome it does not — which makes the listener's
+// viewport re-check the real guard, and these tests prove it holds.
+
+async function panelExclusionTest() {
+  section('mutual exclusion: the popup and the side panel are never both open');
+
+  resetBackend(SCENARIOS[2]);
+  resetDom();
+  guards.invalidate();
+  const app = DOC.getElementById('app');
+  await boot({ root: app });
+  await settle();
+
+  // Booting the (400x600) popup page broadcasts the close signal...
+  ok('booting the popup broadcasts THRU_CLOSE_SIDE_PANEL',
+    chromeLog.broadcasts.some((m) => m?.action === CLOSE_SIDE_PANEL_ACTION),
+    JSON.stringify(chromeLog.broadcasts));
+  ok('the broadcast is an action message, not an API call',
+    chromeLog.broadcasts.length > 0
+      && chromeLog.broadcasts.every((m) => Boolean(m?.action) && m?.method === undefined)
+      && !chromeLog.calls.includes('') && ![...chromeLog.missing].includes(''),
+    JSON.stringify({ calls: chromeLog.calls.slice(0, 5), missing: [...chromeLog.missing] }));
+
+  // ...and the popup-shaped page that received it (shared context!) must NOT close.
+  ok('a popup-shaped page ignores the close signal', WIN.closed === false);
+
+  // A side-panel-shaped page closes itself when another popup opens.
+  const panelWin = { innerHeight: 900, innerWidth: 320, closed: false, close() { this.closed = true; } };
+  installSidePanelExclusion(panelWin);
+  bridge.broadcastCloseSidePanel();
+  await settle();
+  ok('the side panel closes itself when a popup opens', panelWin.closed === true);
+
+  // The detector boundary: the popup is exactly 600px tall; the panel is the full
+  // window height. A missing viewport (e.g. an exotic context) stays a popup.
+  ok('the viewport detector treats exactly 600px as the popup',
+    isSidePanelViewport({ innerHeight: 600 }) === false);
+  ok('the viewport detector treats a taller viewport as the panel',
+    isSidePanelViewport({ innerHeight: 601 }) === true
+      && isSidePanelViewport({ innerHeight: 900 }) === true);
+  ok('the viewport detector tolerates a missing viewport', isSidePanelViewport({}) === false);
+
+  // Unrelated action messages never close a panel-shaped page.
+  const otherPanel = { innerHeight: 900, closed: false, close() { this.closed = true; } };
+  const disposeOther = installSidePanelExclusion(otherPanel);
+  chrome.runtime.sendMessage({ action: 'SOMETHING_ELSE' });
+  await settle();
+  ok('an unrelated action message does not close the panel', otherPanel.closed === false);
+
+  // The wiring is load-bearing: boot (both surfaces) must call the installer.
+  const bootSource = stripComments(readFileSync(join(ROOT, 'src', 'ui', 'app', 'boot.js'), 'utf8'));
+  ok('boot wires the exclusion into every surface',
+    /installSidePanelExclusion\s*\(/.test(bootSource));
+  const bgSource = stripComments(readFileSync(join(ROOT, 'src', 'background', 'index.js'), 'utf8'));
+  ok('the background early-returns the action instead of routing it as an API request',
+    /CLOSE_SIDE_PANEL_ACTION/.test(bgSource) && /request\?\.action === CLOSE_SIDE_PANEL_ACTION/.test(bgSource));
+
+  const beforeDispose = chromeLog.listeners.size;
+  disposeOther();
+  ok('dispose removes the message listener', chromeLog.listeners.size === beforeDispose - 1,
+    `${beforeDispose} -> ${chromeLog.listeners.size}`);
 }
 
 // ---- In-app navigation -----------------------------------------------------
@@ -2443,19 +2633,80 @@ async function navigationTest() {
   await settle();
   ok('boot lands on the dashboard', router.currentPath === '/dashboard', router.currentPath);
 
-  const settingsButton = buttons(app, /settings/i)[0];
-  ok('the topbar exposes a settings control', Boolean(settingsButton),
-    buttons(app, /.*/).slice(0, 6).map(labelOf).join(', '));
+  // The connection footer is dashboard-only (Rabby rule): pinned at the bottom of
+  // .app-shell on the dashboard, hidden everywhere else, where it used to crowd the
+  // 600px viewport and sit on top of each screen's own header/actions.
+  const footer = allElements(app).filter((el) => el.classList?.contains?.('current-connection'))[0];
+  ok('the connection footer is pinned on the dashboard',
+    Boolean(footer) && !footer.classList.contains('hidden'),
+    footer?.className || 'no footer element');
+
+  // ---- Dashboard chrome audit ------------------------------------------------
+  // The copy button must wear the same dark .dash-header-btn treatment as its header
+  // siblings, not the white 32px .icon-btn card it used to be.
+  const dashCopy = buttons(app, /copy address/i)[0];
+  ok('the dashboard exposes a copy-address control', Boolean(dashCopy));
+  ok('the dashboard copy button wears the shared dash-header-btn treatment',
+    dashCopy?.classList?.contains('dash-header-btn'), dashCopy?.className);
+
+  // The "Activity" tab duplicated the History tile two rows up and the full /history
+  // screen; only "Tokens" remains on the ledger.
+  const dashTabs = allElements(app).filter((el) => el.classList?.contains?.('dash-tab-btn'));
+  ok('the dashboard token ledger has exactly one tab', dashTabs.length === 1,
+    dashTabs.map((t) => t.textContent).join(', '));
+  ok('the single dashboard tab is Tokens (no Activity tab)',
+    /^tokens$/i.test(dashTabs[0]?.textContent || ''), dashTabs[0]?.textContent);
+
+  // No fabricated numbers: the old first paint showed a placeholder "$12,847.20" balance
+  // and a static "+2.14%" 24h delta that no load() path ever updated.
+  const dashText = textOf(app);
+  ok('the dashboard shows no placeholder balance', !/12,847\.20/.test(dashText));
+  ok('the dashboard shows no fabricated 24h delta', !/\+2\.14%/.test(dashText));
+
+  // The side panel: an explicit user action with a pre-cached windowId, so no await sits
+  // between the gesture and chrome.sidePanel.open.
+  const panelBtn = buttons(app, /open in side panel/i)[0];
+  ok('the dashboard exposes an "Open in side panel" control', Boolean(panelBtn));
+  ok('sidePanel.open has not been called before the user asks', chromeLog.sidePanelOpen.length === 0);
+  click(panelBtn);
+  await settle();
+  ok('clicking it calls chrome.sidePanel.open exactly once', chromeLog.sidePanelOpen.length === 1,
+    JSON.stringify(chromeLog.sidePanelOpen));
+  ok('the call carries a windowId, so no await sits between the gesture and the API',
+    chromeLog.sidePanelOpen[0]?.windowId === 42, JSON.stringify(chromeLog.sidePanelOpen[0]));
+  ok('toolbar behaviour is never changed behind the user (dashboard button either)',
+    chromeLog.setPanelBehavior.length === 0, JSON.stringify(chromeLog.setPanelBehavior));
+  ok('the side panel action reported no error banner', !/Could not open the side panel/i.test(textOf(app)));
+
+  // The shell topbar is hidden on every screen now (each screen owns its own
+  // header), so the controls a user can actually reach on the dashboard are the
+  // .dash-header-btn ones. The test clicks those — not the hidden topbar's copies.
+  const topbar = allElements(app).filter((el) => el.classList?.contains?.('topbar'))[0];
+  ok('the shell topbar is hidden on the dashboard', topbar?.classList?.contains('hidden'),
+    topbar?.className || 'no topbar element');
+  const dashButtons = allElements(app)
+    .filter((el) => el.localName === 'button' && el.classList?.contains?.('dash-header-btn'));
+  const settingsButton = dashButtons.find((el) => /settings/i.test(labelOf(el)));
+  ok('the dashboard header exposes a settings control', Boolean(settingsButton),
+    dashButtons.map(labelOf).join(', '));
   click(settingsButton);
   await settle();
-  ok('the topbar settings control reaches /settings', router.currentPath === '/settings',
+  ok('the dashboard settings control reaches /settings', router.currentPath === '/settings',
     router.currentPath);
 
-  const lockButton = buttons(app, /lock/i)[0];
-  ok('the topbar exposes a lock control', Boolean(lockButton));
+  // The header buttons are route-owned: leaving the dashboard disposes them, so the
+  // lock is re-queried on the dashboard after navigating back — the flow a user runs.
+  // (The shell topbar used to outlive navigation, which is why its hidden copies used
+  // to be the ones this test clicked.)
+  router.navigate('/dashboard');
+  await settle();
+  const dashButtonsAfter = allElements(app)
+    .filter((el) => el.localName === 'button' && el.classList?.contains?.('dash-header-btn'));
+  const lockButton = dashButtonsAfter.find((el) => /lock/i.test(labelOf(el)));
+  ok('the dashboard header exposes a lock control', Boolean(lockButton));
   click(lockButton);
   await settle();
-  ok('locking from the topbar locks the vault', backend.unlocked === false);
+  ok('locking from the dashboard header locks the vault', backend.unlocked === false);
   ok('locking leaves the private screen and lands on /unlock', router.currentPath === '/unlock',
     router.currentPath);
   ok('locking leaves no secret in the document or in the destroyed screens',
@@ -2482,6 +2733,12 @@ async function navigationTest() {
     await settle();
     ok(`clicking "${label}" reaches ${path}`, router.currentPath === path, router.currentPath);
     ok(`the ${path} screen rendered`, textOf(router.root).trim().length > 8);
+    ok(`the connection footer stays hidden on ${path}`,
+      footer?.classList?.contains('hidden'), footer?.className);
+    // Single header per screen: the shell topbar must not stack above this
+    // screen's own PageHeader (the 36px double-header it used to be).
+    ok(`the shell topbar stays hidden on ${path} (single header)`,
+      topbar?.classList?.contains('hidden'), topbar?.className);
 
     const back = buttons(router.root, /^back$/i)[0];
     ok(`the ${path} screen has a Back control`, Boolean(back));
@@ -2494,6 +2751,9 @@ async function navigationTest() {
     ok(`no secret appears on the ${path} round trip`,
       findSecrets(SECRETS).length === 0 && findSecretsInTornDown(SECRETS).length === 0);
   }
+
+  ok('the connection footer is back on the dashboard after the round trip',
+    footer && !footer.classList.contains('hidden'), footer?.className);
 
   // ---- Receive: address copy, QR canvas, and audit cleanup ----------------
   // The DOM-shim canvas exercises qr.js's flat degradation (no roundRect), which must
@@ -2792,16 +3052,22 @@ async function navigationTest() {
 
   // ---- P1 cards: day grouping, verbs/deltas, failed badge, signature copy ----
   const NOW = Date.now();
+  // Day sections are calendar-day based, so fixture times are anchored to the START of
+  // today instead of "N hours ago". A static offset drifts across midnight whenever a
+  // run starts in the early hours ("26h ago" at 01:00 is TWO days ago, not yesterday),
+  // which would splinter the Today/Yesterday grouping these assertions check. Every value
+  // below is guaranteed its intended calendar day at any run time, and none is in the future.
+  const startOfToday = new Date(NOW).setHours(0, 0, 0, 0);
   const CARD_ENTRIES = [
     { signature: 'tsCARD_A_sent_today_aaaaaaaaaaaaaaaaaaaaaaa', slot: 30000,
       success: true, programAddress: NETWORK_ALPHANET.transferProgramId, kind: 'sent',
-      amount: '100000', counterparty: ADDRESS_B, timestamp: NOW - 2 * 3600000 },
+      amount: '100000', counterparty: ADDRESS_B, timestamp: NOW },
     { signature: 'tsCARD_B_received_yesterday_aaaaaaaaaaaaaaaaa', slot: 29900,
       success: true, programAddress: NETWORK_ALPHANET.transferProgramId, kind: 'received',
-      amount: '250000', counterparty: ADDRESS_B, timestamp: NOW - 26 * 3600000 },
+      amount: '250000', counterparty: ADDRESS_B, timestamp: startOfToday - 3600000 },
     { signature: 'tsCARD_C_failed_older_aaaaaaaaaaaaaaaaaaaaaaa', slot: 29800,
       success: false, programAddress: NETWORK_ALPHANET.transferProgramId, kind: 'sent',
-      amount: '1', counterparty: ADDRESS_B, timestamp: NOW - 49 * 3600000 },
+      amount: '1', counterparty: ADDRESS_B, timestamp: startOfToday - 2 * 86400000 - 3600000 },
   ];
   FIXTURES['tx.getHistoryFeed'] = () => ({
     entries: CARD_ENTRIES.map((e) => ({ ...e })), nextCursor: null, synced: true,
@@ -2869,15 +3135,17 @@ async function navigationTest() {
   // sends inherits its neighbours' day — one "Today" section, never Today -> Activity -> Today.
   FIXTURES['tx.getHistoryFeed'] = () => ({
     entries: [
+      // startOfToday-anchored (see CARD_ENTRIES): at 00:30 the old "2h ago" value was
+      // already yesterday, which would have split this test into two sections.
       { signature: 'tsMIX1_newer_today_aaaaaaaaaaaaaaaaaaaaaaa', slot: 30500,
         success: true, programAddress: NETWORK_ALPHANET.transferProgramId, kind: 'sent',
-        amount: '90000', counterparty: ADDRESS_B, timestamp: NOW - 20 * 60000 },
+        amount: '90000', counterparty: ADDRESS_B, timestamp: NOW },
       { signature: 'tsMIX2_wire_no_time_aaaaaaaaaaaaaaaaaaaaaaaa', slot: 30400,
         success: true, programAddress: NETWORK_ALPHANET.transferProgramId, kind: 'received',
         amount: '40000', counterparty: ADDRESS_B, timestamp: null },
       { signature: 'tsMIX3_older_today_aaaaaaaaaaaaaaaaaaaaaaa', slot: 30300,
         success: true, programAddress: NETWORK_ALPHANET.transferProgramId, kind: 'sent',
-        amount: '90000', counterparty: ADDRESS_B, timestamp: NOW - 120 * 60000 },
+        amount: '90000', counterparty: ADDRESS_B, timestamp: startOfToday },
     ],
     nextCursor: null,
     synced: true,
@@ -3336,6 +3604,7 @@ try {
   await passwordModalTest();
   await exportSecretTest();
   await navigationTest();
+  await panelExclusionTest();
   negativeControls();
 } finally {
   releaseConsole();

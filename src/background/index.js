@@ -5,6 +5,7 @@ import { lock } from '../lib/vault.js';
 import { handleApiRequest } from './api-router.js';
 import { ensureAutoLockAlarm, shouldAutoLock, touchActivity } from './services/system-service.js';
 import { emitLockStateChanged } from './services/event-service.js';
+import { CLOSE_SIDE_PANEL_ACTION } from '../shared/side-panel.js';
 
 const AUTO_LOCK_ALARM = 'thru-auto-lock';
 
@@ -27,6 +28,12 @@ function restrictSessionStorage() {
 
 restrictSessionStorage();
 
+// Re-applies the user's "Side Panel Mode" choice after every service-worker restart. The
+// worker is short-lived: without this, a browser that evicted it would silently drop
+// openPanelOnActionClick and the toolbar icon would flip back to the popup behind the
+// user's back. It only ever re-applies a choice the user already made in Settings — it
+// never turns the mode ON by itself, and when the mode is off it leaves behaviour alone
+// (the toggle's OFF click has already called setPanelBehavior(false)).
 async function syncSidePanelBehavior() {
   try {
     const setBehavior = chrome?.sidePanel?.['setPanelBehavior'];
@@ -71,6 +78,13 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   // Only accept messages originating from this extension's own pages.
   if (sender.id !== chrome.runtime.id) {
+    return false;
+  }
+
+  // UI<->UI broadcast from src/ui/app/side-panel-exclusion.js: a popup telling an
+  // open side panel to close (popup/panel mutual exclusion). The peer page handles
+  // it itself — there is nothing to route and nothing to respond to.
+  if (request?.action === CLOSE_SIDE_PANEL_ACTION) {
     return false;
   }
 

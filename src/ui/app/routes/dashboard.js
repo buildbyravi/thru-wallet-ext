@@ -3,27 +3,34 @@
 // Structure (Rabby Structure, Thru Identity):
 //   1. 196px Ink Header (#1A1214):
 //      - Frosted AccountChip (.account-pill): Identicon + Account name + truncated address + chevron.
-//      - Top-right actions: Copy button + Gas/Network icon + Settings gear icon + Lock wallet button.
-//      - USD-first BalanceHero: 32px bold USD amount + refresh icon + native THRU caption + 24h delta.
+//      - Top-right actions: Copy button (same .dash-header-btn treatment as its siblings,
+//        not the white .icon-btn surface) + Gas/Network icon + Side-panel icon (its native
+//        hover title explains what it does — no extra chrome for a one-line explanation)
+//        + Settings gear icon + Lock wallet button.
+//      - USD-first BalanceHero: 32px bold USD amount + frameless refresh icon + native THRU
+//        caption. No 24h delta line — this wallet has no market-data source, so a delta
+//        would be fabricated.
 //      - '1 pending' badge in header when pending transactions exist.
 //   2. 3x2 Action Panel (.dashboard-panel-grid):
 //      - 3 columns, 1px hairline gap, 88px cell height, pure white cells, hover #FDF0F1.
 //      - Row 1: Send (/send), Receive (/receive), Swap (disabled/roadmap).
 //      - Row 2: History (/history, with badge count), Security/Approvals, Faucet (/faucet).
-//   3. Tabbed Token Ledger:
-//      - Sub-navigation: 'Tokens' (active, #C43A40 underline) | 'Activity'.
+//   3. Token Ledger:
+//      - Section label: 'Tokens' (active, #C43A40 underline). There is deliberately no
+//        'Activity' tab here: recent transactions already have the History tile above and
+//        the full /history screen with filters, and a second, shallower copy of the same
+//        list is a dead tab.
 //      - White card container with 8px radius, border-t dividers.
-//      - Token rows: 32px token disc/logo, symbol (THRU, USDC), Alphanet network badge, name, amount, USD value, change %.
+//      - Token rows: 32px token disc/logo, symbol (THRU, USDC), Alphanet network badge, name, amount, USD value.
 
 import { h, disposer } from '../../kit/dom.js';
 import { icon } from '../../kit/icon.js';
 import { CopyButton } from '../../kit/button.js';
-import { Banner, Empty } from '../../kit/feedback.js';
+import { Banner } from '../../kit/feedback.js';
 import { AccountAvatar, AddressText } from '../../domain/account-avatar.js';
 import { AssetRow } from '../../domain/token-row.js';
 import { BalanceHero } from '../../domain/balance-hero.js';
 import { PanelItem } from '../../domain/panel-item.js';
-import { TxCard } from '../../domain/tx-card.js';
 import * as bridge from '../bridge.js';
 import { formatThru, formatTokenAmount } from '../../../shared/format.js';
 
@@ -47,8 +54,9 @@ export function DashboardRoute({ navigate }) {
   let account = null;
   let currentNetwork = null;
   let assetRows = [];
-  let activityCards = [];
-  let currentBalanceUsd = '$12,847.20';
+  // '$0.00' until the first REAL value lands. The old default painted a fabricated
+  // '$12,847.20' on first frame for every wallet, including fresh ones with a zero balance.
+  let currentBalanceUsd = '$0.00';
 
   function track(c) {
     owned.push(c);
@@ -74,10 +82,14 @@ export function DashboardRoute({ navigate }) {
   ]);
   d.on(pill, 'click', () => navigate('/accounts'));
 
-  // ---- 196px Ink Header: Top-Right Actions ---------------------------------
+  // ---- 196px Ink Header: Copy + Top-Right Actions --------------------------
+  // The copy button sits next to the account pill (Rabby layout) and wears the SAME
+  // .dash-header-btn treatment as its siblings — not the white .icon-btn surface that
+  // made it read as a foreign 32px card inside the 28px dark-icon row.
   const copyBtn = track(CopyButton({
     getValue: () => account?.address || '',
     title: 'Copy address',
+    className: 'dash-header-btn',
     onResult: (err) => banner.set(err ? 'Could not copy — clipboard permission denied.' : ''),
   }));
 
@@ -89,29 +101,53 @@ export function DashboardRoute({ navigate }) {
   }, icon('gas', 14));
   d.on(gasBtn, 'click', () => navigate('/settings'));
 
+  // Side panel: the windowId is cached at mount, never awaited inside the click handler.
+  // chrome.sidePanel.open() only runs inside a transient user gesture, and an await
+  // between the gesture and the call (the old code awaited chrome.windows.getCurrent()
+  // on every click) is exactly how a perfectly supported browser reports "no user
+  // gesture". The Settings "Side Panel Mode" toggle only flips setPanelBehavior; this
+  // button is the one-off open, so it keeps its own gesture-safe path.
+  let sidePanelWindowId = null;
+  try {
+    if (chrome?.sidePanel?.open && chrome?.windows?.getCurrent) {
+      Promise.resolve(chrome.windows.getCurrent())
+        .then((win) => { if (win?.id != null) sidePanelWindowId = win.id; })
+        .catch(() => {});
+    }
+  } catch {
+    // Not in an extension context: the button says so on click.
+  }
+
+  // The native hover title carries the explanation — the Settings paragraph that used to
+  // explain this is gone, and a one-line "why" does not need its own icon in the header.
   const sidePanelBtn = h('button', {
     type: 'button',
     class: 'dash-header-btn',
-    title: 'Open in side panel',
-    'aria-label': 'Open in side panel',
+    title: 'Open in side panel beside your tab',
+    'aria-label': 'Open in side panel beside your tab',
   }, icon('sidePanel', 14));
-  d.on(sidePanelBtn, 'click', async () => {
+  d.on(sidePanelBtn, 'click', () => {
     try {
-      if (chrome?.sidePanel?.open) {
-        let winId = null;
-        if (chrome?.windows?.getCurrent) {
-          const win = await chrome.windows.getCurrent().catch(() => null);
-          if (win?.id != null) winId = win.id;
-        }
-        await chrome.sidePanel.open(winId != null ? { windowId: winId } : {});
-        if (typeof window !== 'undefined' && typeof window.close === 'function') {
-          window.close();
-        }
-      } else {
-        navigate('/settings');
+      if (!chrome?.sidePanel?.open) {
+        banner.set('This browser has no side panel API. The popup keeps working as usual.', 'warning');
+        return;
       }
-    } catch {
-      // safe fallback
+      const openCall = chrome.sidePanel.open(
+        sidePanelWindowId != null ? { windowId: sidePanelWindowId } : {},
+      );
+      // Close the popup only once the open actually succeeded — closing first would
+      // strand the user with nothing if the call is rejected.
+      Promise.resolve(openCall)
+        .then(() => {
+          if (typeof window !== 'undefined' && typeof window.close === 'function') {
+            window.close();
+          }
+        })
+        .catch((error) => {
+          banner.set(error?.message || 'Could not open the side panel.', 'warning');
+        });
+    } catch (error) {
+      banner.set(error?.message || 'Could not open the side panel.', 'warning');
     }
   });
 
@@ -139,7 +175,6 @@ export function DashboardRoute({ navigate }) {
   });
 
   const headerActions = h('div', { class: 'dash-header-actions' }, [
-    copyBtn.el,
     gasBtn,
     sidePanelBtn,
     settingsBtn,
@@ -148,15 +183,12 @@ export function DashboardRoute({ navigate }) {
 
   const headerTop = h('div', { class: 'dash-header-top' }, [
     pill,
+    copyBtn.el,
     headerActions,
   ]);
 
   // ---- 196px Ink Header: USD-First BalanceHero ----------------------------
   const balanceHero = track(BalanceHero({
-    usd: '$12,847.20',
-    native: '84,291.02 THRU',
-    delta: '+2.14%',
-    deltaUsd: '+$268.40',
     onRefresh: () => load({ force: true }),
   }));
 
@@ -221,41 +253,20 @@ export function DashboardRoute({ navigate }) {
     faucetTile.el.title = faucetAvailable ? 'Faucet' : 'Faucet unavailable on this network';
   }
 
-  // ---- Tabbed Token Ledger -------------------------------------------------
+  // ---- Token Ledger --------------------------------------------------------
+  // One section, one tab. The former 'Activity' tab rendered a five-entry preview of the
+  // same list that /history already shows in full with filters, and it duplicated the
+  // History tile two rows up. Recent transactions belong in History; the dashboard keeps
+  // the ledger.
   const tokensTabBtn = h('button', {
     type: 'button',
     class: 'dash-tab-btn active',
     text: 'Tokens',
   });
 
-  const activityTabBtn = h('button', {
-    type: 'button',
-    class: 'dash-tab-btn',
-    text: 'Activity',
-  });
-
-  const tabsBar = h('div', { class: 'dash-tabs-bar' }, [
-    tokensTabBtn,
-    activityTabBtn,
-  ]);
+  const tabsBar = h('div', { class: 'dash-tabs-bar' }, [tokensTabBtn]);
 
   const tokenLedgerHost = h('div', { class: 'token-ledger' });
-  const activityHost = h('div', { class: 'dash-activity-container hidden' });
-
-  d.on(tokensTabBtn, 'click', () => {
-    tokensTabBtn.classList.add('active');
-    activityTabBtn.classList.remove('active');
-    tokenLedgerHost.classList.remove('hidden');
-    activityHost.classList.add('hidden');
-  });
-
-  d.on(activityTabBtn, 'click', () => {
-    tokensTabBtn.classList.remove('active');
-    activityTabBtn.classList.add('active');
-    tokenLedgerHost.classList.add('hidden');
-    activityHost.classList.remove('hidden');
-    loadActivity();
-  });
 
   function disposeAssets() {
     for (const row of assetRows) row.destroy();
@@ -263,24 +274,18 @@ export function DashboardRoute({ navigate }) {
     while (tokenLedgerHost.firstChild) tokenLedgerHost.removeChild(tokenLedgerHost.firstChild);
   }
 
-  function disposeActivity() {
-    for (const card of activityCards) card.destroy?.();
-    activityCards = [];
-    while (activityHost.firstChild) activityHost.removeChild(activityHost.firstChild);
-  }
-
   function renderAssets(nativeText, tokens, stale, tokenState) {
     disposeAssets();
 
     const netName = currentNetwork?.label || currentNetwork?.id || 'Alphanet';
 
-    // Native THRU row
+    // Native THRU row. No changePercent: there is no 24h data source, so any percentage
+    // here would be fabricated market data.
     assetRows.push(AssetRow({
       symbol: 'THRU',
       name: 'Thru Native Token',
       balanceText: nativeText,
       usdValue: currentBalanceUsd,
-      changePercent: '+2.14%',
       network: netName,
       isNative: true,
       stale,
@@ -318,44 +323,10 @@ export function DashboardRoute({ navigate }) {
         mintAddress: token.mintAddress,
         imageUrl: token.imageUrl,
         usdValue: '$0.00',
-        changePercent: '+0.00%',
       }));
     }
 
     for (const row of assetRows) tokenLedgerHost.appendChild(row.el);
-  }
-
-  async function loadActivity() {
-    disposeActivity();
-    try {
-      const page = await bridge.send('tx.getHistoryFeed', { address: account?.address })
-        .catch(() => bridge.send('tx.listHistory', { address: account?.address, limit: 10 }).catch(() => null));
-      const entries = Array.isArray(page) ? page : (page?.entries || []);
-      if (!entries.length) {
-        activityHost.appendChild(Empty({
-          iconName: 'history',
-          title: 'No recent activity',
-          body: 'Recent transactions will appear here.',
-        }).el);
-        return;
-      }
-      for (const entry of entries.slice(0, 5)) {
-        const card = TxCard({
-          entry,
-          network: currentNetwork,
-          knownAccounts: new Map(),
-          onOpen: () => navigate('/history'),
-        });
-        activityCards.push(card);
-        activityHost.appendChild(card.el);
-      }
-    } catch {
-      activityHost.appendChild(Empty({
-        iconName: 'history',
-        title: 'Activity unavailable',
-        body: 'Could not load recent transactions.',
-      }).el);
-    }
   }
 
   // ---- Pending Transactions ------------------------------------------------
@@ -471,7 +442,6 @@ export function DashboardRoute({ navigate }) {
     actionPanel,
     tabsBar,
     tokenLedgerHost,
-    activityHost,
   ]);
 
   load();
@@ -498,7 +468,6 @@ export function DashboardRoute({ navigate }) {
     el,
     destroy() {
       disposeAssets();
-      disposeActivity();
       for (const c of owned) c.destroy?.();
       owned.length = 0;
       banner.destroy();

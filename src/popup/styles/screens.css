@@ -237,6 +237,16 @@ form > .btn.text {
   background: rgba(255, 255, 255, 0.16);
 }
 
+/* CopyButton's "copied" confirmation, dark-header edition. components.css's
+   .icon-btn.copied paints a light green CARD (border + tint) that belongs on the white
+   surface; on the ink header the confirmation is colour only. */
+.dash-header .dash-header-btn.copied {
+  background: rgba(63, 191, 174, 0.14);
+  color: #3fbfae;
+  border: 0;
+  animation: none;
+}
+
 /* Account chip inside header */
 .dash-header .account-pill {
   background: rgba(255, 255, 255, 0.08);
@@ -291,6 +301,29 @@ form > .btn.text {
   font-weight: 700;
   letter-spacing: -0.03em;
   line-height: 1.1;
+  color: #ffffff;
+}
+
+/* Balance Hero Refresh Button — frameless Rabby style. The generic .dash-header-btn is a
+   28px frosted card, which reads as a "cheap grey box" sitting on the balance number;
+   next to display type the refresh must be a quiet icon that only earns a surface on
+   hover. (The spin while refreshing stays — utilities.css's `.spinning svg` covers it.) */
+.dash-balance-hero .dash-header-btn {
+  background: transparent;
+  border: 0;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  color: rgba(255, 255, 255, 0.45);
+  border-radius: 4px;
+  align-self: center;
+  margin-bottom: 2px;
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.dash-balance-hero .dash-header-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
   color: #ffffff;
 }
 .dash-balance-native {
@@ -517,13 +550,6 @@ form > .btn.text {
   color: #c43a40;
 }
 
-.dash-activity-container {
-  padding: 0 12px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
 .screen.dash-screen,
 .dash-screen {
   padding: 0;
@@ -597,11 +623,13 @@ form > .btn.text {
 .current-connection-net:hover {
   background: var(--surface-2, #eef1f4);
 }
+/* Neutral until the first health check reports: the pip must never claim a connection
+   state nobody has measured (same offline-honesty rule the history feed follows). */
 .current-connection-pip {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--green, #1c7d76);
+  background: var(--text-3, #6a7580);
 }
 .current-connection-pip.healthy {
   background: var(--green, #1c7d76);
@@ -1307,6 +1335,7 @@ form > .btn.text {
   transition: background 0.15s ease;
   display: inline-flex;
   align-items: center;
+  flex-shrink: 0;
 }
 .toggle-switch.active {
   background: #0090ff;
@@ -1324,5 +1353,58 @@ form > .btn.text {
 .toggle-switch.active .toggle-knob {
   transform: translateX(18px);
 }
+
+/* ---- Help circle icon (inline "(?)" tooltips) ---------------------------- */
+/* The trigger is a <button>; reset the native chrome (grey bevel box) so the
+   icon reads as a frameless glyph. The keyboard focus ring is NOT reset here —
+   the global :focus-visible rule in base.css owns it, and a frameless icon with
+   no visible keyboard focus is a regression (see DEFECT_LOG 2.15). */
+.help-circle-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  color: var(--text-3, #6a7580);
+  cursor: pointer;
+  line-height: 1;
+}
+.help-circle-icon:hover {
+  color: var(--text-1, #151b1e);
+}
+/* ---- In-wallet "?" popover (replaces the native title tooltip) -------------
+   The native title tooltip belongs to the browser and can render outside the
+   fixed 400x600 popup. This card renders inside the screen instead: the host
+   row is position:relative, the card is right-aligned to that row and capped
+   at 240px, so it can never leave the popup boundary. Inherits no text styling
+   from its host (list-group-header is uppercase + tracked). */
+.help-tooltip-host {
+  position: relative;
+}
+.inline-tooltip {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  width: max-content;
+  max-width: 240px;
+  background: #1a1214;
+  color: #fff;
+  font-size: 11px;
+  line-height: 1.45;
+  font-weight: 400;
+  font-family: inherit;
+  text-transform: none;
+  letter-spacing: normal;
+  text-align: left;
+  padding: 6px 10px;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  z-index: 100;
+  pointer-events: none;
+}
+
+
 
 

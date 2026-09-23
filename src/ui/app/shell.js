@@ -1,8 +1,12 @@
 // App shell: the persistent chrome around every route.
 //
 // The shell owns that chrome once, so no route has to remember it and every route gets it
-// for free. On the unlocked dashboard, the 196px Rabby-style ink header owns the top of the
-// screen, so the shell topbar with the wordmark is hidden there.
+// for free. Every screen the shell wraps owns its own header — the dashboard's 196px
+// Rabby-style ink header, and a PageHeader (with a Back button) on every sub-screen — so
+// the shell topbar with the wordmark is hidden on all of them: on the dashboard it would
+// duplicate the ink header, and on sub-screens it used to stack a second header above
+// each screen's PageHeader. It stays in the shell as chrome of last resort for a future
+// route that has no header of its own.
 //
 // The footer is the Rabby-style CurrentConnection bar showing connection state and active network.
 
@@ -44,7 +48,9 @@ export function AppShell({ navigate, onNetworkChange }) {
     navigate('/unlock', { replace: true });
   });
 
-  const topbar = h('header', { class: 'topbar' }, [
+  // Hidden from first paint: no current screen can show it (see file header). A future
+  // header-less route opts in by toggling the class off in setChromeVisible.
+  const topbar = h('header', { class: ['topbar', 'hidden'] }, [
     h('div', { class: 'row-flex' }, [
       h('div', { class: 'wordmark' }, h('span', { text: 'thru wallet' })),
       networkBadge,
@@ -77,7 +83,7 @@ export function AppShell({ navigate, onNetworkChange }) {
     try {
       const network = await bridge.send('network.getActive');
       const label = network?.label || network?.id || 'Unknown network';
-      connectionFooter.update(undefined, label);
+      connectionFooter.update({ network: label });
 
       networkBadge.textContent = label;
       networkBadge.classList.toggle('badge-live', network?.isTestnet === false);
@@ -88,7 +94,7 @@ export function AppShell({ navigate, onNetworkChange }) {
       currentNetwork = network;
       onNetworkChange?.(network);
     } catch {
-      connectionFooter.update(undefined, '—', null, 'offline');
+      connectionFooter.update({ network: '—', healthStatus: 'offline' });
       networkBadge.textContent = '—';
     }
     try {
@@ -96,12 +102,15 @@ export function AppShell({ navigate, onNetworkChange }) {
       const ms = Number(health?.latencyMs);
       const online = health?.status === 'ok' || health?.healthy === true || Number.isFinite(ms);
       if (!online) {
-        connectionFooter.update(undefined, undefined, null, 'offline');
+        connectionFooter.update({ healthStatus: 'offline' });
       } else {
-        connectionFooter.update(undefined, undefined, Number.isFinite(ms) ? ms : null, ms > 800 ? 'slow' : 'healthy');
+        connectionFooter.update({
+          latencyMs: Number.isFinite(ms) ? ms : null,
+          healthStatus: ms > 800 ? 'slow' : 'healthy',
+        });
       }
     } catch {
-      connectionFooter.update(undefined, undefined, null, 'offline');
+      connectionFooter.update({ healthStatus: 'offline' });
     }
   }
 
@@ -115,12 +124,18 @@ export function AppShell({ navigate, onNetworkChange }) {
     },
     /**
      * Hide chrome on screens that own the whole viewport (unlock, onboarding).
-     * On dashboard, topbar is hidden because the 196px ink header owns the top.
+     * The topbar is hidden on every screen — the dashboard's 196px ink header and
+     * each sub-screen's PageHeader both already own the top, so the shell topbar
+     * would be a duplicate header (it stays in the shell only as chrome for a
+     * future header-less route). The connection footer is the MIRROR rule: it
+     * belongs to the dashboard only. Sub-screens (send, receive, history,
+     * settings, accounts) keep their own headers and bottom actions, and the
+     * pinned 40px footer used to crowd the viewport and block those controls,
+     * so it stays hidden there.
      */
     setChromeVisible(visible, path) {
-      const onDash = isDashboardPath(path);
-      topbar.classList.toggle('hidden', !visible || onDash);
-      connectionFooter.el.classList.toggle('hidden', !visible);
+      topbar.classList.add('hidden');
+      connectionFooter.el.classList.toggle('hidden', !visible || !isDashboardPath(path));
     },
     refreshNetwork,
     destroy() {

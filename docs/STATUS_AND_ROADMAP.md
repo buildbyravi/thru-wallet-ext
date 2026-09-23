@@ -5,10 +5,10 @@ Last updated: contract v10 adds `tx.getDetail`, the lazy per-signature fetch beh
 transaction detail sheet (Activity history P0+P1+P2 now shipped). It is explorer-free: the
 sheet runs on the RPC we already depend on, states the header-declared fee as such, and
 renders "Not available" for anything the network does not report — see
-`docs/TX_DETAIL_SPIKE.md`. The P2.5 explorer spike ran 2026-09-20 (partial: live RPC/MCP
+`docs/archive/TX_DETAIL_SPIKE.md`. The P2.5 explorer spike ran 2026-09-20 (partial: live RPC/MCP
 calls were impossible from the spike environment, but official docs, the MCP endpoint's
 liveness and the explorer's Oracle page were validated) — findings, prepared test vectors and
-a resume checklist are in `docs/EXPLORER_SPIKE.md`. A *charged* fee, if one exists anywhere,
+a resume checklist are in `docs/archive/EXPLORER_SPIKE.md`. A *charged* fee, if one exists anywhere,
 is still behind the undocumented explorer API; C2 stays open. Earlier: contract v8 added token transfer
 (`token.transfer` + real `token.getBalances`) on the official `@thru/programs/token`
 bindings, and v9 added the cache-merged history feed.
@@ -238,7 +238,7 @@ Open chain questions that need `scripts/verify-token-transfer.mjs` on a network-
 machine (moved to Step 8): whether initialize-account tolerates a never-registered recipient
 owner, and the actual token-program fee.
 
-### Step 4c — passkey feasibility spike ← DONE (`docs/PASSKEY_SPIKE.md`)
+### Step 4c — passkey feasibility spike ← DONE (`docs/archive/PASSKEY_SPIKE.md`)
 
 Time-boxed research spike, per the agreed order (spike first, implementation only with concrete
 answers). Verdict: **protocol-feasible, implementation-gated.** The pinned
@@ -283,8 +283,8 @@ Step 1 for the record and `test-launchpad-quarantine.mjs` for the enforcement.
 
 A launchpad returns only as a new `src/features/launchpad/**` module with `launchpad.*` backend
 namespaces, guarded DOM, real quotes from a verified AMM/indexer, and its own tests — the shape
-in `docs/MODULE_BOUNDARIES.md`, informed by the retained research in `docs/LAUNCHPAD_UX_STUDY.md`,
-`docs/LAUNCHPAD_DEX_MIGRATION_UX.md` and `docs/THRU_NATIVE_DEFI_TAB_UX.md`.
+in `docs/MODULE_BOUNDARIES.md`, informed by the retained research in `docs/archive/LAUNCHPAD_UX_STUDY.md`,
+`docs/LAUNCHPAD_DEX_MIGRATION_UX.md` and `docs/archive/THRU_NATIVE_DEFI_TAB_UX.md`.
 
 Note `token.deriveAddress` needs a mint authority and a 64-hex-character seed; the deleted
 deploy form predated both, and its `mintSeed` was `Math.random().toString(36)` — one of the

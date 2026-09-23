@@ -137,8 +137,8 @@ This table deduplicates the repeated local-agent timeline. Commit IDs before the
 | P2 | Store re-submission | Store has a live legacy 1.1.0 while the canceled 1.2.0 never shipped. Sequence: merge PR #6 → human smoke-checklist run → bump `src/manifest.json` above 1.2.0 → submit. No urgency at current user count. | §1 Chrome Web Store note; `docs/MANUAL_SMOKE_CHECKLIST.md` |
 | P1 | Feature module split | Launchpad/DEX/prediction must be separated before serious DeFi work. | `docs/MODULE_BOUNDARIES.md` |
 | P1 | Exact-pin `@thru/programs` | Completed in the 2026-09-18 audit pass: `@thru/programs` and `@thru/sdk` are exact-pinned at `0.3.16`; derivation uses `@thru/sdk/crypto` and golden vectors are unchanged. | `package.json`, `test-derivation.mjs` |
-| P2 | Full-tab shell | Required for launchpad/DEX/charts without slowing popup. | `docs/WALLET_FEATURES_PERFORMANCE_STUDY.md` |
-| P2 | Thru-native AMM/indexer integration | Needed for real swap/chart/market flows. | `docs/THRU_NATIVE_DEFI_TAB_UX.md` |
+| P2 | Full-tab shell | Required for launchpad/DEX/charts without slowing popup. | `docs/archive/WALLET_FEATURES_PERFORMANCE_STUDY.md` |
+| P2 | Thru-native AMM/indexer integration | Needed for real swap/chart/market flows. | `docs/archive/THRU_NATIVE_DEFI_TAB_UX.md` |
 | P2 | Local MCP companion | Useful for AI agents, but must never sign/export secrets. | `docs/MCP_AGENT_INTEGRATION.md` |
 | P2 | dApp connector boundary | Current official wallet docs describe the hosted `wallet.thru.org/embedded` iframe via `@thru/wallet`; this extension has no verified extension/BYO-signer provider contract. Do not add `window.thru` or infer extension compatibility from `connect()`/`signTransaction()`. | `docs/STATUS_AND_ROADMAP.md` Step 10; `docs/BACKEND_GAPS.md` C4 |
 

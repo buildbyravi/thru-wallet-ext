@@ -17,8 +17,8 @@ steps. `docs/DEFECT_LOG.md` for every defect found and why.
 > `launchpad.html` 443, `launchpad.css` 1,057) is deleted, together with `src/popup/icons.js`
 > and `src/popup/toast.js`, whose only importer was that page. No launchpad page is built,
 > `popup.html?launchpad=1` is gone, and `test-launchpad-quarantine.mjs` fails the build if any
-> of it returns. Research is retained in `docs/LAUNCHPAD_UX_STUDY.md`,
-> `docs/LAUNCHPAD_DEX_MIGRATION_UX.md` and `docs/THRU_NATIVE_DEFI_TAB_UX.md`. Backend `token.*`
+> of it returns. Research is retained in `docs/archive/LAUNCHPAD_UX_STUDY.md`,
+> `docs/LAUNCHPAD_DEX_MIGRATION_UX.md` and `docs/archive/THRU_NATIVE_DEFI_TAB_UX.md`. Backend `token.*`
 > contract methods are untouched.
 
 ---

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { handleApiRequest } from './src/background/api-router.js';
+import { handleApiRequest } from '../src/background/api-router.js';
 
 // Setup fake chrome storage
 const storage = new Map();
@@ -141,59 +141,64 @@ assert.equal(autoLockWhileLocked.error.code, 'WALLET_LOCKED');
 await handleApiRequest({ method: 'wallet.unlock', params: { password: 'Password123!' } });
 console.log('  ok - auto-lock change is refused while locked');
 
-console.log('[8] Signing re-authentication defaults to on and is password-gated');
+console.log('[8] Signing is session-only by default; requiring the password is a password-gated opt-in');
 const prefsDefault = await handleApiRequest({ method: 'settings.get' });
 assert.equal(prefsDefault.ok, true);
-assert.equal(prefsDefault.data.requirePasswordForSigning, true);
+// The default is session-only: a fresh install signs from an already-unlocked
+// session. Requiring the password again is something the user must opt into.
+assert.equal(prefsDefault.data.requirePasswordForSigning, false);
 
-const signingWithoutPassword = [
-  ['tx.send', { toAddress: res2.data.address, amountUnits: '1' }],
-  ['tx.claimFaucet', { amountUnits: '1' }],
-  ['tx.autoCreateAccount', {}],
-  ['token.deploy', {
-    mintSeed: 'a'.repeat(64),
-    name: 'Audit Token',
-    symbol: 'AUDIT',
-    decimals: 6,
-    description: '',
-    imageUrl: '',
-  }],
+// With the default, signing methods must PASS auth without a password and fail (if at
+// all) on their own local rules — never on AUTH_REQUIRED. Each case below is chosen to
+// fail on a local guard BEFORE any RPC, so this test never makes a network call.
+// (claimFaucet / autoCreateAccount / token.deploy have no such local guard for these
+// params and are instead proven in the gated direction below, where the auth check
+// stops them before they could reach the network.)
+const sessionOnlyAuth = [
+  ['tx.send', { toAddress: res2.data.address, amountUnits: '1' }, /address you're sending from/i],
   ['token.transfer', {
     mintAddress: 'taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKqq',
     toAddress: res2.data.address,
     amountUnits: '1',
-  }],
+  }, /address you're sending from/i],
 ];
-for (const [method, params] of signingWithoutPassword) {
+for (const [method, params, pattern] of sessionOnlyAuth) {
   const res = await handleApiRequest({ method, params });
-  assert.equal(res.ok, false, `${method} without password must fail`);
-  assert.equal(res.error.code, 'AUTH_REQUIRED', `${method} without password must require auth`);
+  assert.equal(res.ok, false, `${method} must fail on its local rules`);
+  assert.notEqual(res.error.code, 'AUTH_REQUIRED', `${method} must pass auth with the session-only default`);
+  assert.match(res.error.message, pattern, `${method} local guard message`);
 }
 
-const sendWrongPassword = await handleApiRequest({
+// With the gate OFF the password param is irrelevant to signing methods: the user
+// chose session-only, so a (wrong) password is neither verified nor used — the call
+// proceeds to the handler, which fails on its own local rules here.
+const passwordIgnoredWhileGateOff = await handleApiRequest({
   method: 'tx.send',
   params: { toAddress: res2.data.address, amountUnits: '1', password: 'wrong password' },
 });
-assert.equal(sendWrongPassword.ok, false);
-assert.equal(sendWrongPassword.error.code, 'AUTH_REQUIRED');
+assert.equal(passwordIgnoredWhileGateOff.ok, false);
+assert.notEqual(passwordIgnoredWhileGateOff.error.code, 'AUTH_REQUIRED');
+assert.match(passwordIgnoredWhileGateOff.error.message, /address you're sending from/i);
 
 const unsafeSettingsSet = await handleApiRequest({
   method: 'settings.set',
   params: { patch: { requirePasswordForSigning: false } },
 });
 assert.equal(unsafeSettingsSet.ok, false);
-const disableWrongPassword = await handleApiRequest({
+// The security field is password-gated in BOTH directions; a wrong password is refused
+// even when the new value equals the current default.
+const securityWrongPassword = await handleApiRequest({
   method: 'settings.setSecurity',
   params: { patch: { requirePasswordForSigning: false }, password: 'wrong password' },
 });
-assert.equal(disableWrongPassword.ok, false);
-assert.equal(disableWrongPassword.error.code, 'AUTH_REQUIRED');
-const disableWithPassword = await handleApiRequest({
+assert.equal(securityWrongPassword.ok, false);
+assert.equal(securityWrongPassword.error.code, 'AUTH_REQUIRED');
+const sessionOnlyWithPassword = await handleApiRequest({
   method: 'settings.setSecurity',
   params: { patch: { requirePasswordForSigning: false }, password: 'Password123!' },
 });
-assert.equal(disableWithPassword.ok, true);
-assert.equal(disableWithPassword.data.requirePasswordForSigning, false);
+assert.equal(sessionOnlyWithPassword.ok, true);
+assert.equal(sessionOnlyWithPassword.data.requirePasswordForSigning, false);
 
 const sessionOnlySend = await handleApiRequest({
   method: 'tx.send',
@@ -232,7 +237,36 @@ const enableWithPassword = await handleApiRequest({
 });
 assert.equal(enableWithPassword.ok, true);
 assert.equal(enableWithPassword.data.requirePasswordForSigning, true);
-console.log('  ok - signing auth rejects missing/wrong passwords and session-only opt-out reaches the signing handler');
+
+// Now that the gate is ON, EVERY signing method must be blocked by auth before it can
+// reach a handler — and this includes the ones with no local guard for these params
+// (claimFaucet / autoCreateAccount / token.deploy), where the auth check is the only
+// thing standing between a no-password call and a real network transaction.
+const gatedSigning = [
+  ['tx.send', { toAddress: res2.data.address, amountUnits: '1' }],
+  ['tx.send', { toAddress: res2.data.address, amountUnits: '1', password: 'wrong password' }],
+  ['tx.claimFaucet', { amountUnits: '1' }],
+  ['tx.autoCreateAccount', {}],
+  ['token.deploy', {
+    mintSeed: 'a'.repeat(64),
+    name: 'Audit Token',
+    symbol: 'AUDIT',
+    decimals: 6,
+    description: '',
+    imageUrl: '',
+  }],
+  ['token.transfer', {
+    mintAddress: 'taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKqq',
+    toAddress: res2.data.address,
+    amountUnits: '1',
+  }],
+];
+for (const [method, params] of gatedSigning) {
+  const res = await handleApiRequest({ method, params });
+  assert.equal(res.ok, false, `${method} must not run while the password gate is on`);
+  assert.equal(res.error.code, 'AUTH_REQUIRED', `${method} without password must require auth`);
+}
+console.log('  ok - session-only is the default; the password gate is opt-in and, when on, blocks every signing method before any handler');
 console.log('[9] Every UI-facing response survives JSON serialization');
 // chrome.runtime.sendMessage serializes with JSON, and JSON.stringify THROWS on a BigInt,
 // which Chrome reports only as the opaque "Could not serialize message." networks.js carries
@@ -323,8 +357,8 @@ console.log('[10] Per-network data isolation');
 // time someone switches network — at which point they see the previous network's pending
 // transactions and a token list of mints that do not exist where they now are.
 const { GLOBAL_KEYS, SCOPED_KEYS, scopedKey, baseKeyOf, networkOf } =
-  await import('./src/shared/network-scope.js');
-const { listNetworks, listAllNetworks } = await import('./src/lib/networks.js');
+  await import('../src/shared/network-scope.js');
+const { listNetworks, listAllNetworks } = await import('../src/lib/networks.js');
 
 const overlap = GLOBAL_KEYS.filter((k) => SCOPED_KEYS.includes(k));
 assert.equal(overlap.length, 0, `a key cannot be both global and scoped: ${overlap.join(', ')}`);
@@ -359,7 +393,7 @@ await handleApiRequest({ method: 'wallet.unlock', params: { password: 'Password1
 const activeAcct = (await handleApiRequest({ method: 'account.getActive' })).data;
 
 await handleApiRequest({ method: 'network.setActive', params: { networkId: 'alphanet' } });
-const { track } = await import('./src/background/services/pending-tx-service.js');
+const { track } = await import('../src/background/services/pending-tx-service.js');
 await track({
   signature: 'sig-on-alphanet',
   kind: 'transfer',
@@ -412,8 +446,8 @@ storage.set('thru_custom_networks', [legacyCustom]);
 
 // N1: a direct message-port request cannot activate a stored custom endpoint. Its permanent error
 // must survive router normalization, and neither persisted selection nor thru-client binding moves.
-const thruClient = await import('./src/lib/thru-client.js');
-const { getNetworkConfig } = await import('./src/lib/networks.js');
+const thruClient = await import('../src/lib/thru-client.js');
+const { getNetworkConfig } = await import('../src/lib/networks.js');
 await handleApiRequest({ method: 'network.setActive', params: { networkId: 'alphanet' } });
 const configuredBeforeRefusal = { ...thruClient.getConfiguredNetwork() };
 const storedBeforeRefusal = storage.get('thru_active_network');

@@ -15,6 +15,7 @@ import { h, disposer } from '../../kit/dom.js';
 import { icon } from '../../kit/icon.js';
 import { Button } from '../../kit/button.js';
 import { PageHeader, Banner, Spinner } from '../../kit/feedback.js';
+import { HelpTooltip } from '../../kit/help-tooltip.js';
 import { requirePassword } from '../../domain/password-prompt.js';
 import * as bridge from '../bridge.js';
 import { getTheme, setTheme } from '../../../popup/theme.js';
@@ -188,17 +189,11 @@ export function SettingsRoute({ navigate, back }) {
       return chip;
     });
 
-    hostEl.appendChild(h('p', { class: 'hint', text:
-      'The wallet locks after this much inactivity. "Never" keeps it unlocked until the '
-      + 'browser closes.' }));
+    // The explanation is the (?) popover on the "Auto-lock" row above.
     hostEl.appendChild(h('div', { class: 'row-flex wrap' }, chips));
   }
 
   function renderSigningReauth(hostEl, requirePasswordForSigning) {
-    hostEl.appendChild(h('p', { class: 'hint', text:
-      'Recommended: require the wallet password before any transaction is signed. Turning this off '
-      + 'allows signing from an already-unlocked session.' }));
-
     const options = [
       { value: true, label: 'Require password' },
       { value: false, label: 'Session-only' },
@@ -262,55 +257,17 @@ export function SettingsRoute({ navigate, back }) {
     return chips;
   }
 
-  // ---- Side panel ---------------------------------------------------------
+  // ---- Side Panel Mode ------------------------------------------------------
   //
-  // The manifest declares `side_panel.default_path: popup.html`, so the panel runs this exact UI —
-  // but until now nothing in the app could open it. The only way in was the browser's own menu,
-  // which no user finds, so the declared panel was unreachable from the wallet itself.
+  // An explicit opt-in: when ON, clicking the wallet toolbar icon opens the side panel
+  // instead of the popup. It is the only chrome.sidePanel.setPanelBehavior call in the UI,
+  // and it fires only on this toggle's click — never at boot, never behind the user.
+  // (The background re-applies the stored choice on worker restart so the setting survives
+  // service-worker eviction; see src/background/index.js.)
   //
-  // Two things this deliberately does NOT do:
-  //   - no `chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })`. That replaces the
-  //     toolbar popup with the panel for every user — a behaviour change that needs real browser
-  //     testing before anyone opts users into it, and it is not needed for an explicit action.
-  //   - no manifest, permission or panel-path change.
-  //
-  // `sidePanel.open()` only works from a user gesture and only on Chromium 116+, so the windowId is
-  // fetched during load(): awaiting inside the click handler can cost the gesture and make the call
-  // fail for a reason that has nothing to do with the user's browser.
-  let sidePanelWindowId = null;
+  // The redundant "Open side panel" button that lived here is gone: the dashboard header
+  // carries the explicit open action, and this section only owns the MODE.
   let sidePanelMode = false;
-
-  function prepareSidePanel() {
-    try {
-      if (!chrome.sidePanel?.open || !chrome.windows?.getCurrent) return;
-      Promise.resolve(chrome.windows.getCurrent())
-        .then((win) => { if (win?.id != null) sidePanelWindowId = win.id; })
-        .catch(() => {});
-    } catch {
-      // Not in an extension context, or a browser without the API: the button says so on click.
-    }
-  }
-
-  function openSidePanel() {
-    banner.clear();
-    if (!chrome.sidePanel?.open) {
-      banner.set('This browser has no side panel API. The popup keeps working as usual.', 'warning');
-      return;
-    }
-    const fallback = 'Could not open the side panel. Use the wallet icon in the toolbar instead.';
-    try {
-      const result = chrome.sidePanel.open(
-        sidePanelWindowId != null ? { windowId: sidePanelWindowId } : {},
-      );
-      // Chromium returns a promise; the usual rejections are "no user gesture" and "either tabId or
-      // windowId must be specified". Both are reported rather than swallowed.
-      Promise.resolve(result).catch((error) => {
-        banner.set(error?.message || fallback, 'warning');
-      });
-    } catch (error) {
-      banner.set(error?.message || fallback, 'warning');
-    }
-  }
 
   async function load() {
     banner.clear();
@@ -348,14 +305,39 @@ export function SettingsRoute({ navigate, back }) {
     // ---- Security ----
     const security = h('section', { class: 'stack stack-2' }, [SectionHeader('Security')]);
     body.appendChild(security);
-    security.appendChild(h('strong', { text: 'Signing' }));
-    renderSigningReauth(security, preferences?.requirePasswordForSigning !== false);
-    security.appendChild(h('strong', { text: 'Auto-lock' }));
+    // The explanation lives in a (?) in-wallet popover (kit/help-tooltip.js), not a
+    // paragraph of small print and not the native title tooltip — the browser owns that
+    // one and it can render outside the 400x600 popup. Session-only is the default;
+    // requiring the password again is the explicit opt-in.
+    const signingRow = h('div', { class: 'row-flex align-center', style: { gap: '6px' } }, [
+      h('strong', { text: 'Signing' }),
+    ]);
+    const signingHelp = HelpTooltip({
+      host: signingRow,
+      label: 'About signing security',
+      text: 'Session-only allows signing freely while unlocked. Require password prompts before every transaction.',
+    });
+    owned.push(signingHelp);
+    signingRow.appendChild(signingHelp.trigger);
+    security.appendChild(signingRow);
+    renderSigningReauth(security, preferences?.requirePasswordForSigning === true);
+
+    const autoLockRow = h('div', { class: 'row-flex align-center', style: { gap: '6px' } }, [
+      h('strong', { text: 'Auto-lock' }),
+    ]);
+    const autoLockHelp = HelpTooltip({
+      host: autoLockRow,
+      label: 'About auto-lock',
+      text: 'Automatically locks your wallet after inactivity to protect decrypted keys.',
+    });
+    owned.push(autoLockHelp);
+    autoLockRow.appendChild(autoLockHelp.trigger);
+    security.appendChild(autoLockRow);
     renderAutoLock(security, Number(autoLockMinutes));
 
     // ---- Accounts shortcut ----
+    // Self-describing button — deliberately no section header.
     body.appendChild(h('section', { class: 'stack stack-2' }, [
-      SectionHeader('Accounts'),
       track(Button({
         label: 'Manage accounts and recovery phrases',
         variant: 'secondary',
@@ -364,7 +346,9 @@ export function SettingsRoute({ navigate, back }) {
       })).el,
     ]));
 
-    // ---- Window ----
+    // ---- Side Panel Mode (no section header; the toggle is self-describing) ----
+    // The "Side Panel Mode" toggle only — the explicit "Open side panel" button is not
+    // restored here because the dashboard header already provides it.
     const switchKnob = h('span', { class: 'toggle-knob' });
     const sidePanelSwitch = h('button', {
       type: 'button',
@@ -378,10 +362,14 @@ export function SettingsRoute({ navigate, back }) {
       const next = !sidePanelMode;
       banner.clear();
       try {
-        const setBehavior = chrome?.sidePanel?.['setPanelBehavior'];
-        if (typeof setBehavior === 'function') {
-          await setBehavior.call(chrome.sidePanel, { openPanelOnActionClick: next });
+        if (!chrome?.sidePanel?.setPanelBehavior) {
+          banner.set('This browser has no side panel API. The popup keeps working as usual.', 'warning');
+          return;
         }
+        // Both directions are applied explicitly: ON makes the toolbar icon open the
+        // panel; OFF restores the popup, so a user who turned it off is never left
+        // with a stale behaviour.
+        await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: next });
         if (chrome.storage?.local?.set) {
           await chrome.storage.local.set({ thru_side_panel_mode: next });
         }
@@ -393,50 +381,42 @@ export function SettingsRoute({ navigate, back }) {
       }
     });
 
-    const sidePanelRow = h('div', { class: 'toggle-row' }, [
-      h('div', { class: 'toggle-label-group' }, [
-        icon('sidePanel', 18),
-        h('span', { text: 'Side Panel Mode' }),
-      ]),
-      sidePanelSwitch,
+    const sidePanelLabelGroup = h('div', { class: 'toggle-label-group' }, [
+      icon('sidePanel', 18),
+      h('span', { text: 'Side Panel Mode' }),
     ]);
+    const sidePanelRow = h('div', { class: 'toggle-row' }, [sidePanelLabelGroup, sidePanelSwitch]);
+    const sidePanelHelp = HelpTooltip({
+      host: sidePanelRow,
+      label: 'About Side Panel Mode',
+      text: 'When on, clicking the browser toolbar icon opens the side panel instead of the popup.',
+    });
+    owned.push(sidePanelHelp);
+    sidePanelLabelGroup.appendChild(sidePanelHelp.trigger);
 
+    // Self-describing toggle row — deliberately no section header.
     body.appendChild(h('section', { class: 'stack stack-2' }, [
-      SectionHeader('Window'),
       sidePanelRow,
-      h('p', { class: 'hint', text:
-        'Open the same wallet beside your browser tab. When Side Panel Mode is on, clicking the wallet toolbar icon opens the side panel.' }),
-      track(Button({
-        label: 'Open side panel',
-        variant: 'secondary',
-        iconName: 'external',
-        onClick: () => {
-          openSidePanel();
-          if (typeof window !== 'undefined' && typeof window.close === 'function') {
-            window.close();
-          }
-        },
-      })).el,
     ]));
 
     // ---- Appearance ----
+    const appearanceHeader = SectionHeader('Appearance');
+    const appearanceHelp = HelpTooltip({
+      host: appearanceHeader,
+      label: 'About appearance',
+      text: 'Choose Light, Dark, or System to follow your device theme.',
+    });
+    owned.push(appearanceHelp);
+    appearanceHeader.appendChild(appearanceHelp.trigger);
     body.appendChild(h('section', { class: 'stack stack-2' }, [
-      SectionHeader('Appearance'),
-      h('p', { class: 'hint', text:
-        'Choose how the wallet looks. “System” follows your device and switches live.' }),
+      appearanceHeader,
       h('div', { class: 'row-flex wrap' }, themeChips()),
     ]));
 
-    // ---- Danger ----
-    body.appendChild(h('section', { class: 'stack stack-2' }, [
-      SectionHeader('Danger zone'),
-      track(Button({
-        label: 'Reset wallet on this device',
-        variant: 'danger',
-        iconName: 'warning',
-        onClick: () => navigate('/reset'),
-      })).el,
-    ]));
+    // There is deliberately NO full-wallet reset on this screen: an unlocked wallet
+    // should not be one tap from total destruction. Individual account/seed removal
+    // lives in Manage Accounts, and the only full reset is the forgotten-password
+    // recovery path on the lock screen (/reset, reached from /unlock).
 
     // ---- About ----
     // Read from the manifest so it can never drift from the shipped version, unlike the
@@ -463,7 +443,6 @@ export function SettingsRoute({ navigate, back }) {
   }
 
   load();
-  prepareSidePanel();
   d.add(bridge.onEvent('networkChanged', () => load()));
 
   return {

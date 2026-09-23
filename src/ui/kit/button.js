@@ -98,13 +98,17 @@ export function Button(props = {}) {
 /**
  * Square icon-only button. Requires `title` — an icon button with no accessible name is
  * invisible to screen readers, and several of the old ones are.
+ *
+ * `className` lets a screen adopt a local icon-button language (e.g. the dashboard's dark
+ * header uses .dash-header-btn instead of the white .icon-btn surface) without forking the
+ * component. Both classes are applied; the screen's later, equally-specific rules win.
  */
-export function IconButton({ iconName, title, size = 16, variant = '', onClick, disabled } = {}) {
+export function IconButton({ iconName, title, size = 16, variant = '', className = '', onClick, disabled } = {}) {
   if (!title) throw new Error('IconButton: `title` is required as the accessible name.');
   const d = disposer();
   const el = h('button', {
     type: 'button',
-    class: ['icon-btn', variant].filter(Boolean),
+    class: ['icon-btn', variant, className].filter(Boolean),
     title,
     'aria-label': title,
     disabled,
@@ -138,11 +142,12 @@ export function IconButton({ iconName, title, size = 16, variant = '', onClick, 
  * some of those it surfaces failure instead of silently doing nothing when the clipboard
  * write is refused.
  */
-export function CopyButton({ getValue, title = 'Copy', onResult } = {}) {
+export function CopyButton({ getValue, title = 'Copy', className = '', onResult } = {}) {
   const button = IconButton({
     iconName: 'copy',
     title,
     size: 14,
+    className,
     onClick: async () => {
       const value = typeof getValue === 'function' ? getValue() : getValue;
       if (!value) return;

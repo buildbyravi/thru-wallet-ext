@@ -99,6 +99,15 @@ Fix: the fallback delegates to `handleAction('go-<screen>')` and hydrates `activ
 | 2.15 | The password dialog declared `role="dialog"` + `aria-modal="true"` with **no focus trap**: Tab walked into the page behind the overlay, so a user could keep typing a password into a field that was no longer on screen and activate controls they could not see | an ARIA attribute was treated as the mechanism instead of the claim | `READ` |
 | 2.16 | Settings offered "Add custom network" for any http(s) endpoint while the manifest CSP allows `connect-src` only to the Thru RPC hosts and localhost, and the network service silently falls back to the DEFAULT transfer/token program ids for a custom network — a saved network could look configured and then build transactions against the wrong programs | a backend capability was surfaced as a feature before its safety design existed | `READ` |
 | 2.17 | Removing the Add form left legacy custom rows clickable, and `network.setActive` still accepted their ids directly; UI withdrawal was therefore bypassable and a stale stored custom id could be rebound on worker startup | the UI was mistaken for a security boundary; unsafe state was hidden rather than rejected and migrated | `READ` |
+| 2.18 | The vault's KDF work factor (PBKDF2-SHA-256, 600k) lived only in a module constant, so the parameters that derive every wallet's key were a property of the *code*, not of the vault record — a future calibration bump would silently change the derived key and permanently lock every existing vault out (recovery only via the seed phrase), and a lowered constant would weaken every vault without one knowing | encryption parameters are vault state, so they had to be versioned and pinned per-vault | `READ` (external audit) |
+
+Fix for 2.18: the vault record now carries `version: 1` plus a `kdf` envelope
+(`{name, hash, iterations}`) written by `encryptVaultData`; every read validates the
+envelope *before* any key derivation and fails loudly (unknown KDF / newer version)
+instead of masquerading as a wrong password. Re-encrypting an existing vault preserves
+its pinned `kdf` — the envelope travels with the record, so a future constant change
+affects only new vaults. Legacy records without an envelope fall back to the current
+constant and heal to envelope v1 on their first write.
 
 **The structural response**, rather than fixing 20 sites and hoping:
 

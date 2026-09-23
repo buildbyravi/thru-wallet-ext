@@ -25,8 +25,8 @@ globalThis.chrome = {
   },
 };
 
-const { METHODS, CONTRACT_VERSION, isKnownMethod, ERROR_CODES } = await import('./src/shared/contract/manifest.js');
-const { listHandlerNames, handleApiRequest } = await import('./src/background/api-router.js');
+const { METHODS, CONTRACT_VERSION, isKnownMethod, ERROR_CODES } = await import('../src/shared/contract/manifest.js');
+const { listHandlerNames, handleApiRequest } = await import('../src/background/api-router.js');
 
 let failures = 0;
 let checks = 0;

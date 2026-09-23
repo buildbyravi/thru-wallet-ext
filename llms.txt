@@ -69,7 +69,7 @@ Features must not import sibling features or vault internals.
 
 ## Current P0 work
 
-Done: signing re-authentication (contract v5), reset/auto-lock background hardening (contract v6), custom-network background quarantine (contract v7), token transfer (contract v8, pending one live-network verification run), passkey feasibility spike (`docs/PASSKEY_SPIKE.md`), legacy launchpad quarantine, route lifecycle tests for all 14 routes with secret-hygiene and teardown assertions, modal focus trapping, and an explicit side-panel action.
+Done: signing re-authentication (contract v5), reset/auto-lock background hardening (contract v6), custom-network background quarantine (contract v7), token transfer (contract v8, pending one live-network verification run), passkey feasibility spike (`docs/archive/PASSKEY_SPIKE.md`), legacy launchpad quarantine, route lifecycle tests for all 14 routes with secret-hygiene and teardown assertions, modal focus trapping, and an explicit side-panel action.
 
 1. Run `docs/MANUAL_SMOKE_CHECKLIST.md` in Chrome (popup and side panel, narrow and wide). Decide whether a panel wider than 408px should be fluid; `body { max-width: 100% }` already handles the narrow case.
 2. Custom-network re-enablement: HTTPS-only policy with an explicit localhost exception, narrow user-granted host permission, a verified per-network capability record instead of default program ids, and password re-auth before the wallet talks to a user-supplied endpoint.

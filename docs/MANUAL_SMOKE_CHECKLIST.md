@@ -46,28 +46,42 @@ for hours, and shares one session with the popup.
 
 To open the panel two ways, and check both:
 
-- **From the wallet**: Settings → *Window* → **Open side panel**. This is the deliberate, visible
-  action. It must open the panel on the current window without changing anything else.
+- **From the wallet**: Dashboard → header **side-panel icon** (its hover title reads "Open in
+  side panel beside your tab" — no separate explainer UI). This is the deliberate, visible
+  action. It must open the panel on the current window without changing anything else, and close
+  the popup. Settings carries the "Side Panel Mode" toggle directly (no "Window" section header —
+  an explicit opt-in that swaps the toolbar icon to open the panel) but NO redundant "Open side panel"
+  button — the dashboard header owns the one-off open action.
 - **From the browser**: the toolbar icon's context menu / the side panel picker.
 
-Confirm what the button does **not** do: clicking the toolbar icon must still open the popup, not the
-panel. Nothing in the code calls `chrome.sidePanel.setPanelBehavior`, and `test-route-lifecycle.mjs`
-asserts that stays true. If the toolbar icon ever starts opening the panel instead of the popup,
-that is a regression, not a feature.
+Confirm what the toggle does and does not do. With Side Panel Mode **off** (the default),
+clicking the toolbar icon opens the **popup**, not the panel. With it **on**, the toolbar icon
+opens the panel — that is the explicit opt-in, applied on the toggle's click and re-applied by
+the background on every service-worker restart from the stored `thru_side_panel_mode` flag.
+`test-route-lifecycle.mjs` asserts that `setPanelBehavior` is called ONLY by that settings toggle
+(allowlist) and never by load/boot/anything else. If the toolbar icon ever starts opening the
+panel while the toggle is off, that is a regression, not a feature.
+
+**Mutual exclusion** — the popup and the side panel are never both open. With the panel open,
+click the toolbar icon: the popup must appear AND the panel must close on its own (the popup
+broadcasts `THRU_CLOSE_SIDE_PANEL` on open; a panel-shaped page closes on receipt — the panel is
+detected by its full-window viewport, the popup is always the fixed 400×600). The reverse
+direction is the existing dashboard button: it opens the panel and closes the popup. The
+background early-returns the broadcast instead of routing it as an API request.
 
 ## 2. Both widths
 
-`--popup-width` is **408px** and `--popup-min-height` is 580px. The popup is therefore always 408px
+`--popup-width` is **400px** and `--popup-height` is 600px. The popup is therefore always 400px
 wide; the side panel is whatever the user drags it to.
 
-1. **Narrow**: drag the side panel to its narrowest (roughly 300px, and below 408px in any case).
+1. **Narrow**: drag the side panel to its narrowest (roughly 300px, and below 400px in any case).
    - [ ] No content is cut off at the right edge. `body { max-width: 100% }` exists for exactly this
      case, and scrollbars are hidden globally, so clipping would be silent.
    - [ ] Long addresses truncate with an ellipsis instead of pushing the layout wider.
    - [ ] Buttons in a `.screen-actions` row wrap rather than overflow.
    - [ ] The seed grid (Export → reveal) still shows its numbered words legibly.
 2. **Wide / desktop**: drag the panel to about 800px or more.
-   - [ ] The 408px column and the empty space beside it look intentional (border-right visible, no
+   - [ ] The 400px column and the empty space beside it look intentional (border-right visible, no
      stray stretch). **This is the known open question** — if it looks broken, the fix is to make the
      width fluid in the panel only, and it must be decided with a browser open, not by guessing:
      a plain `width: 100%` on `body` would change how Chrome sizes the toolbar popup.
@@ -84,7 +98,7 @@ hash directly (`#/send`) where the UI has no link, so unmigrated or unreachable 
 | --- | --- | --- | --- |
 | `/welcome` | Create/import steps advance; the phrase grid is blurred until revealed; nothing is written to the URL | [ ] | [ ] |
 | `/unlock` | Wrong password shows an inline error and keeps focus in the field; lockout countdown runs; Back/Reset reachable | [ ] | [ ] |
-| `/dashboard` | Balance, account pill, action tiles, health dot and network badge all populate; token rows show a real balance, a proven-zero (0), or a dash — never a fabricated number; a send that already confirmed shows NO "transaction pending" note | [ ] | [ ] |
+| `/dashboard` | Balance, account pill, action tiles, health dot and network badge all populate; the header copy button is the same size and colour as its icon neighbours (no white 32px box); the balance refresh is a quiet frameless icon, not a grey card; the side-panel icon's hover title says "Open in side panel beside your tab"; the token ledger has a single "Tokens" tab (no Activity tab — History owns that); no 24h delta or placeholder number is ever shown; token rows show a real balance, a proven-zero (0), or a dash — never a fabricated number; a send that already confirmed shows NO "transaction pending" note | [ ] | [ ] |
 | `/accounts` | List, balances, pin/switch, "Add account" | [ ] | [ ] |
 | `/account` | Detail for a real ref (`#/account?ref=...` from the Accounts screen); invalid ref shows an error, not a blank screen | [ ] | [ ] |
 | `/add-account` | HD preview renders; adding an account returns to `/accounts` | [ ] | [ ] |
@@ -95,11 +109,17 @@ hash directly (`#/send`) where the UI has no link, so unmigrated or unreachable 
 | `/receive` | Address, QR renders in the raised Thru palette (gradient red tiles, slate finder eyes, ice paper) and scans from a phone; clicking the address box copies it, the box says \"Copied\", then returns to the address after ~1s | [ ] | [ ] |
 | `/faucet` | Claim state, disabled when already claimed, error when the network has no faucet | [ ] | [ ] |
 | `/history` | Entries, filter chips, "load more" appends instead of refetching; token sends appear as "Sent \<amount\> \<SYM\>", receipts as "Received …", mints as "Minted …", and a token-account init never appears as a THRU transfer; a confirmed send never appears BOTH in the list AND as a "Waiting for confirmation" Pending row | [ ] | [ ] |
-| `/history` detail sheet (P2) | Tapping a card opens the sheet from the bottom; it shows the tapped transaction (not a neighbour), full signature copies to clipboard, explorer link opens `scan.thru.org/tx/<sig>` in a new tab; Escape and the backdrop both close it and focus visibly returns to the card. **Honesty check — the one CI cannot run:** against a live alphanet transaction, confirm the fee row and block time. **Alphanet DOES populate `header.blockTime`** (verified 2026-09-20 on a live faucet claim at block 12871764 — a real wall-clock time rendered), so on alphanet "Block time: Not available" now indicates a FETCH FAILURE or a node regression, not expected behaviour. On any other network, absence is still legitimate: `blockTime` is optional on the wire and is a per-node property, and confirm the fee row says **"Fee (declared)"** with the note about no charged-fee field. If either ever shows a plausible number that is NOT what the chain returned, that is a merge-blocker — see `docs/TX_DETAIL_SPIKE.md`. | [ ] | [ ] |
+| `/history` detail sheet (P2) | Tapping a card opens the sheet from the bottom; it shows the tapped transaction (not a neighbour), full signature copies to clipboard, explorer link opens `scan.thru.org/tx/<sig>` in a new tab; Escape and the backdrop both close it and focus visibly returns to the card. **Honesty check — the one CI cannot run:** against a live alphanet transaction, confirm the fee row and block time. **Alphanet DOES populate `header.blockTime`** (verified 2026-09-20 on a live faucet claim at block 12871764 — a real wall-clock time rendered), so on alphanet "Block time: Not available" now indicates a FETCH FAILURE or a node regression, not expected behaviour. On any other network, absence is still legitimate: `blockTime` is optional on the wire and is a per-node property, and confirm the fee row says **"Fee (declared)"** with the note about no charged-fee field. If either ever shows a plausible number that is NOT what the chain returned, that is a merge-blocker — see `docs/archive/TX_DETAIL_SPIKE.md`. | [ ] | [ ] |
 | `/history` detail sheet — overflow (REGRESSION) | Open a sheet with EVERY row present (status, amount, counterparty, network, block, block time, fee, program) and a signature long enough to wrap. The sheet must **scroll**, and the last row (`Program`) must be readable in full. No row may be sliced horizontally, and the fee note must not sit on top of a clipped row. This shipped broken once: flex children compressed instead of overflowing, so `.detail-table` clipped its own last rows and no scrollbar appeared — see `docs/DEFECT_LOG.md`. The DOM shim has no layout engine and **cannot** catch this; `scripts/preview-tx-sheet.html` renders both states side by side. | [ ] | [ ] |
 | `/history` detail sheet — keyboard | Tab reaches a card (visible focus ring), Enter AND Space both open it, Tab wraps inside the sheet without reaching the list behind it, Escape closes. Clicking the in-card copy button or explorer icon must NOT also open the sheet. | [ ] | [ ] |
-| `/settings` | Built-in network controls; any saved custom row says **not selectable**, is inert, and exposes only Remove; auto-lock, security toggle, **Open side panel**, danger zone, version | [ ] | [ ] |
-| `/reset` | Warning copy, confirmation text required, reset returns to `/welcome` | [ ] | [ ] |
+| `/settings` | Built-in network controls; any saved custom row says **not selectable**, is inert, and exposes only Remove; auto-lock, security (Signing: **Session-only is the default**, "Require password" is the password-gated opt-in), appearance, version. **The four "?" popovers (Signing, Auto-lock, Side Panel Mode, Appearance):** each is a dark in-wallet card that opens on hover (and on click) and stays strictly inside the popup — no native browser tooltip, so nothing may render outside the 400px surface — and it closes when the pointer leaves; no explanatory paragraphs may sit under the rows. There is **no Danger zone / full reset on this screen** — an unlocked wallet is never one tap from total destruction (account/seed removal is in Manage Accounts). **Side Panel Mode** toggle only, with no "Window" section header (on → toolbar icon opens the panel, off → popup; persists across worker restarts) — and **no** "Open side panel" button (the dashboard header owns that) | [ ] | [ ] |
+| `/reset` | Reachable **only from the lock screen** (forgotten-password recovery), not from Settings. Warning copy, confirmation text required, reset returns to `/welcome` | [ ] | [ ] |
+
+**Single header per screen.** The shell topbar (wordmark, network badge, settings, lock) is now
+hidden on **every** route: the dashboard owns the 196px ink header, and every sub-screen owns its
+own PageHeader with a Back button. If any route shows the topbar stacked above its own header
+(the 36px double-header it used to be), that is a regression. The network badge's remaining home
+is the dashboard footer; on sub-screens the network is reachable via Settings → Network.
 
 Also check the redirects a browser can trigger but the tests cannot:
 
@@ -143,7 +163,8 @@ thing that actually persists — the side panel document, which can stay open fo
 ## 6. Network and service worker
 
 - [ ] Switch network in Settings: balances, history and pending transactions all change, and the
-  badge in the topbar matches.
+  network in the dashboard footer (and the active row in Settings → Network) matches. The shell
+  topbar — the badge's former home on sub-screens — is hidden on every route.
 - [ ] Switch to a network whose RPC is unreachable: the health dot goes offline, screens show an
   error state rather than an eternal spinner, and the wallet is still usable.
 - [ ] Let the service worker go idle (wait ~30s with the popup closed), then open the popup: it must
@@ -181,7 +202,7 @@ useful than a silently skipped section.
 ```
 Manual smoke: <date>, Chrome <version>, build <git short sha>
   contexts: popup [ ] side panel [ ]
-  widths:   narrow (<408px) [ ] wide (>=800px) [ ]
+  widths:   narrow (<400px) [ ] wide (>=800px) [ ]
   routes:   14/14 [ ]   redirects [ ]   keyboard/focus [ ]
   secret hygiene [ ]   network/worker [ ]
   failures found: <none | list, each with the route and the context>
