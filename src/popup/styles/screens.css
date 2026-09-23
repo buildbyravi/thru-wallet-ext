@@ -1354,6 +1354,17 @@ form > .btn.text {
   transform: translateX(18px);
 }
 
+/* ---- Help circle icon (inline "(?)" tooltips) ---------------------------- */
+.help-circle-icon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-3, #6a7580);
+  cursor: help;
+}
+.help-circle-icon:hover {
+  color: var(--text-1, #151b1e);
+}
+
 
 
 

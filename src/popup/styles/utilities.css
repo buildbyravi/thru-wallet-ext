@@ -37,6 +37,7 @@
 .row-flex.end { justify-content: flex-end; }
 .row-flex.center { justify-content: center; }
 .row-flex.top { align-items: flex-start; }
+.row-flex.align-center { align-items: center; }
 .row-flex.wrap { flex-wrap: wrap; }
 .grow { flex: 1 1 auto; min-width: 0; }
 .shrink-0 { flex-shrink: 0; }

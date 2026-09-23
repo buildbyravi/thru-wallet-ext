@@ -195,10 +195,6 @@ export function SettingsRoute({ navigate, back }) {
   }
 
   function renderSigningReauth(hostEl, requirePasswordForSigning) {
-    hostEl.appendChild(h('p', { class: 'hint', text:
-      'Recommended: require the wallet password before any transaction is signed. Turning this off '
-      + 'allows signing from an already-unlocked session.' }));
-
     const options = [
       { value: true, label: 'Require password' },
       { value: false, label: 'Session-only' },
@@ -310,8 +306,18 @@ export function SettingsRoute({ navigate, back }) {
     // ---- Security ----
     const security = h('section', { class: 'stack stack-2' }, [SectionHeader('Security')]);
     body.appendChild(security);
-    security.appendChild(h('strong', { text: 'Signing' }));
-    renderSigningReauth(security, preferences?.requirePasswordForSigning !== false);
+    // The explanation lives in the (?) icon's native tooltip — no paragraph of
+    // small print on the screen. Session-only is the default; requiring the
+    // password again is the explicit opt-in.
+    security.appendChild(h('div', { class: 'row-flex align-center', style: { gap: '6px' } }, [
+      h('strong', { text: 'Signing' }),
+      h('span', {
+        class: 'help-circle-icon',
+        title: 'Require password before every transaction is signed. Session-only allows signing from an already-unlocked session.',
+        'aria-label': 'About signing security',
+      }, icon('help', 13)),
+    ]));
+    renderSigningReauth(security, preferences?.requirePasswordForSigning === true);
     security.appendChild(h('strong', { text: 'Auto-lock' }));
     renderAutoLock(security, Number(autoLockMinutes));
 
@@ -385,16 +391,10 @@ export function SettingsRoute({ navigate, back }) {
       h('div', { class: 'row-flex wrap' }, themeChips()),
     ]));
 
-    // ---- Danger ----
-    body.appendChild(h('section', { class: 'stack stack-2' }, [
-      SectionHeader('Danger zone'),
-      track(Button({
-        label: 'Reset wallet on this device',
-        variant: 'danger',
-        iconName: 'warning',
-        onClick: () => navigate('/reset'),
-      })).el,
-    ]));
+    // There is deliberately NO full-wallet reset on this screen: an unlocked wallet
+    // should not be one tap from total destruction. Individual account/seed removal
+    // lives in Manage Accounts, and the only full reset is the forgotten-password
+    // recovery path on the lock screen (/reset, reached from /unlock).
 
     // ---- About ----
     // Read from the manifest so it can never drift from the shipped version, unlike the

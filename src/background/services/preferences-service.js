@@ -26,7 +26,7 @@ const DEFAULTS = {
   // Send/signing safety (Rabby-style guardrails)
   enforceWhitelist: false,
   whitelist: [],             // [address] — when enforceWhitelist is on, sends must target one
-  requirePasswordForSigning: true, // user may explicitly opt out in Settings after re-auth
+  requirePasswordForSigning: false, // session-only by default; user may opt into re-auth in Settings (password-gated)
 
   // Token registry visibility
   hiddenTokens: [],          // [mintAddress]

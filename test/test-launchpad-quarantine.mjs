@@ -289,7 +289,7 @@ for (const marker of FAKE_DEFI_MARKERS) {
 
 section('Feature flags cannot re-enable the surface');
 
-const { FLAGS, isEnabled, applyQueryOverrides } = await import('./src/shared/flags.js');
+const { FLAGS, isEnabled, applyQueryOverrides } = await import('../src/shared/flags.js');
 
 ok('FLAGS has no FEATURE_LAUNCHPAD key', !('FEATURE_LAUNCHPAD' in FLAGS));
 ok('FLAGS has no FEATURE_TOKEN_DEPLOY key', !('FEATURE_TOKEN_DEPLOY' in FLAGS));

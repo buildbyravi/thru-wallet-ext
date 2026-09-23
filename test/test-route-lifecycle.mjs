@@ -33,11 +33,12 @@
 // Run: node test-route-lifecycle.mjs
 
 import { readFileSync, readdirSync, statSync } from 'node:fs';
-import { applyTheme } from './src/popup/theme.js';
+import { applyTheme } from '../src/popup/theme.js';
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const ROOT = dirname(fileURLToPath(import.meta.url));
+// The suite lives in test/, so ROOT is the repository root one level up.
+const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 
 // ---- Harness --------------------------------------------------------------
 
@@ -979,7 +980,7 @@ const PREFERENCES = {
   hiddenAccounts: [],
   enforceWhitelist: false,
   whitelist: [],
-  requirePasswordForSigning: true,
+  requirePasswordForSigning: false,
   hiddenTokens: [],
   customTokens: [],
   disclaimerAcknowledgedAt: 1750000002000,
@@ -1724,20 +1725,20 @@ function secretInUrls() {
 
 installGlobals();
 
-const { h, on } = await import('./src/ui/kit/dom.js');
-const { encodeRef } = await import('./src/shared/refs.js');
-const { focusTrap, collectFocusable, isFocusable } = await import('./src/ui/kit/focus-trap.js');
+const { h, on } = await import('../src/ui/kit/dom.js');
+const { encodeRef } = await import('../src/shared/refs.js');
+const { focusTrap, collectFocusable, isFocusable } = await import('../src/ui/kit/focus-trap.js');
 // The sheet renders a counterparty through the same formatter the card uses, so the
 // assertion compares against the real function rather than a re-implementation that could
 // drift from it and quietly stop testing anything.
-const { truncateAddress: truncateAddressForTest } = await import('./src/shared/format.js');
-const { requirePassword } = await import('./src/ui/domain/password-prompt.js');
-const { boot, POPUP_ROUTES } = await import('./src/ui/app/boot.js');
-const guards = await import('./src/ui/app/guards.js');
-const bridge = await import('./src/ui/app/bridge.js');
-const { installSidePanelExclusion } = await import('./src/ui/app/side-panel-exclusion.js');
-const { isSidePanelViewport, CLOSE_SIDE_PANEL_ACTION } = await import('./src/shared/side-panel.js');
-const { Router } = await import('./src/ui/app/router.js');
+const { truncateAddress: truncateAddressForTest } = await import('../src/shared/format.js');
+const { requirePassword } = await import('../src/ui/domain/password-prompt.js');
+const { boot, POPUP_ROUTES } = await import('../src/ui/app/boot.js');
+const guards = await import('../src/ui/app/guards.js');
+const bridge = await import('../src/ui/app/bridge.js');
+const { installSidePanelExclusion } = await import('../src/ui/app/side-panel-exclusion.js');
+const { isSidePanelViewport, CLOSE_SIDE_PANEL_ACTION } = await import('../src/shared/side-panel.js');
+const { Router } = await import('../src/ui/app/router.js');
 
 function isInside(node, root) {
   for (let n = node; n; n = n.parentNode) {
@@ -2018,6 +2019,20 @@ async function settingsTest() {
   ok('the removed custom row disappears while the quarantine notice remains',
     !/My node/.test(textOf(tree)) && /temporarily unavailable/i.test(textOf(tree)),
     textOf(tree).slice(0, 300));
+
+  // ---- Signing: the explanation lives in the (?) icon's tooltip, not a paragraph ----
+  const helpIcons = allElements(tree).filter((el) => el.getAttribute?.('aria-label') === 'About signing security');
+  ok('the signing explanation is the "?" icon tooltip',
+    helpIcons.length === 1
+      && /session-only allows signing/i.test(helpIcons[0].getAttribute('title') || ''),
+    helpIcons.map((el) => el.getAttribute('title')).join(' | '));
+  ok('the old signing recommendation paragraph is gone from the screen',
+    !/recommended: require the wallet password/i.test(textOf(tree)));
+
+  // ---- No full reset on this screen: the lock screen is the only path ----
+  ok('settings offers no full-wallet reset and no danger zone',
+    buttons(tree, /reset wallet/i).length === 0 && !/danger zone/i.test(textOf(tree)),
+    buttons(tree, /reset/i).map(labelOf).join(', '));
 }
 
 // ---- Theme ----------------------------------------------------------------

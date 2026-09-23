@@ -1,5 +1,5 @@
 import { keys as sdkKeys } from '@thru/sdk';
-import { createOnChainAccount, claimFaucet, getAccountInfo } from './src/lib/thru-client.js';
+import { createOnChainAccount, claimFaucet, getAccountInfo } from '../src/lib/thru-client.js';
 
 async function testSelfSigning() {
   // 1. Generate a new, completely unlinked user key pair

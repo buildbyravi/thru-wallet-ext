@@ -37,7 +37,7 @@ const assert = (cond, msg) => {
   console.log('  ok -', msg);
 };
 
-const vault = await import('./src/lib/vault.js');
+const vault = await import('../src/lib/vault.js');
 
 console.log('\n[1] Create a seed-based wallet');
 const mnemonic = await vault.createVault('correct horse battery staple');

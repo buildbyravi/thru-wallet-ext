@@ -195,7 +195,7 @@ function section(title) {
   console.log(`\n[${title}]`);
 }
 
-const { h, text, clear, frag, render, on, disposer, isSafeUrl } = await import('./src/ui/kit/dom.js');
+const { h, text, clear, frag, render, on, disposer, isSafeUrl } = await import('../src/ui/kit/dom.js');
 
 // ---- isSafeUrl: the actual XSS decision function ---------------------------
 
@@ -392,7 +392,7 @@ ok('one throwing disposer does not strand the others', reached === true);
 
 section('refs codec round-trips and rejects tampering');
 
-const { encodeRef, decodeRef, refsEqual: refsEq, safeAddressParam } = await import('./src/shared/refs.js');
+const { encodeRef, decodeRef, refsEqual: refsEq, safeAddressParam } = await import('../src/shared/refs.js');
 
 const sampleRef = { keyringId: 'seed_aB3xY9zQ', accountIndex: 4 };
 
@@ -459,7 +459,7 @@ for (const bad of BAD_REFS) {
 
 section('BalanceHero renders USD-first, native balance, and responds to refresh');
 
-const { BalanceHero } = await import('./src/ui/domain/balance-hero.js');
+const { BalanceHero } = await import('../src/ui/domain/balance-hero.js');
 
 let refreshFired = false;
 const hero = BalanceHero({
@@ -502,7 +502,7 @@ ok('hero.destroy() disposes without throwing', true);
 
 section('PanelItem renders 3x2 action buttons with icons, badges, and disabled state');
 
-const { PanelItem } = await import('./src/ui/domain/panel-item.js');
+const { PanelItem } = await import('../src/ui/domain/panel-item.js');
 
 let actionClicked = false;
 const sendItem = PanelItem({
@@ -541,7 +541,7 @@ ok('panel-item destroy() cleans up handlers', true);
 
 section('CurrentConnection renders connection status, network switcher button, and live health');
 
-const { CurrentConnection } = await import('./src/ui/domain/current-connection.js');
+const { CurrentConnection } = await import('../src/ui/domain/current-connection.js');
 
 let netClicked = false;
 const conn = CurrentConnection({
@@ -589,7 +589,7 @@ ok('CurrentConnection destroy() cleans up cleanly', true);
 
 // First paint must be honest: before any health check runs, the pip carries no status
 // class at all (neutral grey in CSS), never a green "healthy" nobody measured.
-const { CurrentConnection: Conn2 } = await import('./src/ui/domain/current-connection.js');
+const { CurrentConnection: Conn2 } = await import('../src/ui/domain/current-connection.js');
 const conn2 = Conn2({ networkLabel: 'Alphanet' });
 const pip2 = conn2.el.querySelector('.current-connection-pip');
 ok('fresh footer pip is neutral until the first health check',
