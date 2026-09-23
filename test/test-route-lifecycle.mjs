@@ -2460,7 +2460,7 @@ function sourceTest() {
   const panelOffenders = [];
   let trapUsers = 0;
 
-  // "Side Panel Mode" (Settings → Window) is an EXPLICIT user opt-in that legitimately
+  // "Side Panel Mode" (Settings) is an EXPLICIT user opt-in that legitimately
   // calls chrome.sidePanel.setPanelBehavior on the toggle's click. The guard therefore
   // allows exactly that one file and still fails the build if any other UI file starts
   // flipping the toolbar behaviour on its own.

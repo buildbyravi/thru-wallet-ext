@@ -336,8 +336,8 @@ export function SettingsRoute({ navigate, back }) {
     renderAutoLock(security, Number(autoLockMinutes));
 
     // ---- Accounts shortcut ----
+    // Self-describing button — deliberately no section header.
     body.appendChild(h('section', { class: 'stack stack-2' }, [
-      SectionHeader('Accounts'),
       track(Button({
         label: 'Manage accounts and recovery phrases',
         variant: 'secondary',
@@ -394,8 +394,8 @@ export function SettingsRoute({ navigate, back }) {
     owned.push(sidePanelHelp);
     sidePanelLabelGroup.appendChild(sidePanelHelp.trigger);
 
+    // Self-describing toggle row — deliberately no section header.
     body.appendChild(h('section', { class: 'stack stack-2' }, [
-      SectionHeader('Window'),
       sidePanelRow,
     ]));
 

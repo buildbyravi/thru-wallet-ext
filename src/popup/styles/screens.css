@@ -1355,11 +1355,21 @@ form > .btn.text {
 }
 
 /* ---- Help circle icon (inline "(?)" tooltips) ---------------------------- */
+/* The trigger is a <button>; reset the native chrome (grey bevel box) so the
+   icon reads as a frameless glyph. The keyboard focus ring is NOT reset here —
+   the global :focus-visible rule in base.css owns it, and a frameless icon with
+   no visible keyboard focus is a regression (see DEFECT_LOG 2.15). */
 .help-circle-icon {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  margin: 0;
   color: var(--text-3, #6a7580);
-  cursor: help;
+  cursor: pointer;
+  line-height: 1;
 }
 .help-circle-icon:hover {
   color: var(--text-1, #151b1e);
