@@ -9,6 +9,9 @@ import { MnemonicGenerator, ThruHDWallet } from '@thru/sdk/crypto';
 import { keys as sdkKeys, Pubkey } from '@thru/sdk';
 
 const PBKDF2_ITERATIONS = 600_000;
+// Envelope version of the ENCRYPTED vault record (not the plaintext version
+// inside it, which is VAULT_VERSION). Bumping this requires a migration path.
+const VAULT_ENVELOPE_VERSION = 1;
 const VAULT_KEY = 'vault';
 const LEGACY_BACKUP_KEY = 'vault_legacy_backup_v1';
 const SESSION_KEY = 'unlocked_session';
@@ -122,12 +125,38 @@ function getKeyring(vaultData, keyringId) {
   return ring;
 }
 
-async function deriveKeyBits(password, salt) {
+/**
+ * KDF parameters for an encrypted vault record. The work factor is a security
+ * policy, so it is stored PER VAULT rather than trusted to a module constant:
+ * a future version that raises the calibration must not render existing vaults
+ * unreadable. Records written before the envelope existed carry no `kdf`
+ * field and are derived with the only value this app has ever shipped.
+ */
+function kdfParams(stored) {
+  const kdf = stored?.kdf;
+  if (kdf === undefined) return PBKDF2_ITERATIONS; // legacy record
+  if (kdf.name !== 'PBKDF2' || kdf.hash !== 'SHA-256') {
+    throw new Error(`Unsupported vault KDF: ${kdf.name ?? 'unknown'}.`);
+  }
+  if (!Number.isInteger(kdf.iterations) || kdf.iterations < 1) {
+    throw new Error('Vault KDF parameters are malformed.');
+  }
+  return kdf.iterations;
+}
+
+function checkEnvelopeVersion(stored) {
+  if (stored?.version === undefined) return; // legacy record
+  if (stored.version > VAULT_ENVELOPE_VERSION) {
+    throw new Error(`This wallet version cannot read vault format ${stored.version} — update the extension.`);
+  }
+}
+
+async function deriveKeyBits(password, salt, iterations = PBKDF2_ITERATIONS) {
   const baseKey = await crypto.subtle.importKey(
     'raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits'],
   );
   const bits = await crypto.subtle.deriveBits(
-    { name: 'PBKDF2', salt, iterations: PBKDF2_ITERATIONS, hash: 'SHA-256' },
+    { name: 'PBKDF2', salt, iterations, hash: 'SHA-256' },
     baseKey, 256,
   );
   return new Uint8Array(bits);
@@ -137,13 +166,23 @@ async function importAesKey(rawKeyBytes, usages) {
   return crypto.subtle.importKey('raw', rawKeyBytes, 'AES-GCM', false, usages);
 }
 
-async function encryptVaultData(vaultData, rawKeyBytes, salt) {
+async function encryptVaultData(vaultData, rawKeyBytes, salt, previous) {
   const key = await importAesKey(rawKeyBytes, ['encrypt']);
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const ciphertext = await crypto.subtle.encrypt(
     { name: 'AES-GCM', iv }, key, new TextEncoder().encode(JSON.stringify(vaultData)),
   );
-  return { salt: toB64(salt), iv: toB64(iv), ciphertext: toB64(new Uint8Array(ciphertext)) };
+  const payload = { salt: toB64(salt), iv: toB64(iv), ciphertext: toB64(new Uint8Array(ciphertext)) };
+  if (previous?.kdf) {
+    // Re-encrypting an existing vault must keep its KDF parameters: changing the
+    // work factor here would derive a different key and brick the vault.
+    return { version: previous.version ?? VAULT_ENVELOPE_VERSION, kdf: previous.kdf, ...payload };
+  }
+  return {
+    version: VAULT_ENVELOPE_VERSION,
+    kdf: { name: 'PBKDF2', hash: 'SHA-256', iterations: PBKDF2_ITERATIONS },
+    ...payload,
+  };
 }
 
 async function decryptVaultData(stored, rawKeyBytes) {
@@ -166,7 +205,7 @@ async function persistVaultUpdate(vaultData) {
   const { [SESSION_KEY]: session } = await chrome.storage.session.get(SESSION_KEY);
   if (!session) throw new Error('Wallet is locked.');
   const { [VAULT_KEY]: existing } = await chrome.storage.local.get(VAULT_KEY);
-  const stored = await encryptVaultData(vaultData, fromB64(session.rawKeyB64), fromB64(existing.salt));
+  const stored = await encryptVaultData(vaultData, fromB64(session.rawKeyB64), fromB64(existing.salt), existing);
   await chrome.storage.local.set({ [VAULT_KEY]: stored });
   await chrome.storage.session.set({ [SESSION_KEY]: { vaultData, rawKeyB64: session.rawKeyB64 } });
 }
@@ -228,7 +267,11 @@ function externalRef(vaultData, normalized) {
 async function verifyPassword(password) {
   const { [VAULT_KEY]: stored } = await chrome.storage.local.get(VAULT_KEY);
   if (!stored) throw new Error('No wallet found.');
-  const rawKeyBytes = await deriveKeyBits(password, fromB64(stored.salt));
+  // Envelope checks run BEFORE derivation so a corrupt/foreign record fails with a
+  // clear error instead of a misleading "Incorrect password."
+  checkEnvelopeVersion(stored);
+  const iterations = kdfParams(stored);
+  const rawKeyBytes = await deriveKeyBits(password, fromB64(stored.salt), iterations);
   try {
     return await decryptVaultData(stored, rawKeyBytes);
   } catch {
@@ -308,7 +351,8 @@ export async function isUnlocked() {
 export async function unlock(password) {
   const { [VAULT_KEY]: stored } = await chrome.storage.local.get(VAULT_KEY);
   if (!stored) throw new Error('No wallet found on this device yet.');
-  const rawKeyBytes = await deriveKeyBits(password, fromB64(stored.salt));
+  checkEnvelopeVersion(stored);
+  const rawKeyBytes = await deriveKeyBits(password, fromB64(stored.salt), kdfParams(stored));
   let vaultData;
   try {
     vaultData = await decryptVaultData(stored, rawKeyBytes);
@@ -323,19 +367,19 @@ export async function unlock(password) {
     if (!backup) await chrome.storage.local.set({ [LEGACY_BACKUP_KEY]: stored });
     vaultData = migrated;
     const activeRef = convertLegacyRef(legacyRef, legacySeedId, importedIds, vaultData);
-    const replacement = await encryptVaultData(vaultData, rawKeyBytes, fromB64(stored.salt));
+    const replacement = await encryptVaultData(vaultData, rawKeyBytes, fromB64(stored.salt), stored);
     await chrome.storage.local.set({ [VAULT_KEY]: replacement, [ACTIVE_REF_KEY]: activeRef });
   }
 
   if (vaultData.migration?.fromVersion === 1) {
     vaultData.migration.successfulUnlocks = Math.min(2, (vaultData.migration.successfulUnlocks || 0) + 1);
-    const replacement = await encryptVaultData(vaultData, rawKeyBytes, fromB64(stored.salt));
+    const replacement = await encryptVaultData(vaultData, rawKeyBytes, fromB64(stored.salt), stored);
     await chrome.storage.local.set({ [VAULT_KEY]: replacement });
   }
 
   // Backfill provenance on V2 vaults written before `origin` existed.
   if (backfillKeyringOrigin(vaultData)) {
-    const replacement = await encryptVaultData(vaultData, rawKeyBytes, fromB64(stored.salt));
+    const replacement = await encryptVaultData(vaultData, rawKeyBytes, fromB64(stored.salt), stored);
     await chrome.storage.local.set({ [VAULT_KEY]: replacement });
   }
 
