@@ -19,7 +19,7 @@ import { refsEqual } from '../../shared/refs.js';
 
 /**
  * @param {Object} props
- *   accounts      public accounts from account.list
+ *   accounts      public accounts from account.list (balances, if present, are cached)
  *   keyrings      summaries from keyring.list
  *   activeRef     ref of the currently selected account, if any
  *   excludeRef    ref to omit entirely (e.g. cannot send to yourself)
@@ -54,7 +54,7 @@ export function AccountPicker({
         AddressText({ address, chars: 6 }),
       ]),
       balance != null
-        ? h('span', { class: 'row-value', text: `${formatThru(BigInt(balance))} THRU` })
+        ? h('span', { class: 'row-value', text: `${formatThru(BigInt(balance))} THRU · last known` })
         : null,
       active ? h('span', { class: 'row-value' }, icon('check', 14)) : null,
     ]);

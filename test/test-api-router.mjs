@@ -231,6 +231,120 @@ for (const [params, pattern] of sessionOnlyTokenGuards) {
 }
 console.log('  ok - token.transfer local guards fire before any network access');
 
+// Contract v11: an old Review must not silently sign from a newly active account or
+// another chain if the best-effort push event was missed during a password dialog.
+// Use a self-recipient for the good context, so all cases remain offline and prove the
+// guard runs before any chain RPC/signing.
+for (const [method, extra] of [
+  ['tx.sendChecked', {}],
+  ['token.transferChecked', { mintAddress: 'taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKqq' }],
+]) {
+  const params = { ...extra, toAddress: res2.data.address, amountUnits: '1' };
+  const missing = await handleApiRequest({ method, params });
+  assert.equal(missing.error?.code, 'INVALID_REQUEST', `${method} requires a reviewed context`);
+  const wrongAccount = await handleApiRequest({ method, params: {
+    ...params, fromAddress: 'taEREREREREREREREREREREREREREREREREREREREREREg', networkId: 'alphanet',
+  } });
+  assert.equal(wrongAccount.error?.code, 'SEND_CONTEXT_CHANGED', `${method} must pin the source`);
+  assert.equal(wrongAccount.error?.retryable, false);
+  const wrongNetwork = await handleApiRequest({ method, params: {
+    ...params, fromAddress: res2.data.address, networkId: 'localnet',
+  } });
+  assert.equal(wrongNetwork.error?.code, 'SEND_CONTEXT_CHANGED', `${method} must pin the chain`);
+  const correct = await handleApiRequest({ method, params: {
+    ...params, fromAddress: res2.data.address, networkId: 'alphanet',
+  } });
+  assert.equal(correct.ok, false);
+  assert.match(correct.error.message, /address you're sending from/i,
+    `${method} with correct context reaches the normal transfer guard`);
+}
+console.log('  ok - checked native/token sends refuse missing or stale Review context before any RPC');
+
+// Even if the context matched when tx.sendChecked began, a cross-page network switch
+// DURING the live recipient RPC must be caught before the SDK signs. Hold the SDK read
+// (no public RPC) and deliberately interleave network.setActive.
+const clientForRace = await import('../src/lib/thru-client.js');
+const recipientReader = clientForRace.getClient().accounts;
+const originalRecipientGet = recipientReader.get;
+let releaseRecipient = null;
+try {
+  recipientReader.get = () => new Promise((resolve) => {
+    releaseRecipient = () => resolve({ meta: { balance: 100n } });
+  });
+  const pendingChecked = handleApiRequest({ method: 'tx.sendChecked', params: {
+    toAddress: accountsList[1].address,
+    amountUnits: '1',
+    fromAddress: res2.data.address,
+    networkId: 'alphanet',
+  } });
+  for (let attempt = 0; attempt < 30 && !releaseRecipient; attempt += 1) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  assert.equal(typeof releaseRecipient, 'function', 'checked send reaches the held recipient RPC');
+  const doubleClick = await handleApiRequest({ method: 'tx.sendChecked', params: {
+    toAddress: accountsList[1].address, amountUnits: '1',
+    fromAddress: res2.data.address, networkId: 'alphanet',
+  } });
+  assert.equal(doubleClick.error?.code, 'DUPLICATE_SUBMISSION',
+    'a bridge timeout / second click cannot submit the same in-flight transfer twice');
+  await handleApiRequest({ method: 'network.setActive', params: { networkId: 'localnet' } });
+  releaseRecipient();
+  const interrupted = await pendingChecked;
+  assert.equal(interrupted.error?.code, 'SEND_CONTEXT_CHANGED');
+  assert.equal(interrupted.error?.retryable, false);
+} finally {
+  recipientReader.get = originalRecipientGet;
+  await handleApiRequest({ method: 'network.setActive', params: { networkId: 'alphanet' } });
+}
+console.log('  ok - duplicate in-flight sends are refused; a network change during RPC cancels before signing');
+
+// The SDK can finish broadcasting and return a signature before a balance RPC responds.
+// A post-send refresh is advisory: waiting for it would turn a successful transfer into a
+// bridge timeout. Stub only the SDK instance (no real signing key or public RPC involved).
+console.log('[send response] a submitted signature never waits on the next balance query');
+const sdkForSend = clientForRace.getClient();
+const beforeGet = sdkForSend.accounts.get;
+const beforeBuild = sdkForSend.transactions.buildAndSign;
+const beforeTrack = sdkForSend.transactions.sendAndTrack;
+let releasePostSendBalance;
+let senderReads = 0;
+try {
+  sdkForSend.accounts.get = (address) => {
+    if (address === res2.data.address && ++senderReads >= 2) {
+      return new Promise((resolve) => {
+        releasePostSendBalance = () => resolve({ meta: { balance: 99n } });
+      });
+    }
+    return Promise.resolve({ meta: { balance: 100n } });
+  };
+  sdkForSend.transactions.buildAndSign = async () => ({ rawTransaction: new Uint8Array(1) });
+  sdkForSend.transactions.sendAndTrack = async function* () {
+    yield { executionResult: { vmError: 0 }, signature: { value: new Uint8Array(64).fill(7) } };
+  };
+  let replied = false;
+  const request = handleApiRequest({ method: 'tx.sendChecked', params: {
+    toAddress: accountsList[1].address, amountUnits: '1',
+    fromAddress: res2.data.address, networkId: 'alphanet',
+  } }).then((response) => { replied = true; return response; });
+  for (let i = 0; i < 40 && (!releasePostSendBalance || !replied); i += 1) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  assert.equal(typeof releasePostSendBalance, 'function', 'the advisory balance refresh started');
+  assert.equal(replied, true, 'the signing response must not await that blocked balance RPC');
+  const sent = await request;
+  assert.equal(sent.ok, true, sent.error?.message);
+  assert.match(sent.data.signature, /^ts[A-Za-z0-9_-]+$/);
+  assert.equal(storage.get('thru_pending_txs::alphanet')?.[0].signature, sent.data.signature,
+    'the signature is already recorded before the UI receives it');
+} finally {
+  releasePostSendBalance?.();
+  sdkForSend.accounts.get = beforeGet;
+  sdkForSend.transactions.buildAndSign = beforeBuild;
+  sdkForSend.transactions.sendAndTrack = beforeTrack;
+  storage.delete('thru_pending_txs::alphanet'); // keep following auth/isolation fixtures independent
+}
+console.log('  ok - a stalled balance refresh cannot conceal an already-submitted transfer');
+
 const enableWithPassword = await handleApiRequest({
   method: 'settings.setSecurity',
   params: { patch: { requirePasswordForSigning: true }, password: 'Password123!' },
@@ -245,6 +359,10 @@ assert.equal(enableWithPassword.data.requirePasswordForSigning, true);
 const gatedSigning = [
   ['tx.send', { toAddress: res2.data.address, amountUnits: '1' }],
   ['tx.send', { toAddress: res2.data.address, amountUnits: '1', password: 'wrong password' }],
+  ['tx.sendChecked', { toAddress: res2.data.address, amountUnits: '1',
+    fromAddress: res2.data.address, networkId: 'alphanet' }],
+  ['token.transferChecked', { mintAddress: 'taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKqq',
+    toAddress: res2.data.address, amountUnits: '1', fromAddress: res2.data.address, networkId: 'alphanet' }],
   ['tx.claimFaucet', { amountUnits: '1' }],
   ['tx.autoCreateAccount', {}],
   ['token.deploy', {
@@ -352,6 +470,38 @@ assert.equal(
 assert.equal(BigInt(netRes.data.faucetMaxPerClaim) > 0n, true, 'the value must survive, not be nulled');
 console.log('  ok - faucetMaxPerClaim is preserved as a string and re-widens to BigInt');
 
+// The SDK once converted EVERY accounts.get failure into { exists:false, balance:0 }.
+// That crossed two boundaries: tx.getAccountInfo looked live/empty, while tx.getBalances
+// wrote a fresh zero to the cache. Probe both handlers under a synthetic offline node.
+const clientForOffline = await import('../src/lib/thru-client.js');
+const accountReader = clientForOffline.getClient().accounts;
+const realAccountGet = accountReader.get;
+try {
+  accountReader.get = async () => { throw new Error('RPC timeout while reading account'); };
+  const unavailableInfo = await handleApiRequest({
+    method: 'tx.getAccountInfo', params: { address: res2.data.address },
+  });
+  assert.equal(unavailableInfo.ok, false);
+  assert.equal(unavailableInfo.error.retryable, true);
+  const unavailableBalances = await handleApiRequest({
+    method: 'tx.getBalances', params: { addresses: [res2.data.address] },
+  });
+  assert.equal(unavailableBalances.ok, true);
+  assert.equal(unavailableBalances.data[res2.data.address].stale, true);
+  assert.match(unavailableBalances.data[res2.data.address].error, /RPC timeout/);
+  assert.notEqual(unavailableBalances.data[res2.data.address].stale, false);
+  const seed = (await handleApiRequest({ method: 'keyring.list' })).data.find((r) => r.type === 'seed');
+  const preview = await handleApiRequest({ method: 'account.previewHd', params: {
+    keyringId: seed.id, start: 3, count: 1, withBalances: true,
+  } });
+  assert.equal(preview.ok, true, preview.error?.message);
+  assert.equal(preview.data[0].balance, null,
+    'HD preview has no stale indicator; an offline zero must remain unavailable');
+} finally {
+  accountReader.get = realAccountGet;
+}
+console.log('  ok - offline RPC is an error at tx.getAccountInfo and STALE at the balance cache');
+
 console.log('[10] Per-network data isolation');
 // Getting the global-vs-scoped split wrong is a data-model bug that only surfaces the first
 // time someone switches network — at which point they see the previous network's pending
@@ -422,6 +572,49 @@ assert.equal(
   'switching back restores that network\'s own records rather than having wiped them',
 );
 console.log('  ok - switching back preserves each network\'s own records');
+
+// Token registry scope must match the deployed-token scope. The imported registry was kept
+// in global prefs without a networkId, so a localnet import previously appeared on Alphanet
+// (and vice versa), even though the same mint address can name different chain state.
+const importedMint = accountsList[1].address;
+const alphaImport = await handleApiRequest({
+  method: 'token.import',
+  params: { mintAddress: importedMint, name: 'Alpha-only', symbol: 'ALP', decimals: 6 },
+});
+assert.equal(alphaImport.ok, true);
+assert.equal(alphaImport.data.networkId, 'alphanet');
+assert.equal((await handleApiRequest({ method: 'token.list' })).data
+  .some((row) => row.mintAddress === importedMint && row.symbol === 'ALP'), true);
+await handleApiRequest({ method: 'network.setActive', params: { networkId: 'localnet' } });
+assert.equal((await handleApiRequest({ method: 'token.list' })).data
+  .some((row) => row.mintAddress === importedMint), false, 'Alphanet import must not leak onto localnet');
+const localImport = await handleApiRequest({
+  method: 'token.import',
+  params: { mintAddress: importedMint, name: 'Local-only', symbol: 'LOC', decimals: 3 },
+});
+assert.equal(localImport.ok, true);
+assert.equal(localImport.data.networkId, 'localnet');
+await handleApiRequest({ method: 'network.setActive', params: { networkId: 'alphanet' } });
+assert.equal((await handleApiRequest({ method: 'token.list' })).data
+  .find((row) => row.mintAddress === importedMint)?.symbol, 'ALP',
+'imports for two networks must remain independent');
+
+// A pre-upgrade import has no networkId. Its provenance cannot be reconstructed, so only
+// the original default network may show it; users can re-import it elsewhere if needed.
+const originalPrefs = storage.get('thru_prefs');
+storage.set('thru_prefs', {
+  ...originalPrefs,
+  customTokens: [...originalPrefs.customTokens,
+    { mintAddress: 'legacy-imported-mint', symbol: 'LEG', name: 'Legacy', decimals: 0 }],
+});
+assert.equal((await handleApiRequest({ method: 'token.list' })).data
+  .some((row) => row.mintAddress === 'legacy-imported-mint'), true);
+await handleApiRequest({ method: 'network.setActive', params: { networkId: 'localnet' } });
+assert.equal((await handleApiRequest({ method: 'token.list' })).data
+  .some((row) => row.mintAddress === 'legacy-imported-mint'), false);
+storage.set('thru_prefs', originalPrefs);
+await handleApiRequest({ method: 'network.setActive', params: { networkId: 'alphanet' } });
+console.log('  ok - imported token records are network-scoped; legacy records default only to alphanet');
 
 // Account labels are the counter-example: they describe an address, not a chain, so they must
 // survive a switch.

@@ -49,7 +49,9 @@
 // append-only. It is a READ, callable while locked like every other tx.* query, and it adds
 // no new secret to the seam. Its return shape follows the established capability convention:
 // unknown fields arrive as null with the absence stated, never as a plausible-looking number.
-export const CONTRACT_VERSION = 10;
+// v11 adds checked send methods. A reviewed From/Network must be pinned at the backend, not
+// trusted to a best-effort event between two extension pages. Existing send methods remain.
+export const CONTRACT_VERSION = 11;
 
 export const METHODS = {
   // ---- System ------------------------------------------------------------
@@ -471,7 +473,8 @@ export const METHODS = {
       + 'source, tokenAccount, tokenAccountExists, amountUnits, error }], reason } — since contract v8 '
       + 'these are REAL owned balances for registry mints (official Token Program reads). '
       + 'amountUnits is a base-unit string or null; null with tokenAccountExists:false is a proven '
-      + 'zero, null with error:true is an unknown. Before v8 this returned { supported: false }. '
+      + 'zero, null with error:true is an unknown (including unverified mint decimals). Before v8 '
+      + 'this returned { supported: false }. '
       + 'See docs/BACKEND_GAPS.md C1.',
     auth: 'none',
     since: 4,
@@ -563,6 +566,21 @@ export const METHODS = {
     auth: 'unlocked',
     since: 4,
   },
+  // ---- Contract v11: additive reviewed-context signing -----------------
+  'tx.sendChecked': {
+    params: ['toAddress', 'amountUnits', 'fromAddress', 'networkId', 'password'],
+    returns: '{ signature, blockHeight } — same transfer as tx.send; refuses with '
+      + 'SEND_CONTEXT_CHANGED if the active account/network differs from Review',
+    auth: 'signing',
+    since: 11,
+  },
+  'token.transferChecked': {
+    params: ['mintAddress', 'toAddress', 'amountUnits', 'fromAddress', 'networkId', 'password'],
+    returns: '{ signature, blockHeight, recipientTokenAccountCreated, initSignature } — same '
+      + 'token transfer as token.transfer; refuses with SEND_CONTEXT_CHANGED on a stale Review',
+    auth: 'signing',
+    since: 11,
+  },
 };
 
 /** Push events the background may send to UI pages. */
@@ -585,6 +603,7 @@ export const ERROR_CODES = {
   AUTH_LOCKED_OUT: 'Too many failed attempts; retry later.',
   // Contract v7. Permanent policy refusal from network.setActive for a saved custom id.
   CUSTOM_NETWORK_DISABLED: 'Custom networks cannot be activated; choose a built-in network.',
+  SEND_CONTEXT_CHANGED: 'Sending account or network no longer matches the reviewed transfer.',
 };
 
 /** @param {string} method */

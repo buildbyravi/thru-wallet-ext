@@ -130,6 +130,7 @@ const handlers = Object.assign(Object.create(null), {
   'tx.getAccountInfo': ({ address }) => txService.getAccountInfo(address),
   'tx.claimFaucet': ({ amountUnits }) => txService.claimFaucet(amountUnits),
   'tx.send': ({ toAddress, amountUnits }) => txService.sendTransfer(toAddress, amountUnits),
+  'tx.sendChecked': (params) => txService.sendTransferChecked(params),
   'tx.listHistory': ({ address, pageSize, limit, cursor } = {}) => (
     limit !== undefined || cursor !== undefined
       ? txService.listHistory(address, { limit, cursor })
@@ -159,6 +160,7 @@ const handlers = Object.assign(Object.create(null), {
   'token.setVisibility': ({ mintAddress, hidden }) => tokenService.setVisibility(mintAddress, hidden),
   'token.getBalances': ({ address }) => tokenService.getTokenBalances({ address }),
   'token.transfer': (params) => tokenService.transferToken(params),
+  'token.transferChecked': (params) => tokenService.transferTokenChecked(params),
 
   // ---- Preferences -----------------------------------------------------
   'settings.get': () => preferencesService.getPreferences(),

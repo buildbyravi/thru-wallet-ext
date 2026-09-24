@@ -48,11 +48,24 @@ export function SendRoute({ params, navigate, back }) {
   let tokens = [];             // registry records from token.list
   let tokenBalanceState = new Map(); // mintAddress -> token.getBalances entry for the active account
   let asset = { isNative: true, symbol: 'THRU', mintAddress: null }; // what this send moves
-  let balanceUnits = 0n;
+  let balanceUnits = null;      // live balance only; unknown is NEVER zero
+  let cachedBalanceUnits = null; // advisory display only, never used to enable a send
+  let balanceStatus = 'checking';
+  let tokenBalanceStatus = 'checking';
+  let tokensStatus = 'checking';
+  let feeStatus = 'checking';
+  let accountsStatus = 'checking';
+  let keyringsStatus = 'checking';
   let network = null;
   let feeInfo = null;          // from tx.estimateFee (native THRU fee only)
   let recipientState = null;   // { valid, isSelf, exists, reason, tokenAccountExists }
   let amountUnits = 0n;
+  let loadSeq = 0;             // invalidate late RPCs after account/network changes
+  let balanceRequestSeq = 0;   // a retry supersedes an older read on the SAME account
+  let tokenRequestSeq = 0;
+  let feeRequestSeq = 0;
+  let destroyed = false;
+  let switchingAccount = false;
 
   function track(c) { owned.push(c); return c; }
 
@@ -61,8 +74,10 @@ export function SendRoute({ params, navigate, back }) {
 
   // Form state survives an excursion into a sub-view. Without this, opening the asset or
   // recipient picker and coming back cleared whatever had been typed.
-  let formState = { to: '', amount: '' };
+  let formState = { to: safeAddressParam(params.to) || '', amount: '' };
   let liveReviewBtn = null;         // the Review control of the currently mounted form
+  let liveForm = null;              // only the nodes updated when a background read finishes
+  let viewDisposer = disposer();    // sub-view listeners must go away on EACH internal transition
   let recipientValidationSeq = 0;   // invalidates stale async recipient checks (typed-over)
 
   /**
@@ -74,11 +89,14 @@ export function SendRoute({ params, navigate, back }) {
   function refreshReviewEnabled() {
     // The owner-existence gate is native-only: a token recipient needs no registered wallet
     // account, only (eventually) a token account the sender can create.
-    const ready = amountUnits > 0n
+    const spendable = spendableUnits();
+    const ready = spendable != null && amountUnits > 0n && amountUnits <= spendable
+      && (asset.isNative || (balanceUnits != null && balanceUnits > 0n))
       && recipientState?.valid === true
       && recipientState?.isSelf !== true
       && (asset.isNative ? recipientState?.exists !== false : true);
     liveReviewBtn?.update({ disabled: !ready });
+    if (liveForm) liveForm.feeText.textContent = feeText();
   }
 
   // The asset / From / recipient views are INTERNAL states of this one route, not separate
@@ -101,6 +119,11 @@ export function SendRoute({ params, navigate, back }) {
   const el = h('section', { class: 'screen' }, [header.el, banner.el, body]);
 
   function clearBody() {
+    recipientValidationSeq += 1;
+    liveReviewBtn = null;
+    liveForm = null;
+    viewDisposer.dispose();
+    viewDisposer = disposer();
     for (const c of owned) c.destroy?.();
     owned.length = 0;
     while (body.firstChild) body.removeChild(body.firstChild);
@@ -112,10 +135,44 @@ export function SendRoute({ params, navigate, back }) {
       // Token spendable is the token account balance, in the mint's own units. The THRU fee is
       // a separate constraint on the THRU balance, not deducted from the token amount.
       const state = tokenBalanceState.get(asset.mintAddress);
-      return state?.tokenAccountExists && state.amountUnits != null ? BigInt(state.amountUnits) : 0n;
+      if (state?.error === true || !state) return null;
+      if (state.tokenAccountExists === false) return 0n;
+      return state.tokenAccountExists === true && state.amountUnits != null
+        ? BigInt(state.amountUnits) : null;
     }
-    const reserve = feeInfo?.reserveUnits ? BigInt(feeInfo.reserveUnits) : 0n;
+    // No live balance or verified reserve means no MAX and no Review. An absent fee estimate
+    // used to silently become a zero reserve, which could spend the fee payer's entire balance.
+    if (balanceUnits == null || feeInfo?.reserveUnits == null) return null;
+    const reserve = BigInt(feeInfo.reserveUnits);
     return balanceUnits > reserve ? balanceUnits - reserve : 0n;
+  }
+
+  function nativeBalanceText() {
+    if (balanceUnits != null) return `${formatThru(balanceUnits)} THRU`;
+    if (cachedBalanceUnits != null) return `${formatThru(cachedBalanceUnits)} THRU (last known)`;
+    return balanceStatus === 'error' ? 'Balance unavailable' : 'Checking balance…';
+  }
+
+  function spendableText() {
+    const available = spendableUnits();
+    if (available == null) return 'Spendable: unavailable until balance and fee are checked';
+    return `Spendable: ${asset.isNative
+      ? `${formatThru(available)} THRU`
+      : `${formatTokenAmount(available, tokenDecimals())} ${asset.symbol || 'TOKEN'}`}`;
+  }
+
+  /** Update just the mounted form's facts, without replacing inputs or losing typed text/focus. */
+  function updateFormBalances() {
+    if (!liveForm) return;
+    liveForm.fromBalance.textContent = nativeBalanceText();
+    liveForm.assetBalance.textContent = assetBalanceText();
+    liveForm.spendable.textContent = spendableText();
+    liveForm.max.update({ disabled: spendableUnits() == null });
+    const failed = balanceStatus === 'error' || feeStatus === 'error';
+    liveForm.retry.el.classList.toggle('hidden', !failed);
+    liveForm.amount.setError('');
+    parseAmount(liveForm.amount);
+    refreshReviewEnabled();
   }
 
   /** Registry records merged with this account's balance state, for the asset picker. */
@@ -128,14 +185,15 @@ export function SendRoute({ params, navigate, back }) {
 
   /** Display balance of the currently selected asset, as an already-formatted string. */
   function assetBalanceText() {
-    if (asset.isNative) return `${formatThru(balanceUnits)} THRU`;
+    if (asset.isNative) return nativeBalanceText();
     const symbol = asset.symbol || 'TOKEN';
     const state = tokenBalanceState.get(asset.mintAddress);
     if (state?.error === true) return 'balance unknown';
     if (state?.tokenAccountExists && state.amountUnits != null) {
       return `${formatTokenAmount(BigInt(state.amountUnits), tokenDecimals())} ${symbol}`;
     }
-    return `0 ${symbol}`;
+    if (state?.tokenAccountExists === false) return `0 ${symbol}`;
+    return tokenBalanceStatus === 'checking' ? 'Checking balance…' : 'balance unknown';
   }
 
   function tokenDecimals() {
@@ -157,6 +215,7 @@ export function SendRoute({ params, navigate, back }) {
     // -- From: now tappable. The legacy card had a chevron implying it was, but nothing was
     //    wired to it, so there was no way to send from a different account without leaving the
     //    screen and switching the active account first.
+    const fromBalance = h('span', { class: 'row-value', text: nativeBalanceText() });
     const fromCard = h('button', { type: 'button', class: 'row clickable' }, [
       AccountAvatar({
         address: account.address,
@@ -168,10 +227,10 @@ export function SendRoute({ params, navigate, back }) {
         // accounts share a similar name.
         h('span', { class: 'row-sub', text: account.keyring?.label || 'Unknown source' }),
       ]),
-      h('span', { class: 'row-value', text: `${formatThru(balanceUnits)} THRU` }),
+      fromBalance,
       h('span', { class: 'account-pill-chevron' }, icon('chevronRight', 13)),
     ]);
-    d.on(fromCard, 'click', () => renderFromPicker());
+    viewDisposer.on(fromCard, 'click', () => renderFromPicker());
 
     body.appendChild(h('div', { class: 'stack stack-2' }, [
       h('span', { class: 'eyebrow', text: 'From' }),
@@ -183,6 +242,7 @@ export function SendRoute({ params, navigate, back }) {
       h('span', { class: 'row-title', text: asset.symbol || 'TOKEN' }),
     ];
     if (asset.isNative) assetTitleChildren.push(h('span', { class: 'tag-native', text: 'Native' }));
+    const assetBalance = h('span', { class: 'row-value', text: assetBalanceText() });
     const assetCard = h('button', { type: 'button', class: 'row clickable' }, [
       h('div', { class: 'token-row-avatar' }, asset.isNative
         ? icon('bolt', 15)
@@ -191,10 +251,10 @@ export function SendRoute({ params, navigate, back }) {
         h('span', { class: 'row-flex', style: { gap: '6px' } }, assetTitleChildren),
         h('span', { class: 'row-sub', text: asset.isNative ? 'Thru Native Token' : (asset.name || 'Token') }),
       ]),
-      h('span', { class: 'row-value', text: assetBalanceText() }),
+      assetBalance,
       h('span', { class: 'account-pill-chevron' }, icon('chevronRight', 13)),
     ]);
-    d.on(assetCard, 'click', () => renderAssetPicker());
+    viewDisposer.on(assetCard, 'click', () => renderAssetPicker());
 
     body.appendChild(h('div', { class: 'stack stack-2' }, [
       h('span', { class: 'eyebrow', text: 'Asset' }),
@@ -222,13 +282,13 @@ export function SendRoute({ params, navigate, back }) {
     }));
     // Validation is debounced and asynchronous, so typing does not fire a request per keystroke.
     let checkTimer = null;
-    d.on(recipient.control, 'input', () => {
+    viewDisposer.on(recipient.control, 'input', () => {
       clearTimeout(checkTimer);
       const value = recipient.value.trim();
       if (!value) return;
       checkTimer = setTimeout(() => validateRecipient(value, recipientStatus), 350);
     });
-    d.add(() => clearTimeout(checkTimer));
+    viewDisposer.add(() => clearTimeout(checkTimer));
 
     const pasteBtn = track(Button({
       label: 'Paste',
@@ -239,6 +299,7 @@ export function SendRoute({ params, navigate, back }) {
         try {
           const text = await navigator.clipboard.readText();
           recipient.value = text.trim();
+          formState.to = recipient.value;
           validateRecipient(recipient.value, recipientStatus);
         } catch {
           // clipboardRead is in the manifest, but the user can still refuse the prompt.
@@ -285,8 +346,13 @@ export function SendRoute({ params, navigate, back }) {
       label: 'Max',
       variant: 'secondary',
       size: 'sm',
+      disabled: spendableUnits() == null,
       onClick: () => {
         const spendable = spendableUnits();
+        if (spendable == null) {
+          amount.setError('Balance or fee is not available yet. Retry checks before using Max.');
+          return;
+        }
         if (spendable <= 0n) {
           amount.setError(asset.isNative
             ? 'Balance is too low to cover the network fee.'
@@ -304,15 +370,24 @@ export function SendRoute({ params, navigate, back }) {
     }));
     maxBtn.el.classList.add('w-auto');
 
+    const spendable = h('span', { class: 'hint', text: spendableText() });
+    const feeNote = h('p', { class: 'hint', text: feeText() });
+    const retryBtn = track(Button({
+      label: 'Retry checks',
+      variant: 'secondary',
+      size: 'sm',
+      onClick: () => {
+        refreshNativeBalance(loadSeq, account.address);
+        refreshFee(loadSeq);
+        refreshTokenBalances(loadSeq, account.address);
+      },
+    }));
+    retryBtn.el.classList.toggle('hidden', balanceStatus !== 'error' && feeStatus !== 'error');
     body.appendChild(h('div', { class: 'stack stack-2' }, [
       amount.el,
-      h('div', { class: 'row-flex between' }, [
-        h('span', { class: 'hint', text: `Spendable: ${asset.isNative
-          ? `${formatThru(spendableUnits())} THRU`
-          : `${formatTokenAmount(spendableUnits(), tokenDecimals())} ${asset.symbol || 'TOKEN'}`}` }),
-        maxBtn.el,
-      ]),
-      h('p', { class: 'hint' }, feeText()),
+      h('div', { class: 'row-flex between' }, [spendable, maxBtn.el]),
+      feeNote,
+      retryBtn.el,
     ]));
 
     // -- Review --
@@ -326,6 +401,8 @@ export function SendRoute({ params, navigate, back }) {
       },
     }));
     body.appendChild(h('div', { class: 'screen-actions' }, reviewBtn.el));
+    liveForm = { fromBalance, assetBalance, spendable, feeText: feeNote,
+      max: maxBtn, retry: retryBtn, amount };
 
     // Re-validate a prefilled recipient (e.g. arriving from a contact link).
     if (prefill.to) validateRecipient(prefill.to, recipientStatus);
@@ -344,14 +421,17 @@ export function SendRoute({ params, navigate, back }) {
           + ' which costs one additional THRU fee.';
       }
       if (balanceUnits === 0n) text += ' This account holds no THRU to pay it.';
+      if (balanceUnits == null) text += ' THRU balance is not verified yet.';
       return text;
     }
-    if (!feeInfo) return 'Checking the network fee…';
+    if (!feeInfo) return feeStatus === 'error'
+      ? 'Network fee unavailable. Retry checks to send safely.'
+      : 'Checking the network fee…';
     if (!feeInfo.supported) {
-      // Honest rather than reassuring: quoting a devnet fee on an unmeasured network would be
-      // worse than admitting it is unknown.
-      return `Network fee is unknown on ${network?.label || 'this network'}. A small amount is `
-        + 'held back from Max as a precaution.';
+      // No reserve is known on this network: claiming to hold back "a small amount" when Max
+      // would in fact reserve zero is unsafe. Pause native sends until a fee is configured.
+      return `Network fee is unknown on ${network?.label || 'this network'}. Native sends need a `
+        + 'verified fee reserve.';
     }
     return `Network fee: ${formatThru(BigInt(feeInfo.feeUnits))} THRU`
       + (feeInfo.source === 'assumed' ? ' (assumed, not measured on this network)' : '');
@@ -370,11 +450,12 @@ export function SendRoute({ params, navigate, back }) {
       amountField.setError(error.message || 'Enter a valid amount.');
       return;
     }
-    if (amountUnits > spendableUnits()) {
+    const available = spendableUnits();
+    if (available != null && amountUnits > available) {
       amountField.setError(
         asset.isNative
-          ? `More than you can send. Spendable: ${formatThru(spendableUnits())} THRU.`
-          : `More than you hold. Balance: ${formatTokenAmount(spendableUnits(), tokenDecimals())} ${asset.symbol || 'TOKEN'}.`,
+          ? `More than you can send. Spendable: ${formatThru(available)} THRU.`
+          : `More than you hold. Balance: ${formatTokenAmount(available, tokenDecimals())} ${asset.symbol || 'TOKEN'}.`,
       );
     }
   }
@@ -489,10 +570,19 @@ export function SendRoute({ params, navigate, back }) {
       amountField.setError('Enter an amount greater than zero.');
       return false;
     }
-    if (amountUnits > spendableUnits()) {
+    const available = spendableUnits();
+    if (available == null || (!asset.isNative && balanceUnits == null)) {
+      amountField.setError('Balance or fee is not available yet. Retry checks before reviewing.');
+      return false;
+    }
+    if (!asset.isNative && balanceUnits <= 0n) {
+      amountField.setError('This account holds no THRU to pay the token network fee.');
+      return false;
+    }
+    if (amountUnits > available) {
       amountField.setError(asset.isNative
-        ? `More than you can send. Spendable: ${formatThru(spendableUnits())} THRU.`
-        : `More than you hold. Balance: ${formatTokenAmount(spendableUnits(), tokenDecimals())} ${asset.symbol || 'TOKEN'}.`);
+        ? `More than you can send. Spendable: ${formatThru(available)} THRU.`
+        : `More than you hold. Balance: ${formatTokenAmount(available, tokenDecimals())} ${asset.symbol || 'TOKEN'}.`);
       return false;
     }
     return true;
@@ -511,18 +601,22 @@ export function SendRoute({ params, navigate, back }) {
       accounts,
       keyrings,
       activeRef: account.ref,
-      emptyText: 'No other accounts in this wallet.',
+      emptyText: accountsStatus === 'checking' || keyringsStatus === 'checking'
+        ? 'Loading accounts…'
+        : accountsStatus === 'error' ? 'Could not load accounts.' : 'No other accounts in this wallet.',
       onPick: async (pick) => {
         if (!pick.ref) return;
+        switchingAccount = true;
         try {
           // Switching the active account is the honest model: tx.send always signs with the
           // active account, so the From selection must actually change it rather than be a
           // display-only preference the backend ignores.
           await bridge.send('account.switch', { ref: pick.ref });
-          amountUnits = 0n;
-          await load();
+          if (!destroyed) await load();
         } catch (error) {
-          banner.set(error.message || 'Could not switch account.');
+          if (!destroyed) banner.set(error.message || 'Could not switch account.');
+        } finally {
+          switchingAccount = false;
         }
       },
     }));
@@ -539,7 +633,9 @@ export function SendRoute({ params, navigate, back }) {
     header.setTitle('Choose asset');
 
     const selector = track(AssetSelector({
-      nativeBalance: balanceUnits.toString(),
+      nativeBalance: balanceUnits?.toString() ?? null,
+      nativeBalanceLabel: nativeBalanceText(),
+      balancesPending: tokenBalanceStatus === 'checking',
       tokens: mergedTokens(),
       selectedMint: asset.mintAddress,
       onSelect: (picked) => {
@@ -553,6 +649,25 @@ export function SendRoute({ params, navigate, back }) {
       },
     }));
     body.appendChild(selector.el);
+    if (tokensStatus === 'checking') {
+      body.appendChild(h('p', { class: 'hint', text: 'Loading your token list…' }));
+    } else if (tokensStatus === 'error') {
+      body.appendChild(h('p', { class: 'hint', text: 'Could not load your token list.' }));
+      body.appendChild(track(Button({
+        label: 'Retry token list', variant: 'secondary',
+        onClick: () => refreshTokenList(loadSeq),
+      })).el);
+    }
+    if (tokenBalanceStatus === 'checking') {
+      body.appendChild(h('p', { class: 'hint', text: 'Checking token balances in the background…' }));
+    } else if (tokenBalanceStatus === 'error') {
+      body.appendChild(h('p', { class: 'hint', text: 'Token balances unavailable. They are not zero.' }));
+      body.appendChild(track(Button({
+        label: 'Retry token balances',
+        variant: 'secondary',
+        onClick: () => refreshTokenBalances(loadSeq, account.address),
+      })).el);
+    }
 
     body.appendChild(h('div', { class: 'screen-actions' },
       track(Button({ label: 'Cancel', variant: 'text', onClick: () => renderForm() })).el));
@@ -560,6 +675,7 @@ export function SendRoute({ params, navigate, back }) {
 
   // ---- Choose a recipient -------------------------------------------------
   function renderPicker(recipientField) {
+    if (recipientField) formState.to = recipientField.value;
     subView = 'recipient';
     clearBody();
     header.setTitle('Choose recipient');
@@ -575,7 +691,10 @@ export function SendRoute({ params, navigate, back }) {
       // Cannot send to the account you are sending from. excludeRef compares by keyringId +
       // index, unlike the legacy picker which compared the OLD ref shape and could mis-match.
       excludeRef: account.ref,
-      emptyText: 'No other accounts or saved contacts yet.',
+      emptyText: accountsStatus === 'checking' || keyringsStatus === 'checking'
+        ? 'Loading accounts…'
+        : accountsStatus === 'error' ? 'Could not load accounts.'
+          : 'No other accounts or saved contacts yet.',
       onPick: (pick) => renderForm({ to: pick.address, amount: formState.amount }),
     }));
     body.appendChild(picker.el);
@@ -584,7 +703,7 @@ export function SendRoute({ params, navigate, back }) {
       track(Button({
         label: 'Back',
         variant: 'text',
-        onClick: () => renderForm({ to: recipientField?.value || '', amount: formState.amount }),
+        onClick: () => renderForm({ to: formState.to, amount: formState.amount }),
       })).el));
   }
 
@@ -688,24 +807,43 @@ export function SendRoute({ params, navigate, back }) {
   // ---- Step 3: submit ----------------------------------------------------
   async function submit(to) {
     banner.clear();
+    // Capture the reviewed facts BEFORE an async settings read or password prompt. Another
+    // extension page may switch source/network while that dialog is open; the checked
+    // background methods refuse to sign against anything but this exact reviewed context.
+    let sendStarted = false;
+    const reviewed = {
+      fromAddress: account.address,
+      network: { ...network },
+      asset: { ...asset },
+      amountUnits,
+      decimals: tokenDecimals(),
+    };
     try {
-      const method = asset.isNative ? 'tx.send' : 'token.transfer';
-      const params = asset.isNative
-        ? { toAddress: to, amountUnits: amountUnits.toString() }
-        : { mintAddress: asset.mintAddress, toAddress: to, amountUnits: amountUnits.toString() };
-      const symbol = asset.isNative ? 'THRU' : (asset.symbol || 'TOKEN');
+      const method = reviewed.asset.isNative ? 'tx.sendChecked' : 'token.transferChecked';
+      const params = reviewed.asset.isNative
+        ? { toAddress: to, amountUnits: reviewed.amountUnits.toString() }
+        : { mintAddress: reviewed.asset.mintAddress, toAddress: to,
+          amountUnits: reviewed.amountUnits.toString() };
+      params.fromAddress = reviewed.fromAddress;
+      params.networkId = reviewed.network.id;
+      const symbol = reviewed.asset.isNative ? 'THRU' : (reviewed.asset.symbol || 'TOKEN');
       const prefs = await bridge.send('settings.get').catch(() => null);
+      const sendChecked = (extra = {}) => {
+        sendStarted = true;
+        return bridge.send(method, { ...params, ...extra });
+      };
       const result = prefs?.requirePasswordForSigning === false
-        ? await bridge.send(method, params)
+        ? await sendChecked()
         : await requirePassword({
           title: 'Confirm send',
           body: `Re-enter your password to sign and broadcast this ${symbol} transfer.`,
           confirmLabel: 'Sign & send',
-          verify: (password) => bridge.send(method, { ...params, password }),
+          verify: (password) => sendChecked({ password }),
         });
-      if (!result) return;
-      renderSuccess(to, result);
+      if (!result || destroyed) return;
+      renderSuccess(to, result, reviewed);
     } catch (error) {
+      if (destroyed) return;
       // The background owns the authoritative guards (whitelist, duplicate submission,
       // recipient activation, mint existence, token balance), so its message is shown rather
       // than re-derived here.
@@ -713,19 +851,28 @@ export function SendRoute({ params, navigate, back }) {
         banner.set(error.message, 'warning');
       } else if (error.code === 'DUPLICATE_SUBMISSION') {
         banner.set(error.message, 'warning');
+      } else if (error.code === 'SEND_CONTEXT_CHANGED') {
+        await load({ notice: error.message });
+      } else if (sendStarted && (error.retryable
+        || ['SERVICE_TIMEOUT', 'PORT_ERROR', 'NO_RESPONSE'].includes(error.code))) {
+        // A bridge timeout is NOT proof that signing failed. The worker may still be
+        // broadcasting after this page gave up waiting; inviting an immediate retry can
+        // send twice. In-flight dedupe is a backstop, not a substitute for honest status.
+        banner.set('Could not confirm whether this transfer was submitted. Check Activity '
+          + 'and the explorer before trying again.', 'warning');
       } else {
         banner.set(error.message || 'The transfer failed.');
       }
     }
   }
 
-  function renderSuccess(to, result) {
+  function renderSuccess(to, result, reviewed) {
     clearBody();
     header.setTitle('Sent');
 
-    const sentText = asset.isNative
-      ? `${formatThru(amountUnits)} THRU sent`
-      : `${formatTokenAmount(amountUnits, tokenDecimals())} ${asset.symbol || 'TOKEN'} sent`;
+    const sentText = reviewed.asset.isNative
+      ? `${formatThru(reviewed.amountUnits)} THRU sent`
+      : `${formatTokenAmount(reviewed.amountUnits, reviewed.decimals)} ${reviewed.asset.symbol || 'TOKEN'} sent`;
 
     body.appendChild(h('div', { class: 'notice' }, [
       h('div', { class: 'row-flex' }, [
@@ -737,7 +884,7 @@ export function SendRoute({ params, navigate, back }) {
 
     if (result?.recipientTokenAccountCreated) {
       body.appendChild(h('p', { class: 'hint', text:
-        `A ${asset.symbol || 'token'} account was created for the recipient as part of this send.` }));
+        `A ${reviewed.asset.symbol || 'token'} account was created for the recipient as part of this send.` }));
     }
 
     if (result?.signature) {
@@ -754,7 +901,8 @@ export function SendRoute({ params, navigate, back }) {
 
       // explorerUrl is '' on networks without an explorer, and h() drops an unsafe href, so a
       // missing or bad URL renders nothing rather than a dead link.
-      const explorer = network?.explorerUrl ? `${network.explorerUrl}/tx/${result.signature}` : '';
+      const explorer = reviewed.network.explorerUrl
+        ? `${reviewed.network.explorerUrl}/tx/${result.signature}` : '';
       if (explorer) {
         body.appendChild(h('a', {
           class: 'btn secondary',
@@ -770,8 +918,8 @@ export function SendRoute({ params, navigate, back }) {
     }
 
     body.appendChild(h('p', { class: 'hint', text:
-      'Waiting for on-chain confirmation. Acceptance by the network is not the same as '
-      + 'confirmation.' }));
+      `Submitted on ${reviewed.network.label || reviewed.network.id}. Waiting for on-chain `
+      + 'confirmation; acceptance by the network is not confirmation.' }));
 
     body.appendChild(h('div', { class: 'screen-actions' }, [
       track(Button({
@@ -782,64 +930,217 @@ export function SendRoute({ params, navigate, back }) {
       track(Button({
         label: 'Send again',
         variant: 'text',
-        onClick: () => { amountUnits = 0n; recipientState = null; load(); },
+        onClick: () => {
+          formState = { to: safeAddressParam(params.to) || '', amount: '' };
+          load();
+        },
       })).el,
     ]));
   }
 
   // ---- Load --------------------------------------------------------------
-  async function load() {
+  const isCurrent = (seq, address = account?.address) => !destroyed
+    && seq === loadSeq && account?.address === address;
+
+  function refreshPickerIfOpen() {
+    if (subView === 'asset') renderAssetPicker();
+    if (subView === 'from') renderFromPicker();
+    if (subView === 'recipient') renderPicker(null);
+  }
+
+  function refreshNativeBalance(seq, address) {
+    const request = ++balanceRequestSeq;
+    balanceUnits = null;
+    balanceStatus = 'checking';
+    updateFormBalances();
+    bridge.send('tx.getAccountInfo', { address }).then((info) => {
+      if (!isCurrent(seq, address) || request !== balanceRequestSeq) return;
+      // Missing or malformed data is UNKNOWN, not a balance of zero.
+      if (!/^(0|[1-9]\d*)$/.test(String(info?.balance ?? ''))) {
+        throw new Error('The network did not return a valid balance.');
+      }
+      balanceUnits = BigInt(info.balance);
+      balanceStatus = 'ready';
+      updateFormBalances();
+      if (subView === 'asset') renderAssetPicker();
+    }).catch(() => {
+      if (!isCurrent(seq, address) || request !== balanceRequestSeq) return;
+      balanceUnits = null;
+      balanceStatus = 'error';
+      updateFormBalances();
+      if (subView === 'asset') renderAssetPicker();
+    });
+  }
+
+  function refreshFee(seq) {
+    const request = ++feeRequestSeq;
+    feeInfo = null;
+    feeStatus = 'checking';
+    updateFormBalances();
+    bridge.send('tx.estimateFee', {}).then((fee) => {
+      if (!isCurrent(seq) || request !== feeRequestSeq) return;
+      if (fee?.networkId !== network?.id) throw new Error('Fee quote was for another network.');
+      if (fee.supported && (!/^(0|[1-9]\d*)$/.test(String(fee.reserveUnits ?? ''))
+        || !/^(0|[1-9]\d*)$/.test(String(fee.feeUnits ?? ''))
+        || BigInt(fee.reserveUnits) < BigInt(fee.feeUnits))) {
+        throw new Error('The network did not return a usable fee reserve.');
+      }
+      feeInfo = fee;
+      feeStatus = 'ready';
+      updateFormBalances();
+    }).catch(() => {
+      if (!isCurrent(seq) || request !== feeRequestSeq) return;
+      feeInfo = null;
+      feeStatus = 'error';
+      updateFormBalances();
+    });
+  }
+
+  function refreshTokenBalances(seq, address) {
+    const request = ++tokenRequestSeq;
+    tokenBalanceState = new Map();
+    tokenBalanceStatus = 'checking';
+    updateFormBalances();
+    if (subView === 'asset') renderAssetPicker();
+    bridge.send('token.getBalances', { address }).then((result) => {
+      if (!isCurrent(seq, address) || request !== tokenRequestSeq) return;
+      if (result?.networkId !== network?.id || !Array.isArray(result?.balances)) {
+        throw new Error('Token balances were for another network or were unavailable.');
+      }
+      tokenBalanceState = new Map(result.balances.map((entry) => [entry.mintAddress, entry]));
+      tokenBalanceStatus = 'ready';
+      updateFormBalances();
+      if (subView === 'asset') renderAssetPicker();
+    }).catch(() => {
+      if (!isCurrent(seq, address) || request !== tokenRequestSeq) return;
+      tokenBalanceState = new Map();
+      tokenBalanceStatus = 'error';
+      updateFormBalances();
+      if (subView === 'asset') renderAssetPicker();
+    });
+  }
+
+  function refreshTokenList(seq) {
+    tokensStatus = 'checking';
+    bridge.send('token.list').then((list) => {
+      if (!isCurrent(seq)) return;
+      tokens = Array.isArray(list) ? list : [];
+      tokensStatus = 'ready';
+      if (subView === 'asset') renderAssetPicker();
+    }).catch(() => {
+      if (!isCurrent(seq)) return;
+      tokens = [];
+      tokensStatus = 'error';
+      if (subView === 'asset') renderAssetPicker();
+    });
+  }
+
+  async function load({ notice = null } = {}) {
+    const seq = ++loadSeq;
+    balanceUnits = null;
+    cachedBalanceUnits = null;
+    balanceStatus = 'checking';
+    tokenBalanceState = new Map();
+    tokenBalanceStatus = 'checking';
+    tokensStatus = 'checking';
+    feeInfo = null;
+    feeStatus = 'checking';
+    accounts = [];
+    keyrings = [];
+    contacts = [];
+    tokens = [];
+    accountsStatus = 'checking';
+    keyringsStatus = 'checking';
+    account = null;
+    network = null;
+    asset = { isNative: true, symbol: 'THRU', mintAddress: null };
+    recipientState = null;
+    amountUnits = 0n;
+    formState.amount = '';
     banner.clear();
+    clearBody(); // Interrupt a review if the source account or network changes underneath it.
+    header.setTitle('Send');
+    body.appendChild(Spinner({ label: 'Loading account…' }).el);
+
     try {
-      // Everything both pickers need, in one round of parallel calls. account.list and
-      // keyring.list together are what allow grouping by source; the legacy picker fetched only
-      // account.list and so had no way to say which phrase an account came from.
-      const [active, net, fee, allAccounts, allKeyrings, contactList, tokenList] = await Promise.all([
+      // Only the sending identity and active network are needed to paint a SAFE form. Cached
+      // picker metadata, fee and live RPC reads must never hold the entire screen hostage.
+      const [active, net] = await Promise.all([
         bridge.send('account.getActive'),
         bridge.send('network.getActive'),
-        bridge.send('tx.estimateFee', {}).catch(() => null),
-        bridge.send('account.list', { withBalances: true }).catch(() => []),
-        bridge.send('keyring.list').catch(() => []),
-        bridge.send('contacts.list').catch(() => []),
-        bridge.send('token.list').catch(() => []),
       ]);
-
+      if (destroyed || seq !== loadSeq) return;
+      if (!active?.address || !net?.id) throw new Error('Could not find an active account or network.');
       account = active;
       network = net;
-      feeInfo = fee;
-      accounts = allAccounts || [];
-      keyrings = allKeyrings || [];
-      contacts = contactList || [];
-      tokens = tokenList || [];
+      renderForm(formState);
+      if (notice) banner.set(notice, 'warning');
 
-      const info = await bridge.send('tx.getAccountInfo', { address: account.address });
-      balanceUnits = info.balance != null ? BigInt(info.balance) : 0n;
-
-      // Token balances drive the asset picker's sendable states and the token spendable
-      // line. A failure here degrades tokens to "unknown" (unselectable) rather than
-      // pretending they hold zero.
-      try {
-        const tb = await bridge.send('token.getBalances', { address: account.address });
-        tokenBalanceState = new Map((tb?.balances || []).map((b) => [b.mintAddress, b]));
-      } catch {
-        tokenBalanceState = new Map();
-      }
-
-      renderForm({ to: safeAddressParam(params.to) || '', amount: '' });
+      // These reads are independent. A slow token RPC, a missing balance, or an unavailable
+      // picker never prevents the user from editing the recipient and amount. Only a fresh
+      // native balance and a known fee reserve can unlock the native Review/Max controls.
+      refreshNativeBalance(seq, active.address);
+      refreshTokenBalances(seq, active.address);
+      refreshFee(seq);
+      refreshTokenList(seq);
+      bridge.send('account.list', { withBalances: true }).then((list) => {
+        if (!isCurrent(seq, active.address)) return;
+        accounts = Array.isArray(list) ? list : [];
+        accountsStatus = 'ready';
+        const cached = accounts.find((row) => row.address === active.address)?.balance;
+        if (cached != null && /^(0|[1-9]\d*)$/.test(String(cached))) {
+          cachedBalanceUnits = BigInt(cached);
+          updateFormBalances();
+        }
+        if (subView === 'from' || subView === 'recipient') refreshPickerIfOpen();
+      }).catch(() => {
+        if (!isCurrent(seq, active.address)) return;
+        accountsStatus = 'error';
+        if (subView === 'from' || subView === 'recipient') refreshPickerIfOpen();
+      });
+      bridge.send('keyring.list').then((list) => {
+        if (!isCurrent(seq, active.address)) return;
+        keyrings = Array.isArray(list) ? list : [];
+        keyringsStatus = 'ready';
+        if (subView === 'from' || subView === 'recipient') refreshPickerIfOpen();
+      }).catch(() => {
+        if (!isCurrent(seq, active.address)) return;
+        keyringsStatus = 'error';
+        if (subView === 'from' || subView === 'recipient') refreshPickerIfOpen();
+      });
+      bridge.send('contacts.list').then((list) => {
+        if (!isCurrent(seq, active.address)) return;
+        contacts = Array.isArray(list) ? list : [];
+        if (subView === 'recipient') refreshPickerIfOpen();
+      }).catch(() => {});
     } catch (error) {
+      if (destroyed || seq !== loadSeq) return;
       clearBody();
       banner.set(error.message || 'Could not prepare the send screen.');
+      body.appendChild(track(Button({
+        label: 'Retry loading account', variant: 'secondary', onClick: () => load(),
+      })).el);
     }
   }
 
+  d.add(bridge.onEvents({
+    accountsChanged: ({ active } = {}) => {
+      // account.switch in THIS view already starts its own load. Events from other open
+      // extension pages must not leave a reviewed transfer signed by a different account.
+      if (!switchingAccount && (!active?.address || active.address !== account?.address)) load();
+    },
+    networkChanged: ({ id } = {}) => {
+      if (!id || id !== network?.id) load();
+    },
+  }));
   load();
 
   return {
     el,
     destroy() {
-      liveReviewBtn = null;
-      for (const c of owned) c.destroy?.();
-      owned.length = 0;
+      destroyed = true;
+      loadSeq += 1;
+      clearBody();
       header.destroy();
       banner.destroy();
       d.dispose();

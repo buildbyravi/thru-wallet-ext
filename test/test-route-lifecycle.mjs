@@ -1277,6 +1277,12 @@ const FIXTURES = {
     reason: null,
   }),
   'token.deriveTokenAccount': () => TOKEN_ACCOUNT_FIXTURE,
+  'token.transferChecked': ({ fromAddress, networkId } = {}) => {
+    if (fromAddress !== activeAccount().address || networkId !== activeNetwork().id) {
+      throw apiError('SEND_CONTEXT_CHANGED', 'Review source or network changed.');
+    }
+    return FIXTURES['token.transfer']();
+  },
   'token.transfer': () => ({
     signature: 'sig_token_cccccccccccccccccccccccccccccccccccc',
     blockHeight: null,
@@ -1385,6 +1391,12 @@ const FIXTURES = {
     return { valid: true, isSelf, reason: isSelf ? "That's the address you're sending from." : null };
   },
   'tx.send': () => ({ signature: 'sig_sent_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', blockHeight: 10300 }),
+  'tx.sendChecked': ({ fromAddress, networkId } = {}) => {
+    if (fromAddress !== activeAccount().address || networkId !== activeNetwork().id) {
+      throw apiError('SEND_CONTEXT_CHANGED', 'Review source or network changed.');
+    }
+    return FIXTURES['tx.send']();
+  },
   'tx.claimFaucet': () => ({ signature: 'sig_faucet_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', amountUnits: '10000' }),
 };
 
@@ -1746,6 +1758,9 @@ const bridge = await import('../src/ui/app/bridge.js');
 const { installSidePanelExclusion } = await import('../src/ui/app/side-panel-exclusion.js');
 const { isSidePanelPage, SIDE_PANEL_SEARCH, CLOSE_SIDE_PANEL_ACTION } = await import('../src/shared/side-panel.js');
 const { Router } = await import('../src/ui/app/router.js');
+const { SendRoute } = await import('../src/ui/app/routes/send.js');
+const { DashboardRoute } = await import('../src/ui/app/routes/dashboard.js');
+const { AccountsRoute } = await import('../src/ui/app/routes/accounts.js');
 
 function isInside(node, root) {
   for (let n = node; n; n = n.parentNode) {
@@ -2948,7 +2963,7 @@ async function navigationTest() {
   ok('the send form exposes amount and recipient inputs', Boolean(amtInput && rcptInput));
   if (amtInput && rcptInput) {
     // Amount first, recipient second — exactly the order the bug bit.
-    type(amtInput, '5');
+    type(amtInput, '0.001');
     const reviewInitially = buttons(router.root, /^review$/i)[0];
     ok('review starts disabled with only an amount typed',
       Boolean(reviewInitially && reviewInitially.disabled));
@@ -2969,7 +2984,7 @@ async function navigationTest() {
         await sleep(20); // the prefilled recipient was NOT debounced; it validates at once
         await settle();
         const amtAgain = router.root.querySelector('input[placeholder="0.0"]');
-        ok('picking a recipient keeps the typed amount', amtAgain && amtAgain.value === '5',
+        ok('picking a recipient keeps the typed amount', amtAgain && amtAgain.value === '0.001',
           `amount read back: "${amtAgain?.value ?? 'field missing'}"`);
         const myAccounts2 = buttons(router.root, /my accounts/i)[0];
         if (myAccounts2) {
@@ -2981,7 +2996,7 @@ async function navigationTest() {
             await settle();
             const amtAgain2 = router.root.querySelector('input[placeholder="0.0"]');
             ok('backing out of the picker also keeps the amount',
-              amtAgain2 && amtAgain2.value === '5');
+              amtAgain2 && amtAgain2.value === '0.001');
           } else {
             ok('the picker offers a Back control', false, textOf(router.root).slice(0, 200));
           }
@@ -3660,6 +3675,308 @@ function negativeControls() {
   broken.stop();
 }
 
+// ---- Send: progressive load, offline recovery and cross-context identity -----------------
+
+async function progressiveSendTest() {
+  section('send: slow bridge replies never hold the form or turn unknown balances into zero');
+
+  // Hold specific replies at the real UI bridge's chrome.runtime.sendMessage seam. Other
+  // methods continue through the fixture, including authoritative recipient validation.
+  // This is deliberately NOT a fake SendRoute: the real route, Button, Field, AssetSelector,
+  // bridge timeout, and teardown all run. An unreleased reply would leave a 30s timer alive.
+  function holdReplies(shouldHold) {
+    const original = chrome.runtime.sendMessage;
+    const held = [];
+    chrome.runtime.sendMessage = (message, callback) => {
+      if (!message?.method || !shouldHold(message)) return original(message, callback);
+      chromeLog.calls.push(message.method);
+      held.push({ message, callback });
+      return undefined;
+    };
+    const take = (method, predicate = () => true) => {
+      const index = held.findIndex(({ message }) => message.method === method && predicate(message));
+      if (index < 0) throw new Error(`No held ${method} reply: ${held.map((x) => x.message.method).join(', ')}`);
+      return held.splice(index, 1)[0];
+    };
+    return {
+      held,
+      resolve(method, data, predicate) { take(method, predicate).callback({ ok: true, data }); },
+      reject(method, message = 'Node offline', predicate) {
+        take(method, predicate).callback({
+          ok: false, error: { code: 'NETWORK_ERROR', message, retryable: true },
+        });
+      },
+      restore() {
+        chrome.runtime.sendMessage = original;
+        for (const item of held.splice(0)) item.callback({
+          ok: false, error: { code: 'NETWORK_ERROR', message: 'Test finished', retryable: true },
+        });
+      },
+    };
+  }
+
+  resetBackend(SCENARIOS[2]);
+  resetDom();
+  const holds = holdReplies((msg) => ['account.list', 'tx.estimateFee', 'token.list',
+    'token.getBalances'].includes(msg.method)
+    || (msg.method === 'tx.getAccountInfo' && msg.params.address === ADDRESS_A));
+  const route = SendRoute({ params: {}, navigate() {}, back() {} });
+  DOC.body.appendChild(route.el);
+  await settle();
+
+  ok('sender and network metadata paint the form despite all five slow bridge replies',
+    Boolean(route.el.querySelector('input[placeholder="ta…"]'))
+      && !/Loading account/.test(textOf(route.el)) && holds.held.length === 5,
+    `held=${holds.held.map((r) => r.message.method).join(',')}`);
+  ok('a pending native read is checking (not zero), with Max disabled',
+    /Checking balance/.test(textOf(route.el)) && buttons(route.el, /^max$/i)[0]?.disabled === true,
+    textOf(route.el).slice(0, 260));
+
+  holds.resolve('account.list', [makeAccount(0), makeAccount(1)]);
+  await settle();
+  ok('cached account balance is visibly last-known, never a spendable live balance',
+    /0\.0015 THRU \(last known\)/.test(textOf(route.el))
+      && /Spendable: unavailable/.test(textOf(route.el))
+      && buttons(route.el, /^max$/i)[0]?.disabled === true);
+
+  const amount = route.el.querySelector('input[placeholder="0.0"]');
+  const recipient = route.el.querySelector('input[placeholder="ta…"]');
+  type(amount, '0.001');
+  type(recipient, 'ta1validrecipient00000000000000000000000000000000000000000');
+  await sleep(450);
+  await settle();
+  ok('a validated recipient and typed amount cannot enable Review from a cached balance',
+    buttons(route.el, /^review$/i)[0]?.disabled === true);
+  holds.resolve('tx.estimateFee', FIXTURES['tx.estimateFee']({}));
+  await settle();
+  ok('a fee quote alone cannot spend an unknown live balance',
+    buttons(route.el, /^review$/i)[0]?.disabled === true);
+
+  holds.reject('tx.getAccountInfo');
+  await settle();
+  ok('offline native balance shows Retry without claiming zero or unlocking Max',
+    /last known/.test(textOf(route.el))
+      && buttons(route.el, /retry checks/i)[0]?.classList.contains('hidden') === false
+      && buttons(route.el, /^max$/i)[0]?.disabled === true
+      && buttons(route.el, /^review$/i)[0]?.disabled === true);
+  click(buttons(route.el, /retry checks/i)[0]);
+  await settle();
+  // The retry supersedes the first token request: an out-of-order response must not
+  // make a token sendable while the new read is still pending.
+  holds.resolve('token.getBalances', FIXTURES['token.getBalances']({}));
+  holds.resolve('tx.estimateFee', FIXTURES['tx.estimateFee']({}));
+  holds.resolve('tx.getAccountInfo', { exists: true, balance: '1500000' });
+  await settle();
+  ok('a live native result enables Review without waiting for any token RPC',
+    buttons(route.el, /^review$/i)[0]?.disabled === false
+      && amount.value === '0.001' && recipient.value.startsWith('ta1validrecipient')
+      && isConnected(amount) && isConnected(recipient));
+  type(amount, '5');
+  ok('overspending disables Review rather than relying only on the click-time check',
+    buttons(route.el, /^review$/i)[0]?.disabled === true);
+  type(amount, '0.001');
+
+  click(buttons(route.el, /thru native token/i)[0]);
+  await settle();
+  ok('asset picker distinguishes a loading registry from an empty one',
+    /Loading your token list/.test(textOf(route.el)));
+  holds.resolve('token.list', [TOKEN_FIXTURE]);
+  await settle();
+  ok('a registered token with a still-pending balance is labelled checking and inert',
+    /checking balance/i.test(textOf(route.el))
+      && buttons(route.el, /smoke token/i).length === 0,
+    textOf(route.el).slice(0, 390));
+  holds.reject('token.getBalances');
+  await settle();
+  ok('a failed token read is unknown, not an empty token account',
+    /balance unknown/i.test(textOf(route.el)) && buttons(route.el, /smoke token/i).length === 0
+      && Boolean(buttons(route.el, /retry token balances/i)[0]));
+  click(buttons(route.el, /retry token balances/i)[0]);
+  holds.resolve('token.getBalances', FIXTURES['token.getBalances']({}));
+  await settle();
+  ok('retry restores the funded token as selectable without leaving sub-view listeners behind',
+    buttons(route.el, /smoke token/i).length === 1 && detachedListeners().length === 0,
+    JSON.stringify(detachedListeners().slice(0, 3)));
+
+  click(buttons(route.el, /smoke token/i)[0]);
+  await settle();
+  ok('a verified token balance re-denominates the form',
+    /Spendable: 250 SMK/.test(textOf(route.el)));
+
+  // An external panel switches networks while the user composes: the old token/network
+  // and spendable state must be invalidated before another sign is possible.
+  backend.activeNetworkId = 'localnet';
+  emitEvent('networkChanged', { id: 'localnet' });
+  await settle();
+  ok('external network switch exits the token form and locks Review again',
+    /Amount \(THRU\)/.test(textOf(route.el))
+      && buttons(route.el, /^review$/i)[0]?.disabled === true);
+  holds.resolve('tx.estimateFee', FIXTURES['tx.estimateFee']({}));
+  holds.resolve('account.list', [makeAccount(0), makeAccount(1)]);
+  holds.resolve('token.list', []);
+  holds.resolve('tx.getAccountInfo', { exists: true, balance: '100000' });
+  route.destroy();
+  holds.restore(); // late token callback after destroy must be harmless
+  await settle();
+  ok('leaving Send disposes events, form listeners and all late RPC continuations',
+    chromeLog.listeners.size === 0 && detachedListeners().length === 0,
+    JSON.stringify(detachedListeners().slice(0, 3)));
+  route.el.remove();
+
+  // A different open context changes the active account while the first balance is still
+  // pending. Late replies for account A must never overwrite account B's spendable amount.
+  resetBackend(SCENARIOS[2]);
+  resetDom();
+  const accountHolds = holdReplies((msg) => msg.method === 'tx.getAccountInfo'
+    && (msg.params.address === ADDRESS_A || msg.params.address === ADDRESS_B));
+  const switched = SendRoute({ params: {}, navigate() {}, back() {} });
+  DOC.body.appendChild(switched.el);
+  await settle();
+  backend.activeIndex = 1;
+  emitEvent('accountsChanged', { active: activeAccount() });
+  await settle();
+  accountHolds.resolve('tx.getAccountInfo', { exists: true, balance: '250000' },
+    (msg) => msg.params.address === ADDRESS_B);
+  await settle();
+  accountHolds.resolve('tx.getAccountInfo', { exists: true, balance: '9000000000' },
+    (msg) => msg.params.address === ADDRESS_A);
+  await settle();
+  ok('an old account balance cannot overwrite a new account after an event',
+    /Spending/.test(textOf(switched.el))
+      && /0\.00025 THRU/.test(textOf(switched.el))
+      && !/(^|\s)9 THRU/.test(textOf(switched.el)), textOf(switched.el).slice(0, 290));
+  const switchedAmount = switched.el.querySelector('input[placeholder="0.0"]');
+  const switchedRecipient = switched.el.querySelector('input[placeholder="ta…"]');
+  type(switchedAmount, '0.0001');
+  type(switchedRecipient, 'ta1validrecipient00000000000000000000000000000000000000000');
+  await sleep(450);
+  await settle();
+  click(buttons(switched.el, /^review$/i)[0]);
+  await settle();
+  click(buttons(switched.el, /sign & send/i)[0]);
+  await settle();
+  ok('native signing uses the checked method, with the reviewed account and network',
+    chromeLog.calls.includes('tx.sendChecked')
+      && /0\.0001 THRU sent/.test(textOf(switched.el))
+      && /Submitted on Alphanet/.test(textOf(switched.el)),
+    chromeLog.calls.slice(-12).join(','));
+  switched.destroy();
+  accountHolds.restore();
+  await settle();
+  ok('account-switch Send cleanup leaves no detached listeners',
+    detachedListeners().length === 0, JSON.stringify(detachedListeners().slice(0, 3)));
+  switched.el.remove();
+
+  resetBackend(SCENARIOS[2]);
+  resetDom();
+  const tokenRoute = SendRoute({ params: {}, navigate() {}, back() {} });
+  DOC.body.appendChild(tokenRoute.el);
+  await settle();
+  click(buttons(tokenRoute.el, /thru native token/i)[0]);
+  await settle();
+  click(buttons(tokenRoute.el, /smoke token/i)[0]);
+  await settle();
+  type(tokenRoute.el.querySelector('input[placeholder="0.0"]'), '1');
+  type(tokenRoute.el.querySelector('input[placeholder="ta…"]'),
+    'ta1validrecipient00000000000000000000000000000000000000000');
+  await sleep(450);
+  await settle();
+  click(buttons(tokenRoute.el, /^review$/i)[0]);
+  await settle();
+  click(buttons(tokenRoute.el, /sign & send/i)[0]);
+  await settle();
+  ok('token signing uses token.transferChecked, never a native send or legacy token method',
+    chromeLog.calls.includes('token.transferChecked')
+      && !chromeLog.calls.includes('tx.send') && !chromeLog.calls.includes('token.transfer')
+      && /1 SMK sent/.test(textOf(tokenRoute.el)), chromeLog.calls.slice(-12).join(','));
+  tokenRoute.destroy();
+  await settle();
+  ok('checked token send tears down without leaked listeners', detachedListeners().length === 0);
+  tokenRoute.el.remove();
+
+  resetBackend(SCENARIOS[2]);
+  resetDom();
+  const realCheckedSend = FIXTURES['tx.sendChecked'];
+  FIXTURES['tx.sendChecked'] = () => {
+    throw apiError('SERVICE_TIMEOUT', 'The wallet service did not respond. Try again.', true);
+  };
+  const uncertain = SendRoute({ params: {}, navigate() {}, back() {} });
+  DOC.body.appendChild(uncertain.el);
+  await settle();
+  type(uncertain.el.querySelector('input[placeholder="0.0"]'), '0.001');
+  type(uncertain.el.querySelector('input[placeholder="ta…"]'),
+    'ta1validrecipient00000000000000000000000000000000000000000');
+  await sleep(450);
+  await settle();
+  click(buttons(uncertain.el, /^review$/i)[0]);
+  await settle();
+  click(buttons(uncertain.el, /sign & send/i)[0]);
+  await settle();
+  ok('a signing timeout reports UNKNOWN outcome and warns against an immediate retry',
+    /Could not confirm whether this transfer was submitted/.test(textOf(uncertain.el))
+      && /Check Activity and the explorer/.test(textOf(uncertain.el))
+      && !/wallet service did not respond/.test(textOf(uncertain.el)));
+  uncertain.destroy();
+  FIXTURES['tx.sendChecked'] = realCheckedSend;
+  await settle();
+  ok('uncertain-outcome view leaves no detached listeners', detachedListeners().length === 0);
+  uncertain.el.remove();
+}
+
+// ---- Audit: other consumers of tx.getBalances must not display its stale zero ---------
+
+async function offlineBalanceConsumersTest() {
+  section('balance consumers: offline batch placeholders are not verified zeros');
+  const original = Object.fromEntries(['tx.getAccountInfo', 'tx.getBalances',
+    'tx.getCachedBalances', 'account.list'].map((method) => [method, FIXTURES[method]]));
+  const offlineBatch = ({ addresses } = {}) => Object.fromEntries((addresses || []).map((addr) =>
+    [addr, { balance: '0', exists: false, fetchedAt: 0, stale: true, error: 'RPC offline' }]));
+  try {
+    resetBackend(SCENARIOS[2]);
+    resetDom();
+    FIXTURES['tx.getCachedBalances'] = () => ({});
+    FIXTURES['tx.getAccountInfo'] = () => { throw apiError('NETWORK_ERROR', 'RPC offline', true); };
+    FIXTURES['tx.getBalances'] = offlineBatch;
+    const dash = DashboardRoute({ navigate() {} });
+    DOC.body.appendChild(dash.el);
+    await settle();
+    const heroText = () => textOf(dash.el.querySelector('.dash-balance-hero'));
+    ok('Dashboard with no successful read says unavailable, not zero THRU or $0.00',
+      /Balance unavailable/.test(heroText())
+        && !/\b0 THRU\b|\$0\.00/.test(heroText()), heroText());
+    click(dash.el.querySelector('[title="Refresh balance"]'));
+    await settle();
+    ok('a forced refresh cannot turn an offline batch fallback into a fresh zero',
+      chromeLog.calls.includes('tx.getBalances')
+        && /Balance unavailable/.test(heroText())
+        && !/\b0 THRU\b|\$0\.00/.test(heroText()));
+    emitEvent('balanceChanged', offlineBatch({ addresses: [ADDRESS_A] }));
+    await settle();
+    ok('a background stale-balance event cannot overwrite the unknown state with zero',
+      /Balance unavailable/.test(heroText())
+        && !/\b0 THRU\b|\$0\.00/.test(heroText()));
+    dash.destroy();
+    dash.el.remove();
+
+    resetBackend(SCENARIOS[2]);
+    resetDom();
+    FIXTURES['account.list'] = () => backend.accounts.map((a) =>
+      ({ ...a, balance: null, balanceStale: true }));
+    const accountsRoute = AccountsRoute({ navigate() {}, back() {} });
+    DOC.body.appendChild(accountsRoute.el);
+    await settle();
+    ok('Accounts cannot paint offline, never-fetched addresses as 0 THRU',
+      chromeLog.calls.includes('tx.getBalances')
+        && !/\b0 THRU\b/.test(textOf(accountsRoute.el)), textOf(accountsRoute.el).slice(0, 240));
+    accountsRoute.destroy();
+    accountsRoute.el.remove();
+    ok('audited balance screens tear down without listeners on detached nodes',
+      detachedListeners().length === 0, JSON.stringify(detachedListeners().slice(0, 3)));
+  } finally {
+    Object.assign(FIXTURES, original);
+  }
+}
+
 // ---- Run -------------------------------------------------------------------
 
 const startedAt = Date.now();
@@ -3674,6 +3991,8 @@ try {
   await passwordModalTest();
   await exportSecretTest();
   await navigationTest();
+  await progressiveSendTest();
+  await offlineBalanceConsumersTest();
   await panelExclusionTest();
   negativeControls();
 } finally {

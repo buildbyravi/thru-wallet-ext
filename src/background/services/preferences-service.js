@@ -30,7 +30,7 @@ const DEFAULTS = {
 
   // Token registry visibility
   hiddenTokens: [],          // [mintAddress]
-  customTokens: [],          // [{ mintAddress, symbol, name, decimals, addedAt }]
+  customTokens: [],          // [{ mintAddress, networkId, symbol, name, decimals, addedAt }]
 
   // First-run / nagging state
   disclaimerAcknowledgedAt: null,

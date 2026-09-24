@@ -35,13 +35,13 @@ export const TX_STATUS = {
   UNKNOWN: 'unknown',
 };
 
-async function pendingKey() {
-  return scopedKey(PENDING_BASE_KEY, await getActiveNetworkId());
+async function pendingKey(networkId = null) {
+  return scopedKey(PENDING_BASE_KEY, networkId || await getActiveNetworkId());
 }
 
-async function readAll() {
+async function readAll(networkId = null) {
   try {
-    const key = await pendingKey();
+    const key = await pendingKey(networkId);
     const res = await chrome.storage.local.get(key);
     const list = res?.[key];
     return Array.isArray(list) ? list : [];
@@ -50,9 +50,9 @@ async function readAll() {
   }
 }
 
-async function writeAll(list) {
+async function writeAll(list, networkId = null) {
   try {
-    await chrome.storage.local.set({ [await pendingKey()]: list.slice(0, MAX_RECORDS) });
+    await chrome.storage.local.set({ [await pendingKey(networkId)]: list.slice(0, MAX_RECORDS) });
   } catch {
     // ignore
   }
@@ -84,7 +84,10 @@ async function updateBadge(list) {
  */
 export async function track(tx) {
   if (!tx?.signature) return null;
-  const list = await readAll();
+  // A network switch can finish while the SDK is signing. The signature still belongs to
+  // the chain where the send began, not the network selected when this storage call runs.
+  const networkId = tx.networkId || await getActiveNetworkId();
+  const list = await readAll(networkId);
   const record = {
     signature: String(tx.signature),
     kind: tx.kind || 'transfer',
@@ -93,16 +96,24 @@ export async function track(tx) {
     amountUnits: tx.amountUnits != null ? String(tx.amountUnits) : null,
     mint: tx.mint || null,
     displayAmount: tx.displayAmount || null,
-    networkId: tx.networkId || null,
+    networkId,
     status: TX_STATUS.SUBMITTED,
     submittedAt: Date.now(),
     settledAt: null,
     error: null,
   };
-  await writeAll([record, ...list.filter((r) => r.signature !== record.signature)]);
-  const updated = await readAll();
-  await updateBadge(updated);
-  emit('pendingTxChanged', { pending: updated.filter((r) => r.status === TX_STATUS.SUBMITTED) });
+  await writeAll([record, ...list.filter((r) => r.signature !== record.signature)], networkId);
+  try {
+    if (await getActiveNetworkId() === networkId) {
+      const updated = await readAll(networkId);
+      await updateBadge(updated);
+      if (await getActiveNetworkId() === networkId) {
+        emit('pendingTxChanged', { pending: updated.filter((r) => r.status === TX_STATUS.SUBMITTED) });
+      }
+    }
+  } catch {
+    // Badge/events are best-effort after storing the signature; never change the send result.
+  }
 
   // The only reconcile triggers were bootstrap and unlock, so a send whose sendAndTrack
   // ALREADY returned confirmed stayed "pending" for the entire popup session — the
@@ -131,6 +142,25 @@ export async function list() {
 export async function listPending() {
   const all = await readAll();
   return all.filter((r) => r.status === TX_STATUS.SUBMITTED);
+}
+
+// A signing RPC may run longer than the UI bridge's 30s timeout. isProbableDuplicate only
+// sees SUBMITTED records, written AFTER the SDK returns, so a click/retry during an in-flight
+// broadcast could send twice. Reserve the intent synchronously before network work starts.
+// The release closure never persists or contains key material; settled submissions remain
+// protected by the persisted pending record. A worker restart cannot keep an in-memory lock.
+const inFlightTransfers = new Set();
+
+export function beginTransfer({ networkId, from, to, amountUnits, mint = null }) {
+  const key = JSON.stringify([networkId, from, to, String(amountUnits), mint]);
+  if (inFlightTransfers.has(key)) {
+    const error = new Error('An identical transfer is already being sent. Check Activity before retrying.');
+    error.code = 'DUPLICATE_SUBMISSION';
+    error.retryable = false;
+    throw error;
+  }
+  inFlightTransfers.add(key);
+  return () => inFlightTransfers.delete(key);
 }
 
 /**

@@ -55,6 +55,7 @@ ok('contract v7 documents the custom-network quarantine break', CONTRACT_VERSION
 ok('contract v8 documents the token-transfer addition', CONTRACT_VERSION >= 8);
 ok('contract v9 documents the history-feed cache addition', CONTRACT_VERSION >= 9);
 ok('contract v10 documents the transaction-detail addition', CONTRACT_VERSION >= 10);
+ok('contract v11 pins a reviewed send to a source account and network', CONTRACT_VERSION >= 11);
 
 // Contract v10 invariants. tx.getDetail is a read, so it must NOT have acquired an auth
 // gate it does not need — but more importantly its declared return shape must keep saying
@@ -88,6 +89,19 @@ ok('contract v10 documents the transaction-detail addition', CONTRACT_VERSION >=
   ok('token.transfer declares mintAddress, toAddress, amountUnits and password',
     ['mintAddress', 'toAddress', 'amountUnits', 'password'].every((p) => transfer.params.includes(p)),
     (transfer?.params || []).join(','));
+}
+
+section('Contract v11 checked signing context');
+for (const [method, legacy] of [
+  ['tx.sendChecked', 'tx.send'],
+  ['token.transferChecked', 'token.transfer'],
+]) {
+  const spec = METHODS[method];
+  ok(`${method} is additive and remains signing-gated`,
+    spec?.since === 11 && spec?.auth === 'signing' && METHODS[legacy]?.auth === 'signing');
+  ok(`${method} requires the reviewed account, network and all legacy send params`,
+    ['fromAddress', 'networkId', ...METHODS[legacy].params]
+      .every((param) => spec?.params.includes(param)), JSON.stringify(spec?.params));
 }
 
 section('Contract and router agree in both directions');
@@ -248,6 +262,7 @@ for (const code of [
   'AUTH_REQUIRED',
   'AUTH_LOCKED_OUT',
   'CUSTOM_NETWORK_DISABLED',
+  'SEND_CONTEXT_CHANGED',
 ]) {
   ok(`${code} is documented`, typeof ERROR_CODES[code] === 'string');
 }
