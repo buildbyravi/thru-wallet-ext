@@ -1,26 +1,37 @@
-// Mutual exclusion between the popup and the side panel: the wallet is visible
-// in exactly ONE surface at a time. Both surfaces load the same popup.html, so
-// this module self-detects which surface it is running in and enforces the
-// rule from the side that just opened:
+// The toolbar popup and the side panel share popup.html, but only one should
+// be open at a time. The manifest loads the panel as popup.html?thru_panel=1;
+// viewport height is NOT a reliable discriminator (short browser windows can
+// give a side panel less than the popup's 600px height).
 //
-//   - Side panel (viewport taller than the fixed 600px popup): LISTENS for the
-//     THRU_CLOSE_SIDE_PANEL broadcast and closes itself.
-//   - Popup (exactly 400x600): BROADCASTS THRU_CLOSE_SIDE_PANEL at boot, so
-//     clicking the toolbar icon while the panel is open closes the panel.
-//
-// The broadcast goes through the bridge — the single seam for
-// chrome.runtime.sendMessage (scripts/check-layering.mjs). The action token
-// and the viewport detector live in src/shared/side-panel.js so the background
-// (which early-returns the action instead of routing it as an API request)
-// works from the same definition.
-//
-// The listener stays installed on BOTH surfaces: Chrome never delivers a
-// message to the sender, but this test harness and any future refactor might,
-// so the isSidePanelViewport re-check at message time is the real guard — a
-// popup receiving a stray broadcast must never close itself.
+// Register the listener synchronously at the start of boot, before theme
+// storage or the background bootstrap. A popup broadcasts THRU_CLOSE_SIDE_PANEL
+// so older Chrome versions can tell an already-loaded panel to close itself.
+// On Chrome 141+, also close the global panel directly by windowId: this works
+// even if its page/listener has not loaded yet or missed the broadcast.
 
 import { broadcastCloseSidePanel } from './bridge.js';
-import { CLOSE_SIDE_PANEL_ACTION, isSidePanelViewport } from '../../shared/side-panel.js';
+import { CLOSE_SIDE_PANEL_ACTION, isSidePanelPage } from '../../shared/side-panel.js';
+
+function closeSidePanelInCurrentWindow(chromeLike) {
+  if (typeof chromeLike?.sidePanel?.close !== 'function'
+      || typeof chromeLike?.windows?.getCurrent !== 'function') return;
+
+  try {
+    Promise.resolve(chromeLike.windows.getCurrent())
+      .then((current) => {
+        // Our manifest defines a global panel, so close by windowId, not
+        // tabId (which can reject for a global panel in Chrome 145+).
+        if (Number.isInteger(current?.id) && current.id >= 0) {
+          return chromeLike.sidePanel.close({ windowId: current.id });
+        }
+      })
+      .catch(() => {
+        // Older/unsupported browsers still get the broadcast below.
+      });
+  } catch {
+    // Do not let a failure to query the window interrupt the popup boot.
+  }
+}
 
 /**
  * @param {Window} win the page's window (the side panel closes itself)
@@ -28,18 +39,22 @@ import { CLOSE_SIDE_PANEL_ACTION, isSidePanelViewport } from '../../shared/side-
  * @returns {() => void} dispose — removes the message listener
  */
 export function installSidePanelExclusion(win = window, chromeLike = globalThis.chrome) {
-  const onMessage = (message) => {
+  const onMessage = (message, sender) => {
     if (message?.action !== CLOSE_SIDE_PANEL_ACTION) return;
-    // Re-check at message time: the viewport can change while the page is
-    // open, and a popup-shaped page must never close on this signal.
-    if (!isSidePanelViewport(win)) return;
-    if (typeof win.close === 'function') win.close();
+    if (sender?.id !== chromeLike?.runtime?.id) return;
+    // Re-check at message time. A popup (even one taller than 600px in a
+    // browser test) must never close itself on its own broadcast.
+    if (!isSidePanelPage(win)) return;
+    win.close?.();
   };
 
   chromeLike?.runtime?.onMessage?.addListener?.(onMessage);
 
-  if (!isSidePanelViewport(win)) {
-    // We are the popup: a panel that is open right now is stale by definition.
+  if (!isSidePanelPage(win)) {
+    // The popup is opening. The native API is the reliable path when the
+    // side panel has not registered its listener yet; the message is the
+    // compatible path for Chrome versions before sidePanel.close existed.
+    closeSidePanelInCurrentWindow(chromeLike);
     broadcastCloseSidePanel();
   }
 

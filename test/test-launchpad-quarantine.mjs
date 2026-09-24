@@ -351,7 +351,8 @@ const manifestText = JSON.stringify(manifest);
 ok('the manifest description does not advertise a launchpad or DEX', !/launchpad|\bdex\b|prediction/i.test(manifest.description), manifest.description);
 ok('no manifest key or value references the quarantined surface', !/launchpad|\bdex\b|prediction/i.test(manifestText));
 ok('the action popup is popup.html', manifest.action?.default_popup === 'popup.html');
-ok('the side panel reuses popup.html rather than a second page', manifest.side_panel?.default_path === 'popup.html');
+ok('the side panel reuses popup.html with its own non-secret URL marker',
+  manifest.side_panel?.default_path === 'popup.html?thru_panel=1');
 ok(
   'no web_accessible_resources exposes an extra page',
   !manifest.web_accessible_resources || manifest.web_accessible_resources.length === 0,

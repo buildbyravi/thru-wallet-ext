@@ -290,8 +290,9 @@ module with `launchpad.*` backend namespaces per `docs/MODULE_BOUNDARIES.md`, an
 
 ## 10. `src/manifest.json` --  30 lines
 
-MV3. Popup + side panel both `popup.html`. Permissions: `storage`, `alarms`, `sidePanel`,
-`clipboardRead`.
+MV3. Popup + side panel share the one `popup.html` file; the panel's manifest path adds
+`?thru_panel=1` so surface detection does not depend on window height. Permissions: `storage`,
+`alarms`, `sidePanel`, `clipboardRead`.
 
 CSP is `default-src 'none'` with explicit `script-src`/`style-src`/`img-src`/`font-src`/
 `connect-src`/`frame-src`/`form-action`/`base-uri`/`object-src`. **No inline `style=""` or

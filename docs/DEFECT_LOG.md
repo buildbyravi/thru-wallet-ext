@@ -329,3 +329,25 @@ are checkboxes in `docs/MANUAL_SMOKE_CHECKLIST.md`, not test gaps to close in No
 > that renders the real built CSS at the true 408x600 popup size so a human can *look* at
 > overflow states. **Any change touching modal or sheet layout must be viewed in that
 > harness before it is called done.** "The CSS reads correctly" is not evidence about layout.
+
+## 7. Popup and side panel remained open together — `BROWSER` (user report) / `READ`
+
+The first exclusion attempt waited for `initTheme()` **and** `bridge.bootstrap()` before
+registering the panel's close-message listener. A popup opening during either round-trip could
+broadcast before the panel was listening. Separately, it identified a panel with
+`innerHeight > 600`; a short browser window gives the side panel a viewport **at or below 600px**,
+so it was treated as another popup and ignored the close signal even when the listener fired.
+Neither defect was observable in the old test's 900px mock panel / fully settled boot.
+
+Fix: the manifest loads the same page with a non-secret `?thru_panel=1` marker in the panel;
+`boot()` registers the listener synchronously before its first await; Chrome 141+ also gets a
+`sidePanel.close({ windowId })` call from the popup, which does not depend on the panel's page
+having loaded at all. The broadcast remains the compatibility path on earlier Chrome. The
+lifecycle test interleaves a message while theme storage is pending and tests a 480px panel,
+a tall popup, the exact manifest path, and the no-listener native-close path. Actual Chrome
+interaction (including the side panel picker and short browser windows) remains a required
+manual smoke check — a Node shim cannot certify Chrome's side-panel UI.
+
+> **Lesson:** a viewport dimension cannot identify a browser-owned surface; URL/context identity
+> can. Register cross-context listeners before *any* awaited initialization, and if the platform
+> offers a direct close API, do not make mutual exclusion rely solely on the other page being ready.

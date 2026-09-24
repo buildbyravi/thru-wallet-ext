@@ -33,9 +33,10 @@ change to the side panel, the popup width, or the modal/focus behaviour.
 
 ## 1. Both contexts
 
-The same `popup.html` is registered twice in the manifest: as the toolbar popup and as
-`side_panel.default_path`. They are not the same environment — the panel is resizable, can stay open
-for hours, and shares one session with the popup.
+The toolbar popup loads `popup.html`; the side panel loads that **same HTML file** with a
+non-secret context marker (`popup.html?thru_panel=1` in `side_panel.default_path`). They are not the
+same environment — the panel is resizable, can stay open for hours, and shares one session with
+the popup.
 
 | Check | Toolbar popup | Side panel |
 | --- | --- | --- |
@@ -62,12 +63,17 @@ the background on every service-worker restart from the stored `thru_side_panel_
 (allowlist) and never by load/boot/anything else. If the toolbar icon ever starts opening the
 panel while the toggle is off, that is a regression, not a feature.
 
-**Mutual exclusion** — the popup and the side panel are never both open. With the panel open,
-click the toolbar icon: the popup must appear AND the panel must close on its own (the popup
-broadcasts `THRU_CLOSE_SIDE_PANEL` on open; a panel-shaped page closes on receipt — the panel is
-detected by its full-window viewport, the popup is always the fixed 400×600). The reverse
-direction is the existing dashboard button: it opens the panel and closes the popup. The
-background early-returns the broadcast instead of routing it as an API request.
+**Mutual exclusion** — with Side Panel Mode **off**, open the panel from the side panel picker,
+then click the toolbar icon: the popup must appear AND the panel must close. Repeat after making
+the browser window short enough that the panel's viewport is **600px or less** (a common laptop
+size). Do not infer surface type from viewport height: a short panel is still a panel. The popup
+broadcasts `THRU_CLOSE_SIDE_PANEL` (panel listener is registered before any async boot work);
+Chrome 141+ also closes the global panel by its current `windowId`, even if that panel's page
+has not finished loading and missed the broadcast. Older Chrome uses the broadcast. Inspect the
+panel URL to confirm `?thru_panel=1` is present; if Chrome rejects the marked manifest path, the
+extension will fail to load, which is a failure. The reverse direction is the dashboard button:
+it opens the panel and closes the popup. Reload the **extension**, not just the popup, before
+retesting so both pages and the worker run the new bundles.
 
 ## 2. Both widths
 

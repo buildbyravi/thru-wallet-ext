@@ -742,9 +742,8 @@ function makeWindow(doc) {
   const win = {
     listeners,
     document: doc,
-    // The popup is fixed-size (400x600, tokens.css). Tests may make this taller
-    // to simulate the side panel (full window height), and assert on `closed` to
-    // prove window.close() reached the page.
+    // The popup is fixed-size (400x600, tokens.css), but the panel may be
+    // shorter than 600px. Its manifest URL marker, not this size, identifies it.
     innerWidth: 400,
     innerHeight: 600,
     closed: false,
@@ -1399,6 +1398,8 @@ const chromeLog = {
   /** responses that flagged an unexpected call (network.upsertCustom) */
   unexpected: [],
   sidePanelOpen: [],
+  sidePanelClose: [],
+  openSidePanelWindows: new Set(),
   setPanelBehavior: [],
   /** UI<->UI action broadcasts (popup/panel mutual exclusion), in order */
   broadcasts: [],
@@ -1415,12 +1416,9 @@ function makeChrome() {
       version: '1.2.0',
     }),
     sendMessage(message, callback) {
-      // UI<->UI action broadcast (popup/panel mutual exclusion). In Chrome this is
-      // delivered to every OTHER extension context — modelled here as a fan-out to
-      // every registered onMessage listener. It is NOT an API call, so it must not
-      // touch calls/missing. (The harness has one shared context, so the sender
-      // "sees" its own broadcast too; in Chrome it does not. The exclusion listener
-      // guards against that with its own viewport check — the tests prove it.)
+      // UI<->UI broadcast: in Chrome every OTHER extension context receives it.
+      // Here the shared mock delivers it to all listeners (including the sender),
+      // proving a popup cannot close itself. It is not a contract API request.
       if (message && typeof message === 'object' && message.action && !message.method) {
         chromeLog.broadcasts.push(message);
         queueMicrotask(() => {
@@ -1499,12 +1497,18 @@ function makeChrome() {
     runtime,
     storage: { local: memoryStore(), session: memoryStore(), sync: memoryStore() },
     // The side panel API. `open` is recorded so the dashboard button can be proven to use an
-    // explicit user action; `setPanelBehavior` is recorded so the test can prove it is called
-    // ONLY by the explicit Settings "Side Panel Mode" toggle (with the exact option each
-    // direction must pass) — never by load(), boot, or anything else.
+    // explicit user action; `close` models the Chrome 141+ API for a global panel by windowId,
+    // including when its page hasn't installed an onMessage listener yet. `setPanelBehavior`
+    // is recorded so the test can prove it is called ONLY by the explicit Settings toggle.
     sidePanel: {
       open: (options) => {
         chromeLog.sidePanelOpen.push(options);
+        if (options?.windowId != null) chromeLog.openSidePanelWindows.add(options.windowId);
+        return Promise.resolve();
+      },
+      close: (options) => {
+        chromeLog.sidePanelClose.push(options);
+        chromeLog.openSidePanelWindows.delete(options?.windowId);
         return Promise.resolve();
       },
       setPanelBehavior: (options) => {
@@ -1604,7 +1608,10 @@ function resetDom() {
   chromeLog.missing.clear();
   chromeLog.unexpected.length = 0;
   chromeLog.sidePanelOpen.length = 0;
+  chromeLog.sidePanelClose.length = 0;
+  chromeLog.openSidePanelWindows.clear();
   chromeLog.setPanelBehavior.length = 0;
+  chromeLog.broadcasts.length = 0;
   chromeLog.listeners.clear();
   clipboardLog.writes.length = 0;
   consoleErrors.length = 0;
@@ -1737,7 +1744,7 @@ const { boot, POPUP_ROUTES } = await import('../src/ui/app/boot.js');
 const guards = await import('../src/ui/app/guards.js');
 const bridge = await import('../src/ui/app/bridge.js');
 const { installSidePanelExclusion } = await import('../src/ui/app/side-panel-exclusion.js');
-const { isSidePanelViewport, CLOSE_SIDE_PANEL_ACTION } = await import('../src/shared/side-panel.js');
+const { isSidePanelPage, SIDE_PANEL_SEARCH, CLOSE_SIDE_PANEL_ACTION } = await import('../src/shared/side-panel.js');
 const { Router } = await import('../src/ui/app/router.js');
 
 function isInside(node, root) {
@@ -2549,24 +2556,23 @@ function sourceTest() {
 
 // ---- Popup / side-panel mutual exclusion ------------------------------------
 //
-// Both surfaces load the SAME popup.html, so the surface that just opened enforces
-// "exactly one surface at a time": the popup broadcasts THRU_CLOSE_SIDE_PANEL, and a
-// side-panel-shaped page (full window height, unlike the fixed 400x600 popup) closes
-// itself on receipt. The harness has ONE shared chrome context, so the sender also
-// receives its own broadcast — in Chrome it does not — which makes the listener's
-// viewport re-check the real guard, and these tests prove it holds.
+// Chrome's side panel may be SHORTER than the 600px popup. The same HTML/bundle
+// loads in both, but the panel's manifest URL has a non-secret query marker.
+// The shim broadcasts to the sender too (unlike Chrome), making the popup's
+// refusal to close itself part of the test. A native close by windowId covers
+// the race where the panel has not even installed its message listener yet.
 
 async function panelExclusionTest() {
-  section('mutual exclusion: the popup and the side panel are never both open');
+  section('mutual exclusion: popup vs short/slow side panel');
 
   resetBackend(SCENARIOS[2]);
   resetDom();
   guards.invalidate();
+  chromeLog.openSidePanelWindows.add(42); // panel open, but its listener not yet installed
   const app = DOC.getElementById('app');
   await boot({ root: app });
   await settle();
 
-  // Booting the (400x600) popup page broadcasts the close signal...
   ok('booting the popup broadcasts THRU_CLOSE_SIDE_PANEL',
     chromeLog.broadcasts.some((m) => m?.action === CLOSE_SIDE_PANEL_ACTION),
     JSON.stringify(chromeLog.broadcasts));
@@ -2575,45 +2581,109 @@ async function panelExclusionTest() {
       && chromeLog.broadcasts.every((m) => Boolean(m?.action) && m?.method === undefined)
       && !chromeLog.calls.includes('') && ![...chromeLog.missing].includes(''),
     JSON.stringify({ calls: chromeLog.calls.slice(0, 5), missing: [...chromeLog.missing] }));
+  ok('native close targets the global panel in THIS window even when no panel listener exists',
+    chromeLog.sidePanelClose.length === 1
+      && chromeLog.sidePanelClose[0]?.windowId === 42
+      && !chromeLog.openSidePanelWindows.has(42),
+    JSON.stringify(chromeLog.sidePanelClose));
+  ok('the popup ignores its own broadcast', WIN.closed === false);
 
-  // ...and the popup-shaped page that received it (shared context!) must NOT close.
-  ok('a popup-shaped page ignores the close signal', WIN.closed === false);
-
-  // A side-panel-shaped page closes itself when another popup opens.
-  const panelWin = { innerHeight: 900, innerWidth: 320, closed: false, close() { this.closed = true; } };
-  installSidePanelExclusion(panelWin);
+  // Simulate a real short browser window: height is below the popup's 600px.
+  // The old viewport heuristic misclassified this as a popup and never closed it.
+  const panelWin = {
+    location: { search: SIDE_PANEL_SEARCH }, innerHeight: 480, closed: false,
+    close() { this.closed = true; },
+  };
+  const beforeBroadcast = chromeLog.broadcasts.length;
+  const disposePanel = installSidePanelExclusion(panelWin);
+  ok('a short panel does not broadcast or try to close itself on boot',
+    chromeLog.broadcasts.length === beforeBroadcast);
   bridge.broadcastCloseSidePanel();
   await settle();
-  ok('the side panel closes itself when a popup opens', panelWin.closed === true);
+  ok('a 480px side panel closes itself on the popup broadcast', panelWin.closed === true);
 
-  // The detector boundary: the popup is exactly 600px tall; the panel is the full
-  // window height. A missing viewport (e.g. an exotic context) stays a popup.
-  ok('the viewport detector treats exactly 600px as the popup',
-    isSidePanelViewport({ innerHeight: 600 }) === false);
-  ok('the viewport detector treats a taller viewport as the panel',
-    isSidePanelViewport({ innerHeight: 601 }) === true
-      && isSidePanelViewport({ innerHeight: 900 }) === true);
-  ok('the viewport detector tolerates a missing viewport', isSidePanelViewport({}) === false);
+  // No viewport, including a tall debugging popup, can turn an unmarked page
+  // into a panel. The marker also survives hash navigation / extra flags.
+  WIN.innerHeight = 900;
+  bridge.broadcastCloseSidePanel();
+  await settle();
+  ok('a tall popup never closes on the panel-only action', WIN.closed === false);
+  ok('the panel marker is independent of viewport and hash',
+    isSidePanelPage({ innerHeight: 480, location: { search: SIDE_PANEL_SEARCH, hash: '#/send' } })
+      && isSidePanelPage({ innerHeight: 900, location: { search: '?debug=1&thru_panel=1' } })
+      && !isSidePanelPage({ innerHeight: 900, location: { search: '' } })
+      && !isSidePanelPage({ innerHeight: 480, location: { search: '?thru_panel=0' } })
+      && !isSidePanelPage({}));
 
-  // Unrelated action messages never close a panel-shaped page.
-  const otherPanel = { innerHeight: 900, closed: false, close() { this.closed = true; } };
+  const otherPanel = {
+    location: { search: SIDE_PANEL_SEARCH }, innerHeight: 900, closed: false,
+    close() { this.closed = true; },
+  };
   const disposeOther = installSidePanelExclusion(otherPanel);
   chrome.runtime.sendMessage({ action: 'SOMETHING_ELSE' });
   await settle();
-  ok('an unrelated action message does not close the panel', otherPanel.closed === false);
+  ok('an unrelated action does not close the panel', otherPanel.closed === false);
+  for (const listener of [...chromeLog.listeners]) {
+    listener({ action: CLOSE_SIDE_PANEL_ACTION }, { id: 'another-extension' });
+  }
+  ok('a message from another extension cannot close the panel', otherPanel.closed === false);
 
-  // The wiring is load-bearing: boot (both surfaces) must call the installer.
+  const manifest = JSON.parse(readFileSync(join(ROOT, 'src', 'manifest.json'), 'utf8'));
+  ok('manifest marks the panel while reusing the exact same HTML page',
+    manifest.action?.default_popup === 'popup.html'
+      && manifest.side_panel?.default_path === `popup.html${SIDE_PANEL_SEARCH}`);
   const bootSource = stripComments(readFileSync(join(ROOT, 'src', 'ui', 'app', 'boot.js'), 'utf8'));
-  ok('boot wires the exclusion into every surface',
-    /installSidePanelExclusion\s*\(/.test(bootSource));
+  const bootFunction = bootSource.slice(bootSource.indexOf('export async function boot('));
+  ok('boot installs the exclusion BEFORE its first await (theme or bootstrap)',
+    bootFunction.indexOf('installSidePanelExclusion(') >= 0
+      && bootFunction.indexOf('installSidePanelExclusion(') < bootFunction.indexOf('await '));
   const bgSource = stripComments(readFileSync(join(ROOT, 'src', 'background', 'index.js'), 'utf8'));
   ok('the background early-returns the action instead of routing it as an API request',
     /CLOSE_SIDE_PANEL_ACTION/.test(bgSource) && /request\?\.action === CLOSE_SIDE_PANEL_ACTION/.test(bgSource));
 
   const beforeDispose = chromeLog.listeners.size;
   disposeOther();
-  ok('dispose removes the message listener', chromeLog.listeners.size === beforeDispose - 1,
+  disposePanel();
+  ok('dispose removes the same listener references', chromeLog.listeners.size === beforeDispose - 2,
     `${beforeDispose} -> ${chromeLog.listeners.size}`);
+
+  // Interleave a broadcast WHILE the panel boot is suspended on theme storage,
+  // as happens during a service worker wake-up. The listener must be live now,
+  // not after theme or bridge.bootstrap resolves. This fails on the old boot.
+  resetDom();
+  guards.invalidate();
+  WIN.location.search = SIDE_PANEL_SEARCH;
+  WIN.innerHeight = 480;
+  const originalGet = chrome.storage.local.get;
+  let resumeTheme;
+  chrome.storage.local.get = (key) => key === 'thru_theme'
+    ? new Promise((resolve) => { resumeTheme = () => resolve({}); })
+    : originalGet(key);
+  const pendingBoot = boot({ root: DOC.getElementById('app') });
+  ok('the panel listener is installed synchronously, before theme storage returns',
+    chromeLog.listeners.size === 1 && typeof resumeTheme === 'function');
+  ok('booting the panel does not broadcast or call sidePanel.close',
+    chromeLog.broadcasts.length === 0 && chromeLog.sidePanelClose.length === 0);
+  bridge.broadcastCloseSidePanel();
+  await settle();
+  ok('a close broadcast reaches a panel blocked inside boot', WIN.closed === true);
+  resumeTheme();
+  await pendingBoot;
+
+  // On Chrome 116-140 (no native close API), the correctly marked panel still
+  // closes on the original bridge broadcast when both pages have started.
+  resetDom();
+  guards.invalidate();
+  delete chrome.sidePanel.close;
+  const oldChromePanel = {
+    location: { search: SIDE_PANEL_SEARCH }, innerHeight: 500, closed: false,
+    close() { this.closed = true; },
+  };
+  installSidePanelExclusion(oldChromePanel);
+  await boot({ root: DOC.getElementById('app') });
+  await settle();
+  ok('the broadcast is a fallback when Chrome has no sidePanel.close',
+    oldChromePanel.closed && chromeLog.sidePanelClose.length === 0);
 }
 
 // ---- In-app navigation -----------------------------------------------------
