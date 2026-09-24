@@ -110,8 +110,8 @@ hash directly (`#/send`) where the UI has no link, so unmigrated or unreachable 
 | `/add-account` | HD preview renders; adding an account returns to `/accounts` | [ ] | [ ] |
 | `/keyring` | Source list, rename, backed-up state; `#/keyring?id=<id>` from Accounts | [ ] | [ ] |
 | `/export` | Password prompt before any secret; reveal shows the phrase; navigating away removes it (see §5) | [ ] | [ ] |
-| `/send` | Recipient validation debounce, amount parsing, fee estimate, confirm step, receipt | [ ] | [ ] |
-| `/send` (token) | Asset picker shows token as sendable; amount re-denominates to the symbol; review discloses recipient token-account init fee when the recipient has none; MAX excludes broken values | [ ] | [ ] |
+| `/send` | Form appears after account/network metadata, without waiting for live balances or token reads; unknown/last-known balance is labelled and cannot unlock Max/Review; recipient validation, amount parsing, fee, confirmation and receipt work after verification | [ ] | [ ] |
+| `/send` (token) | Pending reads say checking, failures say unknown (not zero); only a token with a verified positive balance and on-chain mint decimals is selectable; amount re-denominates correctly; review discloses recipient token-account init fee; MAX excludes broken values | [ ] | [ ] |
 | `/receive` | Address, QR renders in the raised Thru palette (gradient red tiles, slate finder eyes, ice paper) and scans from a phone; clicking the address box copies it, the box says \"Copied\", then returns to the address after ~1s | [ ] | [ ] |
 | `/faucet` | Claim state, disabled when already claimed, error when the network has no faucet | [ ] | [ ] |
 | `/history` | Entries, filter chips, "load more" appends instead of refetching; token sends appear as "Sent \<amount\> \<SYM\>", receipts as "Received …", mints as "Minted …", and a token-account init never appears as a THRU transfer; a confirmed send never appears BOTH in the list AND as a "Waiting for confirmation" Pending row | [ ] | [ ] |
@@ -120,6 +120,40 @@ hash directly (`#/send`) where the UI has no link, so unmigrated or unreachable 
 | `/history` detail sheet — keyboard | Tab reaches a card (visible focus ring), Enter AND Space both open it, Tab wraps inside the sheet without reaching the list behind it, Escape closes. Clicking the in-card copy button or explorer icon must NOT also open the sheet. | [ ] | [ ] |
 | `/settings` | Built-in network controls; any saved custom row says **not selectable**, is inert, and exposes only Remove; auto-lock, security (Signing: **Session-only is the default**, "Require password" is the password-gated opt-in), appearance, version. **The four "?" popovers (Signing, Auto-lock, Side Panel Mode, Appearance):** each is a dark in-wallet card that opens on hover (and on click) and stays strictly inside the popup — no native browser tooltip, so nothing may render outside the 400px surface — and it closes when the pointer leaves; no explanatory paragraphs may sit under the rows. There is **no Danger zone / full reset on this screen** — an unlocked wallet is never one tap from total destruction (account/seed removal is in Manage Accounts). **Side Panel Mode** toggle only, with no "Window" section header (on → toolbar icon opens the panel, off → popup; persists across worker restarts) — and **no** "Open side panel" button (the dashboard header owns that) | [ ] | [ ] |
 | `/reset` | Reachable **only from the lock screen** (forgotten-password recovery), not from Settings. Warning copy, confirmation text required, reset returns to `/welcome` | [ ] | [ ] |
+
+### Send: slow/offline, cross-context and bridge smoke (after reloading the extension)
+
+- [ ] Open Send on Alphanet with a funded account and multiple registered tokens. The **form**
+  appears once the active account and network are known; the token ledger may still be checking.
+  A slow token query must NOT leave Send on a full-screen "Loading" spinner. Type recipient and
+  amount while it is checking; those inputs and focus must survive the balance update.
+- [ ] With no server running on localnet, select localnet in Settings and revisit Send (or block
+  the configured RPC in the extension worker's DevTools). A saved balance, if any, says **last
+  known**. Otherwise the UI says checking/unavailable, never a fabricated `0 THRU`. Max and
+  Review remain disabled until a live balance AND a usable native fee reserve arrive. Retry
+  checks is offered on failure. A token read failure says **balance unknown**, not "no balance";
+  a genuinely absent token account alone says "no balance".
+- [ ] Restore network access and click Retry checks. Recipient and amount stay typed; a fresh
+  THRU balance and fee enable native Review even if token reads are still pending. An amount
+  greater than the verified spendable amount keeps Review disabled. Token rows become selectable
+  only once their mint denomination is confirmed on-chain; wrong imported registry decimals
+  must never determine a positive token's Send amount.
+- [ ] If possible, open two trusted extension pages, put one on Send/Review, and switch active
+  account or network in the other. The old Review must be invalidated; a signing attempt using
+  that old context must fail with **sending account or network changed** and require a new review.
+  Do not test this by sending real funds. If a sign request times out, the UI must call the
+  outcome **unknown** and say to check Activity/explorer, not invite an immediate retry.
+- [ ] Import the same mint on Alphanet and localnet (if the import API is exposed in your test
+  setup). Each network sees only its own registry row. Old imports without a network tag are
+  visible on Alphanet only; re-import elsewhere if needed.
+- [ ] With a read blocked after a transfer returns a signature (worker DevTools network
+  throttling, only in a safe test wallet), confirm that the **submission receipt** is not held
+  behind the subsequent THRU balance refresh. Activity records the signature for the sending
+  chain even if another trusted extension page switches networks while the send settles.
+- [ ] In Dashboard (including its refresh button), Accounts and Add-account HD preview,
+  a disconnected node with NO previous successful read must not appear as a verified zero.
+  A previously verified balance may remain visible only as last-known/stale. Repeat after
+  switching networks, then reconnect and check that a fresh value replaces it.
 
 **Single header per screen.** The shell topbar (wordmark, network badge, settings, lock) is now
 hidden on **every** route: the dashboard owns the 196px ink header, and every sub-screen owns its

@@ -1,5 +1,10 @@
 # Audit report — Thru Wallet Extension
 
+> **Current Send-path audit (2026-09-24):** [SEND_PATH_AUDIT.md](SEND_PATH_AUDIT.md)
+> covers the frontend, bridge, worker, contract, services, SDK, fixes, tests, and residual
+> risks on this branch. The earlier report below is a historical snapshot; its branch,
+> counts, and signing-preference default do not describe the current build.
+
 Date: 2026-09-18  
 Repository: `buildbyravi/thru-wallet-ext`  
 Branch: `arena/01a06be7-thru-wallet-ext`  

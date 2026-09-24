@@ -1,7 +1,16 @@
 # Status and roadmap
 
 Single source of truth for **where the rebuild is** and **what happens next**.
-Last updated: contract v10 adds `tx.getDetail`, the lazy per-signature fetch behind the P2
+
+**2026-09-24 Send update:** contract v11 adds reviewed-context native/token signing methods;
+Send paints after account/network metadata rather than waiting on balances, fees and token
+reads. Offline is unknown rather than a fresh zero, and a submitted signature no longer waits
+for a second balance RPC. Deterministic `npm run build` and `npm test` pass (route lifecycle
+885/885; contract 71/71). See [SEND_PATH_AUDIT.md](SEND_PATH_AUDIT.md) for the frontend–bridge–
+worker audit and **remaining** signing-network race, worker-restart, pending-write and live-token
+fee risks. Real Chrome and live-network validation remain open; use `MANUAL_SMOKE_CHECKLIST.md`.
+
+Previous update: contract v10 adds `tx.getDetail`, the lazy per-signature fetch behind the P2
 transaction detail sheet (Activity history P0+P1+P2 now shipped). It is explorer-free: the
 sheet runs on the RPC we already depend on, states the header-declared fee as such, and
 renders "Not available" for anything the network does not report — see
