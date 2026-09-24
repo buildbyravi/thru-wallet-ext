@@ -147,7 +147,10 @@ export async function previewHdAccounts({ keyringId, start = 0, count = 5, withB
   const fetched = await balances.getBalances(preview.map((p) => p.address), { emit: false });
   return preview.map((p) => ({
     ...p,
-    balance: fetched[p.address]?.balance ?? null,
+    // A failed RPC without a previously verified value carries a display-only stale "0"
+    // in tx.getBalances for legacy port compatibility. Do not turn it into a real-looking
+    // zero in the HD preview: that screen has no stale/error column.
+    balance: fetched[p.address]?.stale ? null : (fetched[p.address]?.balance ?? null),
   }));
 }
 

@@ -178,9 +178,16 @@ export function getClient() {
 export async function getAccountInfo(address) {
   try {
     const account = await getClient().accounts.get(address);
-    return { exists: true, balance: account.meta?.balance ?? 0n, raw: account };
+    if (account?.meta?.balance == null) {
+      throw new Error('The node returned an account without a balance.');
+    }
+    return { exists: true, balance: BigInt(account.meta.balance), raw: account };
   } catch (err) {
-    return { exists: false, balance: 0n, error: err };
+    // Only the SDK's actual ACCOUNT_NOT_FOUND code proves an absent account. A timeout,
+    // rate-limit or offline node cannot establish a zero balance or whether this account
+    // is registered. Callers (including Send and the balance cache) must see the error.
+    if (sdkIsAccountNotFoundError(err)) return { exists: false, balance: 0n };
+    throw err;
   }
 }
 

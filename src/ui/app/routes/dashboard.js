@@ -372,13 +372,18 @@ export function DashboardRoute({ navigate }) {
       return;
     }
 
-    // Cached balance first paint
+    // Cached balance first paint; retain it (visibly labelled by the warning) if the live
+    // call fails. A stale batch placeholder with fetchedAt:0 is never a cache snapshot.
+    let nativeText = '—';
+    let hasCachedBalance = false;
     try {
       const cached = await bridge.send('tx.getCachedBalances', { addresses: [account.address] });
       const entry = cached?.[account.address];
       if (entry) {
-        const raw = BigInt(entry.balance || '0');
+        const raw = BigInt(entry.balance);
         const formatted = `${formatThru(raw)} THRU`;
+        nativeText = formatted;
+        hasCachedBalance = true;
         currentBalanceUsd = formatUsdFromThru(raw);
         balanceHero.update({
           usd: currentBalanceUsd,
@@ -402,10 +407,12 @@ export function DashboardRoute({ navigate }) {
 
     balanceHero.setSpinning(false);
 
-    let nativeText = '—';
-    if (infoResult.status === 'fulfilled' && infoResult.value) {
+    // A forced refresh uses tx.getBalances, which may return a stale placeholder on an
+    // offline node. Only a successful live read may replace the hero as a new balance.
+    if (infoResult.status === 'fulfilled' && infoResult.value && !infoResult.value.stale
+      && infoResult.value.balance != null) {
       const info = infoResult.value;
-      const raw = info.balance != null ? BigInt(info.balance) : 0n;
+      const raw = BigInt(info.balance);
       nativeText = `${formatThru(raw)} THRU`;
       currentBalanceUsd = formatUsdFromThru(raw);
       balanceHero.update({
@@ -416,15 +423,24 @@ export function DashboardRoute({ navigate }) {
       if (info.exists === false) {
         bridge.send('tx.autoCreateAccount').catch(() => {});
       }
-    } else if (infoResult.status === 'rejected') {
-      banner.set('Could not reach the network. Showing the last known balance.', 'warning');
+    } else {
+      banner.set(hasCachedBalance
+        ? 'Could not verify the balance. Showing the last known value.'
+        : 'Could not verify the balance. Balance unavailable.', 'warning');
+      // Do not leave the neutral "$0.00" default looking like a verified zero when no
+      // account read or cache has ever succeeded on this page.
+      if (!hasCachedBalance) {
+        balanceHero.update({ usd: '—', native: 'Balance unavailable' });
+        currentBalanceUsd = '—';
+      }
     }
 
     const tokens = tokensResult.status === 'fulfilled' ? tokensResult.value : [];
     const tokenState = tokenBalancesResult.status === 'fulfilled'
       ? new Map((tokenBalancesResult.value?.balances || []).map((b) => [b.mintAddress, b]))
       : null;
-    renderAssets(nativeText, tokens, infoResult.status === 'rejected', tokenState);
+    renderAssets(nativeText, tokens,
+      infoResult.status === 'rejected' || infoResult.value?.stale === true, tokenState);
 
     if (pendingResult.status === 'fulfilled') {
       let pendings = pendingResult.value;
@@ -450,6 +466,14 @@ export function DashboardRoute({ navigate }) {
     bridge.onEvent('balanceChanged', (map) => {
       const entry = map?.[account?.address];
       if (!entry) return;
+      if (entry.stale && !entry.fetchedAt) {
+        // The batched reader reports a legacy "0" placeholder when there was no cache;
+        // it is UNKNOWN, not a zero the dashboard may display as a new balance.
+        balanceHero.update({ usd: '—', native: 'Balance unavailable' });
+        currentBalanceUsd = '—';
+        assetRows[0]?.setBalance(null, true, '—');
+        return;
+      }
       const raw = BigInt(entry.balance || '0');
       const formatted = `${formatThru(raw)} THRU`;
       currentBalanceUsd = formatUsdFromThru(raw);

@@ -274,6 +274,35 @@ console.log('\n[12] configureNetwork actually rebinds the client');
   assert(client.getConfiguredNetwork().id === 'alphanet', 'rebinding back to alphanet works');
 }
 
+console.log('\n[12b] A failed account RPC is unknown, NOT a missing account with zero balance');
+{
+  const client = await import('../src/lib/thru-client.js');
+  const sdkClient = client.getClient();
+  const originalGet = sdkClient.accounts.get;
+  try {
+    sdkClient.accounts.get = async () => { throw Object.assign(new Error('account missing'), { code: 5 }); };
+    const absent = await client.getAccountInfo(alice.address);
+    assert(absent.exists === false && absent.balance === 0n,
+      'the SDK account-not-found code proves a truly absent account');
+    sdkClient.accounts.get = async () => { throw new Error('network timeout'); };
+    let offline = null;
+    try { await client.getAccountInfo(alice.address); } catch (error) { offline = error; }
+    assert(offline?.message === 'network timeout',
+      'an offline network throws instead of claiming the wallet has zero');
+    sdkClient.accounts.get = async () => ({ meta: { balance: 456n } });
+    const present = await client.getAccountInfo(alice.address);
+    assert(present.exists === true && present.balance === 456n,
+      'a successful read preserves the SDK BigInt balance');
+    sdkClient.accounts.get = async () => ({ meta: {} });
+    let malformed = null;
+    try { await client.getAccountInfo(alice.address); } catch (error) { malformed = error; }
+    assert(/without a balance/.test(malformed?.message || ''),
+      'a response without a balance is unknown, not a fresh zero');
+  } finally {
+    sdkClient.accounts.get = originalGet;
+  }
+}
+
 console.log('\n[13] Token transfer wire format: ONE-byte tag, golden bytes pinned against the official binding');
 // The token program's ABI uses a uint8 instruction discriminant, NOT the 4-byte tag of the
 // faucet/transfer encoders — discovered by measuring @thru/programs 0.3.16 output, not assumed
