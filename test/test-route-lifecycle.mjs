@@ -1325,6 +1325,13 @@ const FIXTURES = {
     return { checked: backend.pending.length, settled: actives };
   },
   'tx.autoCreateAccount': () => ({ exists: true, created: false, signature: null }),
+  'tx.registerAccount': ({ address } = {}) => {
+    if (!backend.accounts.some((a) => a.address === address)) {
+      throw apiError('NOT_OWNED_ACCOUNT', 'Only accounts in this wallet can be activated.');
+    }
+    return { address, networkId: activeNetwork().id, exists: true,
+      created: true, signature: 'sig_registration_test' };
+  },
   'tx.listHistory': ({ limit } = {}) => {
     const size = Math.min(Number(limit) || 15, HISTORY_ENTRIES.length);
     return {
@@ -1333,6 +1340,9 @@ const FIXTURES = {
       hasMore: size < HISTORY_ENTRIES.length,
     };
   },
+  'tx.getCachedHistory': ({ address } = {}) => ({
+    address, networkId: activeNetwork().id, entries: [], nextCursor: 0, updatedAt: 0,
+  }),
   // Mirrors history-service.getHistoryFeed: cache-merged first page, honestly labelled.
   'tx.getHistoryFeed': () => {
     const size = Math.min(15, HISTORY_ENTRIES.length);
@@ -1759,6 +1769,7 @@ const { installSidePanelExclusion } = await import('../src/ui/app/side-panel-exc
 const { isSidePanelPage, SIDE_PANEL_SEARCH, CLOSE_SIDE_PANEL_ACTION } = await import('../src/shared/side-panel.js');
 const { Router } = await import('../src/ui/app/router.js');
 const { SendRoute } = await import('../src/ui/app/routes/send.js');
+const { HistoryRoute } = await import('../src/ui/app/routes/history.js');
 const { DashboardRoute } = await import('../src/ui/app/routes/dashboard.js');
 const { AccountsRoute } = await import('../src/ui/app/routes/accounts.js');
 
@@ -3923,6 +3934,237 @@ async function progressiveSendTest() {
   uncertain.el.remove();
 }
 
+// ---- Contract v12: creation-bound recipient activation + cache-before-RPC History -------
+
+async function ownRecipientRegistrationTest() {
+  section('send: an unregistered owned recipient activates directly and review keeps its label');
+  resetBackend(SCENARIOS[2]);
+  resetDom();
+  const external = 'ta1unownedrecipient00000000000000000000000000000000000';
+  const contact = 'ta1savedcontact0000000000000000000000000000000000000';
+  backend.contacts.push({ address: contact, label: 'Coffee shop', createdAt: Date.now() });
+  const originalInfo = FIXTURES['tx.getAccountInfo'];
+  const originalSendMessage = chrome.runtime.sendMessage;
+  const held = [];
+  const heldInfo = [];
+  let delayOwnInfo = true;
+  FIXTURES['tx.getAccountInfo'] = ({ address } = {}) => (
+    address === ADDRESS_B || address === external
+      ? { exists: false, balance: '0' }
+      : originalInfo({ address })
+  );
+  chrome.runtime.sendMessage = (message, callback) => {
+    if (delayOwnInfo && message?.method === 'tx.getAccountInfo'
+      && message.params?.address === ADDRESS_B) {
+      chromeLog.calls.push(message.method);
+      heldInfo.push({ message, callback });
+      return undefined;
+    }
+    if (message?.method === 'tx.registerAccount') {
+      chromeLog.calls.push(message.method);
+      held.push({ message, callback });
+      return undefined;
+    }
+    return originalSendMessage(message, callback);
+  };
+  let route;
+  try {
+    route = SendRoute({ params: {}, navigate() {}, back() {} });
+    DOC.body.appendChild(route.el);
+    await settle();
+    type(route.el.querySelector('input[placeholder="0.0"]'), '0.001');
+    click(buttons(route.el, /my accounts/i)[0]);
+    await settle();
+    click(buttons(route.el, /spending/i)[0]);
+    await settle();
+    ok('a picked own recipient cannot pass Review before its chain-existence lookup completes',
+      heldInfo.length === 1 && buttons(route.el, /^review$/i)[0]?.disabled === true);
+    // A late balance update used to treat exists:null as "ready" and enable Review even
+    // though the lookup/registration for an owned recipient was still pending.
+    click(buttons(route.el, /retry checks/i)[0]);
+    await settle();
+    ok('an unrelated balance refresh cannot unlock Review during the recipient lookup',
+      buttons(route.el, /^review$/i)[0]?.disabled === true);
+    delayOwnInfo = false;
+    heldInfo.shift().callback({ ok: true, data: { exists: false, balance: '0' } });
+    await settle();
+    ok('selecting an unregistered own recipient calls tx.registerAccount for THAT address',
+      held.length === 1 && held[0].message.params.address === ADDRESS_B
+        && !chromeLog.calls.includes('tx.autoCreateAccount'), chromeLog.calls.slice(-14).join(','));
+    ok('the user sees activation progress and cannot review a not-yet-active recipient',
+      /Activating your account on-chain/.test(textOf(route.el))
+        && buttons(route.el, /^review$/i)[0]?.disabled === true, textOf(route.el).slice(0, 250));
+    click(buttons(route.el, /retry checks/i)[0]);
+    await settle();
+    ok('Review stays gated during activation even when balance and fee checks finish',
+      buttons(route.el, /^review$/i)[0]?.disabled === true);
+
+    const item = held.shift();
+    item.callback({ ok: true, data: FIXTURES['tx.registerAccount'](item.message.params) });
+    await settle();
+    ok('once activation confirms, Review unlocks without changing the sender',
+      buttons(route.el, /^review$/i)[0]?.disabled === false
+        && activeAccount().address === ADDRESS_A);
+    click(buttons(route.el, /^review$/i)[0]);
+    await settle();
+    const toRow = [...route.el.querySelectorAll('.detail-row')]
+      .find((node) => textOf(node).startsWith('To'));
+    ok('review shows the own-account label ABOVE the FULL address',
+      Boolean(toRow) && /Spending/.test(textOf(toRow))
+        && textOf(toRow).includes(ADDRESS_B)
+        && textOf(toRow).indexOf('Spending') < textOf(toRow).indexOf(ADDRESS_B),
+      textOf(toRow).slice(0, 190));
+
+    click(buttons(route.el, /^edit$/i)[0]);
+    type(route.el.querySelector('input[placeholder="ta…"]'), external);
+    await sleep(450);
+    await settle();
+    ok('a never-used external address is NOT auto-registered',
+      held.length === 0 && /owner needs to activate it/i.test(textOf(route.el))
+        && buttons(route.el, /^review$/i)[0]?.disabled === true);
+
+    type(route.el.querySelector('input[placeholder="ta…"]'), contact);
+    await sleep(450);
+    await settle();
+    click(buttons(route.el, /^review$/i)[0]);
+    await settle();
+    const contactRow = [...route.el.querySelectorAll('.detail-row')]
+      .find((node) => textOf(node).startsWith('To'));
+    ok('a saved contact also shows its name above the full destination address',
+      Boolean(contactRow) && textOf(contactRow).includes('Coffee shop')
+        && textOf(contactRow).includes(contact)
+        && textOf(contactRow).indexOf('Coffee shop') < textOf(contactRow).indexOf(contact));
+
+    click(buttons(route.el, /^edit$/i)[0]);
+    type(route.el.querySelector('input[placeholder="ta…"]'), ADDRESS_B);
+    await sleep(450);
+    await settle();
+    ok('activation of a newly typed own address is in flight', held.length === 1);
+    type(route.el.querySelector('input[placeholder="ta…"]'), external);
+    await sleep(450);
+    await settle();
+    const outdated = held.shift();
+    outdated.callback({ ok: true, data: FIXTURES['tx.registerAccount'](outdated.message.params) });
+    await settle();
+    ok('a late activation reply cannot overwrite a recipient typed afterwards',
+      /owner needs to activate it/i.test(textOf(route.el))
+        && !/Spending is active on this network/.test(textOf(route.el))
+        && buttons(route.el, /^review$/i)[0]?.disabled === true);
+  } finally {
+    for (const item of held) item.callback({ ok: false,
+      error: { code: 'NETWORK_ERROR', message: 'Test finished', retryable: true } });
+    route?.destroy();
+    route?.el.remove();
+    chrome.runtime.sendMessage = originalSendMessage;
+    FIXTURES['tx.getAccountInfo'] = originalInfo;
+  }
+  await settle();
+  ok('the recipient activation route tears down without orphan listeners', detachedListeners().length === 0);
+}
+
+async function historyCacheFirstTest() {
+  section('history: cached cards paint before RPC/pending; stale replies never cross contexts');
+  resetBackend(SCENARIOS[2]);
+  resetDom();
+  const alpha = { signature: 'ts_cached_alpha_aaaaaaaaaaaaaaaaaaaa', slot: '101',
+    success: true, kind: 'sent', programAddress: NETWORK_ALPHANET.transferProgramId,
+    amount: '1000000', counterparty: ADDRESS_B, timestamp: null };
+  const fresh = { ...alpha, signature: 'ts_fresh_alpha_bbbbbbbbbbbbbbbbbbbb', slot: '501', amount: '2000000' };
+  const testnet = { ...alpha, signature: 'ts_cached_testnet_cccccccccccccccc', slot: '202', amount: '3000000' };
+  const originalCache = FIXTURES['tx.getCachedHistory'];
+  const originalSendMessage = chrome.runtime.sendMessage;
+  const held = [];
+  FIXTURES['tx.getCachedHistory'] = ({ address } = {}) => ({
+    address, networkId: activeNetwork().id,
+    entries: [activeNetwork().id === 'alphanet' ? alpha : testnet],
+    nextCursor: 15, updatedAt: Date.now(),
+  });
+  chrome.runtime.sendMessage = (message, callback) => {
+    if (['tx.getHistoryFeed', 'tx.getPending', 'account.list'].includes(message?.method)) {
+      chromeLog.calls.push(message.method);
+      held.push({ message, callback });
+      return undefined;
+    }
+    return originalSendMessage(message, callback);
+  };
+  const reply = (method, data) => {
+    const index = held.findIndex((item) => item.message.method === method);
+    if (index < 0) throw new Error(`No held ${method} reply`);
+    held.splice(index, 1)[0].callback({ ok: true, data });
+  };
+  let route;
+  try {
+    route = HistoryRoute({ back() {} });
+    DOC.body.appendChild(route.el);
+    await settle();
+    ok('cached History draws a card while the live feed, labels and pending replies are held',
+      route.el.querySelectorAll('.tx-card').length === 1
+        && /Block 101/.test(textOf(route.el))
+        && chromeLog.calls.includes('tx.getHistoryFeed')
+        && held.some((item) => item.message.method === 'tx.getPending')
+        && held.some((item) => item.message.method === 'account.list'),
+      textOf(route.el).slice(0, 280));
+    ok('cached rows are labelled stale and cannot offer load-more until the feed revalidates',
+      /cached activity.*checking network/i.test(textOf(route.el))
+        && buttons(route.el, /load more/i).length === 0);
+    reply('tx.getHistoryFeed', { entries: [fresh], nextCursor: 15, synced: true });
+    await settle();
+    ok('fresh cards replace cached ones before pending reconciliation has responded',
+      /Block 501/.test(textOf(route.el)) && !/Block 101/.test(textOf(route.el))
+        && !/cached activity/i.test(textOf(route.el))
+        && held.some((item) => item.message.method === 'tx.getPending'));
+    reply('tx.getPending', []);
+    reply('account.list', backend.accounts.map((a) => ({ ...a })));
+    await settle();
+
+    emitEvent('pendingTxChanged', {});
+    await settle();
+    const failedIndex = held.findIndex((item) => item.message.method === 'tx.getHistoryFeed');
+    const rawCallsBefore = chromeLog.calls.filter((method) => method === 'tx.listHistory').length;
+    held.splice(failedIndex, 1)[0].callback({ ok: false,
+      error: { code: 'NETWORK_ERROR', message: 'RPC offline', retryable: true } });
+    await settle();
+    ok('a failed feed keeps cached cards and does not make a second raw RPC request',
+      /Block 101/.test(textOf(route.el)) && /cached activity.*could not sync/i.test(textOf(route.el))
+        && chromeLog.calls.filter((method) => method === 'tx.listHistory').length === rawCallsBefore);
+
+    // A further refresh is still awaiting the ALPHANET feed when another extension page
+    // switches networks. The old reply must not overwrite the NEW network's cached cards.
+    emitEvent('pendingTxChanged', {});
+    await settle();
+    ok('a second Alphanet feed is in flight before the switch',
+      held.some((item) => item.message.method === 'tx.getHistoryFeed'));
+    backend.activeNetworkId = 'testnet';
+    emitEvent('networkChanged', { id: 'testnet' });
+    await settle();
+    ok('switching networks paints only the new network\'s cached card',
+      /Block 202/.test(textOf(route.el)) && !/Block 101|Block 501/.test(textOf(route.el)),
+      textOf(route.el).slice(0, 270));
+    reply('tx.getHistoryFeed', { entries: [fresh], nextCursor: null, synced: true });
+    await settle();
+    ok('a late Alphanet feed is discarded instead of overwriting Testnet cache',
+      /Block 202/.test(textOf(route.el)) && !/Block 501/.test(textOf(route.el)));
+
+    // Detach while the Testnet feed is pending, then release it; it must not mutate a
+    // destroyed view or leave its TxCard/More listeners behind.
+    route.destroy();
+    route.el.remove();
+    const snapshot = textOf(route.el); // teardown may clear kit-owned button labels
+    reply('tx.getHistoryFeed', { entries: [fresh], nextCursor: null, synced: true });
+    await settle();
+    ok('navigation discards late feed replies and disposes cached card listeners',
+      textOf(route.el) === snapshot && detachedListeners().length === 0,
+      JSON.stringify(detachedListeners().slice(0, 3)));
+  } finally {
+    route?.destroy();
+    route?.el.remove();
+    for (const item of held) item.callback({ ok: false,
+      error: { code: 'NETWORK_ERROR', message: 'Test finished', retryable: true } });
+    chrome.runtime.sendMessage = originalSendMessage;
+    FIXTURES['tx.getCachedHistory'] = originalCache;
+  }
+}
+
 // ---- Audit: other consumers of tx.getBalances must not display its stale zero ---------
 
 async function offlineBalanceConsumersTest() {
@@ -3992,6 +4234,8 @@ try {
   await exportSecretTest();
   await navigationTest();
   await progressiveSendTest();
+  await ownRecipientRegistrationTest();
+  await historyCacheFirstTest();
   await offlineBalanceConsumersTest();
   await panelExclusionTest();
   negativeControls();

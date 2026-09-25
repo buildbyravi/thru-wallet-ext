@@ -94,7 +94,10 @@ export function SendRoute({ params, navigate, back }) {
       && (asset.isNative || (balanceUnits != null && balanceUnits > 0n))
       && recipientState?.valid === true
       && recipientState?.isSelf !== true
-      && (asset.isNative ? recipientState?.exists !== false : true);
+      // An owned recipient can prove absent while an activation is in flight. Do not let a
+      // concurrent balance/fee update unlock Review before that activation has completed.
+      && (asset.isNative
+        ? recipientState?.checking !== true && recipientState?.exists !== false : true);
     liveReviewBtn?.update({ disabled: !ready });
     if (liveForm) liveForm.feeText.textContent = feeText();
   }
@@ -209,6 +212,7 @@ export function SendRoute({ params, navigate, back }) {
     subView = null;
     formState = { to: prefill.to ?? formState.to, amount: prefill.amount ?? formState.amount };
     clearBody();
+    recipientState = null; // a picker choice/reopened form must never reuse the previous address's proof
     banner.clear();
     header.setTitle('Send');
 
@@ -402,7 +406,7 @@ export function SendRoute({ params, navigate, back }) {
     }));
     body.appendChild(h('div', { class: 'screen-actions' }, reviewBtn.el));
     liveForm = { fromBalance, assetBalance, spendable, feeText: feeNote,
-      max: maxBtn, retry: retryBtn, amount };
+      max: maxBtn, retry: retryBtn, amount, recipientStatus };
 
     // Re-validate a prefilled recipient (e.g. arriving from a contact link).
     if (prefill.to) validateRecipient(prefill.to, recipientStatus);
@@ -469,6 +473,8 @@ export function SendRoute({ params, navigate, back }) {
    */
   async function validateRecipient(value, statusEl) {
     const seq = ++recipientValidationSeq;
+    recipientState = null; // invalidate the previous address BEFORE the first async bridge call
+    refreshReviewEnabled();
     const stale = () => seq !== recipientValidationSeq;
     try {
       const addr = String(value || '').trim();
@@ -485,7 +491,7 @@ export function SendRoute({ params, navigate, back }) {
       }
 
       if (stale()) return;
-      recipientState = { ...result, exists: null };
+      recipientState = { ...result, exists: null, checking: true };
 
       if (!result.valid) {
         statusEl.textContent = result.reason || 'That is not a valid Thru address.';
@@ -534,8 +540,31 @@ export function SendRoute({ params, navigate, back }) {
         if (stale()) return;
         recipientState.exists = Boolean(info.exists);
         if (!info.exists) {
-          statusEl.textContent = 'This address has never been used on this network, so it cannot '
-            + 'receive a transfer yet. The owner needs to activate it first.';
+          // tx.autoCreateAccount would register the ACTIVE sender, not this recipient. Only a
+          // wallet-owned address may be activated here, and the background rechecks ownership
+          // before signing. Never attempt to register a saved contact or an arbitrary address.
+          const ownDest = accounts.find((a) => a.address === addr && a.address !== account?.address);
+          if (ownDest) {
+            statusEl.textContent = `Activating your account on-chain… (${ownDest.label || 'Account'})`;
+            try {
+              const registered = await bridge.send('tx.registerAccount', { address: ownDest.address });
+              if (stale()) return;
+              if (registered?.address !== addr || registered?.networkId !== network?.id
+                || registered?.exists !== true) {
+                throw new Error('Could not confirm activation on this network.');
+              }
+              recipientState.exists = true;
+              statusEl.textContent = `${ownDest.label || 'Account'} is active on this network.`;
+            } catch (error) {
+              if (stale()) return;
+              recipientState.exists = false;
+              statusEl.textContent = `Could not activate ${ownDest.label || 'this account'}. `
+                + `${error.message || 'Check the connection and try selecting it again.'}`;
+            }
+          } else {
+            statusEl.textContent = 'This address has never been used on this network, so it cannot '
+              + 'receive a transfer yet. The owner needs to activate it first.';
+          }
         } else {
           statusEl.textContent = `Recipient is active. Balance ${formatThru(BigInt(info.balance))} THRU.`;
         }
@@ -548,7 +577,10 @@ export function SendRoute({ params, navigate, back }) {
     } finally {
       // Whatever path this took (valid, invalid, self, token or native), the Review gate
       // re-evaluates — unless a newer check superseded this one, in which case it stays put.
-      if (seq === recipientValidationSeq) refreshReviewEnabled();
+      if (seq === recipientValidationSeq) {
+        if (recipientState) recipientState.checking = false;
+        refreshReviewEnabled();
+      }
     }
   }
 
@@ -564,6 +596,14 @@ export function SendRoute({ params, navigate, back }) {
     }
     if (recipientState?.isSelf) {
       recipientField.setError("That's the address you're sending from.");
+      return false;
+    }
+    if (asset.isNative && recipientState?.checking) {
+      recipientField.setError('Checking whether this account is active on-chain…');
+      return false;
+    }
+    if (asset.isNative && recipientState?.exists === false) {
+      recipientField.setError('This account must be active on-chain before it can receive.');
       return false;
     }
     if (amountUnits <= 0n) {
@@ -681,8 +721,8 @@ export function SendRoute({ params, navigate, back }) {
     header.setTitle('Choose recipient');
 
     body.appendChild(h('p', { class: 'hint', text:
-      'Your own accounts are already active on-chain, so they can always receive. Grouped by '
-      + 'the phrase or key each one comes from.' }));
+      'Choose one of your accounts or contacts. If an account you own is not yet active '
+      + 'on this network, it will be activated before you send.' }));
 
     const picker = track(AccountPicker({
       accounts,
@@ -718,6 +758,11 @@ export function SendRoute({ params, navigate, back }) {
       : `${formatTokenAmount(amountUnits, tokenDecimals())} ${symbol}`;
     const feeUnits = feeInfo?.supported ? BigInt(feeInfo.feeUnits) : 0n;
     const total = amountUnits + feeUnits;
+    const destAccount = accounts.find((a) => a.address === to);
+    const destContact = contacts.find((c) => c.address === to);
+    const destLabel = destAccount
+      ? (destAccount.label || destAccount.keyring?.label || 'Account')
+      : destContact?.label;
 
     body.appendChild(h('div', { class: 'notice warning' }, [
       h('div', { class: 'row-flex' }, [
@@ -737,22 +782,12 @@ export function SendRoute({ params, navigate, back }) {
       ]),
       h('div', { class: 'detail-row' }, [
         h('span', { class: 'eyebrow', text: 'To' }),
-        // Full address, not truncated. This is the last chance to notice a wrong one, so
-        // hiding the middle here would defeat the point of the step.
-        // Resolve against own accounts and contacts so the user sees a familiar name.
-        (() => {
-          const destAccount = accounts.find((a) => a.address === to);
-          const destContact = !destAccount ? contacts.find((c) => c.address === to) : null;
-          const destLabel = destAccount?.label || destContact?.label || null;
-          return h('div', { class: 'detail-val' }, [
-            destLabel ? h('div', { text: destLabel }) : null,
-            h('div', {
-              class: 'mono' + (destLabel ? ' hint' : ''),
-              style: { wordBreak: 'break-all' },
-              text: to,
-            }),
-          ].filter(Boolean));
-        })(),
+        // The human label helps identify an own account/contact, but the FULL address must
+        // remain visible at review: a nickname alone cannot authorize an irreversible send.
+        h('div', { class: 'detail-val' }, [
+          ...(destLabel ? [h('div', { class: 'strong', text: destLabel })] : []),
+          h('div', { class: 'mono', style: { wordBreak: 'break-all' }, text: to }),
+        ]),
       ]),
       h('div', { class: 'detail-row' }, [
         h('span', { class: 'eyebrow', text: 'Amount' }),
@@ -1106,6 +1141,12 @@ export function SendRoute({ params, navigate, back }) {
           updateFormBalances();
         }
         if (subView === 'from' || subView === 'recipient') refreshPickerIfOpen();
+        // A user can type an unregistered own address before account.list returns. When the
+        // list arrives, recognize and activate it without requiring another keystroke.
+        if (asset.isNative && recipientState?.exists === false
+          && accounts.some((a) => a.address === formState.to.trim()) && liveForm?.recipientStatus) {
+          validateRecipient(formState.to, liveForm.recipientStatus);
+        }
       }).catch(() => {
         if (!isCurrent(seq, active.address)) return;
         accountsStatus = 'error';

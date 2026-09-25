@@ -53,17 +53,19 @@ const FILTERS = [
 
 export function HistoryRoute({ back }) {
   const d = disposer();
-  const owned = [];
   let account = null;
   let network = null;
   let knownAccounts = new Map();
   let entries = [];
   let pending = [];
   let feedSynced = true;
+  let feedLoading = false;
+  let paging = false;
   let cursor = null;
   let activeFilter = 'all';
-
-  function track(c) { owned.push(c); return c; }
+  let loadSeq = 0;
+  let destroyed = false;
+  let moreButton = null;
 
   const banner = Banner({ tone: 'error' });
   const listHost = h('div', { class: 'list' });
@@ -186,10 +188,11 @@ export function HistoryRoute({ back }) {
     if (!shown.length) {
       listHost.appendChild(Empty({
         iconName: 'history',
-        title: activeFilter === 'all' ? 'No transactions yet' : 'Nothing matches this filter',
-        body: activeFilter === 'all'
-          ? 'Claim from the faucet or receive THRU to get started.'
-          : 'Try a different filter.',
+        title: activeFilter !== 'all' ? 'Nothing matches this filter'
+          : feedSynced ? 'No transactions yet' : 'Activity unavailable',
+        body: activeFilter !== 'all' ? 'Try a different filter.'
+          : feedSynced ? 'Claim from the faucet or receive THRU to get started.'
+            : 'No cached activity on this network. Reconnect to sync.',
       }).el);
       return;
     }
@@ -232,125 +235,206 @@ export function HistoryRoute({ back }) {
   }
 
   function paintMore() {
+    moreButton?.destroy();
+    moreButton = null;
     while (moreHost.firstChild) moreHost.removeChild(moreHost.firstChild);
-    if (cursor == null) return;
-    const moreBtn = track(Button({
+    // The cached cursor can point into a page that a fresh feed will replace. Never page
+    // against it until revalidation has finished, or run two load-more requests at once.
+    if (cursor == null || feedLoading || paging) return;
+    moreButton = Button({
       label: 'Load more',
       variant: 'text',
       onClick: () => load({ append: true }),
-    }));
-    moreHost.appendChild(moreBtn.el);
+    });
+    moreHost.appendChild(moreButton.el);
   }
 
-  async function load({ append = false } = {}) {
-    banner.clear();
-    if (!append) {
-      while (listHost.firstChild) listHost.removeChild(listHost.firstChild);
-      listHost.appendChild(Spinner({ label: 'Loading activity' }).el);
-    }
-    try {
-      if (!account) {
-        const [activeAcc, activeNet, accountList] = await Promise.all([
-          bridge.send('account.getActive'),
-          bridge.send('network.getActive'),
-          bridge.send('account.list').catch(() => []),
-        ]);
-        account = activeAcc;
-        network = activeNet;
-        // Cards resolve a counterparty that is another account in THIS wallet by name
-        // ("to Alice") instead of a truncated address — sends between own accounts read right.
-        knownAccounts = new Map(
-          (Array.isArray(accountList) ? accountList : [])
-            .filter((a) => a?.address)
-            .map((a) => [a.address, a.label || a.keyring?.label || 'Account']),
-        );
-      }
+  const isCurrent = (seq, viewed = null) => !destroyed && seq === loadSeq
+    && (!viewed || (account?.address === viewed.address && network?.id === viewed.networkId));
 
-      let page = null;
-      if (!append) {
-        // P0 (history-service): the feed is the per-network cache merged with a fresh page,
-        // so the first paint is instant and offline-honest (synced flag). Fall back to a
-        // plain RPC page when the background predates the method.
-        const feed = await bridge.send('tx.getHistoryFeed', { address: account.address })
-          .catch(() => null);
-        if (feed && Array.isArray(feed.entries)) {
-          page = { entries: feed.entries, nextCursor: feed.nextCursor ?? null };
-          // The feed's offline honesty is the whole point of P0: a cache page served
-          // because the RPC was unreachable must say so, not masquerade as fresh.
-          feedSynced = feed.synced !== false;
-        }
-      }
-      if (!page) {
-        // Options form returns { entries, nextCursor, hasMore }; the positional form returns a
-        // bare array. Using the cursor form means "load more" pages instead of refetching.
-        page = await bridge.send('tx.listHistory', {
-          address: account.address,
-          limit: 15,
-          cursor: append ? cursor ?? 0 : 0,
+  async function refreshPending(seq, viewed) {
+    let next = await bridge.send('tx.getPending').catch(() => []);
+    if (!isCurrent(seq, viewed)) return;
+    pending = Array.isArray(next) ? next : [];
+    paintPending(); // do not hold cache OR fresh cards behind reconciliation RPCs
+
+    // A send confirmed while the popup was closed can still read 'submitted'. Reconcile and
+    // re-read, but only render the result if this is still the same account/network/view.
+    if (!pending.some((p) => p?.status === 'submitted')) return;
+    await bridge.send('tx.reconcilePending').catch(() => null);
+    if (!isCurrent(seq, viewed)) return;
+    next = await bridge.send('tx.getPending').catch(() => pending);
+    if (!isCurrent(seq, viewed)) return;
+    pending = Array.isArray(next) ? next : pending;
+    paintPending();
+  }
+
+  async function load({ append = false, pendingHint = null } = {}) {
+    if (append) {
+      if (!account || !network || feedLoading || paging || cursor == null) return;
+      const seq = loadSeq;
+      const viewed = { address: account.address, networkId: network.id };
+      paging = true;
+      paintMore();
+      try {
+        const page = await bridge.send('tx.listHistory', {
+          address: viewed.address, limit: 15, cursor,
         });
-      }
-
-      const batch = Array.isArray(page) ? page : (page?.entries || []);
-      cursor = Array.isArray(page) ? null : (page?.nextCursor ?? null);
-      if (append) {
-        // The merged feed paints more than the RPC cursor's first page (fresh + cached),
-        // so a load-more page can re-yield signatures already on screen. A signature must
-        // never render twice. (Found in the P0 local-agent audit.)
+        if (!isCurrent(seq, viewed)) return;
+        const batch = Array.isArray(page) ? page : (page?.entries || []);
+        cursor = Array.isArray(page) ? null : (page?.nextCursor ?? null);
+        // The feed's first page contains fresh rows PLUS older cache rows. A later RPC page
+        // may re-yield those signatures; an append must never draw the same card twice.
         const seen = new Set(entries.map((e) => e?.signature).filter(Boolean));
         entries = [...entries, ...batch.filter((e) => !e?.signature || !seen.has(e.signature))];
-      } else {
-        entries = batch;
+        paintPending();
+        paintList();
+      } catch (error) {
+        if (isCurrent(seq, viewed)) banner.set(error.message || 'Could not load more activity.');
+      } finally {
+        if (isCurrent(seq, viewed)) {
+          paging = false;
+          paintMore();
+        }
+      }
+      return;
+    }
+
+    const seq = ++loadSeq;
+    feedLoading = true;
+    paging = false;
+    feedSynced = true;
+    cursor = null;
+    entries = [];
+    // A push event already knows about a new submitted send. Keep it visible while the
+    // independent cache/feed and pending reconciliation reads run, rather than hiding it.
+    pending = Array.isArray(pendingHint)
+      ? pendingHint.filter((p) => !network?.id || !p.networkId || p.networkId === network.id)
+      : [];
+    banner.clear();
+    paintPending();
+    paintMore();
+    for (const c of cards) c.destroy?.();
+    cards.length = 0;
+    while (listHost.firstChild) listHost.removeChild(listHost.firstChild);
+    listHost.appendChild(Spinner({ label: 'Loading activity' }).el);
+
+    try {
+      // First paint depends on the active identity, not a wallet-wide account-list fetch.
+      if (!account || !network) {
+        const [activeAcc, activeNet] = await Promise.all([
+          bridge.send('account.getActive'),
+          bridge.send('network.getActive'),
+        ]);
+        if (!isCurrent(seq)) return;
+        if (!activeAcc?.address || !activeNet?.id) throw new Error('Could not load the active account or network.');
+        account = activeAcc;
+        network = activeNet;
+      }
+      const viewed = { address: account.address, networkId: network.id };
+
+      // This is STORAGE ONLY. Its response is scoped by both address and network; discard a
+      // stale worker reply for a different chain instead of showing another chain's history.
+      const cached = await bridge.send('tx.getCachedHistory', { address: viewed.address })
+        .catch(() => null); // older background versions simply skip the early paint
+      if (!isCurrent(seq, viewed)) return;
+      if (cached?.networkId === viewed.networkId && cached?.address === viewed.address
+        && Array.isArray(cached.entries) && cached.entries.length) {
+        entries = cached.entries;
+        cursor = cached.nextCursor ?? null;
+        feedSynced = false;
+        banner.set('Showing cached activity — checking network…', 'warning');
+        paintList();
+        paintPending();
       }
 
-      if (!append && !feedSynced) {
-        banner.set('Showing cached activity — offline. Reconnect to sync.', 'warning');
-      } else if (!append) {
-        // A synced page supersedes any prior offline/cached or error label.
-        banner.clear();
+      // Neither labels nor pending reconciliation may delay cached/fresh entry rendering.
+      void refreshPending(seq, viewed);
+      void bridge.send('account.list').then((list) => {
+        if (!isCurrent(seq, viewed)) return;
+        knownAccounts = new Map((Array.isArray(list) ? list : [])
+          .filter((a) => a?.address)
+          .map((a) => [a.address, a.label || a.keyring?.label || 'Account']));
+        if (entries.length) paintList();
+      }).catch(() => {});
+
+      let feed;
+      try {
+        feed = await bridge.send('tx.getHistoryFeed', { address: viewed.address });
+      } catch (error) {
+        // Only an older worker without the feed needs the legacy raw-page fallback. An
+        // unreachable node must not trigger a SECOND network request before showing cache.
+        if (error?.code !== 'UNKNOWN_METHOD') throw error;
+        const page = await bridge.send('tx.listHistory', {
+          address: viewed.address, limit: 15, cursor: 0,
+        });
+        feed = Array.isArray(page)
+          ? { entries: page, nextCursor: null, synced: true }
+          : { entries: page?.entries || [], nextCursor: page?.nextCursor ?? null, synced: true };
       }
-
-      pending = await bridge.send('tx.getPending').catch(() => []);
-
-      // A send that confirmed while the popup was closed still reads 'submitted'. Views must
-      // not render that as Pending next to its confirmed list entry — settle first, refetch,
-      // then paint. (The stuck-pending defect from the manual smoke run.)
-      if ((pending || []).some((p) => p?.status === 'submitted')) {
-        await bridge.send('tx.reconcilePending').catch(() => null);
-        pending = await bridge.send('tx.getPending').catch(() => pending);
-      }
-
+      if (!isCurrent(seq, viewed)) return;
+      if (!Array.isArray(feed?.entries)) throw new Error('History feed was not available.');
+      entries = feed.entries;
+      cursor = feed.nextCursor ?? null;
+      feedSynced = feed.synced !== false;
+      if (feedSynced) banner.clear();
+      else banner.set('Showing cached activity — offline or network unavailable. Reconnect to sync.', 'warning');
       paintPending();
       paintList();
-      paintMore();
     } catch (error) {
-      while (listHost.firstChild) listHost.removeChild(listHost.firstChild);
-      banner.set(error.message || 'Could not load activity.');
+      if (!isCurrent(seq)) return;
+      feedSynced = false;
+      banner.set(entries.length
+        ? 'Showing cached activity — could not sync with the network. Reconnect to refresh.'
+        : error.message || 'Could not load activity.', entries.length ? 'warning' : 'error');
+      paintPending();
+      paintList();
+    } finally {
+      if (isCurrent(seq)) {
+        feedLoading = false;
+        paintMore();
+      }
     }
+  }
+
+  function resetContext() {
+    // Invalidate all outstanding cached, live, pending and load-more replies immediately.
+    // Empty the previous account's list before starting the next identity's reads.
+    loadSeq += 1;
+    closeSheet();
+    account = null;
+    network = null;
+    knownAccounts = new Map();
+    entries = [];
+    pending = [];
+    cursor = null;
+    paintPending();
+    load();
   }
 
   load();
 
   d.add(
     bridge.onEvent('pendingTxChanged', ({ pending: next } = {}) => {
-      pending = next || [];
-      paintPending();
       // A settled transaction should appear in the list, not just vanish from Pending.
-      load();
+      load({ pendingHint: next });
     }),
-    bridge.onEvent('accountsChanged', () => { account = null; knownAccounts = new Map(); cursor = null; load(); }),
-    bridge.onEvent('networkChanged', () => { account = null; knownAccounts = new Map(); cursor = null; load(); }),
+    bridge.onEvent('accountsChanged', resetContext),
+    bridge.onEvent('networkChanged', resetContext),
   );
 
   return {
     el,
     destroy() {
+      destroyed = true;
+      loadSeq += 1; // discard every late bridge reply after navigation
       // The sheet lives on document.body, so route teardown must close it explicitly or it
       // outlives the screen that owns it.
       closeSheet();
       for (const c of cards) c.destroy?.();
       cards.length = 0;
-      for (const c of owned) c.destroy?.();
-      owned.length = 0;
+      moreButton?.destroy();
+      moreButton = null;
       header.destroy();
       banner.destroy();
       d.dispose();
