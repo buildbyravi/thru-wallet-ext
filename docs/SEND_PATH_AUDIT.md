@@ -1,8 +1,9 @@
 # Send-path frontend ↔ bridge ↔ backend audit
 
-Date: 2026-09-24
-Branch: `arena/01a0cfe3-thru-wallet-ext`
-Scope: the popup/side-panel Send route, adjacent balance displays, UI bridge, shared contract, MV3 request listener, router, network/account/token/balance/pending services, and the SDK adapter. This is a source and automated-test audit, **not** a live-chain or real-browser certification. The side-panel exclusion fix was already reported working by the user; this pass does not change it.
+Date: 2026-09-26
+Branch: `arena/01a0da78-thru-wallet-ext`
+Audited source baseline: `main` at `4aa55ba`.
+Scope: the popup/side-panel Send route, adjacent balance displays, UI bridge, shared contract v12, MV3 request listener, router, network/account/token/balance/pending services, and `src/lib/thru-client.js`. This is a source and deterministic-test audit, **not** a live-chain or real-browser certification. Side-panel mutual exclusion is implemented and guarded by tests; real Chrome interaction remains open.
 
 ## Finding and fix: why Send kept spinning
 
@@ -27,8 +28,8 @@ This removes the **route-level RPC wait**, not the unavoidable worker bootstrap/
 ## Test evidence
 
 - `npm run build`: **PASS**, two JS bundles plus CSS; no build warnings.
-- `npm test`: **PASS** (derivation 16/16, QR 13/13, layering 69 files / 0 violations, launchpad quarantine 45/45, contract 71/71, DOM/refs 127/127, route lifecycle **885/885**, plus vault, SDK adapter, token-balance, network-read and API-router integration suites).
-- `test/test-route-lifecycle.mjs`: real Router/SendRoute/bridge/kit with mocked Chrome messaging; holds balance/fee/token/picker replies, exercises retry, stale-account events, native/token checked sends, offline state, uncertain timeout, teardown; also checks Dashboard and Accounts do not show a never-fetched zero.
+- `npm test`: **PASS** on the audited source (derivation 16/16, QR 15/15, layering 70 files / 0 violations, CSP and route guards green, routes 14/14, launchpad quarantine 47/47, contract 77/77, DOM/refs 130/130, route lifecycle **904/904**, plus vault, Thru client, token-balance, balance-network, history-cache, block-time, registration, and API-router suites).
+- `test/test-route-lifecycle.mjs`: real Router/SendRoute/bridge/kit with mocked Chrome messaging; holds balance/fee/token/picker replies, exercises retry, stale-account events, native/token checked sends, offline state, uncertain timeout, teardown, owned-recipient activation/review labeling, and History cache races; also checks Dashboard and Accounts do not show a never-fetched zero.
 - `test/test-balance-network.mjs`: fake SDK account reader exercises cold-worker binding, delayed responses across a chain switch, cache isolation, verified/stale/absent distinctions, legacy `fetchedAt: 0` entries, and a late signature stored only on its original chain.
 - `test/test-token-balances.mjs`: verifies on-chain denomination, proven zero vs unknown, bounded four-way mint reads, and intent deduplication. `test/test-api-router.mjs` probes signing auth/context, mid-preflight switch, double submission, offline account/HD reads, port-safe JSON, and a **successful signature returned while the post-send balance RPC stays blocked**.
 - `git diff --check`: **PASS**. These are deterministic local tests with a fake SDK/Chrome port; they do not establish live Thru fee/signing semantics or real UI timing.
@@ -69,6 +70,6 @@ Reload the **extension**, then follow the new Send and slow/offline items in `do
   checked native/token sends remain signing-gated. Do not copy that exception into transfers.
 - Fake-SDK router tests verify non-active signer selection, foreign-address refusal,
   network separation, lock/switch cancellation during an RPC proof, batch coverage, bounded
-  backoff and recovery after an offline batch. Real-chain activation, MV3 suspension, popup
-  timing, and an irreversible live transfer still require the smoke steps below; the tests
+  backoff and recovery after an offline batch. Real-chain activation, MV3 suspension/restart,
+  popup timing, and an irreversible live transfer still require the smoke steps below; the tests
   do **not** claim those have been run.

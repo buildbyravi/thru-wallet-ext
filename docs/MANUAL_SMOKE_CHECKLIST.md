@@ -1,15 +1,22 @@
 # Manual smoke checklist
 
-Everything `npm test` can prove without a browser, it does prove: `test-route-lifecycle.mjs` mounts
-all 14 routes in all three vault states through the real Router, guards, bridge and kit, and asserts
-teardown, focus trapping and secret hygiene. `scripts/check-routes.mjs` proves the route table is
-consistent and that every CSS class the UI uses is defined.
+The automated suite includes `test/test-route-lifecycle.mjs`, which mounts all 14 routes in all
+three vault states through the real Router, guards, bridge and kit and asserts route behavior,
+teardown, focus trapping and secret hygiene. `scripts/check-routes.mjs` checks route consistency
+and used CSS classes. These are specific deterministic checks, not a substitute for Chrome.
 
 What none of that can prove is **how the thing looks and behaves in Chrome**: real layout at real
 widths, real focus rings, the side panel, the toolbar popup, service-worker eviction, and the
 clipboard permission prompt. That gap is what this checklist is for. It is deliberately short enough
 to run in about 20 minutes, and every item is something that has either broken before or is new
 enough to have never been checked in a browser at all.
+
+
+### Evidence boundary — keep these checks open
+
+- **Automated/local:** Node tests and build guards cover source structure, contract agreement, route behavior, deterministic cache/registration fixtures, and DOM assertions. They do not certify rendered layout or Chrome scheduling.
+- **Real browser — OPEN:** popup and side-panel layout/focus/QR, actual mutual exclusion and toolbar-mode behavior, clipboard prompt, and MV3 worker suspension/restart. Complete the relevant boxes below in Chrome.
+- **Live chain — OPEN where marked:** v12 account activation, token-transfer recipient-owner/fee behavior, current block-time availability/latency, charged-fee source, and explorer route. A historical native-Alphanet observation or a mocked test does not close these checks.
 
 Run it before merging any change to `src/ui/**`, `src/popup/**` or `src/manifest.json`, and after any
 change to the side panel, the popup width, or the modal/focus behaviour.
@@ -59,7 +66,7 @@ Confirm what the toggle does and does not do. With Side Panel Mode **off** (the 
 clicking the toolbar icon opens the **popup**, not the panel. With it **on**, the toolbar icon
 opens the panel — that is the explicit opt-in, applied on the toggle's click and re-applied by
 the background on every service-worker restart from the stored `thru_side_panel_mode` flag.
-`test-route-lifecycle.mjs` asserts that `setPanelBehavior` is called ONLY by that settings toggle
+`test/test-route-lifecycle.mjs` asserts that `setPanelBehavior` is called ONLY by that settings toggle
 (allowlist) and never by load/boot/anything else. If the toolbar icon ever starts opening the
 panel while the toggle is off, that is a regression, not a feature.
 
@@ -115,7 +122,7 @@ hash directly (`#/send`) where the UI has no link, so unmigrated or unreachable 
 | `/receive` | Address, QR renders in the raised Thru palette (gradient red tiles, slate finder eyes, ice paper) and scans from a phone; clicking the address box copies it, the box says \"Copied\", then returns to the address after ~1s | [ ] | [ ] |
 | `/faucet` | Claim state, disabled when already claimed, error when the network has no faucet | [ ] | [ ] |
 | `/history` | Cards form one flat stream without Today/Yesterday headers. A known block time appears as local-calendar `YYYY/MM/DD HH:mm` matching the detail sheet; a missing header falls back to `Block <slot>` (or an actual local submission time for an own send), not a made-up date. Same-numbered slots on Alphanet and Localnet must not share dates. Entries, filter chips, "load more" appends instead of refetching; token sends appear as "Sent \<amount\> \<SYM\>", receipts as "Received …", mints as "Minted …", and a token-account init never appears as a THRU transfer; a confirmed send never appears BOTH in the list AND as a "Waiting for confirmation" Pending row | [ ] | [ ] |
-| `/history` detail sheet (P2) | Tapping a card opens the sheet from the bottom; it shows the tapped transaction (not a neighbour), full signature copies to clipboard, explorer link opens `scan.thru.org/tx/<sig>` in a new tab; Escape and the backdrop both close it and focus visibly returns to the card. **Honesty check — the one CI cannot run:** against a live alphanet transaction, confirm the fee row and block time. **Alphanet DOES populate `header.blockTime`** (verified 2026-09-20 on a live faucet claim at block 12871764 — a real wall-clock time rendered), so on alphanet "Block time: Not available" now indicates a FETCH FAILURE or a node regression, not expected behaviour. On any other network, absence is still legitimate: `blockTime` is optional on the wire and is a per-node property, and confirm the fee row says **"Fee (declared)"** with the note about no charged-fee field. If either ever shows a plausible number that is NOT what the chain returned, that is a merge-blocker — see `docs/archive/TX_DETAIL_SPIKE.md`. | [ ] | [ ] |
+| `/history` detail sheet (P2) | Tapping a card opens the sheet from the bottom; it shows the tapped transaction (not a neighbour), full signature copies to clipboard, the displayed explorer link opens in a new tab, and Escape/backdrop close it with focus returning to the card. **Live-chain checks remain open for the current path:** the optional block-time lookup/provenance and first-load latency must be checked on an enabled network; a prior Alphanet detail-sheet observation (2026-09-20) is historical evidence, not certification of the v12 cache/feed path or every RPC. A node may omit block time; in that case the list must use an actual own-send submission time or `Block <slot>`, never the current clock or another entry's date. Confirm the detail row says **"Fee (declared)"** and does not claim a charged fee. The list card has no per-card fee line. Verify the live explorer route before treating it as supported. | [ ] | [ ] |
 | `/history` detail sheet — overflow (REGRESSION) | Open a sheet with EVERY row present (status, amount, counterparty, network, block, block time, fee, program) and a signature long enough to wrap. The sheet must **scroll**, and the last row (`Program`) must be readable in full. No row may be sliced horizontally, and the fee note must not sit on top of a clipped row. This shipped broken once: flex children compressed instead of overflowing, so `.detail-table` clipped its own last rows and no scrollbar appeared — see `docs/DEFECT_LOG.md`. The DOM shim has no layout engine and **cannot** catch this; `scripts/preview-tx-sheet.html` renders both states side by side. | [ ] | [ ] |
 | `/history` detail sheet — keyboard | Tab reaches a card (visible focus ring), Enter AND Space both open it, Tab wraps inside the sheet without reaching the list behind it, Escape closes. Clicking the in-card copy button or explorer icon must NOT also open the sheet. | [ ] | [ ] |
 | `/settings` | Built-in network controls; any saved custom row says **not selectable**, is inert, and exposes only Remove; auto-lock, security (Signing: **Session-only is the default**, "Require password" is the password-gated opt-in), appearance, version. **The four "?" popovers (Signing, Auto-lock, Side Panel Mode, Appearance):** each is a dark in-wallet card that opens on hover (and on click) and stays strictly inside the popup — no native browser tooltip, so nothing may render outside the 400px surface — and it closes when the pointer leaves; no explanatory paragraphs may sit under the rows. There is **no Danger zone / full reset on this screen** — an unlocked wallet is never one tap from total destruction (account/seed removal is in Manage Accounts). **Side Panel Mode** toggle only, with no "Window" section header (on → toolbar icon opens the panel, off → popup; persists across worker restarts) — and **no** "Open side panel" button (the dashboard header owns that) | [ ] | [ ] |
@@ -206,17 +213,20 @@ confirm:
 
 ## 5. Secret hygiene, in a real document
 
-The automated test asserts no password, phrase or private key survives in the DOM. Confirm it in the
-thing that actually persists — the side panel document, which can stay open for days:
+The route test verifies that a revealed phrase is confined to text nodes, passwords and secrets do
+not enter attributes, datasets, inputs or URLs, and navigating away/locking clears the route DOM.
+Confirm the same in the side-panel document, which can stay open for days. Use a disposable test
+wallet; never paste a real seed into DevTools or its command history:
 
-1. In the side panel, go to `/export`, reveal the phrase with your password.
-2. In DevTools, run `document.documentElement.outerHTML.includes('<one of your words>')` → must be
-  `false` for attributes and for the whole document only while the phrase is on screen.
-3. Navigate to `/dashboard`, then re-run the same check → must be `false`.
-4. Run `[...document.querySelectorAll('input')].map(i => i.value)` → no password anywhere.
-5. Trigger a background lock (wait out auto-lock, or lock from the popup) with the phrase on screen
-   → the phrase must disappear immediately and the screen must go to `/unlock`.
-6. Check the URL bar / `location.hash` at every step: no phrase, no key, no password.
+1. In the side panel, go to `/export` and reveal the disposable phrase with its password.
+2. While the phrase is intentionally visible, its words may appear in visible text nodes. They must
+   not appear in attributes, datasets, inputs or the URL. Do not use `outerHTML.includes()` as a
+   blanket false check while the phrase is on screen: visible text is part of the DOM.
+3. Navigate to `/dashboard`. The old export subtree and the live page must now contain no phrase;
+   no input may retain the password.
+4. Return to `/export`, reveal again, then trigger a background lock (wait out auto-lock or lock
+   from the popup). The phrase must disappear immediately and the screen must go to `/unlock`.
+5. Check the URL bar / `location.hash` at every step: no phrase, no key, no password.
 
 ## 6. Network and service worker
 
@@ -259,9 +269,9 @@ useful than a silently skipped section.
 
 ```
 Manual smoke: <date>, Chrome <version>, build <git short sha>
-  contexts: popup [ ] side panel [ ]
-  widths:   narrow (<400px) [ ] wide (>=800px) [ ]
-  routes:   14/14 [ ]   redirects [ ]   keyboard/focus [ ]
-  secret hygiene [ ]   network/worker [ ]
+  contexts: popup [ ] side panel [ ]    widths: narrow (<400px) [ ] wide (>=800px) [ ]
+  routes: 14/14 [ ]   redirects [ ]   keyboard/focus [ ]   secret hygiene [ ]
+  browser: mutual exclusion [ ]   QR/layout [ ]   worker lifecycle [ ]
+  live chain: v12 activation [ ]   token owner/fee [ ]   block time/latency [ ]   explorer route [ ]
   failures found: <none | list, each with the route and the context>
 ```
