@@ -664,6 +664,33 @@ export async function getTransactionDetail(signature, viewerAddress) {
   return entry;
 }
 
+const blockTimeCache = new Map();
+
+/**
+ * Fetch wall-clock timestamp (in milliseconds) for a block slot.
+ * Caches recently fetched slots in memory to avoid redundant RPC calls.
+ * @param {number|string|bigint} slot
+ * @returns {Promise<number|null>}
+ */
+export async function getBlockTimeMs(slot) {
+  if (slot == null) return null;
+  const numSlot = Number(slot);
+  if (!Number.isFinite(numSlot) || numSlot < 0) return null;
+  if (blockTimeCache.has(numSlot)) return blockTimeCache.get(numSlot);
+
+  try {
+    const block = await getClient().blocks.get({ slot: numSlot });
+    if (typeof block?.blockTimeNs === 'bigint' && block.blockTimeNs > 0n) {
+      const ms = Number(block.blockTimeNs / 1_000_000n);
+      blockTimeCache.set(numSlot, ms);
+      return ms;
+    }
+  } catch {
+    // node offline or slot unindexed
+  }
+  return null;
+}
+
 // ---- Native Token Launchpad (v1.2) -----------------------------------------
 // Native built-in Token Program address on ThruVM (similar to SPL Token Program)
 export const TOKEN_PROGRAM_ID = 'taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKqq';

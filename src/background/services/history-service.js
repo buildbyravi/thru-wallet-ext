@@ -14,6 +14,7 @@
 // mapping (verbs, program labels) belongs to the P1 card work.
 
 import * as txService from './tx-service.js';
+import * as thruClient from '../../lib/thru-client.js';
 import { getActiveNetworkConfig, getActiveNetworkId } from './network-service.js';
 import { scopedKey } from '../../shared/network-scope.js';
 
@@ -126,6 +127,23 @@ export async function getHistoryFeed(address) {
         if (!e.timestamp) {
           e.timestamp = pendingTimestamps.get(e.signature) || cachedMap.get(e.signature)?.timestamp || null;
         }
+      }
+
+      // Backfill missing timestamps from block headers so historical entries display exact date and time.
+      const missingSlots = [...new Set(fresh.filter((e) => !e.timestamp && e.slot != null).map((e) => e.slot))];
+      if (missingSlots.length > 0) {
+        await Promise.all(
+          missingSlots.map(async (slot) => {
+            const timeMs = await thruClient.getBlockTimeMs(slot).catch(() => null);
+            if (timeMs) {
+              for (const e of fresh) {
+                if (String(e.slot) === String(slot) && !e.timestamp) {
+                  e.timestamp = timeMs;
+                }
+              }
+            }
+          }),
+        );
       }
       const entries = [
         ...fresh,

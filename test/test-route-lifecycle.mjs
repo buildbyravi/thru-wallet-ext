@@ -3171,8 +3171,6 @@ async function navigationTest() {
   router.navigate('/history');
   await settle();
   const histText = textOf(router.root);
-  ok('activity is day-grouped with Today and Yesterday sections',
-    /Today/.test(histText) && /Yesterday/.test(histText), histText.slice(0, 220));
   ok('a send shows its signed negative delta',
     histText.includes('-0.0001 THRU'), histText.slice(0, 220));
   ok('a receipt shows its signed positive delta',
@@ -3189,17 +3187,15 @@ async function navigationTest() {
     clipboardLog.writes.includes('tsCARD_A_sent_today_aaaaaaaaaaaaaaaaaaaaaaa'),
     JSON.stringify(clipboardLog.writes));
 
-  // P1 audit finding: the day-boundary badge used listHost.lastChild, which is the
-  // PREVIOUS section's last card — headers lost their count and cards swallowed it.
+  // Rabby-style stream: transactions render directly as cards without day section headers.
   const dayHeaders = [...router.root.querySelectorAll('.list-group-header')];
-  ok('every day header receives its count badge',
-    dayHeaders.length >= 3 && dayHeaders.every((hdr) => hdr.querySelector('.list-group-count')),
+  ok('activity renders as a flat stream without day section headers',
+    dayHeaders.length === 0,
     String(dayHeaders.length));
-  const allCountChips = [...router.root.querySelectorAll('.list-group-count')];
-  ok('no transaction card receives a misplaced count badge',
-    allCountChips.length > 0
-      && allCountChips.every((chip) => chip.parentNode?.localName === 'header')
-      && allCountChips.every((chip) => chip.parentNode === null || !chip.parentNode?.classList?.contains('tx-card')));
+  const txCards = [...router.root.querySelectorAll('.tx-card')];
+  ok('every transaction renders as a card in the list',
+    txCards.length >= 3,
+    String(txCards.length));
   FIXTURES['tx.getHistoryFeed'] = realFeed;
 
   // Production wire reality: entries carry NO wall-clock timestamp (slots only). Cards
@@ -3222,17 +3218,14 @@ async function navigationTest() {
   router.navigate('/history');
   await settle();
   const noTimeText = textOf(router.root);
-  ok('timestampless wire entries group under an honest section label',
-    /Activity/.test(noTimeText), noTimeText.slice(0, 200));
+  ok('timestampless cards render in the stream',
+    router.root.querySelectorAll('.tx-card').length === 2);
   ok('timestampless cards show Block <slot> — explorer wording, never "Slot"',
     /Block 41000/.test(noTimeText) && !/Slot \d/.test(noTimeText), noTimeText.slice(0, 200));
 
-  // Day-section splinter fix: a timestampless wire entry sandwiched between two same-day
-  // sends inherits its neighbours' day — one "Today" section, never Today -> Activity -> Today.
+  // In a flat stream, cards render in chronological order without header splintering.
   FIXTURES['tx.getHistoryFeed'] = () => ({
     entries: [
-      // startOfToday-anchored (see CARD_ENTRIES): at 00:30 the old "2h ago" value was
-      // already yesterday, which would have split this test into two sections.
       { signature: 'tsMIX1_newer_today_aaaaaaaaaaaaaaaaaaaaaaa', slot: 30500,
         success: true, programAddress: NETWORK_ALPHANET.transferProgramId, kind: 'sent',
         amount: '90000', counterparty: ADDRESS_B, timestamp: NOW },
@@ -3248,13 +3241,11 @@ async function navigationTest() {
   });
   router.navigate('/history');
   await settle();
-  const mixHeaders = [...router.root.querySelectorAll('.list-group-header')];
-  const mixHeaderText = mixHeaders.map((hdr) => textOf(hdr)).join(' | ');
-  ok('a timestampless entry between same-day sends coalesces into a single Today section',
-    mixHeaders.length === 1 && /Today/.test(mixHeaderText)
-      && mixHeaders[0]?.querySelector('.list-group-count')?.textContent === '3',
-    mixHeaderText);
-  ok('the coalesced middle card still shows its block, not an invented time',
+  const streamCards = [...router.root.querySelectorAll('.tx-card')];
+  ok('all transactions render in the stream without day headers',
+    streamCards.length === 3 && router.root.querySelectorAll('.list-group-header').length === 0,
+    String(streamCards.length));
+  ok('the middle timestampless card still shows its block fallback',
     /Block 30400/.test(textOf(router.root)),
     textOf(router.root).slice(0, 400));
   const selfLabel = SELF_B.label || 'Account 2';
