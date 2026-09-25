@@ -156,12 +156,35 @@ export async function previewHdAccounts({ keyringId, start = 0, count = 5, withB
 
 /**
  * Add several HD indices at once in a single vault write.
+ *
+ * Every newly added account is registered on-chain individually. Each account
+ * self-signs its own 0-fee registration transaction — no cross-signing, no
+ * faucet, no other account acts as fee payer. The active account is always
+ * included; the remaining indices are resolved from the vault so their own
+ * keypairs are available to registerOnChain.
+ *
  * @param {{ keyringId: string, indices: number[] }} params
  */
 export async function addHdAccounts({ keyringId, indices }) {
   const result = await vault.addHdAccounts(keyringId, indices);
   const active = await vault.getActiveAccount();
+
+  // Register the active account (set to added[0] by vault.addHdAccounts).
   registerOnChain(active);
+
+  // Register every OTHER newly added account. Each resolves its own keypair
+  // from the vault so it can self-sign. Fire-and-forget: a slow or offline
+  // node must never block adding accounts, and the dashboard backstop remains.
+  for (const index of result.added) {
+    // Skip the one we already registered above to avoid a duplicate broadcast.
+    if (active.hdIndex === index && active.keyring?.id === result.keyringId) continue;
+    vault.resolveAccount({ keyringId: result.keyringId, accountIndex: index })
+      .then((acc) => registerOnChain(acc))
+      .catch((err) => {
+        console.warn(`[account-service] deferred registration for index ${index}:`, err?.message || err);
+      });
+  }
+
   emitAccountsChanged({ active: toPublicAccount(active), added: result.added });
   return result;
 }

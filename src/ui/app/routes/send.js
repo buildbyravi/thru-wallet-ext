@@ -739,7 +739,20 @@ export function SendRoute({ params, navigate, back }) {
         h('span', { class: 'eyebrow', text: 'To' }),
         // Full address, not truncated. This is the last chance to notice a wrong one, so
         // hiding the middle here would defeat the point of the step.
-        h('div', { class: 'detail-val mono', style: { wordBreak: 'break-all' }, text: to }),
+        // Resolve against own accounts and contacts so the user sees a familiar name.
+        (() => {
+          const destAccount = accounts.find((a) => a.address === to);
+          const destContact = !destAccount ? contacts.find((c) => c.address === to) : null;
+          const destLabel = destAccount?.label || destContact?.name || null;
+          return h('div', { class: 'detail-val' }, [
+            destLabel ? h('div', { text: destLabel }) : null,
+            h('div', {
+              class: 'mono' + (destLabel ? ' hint' : ''),
+              style: { wordBreak: 'break-all' },
+              text: to,
+            }),
+          ].filter(Boolean));
+        })(),
       ]),
       h('div', { class: 'detail-row' }, [
         h('span', { class: 'eyebrow', text: 'Amount' }),
