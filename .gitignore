@@ -6,3 +6,4 @@ npm-debug.log*
 .claude/
 thru-wallet-deploy.txt
 *.zip
+.env
