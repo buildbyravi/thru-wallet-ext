@@ -169,20 +169,22 @@ export async function addHdAccounts({ keyringId, indices }) {
   const result = await vault.addHdAccounts(keyringId, indices);
   const active = await vault.getActiveAccount();
 
-  // Register the active account (set to added[0] by vault.addHdAccounts).
-  registerOnChain(active);
+  if (result.added && result.added.length > 0) {
+    // Register the active account (set to added[0] by vault.addHdAccounts).
+    registerOnChain(active);
 
-  // Register every OTHER newly added account. Each resolves its own keypair
-  // from the vault so it can self-sign. Fire-and-forget: a slow or offline
-  // node must never block adding accounts, and the dashboard backstop remains.
-  for (const index of result.added) {
-    // Skip the one we already registered above to avoid a duplicate broadcast.
-    if (active.hdIndex === index && active.keyring?.id === result.keyringId) continue;
-    vault.resolveAccount({ keyringId: result.keyringId, accountIndex: index })
-      .then((acc) => registerOnChain(acc))
-      .catch((err) => {
-        console.warn(`[account-service] deferred registration for index ${index}:`, err?.message || err);
-      });
+    // Register every OTHER newly added account. Each resolves its own keypair
+    // from the vault so it can self-sign. Fire-and-forget: a slow or offline
+    // node must never block adding accounts, and the dashboard backstop remains.
+    for (const index of result.added) {
+      // Skip the one we already registered above to avoid a duplicate broadcast.
+      if (active.hdIndex === index && active.keyring?.id === result.keyringId) continue;
+      vault.resolveAccount({ keyringId: result.keyringId, accountIndex: index })
+        .then((acc) => registerOnChain(acc))
+        .catch((err) => {
+          console.warn(`[account-service] deferred registration for index ${index}:`, err?.message || err);
+        });
+    }
   }
 
   emitAccountsChanged({ active: toPublicAccount(active), added: result.added });

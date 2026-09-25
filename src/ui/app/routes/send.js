@@ -743,7 +743,7 @@ export function SendRoute({ params, navigate, back }) {
         (() => {
           const destAccount = accounts.find((a) => a.address === to);
           const destContact = !destAccount ? contacts.find((c) => c.address === to) : null;
-          const destLabel = destAccount?.label || destContact?.name || null;
+          const destLabel = destAccount?.label || destContact?.label || null;
           return h('div', { class: 'detail-val' }, [
             destLabel ? h('div', { text: destLabel }) : null,
             h('div', {
