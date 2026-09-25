@@ -149,15 +149,16 @@ program addresses, `faucetStateAccount`, `faucetMaxPerClaim`, `baseFeeUnits`, `f
 | File | Lines | Purpose |
 | --- | --- | --- |
 | `index.js` | 62 | Message listener (validates `sender.id`), inactivity auto-lock heartbeat |
-| `api-router.js` | 328 | Validates every method against the contract, enforces `auth`, preserves explicit retry policy, catches unserializable payloads |
-| `services/wallet-service.js` | 204 | Lifecycle, unlock backoff, export, on-chain registration |
-| `services/keyring-service.js` | 119 | Multi-seed add/create/rename/remove/backup-state |
-| `services/account-service.js` | 203 | Public accounts, HD preview/batch/remove, preference ordering |
+| `api-router.js` | 337 | Validates every method against the contract, enforces `auth`, preserves explicit retry policy, catches unserializable payloads |
+| `services/wallet-service.js` | 207 | Lifecycle, unlock backoff, export, creation-bound registration |
+| `services/keyring-service.js` | 101 | Multi-seed add/create/rename/remove/backup-state; creation-bound registration |
+| `services/account-service.js` | 180 | Public accounts, HD preview/batch/remove, preference ordering; schedules activation for every new HD index |
 | `services/tx-service.js` | 378 | Faucet, transfer, history (+token direction resolution), validation, fee estimate |
 | `services/token-service.js` | 330 | Deploy, registry, derivation, visibility, **owned balances, token transfers** |
 | `services/balance-service.js` | 201 | Batched + cached balances, **per-network** |
 | `services/pending-tx-service.js` | 255 | Submitted--  confirmed tracking, badge, **per-network** |
-| `services/history-service.js` | 81 | Per-(network,address) history cache + merge feed (contract v9 `tx.getHistoryFeed`), explorer-free baseline |
+| `services/registration-service.js` | 135 | Targeted self-signed owned-account registration, 3 bounded creation retries, network/lock/ownership checks; no periodic signing |
+| `services/history-service.js` | 155 | Storage-only per-(network,address) cache read (v12), serialized shared-scope writes, plus existing RPC-merged feed (v9) |
 | `services/preferences-service.js` | 178 | Order/pin/hide, whitelist, settings |
 | `services/network-service.js` | 266 | Enabled built-in selection, legacy custom-record quarantine/removal, **binds thru-client** |
 | `services/contacts-service.js` | 82 | Address book |
@@ -165,7 +166,7 @@ program addresses, `faucetStateAccount`, `faucetMaxPerClaim`, `baseFeeUnits`, `f
 | `services/system-service.js` | 189 | Auto-lock, activity stamping, diagnostics |
 | `services/event-service.js` | 47 | The **only** inbound push channel |
 
-Contract v8, **75 methods**, append-only except the documented v5 signing-auth, v6 destructive-settings, and v7 custom-network quarantine security breaks; v8 is purely additive (`token.transfer`, real `token.getBalances`). `src/shared/contract/manifest.js` is the allowlist, not just documentation.
+Contract v12, **81 methods**, append-only except the documented v5 signing-auth, v6 destructive-settings, and v7 custom-network quarantine security breaks. v11 added checked sends; v12 added `tx.registerAccount` (unlocked, owned only) and storage-only `tx.getCachedHistory`. `src/shared/contract/manifest.js` is the allowlist, not just documentation.
 
 Deliberately unimplemented, returning `{ supported: false, reason }` rather than fabricated
 values: `tx.simulate`. (`token.getBalances` became real in contract v8.)
@@ -212,10 +213,10 @@ topbar + network badge + footer)
 | `/add-account` | `routes/add-account.js` | 392 |
 | `/keyring?id=` | `routes/keyring.js` | 190 |
 | `/export?ref=` | `routes/export.js` | 279 |
-| `/send` | `routes/send.js` | 848 |
+| `/send` | `routes/send.js` | 1190 |
 | `/receive` | `routes/receive.js` | 176 |
 | `/faucet` | `routes/faucet.js` | 252 |
-| `/history` | `routes/history.js` | 274 |
+| `/history` | `routes/history.js` | 443 |
 | `/settings` | `routes/settings.js` | 395 |
 | `/reset` | `routes/reset.js` | 169 |
 
@@ -228,7 +229,7 @@ topbar + network badge + footer)
 
 No `chrome.*`, no DOM.
 
-`contract/manifest.js` (579)  `format.js` (82, the only money math)  `refs.js` (92, opaque
+`contract/manifest.js` (638)  `format.js` (82, the only money math)  `refs.js` (92, opaque
 account refs for URLs)  `network-scope.js` (87, the per-network vs global split)
 `flags.js` (73)  `autolock.js` (36)
 

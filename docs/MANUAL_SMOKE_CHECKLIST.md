@@ -127,6 +127,19 @@ hash directly (`#/send`) where the UI has no link, so unmigrated or unreachable 
   appears once the active account and network are known; the token ledger may still be checking.
   A slow token query must NOT leave Send on a full-screen "Loading" spinner. Type recipient and
   amount while it is checking; those inputs and focus must survive the balance update.
+- [ ] In a throwaway wallet, add two or more HD indices together without visiting Dashboard.
+  Check **every newly added address**, not only the one made active, eventually exists on the
+  selected chain. Interrupt the RPC during addition: account creation must still return, and
+  retries must stop after three exponential backoffs (the MV3 worker may be evicted between
+  timers). No background loop should sign for unrelated idle accounts. Repeat after a network
+  switch to ensure an old creation attempt does not sign on the newly selected chain.
+- [ ] Select an **unregistered account you own** as a native Send recipient. The form should
+  show “Activating your account on-chain…” and keep Review disabled until registration
+  confirms; then Review must show its friendly label **above the full address**. Try an
+  unregistered external contact: the wallet must NOT register or sign for it. In an offline
+  case, failed activation must not claim success or enable Review. Repeat with signing
+  password re-auth enabled: activation is the explicit unlocked-only v12 exception;
+  actually moving value still requires the configured signing prompt.
 - [ ] With no server running on localnet, select localnet in Settings and revisit Send (or block
   the configured RPC in the extension worker's DevTools). A saved balance, if any, says **last
   known**. Otherwise the UI says checking/unavailable, never a fabricated `0 THRU`. Max and
@@ -150,6 +163,11 @@ hash directly (`#/send`) where the UI has no link, so unmigrated or unreachable 
   throttling, only in a safe test wallet), confirm that the **submission receipt** is not held
   behind the subsequent THRU balance refresh. Activity records the signature for the sending
   chain even if another trusted extension page switches networks while the send settles.
+- [ ] After warming History online, block its RPC and reopen the route: cached cards should
+  paint **before** the feed/pending calls return, with a clearly stale/checking or offline
+  label (not an eternal spinner or a false “No transactions”). Reconnect: fresh rows replace
+  them and the warning clears. Repeat across an account and network switch; a late reply for
+  the old selection must never appear on the new one. Load more must not race the stale cursor.
 - [ ] In Dashboard (including its refresh button), Accounts and Add-account HD preview,
   a disconnected node with NO previous successful read must not appear as a verified zero.
   A previously verified balance may remain visible only as last-known/stale. Repeat after

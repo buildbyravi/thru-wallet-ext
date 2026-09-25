@@ -2,6 +2,20 @@
 
 Single source of truth for **where the rebuild is** and **what happens next**.
 
+**2026-09-25 account activation + History update:** contract v12 (81 methods) adds
+`tx.registerAccount({ address })` (`auth: 'unlocked'`): the worker verifies vault ownership,
+then checks the selected chain before registering that exact account. The SDK adapter rejects a
+fee-payer keypair that does not derive the target address; registration is the native self-signed
+0-fee/0-nonce account-creation transaction, never a faucet claim or dummy transfer.
+Creation registers each new HD index and retries failed RPC attempts at most three times with exponential backoff,
+stopping on lock, network change or account removal. There is **no periodic signer**. Send
+activates an absent owned recipient just in time before review; the review shows its label and
+full address. History paints an address/network-scoped, storage-only cache first, marks it
+stale, then revalidates through the feed. Concurrent account refreshes serialize writes to
+the shared per-network cache. Deterministic build and tests pass; real popup/side-panel timing,
+service-worker restart behaviour and v12 activation against the live chain still need manual
+verification. See `docs/MANUAL_SMOKE_CHECKLIST.md`.
+
 **2026-09-24 Send update:** contract v11 adds reviewed-context native/token signing methods;
 Send paints after account/network metadata rather than waiting on balances, fees and token
 reads. Offline is unknown rather than a fresh zero, and a submitted signature no longer waits
@@ -58,9 +72,10 @@ Structural properties now enforced by CI rather than by discipline:
 
 ```
 npm run build     clean, no warnings, dist/ wiped and reproduced: popup.html + 2 bundles
-npm test          derivation 16 · layering 58 files / 0 sinks · routes 14/14 · CSS clean
-                  launchpad quarantine 45 · contract 59 · dom+refs 93 · route lifecycle 701
-                  vault · thru-client (incl. token goldens) · api-router
+npm test          derivation 16 · layering 70 files / 0 sinks · routes 14/14 · CSS clean
+                  launchpad quarantine 45 · contract 75 · dom+refs 127 · route lifecycle 905
+                  vault · thru-client (incl. token goldens) · registration · history cache
+                  api-router
 npm audit --omit=dev
                   found 0 vulnerabilities
 ```
@@ -71,6 +86,9 @@ npm audit --omit=dev
   `tx.autoCreateAccount`, and `token.deploy` use `auth: 'signing'`.
 - Signing re-authentication is required by default and is verified inside `api-router` before a
   signing handler runs.
+- Contract v12 adds a narrow exception: `tx.registerAccount({ address })` is unlocked-only
+  for an account derived from the current vault. It cannot sign an arbitrary recipient or
+  transfer. Do not extend this exception to Send, faucet, token deployment or password export.
 - Users can explicitly opt into session-only signing from Settings, but that opt-out is itself
   password-gated via `settings.setSecurity`.
 - Generic `settings.set` rejects signing/whitelist security keys.
@@ -90,13 +108,19 @@ Confirmed on alphanet, not assumed:
 - **Program addresses and instruction layouts** for faucet and transfer both execute.
 - **Transfer fee is 1 base unit**, measured. Now per-network config, `null` where unmeasured.
 - **History decoding** returns `sent` / `faucet` with amounts, and reports `success: false`.
-- **Accounts register on creation**, so faucet works on a brand-new wallet with no dashboard
-  visit (`scripts/verify-autoregister.mjs`, 5/5).
+- **The previous creation-time registration path was exercised on a live chain**, so faucet
+  worked on a brand-new wallet with no dashboard visit (`scripts/verify-autoregister.mjs`, 5/5).
+  Contract v12's targeted, multi-account path still needs a fresh live check.
 - **End-to-end through `api-router`** — the same seam `bridge.send()` uses — 19/19
   (`scripts/verify-live-e2e.mjs`).
 
 ### Not verified
 
+- **V12 needs a live activation pass:** create several HD accounts, confirm each is available
+  on the selected chain without switching active accounts, then exercise Send to an owned
+  absent recipient. Verify review stays gated until activation completes and that an offline
+  RPC never claims the recipient is absent. Service-worker suspension and restart between
+  retries/activation are not exercised by the Node harness.
 - **Browser rendering remains manual.** The lifecycle shim mounts every route, but cannot prove real
   popup/side-panel layout, focus rings, canvas output, extension reloads, or service-worker eviction.
   Run `docs/MANUAL_SMOKE_CHECKLIST.md` before merging UI changes.
@@ -380,7 +404,8 @@ Each was earned by a defect in `docs/DEFECT_LOG.md`.
    contract v5 moved existing signing methods to `auth: 'signing'`; contract v6 hardened reset
    and auto-lock requirements; contract v7 refuses custom-network activation and heals stale ids.
 3. Sensitive operations are `auth: 'password'` or `auth: 'signing'`, re-verified against the
-   encrypted blob when password auth is required — never against session state.
+   encrypted blob when password auth is required — never against session state. The only
+   unlocked signing exception is v12 `tx.registerAccount` for an address owned by the vault.
 4. Secrets never enter URLs, router params, history, `data-*`, storage, `window` or `console`.
 5. Money is BigInt internally and a **string** on the wire. Never both in one object.
 6. `destroy()` removes the same handler references it added. Use `disposer()`.

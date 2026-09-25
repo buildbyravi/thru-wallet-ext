@@ -75,7 +75,16 @@ is red. Never weaken or skip a test to make it pass.
 10. **Password re-authentication is required by default** before export, signing,
     security-setting changes, keyring add/rename/remove, and reset. Signing has a user-visible
     session-only opt-out, but changing that opt-out is itself password-gated. Use
-    `requirePassword()` from `src/ui/domain/password-prompt.js`.
+    `requirePassword()` from `src/ui/domain/password-prompt.js`. **Narrow contract-v12 exception:**
+    `tx.registerAccount` is unlocked-only for a vault-owned address at account creation or when
+    selected as an unregistered own Send recipient. It still signs/broadcasts; never add a
+    periodic all-accounts signing loop or allow arbitrary recipient registration.
+    **Self-signing invariant:** resolve the *target's* keypair from the unlocked vault. Both
+    its public key and the public key derived from its private key must match the target address;
+    that same pair must be the fee payer in `createOnChainAccount`. Account 1 must never sign
+    Account 4's registration. The ONLY activation transaction is Thru's native account-creation
+    program (`taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMD`, fee `0n`, nonce `0n`);
+    never claim the faucet or send a dummy/zero-value transfer to activate an account.
 11. **Every component returns `{ el, update, destroy }`** and `destroy()` removes the *same*
     handler references it added. Use `disposer()`; a fresh arrow passed to
     `removeEventListener` removes nothing.

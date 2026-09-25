@@ -44,3 +44,31 @@ This removes the **route-level RPC wait**, not the unavoidable worker bootstrap/
 ## Browser-only acceptance before merge
 
 Reload the **extension**, then follow the new Send and slow/offline items in `docs/MANUAL_SMOKE_CHECKLIST.md` in a real popup **and** side panel. Check first paint, input focus/retention, loading and stale labels, network/account switches while reviewing, lock/timeout messaging, a post-send signature that does not wait on balance refresh, and pending rows after switching networks. No real funds should be sent for the cross-context race checks. Source-level and DOM-shim tests cannot validate layout or actual MV3 worker scheduling.
+
+## Contract v12 follow-up (2026-09-25): owned recipients and registration
+
+- Send review now shows a matched **own-account label**, otherwise a saved-contact label,
+  **above the full destination address**. Only the full address is an authorization fact;
+  display names are never used for signing.
+- `tx.autoCreateAccount` targets the active sender and cannot fix an unregistered recipient.
+  The additive `tx.registerAccount({ address })` instead validates ownership in the unlocked
+  vault, resolves **that** account's key in the background, binds and rechecks the network,
+  and signs only its own registration. Send invokes it only after an on-chain absence check
+  for a selected/typed owned recipient; it shows “Activating your account on-chain…” and
+  keeps Review disabled while the chain lookup and activation are pending (including during
+  unrelated balance/fee refreshes), until registration finishes. External addresses still need
+  their owner to activate them; a failed/offline activation is not reported as success.
+- New single HD, bulk HD **every added index**, imported-key and keyring accounts all use the
+  same creation-bound helper. A node failure permits one initial attempt plus **at most three**
+  retries (0.5s / 1s / 2s); retries stop on lock, removal, chain switch or on-chain revert.
+  No periodic worker alarm signs for idle vault accounts. MV3 eviction can cancel these
+  in-memory timers; choosing an unregistered own recipient in Send is the just-in-time backstop.
+- The registration transaction declares fee zero, but it **is still an on-chain signed
+  broadcast** with possible network/privacy effects. Contract v12 explicitly treats this
+  narrow operation as `auth: 'unlocked'` even when value-moving sends require re-auth;
+  checked native/token sends remain signing-gated. Do not copy that exception into transfers.
+- Fake-SDK router tests verify non-active signer selection, foreign-address refusal,
+  network separation, lock/switch cancellation during an RPC proof, batch coverage, bounded
+  backoff and recovery after an offline batch. Real-chain activation, MV3 suspension, popup
+  timing, and an irreversible live transfer still require the smoke steps below; the tests
+  do **not** claim those have been run.

@@ -358,6 +358,8 @@ export · rename · remove keyring · future hardware info.
 
 Every sensitive action requires password re-authentication by default. If the user explicitly opts into session-only signing from Settings, that opt-out itself must be password-gated and only affects transaction signing; secret export, key changes, reset, and security-setting changes remain password-gated.
 
+**Contract v12 activation exception (explicit product choice, 2026-09-25):** `tx.registerAccount({ address })` is unlocked-only, even when value-moving sends require a password. It may sign and broadcast a self-registration transaction **only** for an address in the unlocked vault, during account creation/addition or just in time when the user selects that unregistered own recipient in Send. Self-registration MUST use the target account's own public and private keys as the fee payer (never another account's keys), with the native account-creation program `taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMD`, declared fee `0n` and nonce `0n`. Never substitute a faucet claim or dummy/zero-value transfer for registration. The SDK transaction declares fee zero; do not infer that a broadcast is free of privacy/network effects. Creation retries stop after three exponential backoffs and stop on lock/network switch/removal; do **not** sign for every idle vault account on a periodic alarm. External contacts are never registered by the sender. Normal `tx.sendChecked` / `token.transferChecked` remain under signing auth.
+
 ### Send — a reviewed flow, never a one-click form
 
 ```
@@ -485,8 +487,9 @@ suffices.
 
 ### Require authentication before
 
-Export seed · export private key · signing · changing security settings · resetting the wallet ·
-renaming a keyring · removing a keyring.
+Export seed · export private key · value-moving signing · changing security settings · resetting
+the wallet · renaming a keyring · removing a keyring. The owned-account activation exception is
+documented above: it still requires an unlocked vault and an exact ownership check before signing.
 
 ### Secret lifetime
 
