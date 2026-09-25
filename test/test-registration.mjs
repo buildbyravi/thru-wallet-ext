@@ -32,6 +32,16 @@ async function call(method, params = {}) {
   return result.data;
 }
 
+async function waitUntil(predicate, description) {
+  const deadline = Date.now() + 5_000;
+  while (!predicate()) {
+    if (Date.now() >= deadline) throw new Error(`Timed out waiting for ${description}`);
+    // Deriving several HD accounts uses async crypto; a fixed number of setImmediate turns
+    // can finish before the SDK reaches its proof hook, even on a healthy machine.
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
+
 const denied = await handleApiRequest({ method: 'tx.registerAccount', params: { address: 'junk' } });
 assert.equal(denied.error.code, 'WALLET_LOCKED');
 const created = await call('wallet.create', { password: 'Registration123!' });
@@ -139,8 +149,7 @@ localClient.proofs.generate = () => new Promise((resolve) => {
   finishProof = () => resolve({ proof: { address: second.address } });
 });
 const pendingLock = handleApiRequest({ method: 'tx.registerAccount', params: { address: second.address } });
-for (let i = 0; i < 100 && !finishProof; i += 1) await new Promise((r) => setImmediate(r));
-assert.equal(typeof finishProof, 'function');
+await waitUntil(() => typeof finishProof === 'function', 'the proof before wallet lock');
 const beforeLock = broadcasts.length;
 await call('wallet.lock');
 finishProof();
@@ -151,8 +160,7 @@ await call('wallet.unlock', { password: 'Registration123!' });
 
 finishProof = null;
 const pendingSwitch = handleApiRequest({ method: 'tx.registerAccount', params: { address: second.address } });
-for (let i = 0; i < 100 && !finishProof; i += 1) await new Promise((r) => setImmediate(r));
-assert.equal(typeof finishProof, 'function');
+await waitUntil(() => typeof finishProof === 'function', 'the proof before network switch');
 await call('network.setActive', { networkId: 'alphanet' });
 finishProof();
 const switched = await pendingSwitch;
@@ -171,9 +179,7 @@ const batch2 = await call('account.addHdBatch', { keyringId: first.ref.keyringId
 assert.deepEqual(batch2.added, [3, 4]);
 const newAccounts = await vault.listAccounts();
 const targets = newAccounts.slice(3, 5).map((a) => a.address);
-for (let i = 0; i < 150 && broadcasts.length < priorCount + 2; i += 1) {
-  await new Promise((r) => setImmediate(r));
-}
+await waitUntil(() => broadcasts.length >= priorCount + 2, 'both newly added HD registrations');
 assert.deepEqual(broadcasts.slice(priorCount).map((r) => r.address).sort(), [...targets].sort());
 assert.equal((await call('account.getActive')).address, targets[0]);
 const repeatedBatch = await call('account.addHdBatch', { keyringId: first.ref.keyringId, indices: [3, 4] });
@@ -182,9 +188,7 @@ console.log('  ok - batched HD creation registers both new indices, not just the
 const singleStart = broadcasts.length;
 const single = await call('account.addHd', { keyringId: first.ref.keyringId });
 await call('account.switch', { ref: first.ref }); // a later choice must not retarget creation
-for (let i = 0; i < 150 && broadcasts.length === singleStart; i += 1) {
-  await new Promise((r) => setImmediate(r));
-}
+await waitUntil(() => broadcasts.length > singleStart, 'the new HD account registration');
 assert.equal(broadcasts.length, singleStart + 1);
 assert.equal(broadcasts.at(-1).address, single.address);
 assert.equal((await call('account.getActive')).address, first.address);
@@ -200,8 +204,7 @@ alphaClient.proofs.generate = ({ address }) => address === second.address
   ? new Promise((resolve) => { finishMutableProof = () => resolve({ proof: { address } }); })
   : originalMutableProof({ address });
 const pendingMutable = thruClient.createOnChainAccount(mutable);
-for (let i = 0; i < 100 && !finishMutableProof; i += 1) await new Promise((r) => setImmediate(r));
-assert.equal(typeof finishMutableProof, 'function');
+await waitUntil(() => typeof finishMutableProof === 'function', 'the mutable keypair proof');
 mutable.publicKey.set(first.publicKey);
 mutable.privateKey.set(first.privateKey);
 finishMutableProof();
@@ -267,8 +270,7 @@ alphaClient.proofs.generate = ({ address }) => address === fourth.address
 let sendsBefore = broadcasts.length;
 const firstJit = handleApiRequest({ method: 'tx.registerAccount', params: { address: fourth.address } });
 const secondJit = handleApiRequest({ method: 'tx.registerAccount', params: { address: fourth.address } });
-for (let i = 0; i < 100 && !finishFourth; i += 1) await new Promise((r) => setImmediate(r));
-assert.equal(typeof finishFourth, 'function');
+await waitUntil(() => typeof finishFourth === 'function', 'the concurrent JIT proof');
 await new Promise((r) => setImmediate(r)); // allow the second caller to join the in-flight map
 finishFourth();
 const [one, two] = await Promise.all([firstJit, secondJit]);
@@ -281,8 +283,7 @@ chainFor('alphanet').delete(fourth.address); // simulate a node reset before the
 finishFourth = null;
 sendsBefore = broadcasts.length;
 const pendingRemoval = handleApiRequest({ method: 'tx.registerAccount', params: { address: fourth.address } });
-for (let i = 0; i < 100 && !finishFourth; i += 1) await new Promise((r) => setImmediate(r));
-assert.equal(typeof finishFourth, 'function');
+await waitUntil(() => typeof finishFourth === 'function', 'the proof before account removal');
 await call('account.removeHd', { ref: fourth.ref });
 finishFourth();
 const removed = await pendingRemoval;
