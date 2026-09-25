@@ -1,53 +1,11 @@
 // Account management service running in the background worker.
 
 import * as vault from '../../lib/vault.js';
-import * as thruClient from '../../lib/thru-client.js';
 import { getPreferences, applyAccountPreferences } from './preferences-service.js';
 import { emitAccountsChanged } from './event-service.js';
 import * as balances from './balance-service.js';
-
-/**
- * Register a newly created account on-chain, without blocking the caller.
- *
- * Thru requires an account to exist on-chain before it can receive a faucet claim or a transfer.
- * Registration is free — it needs no funding, only a transaction — but it does need the network.
- *
- * Until now this happened in exactly one place: the dashboard's balance check, fired as
- * `bridge.send('tx.autoCreateAccount').catch(() => {})` and never awaited. That left two gaps:
- *
- *   1. a race — open the popup and tap Faucet before that lands, and the claim fails with
- *      "[not_found] account not found";
- *   2. any account added without a loaded dashboard afterwards was never registered at all.
- *
- * Doing it at creation makes registration a property of creating an account rather than a side
- * effect of looking at one. Deliberately NOT awaited: an offline or slow node must never block
- * adding an account, and the dashboard check plus the guard inside claimFaucet remain as
- * backstops. Errors are logged rather than swallowed silently so a persistent failure is visible.
- *
- * @param {{ address: string, publicKey: any, privateKey: any }} account
- */
-function registerOnChain(account) {
-  if (!account?.address) return;
-
-  // The regular Node API-router suite provides storage but intentionally does not provide an
-  // extension runtime. Do not let a fire-and-forget convenience side effect turn that suite into
-  // an accidental live-RPC test. The dedicated live probe supplies the runtime surface explicitly.
-  const hasExtensionRuntime = typeof chrome !== 'undefined'
-    && typeof chrome.runtime?.getManifest === 'function'
-    && typeof chrome.runtime?.onMessage?.addListener === 'function';
-  if (!hasExtensionRuntime) return;
-
-  Promise.resolve()
-    .then(async () => {
-      const info = await thruClient.getAccountInfo(account.address);
-      if (info.exists) return;
-      await thruClient.createOnChainAccount(account);
-    })
-    .catch((error) => {
-      // Not fatal: the account exists locally and can be registered later.
-      console.warn(`[account-service] on-chain registration deferred for ${account.address}:`, error?.message || error);
-    });
-}
+import { registerCreatedRef } from './registration-service.js';
+import { getActiveNetworkId } from './network-service.js';
 
 /**
  * Strips raw private key bytes before returning account metadata to the UI.
@@ -128,11 +86,13 @@ export async function switchActiveAccount(ref) {
  * @param {string|null} keyringId
  */
 export async function addHdAccount(keyringId = null) {
+  const networkId = await getActiveNetworkId();
   const account = await vault.addHdAccount(keyringId);
   const active = await vault.getActiveAccount();
   const publicAccount = toPublicAccount(active);
-  // Register as part of creating, not as a side effect of viewing a dashboard later.
-  registerOnChain(active);
+  // Register the exact ref that was added, not the active ref a second popup may switch to
+  // between vault.addHdAccount and the next getActiveAccount read.
+  void registerCreatedRef(account, networkId);
   emitAccountsChanged({ active: publicAccount, added: account });
   return publicAccount;
 }
@@ -147,7 +107,10 @@ export async function previewHdAccounts({ keyringId, start = 0, count = 5, withB
   const fetched = await balances.getBalances(preview.map((p) => p.address), { emit: false });
   return preview.map((p) => ({
     ...p,
-    balance: fetched[p.address]?.balance ?? null,
+    // A failed RPC without a previously verified value carries a display-only stale "0"
+    // in tx.getBalances for legacy port compatibility. Do not turn it into a real-looking
+    // zero in the HD preview: that screen has no stale/error column.
+    balance: fetched[p.address]?.stale ? null : (fetched[p.address]?.balance ?? null),
   }));
 }
 
@@ -156,9 +119,14 @@ export async function previewHdAccounts({ keyringId, start = 0, count = 5, withB
  * @param {{ keyringId: string, indices: number[] }} params
  */
 export async function addHdAccounts({ keyringId, indices }) {
+  const networkId = await getActiveNetworkId();
   const result = await vault.addHdAccounts(keyringId, indices);
   const active = await vault.getActiveAccount();
-  registerOnChain(active);
+  // vault.addHdAccounts activates the FIRST index only. Resolve and register EVERY index
+  // actually added; never sign for an index that was already present or was only previewed.
+  for (const accountIndex of result.added) {
+    void registerCreatedRef({ keyringId: result.keyringId, accountIndex }, networkId);
+  }
   emitAccountsChanged({ active: toPublicAccount(active), added: result.added });
   return result;
 }
@@ -187,9 +155,10 @@ export async function removeHdAccount({ ref }) {
  * @param {string} [label]
  */
 export async function addImportedKey(privateKeyHex, password, label = '') {
-  await vault.addPrivateKeyKeyring(privateKeyHex, password, label);
+  const networkId = await getActiveNetworkId();
+  const ring = await vault.addPrivateKeyKeyring(privateKeyHex, password, label);
   const active = await vault.getActiveAccount();
-  registerOnChain(active);
+  void registerCreatedRef({ keyringId: ring.id }, networkId);
   return toPublicAccount(active);
 }
 

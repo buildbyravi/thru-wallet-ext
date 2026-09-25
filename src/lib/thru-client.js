@@ -13,7 +13,7 @@
 // still does not import networks.js or any service — it holds whatever it was given and falls
 // back to the alphanet defaults, so it stays independently testable.
 
-import { createThruClient, Signature, Pubkey, PageRequest } from '@thru/sdk';
+import { createThruClient, Signature, Pubkey, PageRequest, BlockView, keys as sdkKeys } from '@thru/sdk';
 // Official program bindings. BUILD_SPEC Part IX: prefer @thru/sdk (including its crypto
 // subpath) and @thru/programs over hand-written protocol code wherever the SDK provides it.
 // These replace a hand-rolled derivation that called a non-existent SDK method.
@@ -178,9 +178,16 @@ export function getClient() {
 export async function getAccountInfo(address) {
   try {
     const account = await getClient().accounts.get(address);
-    return { exists: true, balance: account.meta?.balance ?? 0n, raw: account };
+    if (account?.meta?.balance == null) {
+      throw new Error('The node returned an account without a balance.');
+    }
+    return { exists: true, balance: BigInt(account.meta.balance), raw: account };
   } catch (err) {
-    return { exists: false, balance: 0n, error: err };
+    // Only the SDK's actual ACCOUNT_NOT_FOUND code proves an absent account. A timeout,
+    // rate-limit or offline node cannot establish a zero balance or whether this account
+    // is registered. Callers (including Send and the balance cache) must see the error.
+    if (sdkIsAccountNotFoundError(err)) return { exists: false, balance: 0n };
+    throw err;
   }
 }
 
@@ -202,46 +209,99 @@ export async function getAccountInfo(address) {
  * sendAndTrack, the same pattern used by claimFaucet/sendTransfer below.
  */
 const inFlightRegistrations = new Map();
-const knownRegisteredAccounts = new Set();
+
+function assertRegistrationNetwork(network) {
+  if (activeNetwork.id === network.id && activeNetwork.rpcUrl === network.rpcUrl) return;
+  const error = new Error('The network changed while registering this account. Check it on the new network.');
+  error.code = 'NETWORK_CHANGED';
+  error.retryable = true;
+  throw error;
+}
+
+function registrationSignerMismatch() {
+  const error = new Error('Registration requires the account being created to sign with its own keypair.');
+  error.code = 'REGISTRATION_SIGNER_MISMATCH';
+  error.retryable = false;
+  return error;
+}
+
+function snapshotRegistrationSigner(account) {
+  try {
+    if (!(account.privateKey instanceof Uint8Array) || account.privateKey.length !== 32) {
+      throw registrationSignerMismatch();
+    }
+    // Freeze the *choice* of signer while RPC proof generation is in flight. Even a caller
+    // mutating the original account object or its byte arrays cannot substitute another key.
+    return {
+      publicKey: new Uint8Array(Pubkey.from(account.publicKey).toBytes()),
+      privateKey: new Uint8Array(account.privateKey),
+    };
+  } catch {
+    throw registrationSignerMismatch();
+  }
+}
+
+async function assertSelfSignedRegistration(signer, address) {
+  try {
+    // Validate both halves of the pair. Comparing only account.address to publicKey still
+    // permits accidentally using another wallet account's privateKey as fee payer.
+    if (Pubkey.from(signer.publicKey).toThruFmt() !== address) throw registrationSignerMismatch();
+    const derivedPublicKey = await sdkKeys.fromPrivateKey(signer.privateKey);
+    if (Pubkey.from(derivedPublicKey).toThruFmt() !== address) throw registrationSignerMismatch();
+  } catch {
+    // Do not surface key material (or low-level crypto input details) through the API router.
+    throw registrationSignerMismatch();
+  }
+}
 
 /**
- * Create the on-chain account for a freshly generated key.
+ * Create an owned on-chain account, or return null if it already exists. Only the background
+ * passes keys here; UI callers must first be checked against the unlocked vault. The optional
+ * beforeSign guard lets account-creation retries stop if the wallet locks or is reset while an
+ * RPC proof is pending. It is deliberately checked after the proof, just before signing.
  *
- * Implements in-flight deduplication: if an account registration is already in progress
- * for an address, subsequent calls await the same promise instead of broadcasting multiple transactions.
+ * A prior in-memory "registered" set skipped the RPC on future calls, even after a node reset
+ * or a network change. The chain, not worker memory, is the authority. Deduplicate only active
+ * attempts, scoped to the bound chain; never reuse a signature from a different network.
  */
-export async function createOnChainAccount(feePayer) {
+export async function createOnChainAccount(feePayer, { beforeSign } = {}) {
   const address = feePayer.address || Pubkey.from(feePayer.publicKey).toThruFmt();
-  if (knownRegisteredAccounts.has(address)) return null;
-
-  // Return existing in-flight registration promise if one is already running
-  if (inFlightRegistrations.has(address)) {
-    return inFlightRegistrations.get(address);
-  }
+  const network = { id: activeNetwork.id, rpcUrl: activeNetwork.rpcUrl };
+  const key = `${network.id}::${network.rpcUrl}::${address}`;
+  if (inFlightRegistrations.has(key)) return inFlightRegistrations.get(key);
 
   const promise = (async () => {
     try {
+      const client = getClient(); // capture the RPC binding before any asynchronous work
       const already = await getAccountInfo(address);
-      if (already.exists) {
-        knownRegisteredAccounts.add(address);
-        return null; // already active on-chain
-      }
+      assertRegistrationNetwork(network);
+      if (already.exists) return null;
 
-      const client = getClient();
-      // Generate a "creating" state proof — proves to the network that this account doesn't exist yet
+      // The ONLY registration fee payer is this new account itself. Reject mismatched address,
+      // public key, or private key before requesting a proof or signing anything; no other
+      // wallet account may sponsor this native self-creation transaction.
+      const signer = snapshotRegistrationSigner(feePayer);
+      await assertSelfSignedRegistration(signer, address);
+      assertRegistrationNetwork(network);
+
+      // Generate a "creating" state proof — proves to the network that this account doesn't exist yet.
       const proofObj = await client.proofs.generate({ address, proofType: 1 });
+      assertRegistrationNetwork(network);
+      if (beforeSign) await beforeSign();
+      assertRegistrationNetwork(network);
 
       const { rawTransaction } = await client.transactions.buildAndSign({
-        feePayer: { publicKey: feePayer.publicKey, privateKey: feePayer.privateKey },
+        feePayer: signer,
         program: 'taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMD',
         header: { fee: 0n, nonce: 0n },
-        feePayerStateProof: proofObj.proof
+        feePayerStateProof: proofObj.proof,
       });
+      assertRegistrationNetwork(network);
 
       for await (const update of client.transactions.sendAndTrack(rawTransaction)) {
         if (update.executionResult) {
           if (update.executionResult.vmError === 0) {
-            knownRegisteredAccounts.add(address);
+            assertRegistrationNetwork(network);
             return update.signature?.value ? Signature.from(update.signature.value).toThruFmt() : undefined;
           }
           throw new Error(`Account creation reverted on-chain (vmError=${update.executionResult.vmError}).`);
@@ -249,11 +309,11 @@ export async function createOnChainAccount(feePayer) {
       }
       throw new Error('Account creation never returned an execution result (timed out?).');
     } finally {
-      inFlightRegistrations.delete(address);
+      inFlightRegistrations.delete(key);
     }
   })();
 
-  inFlightRegistrations.set(address, promise);
+  inFlightRegistrations.set(key, promise);
   return promise;
 }
 
@@ -602,6 +662,54 @@ export async function getTransactionDetail(signature, viewerAddress) {
   }
 
   return entry;
+}
+
+const blockTimeCache = new Map();
+const inFlightBlockTimes = new Map();
+const BLOCK_TIME_CACHE_LIMIT = 256;
+
+/**
+ * Fetch the block's actual wall-clock time in milliseconds. A slot belongs to a CHAIN, so
+ * cache by network id + endpoint + slot (not just slot). Bind the client before the await:
+ * a network switch during an RPC must not fetch/cache the other chain's block under this one.
+ * Only successful, representable dates are cached; an offline or absent block is retryable.
+ * @param {number|string|bigint} slot
+ * @param {string} [expectedNetworkId] the feed's captured network, if called across awaits
+ * @returns {Promise<number|null>}
+ */
+export async function getBlockTimeMs(slot, expectedNetworkId = activeNetwork.id) {
+  if (slot == null || (typeof slot === 'string' && !slot.trim())) return null;
+  const numSlot = Number(slot);
+  if (!Number.isSafeInteger(numSlot) || numSlot < 0) return null;
+
+  const network = activeNetwork;
+  if (network.id !== expectedNetworkId) return null;
+  const key = JSON.stringify([network.id, network.rpcUrl, numSlot]);
+  if (blockTimeCache.has(key)) return blockTimeCache.get(key);
+  if (inFlightBlockTimes.has(key)) return inFlightBlockTimes.get(key);
+
+  const boundClient = getClient();
+  const request = Promise.resolve().then(async () => {
+    try {
+      // The history list needs the header time, not each block's transaction body.
+      const block = await boundClient.blocks.get({ slot: numSlot }, { view: BlockView.HEADER_ONLY });
+      if (activeNetwork.id !== network.id || activeNetwork.rpcUrl !== network.rpcUrl) return null;
+      // SDK Block.blockTimeNs is optional. 0n means that the node did not supply it.
+      if (typeof block?.blockTimeNs !== 'bigint' || block.blockTimeNs <= 0n) return null;
+      const ms = Number(block.blockTimeNs / 1_000_000n);
+      if (!Number.isSafeInteger(ms) || ms <= 0 || !Number.isFinite(new Date(ms).getTime())) return null;
+      blockTimeCache.set(key, ms);
+      if (blockTimeCache.size > BLOCK_TIME_CACHE_LIMIT) {
+        blockTimeCache.delete(blockTimeCache.keys().next().value);
+      }
+      return ms;
+    } catch {
+      // Node offline, slot unindexed, or block time omitted: leave the card's Block fallback.
+      return null;
+    }
+  }).finally(() => { inFlightBlockTimes.delete(key); });
+  inFlightBlockTimes.set(key, request);
+  return request;
 }
 
 // ---- Native Token Launchpad (v1.2) -----------------------------------------

@@ -33,9 +33,10 @@ change to the side panel, the popup width, or the modal/focus behaviour.
 
 ## 1. Both contexts
 
-The same `popup.html` is registered twice in the manifest: as the toolbar popup and as
-`side_panel.default_path`. They are not the same environment — the panel is resizable, can stay open
-for hours, and shares one session with the popup.
+The toolbar popup loads `popup.html`; the side panel loads that **same HTML file** with a
+non-secret context marker (`popup.html?thru_panel=1` in `side_panel.default_path`). They are not the
+same environment — the panel is resizable, can stay open for hours, and shares one session with
+the popup.
 
 | Check | Toolbar popup | Side panel |
 | --- | --- | --- |
@@ -62,12 +63,17 @@ the background on every service-worker restart from the stored `thru_side_panel_
 (allowlist) and never by load/boot/anything else. If the toolbar icon ever starts opening the
 panel while the toggle is off, that is a regression, not a feature.
 
-**Mutual exclusion** — the popup and the side panel are never both open. With the panel open,
-click the toolbar icon: the popup must appear AND the panel must close on its own (the popup
-broadcasts `THRU_CLOSE_SIDE_PANEL` on open; a panel-shaped page closes on receipt — the panel is
-detected by its full-window viewport, the popup is always the fixed 400×600). The reverse
-direction is the existing dashboard button: it opens the panel and closes the popup. The
-background early-returns the broadcast instead of routing it as an API request.
+**Mutual exclusion** — with Side Panel Mode **off**, open the panel from the side panel picker,
+then click the toolbar icon: the popup must appear AND the panel must close. Repeat after making
+the browser window short enough that the panel's viewport is **600px or less** (a common laptop
+size). Do not infer surface type from viewport height: a short panel is still a panel. The popup
+broadcasts `THRU_CLOSE_SIDE_PANEL` (panel listener is registered before any async boot work);
+Chrome 141+ also closes the global panel by its current `windowId`, even if that panel's page
+has not finished loading and missed the broadcast. Older Chrome uses the broadcast. Inspect the
+panel URL to confirm `?thru_panel=1` is present; if Chrome rejects the marked manifest path, the
+extension will fail to load, which is a failure. The reverse direction is the dashboard button:
+it opens the panel and closes the popup. Reload the **extension**, not just the popup, before
+retesting so both pages and the worker run the new bundles.
 
 ## 2. Both widths
 
@@ -104,16 +110,68 @@ hash directly (`#/send`) where the UI has no link, so unmigrated or unreachable 
 | `/add-account` | HD preview renders; adding an account returns to `/accounts` | [ ] | [ ] |
 | `/keyring` | Source list, rename, backed-up state; `#/keyring?id=<id>` from Accounts | [ ] | [ ] |
 | `/export` | Password prompt before any secret; reveal shows the phrase; navigating away removes it (see §5) | [ ] | [ ] |
-| `/send` | Recipient validation debounce, amount parsing, fee estimate, confirm step, receipt | [ ] | [ ] |
-| `/send` (token) | Asset picker shows token as sendable; amount re-denominates to the symbol; review discloses recipient token-account init fee when the recipient has none; MAX excludes broken values | [ ] | [ ] |
+| `/send` | Form appears after account/network metadata, without waiting for live balances or token reads; unknown/last-known balance is labelled and cannot unlock Max/Review; recipient validation, amount parsing, fee, confirmation and receipt work after verification | [ ] | [ ] |
+| `/send` (token) | Pending reads say checking, failures say unknown (not zero); only a token with a verified positive balance and on-chain mint decimals is selectable; amount re-denominates correctly; review discloses recipient token-account init fee; MAX excludes broken values | [ ] | [ ] |
 | `/receive` | Address, QR renders in the raised Thru palette (gradient red tiles, slate finder eyes, ice paper) and scans from a phone; clicking the address box copies it, the box says \"Copied\", then returns to the address after ~1s | [ ] | [ ] |
 | `/faucet` | Claim state, disabled when already claimed, error when the network has no faucet | [ ] | [ ] |
-| `/history` | Entries, filter chips, "load more" appends instead of refetching; token sends appear as "Sent \<amount\> \<SYM\>", receipts as "Received …", mints as "Minted …", and a token-account init never appears as a THRU transfer; a confirmed send never appears BOTH in the list AND as a "Waiting for confirmation" Pending row | [ ] | [ ] |
+| `/history` | Cards form one flat stream without Today/Yesterday headers. A known block time appears as local-calendar `YYYY/MM/DD HH:mm` matching the detail sheet; a missing header falls back to `Block <slot>` (or an actual local submission time for an own send), not a made-up date. Same-numbered slots on Alphanet and Localnet must not share dates. Entries, filter chips, "load more" appends instead of refetching; token sends appear as "Sent \<amount\> \<SYM\>", receipts as "Received …", mints as "Minted …", and a token-account init never appears as a THRU transfer; a confirmed send never appears BOTH in the list AND as a "Waiting for confirmation" Pending row | [ ] | [ ] |
 | `/history` detail sheet (P2) | Tapping a card opens the sheet from the bottom; it shows the tapped transaction (not a neighbour), full signature copies to clipboard, explorer link opens `scan.thru.org/tx/<sig>` in a new tab; Escape and the backdrop both close it and focus visibly returns to the card. **Honesty check — the one CI cannot run:** against a live alphanet transaction, confirm the fee row and block time. **Alphanet DOES populate `header.blockTime`** (verified 2026-09-20 on a live faucet claim at block 12871764 — a real wall-clock time rendered), so on alphanet "Block time: Not available" now indicates a FETCH FAILURE or a node regression, not expected behaviour. On any other network, absence is still legitimate: `blockTime` is optional on the wire and is a per-node property, and confirm the fee row says **"Fee (declared)"** with the note about no charged-fee field. If either ever shows a plausible number that is NOT what the chain returned, that is a merge-blocker — see `docs/archive/TX_DETAIL_SPIKE.md`. | [ ] | [ ] |
 | `/history` detail sheet — overflow (REGRESSION) | Open a sheet with EVERY row present (status, amount, counterparty, network, block, block time, fee, program) and a signature long enough to wrap. The sheet must **scroll**, and the last row (`Program`) must be readable in full. No row may be sliced horizontally, and the fee note must not sit on top of a clipped row. This shipped broken once: flex children compressed instead of overflowing, so `.detail-table` clipped its own last rows and no scrollbar appeared — see `docs/DEFECT_LOG.md`. The DOM shim has no layout engine and **cannot** catch this; `scripts/preview-tx-sheet.html` renders both states side by side. | [ ] | [ ] |
 | `/history` detail sheet — keyboard | Tab reaches a card (visible focus ring), Enter AND Space both open it, Tab wraps inside the sheet without reaching the list behind it, Escape closes. Clicking the in-card copy button or explorer icon must NOT also open the sheet. | [ ] | [ ] |
 | `/settings` | Built-in network controls; any saved custom row says **not selectable**, is inert, and exposes only Remove; auto-lock, security (Signing: **Session-only is the default**, "Require password" is the password-gated opt-in), appearance, version. **The four "?" popovers (Signing, Auto-lock, Side Panel Mode, Appearance):** each is a dark in-wallet card that opens on hover (and on click) and stays strictly inside the popup — no native browser tooltip, so nothing may render outside the 400px surface — and it closes when the pointer leaves; no explanatory paragraphs may sit under the rows. There is **no Danger zone / full reset on this screen** — an unlocked wallet is never one tap from total destruction (account/seed removal is in Manage Accounts). **Side Panel Mode** toggle only, with no "Window" section header (on → toolbar icon opens the panel, off → popup; persists across worker restarts) — and **no** "Open side panel" button (the dashboard header owns that) | [ ] | [ ] |
 | `/reset` | Reachable **only from the lock screen** (forgotten-password recovery), not from Settings. Warning copy, confirmation text required, reset returns to `/welcome` | [ ] | [ ] |
+
+### Send: slow/offline, cross-context and bridge smoke (after reloading the extension)
+
+- [ ] Open Send on Alphanet with a funded account and multiple registered tokens. The **form**
+  appears once the active account and network are known; the token ledger may still be checking.
+  A slow token query must NOT leave Send on a full-screen "Loading" spinner. Type recipient and
+  amount while it is checking; those inputs and focus must survive the balance update.
+- [ ] In a throwaway wallet, add two or more HD indices together without visiting Dashboard.
+  Check **every newly added address**, not only the one made active, eventually exists on the
+  selected chain. Interrupt the RPC during addition: account creation must still return, and
+  retries must stop after three exponential backoffs (the MV3 worker may be evicted between
+  timers). No background loop should sign for unrelated idle accounts. Repeat after a network
+  switch to ensure an old creation attempt does not sign on the newly selected chain.
+- [ ] Select an **unregistered account you own** as a native Send recipient. The form should
+  show “Activating your account on-chain…” and keep Review disabled until registration
+  confirms; then Review must show its friendly label **above the full address**. Try an
+  unregistered external contact: the wallet must NOT register or sign for it. In an offline
+  case, failed activation must not claim success or enable Review. Repeat with signing
+  password re-auth enabled: activation is the explicit unlocked-only v12 exception;
+  actually moving value still requires the configured signing prompt.
+- [ ] With no server running on localnet, select localnet in Settings and revisit Send (or block
+  the configured RPC in the extension worker's DevTools). A saved balance, if any, says **last
+  known**. Otherwise the UI says checking/unavailable, never a fabricated `0 THRU`. Max and
+  Review remain disabled until a live balance AND a usable native fee reserve arrive. Retry
+  checks is offered on failure. A token read failure says **balance unknown**, not "no balance";
+  a genuinely absent token account alone says "no balance".
+- [ ] Restore network access and click Retry checks. Recipient and amount stay typed; a fresh
+  THRU balance and fee enable native Review even if token reads are still pending. An amount
+  greater than the verified spendable amount keeps Review disabled. Token rows become selectable
+  only once their mint denomination is confirmed on-chain; wrong imported registry decimals
+  must never determine a positive token's Send amount.
+- [ ] If possible, open two trusted extension pages, put one on Send/Review, and switch active
+  account or network in the other. The old Review must be invalidated; a signing attempt using
+  that old context must fail with **sending account or network changed** and require a new review.
+  Do not test this by sending real funds. If a sign request times out, the UI must call the
+  outcome **unknown** and say to check Activity/explorer, not invite an immediate retry.
+- [ ] Import the same mint on Alphanet and localnet (if the import API is exposed in your test
+  setup). Each network sees only its own registry row. Old imports without a network tag are
+  visible on Alphanet only; re-import elsewhere if needed.
+- [ ] With a read blocked after a transfer returns a signature (worker DevTools network
+  throttling, only in a safe test wallet), confirm that the **submission receipt** is not held
+  behind the subsequent THRU balance refresh. Activity records the signature for the sending
+  chain even if another trusted extension page switches networks while the send settles.
+- [ ] After warming History online, block its RPC and reopen the route: cached cards should
+  paint **before** the feed/pending calls return, with a clearly stale/checking or offline
+  label (not an eternal spinner or a false “No transactions”). Reconnect: fresh rows replace
+  them and the warning clears. Repeat across an account and network switch; a late reply for
+  the old selection must never appear on the new one. Load more must not race the stale cursor.
+- [ ] In Dashboard (including its refresh button), Accounts and Add-account HD preview,
+  a disconnected node with NO previous successful read must not appear as a verified zero.
+  A previously verified balance may remain visible only as last-known/stale. Repeat after
+  switching networks, then reconnect and check that a fresh value replaces it.
 
 **Single header per screen.** The shell topbar (wordmark, network badge, settings, lock) is now
 hidden on **every** route: the dashboard owns the 196px ink header, and every sub-screen owns its

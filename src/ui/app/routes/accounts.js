@@ -154,7 +154,8 @@ export function AccountsRoute({ navigate, back }) {
           for (const group of groups) {
             for (const row of group.rows) {
               const entry = fresh?.[row.account.address];
-              if (entry) row.setBalance(entry.balance, entry.stale);
+              // A stale entry with no successful fetch timestamp has no last-known balance.
+              if (entry) row.setBalance(entry.stale && !entry.fetchedAt ? null : entry.balance, entry.stale);
             }
           }
         })

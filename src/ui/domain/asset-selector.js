@@ -36,7 +36,9 @@ function tokenAvatar(token) {
 
 /**
  * @param {Object} props
- *   nativeBalance  base-unit string for THRU
+ *   nativeBalance  base-unit string for THRU, or null while unknown
+ *   nativeBalanceLabel optional display text (may contain a labelled last-known cache)
+ *   balancesPending true while token accounts are still being checked
  *   tokens         records from token.list merged with token.getBalances state:
  *                    tokenAccountExists  true/false/null (unknown)
  *                    amountUnits         base-unit string, null when zero or unknown
@@ -45,7 +47,9 @@ function tokenAvatar(token) {
  *   onSelect       (asset) => void — asset is { isNative:true } or a token record
  */
 export function AssetSelector({
-  nativeBalance = '0',
+  nativeBalance = null,
+  nativeBalanceLabel = null,
+  balancesPending = false,
   tokens = [],
   selectedMint = null,
   onSelect,
@@ -69,7 +73,8 @@ export function AssetSelector({
       ]),
       h('span', { class: 'row-sub', text: 'Thru Native Token' }),
     ]),
-    h('span', { class: 'row-value', text: `${formatThru(BigInt(nativeBalance || '0'))} THRU` }),
+    h('span', { class: 'row-value', text: nativeBalanceLabel
+      ?? (nativeBalance == null ? 'balance unknown' : `${formatThru(BigInt(nativeBalance))} THRU`) }),
   ]);
   d.on(nativeRow, 'click', () => onSelect?.({ symbol: 'THRU', mintAddress: null, isNative: true }));
   sendableRows.push(nativeRow);
@@ -100,9 +105,9 @@ export function AssetSelector({
       d.on(row, 'click', () => onSelect?.({ ...token, isNative: false }));
       sendableRows.push(row);
     } else {
-      const reason = token.error === true
-        ? 'balance unknown'
-        : 'no balance';
+      const reason = token.error === true ? 'balance unknown'
+      : token.tokenAccountExists === false || balance === 0n ? 'no balance'
+        : balancesPending ? 'checking balance' : 'balance unknown';
       unavailable.push(h('div', { class: 'row', 'aria-disabled': 'true', style: { opacity: '0.55' } }, [
         tokenAvatar(token),
         h('span', { class: 'row-body' }, [
@@ -129,7 +134,7 @@ export function AssetSelector({
       h('p', { class: 'hint', text:
         'A token needs its own token account with a balance before it can be sent. Incoming '
         + 'transfers create and fund it automatically. "Balance unknown" means the network '
-        + 'could not be reached — it is not a zero.' }),
+        + 'could not be reached — it is not a zero. A checking balance is not spendable yet.' }),
     ]));
   }
 

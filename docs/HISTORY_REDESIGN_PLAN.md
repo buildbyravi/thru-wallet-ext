@@ -1,6 +1,21 @@
 # History / Transaction tab redesign — study of Rabby + plan
 
-Status: **P0 + P1 + P2 shipped**. P0: `services/history-service.js` + contract v9 `tx.getHistoryFeed` (cache-merged, offline-labelled, append-deduped). P1: `domain/tx-card.js` + day-grouped Activity (Today/Yesterday/date headers, verb + context, signed right-aligned deltas, rel-time head, network + short-signature meta with copy/explorer actions, failed badge). Honest omission: no per-tx fee line yet (no fee field on the history wire; P2's lazy detail fetch is where it belongs). Post-P1 honesty pass (wire reality: `decodeHistoryEntry` carries no timestamp): relative time falls back to “Slot N”, timestampless entries group under “Activity”, timestamps backfilled from own pending records in `history-service.js`, and own-account counterparties render by name via `account.list`. Boundary-day refinement **still parked** (from the pr-6-review patch, not landed): when a timestampless entry sits between neighbours in DIFFERENT days, weight the inherited day by slot ratio ((newerSlot - cur)/(newerSlot - older)) rather than always taking the newer neighbour's day. Display-space only — wire entry timestamps stay null; the card head keeps showing Block. Deliberately NOT bundled into P2: the correct version needs a bounded-neighbour scan with its own slot-validity edge cases (equal slots, missing slots, a cluster spanning three days), which is well past a 10-line change and outside the detail sheet's blast radius. It stays a standalone item.
+Status: **P0 + P1 + P2 shipped**. P0: `services/history-service.js` + contract v9
+`tx.getHistoryFeed` (cache-merged, offline-labelled, append-deduped). P1:
+`domain/tx-card.js` + a flat card stream (no day headers), verb + context, signed
+right-aligned deltas, local-calendar `YYYY/MM/DD HH:mm` when a date is known, network +
+short-signature meta with copy/explorer actions, and a failed badge. There is no per-card
+fee line (no fee on the history wire; P2's lazy detail fetch is where it belongs).
+
+The transaction wire carries a slot but no time: `history-service.js` resolves the
+block's optional timestamp for the cached first page, prefers it over the wallet's
+local submission time, and persists the source alongside the date. Paginated
+`tx.listHistory` enriches only the displayed page; the old positional-array API stays
+unchanged. Missing block/local times fall back to `Block <slot>`, not a fabricated
+wall-clock time. Own-account counterparties render by name via `account.list`. The old
+boundary-day heuristic is obsolete now that History has no day grouping.
+
+**Contract v12 cache-first follow-up (2026-09-25):** v9's `tx.getHistoryFeed` read the cache but did not return until its RPC finished, and the route waited for pending reconciliation before drawing cards. The additive, storage-only `tx.getCachedHistory({ address })` now returns `{ address, networkId, entries, nextCursor, updatedAt }` from the per-network/address scope without binding a client or touching RPC. History paints those rows immediately with a **cached / checking network** label, independently loads labels/pending, then replaces rows and clears the label when the existing `tx.getHistoryFeed` reports a fresh page. Offline retains cached cards honestly; no-cache + offline says unavailable, not "No transactions". Network/account switches and route teardown invalidate all late cache/feed/pending/page responses; load-more waits until revalidation finishes. Concurrent feeds for different addresses on one network serialize their shared-scope cache writes, preserving both accounts. This is still explorer-free. See `test/test-history-cache.mjs` and the lifecycle race tests; real popup timing has not been measured.
 
 P2 (this cycle): `domain/tx-detail-sheet.js` + contract v10 `tx.getDetail` + `thru-client.getTransactionDetail` (additive; the sacred client gained one new export and changed zero existing lines). Tapping a card — now a real keyboard-operable control (`role="button"`, tabindex, Enter/Space, Escape closes, focus restores) — opens a bottom-anchored `.modal-card`/`.modal-overlay` sheet reusing the password-prompt focus-trap + disposer discipline. It paints synchronously from the tapped entry (full signature + copy, status, signed amount, counterparty resolved against `account.list`, network, block) and then lazily fills two rows from one on-demand `tx.getDetail` call. **Explorer-free**, as required: the enrichment lane runs entirely on the existing RPC surface. Honest omissions, spiked before any UI was written (`docs/archive/TX_DETAIL_SPIKE.md`): Thru's `TransactionExecutionResult` carries **no charged-fee field**, so the sheet shows the header-DECLARED fee, labels it "Fee (declared)", and states inline that the amount actually debited is not reported by the network — `tx.getDetail` returns `feeCharged: false` so no future caller can mistake one for the other. Wall-clock time is not on the transaction either but IS on the containing block (`BlockHeader.block_time` → `Block.blockTimeNs`), so the sheet fetches it via `blocks.get({slot})` and labels it "Block time"; when the node omits it the row reads "Not available". Unknown → stated-absent, never guessed, with negative controls in `test-route-lifecycle.mjs` proving the fabricated-fee and local-clock cases would actually fail. Next: P2.5 explorer-enrichment spike (the only place a charged fee might exist).
 Reference screenshots: Rabby's Transactions tab (cards with protocol glyph, method,
@@ -53,13 +68,17 @@ protocol names for third-party programs) without ever being on the critical path
 
 ## 3. Target UI (mirroring the Rabby card, adapted to what we can know)
 
-Date sections (`Today`, `Yesterday`, `Sep 18`), each tx as a **card**:
+One chronological stream without day headers; each transaction is a **card**:
 
 ```
-6h 21m ago                                  Alphanet · ta4f…9de2 ⧉
-[glyph] Sent                                   -0.5 THRU
-        TUFT application                      Fee: < 0.0001 THRU
+2026/09/25 14:32                            Alphanet · ts4f…9de2 ⧉
+[glyph] Send                                   -0.5 THRU
+        to Account 2
 ```
+
+When the block time is unavailable and there is no actual local submission time,
+show `Block <slot>` instead of an invented date. No charged-fee field exists on the
+history wire, so do not show a per-card fee.
 
 - Method line = verb + counterparty/protocol label; right-aligned signed amount
   lines with token glyph, negative neutral / positive green.
@@ -72,15 +91,15 @@ Date sections (`Today`, `Yesterday`, `Sep 18`), each tx as a **card**:
 
 **P0 — `history-service` (background).** The local equivalent of Rabby's
 openapi+db combination:
-- `storage.local` key `thru_history_cache`: `{ [networkId]: { [address]: { entries, cursor, updatedAt } } }`, cap 200/address, using the same `network-scope.js` scoped-key isolation the balance and pending caches use (history is not secret; it persists across locks like balances).
+- `storage.local` key `thru_history_cache::<networkId>`: `{ [address]: { entries, nextCursor, updatedAt } }`, cap 200/address, using the same `network-scope.js` scoped-key isolation the balance and pending caches use (history is not secret; it persists across locks like balances).
 - Incremental sync: keep the cursor; prepend newer entries; merge pending.
 - An **explain layer**: map `(programId, instruction)` → `{ method, protocol }` with a
   recognized-program registry (transfer program → "THRU transfer"; token program →
   Sent/Received/Minted/Initialized account; anything else → "Contract interaction" +
   shortened program id). Never guess names for unknown programs.
 
-**P1 — Card UI.** `domain/tx-card.js` kit component + `history.js` grouping by day;
-pending cards reuse the same shell. Keep "load more" cursor paging.
+**P1 — Card UI.** `domain/tx-card.js` kit component + `history.js` flat card stream;
+pending cards remain above the stream. Keep "load more" cursor paging.
 
 **P2 — Detail sheet.** ✅ SHIPPED. Modal with the decode breakdown + signature copy + explorer
 link. Enrichment lane: lazily fetch detail for the one tapped transaction — one call on
@@ -105,7 +124,8 @@ fee, rather than being quietly filled with the declaration.
 switch) — only when multi-network data is real, not before.
 
 **Tests** land with each phase: storage-shape + cursor merge (router-level fixtures),
-grouped-day rendering, failed/pending card states, "unknown program" honesty row.
+flat-stream rendering, network-scoped block times and missing-time fallback,
+failed/pending card states, "unknown program" honesty row.
 
 ## 5. Explicit non-goals (this cycle)
 

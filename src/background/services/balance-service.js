@@ -15,7 +15,7 @@
 
 import * as thruClient from '../../lib/thru-client.js';
 import { emitBalanceChanged } from './event-service.js';
-import { getActiveNetworkId } from './network-service.js';
+import { getActiveNetworkConfig, getActiveNetworkId } from './network-service.js';
 import { scopedKey } from '../../shared/network-scope.js';
 
 // Per-network. A balance on devnet says nothing about mainnet, so each network keeps its own
@@ -27,13 +27,13 @@ const FRESH_MS = 30_000;
 const MAX_CONCURRENCY = 4;
 const MAX_ADDRESSES = 50;
 
-async function cacheKey() {
-  return scopedKey(CACHE_BASE_KEY, await getActiveNetworkId());
+async function cacheKey(networkId = null) {
+  return scopedKey(CACHE_BASE_KEY, networkId || await getActiveNetworkId());
 }
 
-async function readCache() {
+async function readCache(networkId = null) {
   try {
-    const key = await cacheKey();
+    const key = await cacheKey(networkId);
     const res = await chrome.storage.local.get(key);
     const cache = res?.[key];
     return cache && typeof cache === 'object' ? cache : {};
@@ -42,9 +42,9 @@ async function readCache() {
   }
 }
 
-async function writeCache(cache) {
+async function writeCache(cache, networkId = null) {
   try {
-    await chrome.storage.local.set({ [await cacheKey()]: cache });
+    await chrome.storage.local.set({ [await cacheKey(networkId)]: cache });
   } catch {
     // ignore
   }
@@ -78,12 +78,15 @@ export async function getCachedBalances(addresses = []) {
   const out = {};
   for (const address of addresses) {
     const entry = cache[address];
-    if (entry) {
+    const fetchedAt = Number(entry?.fetchedAt) || 0;
+    // Older versions persisted an offline fallback of "0" with fetchedAt: 0. It was never
+    // observed on-chain and cannot truthfully be described as a last-known balance.
+    if (entry && fetchedAt > 0) {
       out[address] = {
         balance: String(entry.balance ?? '0'),
         exists: Boolean(entry.exists),
-        fetchedAt: Number(entry.fetchedAt) || 0,
-        stale: now - (Number(entry.fetchedAt) || 0) > FRESH_MS,
+        fetchedAt,
+        stale: now - fetchedAt > FRESH_MS,
       };
     }
   }
@@ -103,7 +106,10 @@ export async function getBalances(addresses = [], { emit = true } = {}) {
   const unique = [...new Set(addresses.filter((a) => typeof a === 'string' && a))].slice(0, MAX_ADDRESSES);
   if (!unique.length) return {};
 
-  const cache = await readCache();
+  // A direct tx.getBalances request after a worker restart must bind the SDK to the same
+  // chain as its scoped cache. The UI is not required to call network.getActive first.
+  const network = await getActiveNetworkConfig();
+  const cache = await readCache(network.id);
   const now = Date.now();
 
   const settled = await mapLimit(unique, MAX_CONCURRENCY, async (address) => {
@@ -137,11 +143,22 @@ export async function getBalances(addresses = [], { emit = true } = {}) {
   const out = {};
   for (const { address, entry } of settled) {
     out[address] = entry;
-    cache[address] = { balance: entry.balance, exists: entry.exists, fetchedAt: entry.fetchedAt };
+    // An offline read with no earlier snapshot returns a stale/unknown entry to this call,
+    // but must not persist its display-only "0" as a last-known balance. The Send picker
+    // may use cached values for a labelled preview; no successful read means no preview.
+    if (!entry.stale) {
+      cache[address] = { balance: entry.balance, exists: entry.exists, fetchedAt: entry.fetchedAt };
+    }
   }
-  await writeCache(cache);
+  if (await getActiveNetworkId() !== network.id) {
+    const error = new Error('The network changed while balances were loading. Retry on the active network.');
+    error.code = 'NETWORK_CHANGED';
+    error.retryable = true;
+    throw error; // never write a mixed-chain read into a fresh cache
+  }
+  await writeCache(cache, network.id);
 
-  if (emit) emitBalanceChanged(out);
+  if (emit && await getActiveNetworkId() === network.id) emitBalanceChanged(out);
   return out;
 }
 

@@ -16,6 +16,7 @@
 import * as walletService from './services/wallet-service.js';
 import * as keyringService from './services/keyring-service.js';
 import * as accountService from './services/account-service.js';
+import * as registrationService from './services/registration-service.js';
 import * as txService from './services/tx-service.js';
 import * as tokenService from './services/token-service.js';
 import * as networkService from './services/network-service.js';
@@ -130,6 +131,7 @@ const handlers = Object.assign(Object.create(null), {
   'tx.getAccountInfo': ({ address }) => txService.getAccountInfo(address),
   'tx.claimFaucet': ({ amountUnits }) => txService.claimFaucet(amountUnits),
   'tx.send': ({ toAddress, amountUnits }) => txService.sendTransfer(toAddress, amountUnits),
+  'tx.sendChecked': (params) => txService.sendTransferChecked(params),
   'tx.listHistory': ({ address, pageSize, limit, cursor } = {}) => (
     limit !== undefined || cursor !== undefined
       ? txService.listHistory(address, { limit, cursor })
@@ -138,12 +140,14 @@ const handlers = Object.assign(Object.create(null), {
   'tx.getDetail': ({ signature, address } = {}) => txService.getTransactionDetail(signature, address),
   'tx.checkHealth': () => txService.checkNetworkHealth(),
   'tx.autoCreateAccount': () => txService.autoCreateAccount(),
+  'tx.registerAccount': ({ address }) => registrationService.registerOwnedAccount(address),
   'tx.validateAddress': ({ address }) => txService.validateAddress(address),
   'tx.getBalances': ({ addresses }) => balanceService.getBalances(addresses),
   'tx.getCachedBalances': ({ addresses }) => balanceService.getCachedBalances(addresses),
   'tx.getTotalBalance': ({ addresses }) => balanceService.getTotalBalance(addresses),
   'tx.getPending': () => pendingTxService.list(),
   'tx.getHistoryFeed': ({ address } = {}) => historyService.getHistoryFeed(address),
+  'tx.getCachedHistory': ({ address } = {}) => historyService.getCachedHistory(address),
   'tx.reconcilePending': () => pendingTxService.reconcile(),
   'tx.clearSettled': () => pendingTxService.clearSettled(),
   'tx.estimateFee': ({ toAddress, amountUnits }) => txService.estimateFee({ toAddress, amountUnits }),
@@ -159,6 +163,7 @@ const handlers = Object.assign(Object.create(null), {
   'token.setVisibility': ({ mintAddress, hidden }) => tokenService.setVisibility(mintAddress, hidden),
   'token.getBalances': ({ address }) => tokenService.getTokenBalances({ address }),
   'token.transfer': (params) => tokenService.transferToken(params),
+  'token.transferChecked': (params) => tokenService.transferTokenChecked(params),
 
   // ---- Preferences -----------------------------------------------------
   'settings.get': () => preferencesService.getPreferences(),

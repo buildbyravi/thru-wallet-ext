@@ -34,6 +34,7 @@
 
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { applyTheme } from '../src/popup/theme.js';
+import { CONTRACT_VERSION } from '../src/shared/contract/manifest.js';
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -742,9 +743,8 @@ function makeWindow(doc) {
   const win = {
     listeners,
     document: doc,
-    // The popup is fixed-size (400x600, tokens.css). Tests may make this taller
-    // to simulate the side panel (full window height), and assert on `closed` to
-    // prove window.close() reached the page.
+    // The popup is fixed-size (400x600, tokens.css), but the panel may be
+    // shorter than 600px. Its manifest URL marker, not this size, identifies it.
     innerWidth: 400,
     innerHeight: 600,
     closed: false,
@@ -1104,7 +1104,7 @@ function apiError(code, message, retryable = false) {
 
 const FIXTURES = {
   'system.bootstrap': () => ({
-    contractVersion: 7,
+    contractVersion: CONTRACT_VERSION,
     hasVault: backend.hasVault,
     unlocked: backend.unlocked,
     account: backend.unlocked ? activeAccount() : null,
@@ -1278,6 +1278,12 @@ const FIXTURES = {
     reason: null,
   }),
   'token.deriveTokenAccount': () => TOKEN_ACCOUNT_FIXTURE,
+  'token.transferChecked': ({ fromAddress, networkId } = {}) => {
+    if (fromAddress !== activeAccount().address || networkId !== activeNetwork().id) {
+      throw apiError('SEND_CONTEXT_CHANGED', 'Review source or network changed.');
+    }
+    return FIXTURES['token.transfer']();
+  },
   'token.transfer': () => ({
     signature: 'sig_token_cccccccccccccccccccccccccccccccccccc',
     blockHeight: null,
@@ -1320,6 +1326,13 @@ const FIXTURES = {
     return { checked: backend.pending.length, settled: actives };
   },
   'tx.autoCreateAccount': () => ({ exists: true, created: false, signature: null }),
+  'tx.registerAccount': ({ address } = {}) => {
+    if (!backend.accounts.some((a) => a.address === address)) {
+      throw apiError('NOT_OWNED_ACCOUNT', 'Only accounts in this wallet can be activated.');
+    }
+    return { address, networkId: activeNetwork().id, exists: true,
+      created: true, signature: 'sig_registration_test' };
+  },
   'tx.listHistory': ({ limit } = {}) => {
     const size = Math.min(Number(limit) || 15, HISTORY_ENTRIES.length);
     return {
@@ -1328,6 +1341,9 @@ const FIXTURES = {
       hasMore: size < HISTORY_ENTRIES.length,
     };
   },
+  'tx.getCachedHistory': ({ address } = {}) => ({
+    address, networkId: activeNetwork().id, entries: [], nextCursor: 0, updatedAt: 0,
+  }),
   // Mirrors history-service.getHistoryFeed: cache-merged first page, honestly labelled.
   'tx.getHistoryFeed': () => {
     const size = Math.min(15, HISTORY_ENTRIES.length);
@@ -1386,6 +1402,12 @@ const FIXTURES = {
     return { valid: true, isSelf, reason: isSelf ? "That's the address you're sending from." : null };
   },
   'tx.send': () => ({ signature: 'sig_sent_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', blockHeight: 10300 }),
+  'tx.sendChecked': ({ fromAddress, networkId } = {}) => {
+    if (fromAddress !== activeAccount().address || networkId !== activeNetwork().id) {
+      throw apiError('SEND_CONTEXT_CHANGED', 'Review source or network changed.');
+    }
+    return FIXTURES['tx.send']();
+  },
   'tx.claimFaucet': () => ({ signature: 'sig_faucet_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', amountUnits: '10000' }),
 };
 
@@ -1399,6 +1421,8 @@ const chromeLog = {
   /** responses that flagged an unexpected call (network.upsertCustom) */
   unexpected: [],
   sidePanelOpen: [],
+  sidePanelClose: [],
+  openSidePanelWindows: new Set(),
   setPanelBehavior: [],
   /** UI<->UI action broadcasts (popup/panel mutual exclusion), in order */
   broadcasts: [],
@@ -1415,12 +1439,9 @@ function makeChrome() {
       version: '1.2.0',
     }),
     sendMessage(message, callback) {
-      // UI<->UI action broadcast (popup/panel mutual exclusion). In Chrome this is
-      // delivered to every OTHER extension context — modelled here as a fan-out to
-      // every registered onMessage listener. It is NOT an API call, so it must not
-      // touch calls/missing. (The harness has one shared context, so the sender
-      // "sees" its own broadcast too; in Chrome it does not. The exclusion listener
-      // guards against that with its own viewport check — the tests prove it.)
+      // UI<->UI broadcast: in Chrome every OTHER extension context receives it.
+      // Here the shared mock delivers it to all listeners (including the sender),
+      // proving a popup cannot close itself. It is not a contract API request.
       if (message && typeof message === 'object' && message.action && !message.method) {
         chromeLog.broadcasts.push(message);
         queueMicrotask(() => {
@@ -1499,12 +1520,18 @@ function makeChrome() {
     runtime,
     storage: { local: memoryStore(), session: memoryStore(), sync: memoryStore() },
     // The side panel API. `open` is recorded so the dashboard button can be proven to use an
-    // explicit user action; `setPanelBehavior` is recorded so the test can prove it is called
-    // ONLY by the explicit Settings "Side Panel Mode" toggle (with the exact option each
-    // direction must pass) — never by load(), boot, or anything else.
+    // explicit user action; `close` models the Chrome 141+ API for a global panel by windowId,
+    // including when its page hasn't installed an onMessage listener yet. `setPanelBehavior`
+    // is recorded so the test can prove it is called ONLY by the explicit Settings toggle.
     sidePanel: {
       open: (options) => {
         chromeLog.sidePanelOpen.push(options);
+        if (options?.windowId != null) chromeLog.openSidePanelWindows.add(options.windowId);
+        return Promise.resolve();
+      },
+      close: (options) => {
+        chromeLog.sidePanelClose.push(options);
+        chromeLog.openSidePanelWindows.delete(options?.windowId);
         return Promise.resolve();
       },
       setPanelBehavior: (options) => {
@@ -1604,7 +1631,10 @@ function resetDom() {
   chromeLog.missing.clear();
   chromeLog.unexpected.length = 0;
   chromeLog.sidePanelOpen.length = 0;
+  chromeLog.sidePanelClose.length = 0;
+  chromeLog.openSidePanelWindows.clear();
   chromeLog.setPanelBehavior.length = 0;
+  chromeLog.broadcasts.length = 0;
   chromeLog.listeners.clear();
   clipboardLog.writes.length = 0;
   consoleErrors.length = 0;
@@ -1737,8 +1767,12 @@ const { boot, POPUP_ROUTES } = await import('../src/ui/app/boot.js');
 const guards = await import('../src/ui/app/guards.js');
 const bridge = await import('../src/ui/app/bridge.js');
 const { installSidePanelExclusion } = await import('../src/ui/app/side-panel-exclusion.js');
-const { isSidePanelViewport, CLOSE_SIDE_PANEL_ACTION } = await import('../src/shared/side-panel.js');
+const { isSidePanelPage, SIDE_PANEL_SEARCH, CLOSE_SIDE_PANEL_ACTION } = await import('../src/shared/side-panel.js');
 const { Router } = await import('../src/ui/app/router.js');
+const { SendRoute } = await import('../src/ui/app/routes/send.js');
+const { HistoryRoute } = await import('../src/ui/app/routes/history.js');
+const { DashboardRoute } = await import('../src/ui/app/routes/dashboard.js');
+const { AccountsRoute } = await import('../src/ui/app/routes/accounts.js');
 
 function isInside(node, root) {
   for (let n = node; n; n = n.parentNode) {
@@ -2549,24 +2583,23 @@ function sourceTest() {
 
 // ---- Popup / side-panel mutual exclusion ------------------------------------
 //
-// Both surfaces load the SAME popup.html, so the surface that just opened enforces
-// "exactly one surface at a time": the popup broadcasts THRU_CLOSE_SIDE_PANEL, and a
-// side-panel-shaped page (full window height, unlike the fixed 400x600 popup) closes
-// itself on receipt. The harness has ONE shared chrome context, so the sender also
-// receives its own broadcast — in Chrome it does not — which makes the listener's
-// viewport re-check the real guard, and these tests prove it holds.
+// Chrome's side panel may be SHORTER than the 600px popup. The same HTML/bundle
+// loads in both, but the panel's manifest URL has a non-secret query marker.
+// The shim broadcasts to the sender too (unlike Chrome), making the popup's
+// refusal to close itself part of the test. A native close by windowId covers
+// the race where the panel has not even installed its message listener yet.
 
 async function panelExclusionTest() {
-  section('mutual exclusion: the popup and the side panel are never both open');
+  section('mutual exclusion: popup vs short/slow side panel');
 
   resetBackend(SCENARIOS[2]);
   resetDom();
   guards.invalidate();
+  chromeLog.openSidePanelWindows.add(42); // panel open, but its listener not yet installed
   const app = DOC.getElementById('app');
   await boot({ root: app });
   await settle();
 
-  // Booting the (400x600) popup page broadcasts the close signal...
   ok('booting the popup broadcasts THRU_CLOSE_SIDE_PANEL',
     chromeLog.broadcasts.some((m) => m?.action === CLOSE_SIDE_PANEL_ACTION),
     JSON.stringify(chromeLog.broadcasts));
@@ -2575,45 +2608,109 @@ async function panelExclusionTest() {
       && chromeLog.broadcasts.every((m) => Boolean(m?.action) && m?.method === undefined)
       && !chromeLog.calls.includes('') && ![...chromeLog.missing].includes(''),
     JSON.stringify({ calls: chromeLog.calls.slice(0, 5), missing: [...chromeLog.missing] }));
+  ok('native close targets the global panel in THIS window even when no panel listener exists',
+    chromeLog.sidePanelClose.length === 1
+      && chromeLog.sidePanelClose[0]?.windowId === 42
+      && !chromeLog.openSidePanelWindows.has(42),
+    JSON.stringify(chromeLog.sidePanelClose));
+  ok('the popup ignores its own broadcast', WIN.closed === false);
 
-  // ...and the popup-shaped page that received it (shared context!) must NOT close.
-  ok('a popup-shaped page ignores the close signal', WIN.closed === false);
-
-  // A side-panel-shaped page closes itself when another popup opens.
-  const panelWin = { innerHeight: 900, innerWidth: 320, closed: false, close() { this.closed = true; } };
-  installSidePanelExclusion(panelWin);
+  // Simulate a real short browser window: height is below the popup's 600px.
+  // The old viewport heuristic misclassified this as a popup and never closed it.
+  const panelWin = {
+    location: { search: SIDE_PANEL_SEARCH }, innerHeight: 480, closed: false,
+    close() { this.closed = true; },
+  };
+  const beforeBroadcast = chromeLog.broadcasts.length;
+  const disposePanel = installSidePanelExclusion(panelWin);
+  ok('a short panel does not broadcast or try to close itself on boot',
+    chromeLog.broadcasts.length === beforeBroadcast);
   bridge.broadcastCloseSidePanel();
   await settle();
-  ok('the side panel closes itself when a popup opens', panelWin.closed === true);
+  ok('a 480px side panel closes itself on the popup broadcast', panelWin.closed === true);
 
-  // The detector boundary: the popup is exactly 600px tall; the panel is the full
-  // window height. A missing viewport (e.g. an exotic context) stays a popup.
-  ok('the viewport detector treats exactly 600px as the popup',
-    isSidePanelViewport({ innerHeight: 600 }) === false);
-  ok('the viewport detector treats a taller viewport as the panel',
-    isSidePanelViewport({ innerHeight: 601 }) === true
-      && isSidePanelViewport({ innerHeight: 900 }) === true);
-  ok('the viewport detector tolerates a missing viewport', isSidePanelViewport({}) === false);
+  // No viewport, including a tall debugging popup, can turn an unmarked page
+  // into a panel. The marker also survives hash navigation / extra flags.
+  WIN.innerHeight = 900;
+  bridge.broadcastCloseSidePanel();
+  await settle();
+  ok('a tall popup never closes on the panel-only action', WIN.closed === false);
+  ok('the panel marker is independent of viewport and hash',
+    isSidePanelPage({ innerHeight: 480, location: { search: SIDE_PANEL_SEARCH, hash: '#/send' } })
+      && isSidePanelPage({ innerHeight: 900, location: { search: '?debug=1&thru_panel=1' } })
+      && !isSidePanelPage({ innerHeight: 900, location: { search: '' } })
+      && !isSidePanelPage({ innerHeight: 480, location: { search: '?thru_panel=0' } })
+      && !isSidePanelPage({}));
 
-  // Unrelated action messages never close a panel-shaped page.
-  const otherPanel = { innerHeight: 900, closed: false, close() { this.closed = true; } };
+  const otherPanel = {
+    location: { search: SIDE_PANEL_SEARCH }, innerHeight: 900, closed: false,
+    close() { this.closed = true; },
+  };
   const disposeOther = installSidePanelExclusion(otherPanel);
   chrome.runtime.sendMessage({ action: 'SOMETHING_ELSE' });
   await settle();
-  ok('an unrelated action message does not close the panel', otherPanel.closed === false);
+  ok('an unrelated action does not close the panel', otherPanel.closed === false);
+  for (const listener of [...chromeLog.listeners]) {
+    listener({ action: CLOSE_SIDE_PANEL_ACTION }, { id: 'another-extension' });
+  }
+  ok('a message from another extension cannot close the panel', otherPanel.closed === false);
 
-  // The wiring is load-bearing: boot (both surfaces) must call the installer.
+  const manifest = JSON.parse(readFileSync(join(ROOT, 'src', 'manifest.json'), 'utf8'));
+  ok('manifest marks the panel while reusing the exact same HTML page',
+    manifest.action?.default_popup === 'popup.html'
+      && manifest.side_panel?.default_path === `popup.html${SIDE_PANEL_SEARCH}`);
   const bootSource = stripComments(readFileSync(join(ROOT, 'src', 'ui', 'app', 'boot.js'), 'utf8'));
-  ok('boot wires the exclusion into every surface',
-    /installSidePanelExclusion\s*\(/.test(bootSource));
+  const bootFunction = bootSource.slice(bootSource.indexOf('export async function boot('));
+  ok('boot installs the exclusion BEFORE its first await (theme or bootstrap)',
+    bootFunction.indexOf('installSidePanelExclusion(') >= 0
+      && bootFunction.indexOf('installSidePanelExclusion(') < bootFunction.indexOf('await '));
   const bgSource = stripComments(readFileSync(join(ROOT, 'src', 'background', 'index.js'), 'utf8'));
   ok('the background early-returns the action instead of routing it as an API request',
     /CLOSE_SIDE_PANEL_ACTION/.test(bgSource) && /request\?\.action === CLOSE_SIDE_PANEL_ACTION/.test(bgSource));
 
   const beforeDispose = chromeLog.listeners.size;
   disposeOther();
-  ok('dispose removes the message listener', chromeLog.listeners.size === beforeDispose - 1,
+  disposePanel();
+  ok('dispose removes the same listener references', chromeLog.listeners.size === beforeDispose - 2,
     `${beforeDispose} -> ${chromeLog.listeners.size}`);
+
+  // Interleave a broadcast WHILE the panel boot is suspended on theme storage,
+  // as happens during a service worker wake-up. The listener must be live now,
+  // not after theme or bridge.bootstrap resolves. This fails on the old boot.
+  resetDom();
+  guards.invalidate();
+  WIN.location.search = SIDE_PANEL_SEARCH;
+  WIN.innerHeight = 480;
+  const originalGet = chrome.storage.local.get;
+  let resumeTheme;
+  chrome.storage.local.get = (key) => key === 'thru_theme'
+    ? new Promise((resolve) => { resumeTheme = () => resolve({}); })
+    : originalGet(key);
+  const pendingBoot = boot({ root: DOC.getElementById('app') });
+  ok('the panel listener is installed synchronously, before theme storage returns',
+    chromeLog.listeners.size === 1 && typeof resumeTheme === 'function');
+  ok('booting the panel does not broadcast or call sidePanel.close',
+    chromeLog.broadcasts.length === 0 && chromeLog.sidePanelClose.length === 0);
+  bridge.broadcastCloseSidePanel();
+  await settle();
+  ok('a close broadcast reaches a panel blocked inside boot', WIN.closed === true);
+  resumeTheme();
+  await pendingBoot;
+
+  // On Chrome 116-140 (no native close API), the correctly marked panel still
+  // closes on the original bridge broadcast when both pages have started.
+  resetDom();
+  guards.invalidate();
+  delete chrome.sidePanel.close;
+  const oldChromePanel = {
+    location: { search: SIDE_PANEL_SEARCH }, innerHeight: 500, closed: false,
+    close() { this.closed = true; },
+  };
+  installSidePanelExclusion(oldChromePanel);
+  await boot({ root: DOC.getElementById('app') });
+  await settle();
+  ok('the broadcast is a fallback when Chrome has no sidePanel.close',
+    oldChromePanel.closed && chromeLog.sidePanelClose.length === 0);
 }
 
 // ---- In-app navigation -----------------------------------------------------
@@ -2878,7 +2975,7 @@ async function navigationTest() {
   ok('the send form exposes amount and recipient inputs', Boolean(amtInput && rcptInput));
   if (amtInput && rcptInput) {
     // Amount first, recipient second — exactly the order the bug bit.
-    type(amtInput, '5');
+    type(amtInput, '0.001');
     const reviewInitially = buttons(router.root, /^review$/i)[0];
     ok('review starts disabled with only an amount typed',
       Boolean(reviewInitially && reviewInitially.disabled));
@@ -2899,7 +2996,7 @@ async function navigationTest() {
         await sleep(20); // the prefilled recipient was NOT debounced; it validates at once
         await settle();
         const amtAgain = router.root.querySelector('input[placeholder="0.0"]');
-        ok('picking a recipient keeps the typed amount', amtAgain && amtAgain.value === '5',
+        ok('picking a recipient keeps the typed amount', amtAgain && amtAgain.value === '0.001',
           `amount read back: "${amtAgain?.value ?? 'field missing'}"`);
         const myAccounts2 = buttons(router.root, /my accounts/i)[0];
         if (myAccounts2) {
@@ -2911,7 +3008,7 @@ async function navigationTest() {
             await settle();
             const amtAgain2 = router.root.querySelector('input[placeholder="0.0"]');
             ok('backing out of the picker also keeps the amount',
-              amtAgain2 && amtAgain2.value === '5');
+              amtAgain2 && amtAgain2.value === '0.001');
           } else {
             ok('the picker offers a Back control', false, textOf(router.root).slice(0, 200));
           }
@@ -3050,13 +3147,11 @@ async function navigationTest() {
     !/cached activity/i.test(textOf(router.root)), textOf(router.root).slice(0, 160));
   FIXTURES['tx.getHistoryFeed'] = realFeed;
 
-  // ---- P1 cards: day grouping, verbs/deltas, failed badge, signature copy ----
+  // ---- P1 cards: flat stream, verbs/deltas, failed badge, signature copy ----
   const NOW = Date.now();
-  // Day sections are calendar-day based, so fixture times are anchored to the START of
-  // today instead of "N hours ago". A static offset drifts across midnight whenever a
-  // run starts in the early hours ("26h ago" at 01:00 is TWO days ago, not yesterday),
-  // which would splinter the Today/Yesterday grouping these assertions check. Every value
-  // below is guaranteed its intended calendar day at any run time, and none is in the future.
+  // Spread fixture timestamps across several calendar days so a regression that
+  // reintroduces Today/Yesterday section headers is caught by the flat-stream assertion.
+  // Anchoring to local midnight keeps those days distinct even during early-hour test runs.
   const startOfToday = new Date(NOW).setHours(0, 0, 0, 0);
   const CARD_ENTRIES = [
     { signature: 'tsCARD_A_sent_today_aaaaaaaaaaaaaaaaaaaaaaa', slot: 30000,
@@ -3075,8 +3170,6 @@ async function navigationTest() {
   router.navigate('/history');
   await settle();
   const histText = textOf(router.root);
-  ok('activity is day-grouped with Today and Yesterday sections',
-    /Today/.test(histText) && /Yesterday/.test(histText), histText.slice(0, 220));
   ok('a send shows its signed negative delta',
     histText.includes('-0.0001 THRU'), histText.slice(0, 220));
   ok('a receipt shows its signed positive delta',
@@ -3093,22 +3186,20 @@ async function navigationTest() {
     clipboardLog.writes.includes('tsCARD_A_sent_today_aaaaaaaaaaaaaaaaaaaaaaa'),
     JSON.stringify(clipboardLog.writes));
 
-  // P1 audit finding: the day-boundary badge used listHost.lastChild, which is the
-  // PREVIOUS section's last card — headers lost their count and cards swallowed it.
+  // Rabby-style stream: transactions render directly as cards without day section headers.
   const dayHeaders = [...router.root.querySelectorAll('.list-group-header')];
-  ok('every day header receives its count badge',
-    dayHeaders.length >= 3 && dayHeaders.every((hdr) => hdr.querySelector('.list-group-count')),
+  ok('activity renders as a flat stream without day section headers',
+    dayHeaders.length === 0,
     String(dayHeaders.length));
-  const allCountChips = [...router.root.querySelectorAll('.list-group-count')];
-  ok('no transaction card receives a misplaced count badge',
-    allCountChips.length > 0
-      && allCountChips.every((chip) => chip.parentNode?.localName === 'header')
-      && allCountChips.every((chip) => chip.parentNode === null || !chip.parentNode?.classList?.contains('tx-card')));
+  const txCards = [...router.root.querySelectorAll('.tx-card')];
+  ok('every transaction renders as a card in the list',
+    txCards.length >= 3,
+    String(txCards.length));
   FIXTURES['tx.getHistoryFeed'] = realFeed;
 
   // Production wire reality: entries carry NO wall-clock timestamp (slots only). Cards
-  // must group them under an honest "Activity" section and fall back to slot text —
-  // never crash, never render a blank head. Counterparties that are another account in
+  // must stay in the flat stream and fall back to block slot text — never crash, never
+  // render a blank head. Counterparties that are another account in
   // THIS wallet resolve by name instead of a truncated address.
   const SELF_B = backend.accounts[1] || backend.accounts[0];
   FIXTURES['tx.getHistoryFeed'] = () => ({
@@ -3126,17 +3217,14 @@ async function navigationTest() {
   router.navigate('/history');
   await settle();
   const noTimeText = textOf(router.root);
-  ok('timestampless wire entries group under an honest section label',
-    /Activity/.test(noTimeText), noTimeText.slice(0, 200));
+  ok('timestampless cards render in the stream',
+    router.root.querySelectorAll('.tx-card').length === 2);
   ok('timestampless cards show Block <slot> — explorer wording, never "Slot"',
     /Block 41000/.test(noTimeText) && !/Slot \d/.test(noTimeText), noTimeText.slice(0, 200));
 
-  // Day-section splinter fix: a timestampless wire entry sandwiched between two same-day
-  // sends inherits its neighbours' day — one "Today" section, never Today -> Activity -> Today.
+  // In a flat stream, cards render in chronological order without header splintering.
   FIXTURES['tx.getHistoryFeed'] = () => ({
     entries: [
-      // startOfToday-anchored (see CARD_ENTRIES): at 00:30 the old "2h ago" value was
-      // already yesterday, which would have split this test into two sections.
       { signature: 'tsMIX1_newer_today_aaaaaaaaaaaaaaaaaaaaaaa', slot: 30500,
         success: true, programAddress: NETWORK_ALPHANET.transferProgramId, kind: 'sent',
         amount: '90000', counterparty: ADDRESS_B, timestamp: NOW },
@@ -3152,13 +3240,11 @@ async function navigationTest() {
   });
   router.navigate('/history');
   await settle();
-  const mixHeaders = [...router.root.querySelectorAll('.list-group-header')];
-  const mixHeaderText = mixHeaders.map((hdr) => textOf(hdr)).join(' | ');
-  ok('a timestampless entry between same-day sends coalesces into a single Today section',
-    mixHeaders.length === 1 && /Today/.test(mixHeaderText)
-      && mixHeaders[0]?.querySelector('.list-group-count')?.textContent === '3',
-    mixHeaderText);
-  ok('the coalesced middle card still shows its block, not an invented time',
+  const streamCards = [...router.root.querySelectorAll('.tx-card')];
+  ok('all transactions render in the stream without day headers',
+    streamCards.length === 3 && router.root.querySelectorAll('.list-group-header').length === 0,
+    String(streamCards.length));
+  ok('the middle timestampless card still shows its block fallback',
     /Block 30400/.test(textOf(router.root)),
     textOf(router.root).slice(0, 400));
   const selfLabel = SELF_B.label || 'Account 2';
@@ -3590,6 +3676,539 @@ function negativeControls() {
   broken.stop();
 }
 
+// ---- Send: progressive load, offline recovery and cross-context identity -----------------
+
+async function progressiveSendTest() {
+  section('send: slow bridge replies never hold the form or turn unknown balances into zero');
+
+  // Hold specific replies at the real UI bridge's chrome.runtime.sendMessage seam. Other
+  // methods continue through the fixture, including authoritative recipient validation.
+  // This is deliberately NOT a fake SendRoute: the real route, Button, Field, AssetSelector,
+  // bridge timeout, and teardown all run. An unreleased reply would leave a 30s timer alive.
+  function holdReplies(shouldHold) {
+    const original = chrome.runtime.sendMessage;
+    const held = [];
+    chrome.runtime.sendMessage = (message, callback) => {
+      if (!message?.method || !shouldHold(message)) return original(message, callback);
+      chromeLog.calls.push(message.method);
+      held.push({ message, callback });
+      return undefined;
+    };
+    const take = (method, predicate = () => true) => {
+      const index = held.findIndex(({ message }) => message.method === method && predicate(message));
+      if (index < 0) throw new Error(`No held ${method} reply: ${held.map((x) => x.message.method).join(', ')}`);
+      return held.splice(index, 1)[0];
+    };
+    return {
+      held,
+      resolve(method, data, predicate) { take(method, predicate).callback({ ok: true, data }); },
+      reject(method, message = 'Node offline', predicate) {
+        take(method, predicate).callback({
+          ok: false, error: { code: 'NETWORK_ERROR', message, retryable: true },
+        });
+      },
+      restore() {
+        chrome.runtime.sendMessage = original;
+        for (const item of held.splice(0)) item.callback({
+          ok: false, error: { code: 'NETWORK_ERROR', message: 'Test finished', retryable: true },
+        });
+      },
+    };
+  }
+
+  resetBackend(SCENARIOS[2]);
+  resetDom();
+  const holds = holdReplies((msg) => ['account.list', 'tx.estimateFee', 'token.list',
+    'token.getBalances'].includes(msg.method)
+    || (msg.method === 'tx.getAccountInfo' && msg.params.address === ADDRESS_A));
+  const route = SendRoute({ params: {}, navigate() {}, back() {} });
+  DOC.body.appendChild(route.el);
+  await settle();
+
+  ok('sender and network metadata paint the form despite all five slow bridge replies',
+    Boolean(route.el.querySelector('input[placeholder="ta…"]'))
+      && !/Loading account/.test(textOf(route.el)) && holds.held.length === 5,
+    `held=${holds.held.map((r) => r.message.method).join(',')}`);
+  ok('a pending native read is checking (not zero), with Max disabled',
+    /Checking balance/.test(textOf(route.el)) && buttons(route.el, /^max$/i)[0]?.disabled === true,
+    textOf(route.el).slice(0, 260));
+
+  holds.resolve('account.list', [makeAccount(0), makeAccount(1)]);
+  await settle();
+  ok('cached account balance is visibly last-known, never a spendable live balance',
+    /0\.0015 THRU \(last known\)/.test(textOf(route.el))
+      && /Spendable: unavailable/.test(textOf(route.el))
+      && buttons(route.el, /^max$/i)[0]?.disabled === true);
+
+  const amount = route.el.querySelector('input[placeholder="0.0"]');
+  const recipient = route.el.querySelector('input[placeholder="ta…"]');
+  type(amount, '0.001');
+  type(recipient, 'ta1validrecipient00000000000000000000000000000000000000000');
+  await sleep(450);
+  await settle();
+  ok('a validated recipient and typed amount cannot enable Review from a cached balance',
+    buttons(route.el, /^review$/i)[0]?.disabled === true);
+  holds.resolve('tx.estimateFee', FIXTURES['tx.estimateFee']({}));
+  await settle();
+  ok('a fee quote alone cannot spend an unknown live balance',
+    buttons(route.el, /^review$/i)[0]?.disabled === true);
+
+  holds.reject('tx.getAccountInfo');
+  await settle();
+  ok('offline native balance shows Retry without claiming zero or unlocking Max',
+    /last known/.test(textOf(route.el))
+      && buttons(route.el, /retry checks/i)[0]?.classList.contains('hidden') === false
+      && buttons(route.el, /^max$/i)[0]?.disabled === true
+      && buttons(route.el, /^review$/i)[0]?.disabled === true);
+  click(buttons(route.el, /retry checks/i)[0]);
+  await settle();
+  // The retry supersedes the first token request: an out-of-order response must not
+  // make a token sendable while the new read is still pending.
+  holds.resolve('token.getBalances', FIXTURES['token.getBalances']({}));
+  holds.resolve('tx.estimateFee', FIXTURES['tx.estimateFee']({}));
+  holds.resolve('tx.getAccountInfo', { exists: true, balance: '1500000' });
+  await settle();
+  ok('a live native result enables Review without waiting for any token RPC',
+    buttons(route.el, /^review$/i)[0]?.disabled === false
+      && amount.value === '0.001' && recipient.value.startsWith('ta1validrecipient')
+      && isConnected(amount) && isConnected(recipient));
+  type(amount, '5');
+  ok('overspending disables Review rather than relying only on the click-time check',
+    buttons(route.el, /^review$/i)[0]?.disabled === true);
+  type(amount, '0.001');
+
+  click(buttons(route.el, /thru native token/i)[0]);
+  await settle();
+  ok('asset picker distinguishes a loading registry from an empty one',
+    /Loading your token list/.test(textOf(route.el)));
+  holds.resolve('token.list', [TOKEN_FIXTURE]);
+  await settle();
+  ok('a registered token with a still-pending balance is labelled checking and inert',
+    /checking balance/i.test(textOf(route.el))
+      && buttons(route.el, /smoke token/i).length === 0,
+    textOf(route.el).slice(0, 390));
+  holds.reject('token.getBalances');
+  await settle();
+  ok('a failed token read is unknown, not an empty token account',
+    /balance unknown/i.test(textOf(route.el)) && buttons(route.el, /smoke token/i).length === 0
+      && Boolean(buttons(route.el, /retry token balances/i)[0]));
+  click(buttons(route.el, /retry token balances/i)[0]);
+  holds.resolve('token.getBalances', FIXTURES['token.getBalances']({}));
+  await settle();
+  ok('retry restores the funded token as selectable without leaving sub-view listeners behind',
+    buttons(route.el, /smoke token/i).length === 1 && detachedListeners().length === 0,
+    JSON.stringify(detachedListeners().slice(0, 3)));
+
+  click(buttons(route.el, /smoke token/i)[0]);
+  await settle();
+  ok('a verified token balance re-denominates the form',
+    /Spendable: 250 SMK/.test(textOf(route.el)));
+
+  // An external panel switches networks while the user composes: the old token/network
+  // and spendable state must be invalidated before another sign is possible.
+  backend.activeNetworkId = 'localnet';
+  emitEvent('networkChanged', { id: 'localnet' });
+  await settle();
+  ok('external network switch exits the token form and locks Review again',
+    /Amount \(THRU\)/.test(textOf(route.el))
+      && buttons(route.el, /^review$/i)[0]?.disabled === true);
+  holds.resolve('tx.estimateFee', FIXTURES['tx.estimateFee']({}));
+  holds.resolve('account.list', [makeAccount(0), makeAccount(1)]);
+  holds.resolve('token.list', []);
+  holds.resolve('tx.getAccountInfo', { exists: true, balance: '100000' });
+  route.destroy();
+  holds.restore(); // late token callback after destroy must be harmless
+  await settle();
+  ok('leaving Send disposes events, form listeners and all late RPC continuations',
+    chromeLog.listeners.size === 0 && detachedListeners().length === 0,
+    JSON.stringify(detachedListeners().slice(0, 3)));
+  route.el.remove();
+
+  // A different open context changes the active account while the first balance is still
+  // pending. Late replies for account A must never overwrite account B's spendable amount.
+  resetBackend(SCENARIOS[2]);
+  resetDom();
+  const accountHolds = holdReplies((msg) => msg.method === 'tx.getAccountInfo'
+    && (msg.params.address === ADDRESS_A || msg.params.address === ADDRESS_B));
+  const switched = SendRoute({ params: {}, navigate() {}, back() {} });
+  DOC.body.appendChild(switched.el);
+  await settle();
+  backend.activeIndex = 1;
+  emitEvent('accountsChanged', { active: activeAccount() });
+  await settle();
+  accountHolds.resolve('tx.getAccountInfo', { exists: true, balance: '250000' },
+    (msg) => msg.params.address === ADDRESS_B);
+  await settle();
+  accountHolds.resolve('tx.getAccountInfo', { exists: true, balance: '9000000000' },
+    (msg) => msg.params.address === ADDRESS_A);
+  await settle();
+  ok('an old account balance cannot overwrite a new account after an event',
+    /Spending/.test(textOf(switched.el))
+      && /0\.00025 THRU/.test(textOf(switched.el))
+      && !/(^|\s)9 THRU/.test(textOf(switched.el)), textOf(switched.el).slice(0, 290));
+  const switchedAmount = switched.el.querySelector('input[placeholder="0.0"]');
+  const switchedRecipient = switched.el.querySelector('input[placeholder="ta…"]');
+  type(switchedAmount, '0.0001');
+  type(switchedRecipient, 'ta1validrecipient00000000000000000000000000000000000000000');
+  await sleep(450);
+  await settle();
+  click(buttons(switched.el, /^review$/i)[0]);
+  await settle();
+  click(buttons(switched.el, /sign & send/i)[0]);
+  await settle();
+  ok('native signing uses the checked method, with the reviewed account and network',
+    chromeLog.calls.includes('tx.sendChecked')
+      && /0\.0001 THRU sent/.test(textOf(switched.el))
+      && /Submitted on Alphanet/.test(textOf(switched.el)),
+    chromeLog.calls.slice(-12).join(','));
+  switched.destroy();
+  accountHolds.restore();
+  await settle();
+  ok('account-switch Send cleanup leaves no detached listeners',
+    detachedListeners().length === 0, JSON.stringify(detachedListeners().slice(0, 3)));
+  switched.el.remove();
+
+  resetBackend(SCENARIOS[2]);
+  resetDom();
+  const tokenRoute = SendRoute({ params: {}, navigate() {}, back() {} });
+  DOC.body.appendChild(tokenRoute.el);
+  await settle();
+  click(buttons(tokenRoute.el, /thru native token/i)[0]);
+  await settle();
+  click(buttons(tokenRoute.el, /smoke token/i)[0]);
+  await settle();
+  type(tokenRoute.el.querySelector('input[placeholder="0.0"]'), '1');
+  type(tokenRoute.el.querySelector('input[placeholder="ta…"]'),
+    'ta1validrecipient00000000000000000000000000000000000000000');
+  await sleep(450);
+  await settle();
+  click(buttons(tokenRoute.el, /^review$/i)[0]);
+  await settle();
+  click(buttons(tokenRoute.el, /sign & send/i)[0]);
+  await settle();
+  ok('token signing uses token.transferChecked, never a native send or legacy token method',
+    chromeLog.calls.includes('token.transferChecked')
+      && !chromeLog.calls.includes('tx.send') && !chromeLog.calls.includes('token.transfer')
+      && /1 SMK sent/.test(textOf(tokenRoute.el)), chromeLog.calls.slice(-12).join(','));
+  tokenRoute.destroy();
+  await settle();
+  ok('checked token send tears down without leaked listeners', detachedListeners().length === 0);
+  tokenRoute.el.remove();
+
+  resetBackend(SCENARIOS[2]);
+  resetDom();
+  const realCheckedSend = FIXTURES['tx.sendChecked'];
+  FIXTURES['tx.sendChecked'] = () => {
+    throw apiError('SERVICE_TIMEOUT', 'The wallet service did not respond. Try again.', true);
+  };
+  const uncertain = SendRoute({ params: {}, navigate() {}, back() {} });
+  DOC.body.appendChild(uncertain.el);
+  await settle();
+  type(uncertain.el.querySelector('input[placeholder="0.0"]'), '0.001');
+  type(uncertain.el.querySelector('input[placeholder="ta…"]'),
+    'ta1validrecipient00000000000000000000000000000000000000000');
+  await sleep(450);
+  await settle();
+  click(buttons(uncertain.el, /^review$/i)[0]);
+  await settle();
+  click(buttons(uncertain.el, /sign & send/i)[0]);
+  await settle();
+  ok('a signing timeout reports UNKNOWN outcome and warns against an immediate retry',
+    /Could not confirm whether this transfer was submitted/.test(textOf(uncertain.el))
+      && /Check Activity and the explorer/.test(textOf(uncertain.el))
+      && !/wallet service did not respond/.test(textOf(uncertain.el)));
+  uncertain.destroy();
+  FIXTURES['tx.sendChecked'] = realCheckedSend;
+  await settle();
+  ok('uncertain-outcome view leaves no detached listeners', detachedListeners().length === 0);
+  uncertain.el.remove();
+}
+
+// ---- Contract v12: creation-bound recipient activation + cache-before-RPC History -------
+
+async function ownRecipientRegistrationTest() {
+  section('send: an unregistered owned recipient activates directly and review keeps its label');
+  resetBackend(SCENARIOS[2]);
+  resetDom();
+  const external = 'ta1unownedrecipient00000000000000000000000000000000000';
+  const contact = 'ta1savedcontact0000000000000000000000000000000000000';
+  backend.contacts.push({ address: contact, label: 'Coffee shop', createdAt: Date.now() });
+  const originalInfo = FIXTURES['tx.getAccountInfo'];
+  const originalSendMessage = chrome.runtime.sendMessage;
+  const held = [];
+  const heldInfo = [];
+  let delayOwnInfo = true;
+  FIXTURES['tx.getAccountInfo'] = ({ address } = {}) => (
+    address === ADDRESS_B || address === external
+      ? { exists: false, balance: '0' }
+      : originalInfo({ address })
+  );
+  chrome.runtime.sendMessage = (message, callback) => {
+    if (delayOwnInfo && message?.method === 'tx.getAccountInfo'
+      && message.params?.address === ADDRESS_B) {
+      chromeLog.calls.push(message.method);
+      heldInfo.push({ message, callback });
+      return undefined;
+    }
+    if (message?.method === 'tx.registerAccount') {
+      chromeLog.calls.push(message.method);
+      held.push({ message, callback });
+      return undefined;
+    }
+    return originalSendMessage(message, callback);
+  };
+  let route;
+  try {
+    route = SendRoute({ params: {}, navigate() {}, back() {} });
+    DOC.body.appendChild(route.el);
+    await settle();
+    type(route.el.querySelector('input[placeholder="0.0"]'), '0.001');
+    click(buttons(route.el, /my accounts/i)[0]);
+    await settle();
+    click(buttons(route.el, /spending/i)[0]);
+    await settle();
+    ok('a picked own recipient cannot pass Review before its chain-existence lookup completes',
+      heldInfo.length === 1 && buttons(route.el, /^review$/i)[0]?.disabled === true);
+    // A late balance update used to treat exists:null as "ready" and enable Review even
+    // though the lookup/registration for an owned recipient was still pending.
+    click(buttons(route.el, /retry checks/i)[0]);
+    await settle();
+    ok('an unrelated balance refresh cannot unlock Review during the recipient lookup',
+      buttons(route.el, /^review$/i)[0]?.disabled === true);
+    delayOwnInfo = false;
+    heldInfo.shift().callback({ ok: true, data: { exists: false, balance: '0' } });
+    await settle();
+    ok('selecting an unregistered own recipient calls tx.registerAccount for THAT address',
+      held.length === 1 && held[0].message.params.address === ADDRESS_B
+        && !chromeLog.calls.includes('tx.autoCreateAccount'), chromeLog.calls.slice(-14).join(','));
+    ok('the user sees activation progress and cannot review a not-yet-active recipient',
+      /Activating your account on-chain/.test(textOf(route.el))
+        && buttons(route.el, /^review$/i)[0]?.disabled === true, textOf(route.el).slice(0, 250));
+    click(buttons(route.el, /retry checks/i)[0]);
+    await settle();
+    ok('Review stays gated during activation even when balance and fee checks finish',
+      buttons(route.el, /^review$/i)[0]?.disabled === true);
+
+    const item = held.shift();
+    item.callback({ ok: true, data: FIXTURES['tx.registerAccount'](item.message.params) });
+    await settle();
+    ok('once activation confirms, Review unlocks without changing the sender',
+      buttons(route.el, /^review$/i)[0]?.disabled === false
+        && activeAccount().address === ADDRESS_A);
+    click(buttons(route.el, /^review$/i)[0]);
+    await settle();
+    const toRow = [...route.el.querySelectorAll('.detail-row')]
+      .find((node) => textOf(node).startsWith('To'));
+    ok('review shows the own-account label ABOVE the FULL address',
+      Boolean(toRow) && /Spending/.test(textOf(toRow))
+        && textOf(toRow).includes(ADDRESS_B)
+        && textOf(toRow).indexOf('Spending') < textOf(toRow).indexOf(ADDRESS_B),
+      textOf(toRow).slice(0, 190));
+
+    click(buttons(route.el, /^edit$/i)[0]);
+    type(route.el.querySelector('input[placeholder="ta…"]'), external);
+    await sleep(450);
+    await settle();
+    ok('a never-used external address is NOT auto-registered',
+      held.length === 0 && /owner needs to activate it/i.test(textOf(route.el))
+        && buttons(route.el, /^review$/i)[0]?.disabled === true);
+
+    type(route.el.querySelector('input[placeholder="ta…"]'), contact);
+    await sleep(450);
+    await settle();
+    click(buttons(route.el, /^review$/i)[0]);
+    await settle();
+    const contactRow = [...route.el.querySelectorAll('.detail-row')]
+      .find((node) => textOf(node).startsWith('To'));
+    ok('a saved contact also shows its name above the full destination address',
+      Boolean(contactRow) && textOf(contactRow).includes('Coffee shop')
+        && textOf(contactRow).includes(contact)
+        && textOf(contactRow).indexOf('Coffee shop') < textOf(contactRow).indexOf(contact));
+
+    click(buttons(route.el, /^edit$/i)[0]);
+    type(route.el.querySelector('input[placeholder="ta…"]'), ADDRESS_B);
+    await sleep(450);
+    await settle();
+    ok('activation of a newly typed own address is in flight', held.length === 1);
+    type(route.el.querySelector('input[placeholder="ta…"]'), external);
+    await sleep(450);
+    await settle();
+    const outdated = held.shift();
+    outdated.callback({ ok: true, data: FIXTURES['tx.registerAccount'](outdated.message.params) });
+    await settle();
+    ok('a late activation reply cannot overwrite a recipient typed afterwards',
+      /owner needs to activate it/i.test(textOf(route.el))
+        && !/Spending is active on this network/.test(textOf(route.el))
+        && buttons(route.el, /^review$/i)[0]?.disabled === true);
+  } finally {
+    for (const item of held) item.callback({ ok: false,
+      error: { code: 'NETWORK_ERROR', message: 'Test finished', retryable: true } });
+    route?.destroy();
+    route?.el.remove();
+    chrome.runtime.sendMessage = originalSendMessage;
+    FIXTURES['tx.getAccountInfo'] = originalInfo;
+  }
+  await settle();
+  ok('the recipient activation route tears down without orphan listeners', detachedListeners().length === 0);
+}
+
+async function historyCacheFirstTest() {
+  section('history: cached cards paint before RPC/pending; stale replies never cross contexts');
+  resetBackend(SCENARIOS[2]);
+  resetDom();
+  const alpha = { signature: 'ts_cached_alpha_aaaaaaaaaaaaaaaaaaaa', slot: '101',
+    success: true, kind: 'sent', programAddress: NETWORK_ALPHANET.transferProgramId,
+    amount: '1000000', counterparty: ADDRESS_B, timestamp: null };
+  const fresh = { ...alpha, signature: 'ts_fresh_alpha_bbbbbbbbbbbbbbbbbbbb', slot: '501', amount: '2000000' };
+  const testnet = { ...alpha, signature: 'ts_cached_testnet_cccccccccccccccc', slot: '202', amount: '3000000' };
+  const originalCache = FIXTURES['tx.getCachedHistory'];
+  const originalSendMessage = chrome.runtime.sendMessage;
+  const held = [];
+  FIXTURES['tx.getCachedHistory'] = ({ address } = {}) => ({
+    address, networkId: activeNetwork().id,
+    entries: [activeNetwork().id === 'alphanet' ? alpha : testnet],
+    nextCursor: 15, updatedAt: Date.now(),
+  });
+  chrome.runtime.sendMessage = (message, callback) => {
+    if (['tx.getHistoryFeed', 'tx.getPending', 'account.list'].includes(message?.method)) {
+      chromeLog.calls.push(message.method);
+      held.push({ message, callback });
+      return undefined;
+    }
+    return originalSendMessage(message, callback);
+  };
+  const reply = (method, data) => {
+    const index = held.findIndex((item) => item.message.method === method);
+    if (index < 0) throw new Error(`No held ${method} reply`);
+    held.splice(index, 1)[0].callback({ ok: true, data });
+  };
+  let route;
+  try {
+    route = HistoryRoute({ back() {} });
+    DOC.body.appendChild(route.el);
+    await settle();
+    ok('cached History draws a card while the live feed, labels and pending replies are held',
+      route.el.querySelectorAll('.tx-card').length === 1
+        && /Block 101/.test(textOf(route.el))
+        && chromeLog.calls.includes('tx.getHistoryFeed')
+        && held.some((item) => item.message.method === 'tx.getPending')
+        && held.some((item) => item.message.method === 'account.list'),
+      textOf(route.el).slice(0, 280));
+    ok('cached rows are labelled stale and cannot offer load-more until the feed revalidates',
+      /cached activity.*checking network/i.test(textOf(route.el))
+        && buttons(route.el, /load more/i).length === 0);
+    reply('tx.getHistoryFeed', { entries: [fresh], nextCursor: 15, synced: true });
+    await settle();
+    ok('fresh cards replace cached ones before pending reconciliation has responded',
+      /Block 501/.test(textOf(route.el)) && !/Block 101/.test(textOf(route.el))
+        && !/cached activity/i.test(textOf(route.el))
+        && held.some((item) => item.message.method === 'tx.getPending'));
+    reply('tx.getPending', []);
+    reply('account.list', backend.accounts.map((a) => ({ ...a })));
+    await settle();
+
+    emitEvent('pendingTxChanged', {});
+    await settle();
+    const failedIndex = held.findIndex((item) => item.message.method === 'tx.getHistoryFeed');
+    const rawCallsBefore = chromeLog.calls.filter((method) => method === 'tx.listHistory').length;
+    held.splice(failedIndex, 1)[0].callback({ ok: false,
+      error: { code: 'NETWORK_ERROR', message: 'RPC offline', retryable: true } });
+    await settle();
+    ok('a failed feed keeps cached cards and does not make a second raw RPC request',
+      /Block 101/.test(textOf(route.el)) && /cached activity.*could not sync/i.test(textOf(route.el))
+        && chromeLog.calls.filter((method) => method === 'tx.listHistory').length === rawCallsBefore);
+
+    // A further refresh is still awaiting the ALPHANET feed when another extension page
+    // switches networks. The old reply must not overwrite the NEW network's cached cards.
+    emitEvent('pendingTxChanged', {});
+    await settle();
+    ok('a second Alphanet feed is in flight before the switch',
+      held.some((item) => item.message.method === 'tx.getHistoryFeed'));
+    backend.activeNetworkId = 'testnet';
+    emitEvent('networkChanged', { id: 'testnet' });
+    await settle();
+    ok('switching networks paints only the new network\'s cached card',
+      /Block 202/.test(textOf(route.el)) && !/Block 101|Block 501/.test(textOf(route.el)),
+      textOf(route.el).slice(0, 270));
+    reply('tx.getHistoryFeed', { entries: [fresh], nextCursor: null, synced: true });
+    await settle();
+    ok('a late Alphanet feed is discarded instead of overwriting Testnet cache',
+      /Block 202/.test(textOf(route.el)) && !/Block 501/.test(textOf(route.el)));
+
+    // Detach while the Testnet feed is pending, then release it; it must not mutate a
+    // destroyed view or leave its TxCard/More listeners behind.
+    route.destroy();
+    route.el.remove();
+    const snapshot = textOf(route.el); // teardown may clear kit-owned button labels
+    reply('tx.getHistoryFeed', { entries: [fresh], nextCursor: null, synced: true });
+    await settle();
+    ok('navigation discards late feed replies and disposes cached card listeners',
+      textOf(route.el) === snapshot && detachedListeners().length === 0,
+      JSON.stringify(detachedListeners().slice(0, 3)));
+  } finally {
+    route?.destroy();
+    route?.el.remove();
+    for (const item of held) item.callback({ ok: false,
+      error: { code: 'NETWORK_ERROR', message: 'Test finished', retryable: true } });
+    chrome.runtime.sendMessage = originalSendMessage;
+    FIXTURES['tx.getCachedHistory'] = originalCache;
+  }
+}
+
+// ---- Audit: other consumers of tx.getBalances must not display its stale zero ---------
+
+async function offlineBalanceConsumersTest() {
+  section('balance consumers: offline batch placeholders are not verified zeros');
+  const original = Object.fromEntries(['tx.getAccountInfo', 'tx.getBalances',
+    'tx.getCachedBalances', 'account.list'].map((method) => [method, FIXTURES[method]]));
+  const offlineBatch = ({ addresses } = {}) => Object.fromEntries((addresses || []).map((addr) =>
+    [addr, { balance: '0', exists: false, fetchedAt: 0, stale: true, error: 'RPC offline' }]));
+  try {
+    resetBackend(SCENARIOS[2]);
+    resetDom();
+    FIXTURES['tx.getCachedBalances'] = () => ({});
+    FIXTURES['tx.getAccountInfo'] = () => { throw apiError('NETWORK_ERROR', 'RPC offline', true); };
+    FIXTURES['tx.getBalances'] = offlineBatch;
+    const dash = DashboardRoute({ navigate() {} });
+    DOC.body.appendChild(dash.el);
+    await settle();
+    const heroText = () => textOf(dash.el.querySelector('.dash-balance-hero'));
+    ok('Dashboard with no successful read says unavailable, not zero THRU or $0.00',
+      /Balance unavailable/.test(heroText())
+        && !/\b0 THRU\b|\$0\.00/.test(heroText()), heroText());
+    click(dash.el.querySelector('[title="Refresh balance"]'));
+    await settle();
+    ok('a forced refresh cannot turn an offline batch fallback into a fresh zero',
+      chromeLog.calls.includes('tx.getBalances')
+        && /Balance unavailable/.test(heroText())
+        && !/\b0 THRU\b|\$0\.00/.test(heroText()));
+    emitEvent('balanceChanged', offlineBatch({ addresses: [ADDRESS_A] }));
+    await settle();
+    ok('a background stale-balance event cannot overwrite the unknown state with zero',
+      /Balance unavailable/.test(heroText())
+        && !/\b0 THRU\b|\$0\.00/.test(heroText()));
+    dash.destroy();
+    dash.el.remove();
+
+    resetBackend(SCENARIOS[2]);
+    resetDom();
+    FIXTURES['account.list'] = () => backend.accounts.map((a) =>
+      ({ ...a, balance: null, balanceStale: true }));
+    const accountsRoute = AccountsRoute({ navigate() {}, back() {} });
+    DOC.body.appendChild(accountsRoute.el);
+    await settle();
+    ok('Accounts cannot paint offline, never-fetched addresses as 0 THRU',
+      chromeLog.calls.includes('tx.getBalances')
+        && !/\b0 THRU\b/.test(textOf(accountsRoute.el)), textOf(accountsRoute.el).slice(0, 240));
+    accountsRoute.destroy();
+    accountsRoute.el.remove();
+    ok('audited balance screens tear down without listeners on detached nodes',
+      detachedListeners().length === 0, JSON.stringify(detachedListeners().slice(0, 3)));
+  } finally {
+    Object.assign(FIXTURES, original);
+  }
+}
+
 // ---- Run -------------------------------------------------------------------
 
 const startedAt = Date.now();
@@ -3604,6 +4223,10 @@ try {
   await passwordModalTest();
   await exportSecretTest();
   await navigationTest();
+  await progressiveSendTest();
+  await ownRecipientRegistrationTest();
+  await historyCacheFirstTest();
+  await offlineBalanceConsumersTest();
   await panelExclusionTest();
   negativeControls();
 } finally {

@@ -12,6 +12,7 @@
 //   PER-NETWORK (scope the key)
 //     balance cache        a balance on devnet says nothing about mainnet
 //     pending transactions a signature exists on exactly one chain
+//     imported token registry  records carry a networkId inside global prefs (legacy = alphanet)
 //     token registry       a mint address on devnet does not exist on mainnet
 //     deployed tokens      same
 //

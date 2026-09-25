@@ -14,32 +14,37 @@ const ADDRESS = 'taTHRU1234567890abcdefABCDEF1234567890abcdef1234';
 
 function fakeCtx({ roundRect = true } = {}) {
   const calls = {
-    fillRect: [], fillStyleValues: [], roundRect: 0, gradients: [],
-    shadows: [],
+    fillRect: [], fillStyleValues: [], roundRect: 0, fills: [], gradients: [],
+    saves: 0, restores: 0,
   };
+  const saved = [];
+  const state = (ctx) => ({
+    fillStyle: ctx.fillStyle, shadowColor: ctx.shadowColor, shadowBlur: ctx.shadowBlur,
+    shadowOffsetX: ctx.shadowOffsetX, shadowOffsetY: ctx.shadowOffsetY,
+  });
   const ctx = {
     fillStyle: '',
     shadowColor: '',
     shadowBlur: 0,
     shadowOffsetX: 0,
     shadowOffsetY: 0,
-    save() {},
-    restore() {},
-    beginPath() {},
-    fill() {},
+    save() { calls.saves++; saved.push(state(this)); },
+    restore() {
+      calls.restores++;
+      if (!saved.length) throw new Error('Canvas restore() without save()');
+      Object.assign(this, saved.pop());
+    },
+    beginPath() { this.pathRounded = false; },
+    fill() { calls.fills.push({ ...state(this), rounded: this.pathRounded }); },
     fillRect(...a) { calls.fillRect.push(a); calls.fillStyleValues.push(this.fillStyle); },
     createLinearGradient(...a) {
       const stops = [];
       const g = { addColorStop: (at, color) => stops.push([at, color]) };
-      calls.gradients.push({ args: a, stops });
+      calls.gradients.push({ args: a, stops, gradient: g });
       return g;
     },
   };
-  if (roundRect) ctx.roundRect = () => { calls.roundRect++; };
-  // fillStyle is a plain property; record shadows whenever modules are drawn
-  // (fill/roundRect happen under the current shadow settings).
-  const desc = Object.getOwnPropertyDescriptor(ctx, 'fillStyle');
-  void desc;
+  if (roundRect) ctx.roundRect = () => { calls.roundRect++; ctx.pathRounded = true; };
   return { ctx, calls };
 }
 
@@ -64,8 +69,18 @@ function fakeCanvas(ctxWrap) {
     `the gradient ramps from scarlet (${THRU_QR.redHi}) to maroon (${THRU_QR.redLo})`);
   ok(w.calls.gradients[0].args.join(',') === '0,0,0,200', 'the gradient runs top-to-bottom across the QR');
   ok(w.calls.roundRect > 300, `rounded "worm" modules are drawn (${w.calls.roundRect} rounded rects)`);
-  ok(w.ctx.shadowBlur > 0 && w.ctx.shadowOffsetY > 0,
-    'raised tiles carry a soft shadow for depth');
+  const raisedModules = w.calls.fills.filter((draw) => draw.rounded
+    && draw.fillStyle === w.calls.gradients[0].gradient);
+  ok(raisedModules.length > 300 && raisedModules.every((draw) => draw.shadowBlur > 0
+    && draw.shadowOffsetY > 0 && draw.shadowColor === 'rgba(44, 56, 62, 0.28)'),
+    'every raised module is actually drawn with a soft slate shadow');
+  ok(w.calls.fills.filter((draw) => draw.fillStyle === THRU_QR.paper).length === 3
+    && w.calls.fills.filter((draw) => draw.fillStyle === THRU_QR.paper)
+      .every((draw) => draw.shadowColor === 'rgba(0, 0, 0, 0)'),
+    'finder-eye paper rings are drawn without shadow');
+  ok(w.calls.saves === 1 && w.calls.restores === 1 && w.ctx.shadowColor === ''
+    && w.ctx.shadowBlur === 0 && w.ctx.shadowOffsetY === 0 && w.ctx.fillStyle === THRU_QR.paper,
+    'the renderer restores canvas state after drawing');
 
   // Contrast: WCAG relative-luminance ratio of both gradient ends vs paper must
   // stay scanner-sane (QR readers need far less than text, but keep >= 3:1 anyway).

@@ -2,11 +2,12 @@
 
 import * as vault from '../../lib/vault.js';
 import * as thruClient from '../../lib/thru-client.js';
-import { getActiveNetworkConfig } from './network-service.js';
+import { getActiveNetworkConfig, getActiveNetworkId } from './network-service.js';
 import { assertWhitelisted } from './preferences-service.js';
 import * as pending from './pending-tx-service.js';
 import * as balances from './balance-service.js';
 import * as tokenService from './token-service.js';
+import { assertSendContext } from './send-context.js';
 
 /**
  * Fetch on-chain balance and status for an address.
@@ -14,7 +15,14 @@ import * as tokenService from './token-service.js';
  * @param {string} address
  */
 export async function getAccountInfo(address) {
+  const network = await getActiveNetworkConfig();
   const info = await thruClient.getAccountInfo(address);
+  if (await getActiveNetworkId() !== network.id) {
+    const error = new Error('The network changed while the account was loading. Retry.');
+    error.code = 'NETWORK_CHANGED';
+    error.retryable = true;
+    throw error;
+  }
   return {
     exists: info.exists,
     balance: info.balance.toString(),
@@ -84,7 +92,7 @@ export async function claimFaucet(amountUnits) {
  * @param {string} toAddress
  * @param {string|number|bigint} amountUnits
  */
-export async function sendTransfer(toAddress, amountUnits) {
+export async function sendTransfer(toAddress, amountUnits, expected = null) {
   const target = String(toAddress || '').trim();
   if (!thruClient.isValidThruAddress(target)) {
     throw new Error('That does not look like a valid Thru address.');
@@ -101,52 +109,74 @@ export async function sendTransfer(toAddress, amountUnits) {
   }
 
   const feePayer = await vault.getActiveAccount();
+  // Bind the client BEFORE querying/signing. A direct checked request after a worker restart
+  // must not silently use the thru-client module's default Alphanet binding on localnet.
+  const network = await getActiveNetworkConfig();
+  await assertSendContext(expected, feePayer);
   if (feePayer.address === target) {
     throw new Error("That's the address you're sending from.");
   }
 
-  await assertWhitelisted(target);
+  const release = pending.beginTransfer({ networkId: network.id, from: feePayer.address,
+    to: target, amountUnits: rawUnits.toString() });
+  try {
+    await assertWhitelisted(target);
 
-  if (await pending.isProbableDuplicate({
-    from: feePayer.address,
-    to: target,
-    amountUnits: rawUnits.toString(),
-  })) {
-    const err = new Error('An identical transfer was just submitted. Check Activity before sending again.');
-    err.code = 'DUPLICATE_SUBMISSION';
-    throw err;
+    if (await pending.isProbableDuplicate({
+      from: feePayer.address,
+      to: target,
+      amountUnits: rawUnits.toString(),
+    })) {
+      const err = new Error('An identical transfer was just submitted. Check Activity before sending again.');
+      err.code = 'DUPLICATE_SUBMISSION';
+      throw err;
+    }
+
+    // VERIFIED ON ALPHANET 2026-08-18: the transfer program requires the RECIPIENT account to
+    // already exist on-chain. Sending to a never-registered address reverts with vmError=-765,
+    // which five different instruction layouts all produced identically — the byte layout was
+    // never the problem. The sender cannot register someone else's account (createOnChainAccount
+    // signs as the account being created), so this cannot be fixed transparently. It has to be
+    // reported clearly instead of surfacing a raw VM error code.
+    const recipientInfo = await thruClient.getAccountInfo(target);
+    if (!recipientInfo.exists) {
+      const err = new Error(
+        'That address has never been used on this network, so it cannot receive a transfer yet. '
+        + 'The recipient needs to activate it first.',
+      );
+      err.code = 'RECIPIENT_NOT_ACTIVATED';
+      throw err;
+    }
+
+    // Recipient lookup can take seconds. Refuse a stale review if another extension page
+    // changed the source or chain while this RPC was in flight.
+    await assertSendContext(expected, await vault.getActiveAccount());
+    const result = normalizeTxResult(await thruClient.sendTransfer(feePayer, target, rawUnits));
+
+    await pending.track({
+      signature: result.signature,
+      kind: 'transfer',
+      from: feePayer.address,
+      to: target,
+      amountUnits: rawUnits.toString(),
+      networkId: network.id,
+    });
+    // The chain has already returned a signature. Do not hold the signing response behind
+    // another RPC just to repaint a balance: an offline balance node could otherwise make a
+    // completed send hit the bridge timeout and look like an unknown submission.
+    void (async () => {
+      if (await getActiveNetworkId() === network.id) await balances.getBalances([feePayer.address]);
+    })().catch(() => {});
+
+    return result;
+  } finally {
+    release();
   }
+}
 
-  // VERIFIED ON ALPHANET 2026-08-18: the transfer program requires the RECIPIENT account to
-  // already exist on-chain. Sending to a never-registered address reverts with vmError=-765,
-  // which five different instruction layouts all produced identically — the byte layout was
-  // never the problem. The sender cannot register someone else's account (createOnChainAccount
-  // signs as the account being created), so this cannot be fixed transparently. It has to be
-  // reported clearly instead of surfacing a raw VM error code.
-  const recipientInfo = await thruClient.getAccountInfo(target);
-  if (!recipientInfo.exists) {
-    const err = new Error(
-      'That address has never been used on this network, so it cannot receive a transfer yet. '
-      + 'The recipient needs to activate it first.',
-    );
-    err.code = 'RECIPIENT_NOT_ACTIVATED';
-    throw err;
-  }
-
-  const result = normalizeTxResult(await thruClient.sendTransfer(feePayer, target, rawUnits));
-  const network = await getActiveNetworkConfig();
-
-  await pending.track({
-    signature: result.signature,
-    kind: 'transfer',
-    from: feePayer.address,
-    to: target,
-    amountUnits: rawUnits.toString(),
-    networkId: network.id,
-  });
-  await balances.getBalances([feePayer.address]);
-
-  return result;
+/** Contract v11: same transfer, but bound to the account and network the user reviewed. */
+export function sendTransferChecked({ toAddress, amountUnits, fromAddress, networkId } = {}) {
+  return sendTransfer(toAddress, amountUnits, { fromAddress, networkId });
 }
 
 /**
@@ -219,18 +249,26 @@ async function resolveTokenHistory(entries, viewerAddress) {
  * later without changing this method's shape.
  *
  * @param {string} address
- * @param {number|{ limit?: number, cursor?: number }} [pageSizeOrOptions=15]
+ * @param {number|{ limit?: number, cursor?: number, skipBlockTimes?: boolean }} [pageSizeOrOptions=15]
+ *   skipBlockTimes is internal to history-service's first-page merge; not exposed by the router.
  */
 export async function listHistory(address, pageSizeOrOptions = 15) {
-  const options = typeof pageSizeOrOptions === 'object' && pageSizeOrOptions !== null
-    ? pageSizeOrOptions
-    : { limit: pageSizeOrOptions };
+  const network = await getActiveNetworkConfig(); // bind before even the raw list RPC
+  const paged = typeof pageSizeOrOptions === 'object' && pageSizeOrOptions !== null;
+  const options = paged ? pageSizeOrOptions : { limit: pageSizeOrOptions };
 
   const limit = Math.min(100, Math.max(1, Math.floor(Number(options.limit) || 15)));
   const cursor = Math.max(0, Math.floor(Number(options.cursor) || 0));
+  const assertNetwork = async () => {
+    if ((await getActiveNetworkId()) === network.id) return;
+    const error = new Error('The network changed while fetching history. Retry on the new network.');
+    error.code = 'NETWORK_CHANGED';
+    throw error;
+  };
 
   // Over-fetch by the cursor so a page beyond the first still has rows to slice.
   const entries = await thruClient.listAccountHistory(address, limit + cursor);
+  await assertNetwork();
   const serialized = entries.map((entry) => ({
     signature: entry.signature ? String(entry.signature) : null,
     slot: entry.slot != null ? String(entry.slot) : null,
@@ -253,6 +291,33 @@ export async function listHistory(address, pageSizeOrOptions = 15) {
 
   const page = serialized.slice(cursor, cursor + limit);
   const nextCursor = serialized.length > cursor + limit ? cursor + limit : null;
+
+  // The first-page feed does its own cache-aware timestamp merge. Direct paginated reads
+  // (History's Load more and its legacy fallback) also deserve block-derived dates, but
+  // must NOT fetch headers for all `limit + cursor` records — just the displayed page.
+  // Keep the old positional array API untouched and let it avoid the extra network calls.
+  if (paged && !options.skipBlockTimes) {
+    const slots = [...new Set(page.filter((e) => e.slot != null).map((e) => e.slot))];
+    const blockTimes = new Map();
+    // Cap simultaneous header requests even when a caller asks for a 100-row page.
+    for (let i = 0; i < slots.length; i += 8) {
+      await Promise.all(slots.slice(i, i + 8).map(async (slot) => {
+        const ms = await thruClient.getBlockTimeMs(slot, network.id).catch(() => null);
+        if (ms !== null) blockTimes.set(slot, ms);
+      }));
+      await assertNetwork();
+    }
+    for (const entry of page) {
+      const ms = blockTimes.get(entry.slot);
+      if (ms != null) {
+        entry.timestamp = ms;
+        entry.timestampSource = 'block';
+      } else {
+        entry.timestamp = null; // no local clock guesses for an arbitrary loaded page
+      }
+    }
+  }
+  await assertNetwork();
 
   // Callers using the old positional form get a plain array, exactly as before.
   if (typeof pageSizeOrOptions !== 'object' || pageSizeOrOptions === null) {
@@ -379,6 +444,7 @@ export async function checkNetworkHealth() {
  */
 export async function autoCreateAccount() {
   const feePayer = await vault.getActiveAccount();
+  await getActiveNetworkConfig(); // a cold worker must not sign against the default network
   const result = normalizeTxResult(await thruClient.createOnChainAccount(feePayer));
   await balances.getBalances([feePayer.address]);
   return result;

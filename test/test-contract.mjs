@@ -10,9 +10,10 @@
 // where token-service.js sent `symbol`/`imageUrl` while thru-client.js destructured
 // `ticker`/`imageUri`.
 //
-// Run: node test-contract.mjs
+// Run: node test/test-contract.mjs
 
 import { readFileSync, readdirSync } from 'node:fs';
+import { transform } from 'esbuild';
 
 // api-router.js imports service modules that touch `chrome`, so stub enough of the API to
 // let the module graph load. No handler is invoked here; only the shape is inspected.
@@ -55,6 +56,7 @@ ok('contract v7 documents the custom-network quarantine break', CONTRACT_VERSION
 ok('contract v8 documents the token-transfer addition', CONTRACT_VERSION >= 8);
 ok('contract v9 documents the history-feed cache addition', CONTRACT_VERSION >= 9);
 ok('contract v10 documents the transaction-detail addition', CONTRACT_VERSION >= 10);
+ok('contract v11 pins a reviewed send to a source account and network', CONTRACT_VERSION >= 11);
 
 // Contract v10 invariants. tx.getDetail is a read, so it must NOT have acquired an auth
 // gate it does not need — but more importantly its declared return shape must keep saying
@@ -89,6 +91,33 @@ ok('contract v10 documents the transaction-detail addition', CONTRACT_VERSION >=
     ['mintAddress', 'toAddress', 'amountUnits', 'password'].every((p) => transfer.params.includes(p)),
     (transfer?.params || []).join(','));
 }
+
+section('Contract v11 checked signing context');
+for (const [method, legacy] of [
+  ['tx.sendChecked', 'tx.send'],
+  ['token.transferChecked', 'token.transfer'],
+]) {
+  const spec = METHODS[method];
+  ok(`${method} is additive and remains signing-gated`,
+    spec?.since === 11 && spec?.auth === 'signing' && METHODS[legacy]?.auth === 'signing');
+  ok(`${method} requires the reviewed account, network and all legacy send params`,
+    ['fromAddress', 'networkId', ...METHODS[legacy].params]
+      .every((param) => spec?.params.includes(param)), JSON.stringify(spec?.params));
+}
+
+section('Contract v12 creation-bound registration and cache-first history');
+ok('the additive contract advances to v12 without reusing v11', CONTRACT_VERSION === 12);
+const register = METHODS['tx.registerAccount'];
+ok('tx.registerAccount is unlocked-only, explicitly targets an address, and has no password field',
+  register?.since === 12 && register?.auth === 'unlocked'
+    && JSON.stringify(register?.params) === JSON.stringify(['address']));
+const cachedHistory = METHODS['tx.getCachedHistory'];
+ok('tx.getCachedHistory is a read-only, no-auth, address-scoped method',
+  cachedHistory?.since === 12 && cachedHistory?.auth === 'none'
+    && JSON.stringify(cachedHistory?.params) === JSON.stringify(['address']));
+ok('legacy tx.autoCreateAccount remains signing-gated and unchanged',
+  METHODS['tx.autoCreateAccount']?.auth === 'signing'
+    && JSON.stringify(METHODS['tx.autoCreateAccount']?.params) === JSON.stringify(['password']));
 
 section('Contract and router agree in both directions');
 
@@ -248,6 +277,7 @@ for (const code of [
   'AUTH_REQUIRED',
   'AUTH_LOCKED_OUT',
   'CUSTOM_NETWORK_DISABLED',
+  'SEND_CONTEXT_CHANGED',
 ]) {
   ok(`${code} is documented`, typeof ERROR_CODES[code] === 'string');
 }
@@ -257,58 +287,77 @@ section('The UI only calls methods that exist');
 // Scan UI source for bridge.send('...') literals and confirm each is declared. A typo or a
 // stale call site fails here instead of at runtime in front of a user.
 //
-// The route directory is walked rather than listed, because a hand-maintained list silently
-// stops covering new files — which is exactly how a phantom 'wallet.generateMnemonic' call
-// reached a finished route before this walk existed.
+// Walk ALL of the existing UI/popup trees; stale, hand-maintained paths had left new
+// components unchecked (and silently swallowed missing files).
 function walkJs(dir, out = []) {
-  let entries;
-  try {
-    entries = readdirSync(dir, { withFileTypes: true });
-  } catch {
-    return out;
-  }
-  for (const entry of entries) {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const full = `${dir}/${entry.name}`;
-    if (entry.isDirectory()) walkJs(full, out);
-    else if (entry.name.endsWith('.js')) out.push(full);
+    if (entry.isDirectory() && entry.name !== 'vendor') walkJs(full, out);
+    else if (entry.isFile() && entry.name.endsWith('.js')) out.push(full);
   }
   return out;
 }
 
-const UI_FILES = [
-  'src/popup/popup.js',
-  'src/desktop/desktop.js',
-  'src/ui/bridge.js',
-  ...walkJs('src/ui/app'),
-  ...walkJs('src/ui/components'),
-  ...walkJs('src/ui/domain'),
-  ...walkJs('src/features'),
-];
+const UI_FILES = [...walkJs('src/ui'), ...walkJs('src/popup')];
+// Do not require a valid-looking namespace.method here: a typo like 'tx.send_cheked'
+// would have been ignored by the old regex, even though bridge.send rejects it at runtime.
+const literalCallRe = /\b(?:bridge\s*\.\s*)?send\s*\(\s*(['"])([^'"]*)\1/g;
+async function withoutComments(source) {
+  const result = await transform(source, {
+    loader: 'js', target: 'esnext', supported: { 'template-literal': false }, logLevel: 'silent',
+  });
+  return result.code;
+}
+function literalMethods(source) {
+  // Match against the transformed code, but accept a match only if it STARTS in code,
+  // not inside an explanatory string such as "bridge.send('fake.method')". Keep the
+  // original source for capturing the quoted method argument.
+  const codeOnly = source.replace(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/g,
+    (literal) => ' '.repeat(literal.length));
+  return [...source.matchAll(literalCallRe)]
+    .filter((match) => codeOnly[match.index] !== ' ')
+    .map((match) => match[2]);
+}
+const probeCalls = literalMethods(await withoutComments([
+  '// bridge.send("fake.comment")',
+  'const note = "bridge.send(\'fake.string\')";',
+  'bridge.send("tx.send_cheked");',
+  'send("notAMethod");',
+].join('\n')));
+ok('the UI method scanner includes malformed literals but ignores comments and strings',
+  JSON.stringify(probeCalls) === JSON.stringify(['tx.send_cheked', 'notAMethod']));
 
 const called = new Set();
 const callSites = new Map();
 for (const file of UI_FILES) {
-  let source;
-  try {
-    source = readFileSync(file, 'utf8');
-  } catch {
-    continue;
-  }
-  const re = /(?:bridge\.)?send\s*\(\s*['"]([a-z]+\.[a-zA-Z]+)['"]/g;
-  let m;
-  while ((m = re.exec(source)) !== null) {
-    called.add(m[1]);
-    if (!callSites.has(m[1])) callSites.set(m[1], file);
+  const source = await withoutComments(readFileSync(file, 'utf8'));
+  for (const method of literalMethods(source)) {
+    called.add(method);
+    if (!callSites.has(method)) callSites.set(method, file);
   }
 }
 const phantom = [...called].filter((m) => !declared.has(m));
 ok(
   `all ${called.size} bridge calls across ${UI_FILES.length} UI files are declared`,
-  phantom.length === 0,
+  UI_FILES.length > 0 && called.size > 0 && phantom.length === 0,
   phantom.length
     ? phantom.map((m) => `${m} (called from ${callSites.get(m)})`).join('\n         ')
-    : '',
+    : `Found ${UI_FILES.length} UI files and ${called.size} literal bridge calls.`,
 );
+
+section('Every checked-in test runs in npm test');
+const testFiles = readdirSync('test').filter((name) => /^test-.*\.mjs$/.test(name))
+  .map((name) => `test/${name}`).sort();
+const testScript = JSON.parse(readFileSync('package.json', 'utf8')).scripts.test;
+const wiredTests = [...testScript.matchAll(/(?:^|&&)\s*node\s+(test\/test-[\w-]+\.mjs)(?=\s*(?:&&|$))/g)]
+  .map((match) => match[1]);
+const missingTests = testFiles.filter((file) => !wiredTests.includes(file));
+const extraTests = wiredTests.filter((file) => !testFiles.includes(file));
+const duplicateTests = wiredTests.filter((file, index) => wiredTests.indexOf(file) !== index);
+ok('npm test includes every test/test-*.mjs exactly once and no deleted test',
+  testFiles.length > 0 && missingTests.length === 0 && extraTests.length === 0
+    && duplicateTests.length === 0,
+  `Missing: ${missingTests.join(', ') || 'none'}; stale: ${extraTests.join(', ') || 'none'}; duplicate: ${duplicateTests.join(', ') || 'none'}`);
 
 console.log(`\n${failures === 0 ? 'All' : ''} contract checks: ${checks - failures}/${checks} passed.`);
 if (failures > 0) {

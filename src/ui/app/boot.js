@@ -145,14 +145,19 @@ export const POPUP_ROUTES = [
  * @returns {Promise<Router|null>}
  */
 export async function boot({ root, legacyFallback, onMigratedRoute } = {}) {
-  // Theme first: any first paint that already honours [data-theme] avoids a light->dark
-  // flash on open. Pure popup-local state — see popup/theme.js.
-  await initTheme().catch(() => {});
   const mount = root || document.getElementById('app');
   if (!mount) {
     console.error('[boot] no #app mount point; leaving the legacy UI in place.');
     return null;
   }
+
+  // Register BEFORE the first await (including theme storage), not after the
+  // background bootstrap. Otherwise a popup can broadcast while a newly opened
+  // panel is still waiting to install its listener, and the close is lost.
+  installSidePanelExclusion();
+
+  // Theme before first paint: no light->dark flash on open.
+  await initTheme().catch(() => {});
 
   const known = new Set(POPUP_ROUTES.map((r) => r.path));
 
@@ -175,11 +180,6 @@ export async function boot({ root, legacyFallback, onMigratedRoute } = {}) {
     navigate: (path, options) => router.navigate(path, options),
   });
   mount.appendChild(shell.el);
-
-  // Popup <-> side panel mutual exclusion (see side-panel-exclusion.js): the same
-  // popup.html runs in both surfaces, so the module self-detects. As the popup it
-  // broadcasts the close signal to any open panel; as the panel it only listens.
-  installSidePanelExclusion();
 
   const router = new Router({
     routes: POPUP_ROUTES,

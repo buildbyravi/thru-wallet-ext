@@ -92,7 +92,8 @@ Purpose: single map for every maintained Markdown document in this repository. U
 | `docs/MCP_AGENT_INTEGRATION.md` | current | local MCP companion safety model | New planning doc; no MCP code shipped yet. |
 | `docs/LAUNCHPAD_DEX_MIGRATION_UX.md` | research only | Launchpad-to-DEX migration, charts, market UX | Retained after the launchpad quarantine. Design study; no DEX, chart or market code ships. |
 | `docs/MIGRATION_MAP.md` | current strategy/risk register | Rabby-class migration strategy | Some older research context remains; defer to `MODULE_BOUNDARIES.md` for feature separation. |
-| `docs/AUDIT_REPORT.md` | current audit record | security findings/remediation state | Keep separate from `DEFECT_LOG`: audit findings vs historical defect lessons. |
+| `docs/AUDIT_REPORT.md` | historical audit + current link | security findings/remediation state | Historical counts/defaults are superseded by the 2026-09-24 Send-path audit linked at the top. |
+| `docs/SEND_PATH_AUDIT.md` | current focused audit | Send performance, UI–bridge–worker integration, adjacent balance honesty, residual risks | Deterministic tests only; browser/live-network validation remains manual. |
 | `docs/DEFECT_LOG.md` | current historical lessons | root causes and guardrails | Historical defects can mention deleted code, but current-state claims must point to `STATUS`. |
 | `docs/BACKEND_GAPS.md` | current capability gaps | backend missing pieces and verified unsupported states | Keep capability-focused; do not duplicate roadmap details. |
 | `docs/HISTORY_REDESIGN_PLAN.md` | current phase plan | Activity/history redesign (P0–P3) and its honest omissions | Status line at the top wins on which phases have shipped. |

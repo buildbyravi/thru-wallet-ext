@@ -23,24 +23,19 @@ import { formatThru, formatTokenAmount, truncateAddress } from '../../shared/for
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-/** Relative time for the card head: minutes/hours while young, then date+time.
- *  Wire entries carry no wall-clock time, so their head falls back to the block number —
- *  "Block", matching Thru Explorer (scan.thru.org) terminology. */
+/** Formatted time for the card head: YYYY/MM/DD HH:mm like Rabby, falling back to Block <slot>. */
 export function relTime(ts, slot) {
   const t = Number(ts);
-  if (!Number.isFinite(t) || t <= 0) {
-    return slot != null ? `Block ${slot}` : '';
+  if (Number.isFinite(t) && t > 0 && Number.isFinite(new Date(t).getTime())) {
+    const d = new Date(t);
+    const YYYY = d.getFullYear();
+    const MM = String(d.getMonth() + 1).padStart(2, '0');
+    const DD = String(d.getDate()).padStart(2, '0');
+    const HH = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    return `${YYYY}/${MM}/${DD} ${HH}:${mm}`;
   }
-  const age = Date.now() - t;
-  if (age < 0) return 'just now';
-  const mins = Math.floor(age / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ${mins % 60}m ago`;
-  const d = new Date(t);
-  const hhmm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-  return `${d.getDate()} ${MONTHS[d.getMonth()]} ${hhmm}`;
+  return slot != null ? `Block ${slot}` : '';
 }
 
 /** Stable day key for sectioning: local-calendar day, not a rolling 24h window. */
