@@ -94,8 +94,10 @@ section('A fixed mnemonic derives fixed addresses');
 const seed = MnemonicGenerator.toSeed(VECTORS.phrase);
 ok('the reference phrase is accepted as valid', Boolean(seed));
 
+const derived = [];
 for (const expected of VECTORS.hd) {
   const account = await ThruHDWallet.getAccount(seed, expected.index);
+  derived.push(account);
   ok(
     `HD index ${expected.index} derives ${expected.address.slice(0, 12)}…`,
     account.address === expected.address,
@@ -107,10 +109,10 @@ for (const expected of VECTORS.hd) {
 section('Derivation is deterministic and index-sensitive');
 
 const again = await ThruHDWallet.getAccount(MnemonicGenerator.toSeed(VECTORS.phrase), 0);
-ok('re-deriving the same index yields the same address', again.address === VECTORS.hd[0].address);
+ok('re-deriving the same index yields the same address', again.address === derived[0].address);
 ok(
   'different indices yield different addresses',
-  new Set(VECTORS.hd.map((h) => h.address)).size === VECTORS.hd.length,
+  new Set(derived.map((account) => account.address)).size === derived.length,
 );
 
 section('A fixed private key derives a fixed address');
@@ -126,11 +128,11 @@ ok(
 
 section('Address format is stable');
 
-for (const expected of VECTORS.hd) {
+for (const [i, expected] of VECTORS.hd.entries()) {
   ok(
     `index ${expected.index} address keeps the ta-prefixed base64url shape`,
-    /^ta[A-Za-z0-9_-]{40,}$/.test(expected.address),
-    `got ${expected.address}`,
+    /^ta[A-Za-z0-9_-]{40,}$/.test(derived[i].address),
+    `got ${derived[i].address}`,
   );
 }
 

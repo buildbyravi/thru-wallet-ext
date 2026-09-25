@@ -670,10 +670,15 @@ in one commit.
 7. `test-route-lifecycle.mjs` — every registered route mounts through the real Router, guards and
    bridge (only `chrome.runtime.sendMessage` is mocked) in locked / unlocked / no-vault states, and
    asserts secret hygiene, listener teardown, focus trapping and the side-panel action
-8. grep gates — no `innerHTML =` in UI dirs; no `chrome.runtime.sendMessage` outside the bridge
+8. source gates — no HTML-injection sinks in shipped `src/`; only the UI bridge and the
+   background event service may call `chrome.runtime.sendMessage`
 
-Note: `test-auto-sponsor.mjs` exists but is absent from `package.json`'s test script. Either wire it
-in or delete it.
+`test-auto-sponsor.mjs` was deleted: it was omitted from `npm test`, could submit real
+transactions when run manually, and caught failures without a nonzero exit code. The
+self-signed registration invariants are now covered offline by `test-registration.mjs`;
+actual chain submission still requires deliberate manual verification with a throwaway
+wallet (see `MANUAL_SMOKE_CHECKLIST.md`). Every file under `test/test-*.mjs` must run in
+`npm test`—`test-contract.mjs` checks this.
 
 Protect with tests before any major refactor: mnemonic generation · seed derivation · private-key
 import · account switching · export authorization · encryption · decrypt/re-encrypt cycle ·

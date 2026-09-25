@@ -39,6 +39,7 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join, relative, sep } from 'node:path';
+import { transform } from 'esbuild';
 
 const ROOT = process.cwd();
 
@@ -365,10 +366,27 @@ ok(
 
 section('Zero HTML-injection sinks in all of src/ (not just src/ui/)');
 
-const DOM_SINK_RE = /\.(innerHTML|outerHTML)\s*=|insertAdjacentHTML\s*\(|document\s*\.\s*write\s*\(/;
+const DOM_SINK_RE = /\.(innerHTML|outerHTML)\s*(?:[+\-*/%&|^]|\?\?|\|\||&&)?=(?!=)|insertAdjacentHTML\s*(?:\?\.)?\s*\(|document\s*\??\.\s*write(?:ln)?\s*(?:\?\.)?\s*\(/;
+// `${el.innerHTML = value}` executes even inside a nested template. Lower templates and
+// canonicalize static bracket properties before masking strings/comments; a literal string
+// containing `.innerHTML =` must still not count as code.
+async function executableSource(source) {
+  const { code } = await transform(source, {
+    loader: 'js', target: 'esnext', supported: { 'template-literal': false },
+    minifySyntax: true, logLevel: 'silent',
+  });
+  return stripCommentsAndStrings(code);
+}
+ok('the source scanner sees executable interpolations and bracket sinks, not literal text',
+  DOM_SINK_RE.test(await executableSource('const x = `a ${`b ${el.innerHTML = value}`}`;'))
+  && DOM_SINK_RE.test(await executableSource('el["innerHTML"] += value;'))
+  && DOM_SINK_RE.test(await executableSource('el.outerHTML ||= value;'))
+  && DOM_SINK_RE.test(await executableSource('document?.writeln(value);'))
+  && !DOM_SINK_RE.test(await executableSource('const same = el.innerHTML === value;'))
+  && !DOM_SINK_RE.test(await executableSource('const x = `.innerHTML =` /* el.innerHTML = */;')));
 const sinks = [];
 for (const file of SHIPPED_JS) {
-  const text = stripCommentsAndStrings(readFileSync(file, 'utf8'));
+  const text = await executableSource(readFileSync(file, 'utf8'));
   text.split('\n').forEach((line, i) => {
     if (DOM_SINK_RE.test(line)) sinks.push(`${file}:${i + 1}  ${line.trim().slice(0, 110)}`);
   });
@@ -386,6 +404,13 @@ ok(
 section('dist/ contains no launchpad code');
 
 const skipBuild = process.env.QUARANTINE_SKIP_BUILD === '1';
+// Esbuild emits warnings to stderr, not stdout. Checking stdout alone made the old
+// "no CSS/JS warnings" assertion pass even when the build warned about broken CSS.
+const hasBuildWarning = ({ stdout = '', stderr = '' }) => /\[WARNING\]/i.test(`${stdout}\n${stderr}`);
+ok('the warning detector catches stderr (esbuild) and stdout without matching clean logs',
+  hasBuildWarning({ stderr: '▲ [WARNING] broken CSS' })
+    && hasBuildWarning({ stdout: '[WARNING] bad JS' })
+    && !hasBuildWarning({ stderr: '⚡ Done in 9ms' }));
 if (skipBuild) {
   console.log('  note - QUARANTINE_SKIP_BUILD=1: asserting against the existing dist/ instead of rebuilding.');
   ok('dist/ exists to assert against', existsSync('dist'));
@@ -394,8 +419,9 @@ if (skipBuild) {
   // quarantine would otherwise be inspected, and the whole point is to prove what the CURRENT
   // source produces. build.mjs wipes dist/ first, so a removed entry point cannot linger.
   const built = spawnSync(process.execPath, ['build.mjs'], { cwd: ROOT, encoding: 'utf8' });
-  ok('npm run build succeeds', built.status === 0, (built.stderr || built.stdout || '').slice(-1200));
-  ok('the build reports no CSS/JS warning', !/▲\s*\[WARNING\]/.test(built.stdout || ''), (built.stdout || '').slice(-800));
+  ok('npm run build succeeds', built.status === 0, `${built.stdout || ''}\n${built.stderr || ''}`.slice(-1200));
+  ok('the build reports no CSS/JS warning', !hasBuildWarning(built),
+    `${built.stdout || ''}\n${built.stderr || ''}`.slice(-800));
 }
 
 if (existsSync('dist')) {

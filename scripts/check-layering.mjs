@@ -7,6 +7,7 @@
 
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
+import { build as analyzeImports, transform } from 'esbuild';
 
 const ROOT = process.cwd();
 const SRC = join(ROOT, 'src');
@@ -29,19 +30,6 @@ function walk(dir, out = []) {
 /** Normalize a path to forward-slash relative form for stable matching and output. */
 function rel(file) {
   return relative(ROOT, file).split(sep).join('/');
-}
-
-/** Extract import/export-from specifiers and dynamic import() targets. */
-function importsOf(source) {
-  const specifiers = [];
-  const staticRe = /(?:^|\n)\s*(?:import|export)[\s\S]*?from\s*['"]([^'"]+)['"]/g;
-  const bareRe = /(?:^|\n)\s*import\s*['"]([^'"]+)['"]/g;
-  const dynamicRe = /\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
-  for (const re of [staticRe, bareRe, dynamicRe]) {
-    let m;
-    while ((m = re.exec(source)) !== null) specifiers.push(m[1]);
-  }
-  return specifiers;
 }
 
 const RULES = [
@@ -90,25 +78,78 @@ const SEND_MESSAGE_ALLOWLIST = new Set([
   'src/ui/app/bridge.js',
   'src/background/services/event-service.js',
 ]);
+const SEND_MESSAGE_RE = /chrome\s*\??\.\s*runtime\s*\??\.\s*sendMessage/;
 
 const violations = [];
 const files = walk(SRC);
 
-// Comment/string-stripped source, computed once per file and reused by every check.
-// Stripping was originally applied only to the DOM-sink scan, so a comment EXPLAINING a
-// rule still tripped that rule — network-service.js documenting why BigInt breaks
-// chrome.runtime.sendMessage was reported as calling it. Any check that looks for code
-// must look at code.
+// Source strings carry the import *specifiers*. The old checker blanked every string
+// before applying a regex for `from '...'`, making all FOUR import rules vacuous.
+// Let the already-pinned esbuild parser give us the real static/export/dynamic edges.
+// Nothing is emitted: every import is external and write:false keeps this a read-only scan.
+const analyzed = await analyzeImports({
+  entryPoints: files,
+  bundle: true,
+  external: ['*'],
+  write: false,
+  metafile: true,
+  outdir: join(ROOT, '.arena-import-scan'),
+  logLevel: 'silent',
+});
+const importInputs = analyzed.metafile.inputs;
+const missingInputs = files.map(rel).filter((file) => !Object.hasOwn(importInputs, file));
+if (missingInputs.length) throw new Error(`The import scanner omitted: ${missingInputs.join(', ')}`);
+const edges = Object.values(importInputs).flatMap((input) => input.imports);
+if (edges.length === 0) throw new Error('The import scanner found no edges; refusing a vacuous pass.');
+
+// Negative controls: parse static, re-export and dynamic edges but ignore spellings
+// inside comments/strings. The old all-strings-blanked regex found NONE of these.
+const probe = await analyzeImports({
+  stdin: {
+    contents: [
+      'const note = "import ../domain/ignored.js";',
+      '// import "../domain/comment.js";',
+      'import "../domain/tx-card.js";',
+      'export { asset } from "../domain/asset.js";',
+      'void import("../domain/dynamic.js");',
+    ].join('\n'),
+    resolveDir: ROOT, sourcefile: 'src/ui/kit/probe.js', loader: 'js',
+  },
+  bundle: true, external: ['*'], write: false, metafile: true,
+  outfile: join(ROOT, '.arena-import-scan-probe.js'), logLevel: 'silent',
+});
+const probeEdges = Object.values(probe.metafile.inputs).flatMap((input) => input.imports);
+if (probeEdges.map(({ path }) => path).join(',')
+    !== '../domain/tx-card.js,../domain/asset.js,../domain/dynamic.js') {
+  throw new Error('The import scanner missed an import or treated comment/string text as one.');
+}
+for (const [id, file, forbidden, allowed] of [
+  ['background-must-not-import-ui', 'src/background/sample.js', '../ui/app/boot.js', './api-router.js'],
+  ['ui-must-not-import-background-or-vault', 'src/ui/app/sample.js', '../../background/api-router.js', '../domain/tx-card.js'],
+  ['kit-must-stay-domain-free', 'src/ui/kit/sample.js', '../domain/tx-card.js', './dom.js'],
+  ['shared-must-stay-portable', 'src/shared/sample.js', '../background/api-router.js', './refs.js'],
+]) {
+  const rule = RULES.find((r) => r.id === id);
+  if (!rule?.when(file) || !rule.forbid(forbidden) || rule.forbid(allowed)) {
+    throw new Error(`The ${id} rule failed its positive or negative control.`);
+  }
+}
+
+// Strip comments and strings ONLY for runtime-code rules. Downlevel template literals
+// first so `${...}` expressions become ordinary code: the previous stripper erased the
+// entire template and missed a DOM sink or sendMessage inside its interpolation.
+// Esbuild also canonicalizes static bracket properties (el['innerHTML'] -> el.innerHTML).
+// This is a syntax guard for statically named sinks, not a general-purpose taint analysis.
 const stripped = new Map();
 for (const file of files) {
-  stripped.set(rel(file), stripCommentsAndStrings(readFileSync(file, 'utf8')));
+  stripped.set(rel(file), await scannedCode(readFileSync(file, 'utf8')));
 }
 
 for (const file of files) {
   const f = rel(file);
   const source = stripped.get(f);
 
-  for (const spec of importsOf(source)) {
+  for (const { path: spec } of importInputs[f]?.imports || []) {
     if (!spec.startsWith('.') && !spec.startsWith('src/')) continue; // package import
     for (const rule of RULES) {
       if (rule.when(f) && rule.forbid(spec)) {
@@ -117,7 +158,7 @@ for (const file of files) {
     }
   }
 
-  if (/chrome\s*\.\s*runtime\s*\.\s*sendMessage/.test(source) && !SEND_MESSAGE_ALLOWLIST.has(f)) {
+  if (SEND_MESSAGE_RE.test(source) && !SEND_MESSAGE_ALLOWLIST.has(f)) {
     violations.push({
       rule: 'single-seam',
       file: f,
@@ -134,8 +175,8 @@ for (const file of files) {
  * the file that documents the rule fails the rule. Replacing with equal-length runs of
  * spaces keeps line and column numbers accurate for reporting.
  *
- * This is a scanner, not a parser: it tracks quotes, template literals and comments well
- * enough for these checks, and does not attempt to handle nested template expressions.
+ * This is a scanner, not a parser. Esbuild has already parsed and lowered templates,
+ * so executable interpolations are visible here without treating literal text as code.
  */
 function stripCommentsAndStrings(source) {
   let out = '';
@@ -204,7 +245,30 @@ const DOM_SINK_BASELINE = {};
 // asserting it stays out of the build), so the widest possible scope is affordable: vendor/ is
 // already skipped by walk(), and nothing else in src/ has a sink.
 const DOM_SINK_DIRS = ['src/'];
-const DOM_SINK_RE = /\.(innerHTML|outerHTML)\s*=|insertAdjacentHTML\s*\(|document\s*\.\s*write\s*\(/;
+const DOM_SINK_RE = /\.(innerHTML|outerHTML)\s*(?:[+\-*/%&|^]|\?\?|\|\||&&)?=(?!=)|insertAdjacentHTML\s*(?:\?\.)?\s*\(|document\s*\??\.\s*write(?:ln)?\s*(?:\?\.)?\s*\(/;
+
+// Control for the other blind spot: `${...}` executes, even inside nested templates.
+// A string containing the forbidden spelling is harmless and must remain masked.
+const interpolation = 'const literal = ".innerHTML ="; const live = `outer ${`inner ${node.innerHTML = value}`}`;';
+const safe = 'const literal = ".innerHTML ="; const live = `outer ${`inner ${node.textContent = value}`}`;';
+async function scannedCode(source) {
+  const { code } = await transform(source, {
+    loader: 'js', target: 'esnext', supported: { 'template-literal': false },
+    minifySyntax: true, logLevel: 'silent',
+  });
+  return stripCommentsAndStrings(code);
+}
+if (!DOM_SINK_RE.test(await scannedCode(interpolation)) || DOM_SINK_RE.test(await scannedCode(safe))
+    || !DOM_SINK_RE.test(await scannedCode('node["innerHTML"] += value;'))
+    || !DOM_SINK_RE.test(await scannedCode('node.outerHTML ||= value;'))
+    || DOM_SINK_RE.test(await scannedCode('const same = node.innerHTML === value;'))
+    || !DOM_SINK_RE.test(await scannedCode('document?.writeln(value);'))
+    || !SEND_MESSAGE_RE.test(await scannedCode(
+      'const live = `${chrome.runtime.sendMessage({type: "CHECK"})}`;',
+    ))
+    || !SEND_MESSAGE_RE.test(await scannedCode('chrome["runtime"]["sendMessage"]({});'))) {
+  throw new Error('The source scanner missed executable code or matched literal text.');
+}
 
 const sinksByFile = new Map();
 for (const file of files) {

@@ -48,8 +48,9 @@ function deferred() {
   return { promise, resolve };
 }
 async function waitFor(predicate) {
-  for (let i = 0; i < 200 && !predicate(); i += 1) {
-    await new Promise((resolve) => setImmediate(resolve));
+  const deadline = Date.now() + 5_000;
+  while (!predicate() && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
   }
   assert.ok(predicate(), 'the mocked block-header RPC was reached');
 }
@@ -247,15 +248,22 @@ try {
     return pendingHeader.promise;
   };
   const delayedFeed = history.getHistoryFeed('ta_slow_header');
+  let deadline;
   try {
     await waitFor(() => headerStarted);
     const clear = history.clearHistoryCache('ta_other');
-    const unlocked = await Promise.race([
-      clear.then(() => true),
-      new Promise((resolve) => setTimeout(() => resolve(false), 250)),
+    // Bound a real deadlock, but allow slow CI workers enough scheduling time.
+    // Clear the timer on success so it does not keep the test process alive.
+    await Promise.race([
+      clear,
+      new Promise((_, reject) => {
+        deadline = setTimeout(() => reject(new Error(
+          'A slow block RPC blocked another address\'s cache write',
+        )), 3000);
+      }),
     ]);
-    assert.equal(unlocked, true, 'one slow block RPC does not block another address\'s write');
   } finally {
+    clearTimeout(deadline);
     pendingHeader.resolve({ blockTimeNs: NS_A });
   }
   const delayedResult = await delayedFeed;

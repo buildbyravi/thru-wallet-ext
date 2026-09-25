@@ -496,8 +496,10 @@ ok('setSpinning(true) adds spinning class to refresh button', refreshBtn?.classL
 hero.setSpinning(false);
 ok('setSpinning(false) removes spinning class', !refreshBtn?.classList?.contains('spinning'));
 
+ok('BalanceHero refresh listener is attached before destroy',
+  refreshBtn?.listeners?.some((l) => l.event === 'click'));
 hero.destroy();
-ok('hero.destroy() disposes without throwing', true);
+ok('hero.destroy() removes its refresh listener', refreshBtn?.listeners.length === 0);
 
 
 section('PanelItem renders 3x2 action buttons with icons, badges, and disabled state');
@@ -534,9 +536,12 @@ const disabledItem = PanelItem({
 });
 ok('disabled Item carries disabled attribute', disabledItem.el.getAttribute('disabled') === '');
 
+ok('enabled PanelItem has one click listener, disabled PanelItem has none',
+  sendItem.el.listeners.length === 1 && disabledItem.el.listeners.length === 0);
 sendItem.destroy();
 disabledItem.destroy();
-ok('panel-item destroy() cleans up handlers', true);
+ok('panel-item destroy() removes the click handler',
+  sendItem.el.listeners.length === 0 && disabledItem.el.listeners.length === 0);
 
 
 section('CurrentConnection renders connection status, network switcher button, and live health');
@@ -584,8 +589,11 @@ conn.update({ healthStatus: 'offline' });
 ok('conn.update({ healthStatus }) alone flips the pip to offline', pipEl?.classList?.contains('offline'));
 ok('a partial object update leaves the network label untouched', netBtn.textContent?.includes('Mainnet'));
 
+ok('CurrentConnection network button has a click listener before destroy',
+  netBtn?.listeners?.some((l) => l.event === 'click'));
 conn.destroy();
-ok('CurrentConnection destroy() cleans up cleanly', true);
+ok('CurrentConnection destroy() removes the network-button listener',
+  netBtn?.listeners.length === 0);
 
 // First paint must be honest: before any health check runs, the pip carries no status
 // class at all (neutral grey in CSS), never a green "healthy" nobody measured.

@@ -34,6 +34,7 @@
 
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { applyTheme } from '../src/popup/theme.js';
+import { CONTRACT_VERSION } from '../src/shared/contract/manifest.js';
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -1103,7 +1104,7 @@ function apiError(code, message, retryable = false) {
 
 const FIXTURES = {
   'system.bootstrap': () => ({
-    contractVersion: 7,
+    contractVersion: CONTRACT_VERSION,
     hasVault: backend.hasVault,
     unlocked: backend.unlocked,
     account: backend.unlocked ? activeAccount() : null,

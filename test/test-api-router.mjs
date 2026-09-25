@@ -40,6 +40,15 @@ globalThis.chrome = {
   },
 };
 
+async function waitFor(predicate, description) {
+  const deadline = Date.now() + 5_000;
+  while (!predicate()) {
+    if (Date.now() >= deadline) assert.fail(`Timed out waiting for ${description}`);
+    // Crypto / storage work may take longer than a fixed count of event-loop turns on CI.
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
+
 console.log('[1] System bootstrap without vault');
 const res1 = await handleApiRequest({ method: 'system.bootstrap' });
 assert.equal(res1.ok, true);
@@ -277,10 +286,7 @@ try {
     fromAddress: res2.data.address,
     networkId: 'alphanet',
   } });
-  for (let attempt = 0; attempt < 30 && !releaseRecipient; attempt += 1) {
-    await new Promise((resolve) => setImmediate(resolve));
-  }
-  assert.equal(typeof releaseRecipient, 'function', 'checked send reaches the held recipient RPC');
+  await waitFor(() => typeof releaseRecipient === 'function', 'checked send to reach the held recipient RPC');
   const doubleClick = await handleApiRequest({ method: 'tx.sendChecked', params: {
     toAddress: accountsList[1].address, amountUnits: '1',
     fromAddress: res2.data.address, networkId: 'alphanet',
@@ -326,11 +332,9 @@ try {
     toAddress: accountsList[1].address, amountUnits: '1',
     fromAddress: res2.data.address, networkId: 'alphanet',
   } }).then((response) => { replied = true; return response; });
-  for (let i = 0; i < 40 && (!releasePostSendBalance || !replied); i += 1) {
-    await new Promise((resolve) => setImmediate(resolve));
-  }
-  assert.equal(typeof releasePostSendBalance, 'function', 'the advisory balance refresh started');
-  assert.equal(replied, true, 'the signing response must not await that blocked balance RPC');
+  await waitFor(() => typeof releasePostSendBalance === 'function',
+    'the advisory balance refresh to start');
+  await waitFor(() => replied, 'the signing response while the advisory balance RPC is blocked');
   const sent = await request;
   assert.equal(sent.ok, true, sent.error?.message);
   assert.match(sent.data.signature, /^ts[A-Za-z0-9_-]+$/);
