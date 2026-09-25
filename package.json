@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
-    "test": "node test/test-derivation.mjs && node test/test-qr.mjs && node scripts/check-layering.mjs && node scripts/check-csp.mjs && node scripts/check-routes.mjs && node scripts/check-css-nesting.mjs && node test/test-launchpad-quarantine.mjs && node test/test-contract.mjs && node test/test-ui-dom.mjs && node test/test-route-lifecycle.mjs && node test/test-vault.mjs && node test/test-thru-client.mjs && node test/test-token-balances.mjs && node test/test-balance-network.mjs && node test/test-api-router.mjs",
+    "test": "node test/test-derivation.mjs && node test/test-qr.mjs && node scripts/check-layering.mjs && node scripts/check-csp.mjs && node scripts/check-routes.mjs && node scripts/check-css-nesting.mjs && node test/test-launchpad-quarantine.mjs && node test/test-contract.mjs && node test/test-ui-dom.mjs && node test/test-route-lifecycle.mjs && node test/test-vault.mjs && node test/test-thru-client.mjs && node test/test-token-balances.mjs && node test/test-balance-network.mjs && node test/test-history-cache.mjs && node test/test-registration.mjs && node test/test-api-router.mjs",
     "test:guards": "node test/test-derivation.mjs && node test/test-qr.mjs && node scripts/check-layering.mjs && node scripts/check-csp.mjs && node scripts/check-routes.mjs && node scripts/check-css-nesting.mjs && node test/test-launchpad-quarantine.mjs && node test/test-contract.mjs && node test/test-ui-dom.mjs && node test/test-route-lifecycle.mjs"
   },
   "keywords": [

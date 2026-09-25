@@ -10,29 +10,8 @@
 // is never sufficient to add or remove key material.
 
 import * as vault from '../../lib/vault.js';
-import * as thruClient from '../../lib/thru-client.js';
-
-/**
- * Register a newly created account on-chain, without blocking the caller.
- *
- * Adding a keyring makes its first account active, and that account cannot receive a faucet
- * claim or a transfer until it exists on-chain. Same rationale and same non-blocking behaviour as
- * the helper in account-service.js: registration is free but needs the network, so a slow or
- * offline node must never prevent someone from adding a recovery phrase.
- */
-function registerActiveOnChain() {
-  Promise.resolve()
-    .then(async () => {
-      const active = await vault.getActiveAccount();
-      if (!active?.address) return;
-      const info = await thruClient.getAccountInfo(active.address);
-      if (info.exists) return;
-      await thruClient.createOnChainAccount(active);
-    })
-    .catch((error) => {
-      console.warn('[keyring-service] on-chain registration deferred:', error?.message || error);
-    });
-}
+import { registerCreatedRef } from './registration-service.js';
+import { getActiveNetworkId } from './network-service.js';
 
 /**
  * List every keyring with its account count and provenance.
@@ -49,8 +28,9 @@ export async function listKeyrings() {
  * @param {string} [label]
  */
 export async function addSeedKeyring(mnemonic, password, label = '') {
+  const networkId = await getActiveNetworkId();
   const ring = await vault.addSeedKeyring(mnemonic, password, label);
-  registerActiveOnChain();
+  void registerCreatedRef({ keyringId: ring.id, accountIndex: 0 }, networkId);
   return ring;
 }
 
@@ -66,8 +46,9 @@ export async function addSeedKeyring(mnemonic, password, label = '') {
  * @param {string} [label]
  */
 export async function createSeedKeyring(password, label = '') {
+  const networkId = await getActiveNetworkId();
   const ring = await vault.createSeedKeyring(password, label);
-  registerActiveOnChain();
+  void registerCreatedRef({ keyringId: ring.id, accountIndex: 0 }, networkId);
   return ring;
 }
 
@@ -78,8 +59,9 @@ export async function createSeedKeyring(password, label = '') {
  * @param {string} [label]
  */
 export async function addPrivateKeyKeyring(privateKeyHex, password, label = '') {
+  const networkId = await getActiveNetworkId();
   const ring = await vault.addPrivateKeyKeyring(privateKeyHex, password, label);
-  registerActiveOnChain();
+  void registerCreatedRef({ keyringId: ring.id, accountIndex: 0 }, networkId);
   return ring;
 }
 

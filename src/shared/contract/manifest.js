@@ -51,7 +51,12 @@
 // unknown fields arrive as null with the absence stated, never as a plausible-looking number.
 // v11 adds checked send methods. A reviewed From/Network must be pinned at the backend, not
 // trusted to a best-effort event between two extension pages. Existing send methods remain.
-export const CONTRACT_VERSION = 11;
+// v12 appends a storage-only history read and an explicitly creation-bound / just-in-time
+// registration method. tx.registerAccount is the deliberate exception to signing re-auth:
+// it is unlocked-only, can sign ONLY for an owned address, declares fee 0, and must be called
+// from account creation or after the user selects an unregistered own Send recipient. It is
+// still a signed, on-chain transaction; no periodic signing loop is authorized.
+export const CONTRACT_VERSION = 12;
 
 export const METHODS = {
   // ---- System ------------------------------------------------------------
@@ -341,6 +346,18 @@ export const METHODS = {
     returns: '{ entries, nextCursor, synced } — cache-merged first page; synced=false when served from cache offline',
     auth: 'none',
     since: 9,
+  },
+  'tx.getCachedHistory': {
+    params: ['address'],
+    returns: '{ address, networkId, entries, nextCursor, updatedAt } — storage-only, per-network/address, no RPC',
+    auth: 'none',
+    since: 12,
+  },
+  'tx.registerAccount': {
+    params: ['address'],
+    returns: '{ address, networkId, exists, created, signature } — self-register this owned address only',
+    auth: 'unlocked',
+    since: 12,
   },
   'tx.getDetail': {
     params: ['signature', 'address'],

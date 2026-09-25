@@ -409,6 +409,7 @@ export async function checkNetworkHealth() {
  */
 export async function autoCreateAccount() {
   const feePayer = await vault.getActiveAccount();
+  await getActiveNetworkConfig(); // a cold worker must not sign against the default network
   const result = normalizeTxResult(await thruClient.createOnChainAccount(feePayer));
   await balances.getBalances([feePayer.address]);
   return result;

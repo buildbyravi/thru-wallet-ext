@@ -104,6 +104,20 @@ for (const [method, legacy] of [
       .every((param) => spec?.params.includes(param)), JSON.stringify(spec?.params));
 }
 
+section('Contract v12 creation-bound registration and cache-first history');
+ok('the additive contract advances to v12 without reusing v11', CONTRACT_VERSION === 12);
+const register = METHODS['tx.registerAccount'];
+ok('tx.registerAccount is unlocked-only, explicitly targets an address, and has no password field',
+  register?.since === 12 && register?.auth === 'unlocked'
+    && JSON.stringify(register?.params) === JSON.stringify(['address']));
+const cachedHistory = METHODS['tx.getCachedHistory'];
+ok('tx.getCachedHistory is a read-only, no-auth, address-scoped method',
+  cachedHistory?.since === 12 && cachedHistory?.auth === 'none'
+    && JSON.stringify(cachedHistory?.params) === JSON.stringify(['address']));
+ok('legacy tx.autoCreateAccount remains signing-gated and unchanged',
+  METHODS['tx.autoCreateAccount']?.auth === 'signing'
+    && JSON.stringify(METHODS['tx.autoCreateAccount']?.params) === JSON.stringify(['password']));
+
 section('Contract and router agree in both directions');
 
 const undeclared = [...wired].filter((m) => !declared.has(m));
