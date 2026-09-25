@@ -48,8 +48,8 @@ export function HistoryRoute({ back }) {
   const pendingHost = h('div', { class: ['stack', 'stack-2', 'hidden'] });
   const filterRow = h('div', { class: 'row-flex wrap' });
   const moreHost = h('div', {});
-  // "History", matching the dashboard tile that leads here. (The "Activity" day-group label
-  // in tx-card.js is a different thing — the honest catch-all for timestampless wire entries.)
+  // "History", matching the dashboard tile that leads here. Cards form a flat stream:
+  // a missing chain timestamp is labelled by block slot, not with a synthetic day header.
   const header = PageHeader({ title: 'History', onBack: () => back() });
 
   const el = h('section', { class: 'screen' }, [

@@ -26,7 +26,7 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
 /** Formatted time for the card head: YYYY/MM/DD HH:mm like Rabby, falling back to Block <slot>. */
 export function relTime(ts, slot) {
   const t = Number(ts);
-  if (Number.isFinite(t) && t > 0) {
+  if (Number.isFinite(t) && t > 0 && Number.isFinite(new Date(t).getTime())) {
     const d = new Date(t);
     const YYYY = d.getFullYear();
     const MM = String(d.getMonth() + 1).padStart(2, '0');

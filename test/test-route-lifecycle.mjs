@@ -3146,13 +3146,11 @@ async function navigationTest() {
     !/cached activity/i.test(textOf(router.root)), textOf(router.root).slice(0, 160));
   FIXTURES['tx.getHistoryFeed'] = realFeed;
 
-  // ---- P1 cards: day grouping, verbs/deltas, failed badge, signature copy ----
+  // ---- P1 cards: flat stream, verbs/deltas, failed badge, signature copy ----
   const NOW = Date.now();
-  // Day sections are calendar-day based, so fixture times are anchored to the START of
-  // today instead of "N hours ago". A static offset drifts across midnight whenever a
-  // run starts in the early hours ("26h ago" at 01:00 is TWO days ago, not yesterday),
-  // which would splinter the Today/Yesterday grouping these assertions check. Every value
-  // below is guaranteed its intended calendar day at any run time, and none is in the future.
+  // Spread fixture timestamps across several calendar days so a regression that
+  // reintroduces Today/Yesterday section headers is caught by the flat-stream assertion.
+  // Anchoring to local midnight keeps those days distinct even during early-hour test runs.
   const startOfToday = new Date(NOW).setHours(0, 0, 0, 0);
   const CARD_ENTRIES = [
     { signature: 'tsCARD_A_sent_today_aaaaaaaaaaaaaaaaaaaaaaa', slot: 30000,
@@ -3199,8 +3197,8 @@ async function navigationTest() {
   FIXTURES['tx.getHistoryFeed'] = realFeed;
 
   // Production wire reality: entries carry NO wall-clock timestamp (slots only). Cards
-  // must group them under an honest "Activity" section and fall back to slot text —
-  // never crash, never render a blank head. Counterparties that are another account in
+  // must stay in the flat stream and fall back to block slot text — never crash, never
+  // render a blank head. Counterparties that are another account in
   // THIS wallet resolve by name instead of a truncated address.
   const SELF_B = backend.accounts[1] || backend.accounts[0];
   FIXTURES['tx.getHistoryFeed'] = () => ({

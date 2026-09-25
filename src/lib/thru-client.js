@@ -13,7 +13,7 @@
 // still does not import networks.js or any service — it holds whatever it was given and falls
 // back to the alphanet defaults, so it stays independently testable.
 
-import { createThruClient, Signature, Pubkey, PageRequest, keys as sdkKeys } from '@thru/sdk';
+import { createThruClient, Signature, Pubkey, PageRequest, BlockView, keys as sdkKeys } from '@thru/sdk';
 // Official program bindings. BUILD_SPEC Part IX: prefer @thru/sdk (including its crypto
 // subpath) and @thru/programs over hand-written protocol code wherever the SDK provides it.
 // These replace a hand-rolled derivation that called a non-existent SDK method.
@@ -665,30 +665,51 @@ export async function getTransactionDetail(signature, viewerAddress) {
 }
 
 const blockTimeCache = new Map();
+const inFlightBlockTimes = new Map();
+const BLOCK_TIME_CACHE_LIMIT = 256;
 
 /**
- * Fetch wall-clock timestamp (in milliseconds) for a block slot.
- * Caches recently fetched slots in memory to avoid redundant RPC calls.
+ * Fetch the block's actual wall-clock time in milliseconds. A slot belongs to a CHAIN, so
+ * cache by network id + endpoint + slot (not just slot). Bind the client before the await:
+ * a network switch during an RPC must not fetch/cache the other chain's block under this one.
+ * Only successful, representable dates are cached; an offline or absent block is retryable.
  * @param {number|string|bigint} slot
+ * @param {string} [expectedNetworkId] the feed's captured network, if called across awaits
  * @returns {Promise<number|null>}
  */
-export async function getBlockTimeMs(slot) {
-  if (slot == null) return null;
+export async function getBlockTimeMs(slot, expectedNetworkId = activeNetwork.id) {
+  if (slot == null || (typeof slot === 'string' && !slot.trim())) return null;
   const numSlot = Number(slot);
-  if (!Number.isFinite(numSlot) || numSlot < 0) return null;
-  if (blockTimeCache.has(numSlot)) return blockTimeCache.get(numSlot);
+  if (!Number.isSafeInteger(numSlot) || numSlot < 0) return null;
 
-  try {
-    const block = await getClient().blocks.get({ slot: numSlot });
-    if (typeof block?.blockTimeNs === 'bigint' && block.blockTimeNs > 0n) {
+  const network = activeNetwork;
+  if (network.id !== expectedNetworkId) return null;
+  const key = JSON.stringify([network.id, network.rpcUrl, numSlot]);
+  if (blockTimeCache.has(key)) return blockTimeCache.get(key);
+  if (inFlightBlockTimes.has(key)) return inFlightBlockTimes.get(key);
+
+  const boundClient = getClient();
+  const request = Promise.resolve().then(async () => {
+    try {
+      // The history list needs the header time, not each block's transaction body.
+      const block = await boundClient.blocks.get({ slot: numSlot }, { view: BlockView.HEADER_ONLY });
+      if (activeNetwork.id !== network.id || activeNetwork.rpcUrl !== network.rpcUrl) return null;
+      // SDK Block.blockTimeNs is optional. 0n means that the node did not supply it.
+      if (typeof block?.blockTimeNs !== 'bigint' || block.blockTimeNs <= 0n) return null;
       const ms = Number(block.blockTimeNs / 1_000_000n);
-      blockTimeCache.set(numSlot, ms);
+      if (!Number.isSafeInteger(ms) || ms <= 0 || !Number.isFinite(new Date(ms).getTime())) return null;
+      blockTimeCache.set(key, ms);
+      if (blockTimeCache.size > BLOCK_TIME_CACHE_LIMIT) {
+        blockTimeCache.delete(blockTimeCache.keys().next().value);
+      }
       return ms;
+    } catch {
+      // Node offline, slot unindexed, or block time omitted: leave the card's Block fallback.
+      return null;
     }
-  } catch {
-    // node offline or slot unindexed
-  }
-  return null;
+  }).finally(() => { inFlightBlockTimes.delete(key); });
+  inFlightBlockTimes.set(key, request);
+  return request;
 }
 
 // ---- Native Token Launchpad (v1.2) -----------------------------------------

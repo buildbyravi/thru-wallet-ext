@@ -351,3 +351,25 @@ manual smoke check — a Node shim cannot certify Chrome's side-panel UI.
 > **Lesson:** a viewport dimension cannot identify a browser-owned surface; URL/context identity
 > can. Register cross-context listeners before *any* awaited initialization, and if the platform
 > offers a direct close API, do not make mutual exclusion rely solely on the other page being ready.
+
+## 8. History block times leaked across networks and stalled other accounts — `READ` / `TEST`
+
+The first flat-History implementation memoized a timestamp by numeric **slot alone**. Two
+independent chains can both have slot 427 but different dates, so switching networks could
+show Alphanet's timestamp on Localnet. It also fetched every missing block header while
+holding the per-network storage-write queue: a slow header for account A could delay account
+B's refresh or cache removal. Only the first page was enriched; "Load more" returned raw
+slot-only cards.
+
+Fix: bind each header RPC to a captured SDK client and network; key the bounded successful
+lookup cache by network ID, RPC endpoint and slot, and discard a late response if the selected
+chain changed. Resolve the first page's block times before entering the serialized cache
+write, persisting `timestampSource: 'block'` so another worker can reuse verified times.
+Paginated `tx.listHistory` enriches only the displayed page while preserving its existing
+method/positional API; local submission times remain marked as local fallbacks. The focused
+`test-history-block-time.mjs` asserts cross-chain slot collisions, races, absent dates,
+queue progress and paging against mocked SDK methods. A public Alphanet RPC probe from this
+sandbox returned `fetch failed`, so a live-chain timestamp still requires manual smoke testing.
+
+> **Lesson:** a block height is meaningful only together with its chain, and optional
+> enrichment RPCs should never run under the lock that protects unrelated cached accounts.

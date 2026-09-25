@@ -25,6 +25,17 @@ const CACHE_BASE_KEY = 'thru_history_cache';
 const CACHE_LIMIT = 200;
 const PAGE_ON_OPEN = 15;
 
+function validTimeMs(value) {
+  const ms = Number(value);
+  return Number.isSafeInteger(ms) && ms > 0 && Number.isFinite(new Date(ms).getTime())
+    ? ms : null;
+}
+
+function cachedBlockTime(entry, slot) {
+  return entry?.timestampSource === 'block' && String(entry.slot) === String(slot)
+    ? validTimeMs(entry.timestamp) : null;
+}
+
 async function readScope(networkId) {
   // Capture the storage key ONCE. A network switch between two separate key reads could
   // otherwise mix an Alphanet scope with a Localnet write.
@@ -90,7 +101,9 @@ export async function getHistoryFeed(address) {
   const cached = cachedPage(scope, address);
 
   try {
-    const page = await txService.listHistory(address, { limit: PAGE_ON_OPEN, cursor: 0 });
+    const page = await txService.listHistory(address, {
+      limit: PAGE_ON_OPEN, cursor: 0, skipBlockTimes: true,
+    });
     if ((await getActiveNetworkId()) !== network.id) {
       const error = new Error('The network changed while fetching history. Retry on the new network.');
       error.code = 'NETWORK_CHANGED';
@@ -99,17 +112,31 @@ export async function getHistoryFeed(address) {
     const fresh = Array.isArray(page) ? page : (page?.entries || []);
     const nextCursor = Array.isArray(page) ? fresh.length : (page?.nextCursor ?? fresh.length);
 
-    // The history wire carries NO wall-clock timestamp (slots only — production reality).
-    // Backfill what we honestly know: our own submittedAt/settledAt for transactions this
-    // wallet sent (pending-tx-service records them), or a previously cached timestamp.
+    // The history wire has slots, not wall-clock times. Resolve block headers OUTSIDE the
+    // shared storage-write queue; a slow header for address A must not block address B's
+    // refresh/removal. A snapshot of cached block times avoids repeat RPCs across workers;
+    // the queued edit below re-reads the latest scope before merging concurrent writes.
+    const initialMap = new Map(cached.entries
+      .map((e) => [e?.signature, e]).filter(([signature]) => Boolean(signature)));
+    const missingSlots = [...new Set(fresh
+      .filter((e) => e?.slot != null && !e.timestamp
+        && !cachedBlockTime(initialMap.get(e.signature), e.slot))
+      .map((e) => String(e.slot)))];
+    const blockTimes = new Map();
+    await Promise.all(missingSlots.map(async (slot) => {
+      const timeMs = await thruClient.getBlockTimeMs(slot, network.id).catch(() => null);
+      if (timeMs !== null) blockTimes.set(slot, timeMs);
+    })); // at most PAGE_ON_OPEN unique headers; duplicate slots share one request
+
+    // Local submittedAt/settledAt is a real event time, but not the chain's block time.
+    // Keep it only as a fallback for our own sends when a block time is unavailable.
     const pendingKey = scopedKey('thru_pending_txs', network.id);
     const pendingRes = await chrome.storage.local.get(pendingKey).catch(() => ({}));
     const pendingList = Array.isArray(pendingRes?.[pendingKey]) ? pendingRes[pendingKey] : [];
-    const pendingTimestamps = new Map(
-      pendingList
-        .filter((p) => p?.signature && (p.submittedAt || p.settledAt))
-        .map((p) => [p.signature, p.submittedAt || p.settledAt]),
-    );
+    const pendingTimestamps = new Map(pendingList
+      .map((p) => [p?.signature, validTimeMs(p?.submittedAt) || validTimeMs(p?.settledAt)])
+      .filter(([signature, ms]) => Boolean(signature) && ms !== null));
+
     const merged = await updateScope(network.id, async (latestScope) => {
       if ((await getActiveNetworkId()) !== network.id) {
         const error = new Error('The network changed while fetching history. Retry on the new network.');
@@ -124,26 +151,20 @@ export async function getHistoryFeed(address) {
         .map((e) => [e?.signature, e])
         .filter(([signature]) => Boolean(signature)));
       for (const e of fresh) {
-        if (!e.timestamp) {
-          e.timestamp = pendingTimestamps.get(e.signature) || cachedMap.get(e.signature)?.timestamp || null;
+        const previous = cachedMap.get(e.signature);
+        const blockTime = e.slot != null
+          ? blockTimes.get(String(e.slot)) || cachedBlockTime(previous, e.slot) : null;
+        if (blockTime) {
+          e.timestamp = blockTime;
+          e.timestampSource = 'block';
+        } else if (!e.timestamp) {
+          // A previously verified block time from a DIFFERENT slot is not this block's time.
+          const previousTime = previous?.timestampSource === 'block'
+            && String(previous.slot) !== String(e.slot) ? null : validTimeMs(previous?.timestamp);
+          const submittedTime = pendingTimestamps.get(e.signature);
+          e.timestamp = submittedTime || previousTime || null;
+          if (e.timestamp) e.timestampSource = submittedTime ? 'submitted' : previous?.timestampSource || null;
         }
-      }
-
-      // Backfill missing timestamps from block headers so historical entries display exact date and time.
-      const missingSlots = [...new Set(fresh.filter((e) => !e.timestamp && e.slot != null).map((e) => e.slot))];
-      if (missingSlots.length > 0) {
-        await Promise.all(
-          missingSlots.map(async (slot) => {
-            const timeMs = await thruClient.getBlockTimeMs(slot).catch(() => null);
-            if (timeMs) {
-              for (const e of fresh) {
-                if (String(e.slot) === String(slot) && !e.timestamp) {
-                  e.timestamp = timeMs;
-                }
-              }
-            }
-          }),
-        );
       }
       const entries = [
         ...fresh,

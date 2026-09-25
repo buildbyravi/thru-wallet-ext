@@ -2,6 +2,16 @@
 
 Single source of truth for **where the rebuild is** and **what happens next**.
 
+**2026-09-26 History presentation:** Cards now form one flat stream (no Today/Yesterday
+headers), showing local-calendar `YYYY/MM/DD HH:mm`. The feed reads the containing block's
+optional `blockTimeNs` through the SDK and records its provenance as `timestampSource: 'block'`;
+lookups are scoped by chain + endpoint + slot and occur outside the shared storage writer.
+A verified cached block time avoids repeated header RPCs; "Load more" resolves only the
+new page's block headers. If the node cannot provide a time, an actual locally recorded
+submission time can be a fallback for the wallet's own sends, otherwise the card says
+`Block <slot>` rather than inventing a date. Cache-first paint is unchanged. The block-time path has deterministic mocked tests, but its live RPC availability
+and first-load latency still need manual verification.
+
 **2026-09-25 account activation + History update:** contract v12 (81 methods) adds
 `tx.registerAccount({ address })` (`auth: 'unlocked'`): the worker verifies vault ownership,
 then checks the selected chain before registering that exact account. The SDK adapter rejects a
@@ -10,9 +20,15 @@ fee-payer keypair that does not derive the target address; registration is the n
 Creation registers each new HD index and retries failed RPC attempts at most three times with exponential backoff,
 stopping on lock, network change or account removal. There is **no periodic signer**. Send
 activates an absent owned recipient just in time before review; the review shows its label and
-full address. History paints an address/network-scoped, storage-only cache first, marks it
-stale, then revalidates through the feed. Concurrent account refreshes serialize writes to
-the shared per-network cache. Deterministic build and tests pass; real popup/side-panel timing,
+full address. Vault keys/addresses are shared across networks, but account existence is
+per-chain: registration on Alphanet does **not** register on another network. Creation
+registers on the selected chain only; switching networks never silently signs for every
+idle vault account. Dashboard may attempt the currently displayed active account after a
+successful live absence check, and an explicit unlocked registration or Send's owned-recipient
+path can activate a targeted address. Testnet and Mainnet are currently disabled until their
+RPC/program configuration is verified; Localnet is separate from Alphanet. History paints an
+address/network-scoped, storage-only cache first, marks it stale, then revalidates through the
+feed. Concurrent account refreshes serialize writes to the shared per-network cache. Deterministic build and tests pass; real popup/side-panel timing,
 service-worker restart behaviour and v12 activation against the live chain still need manual
 verification. See `docs/MANUAL_SMOKE_CHECKLIST.md`.
 
@@ -73,9 +89,9 @@ Structural properties now enforced by CI rather than by discipline:
 ```
 npm run build     clean, no warnings, dist/ wiped and reproduced: popup.html + 2 bundles
 npm test          derivation 16 · layering 70 files / 0 sinks · routes 14/14 · CSS clean
-                  launchpad quarantine 45 · contract 75 · dom+refs 127 · route lifecycle 905
+                  launchpad quarantine 45 · contract 75 · dom+refs 127 · route lifecycle 904
                   vault · thru-client (incl. token goldens) · registration · history cache
-                  api-router
+                  block-time/network-paging · api-router
 npm audit --omit=dev
                   found 0 vulnerabilities
 ```

@@ -249,18 +249,26 @@ async function resolveTokenHistory(entries, viewerAddress) {
  * later without changing this method's shape.
  *
  * @param {string} address
- * @param {number|{ limit?: number, cursor?: number }} [pageSizeOrOptions=15]
+ * @param {number|{ limit?: number, cursor?: number, skipBlockTimes?: boolean }} [pageSizeOrOptions=15]
+ *   skipBlockTimes is internal to history-service's first-page merge; not exposed by the router.
  */
 export async function listHistory(address, pageSizeOrOptions = 15) {
-  const options = typeof pageSizeOrOptions === 'object' && pageSizeOrOptions !== null
-    ? pageSizeOrOptions
-    : { limit: pageSizeOrOptions };
+  const network = await getActiveNetworkConfig(); // bind before even the raw list RPC
+  const paged = typeof pageSizeOrOptions === 'object' && pageSizeOrOptions !== null;
+  const options = paged ? pageSizeOrOptions : { limit: pageSizeOrOptions };
 
   const limit = Math.min(100, Math.max(1, Math.floor(Number(options.limit) || 15)));
   const cursor = Math.max(0, Math.floor(Number(options.cursor) || 0));
+  const assertNetwork = async () => {
+    if ((await getActiveNetworkId()) === network.id) return;
+    const error = new Error('The network changed while fetching history. Retry on the new network.');
+    error.code = 'NETWORK_CHANGED';
+    throw error;
+  };
 
   // Over-fetch by the cursor so a page beyond the first still has rows to slice.
   const entries = await thruClient.listAccountHistory(address, limit + cursor);
+  await assertNetwork();
   const serialized = entries.map((entry) => ({
     signature: entry.signature ? String(entry.signature) : null,
     slot: entry.slot != null ? String(entry.slot) : null,
@@ -283,6 +291,33 @@ export async function listHistory(address, pageSizeOrOptions = 15) {
 
   const page = serialized.slice(cursor, cursor + limit);
   const nextCursor = serialized.length > cursor + limit ? cursor + limit : null;
+
+  // The first-page feed does its own cache-aware timestamp merge. Direct paginated reads
+  // (History's Load more and its legacy fallback) also deserve block-derived dates, but
+  // must NOT fetch headers for all `limit + cursor` records — just the displayed page.
+  // Keep the old positional array API untouched and let it avoid the extra network calls.
+  if (paged && !options.skipBlockTimes) {
+    const slots = [...new Set(page.filter((e) => e.slot != null).map((e) => e.slot))];
+    const blockTimes = new Map();
+    // Cap simultaneous header requests even when a caller asks for a 100-row page.
+    for (let i = 0; i < slots.length; i += 8) {
+      await Promise.all(slots.slice(i, i + 8).map(async (slot) => {
+        const ms = await thruClient.getBlockTimeMs(slot, network.id).catch(() => null);
+        if (ms !== null) blockTimes.set(slot, ms);
+      }));
+      await assertNetwork();
+    }
+    for (const entry of page) {
+      const ms = blockTimes.get(entry.slot);
+      if (ms != null) {
+        entry.timestamp = ms;
+        entry.timestampSource = 'block';
+      } else {
+        entry.timestamp = null; // no local clock guesses for an arbitrary loaded page
+      }
+    }
+  }
+  await assertNetwork();
 
   // Callers using the old positional form get a plain array, exactly as before.
   if (typeof pageSizeOrOptions !== 'object' || pageSizeOrOptions === null) {
