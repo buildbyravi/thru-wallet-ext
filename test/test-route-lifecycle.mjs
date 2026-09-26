@@ -2472,6 +2472,8 @@ async function backupEscapeTest() {
   async function revealAndReachChallenge() {
     router.navigate(`/export?ref=${encodeRef(activeAccount().ref)}&mode=backup`);
     await settle();
+    ok('the export password gate carries its warning',
+      textOf(router.root).includes('Anyone with this can take your funds'));
     click(buttons(router.root, /enter password to reveal/i)[0]);
     await settle();
     const overlay = DOC.body.lastChild;
@@ -2510,15 +2512,11 @@ async function backupEscapeTest() {
     await settle();
     ok('a confirmed leave lands on the dashboard, not in limbo',
       router.currentPath === '/dashboard', `got ${router.currentPath}`);
-    ok('the dashboard carries the unbacked-up phrase reminder',
-      textOf(router.root).includes('Back up your recovery phrase'));
+    ok('the dashboard shows no backup nag',
+      !textOf(router.root).includes('Back up your recovery phrase'));
     ok('leaving still never marked the phrase backed up', setBackedUpCalls === 0);
 
     // ---- Completing the challenge records the backup exactly once ---------------
-    click(buttons(router.root, /back up now/i)[0]);
-    await settle();
-    ok('the reminder re-enters the backup flow',
-      router.currentPath === '/export' && textOf(router.root).includes('Anyone with this can take your funds'));
     await revealAndReachChallenge();
 
     const words = SECRET_MNEMONIC.trim().split(/\s+/);
@@ -2544,7 +2542,7 @@ async function backupEscapeTest() {
 
     router.navigate('/dashboard');
     await settle();
-    ok('a confirmed backup clears the dashboard reminder',
+    ok('a confirmed backup leaves no backup nag behind',
       !textOf(router.root).includes('Back up your recovery phrase'));
   } finally {
     FIXTURES['keyring.setBackedUp'] = realSetBackedUp;
@@ -2553,47 +2551,20 @@ async function backupEscapeTest() {
   router.stop();
   await settle();
 
-  // ---- Remind me later: dismissal, persistence, and re-arm --------------------
-  resetBackend(SCENARIOS[2]);
+  // ---- The dashboard backup nag is gone -------------------------------------
+  // Per review: the reminder card looked cheap and is removed. The backup ENTRY POINTS
+  // (account/keyring "Back up recovery phrase", and the create-flow challenge) stay.
+  resetBackend(SCENARIOS[2]); // fixture phrase is generated and NOT backed up
   resetDom();
   guards.invalidate();
   const router2 = await boot({ root: DOC.getElementById('app') });
   await settle();
 
-  ok('an unbacked-up generated phrase is reminded on open',
-    textOf(router2.root).includes('Back up your recovery phrase'));
-  click(buttons(router2.root, /remind me later/i)[0]);
-  await settle();
-  ok('remind me later records the dismissal', Number(backend.preferences.backupReminderDismissedAt) > 0);
-  ok('the reminder hides after the dismissal',
+  ok('the dashboard shows no backup nag even with an unbacked-up phrase',
     !textOf(router2.root).includes('Back up your recovery phrase'));
-
-  router2.navigate('/accounts');
-  await settle();
-  router2.navigate('/dashboard');
-  await settle();
-  ok('the dismissal survives a remount',
-    !textOf(router2.root).includes('Back up your recovery phrase'));
-
-  // A phrase created AFTER the dismissal re-arms the notice (createdAt rule).
-  backend.preferences.backupReminderDismissedAt = 2000;
-  backend.keyrings.push({ ...SEED_KEYRING, id: 'kr_seed_new', backedUpAt: null, createdAt: 9000 });
-  router2.navigate('/accounts');
-  await settle();
-  router2.navigate('/dashboard');
-  await settle();
-  ok('a phrase created after the dismissal re-arms the reminder',
-    textOf(router2.root).includes('Back up your recovery phrase'));
-
-  // Control: the same assertion FAILS when the phrase is backed up.
-  backend.preferences.backupReminderDismissedAt = null;
-  for (const ring of backend.keyrings) ring.backedUpAt = Date.now();
-  router2.navigate('/accounts');
-  await settle();
-  router2.navigate('/dashboard');
-  await settle();
-  ok('control: the reminder assertion FAILS when every phrase is backed up',
-    !textOf(router2.root).includes('Back up your recovery phrase'));
+  ok('the nag buttons are gone with it',
+    buttons(router2.root, /remind me later/i).length === 0
+    && buttons(router2.root, /back up now/i).length === 0);
 
   router2.stop();
   await settle();
@@ -4451,7 +4422,7 @@ async function lastSourceRemovalTest() {
     ok('the only-source removal fulfils through wallet.reset', resetCalls === 1);
     ok('keyring.remove is never called for the only source', removeCalls === 0);
     ok('the wipe carries the confirmation flag and the password',
-      resetArgs?.confirmation === true && resetArgs?.password === SECRET_PASSWORD);
+      resetArgs?.confirmation === 'RESET' && resetArgs?.password === SECRET_PASSWORD);
     ok('the wipe lands on the welcome screen', router.currentPath === '/welcome',
       `got ${router.currentPath}`);
     ok('the fixture vault is gone after the wipe', backend.hasVault === false);

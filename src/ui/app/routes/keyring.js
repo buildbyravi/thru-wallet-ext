@@ -175,7 +175,7 @@ export function KeyringRoute({ params, navigate, back }) {
           confirmLabel: onlySource ? 'Wipe this wallet' : 'Remove permanently',
           danger: true,
           verify: onlySource
-            ? (password) => bridge.send('wallet.reset', { confirmation: true, password })
+            ? (password) => bridge.send('wallet.reset', { confirmation: 'RESET', password })
             : (password) => bridge.send('keyring.remove', { keyringId, password }),
         });
         if (!removed) return;
