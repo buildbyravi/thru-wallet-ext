@@ -2,7 +2,7 @@
 //
 // Replaces screens/receive.js. Same information, three fixes:
 //   - the address was interpolated into innerHTML; it is now a text node
-//   - explorerAddressUrl returns '' on a network with no explorer (localnet), so the link is
+//   - explorerAddressUrl returns '' on a network with no explorer, so the link is
 //     omitted rather than rendered dead
 //   - the network is named explicitly. An address is only meaningful on the chain it is on, and
 //     "which network is this for" is the question a receive screen must answer.

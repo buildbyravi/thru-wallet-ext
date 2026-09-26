@@ -1,11 +1,11 @@
 // LIVE CHAIN VERIFICATION — answers the open questions in docs/STATUS_AND_ROADMAP.md §Step 6.
 //
-// Run this ONLY against a devnet/localnet. It creates a THROWAWAY keypair in memory, claims from
+// Run this ONLY against a devnet or a local throwaway chain. It creates a THROWAWAY keypair in memory, claims from
 // the faucet, and sends a tiny transfer to a second throwaway key. It never touches your vault,
 // never reads chrome.storage, and never prints a private key.
 //
 //   node scripts/verify-chain.mjs                 # alphanet
-//   node scripts/verify-chain.mjs localnet        # local node
+//   node scripts/verify-chain.mjs localnet        # local node (entry declared in networks.js; not selectable in the wallet)
 //   node scripts/verify-chain.mjs alphanet --send # also do the transfer leg
 //
 // The transfer leg is opt-in because it needs the faucet leg to have actually funded the

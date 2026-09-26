@@ -1,7 +1,11 @@
 // Read-path network binding and cache isolation, using a fake SDK account reader.
 // No real RPC, wallet keys or Chrome browser are required.
 import assert from 'node:assert/strict';
-import { getNetworkConfig } from '../src/lib/networks.js';
+import { getNetworkConfig, NETWORKS } from '../src/lib/networks.js';
+
+// The shipped wallet disables Localnet (custom chains come later); this suite needs a second
+// selectable network to prove per-network isolation, so re-enable it in-process only.
+NETWORKS.localnet.enabled = true;
 import * as thruClient from '../src/lib/thru-client.js';
 import * as networks from '../src/background/services/network-service.js';
 import * as balances from '../src/background/services/balance-service.js';

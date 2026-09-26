@@ -121,7 +121,7 @@ hash directly (`#/send`) where the UI has no link, so unmigrated or unreachable 
 | `/send` (token) | Pending reads say checking, failures say unknown (not zero); only a token with a verified positive balance and on-chain mint decimals is selectable; amount re-denominates correctly; review discloses recipient token-account init fee; MAX excludes broken values | [ ] | [ ] |
 | `/receive` | Address, QR renders in the raised Thru palette (gradient red tiles, slate finder eyes, ice paper) and scans from a phone; clicking the address box copies it, the box says \"Copied\", then returns to the address after ~1s | [ ] | [ ] |
 | `/faucet` | Claim state, disabled when already claimed, error when the network has no faucet | [ ] | [ ] |
-| `/history` | Cards form one flat stream without Today/Yesterday headers. A known block time appears as local-calendar `YYYY/MM/DD HH:mm` matching the detail sheet; a missing header falls back to `Block <slot>` (or an actual local submission time for an own send), not a made-up date. Same-numbered slots on Alphanet and Localnet must not share dates. Entries, filter chips, "load more" appends instead of refetching; token sends appear as "Sent \<amount\> \<SYM\>", receipts as "Received …", mints as "Minted …", and a token-account init never appears as a THRU transfer; a confirmed send never appears BOTH in the list AND as a "Waiting for confirmation" Pending row | [ ] | [ ] |
+| `/history` | Cards form one flat stream without Today/Yesterday headers. A known block time appears as local-calendar `YYYY/MM/DD HH:mm` matching the detail sheet; a missing header falls back to `Block <slot>` (or an actual local submission time for an own send), not a made-up date. Same-numbered slots on two networks must not share dates. Entries, filter chips, "load more" appends instead of refetching; token sends appear as "Sent \<amount\> \<SYM\>", receipts as "Received …", mints as "Minted …", and a token-account init never appears as a THRU transfer; a confirmed send never appears BOTH in the list AND as a "Waiting for confirmation" Pending row | [ ] | [ ] |
 | `/history` detail sheet (P2) | Tapping a card opens the sheet from the bottom; it shows the tapped transaction (not a neighbour), full signature copies to clipboard, the displayed explorer link opens in a new tab, and Escape/backdrop close it with focus returning to the card. **Live-chain checks remain open for the current path:** the optional block-time lookup/provenance and first-load latency must be checked on an enabled network; a prior Alphanet detail-sheet observation (2026-09-20) is historical evidence, not certification of the v12 cache/feed path or every RPC. A node may omit block time; in that case the list must use an actual own-send submission time or `Block <slot>`, never the current clock or another entry's date. Confirm the detail row says **"Fee (declared)"** and does not claim a charged fee. The list card has no per-card fee line. Verify the live explorer route before treating it as supported. | [ ] | [ ] |
 | `/history` detail sheet — overflow (REGRESSION) | Open a sheet with EVERY row present (status, amount, counterparty, network, block, block time, fee, program) and a signature long enough to wrap. The sheet must **scroll**, and the last row (`Program`) must be readable in full. No row may be sliced horizontally, and the fee note must not sit on top of a clipped row. This shipped broken once: flex children compressed instead of overflowing, so `.detail-table` clipped its own last rows and no scrollbar appeared — see `docs/DEFECT_LOG.md`. The DOM shim has no layout engine and **cannot** catch this; `scripts/preview-tx-sheet.html` renders both states side by side. | [ ] | [ ] |
 | `/history` detail sheet — keyboard | Tab reaches a card (visible focus ring), Enter AND Space both open it, Tab wraps inside the sheet without reaching the list behind it, Escape closes. Clicking the in-card copy button or explorer icon must NOT also open the sheet. | [ ] | [ ] |
@@ -147,8 +147,8 @@ hash directly (`#/send`) where the UI has no link, so unmigrated or unreachable 
   case, failed activation must not claim success or enable Review. Repeat with signing
   password re-auth enabled: activation is the explicit unlocked-only v12 exception;
   actually moving value still requires the configured signing prompt.
-- [ ] With no server running on localnet, select localnet in Settings and revisit Send (or block
-  the configured RPC in the extension worker's DevTools). A saved balance, if any, says **last
+- [ ] Block the alphanet RPC for the extension worker (DevTools request blocking, or go
+  offline at the OS level) and revisit Send. A saved balance, if any, says **last
   known**. Otherwise the UI says checking/unavailable, never a fabricated `0 THRU`. Max and
   Review remain disabled until a live balance AND a usable native fee reserve arrive. Retry
   checks is offered on failure. A token read failure says **balance unknown**, not "no balance";
@@ -163,9 +163,9 @@ hash directly (`#/send`) where the UI has no link, so unmigrated or unreachable 
   that old context must fail with **sending account or network changed** and require a new review.
   Do not test this by sending real funds. If a sign request times out, the UI must call the
   outcome **unknown** and say to check Activity/explorer, not invite an immediate retry.
-- [ ] Import the same mint on Alphanet and localnet (if the import API is exposed in your test
-  setup). Each network sees only its own registry row. Old imports without a network tag are
-  visible on Alphanet only; re-import elsewhere if needed.
+- [ ] Per-network token-registry isolation (same mint imported on two networks, pre-tag
+  imports visible on the default network only) is covered automatically by
+  `test/test-api-router.mjs` [10] — no manual step; note it if you are auditing coverage.
 - [ ] With a read blocked after a transfer returns a signature (worker DevTools network
   throttling, only in a safe test wallet), confirm that the **submission receipt** is not held
   behind the subsequent THRU balance refresh. Activity records the signature for the sending

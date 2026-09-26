@@ -110,7 +110,7 @@ export async function sendTransfer(toAddress, amountUnits, expected = null) {
 
   const feePayer = await vault.getActiveAccount();
   // Bind the client BEFORE querying/signing. A direct checked request after a worker restart
-  // must not silently use the thru-client module's default Alphanet binding on localnet.
+  // must not silently use the thru-client module's default Alphanet binding on another network.
   const network = await getActiveNetworkConfig();
   await assertSendContext(expected, feePayer);
   if (feePayer.address === target) {

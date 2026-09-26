@@ -5,7 +5,11 @@ import { keys, Pubkey } from '@thru/sdk';
 import { handleApiRequest } from '../src/background/api-router.js';
 import * as vault from '../src/lib/vault.js';
 import * as thruClient from '../src/lib/thru-client.js';
-import { getNetworkConfig } from '../src/lib/networks.js';
+import { getNetworkConfig, NETWORKS } from '../src/lib/networks.js';
+
+// The shipped wallet disables Localnet (custom chains come later); this suite needs a second
+// selectable network to prove per-network isolation, so re-enable it in-process only.
+NETWORKS.localnet.enabled = true;
 import { registerCreatedAccount } from '../src/background/services/registration-service.js';
 
 function store() {

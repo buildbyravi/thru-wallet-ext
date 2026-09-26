@@ -80,9 +80,13 @@ export const NETWORKS = {
     feeReserveUnits: 1000n,
   },
 
-  // Local node for development. Enabled because it costs nothing to offer and is the fastest
-  // way to test without a public network. Selecting it when nothing is listening simply
-  // reports the network as offline, which is honest.
+  // Local node support is NOT offered in the shipped wallet — selecting it bound the
+  // extension to a localhost endpoint the user may not control, and proper local/development
+  // chains will arrive later as custom-chain support (see network-service.js CONTRACT v7 and
+  // docs/STATUS_AND_ROADMAP.md Step 2b). The entry stays DECLARED, like testnet/mainnet below,
+  // so the storage-scoping machinery keeps a second network id to exercise against: tests
+  // re-enable it in-process (`NETWORKS.localnet.enabled = true`) as their second selectable
+  // network. `scripts/check-csp.mjs` enforces that a disabled network stays out of connect-src.
   localnet: {
     id: 'localnet',
     label: 'Localnet',
@@ -97,7 +101,7 @@ export const NETWORKS = {
     tokenProgramId: TOKEN_PROGRAM_ID,
     accountCreateProgramId: ACCOUNT_CREATE_PROGRAM_ID,
     isTestnet: true,
-    enabled: true,
+    enabled: false,
     environment: 'local',
     // A local node normally runs the same programs as devnet, but it is still a different
     // deployment, so this is an assumption rather than a measurement.

@@ -439,6 +439,28 @@ export function SettingsRoute({ navigate, back }) {
           h('span', { class: 'eyebrow', text: 'Networks' }),
           h('div', { class: 'detail-val', text: `${networks.length} available` }),
         ]),
+        h('div', { class: 'detail-row' }, [
+          h('span', { class: 'eyebrow', text: 'Website' }),
+          h('div', { class: 'detail-val' }, [
+            h('a', {
+              href: 'https://thruwallet.vercel.app',
+              target: '_blank',
+              rel: 'noopener noreferrer',
+              text: 'thruwallet.vercel.app',
+            }),
+          ]),
+        ]),
+        h('div', { class: 'detail-row' }, [
+          h('span', { class: 'eyebrow', text: 'Support' }),
+          h('div', { class: 'detail-val' }, [
+            h('a', {
+              href: 'https://t.me/+dA8TwsOECcIxZWZl',
+              target: '_blank',
+              rel: 'noopener noreferrer',
+              text: 'Telegram group',
+            }),
+          ]),
+        ]),
       ]),
     ]));
   }

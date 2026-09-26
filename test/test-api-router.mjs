@@ -269,6 +269,17 @@ for (const [method, extra] of [
 }
 console.log('  ok - checked native/token sends refuse missing or stale Review context before any RPC');
 
+// Localnet policy pin, then the test-only flip this file needs: the shipped wallet disables
+// Localnet (custom chains come later), but the race and isolation checks below deliberately
+// network-switch to a SECOND selectable id, so re-enable it in-process — only after pinning
+// that the shipped wallet does not offer it.
+const networksModule = await import('../src/lib/networks.js');
+assert.equal(networksModule.listAllNetworks().map((n) => n.id).includes('localnet'), true,
+  'localnet stays declared');
+assert.equal(networksModule.listNetworks().map((n) => n.id).includes('localnet'), false,
+  'localnet is NOT selectable in the shipped wallet — custom chains come later');
+networksModule.NETWORKS.localnet.enabled = true;
+
 // Even if the context matched when tx.sendChecked began, a cross-page network switch
 // DURING the live recipient RPC must be caught before the SDK signs. Hold the SDK read
 // (no public RPC) and deliberately interleave network.setActive.

@@ -70,7 +70,7 @@ function cachedBlockTime(entry, slot) {
 
 async function readScope(networkId) {
   // Capture the storage key ONCE. A network switch between two separate key reads could
-  // otherwise mix an Alphanet scope with a Localnet write.
+  // otherwise mix an Alphanet scope with a write keyed to another network.
   const key = scopedKey(CACHE_BASE_KEY, networkId);
   const res = await chrome.storage.local.get(key);
   const scope = res?.[key];

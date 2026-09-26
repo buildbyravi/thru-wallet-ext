@@ -7,6 +7,11 @@ import * as history from '../src/background/services/history-service.js';
 import * as txService from '../src/background/services/tx-service.js';
 import * as networks from '../src/background/services/network-service.js';
 import * as thruClient from '../src/lib/thru-client.js';
+import { NETWORKS } from '../src/lib/networks.js';
+
+// The shipped wallet disables Localnet (custom chains come later); this suite needs a second
+// selectable network to prove per-network isolation, so re-enable it in-process only.
+NETWORKS.localnet.enabled = true;
 import { relTime } from '../src/ui/domain/tx-card.js';
 
 const data = new Map();
