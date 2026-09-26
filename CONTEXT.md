@@ -32,6 +32,7 @@ Read `AGENTS.md` first for repository rules, then `docs/STATUS_AND_ROADMAP.md` f
 | Change permissions/CSP | `src/manifest.json`, `scripts/check-csp.mjs` |
 | Check a live chain | `scripts/verify-*.mjs` (manual, never part of `npm test`) |
 | Check actual Chrome rendering | `docs/MANUAL_SMOKE_CHECKLIST.md` |
+| Update the Chrome Web Store listing | `extension.md` (listing copy + justifications; edit there, then mirror to the dashboard) |
 
 ## 2. Architecture and boundaries
 

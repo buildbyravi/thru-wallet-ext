@@ -62,6 +62,7 @@ Start from the pinned dependencies and current `src/` implementation, then cross
 | `SECURITY.md` | public policy | threat model, disclosure, high-level security architecture | User-facing; avoid internal planning noise. |
 | `PRIVACY.md` | public policy | local/RPC data behavior | Keep product-facing and non-speculative. |
 | `SUPPORT.md` | public support | FAQ, known limitations, help channels | Keep aligned with the shipped baseline and open checks. |
+| `extension.md` | current store record | Chrome Web Store listing copy, permission justifications, listing changelog | Source of truth for the dashboard listing; edit here first, then mirror to the store. |
 | `llms.txt` | current agent brief | read-only repository context | No secrets or direct signing instructions. |
 
 ---
