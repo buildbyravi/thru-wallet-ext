@@ -1,142 +1,94 @@
-# History / Transaction tab redesign — study of Rabby + plan
+# History / Transaction view — shipped behavior and open checks
 
-Status: **P0 + P1 + P2 shipped**. P0: `services/history-service.js` + contract v9
-`tx.getHistoryFeed` (cache-merged, offline-labelled, append-deduped). P1:
-`domain/tx-card.js` + a flat card stream (no day headers), verb + context, signed
-right-aligned deltas, local-calendar `YYYY/MM/DD HH:mm` when a date is known, network +
-short-signature meta with copy/explorer actions, and a failed badge. There is no per-card
-fee line (no fee on the history wire; P2's lazy detail fetch is where it belongs).
+**Status (2026-09-26):** the flat, cache-first History behavior described below is shipped in `src/`. Browser and live-chain checks remain open. Rabby links are UX/code-pattern references only; automated fixtures are not live-chain evidence.
 
-The transaction wire carries a slot but no time: `history-service.js` resolves the
-block's optional timestamp for the cached first page, prefers it over the wallet's
-local submission time, and persists the source alongside the date. Paginated
-`tx.listHistory` enriches only the displayed page; the old positional-array API stays
-unchanged. Missing block/local times fall back to `Block <slot>`, not a fabricated
-wall-clock time. Own-account counterparties render by name via `account.list`. The old
-boundary-day heuristic is obsolete now that History has no day grouping.
+---
 
-**Contract v12 cache-first follow-up (2026-09-25):** v9's `tx.getHistoryFeed` read the cache but did not return until its RPC finished, and the route waited for pending reconciliation before drawing cards. The additive, storage-only `tx.getCachedHistory({ address })` now returns `{ address, networkId, entries, nextCursor, updatedAt }` from the per-network/address scope without binding a client or touching RPC. History paints those rows immediately with a **cached / checking network** label, independently loads labels/pending, then replaces rows and clears the label when the existing `tx.getHistoryFeed` reports a fresh page. Offline retains cached cards honestly; no-cache + offline says unavailable, not "No transactions". Network/account switches and route teardown invalidate all late cache/feed/pending/page responses; load-more waits until revalidation finishes. Concurrent feeds for different addresses on one network serialize their shared-scope cache writes, preserving both accounts. This is still explorer-free. See `test/test-history-cache.mjs` and the lifecycle race tests; real popup timing has not been measured.
+## 1. Shipped History behavior
 
-P2 (this cycle): `domain/tx-detail-sheet.js` + contract v10 `tx.getDetail` + `thru-client.getTransactionDetail` (additive; the sacred client gained one new export and changed zero existing lines). Tapping a card — now a real keyboard-operable control (`role="button"`, tabindex, Enter/Space, Escape closes, focus restores) — opens a bottom-anchored `.modal-card`/`.modal-overlay` sheet reusing the password-prompt focus-trap + disposer discipline. It paints synchronously from the tapped entry (full signature + copy, status, signed amount, counterparty resolved against `account.list`, network, block) and then lazily fills two rows from one on-demand `tx.getDetail` call. **Explorer-free**, as required: the enrichment lane runs entirely on the existing RPC surface. Honest omissions, spiked before any UI was written (`docs/archive/TX_DETAIL_SPIKE.md`): Thru's `TransactionExecutionResult` carries **no charged-fee field**, so the sheet shows the header-DECLARED fee, labels it "Fee (declared)", and states inline that the amount actually debited is not reported by the network — `tx.getDetail` returns `feeCharged: false` so no future caller can mistake one for the other. Wall-clock time is not on the transaction either but IS on the containing block (`BlockHeader.block_time` → `Block.blockTimeNs`), so the sheet fetches it via `blocks.get({slot})` and labels it "Block time"; when the node omits it the row reads "Not available". Unknown → stated-absent, never guessed, with negative controls in `test-route-lifecycle.mjs` proving the fabricated-fee and local-clock cases would actually fail. Next: P2.5 explorer-enrichment spike (the only place a charged fee might exist).
-Reference screenshots: Rabby's Transactions tab (cards with protocol glyph, method,
-token deltas, gas line, chain badge, short tx id + copy, time).
+### Flat stream and cards
 
-> **Indexer correction (2026-09-20):** the first version of this doc claimed "Thru has no
-> indexer". **Wrong.** Thru's explorer (`https://scan.thru.org`) is backed by an indexer,
-> documented at `docs/api-ref/explorer-mcp/`: an MCP surface (`/api/mcp`, 8 tools —
-> `list_account_transactions(address, pageSize, pageToken)`, `get_transaction`,
-> `get_program_abi`, `get_block`, `get_account`, `list_recent_*`, `search`). Caveat: every
-> MCP tool answers in `format=toon` — LLM-consumption text, a surface for *agents*, not a
-> typed contract an extension background should consume per popup open. The typed explorer
-> API exists underneath but is undocumented so far; **enrichment via explorer needs a
-> spike** to validate shapes before the wallet depends on them (see P2.5).
+The History route renders one flat, newest-first card stream with **no Today/Yesterday or other day-group headers**. Cards show the transaction verb/context, signed amount, a time label when one is available, network/signature metadata, and copy/explorer actions. Token entries use decoded direction and the viewer's own token accounts where available. A token-account initialization is not presented as a THRU transfer. The current card has **no per-card fee line**.
 
-## 1. How Rabby actually builds that screen (verified against RabbyHub/Rabby)
+When a timestamp is known, the card uses the user's local calendar and displays `YYYY/MM/DD HH:mm`. It does not calculate day headers or infer a timestamp from a neighboring transaction.
 
-Rabby's transactions UI is *thin*. The intelligence lives in their backend API:
+### Cache-first load and network scope
 
-- `src/ui/views/History/components/HistoryItem.tsx` — the card. All display data comes
-  from typed `TxDisplayItem` / `TxHistoryItem` returned by **`@/background/service/openapi`
-  (DeBank OpenAPI)**: `cate_id` (method: send/receive/approve/collect/execute),
-  `project` (protocol name), token deltas as full `TokenItem`s (symbol, decimals, logo),
-  chain, time, tx id. The component only assembles: `TokenChange` (delta lines with
-  logos), `TxId` (chain + short id + copy), `sinceTime` (relative time), skeletons.
-- `src/background/service/transactionHistory.ts` (~42 KB) — local layer for what the
-  indexer can't tell them: locally submitted txs grouped by `(chainId, nonce)`
-  (`TransactionGroup`), persisted with `createPersistStore` (browser.storage.local),
-  pending/submitted/completed lifecycle, speed-up/cancel, mempool items.
-- `@/db/schema/history` (`TxHistoryItemRow`) — a local SQLite cache of indexed rows so
-  the list is instant on open and pages without refetching.
+Contract v9 added `tx.getHistoryFeed`, which merges a fresh RPC page with cached rows and reports whether the feed synced. That call itself waits for its RPC result, so contract v12 added the storage-only `tx.getCachedHistory({ address })` read. On route entry:
 
-**What carries their weight for us (post-correction):** Rabby does not *decode* history
-in the wallet — DeBank's indexer hands them parsed display items. Thru DOES have an
-indexer behind the explorer (see the correction above), but its documented surface is
-agent-oriented TOON text, so the shaping constraint for the *baseline* is unchanged:
-P0/P1 must not require the explorer. The baseline derives from `listAccountHistory` +
-our own caches; the explorer then *enriches* (full-trace detail sheets, ABI-reflected
-protocol names for third-party programs) without ever being on the critical path to
-"here are your sends". Unknown programs still render honestly as generic interactions.
+1. The route reads cached rows for the active **network and address**, paints them immediately, and labels them cached/checking.
+2. Pending reconciliation and account-label lookup run independently; they do not gate the first card paint.
+3. The fresh feed replaces/merges rows and clears or updates the offline label. With no cache and an unavailable network, the route says the activity is unavailable rather than claiming there are no transactions.
+4. Account/network changes, route teardown, and stale asynchronous replies are guarded so old results are not displayed in the new context.
+5. Load-more uses cursor paging and deduplicates overlapping signatures.
 
-## 2. What we already have
+History cache storage is network-scoped and address-keyed. Concurrent refreshes for different addresses serialize only their shared-scope writes; block-header RPCs run outside that write section. Cache entries are not secret and remain available across wallet locks.
 
-- `thru-client.listAccountHistory` — raw entries (signature, slot, program, amounts,
-  counterparty, success) via the router, cursor-paged ("load more" works).
-- Token-aware rows already decode enough to print "Sent X SYM / Received / Minted"
-  and to suppress token-account init as a THRU transfer.
-- `pending-tx-service` — active transactions with live settle + badge emit.
-- Balance-cache precedent for per-network storage.local caching.
+### Block-time provenance and fallback
 
-## 3. Target UI (mirroring the Rabby card, adapted to what we can know)
+The transaction record supplies a slot, not its own timestamp. The shipped implementation resolves the containing block's optional time through the SDK, captures the network/RPC context, and scopes successful lookup reuse by network, RPC endpoint, and slot. A verified block time is stored with `timestampSource: 'block'`.
 
-One chronological stream without day headers; each transaction is a **card**:
+If a block time is unavailable, the wallet may display an actual local submission time for its own submitted transaction; the cached record identifies it with `timestampSource: 'submitted'`. It does not substitute the current clock or borrow another entry's time. If neither a block time nor a valid local submission time exists, the card displays `Block <slot>` (or no time when no slot exists).
 
-```
-2026/09/25 14:32                            Alphanet · ts4f…9de2 ⧉
-[glyph] Send                                   -0.5 THRU
-        to Account 2
-```
+"Load more" enriches the displayed page rather than reusing a timestamp from another network or slot. The detail sheet separately labels its optional chain value **Block time** and renders "Not available" when the node/detail read supplies none.
 
-When the block time is unavailable and there is no actual local submission time,
-show `Block <slot>` instead of an invented date. No charged-fee field exists on the
-history wire, so do not show a per-card fee.
+### Detail sheet and fee honesty
 
-- Method line = verb + counterparty/protocol label; right-aligned signed amount
-  lines with token glyph, negative neutral / positive green.
-- Fee line per card (our equivalent of Rabby's gas line; Thru has fees, not gas).
-- Failed tx styling; pending section pins above the list (already exists).
-- Click a card → detail sheet: full signature copy, slot, instruction breakdown,
-  program id, explorer link.
+Contract v10 added the lazy `tx.getDetail` request used when a card is opened. The sheet shows details for the selected transaction, including signature, status, amount/counterparty, slot/network, program, optional block time, and the header-declared fee when available. The fee row says **Fee (declared)**; it is not a receipt of the amount debited. The current RPC detail response has no charged-fee field, so the UI does not present a claimed charged fee. The list card itself has no fee line.
 
-## 4. Plan (phased, test-gated)
+The sheet is keyboard-operable, traps focus, restores focus when closed, and is owned by the route rather than an individual card that can be repainted.
 
-**P0 — `history-service` (background).** The local equivalent of Rabby's
-openapi+db combination:
-- `storage.local` key `thru_history_cache::<networkId>`: `{ [address]: { entries, nextCursor, updatedAt } }`, cap 200/address, using the same `network-scope.js` scoped-key isolation the balance and pending caches use (history is not secret; it persists across locks like balances).
-- Incremental sync: keep the cursor; prepend newer entries; merge pending.
-- An **explain layer**: map `(programId, instruction)` → `{ method, protocol }` with a
-  recognized-program registry (transfer program → "THRU transfer"; token program →
-  Sent/Received/Minted/Initialized account; anything else → "Contract interaction" +
-  shortened program id). Never guess names for unknown programs.
+---
 
-**P1 — Card UI.** `domain/tx-card.js` kit component + `history.js` flat card stream;
-pending cards remain above the stream. Keep "load more" cursor paging.
+## 2. Rabby cross-check — presentation patterns, not Thru protocol authority
 
-**P2 — Detail sheet.** ✅ SHIPPED. Modal with the decode breakdown + signature copy + explorer
-link. Enrichment lane: lazily fetch detail for the one tapped transaction — one call on
-demand, not a list-time dependency.
+Rabby is useful as a reference for a compact History list and a separate local pending/submission lifecycle. Its History implementation consumes its own backend/indexer shapes; those are not Thru RPC semantics and must not be copied into this extension as protocol facts.
 
-Landed differently from the sketch above in one respect worth recording: the lazy fetch uses
-the **node's own** `transactions.get` + `blocks.get` (via contract v10 `tx.getDetail`), not
-the explorer's `get_transaction`. The spike (`docs/archive/TX_DETAIL_SPIKE.md`) established that
-everything the sheet shows except a *charged* fee is obtainable from the RPC we already
-depend on, so P2 ships explorer-free and the explorer stays a P2.5 question. The one thing
-the RPC genuinely cannot answer — what a transaction actually cost — is rendered as a
-labelled header declaration plus an explicit statement that the network reports no charged
-fee, rather than being quietly filled with the declaration.
+- [Rabby Wallet repository](https://github.com/RabbyHub/Rabby)
+- [History view directory](https://github.com/RabbyHub/Rabby/tree/develop/src/ui/views/History)
+- [`HistoryItem.tsx`](https://github.com/RabbyHub/Rabby/blob/develop/src/ui/views/History/components/HistoryItem.tsx) — current History card example
+- [`transactionHistory.ts`](https://github.com/RabbyHub/Rabby/blob/develop/src/background/service/transactionHistory.ts) — current local transaction-history service example
 
-**P2.5 — Explorer enrichment spike** (before any list-time enrichment ships):
-- Validate the typed (non-TOON) explorer API the MCP tools sit on; record shapes +
-  availability for alphanet offline scenarios; `?rpc=`-style network override support.
-- `get_program_abi(program)` → grow the recognized-program registry without
-  hand-writing decoders; cache ABIs per program id (bounded, network-scoped).
+The shipped Thru UI borrows the flat-card presentation pattern, not Rabby's token/fee/indexer data contract.
 
-**P3 — Filters.** Account/network scope toggle (the Rabby screenshot's top-right
-switch) — only when multi-network data is real, not before.
+---
 
-**Tests** land with each phase: storage-shape + cursor merge (router-level fixtures),
-flat-stream rendering, network-scoped block times and missing-time fallback,
-failed/pending card states, "unknown program" honesty row.
+## 3. Source and deterministic test coverage
 
-## 5. Explicit non-goals (this cycle)
+Implementation locations:
 
-- No TOON/MCP consumption from the popup (that surface is for agents); explorer use
-  is strictly the typed API, validated in the P2.5 spike, enrichment-only.
-- No hand-written general instruction decoder for arbitrary programs in the baseline —
-  recognized-program registry + explorer ABI reflection instead.
-- No price/USD lines (no price feed on alphanet; Rabby's `$` values come from DeBank).
-  *Fact updated 2026-09-20:* a live Oracle program DOES post price updates on alphanet, and
-  reading it is a CSP-clean RPC call via the already-shipped `@thru/programs/oracle` bindings
-  (`docs/archive/EXPLORER_SPIKE.md` §5). Shipping fiat lines is therefore a product decision now, not
-  an impossibility — this cycle's non-goal stands until revisited deliberately.
-- No speed-up/cancel flows (Rabby's tx-group machinery exists for EVM nonce games;
-  Thru's model doesn't need it).
+- `src/ui/app/routes/history.js` — cache-first render, status banner, paging, context invalidation, filters, and detail-sheet lifecycle.
+- `src/ui/domain/tx-card.js` — flat transaction card and local-calendar time formatting.
+- `src/ui/domain/tx-detail-sheet.js` — lazy detail display and declared-fee/time labels.
+- `src/background/services/history-service.js` — storage-only cache read, RPC-merged feed, network/address scope, block-time provenance, and serialized cache writes.
+- `src/background/services/tx-service.js` and `src/lib/thru-client.js` — history decoding, paging, and detail/block-time RPC adapters.
+- `src/shared/network-scope.js` — network-scoped storage keys.
+- `src/shared/contract/manifest.js` — v9, v10, and v12 method declarations.
+
+Deterministic tests include `test/test-history-cache.mjs`, `test/test-history-block-time.mjs`, `test/test-route-lifecycle.mjs`, `test/test-api-router.mjs`, and the History decode cases in `test/test-thru-client.mjs`. They cover cache-first behavior, network/slot collisions, concurrency and stale responses, missing-time fallback, page enrichment, fee-label honesty, and DOM/lifecycle behavior with mocks. They do not prove live RPC availability, popup timing, real layout, or Chrome worker scheduling.
+
+---
+
+## 4. Open live-chain and browser checks
+
+Keep these open until run against the actual environment; passing automated tests is not a substitute.
+
+| Check | Why it remains open | Runbook/source |
+| --- | --- | --- |
+| Live block-time availability and first-load latency on each enabled network | `blockTimeNs` is optional; deterministic fixtures cannot establish what the current node returns or the latency of the first uncached lookup. | `docs/MANUAL_SMOKE_CHECKLIST.md` |
+| Live charged-fee source, if any | The current RPC response lacks a charged-fee field. Any explorer enrichment must first establish a typed, supported response and its provenance. | Official [Explorer MCP overview](https://thru.org/docs/api-ref/explorer-mcp/overview/) is not itself a typed wallet API; see `docs/BACKEND_GAPS.md`. |
+| Explorer transaction route | A link pattern such as `/tx/<signature>` must be confirmed for the deployed explorer; do not infer protocol support from a URL convention. | `docs/STATUS_AND_ROADMAP.md` |
+| Current real-Chrome History layout, card focus, sheet scrolling, copy, and popup/side-panel behavior | DOM shims have no layout engine and cannot certify browser rendering or interaction. | `docs/MANUAL_SMOKE_CHECKLIST.md` |
+| v12 activation and token-transfer live behavior | These affect account activation and token receipts, not just History rendering; see the current Send/backend open items. | `docs/SEND_PATH_AUDIT.md`, `docs/BACKEND_GAPS.md` |
+
+Official Thru references for protocol cross-checks: [Thru docs](https://thru.org/docs/), [gRPC API overview](https://thru.org/docs/api-ref/grpc/overview/), and [Explorer MCP overview](https://thru.org/docs/api-ref/explorer-mcp/overview/). Match them against the repository's pinned SDK version and `src/` implementation.
+
+---
+
+## 5. Explicit non-claims
+
+- No day-grouping headers are shipped; old day-boundary and day-count discussions are historical, not current UI behavior.
+- No per-card fee is shipped. The detail sheet shows only a clearly labelled declared fee; no charged amount is inferred.
+- The popup does not consume Explorer MCP/TOON output, and the explorer is not on the History first-paint path.
+- No arbitrary-program decoder, fiat-price line, or indexed third-party protocol label is claimed shipped by this History work.
+- A deterministic block-time test does not certify that a live node supplies timestamps or that the lookup meets a latency target.

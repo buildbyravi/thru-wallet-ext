@@ -1,58 +1,18 @@
 # Status and roadmap
 
-Single source of truth for **where the rebuild is** and **what happens next**.
+Single source of truth for the **shipped baseline**, what automated evidence proves, and the remaining work. Source baseline audited: `main` at `4aa55ba` (2026-09-26). `src/`, `test/`, and `scripts/` remain authoritative.
 
-**2026-09-26 History presentation:** Cards now form one flat stream (no Today/Yesterday
-headers), showing local-calendar `YYYY/MM/DD HH:mm`. The feed reads the containing block's
-optional `blockTimeNs` through the SDK and records its provenance as `timestampSource: 'block'`;
-lookups are scoped by chain + endpoint + slot and occur outside the shared storage writer.
-A verified cached block time avoids repeated header RPCs; "Load more" resolves only the
-new page's block headers. If the node cannot provide a time, an actual locally recorded
-submission time can be a fallback for the wallet's own sends, otherwise the card says
-`Block <slot>` rather than inventing a date. Cache-first paint is unchanged. The block-time path has deterministic mocked tests, but its live RPC availability
-and first-load latency still need manual verification.
+## Shipped baseline
 
-**2026-09-25 account activation + History update:** contract v12 (81 methods) adds
-`tx.registerAccount({ address })` (`auth: 'unlocked'`): the worker verifies vault ownership,
-then checks the selected chain before registering that exact account. The SDK adapter rejects a
-fee-payer keypair that does not derive the target address; registration is the native self-signed
-0-fee/0-nonce account-creation transaction, never a faucet claim or dummy transfer.
-Creation registers each new HD index and retries failed RPC attempts at most three times with exponential backoff,
-stopping on lock, network change or account removal. There is **no periodic signer**. Send
-activates an absent owned recipient just in time before review; the review shows its label and
-full address. Vault keys/addresses are shared across networks, but account existence is
-per-chain: registration on Alphanet does **not** register on another network. Creation
-registers on the selected chain only; switching networks never silently signs for every
-idle vault account. Dashboard may attempt the currently displayed active account after a
-successful live absence check, and an explicit unlocked registration or Send's owned-recipient
-path can activate a targeted address. Testnet and Mainnet are currently disabled until their
-RPC/program configuration is verified; Localnet is separate from Alphanet. History paints an
-address/network-scoped, storage-only cache first, marks it stale, then revalidates through the
-feed. Concurrent account refreshes serialize writes to the shared per-network cache. Deterministic build and tests pass; real popup/side-panel timing,
-service-worker restart behaviour and v12 activation against the live chain still need manual
-verification. See `docs/MANUAL_SMOKE_CHECKLIST.md`.
+- **Contract v12, 81 methods.** v12 adds unlocked-only `tx.registerAccount` for an exact vault-owned address and storage-only `tx.getCachedHistory` for cache-first History paint.
+- **Account activation.** Account/keyring creation paths make bounded, best-effort self-registration attempts for newly added accounts on the selected network. There is no periodic signer. Send checks an unregistered recipient and calls `tx.registerAccount` just in time only when that destination is an owned account. The target account signs for itself; arbitrary contacts are never registered.
+- **Send review.** The JIT activation must complete before Review enables. Review shows the matched recipient label above the full destination address; the label is display-only. Checked native/token methods bind the reviewed account and network at the background boundary.
+- **Signing preference.** Signing requires an unlocked wallet. Password re-authentication is **off by default** (`requirePasswordForSigning: false`); a user can explicitly enable it through the password-gated Settings path. The v12 registration exception remains narrowly unlocked-only.
+- **History.** One flat stream without day headers; storage-only cache-first paint scoped by network and address; fresh feed/pending reads do not gate the first paint. A known timestamp is sourced from the containing block and stored with `timestampSource: 'block'`; an actual local submission time is only a fallback for the wallet's own send. Otherwise show `Block <slot>` instead of inventing a date. No per-card fee line is shipped.
+- **Popup/side panel.** The shared page has a context marker and mutual-exclusion behavior. Side Panel Mode is an explicit opt-in; deterministic tests cover the bridge/settings paths, while real Chrome behavior remains open.
+- **Structural hardening.** Layering, CSP, route/CSS, contract, DOM, lifecycle, history, registration, network-cache, and quarantine checks run from `npm test`.
 
-**2026-09-24 Send update:** contract v11 adds reviewed-context native/token signing methods;
-Send paints after account/network metadata rather than waiting on balances, fees and token
-reads. Offline is unknown rather than a fresh zero, and a submitted signature no longer waits
-for a second balance RPC. Deterministic `npm run build` and `npm test` pass (route lifecycle
-885/885; contract 71/71). See [SEND_PATH_AUDIT.md](SEND_PATH_AUDIT.md) for the frontend–bridge–
-worker audit and **remaining** signing-network race, worker-restart, pending-write and live-token
-fee risks. Real Chrome and live-network validation remain open; use `MANUAL_SMOKE_CHECKLIST.md`.
-
-Previous update: contract v10 adds `tx.getDetail`, the lazy per-signature fetch behind the P2
-transaction detail sheet (Activity history P0+P1+P2 now shipped). It is explorer-free: the
-sheet runs on the RPC we already depend on, states the header-declared fee as such, and
-renders "Not available" for anything the network does not report — see
-`docs/archive/TX_DETAIL_SPIKE.md`. The P2.5 explorer spike ran 2026-09-20 (partial: live RPC/MCP
-calls were impossible from the spike environment, but official docs, the MCP endpoint's
-liveness and the explorer's Oracle page were validated) — findings, prepared test vectors and
-a resume checklist are in `docs/archive/EXPLORER_SPIKE.md`. A *charged* fee, if one exists anywhere,
-is still behind the undocumented explorer API; C2 stays open. Earlier: contract v8 added token transfer
-(`token.transfer` + real `token.getBalances`) on the official `@thru/programs/token`
-bindings, and v9 added the cache-merged history feed.
-
-Companion docs: `docs/DOCS_INDEX.md` (which doc to trust) · `docs/PROJECT_LEDGER.md` (past/present/future build tracking) · `CONTEXT.md` (file map) · `docs/MODULE_BOUNDARIES.md` (feature separation) · `docs/DEFECT_LOG.md` (every defect + lesson) · `docs/BACKEND_GAPS.md` (capability tiers) · `docs/BUILD_SPEC.md` (product spec)
+Companion docs: `docs/DOCS_INDEX.md` · `docs/PROJECT_LEDGER.md` · `CONTEXT.md` · `docs/MODULE_BOUNDARIES.md` · `docs/BACKEND_GAPS.md` · `docs/BUILD_SPEC.md` · `docs/MANUAL_SMOKE_CHECKLIST.md` · `docs/SEND_PATH_AUDIT.md`.
 
 ---
 
@@ -73,85 +33,63 @@ Structural properties now enforced by CI rather than by discipline:
 | Property | Enforced by |
 | --- | --- |
 | No `innerHTML` anywhere in `src/` | `check-layering.mjs` — **0 sinks, ratchet closed, whole runtime** |
-| No launchpad/DEX/prediction surface in `src/`, flags, routes or `dist/` | `test-launchpad-quarantine.mjs` |
+| No launchpad/DEX/prediction surface in `src/`, flags, routes or `dist/` | `test/test-launchpad-quarantine.mjs` |
 | One file per direction across the seam | `check-layering.mjs` sendMessage allowlist |
 | UI never imports vault/background | `check-layering.mjs` import rules |
 | Every navigated route exists | `check-routes.mjs` |
 | Every registered route is reachable | `check-routes.mjs` |
 | Every CSS class used is defined | `check-routes.mjs` |
-| Contract agrees in both directions | `test-contract.mjs` |
-| Key derivation cannot change silently | `test-derivation.mjs` |
-| Nothing unserializable crosses the port | `test-api-router.mjs` |
-| Custom endpoints cannot become active, including by direct API call or stale storage | `test-api-router.mjs` + `test-route-lifecycle.mjs` |
+| Contract agrees in both directions | `test/test-contract.mjs` |
+| Key derivation cannot change silently | `test/test-derivation.mjs` |
+| Nothing unserializable crosses the port | `test/test-api-router.mjs` |
+| Custom endpoints cannot become active, including by direct API call or stale storage | `test/test-api-router.mjs` + `test/test-route-lifecycle.mjs` |
 
 ### Verified green
 
+Final verification on the documentation-only change (2026-09-26):
+
+```text
+npm test       PASS — derivation 16; QR 15; layering 70 files / 0 sinks; CSP pass;
+               routes 14/14; CSS nesting pass; launchpad quarantine 47;
+               contract 77; DOM/refs 130; route lifecycle 904;
+               vault, Thru client, token/balance, History cache/block-time,
+               registration, and API-router suites pass.
+npm run build  PASS — generated dist/ from the current source.
 ```
-npm run build     clean, no warnings, dist/ wiped and reproduced: popup.html + 2 bundles
-npm test          derivation 16 · layering 70 files / 0 sinks · routes 14/14 · CSS clean
-                  launchpad quarantine 45 · contract 75 · dom+refs 127 · route lifecycle 904
-                  vault · thru-client (incl. token goldens) · registration · history cache
-                  block-time/network-paging · api-router
-npm audit --omit=dev
-                  found 0 vulnerabilities
-```
+
+These results are deterministic/local. They do not close the browser or live-chain checks below.
 
 ### Recent security hardening
 
-- F-01 signing auth is fixed in the background contract. `tx.send`, `tx.claimFaucet`,
-  `tx.autoCreateAccount`, and `token.deploy` use `auth: 'signing'`.
-- Signing re-authentication is required by default and is verified inside `api-router` before a
-  signing handler runs.
-- Contract v12 adds a narrow exception: `tx.registerAccount({ address })` is unlocked-only
-  for an account derived from the current vault. It cannot sign an arbitrary recipient or
-  transfer. Do not extend this exception to Send, faucet, token deployment or password export.
-- Users can explicitly opt into session-only signing from Settings, but that opt-out is itself
-  password-gated via `settings.setSecurity`.
-- Generic `settings.set` rejects signing/whitelist security keys.
-- Contract v6 hardens `wallet.reset`: typed confirmation is always required, and password is required when the wallet is unlocked.
-- Contract v6 hardens `system.setAutoLock`: auto-lock changes are password-gated, including `Never`.
-- Contract v7 refuses `network.setActive` for custom endpoints in the background and heals stale
-  custom/disabled selections to the default before `configureNetwork()` can bind them.
-- F-04 is closed by deletion: the legacy launchpad/DEX/prediction page no longer exists, is not
-  built, and cannot be re-enabled by URL, flag or control (`test-launchpad-quarantine.mjs`).
+- `tx.send`, `tx.sendChecked`, faucet signing, token transfer, and related signing methods use the background `auth: 'signing'` policy. The wallet must be unlocked; password re-auth is required only when the user enables it in Settings.
+- `requirePasswordForSigning` defaults to `false` (session-only while unlocked). Changing this security preference goes through password-gated `settings.setSecurity`; generic `settings.set` rejects security-sensitive keys.
+- Contract v12 adds the narrow `tx.registerAccount({ address })` exception: it is unlocked-only, checks exact vault ownership in the background, signs only for that address, and does not transfer value. Never extend this exception to Send, faucet, token transfer, export, or arbitrary recipients.
+- Contract v6 enforces reset confirmation and an unlocked-wallet password check; auto-lock changes are password-gated.
+- Contract v7 rejects custom network activation in the background and heals stale custom/disabled active IDs before RPC binding.
+- Launchpad/DEX/prediction UI was deleted, not merely hidden. The source/build guard keeps it out; backend token methods remain distinct.
+- Popup and side panel share one page. The side-panel close listener registers before asynchronous boot; popup open broadcasts to a ready panel and calls Chrome's close API where available. Settings' Side Panel Mode toggle is an explicit user choice and is restored after worker restart only when enabled.
 
-### Verified against a live chain
+### Historical live-chain observations — native Alphanet scope only
 
-Confirmed on alphanet, not assumed:
+These are prior observations, not certification of the newer v12 registration path or token transfer:
 
-- **Amount units.** The faucet field is raw base units — claiming 10000 credited exactly 10000.
-  This was the highest-value unknown in the project.
-- **Program addresses and instruction layouts** for faucet and transfer both execute.
-- **Transfer fee is 1 base unit**, measured. Now per-network config, `null` where unmeasured.
-- **History decoding** returns `sent` / `faucet` with amounts, and reports `success: false`.
-- **The previous creation-time registration path was exercised on a live chain**, so faucet
-  worked on a brand-new wallet with no dashboard visit (`scripts/verify-autoregister.mjs`, 5/5).
-  Contract v12's targeted, multi-account path still needs a fresh live check.
-- **End-to-end through `api-router`** — the same seam `bridge.send()` uses — 19/19
-  (`scripts/verify-live-e2e.mjs`).
+- Faucet amount units were observed as raw base units (a claim of 10000 credited 10000 base units).
+- The native THRU transfer path/program and a 1-base-unit Alphanet fee were previously exercised. This does **not** measure the token-program fee.
+- Basic native History decoding and an earlier account-creation registration path were exercised. The earlier `scripts/verify-autoregister.mjs` result is not a substitute for a fresh multi-account v12 activation pass.
+- An earlier live API-router run completed; it does not certify current browser layout, worker suspension, or the new v12 flows.
 
-### Not verified
+### Open: real browser and live-chain checks
 
-- **V12 needs a live activation pass:** create several HD accounts, confirm each is available
-  on the selected chain without switching active accounts, then exercise Send to an owned
-  absent recipient. Verify review stays gated until activation completes and that an offline
-  RPC never claims the recipient is absent. Service-worker suspension and restart between
-  retries/activation are not exercised by the Node harness.
-- **Browser rendering remains manual.** The lifecycle shim mounts every route, but cannot prove real
-  popup/side-panel layout, focus rings, canvas output, extension reloads, or service-worker eviction.
-  Run `docs/MANUAL_SMOKE_CHECKLIST.md` before merging UI changes.
-- **Lock-on-refresh is unresolved.** Run `system.diagnostics` **from the popup's own console** (right-click the popup → Inspect) — running it in the service-worker console fails with "Receiving end does not exist", because a service worker cannot message *itself*. Then read `sessionPresent`. `false`
-  right after a refresh means the session store is not persisting — a platform difference, since
-  the reported browser is Comet rather than Chrome — and not auto-lock firing. The two need
-  opposite fixes.
-- **Token transfer has never executed against a live network from this codebase.** It is built
-  entirely on the official `@thru/programs/token` bindings, with golden wire-byte tests and a
-  scripted send flow in `test-route-lifecycle.mjs`, but the first end-to-end run is
-  `scripts/verify-token-transfer.mjs`, which needs an environment that can reach the RPC. Two
-  answers only it can give: whether a recipient *wallet* account must exist before its token
-  account initializes, and what a token-program transaction actually costs in fees (Step 8).
+Passing `npm test` or `npm run build` does not close any of these:
 
----
+| Boundary | Still open |
+| --- | --- |
+| Real Chrome | Popup/side-panel layout and focus at narrow/wide sizes; QR canvas; actual popup/panel mutual exclusion; Settings' toolbar mode; clipboard prompt; MV3 worker eviction/restart and timeouts. Run `docs/MANUAL_SMOKE_CHECKLIST.md`. |
+| Live v12 activation | Create several HD accounts on the selected chain and exercise Send JIT for an owned absent recipient. Verify target signer, per-network existence, offline-vs-absent handling, and behavior if MV3 suspends during bounded retries. |
+| Live token transfer | Whether a never-registered recipient owner can receive a sender-initialized token account and the actual token-program fee remain unmeasured. Use `scripts/verify-token-transfer.mjs` only with a safe throwaway wallet and network access. |
+| History RPC/explorer | Current block-time availability and first-load latency per enabled network; whether an authoritative charged-fee value exists outside the current RPC detail response; and confirmation of the explorer transaction route. |
+| Send/pending concurrency | A network switch after the final preflight check but during the mutable SDK signing sequence, and concurrent pending-record read/modify/write races remain open (`docs/SEND_PATH_AUDIT.md`). |
+| Session behavior | The reported lock-on-refresh/session-storage behavior still needs checking in the actual target browser. A Node harness cannot distinguish a browser persistence difference from an auto-lock timer issue. |
 
 ## 2. What to do next, in order
 
@@ -178,7 +116,7 @@ What was removed, and what deliberately was not:
 5. The DOM-sink ratchet in `check-layering.mjs` widened from `src/ui/**` + `src/features/**` to
    all of `src/` (vendor excluded), because the directory left outside the ratchet is exactly
    where the sinks survived. 0 sinks, and now nothing can hide.
-6. `test-launchpad-quarantine.mjs` added to `npm test` (45 checks): tree deleted, no source or
+6. `test/test-launchpad-quarantine.mjs` added to `npm test` (47 checks): tree deleted, no source or
    manifest reference, flags inert, no route/control, zero sinks, and a real build whose `dist/`
    is scanned by filename and by content. Verified to fail when the surface is restored.
 7. NOT touched: vault, signing, RPC/instruction construction, and token semantics. The backend
@@ -186,11 +124,11 @@ What was removed, and what deliberately was not:
    available to a future feature module. No DEX, swap, launchpad, perp or prediction feature was
    built in this cleanup.
 
-### Step 2 — route lifecycle test  ← DONE (`test-route-lifecycle.mjs`)
+### Step 2 — route lifecycle test  ← DONE (`test/test-route-lifecycle.mjs`)
 
 This was the largest remaining test gap: `check-routes.mjs` proves a route is *reachable* and its
 classes are *defined*; nothing proved it *mounts*. All three requirements are now asserted, for all
-14 routes, in no-vault / locked / unlocked states (694 checks, ~1–2s):
+14 routes, in no-vault / locked / unlocked states (904 checks in the current audited run):
 
 1. mount through the real Router, guards, bridge and kit, and assert no throw plus the landing path
    the guard actually specifies;
@@ -206,7 +144,7 @@ discarded the instance, so the back button's click listener outlived the screen.
 guarded.
 
 **jsdom was deliberately not added.** The hard rule is no new dependencies, the house style is
-already a hand-rolled shim (`test-ui-dom.mjs`), and the shim only needs the DOM surface this
+already a hand-rolled shim (`test/test-ui-dom.mjs`), and the shim only needs the DOM surface this
 codebase actually touches. Only `chrome.runtime.sendMessage` is mocked; every response shape was
 read from the service that really produces it.
 
@@ -247,7 +185,7 @@ Before adding real launchpad, DEX, prediction, chart, or portfolio behavior, fol
 5. treat `docs/MCP_AGENT_INTEGRATION.md` as intent/read-only planning, not permission for agents
    to sign or export secrets.
 
-### Step 4 — token transfer ← DONE (contract v8), pending one live run
+### Step 4 — token transfer — SHIPPED in code (v8); live-chain verification OPEN
 
 Built entirely on the official `@thru/programs/token` bindings (`createTransferInstruction`,
 `createInitializeAccountInstruction`, `createInitializeMintInstruction`,
@@ -310,7 +248,7 @@ seed-replacement messaging, and ceremonies run in an extension tab/side panel ra
 auto-closing popup. Passkey implementation remains **not started** until the user green-lights
 the probe.
 
-### Step 5 — dependency pin cleanup
+### Step 5 — dependency pin cleanup — DONE
 
 Completed in the 2026-09-18 audit pass: `@thru/programs` and `@thru/sdk` are exact-pinned at
 `0.3.16`, and derivation imports from the SDK's public `@thru/sdk/crypto` subpath rather than
@@ -319,16 +257,13 @@ install gate.
 
 ### Step 6 — spacing and the tab-width question
 
-Width is **fixed at 408px** on `body`; height is auto above a 580px floor. Correct for a popup,
-wrong when `popup.html` is opened in a tab for testing, where the 408px body leaves the viewport
-blank to the right. One media query lets the working surface widen when it is not in a popup.
-Do the section-spacing pass at the same time.
+The toolbar popup is **400px wide** (the shipped `--popup-width` token); it is not a 408px layout. The side panel is user-resizable and the body caps at the available width. The wide-panel presentation and real resize behavior remain a browser check, not a CSS assumption. Keep this item open only for visual review; do not change the popup width without testing both contexts.
 
 ### Step 7 — a future launchpad (nothing ships today)
 
 The legacy surface is **deleted**, not flagged: `src/launchpad/**`, its `?launchpad=1` override,
 its dashboard banner, and `popup/icons.js` + `popup/toast.js` (whose only importer it was). See
-Step 1 for the record and `test-launchpad-quarantine.mjs` for the enforcement.
+Step 1 for the record and `test/test-launchpad-quarantine.mjs` for the enforcement.
 
 A launchpad returns only as a new `src/features/launchpad/**` module with `launchpad.*` backend
 namespaces, guarded DOM, real quotes from a verified AMM/indexer, and its own tests — the shape
@@ -369,10 +304,11 @@ product and stay in `routes/`. Only genuinely optional surfaces go in `features/
 
 ### Step 10 — dApp integration boundary: hosted wallet, not extension provider
 
-The current official [Thru wallet overview](https://thru.org/docs/wallet/overview/) and
+The current official [Thru docs](https://thru.org/docs/) and
 [embedded integration guide](https://thru.org/docs/wallet/embedded-wallet-integration/) describe
 `@thru/wallet` / `@thru/wallet/react` connecting a web app to the hosted iframe at
-`https://wallet.thru.org/embedded`. The documented `connect()`, `getSigningContext()`, and
+`https://app.tid.sh/embedded` (`https://wallet.tid.sh` is the standalone host and sends
+`X-Frame-Options: DENY`). The documented `connect()`, `getSigningContext()`, and
 `signTransaction()` methods are part of that hosted-wallet lifecycle: the wallet approves and signs,
 and the dApp submits the returned raw bytes separately. They do not, by themselves, establish an
 extension-compatible provider contract or a bring-your-own-signer path.
@@ -406,8 +342,10 @@ against a real node rather than asserting, and use throwaway in-memory keys that
 real vault: `verify-live-e2e`, `verify-autoregister`, `verify-chain`, `measure-fee`,
 `diagnose-faucet`, `probe-transfer-*`, `verify-token-transfer`.
 
-**Install the docs skill.** `npx skills add https://thru.org/docs`. Reading one docs page fixed
-three token bugs that had absorbed significant probing effort.
+**Cross-check protocol behavior with official Thru references.** Start at the
+[API/SDK overview](https://thru.org/docs/api-ref/overview/) and the pinned
+[`@thru/sdk` docs](https://thru.org/docs/sdks/web-packages/sdk/); the package versions in
+`package-lock.json` remain the implementation authority for this checkout.
 
 ---
 
@@ -417,12 +355,9 @@ Each was earned by a defect in `docs/DEFECT_LOG.md`.
 
 1. New DOM is built with `kit/dom.js` `h()`. The sink ratchet is at **0** and must stay there.
 2. The contract is append-only and tested in both directions, except documented security breaks:
-   contract v5 moved existing signing methods to `auth: 'signing'`; contract v6 hardened reset
-   and auto-lock requirements; contract v7 refuses custom-network activation and heals stale ids.
-3. Sensitive operations are `auth: 'password'` or `auth: 'signing'`, re-verified against the
-   encrypted blob when password auth is required — never against session state. The only
-   unlocked signing exception is v12 `tx.registerAccount` for an address owned by the vault.
-4. Secrets never enter URLs, router params, history, `data-*`, storage, `window` or `console`.
+   contract v5 moved existing signing methods to `auth: 'signing'`; v6 hardened reset/auto-lock; v7 quarantined custom activation; v8 added token transfer/balances; v9 history feed; v10 detail; v11 checked sends; v12 owned-account registration and storage-only History cache.
+3. Sensitive operations use the declared `auth: 'password'` or `auth: 'signing'` policy and are re-verified against the encrypted blob whenever password auth is required. Signing re-auth is opt-in (default false); the only unlocked-only signing exception is v12 `tx.registerAccount` for an exact vault-owned address.
+4. Plaintext secrets never enter URLs, router params, history, `data-*`, `window` or `console`. Encrypted vault data and the trusted unlocked-session store are explicit storage boundaries; ordinary persistent storage must not receive decrypted key material.
 5. Money is BigInt internally and a **string** on the wire. Never both in one object.
 6. `destroy()` removes the same handler references it added. Use `disposer()`.
 7. No inline `style="…"` or `on*="…"`. CSSOM and DOM properties are fine; attributes are refused

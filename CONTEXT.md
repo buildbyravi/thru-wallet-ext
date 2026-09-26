@@ -1,321 +1,195 @@
-# CONTEXT.md — file-by-file map of thru-wallet-ext
+# CONTEXT.md — file map for thru-wallet-ext
 
-Purpose: let any agent or new contributor answer "where do I look for X?" without grepping the
-whole tree. Every line count and `file:line` reference below was verified against the working
-tree.
+Last source-backed update: 2026-09-26. Line counts are a snapshot, not an implementation contract; verify `src/` before editing.
 
-Read `AGENTS.md` first for the rules. `docs/STATUS_AND_ROADMAP.md` for current state and next
-steps. `docs/DEFECT_LOG.md` for every defect found and why.
+Read `AGENTS.md` first for repository rules, then `docs/STATUS_AND_ROADMAP.md` for the shipped baseline and open checks. `docs/DEFECT_LOG.md` preserves historical failures with explicit status labels.
 
-> **The frontend rebuild is complete.** There is ONE UI stack. The legacy `show()`-based tree
-> (`src/popup/screens/**`, `src/ui/components/**`, `src/ui/router.js`, `store.js`, `events.js`,
-> `bridge.js`, the 1,100-line `popup.js` monolith and ~430 lines of static `popup.html` markup)
-> was deleted in `c0ba23a`. If a document elsewhere describes two stacks, it is stale.
-> Recover deleted files from git history. No second legacy copy is kept in the root.
->
-> **The legacy launchpad is quarantined.** `src/launchpad/**` (`launchpad.js` 552,
-> `launchpad.html` 443, `launchpad.css` 1,057) is deleted, together with `src/popup/icons.js`
-> and `src/popup/toast.js`, whose only importer was that page. No launchpad page is built,
-> `popup.html?launchpad=1` is gone, and `test-launchpad-quarantine.mjs` fails the build if any
-> of it returns. Research is retained in `docs/archive/LAUNCHPAD_UX_STUDY.md`,
-> `docs/LAUNCHPAD_DEX_MIGRATION_UX.md` and `docs/archive/THRU_NATIVE_DEFI_TAB_UX.md`. Backend `token.*`
-> contract methods are untouched.
+## Shipped baseline at a glance
 
----
+- Contract v12: **81 methods** in `src/shared/contract/manifest.js`; 14 registered wallet routes.
+- Signing requires an unlocked wallet. Password re-authentication defaults off and is an explicit, password-gated Settings opt-in.
+- `tx.registerAccount` self-signs only for an exact vault-owned address. Account/keyring creation paths make bounded, best-effort registration attempts for new addresses. Send JIT-activates only a selected/typed owned recipient after an on-chain absence check; it never registers an external contact. Review waits for activation and shows the matched label above the full address.
+- History is a flat stream without day headers. It paints storage-only cached entries scoped by network and address before fresh feed/pending reads. Block-time provenance is retained; an actual local submission time is only an own-send fallback; otherwise display `Block <slot>`. No per-card fee line is shipped.
+- Popup and side panel share `popup.html`; a context marker and mutual-exclusion path are implemented. Side Panel Mode is an explicit opt-in. Real Chrome behavior remains a manual check.
+- Launchpad/DEX/prediction UI and an extension dApp provider are not shipped. The launchpad tree is quarantined by tests.
 
-## 1. Where to look --  quick index
+## 1. Where to look
 
 | I need to | Go to |
 | --- | --- |
-| **build or change a screen** | `src/ui/app/routes/` --  one file per route |
-| **create any DOM node** | `src/ui/kit/dom.js` `h()`. Never `innerHTML`. |
-| add/change a backend API method | `src/shared/contract/manifest.js` **then** `src/background/api-router.js` |
-| touch encryption, keyrings, seed derivation | `src/lib/vault.js` |
-| touch RPC, transactions, history decoding | `src/lib/thru-client.js` |
-| add or change a network | `src/lib/networks.js` |
-| decide if stored data is per-network | `src/shared/network-scope.js` |
-| format or parse a THRU amount | `src/shared/format.js` |
-| address an account in a URL | `src/shared/refs.js` |
-| change colors, spacing, type | `src/popup/styles/tokens.css` |
-| register a route | `src/ui/app/boot.js` |
-| add an icon | `src/ui/kit/icon.js` (path data, not markup) |
-| turn a feature on/off | `src/shared/flags.js` |
-| token/AMM/CLOB/oracle program calls | `@thru/programs/*` --  never hand-roll |
-| change the build | `build.mjs` |
-| change permissions or CSP | `src/manifest.json` |
-| verify against a live chain | `scripts/verify-*.mjs` |
+| Change a screen | `src/ui/app/routes/` |
+| Create DOM safely | `src/ui/kit/dom.js` (`h()`); never HTML strings |
+| Add/change a UI/background API method | `src/shared/contract/manifest.js`, then `src/background/api-router.js` and its service |
+| Change encryption, keyrings, or account derivation | `src/lib/vault.js` |
+| Change RPC, transaction construction, or wire decoding | `src/lib/thru-client.js` |
+| Change enabled networks/program configuration | `src/lib/networks.js`, then network service/CSP together |
+| Decide whether data is network-scoped | `src/shared/network-scope.js` |
+| Change amount parsing/formatting | `src/shared/format.js` |
+| Change opaque account URL references | `src/shared/refs.js` |
+| Change History cache/time behavior | `src/background/services/history-service.js`, `tx-service.js`, `src/ui/app/routes/history.js` |
+| Change Send activation/review | `src/ui/app/routes/send.js`, registration service, contract/router |
+| Change popup/side-panel context behavior | `src/shared/side-panel.js`, `src/ui/app/side-panel-exclusion.js`, `src/background/index.js` |
+| Change permissions/CSP | `src/manifest.json`, `scripts/check-csp.mjs` |
+| Check a live chain | `scripts/verify-*.mjs` (manual, never part of `npm test`) |
+| Check actual Chrome rendering | `docs/MANUAL_SMOKE_CHECKLIST.md` |
 
----
+## 2. Architecture and boundaries
 
-## 2. Architecture in one picture
-
+```text
+src/ui/app/routes
+  → src/ui/app/bridge.js
+  → src/shared/contract/manifest.js
+  → src/background/api-router.js
+  → src/background/services
+  → src/lib/vault.js / src/lib/thru-client.js / src/lib/networks.js
 ```
-UI (src/ui)  -- ---- --bridge.send(method, params)-- ---- -->  api-router  -- ---- -->  services  -- ---- -->  lib
-                                                    --
-        <-- ---- ---- ---- -- event-service.emit(event) -- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- --
-```
 
-Four rules, all enforced by `scripts/check-layering.mjs`:
+`src/ui/app/bridge.js` is the outbound message seam; `src/background/services/event-service.js` is the inbound push-event source. `scripts/check-layering.mjs` enforces import boundaries and zero prohibited DOM-injection sinks across shipped `src/` (vendored QR code excluded). `scripts/check-routes.mjs` guards route reachability and CSS classes; `scripts/check-css-nesting.mjs` enforces flat CSS.
 
-1. `src/background/**` must not import `src/ui/**` or `src/popup/**`
-2. `src/ui/**` must not import `src/background/**`, `lib/vault.js`, `lib/thru-client.js`, or
-   the SDK-bearing `lib/networks.js`
-3. `src/ui/kit/**` must not import the bridge, features, or domain
-4. Only `src/ui/app/bridge.js` may call `sendMessage` outbound; only
-   `background/services/event-service.js` may push inbound
+The popup entry `src/popup/popup.js` is a boot stub. The removed legacy screens are only recoverable from Git history. Although `boot.js` accepts an optional fallback callback, the shipped popup does not supply one.
 
----
+## 3. Build and automated verification
 
-## 3. Root files
+`package.json` defines the exact test sequence. Current suites include:
 
-| File | Purpose |
+| Test / guard | Coverage |
 | --- | --- |
-| `build.mjs` | esbuild. 2 JS bundles + 1 CSS bundle + static copies. Wipes `dist/` first, so a removed entry point cannot linger in a stale `dist/`. |
-| `test-derivation.mjs` | **Runs first.** Golden vectors: a fixed phrase must derive fixed addresses. |
-| `test-contract.mjs` | Contract --!  router agreement, both directions. 56 checks. |
-| `test-ui-dom.mjs` | `h()` security properties + ref codec. 89 checks, DOM shim. |
-| `test-route-lifecycle.mjs` | Mounts all 14 routes through the real Router/guards/bridge in no-vault, locked and unlocked states, plus settings (including custom-network quarantine), focus-trap, password-modal, export-secret, navigation and negative-control passes. 755 checks, richer DOM shim, mocked `chrome.runtime.sendMessage` only. |
-| `docs/MANUAL_SMOKE_CHECKLIST.md` | What only a browser can prove: popup + side panel, narrow + wide widths, all 14 routes, focus, secret hygiene. Not a test; a runbook. |
-| `test-vault.mjs` | Real vault against real `@thru/sdk/crypto`. |
-| `test-thru-client.mjs` | Instruction layouts, amount round-trips, network binding. |
-| `test-api-router.mjs` | Background integration + JSON-serializability probes. |
-| `test-launchpad-quarantine.mjs` | The quarantined launchpad/DEX/prediction surface stays out of `src/`, the flags, the routes and `dist/`. 45 checks; rebuilds `dist/` unless `QUARANTINE_SKIP_BUILD=1`. |
-| `scripts/check-layering.mjs` | Import boundaries + DOM-sink ratchet over **all of `src/`** (**at 0**). |
-| `scripts/check-routes.mjs` | Route reachability + CSS class existence. |
-| `scripts/check-csp.mjs` | Enabled-network/RPC-origin consistency with the manifest CSP. |
-| `scripts/verify-*.mjs` | Live-chain reports. **Not** in `npm test`. |
+| `test/test-derivation.mjs` | Pinned SDK derivation vectors (16 checks). |
+| `test/test-qr.mjs` | QR generation/encoding (15 checks). |
+| `scripts/check-layering.mjs` | Import boundaries and DOM-sink scan (70 files; zero sinks in the audited run). |
+| `scripts/check-csp.mjs` | Enabled-network/CSP consistency. |
+| `scripts/check-routes.mjs` | Route registration/reachability (14/14) and used CSS classes. |
+| `scripts/check-css-nesting.mjs` | Flat-CSS guard. |
+| `test/test-launchpad-quarantine.mjs` | Deleted launchpad/DEX/prediction surface remains out of source and `dist/` (47 checks). |
+| `test/test-contract.mjs` | Manifest/router/UI agreement and security invariants (77 checks). |
+| `test/test-ui-dom.mjs` | DOM safety and reference codec (130 checks). |
+| `test/test-route-lifecycle.mjs` | All routes through Router/guards/bridge, teardown, secrets, focus, Send, History, panel behavior (904 checks). |
+| `test/test-vault.mjs`, `test/test-thru-client.mjs` | Vault/SDK integration, instruction and decoder behavior. |
+| `test/test-token-balances.mjs`, `test/test-balance-network.mjs` | Token denomination, proven-zero/unknown, network-scoped reads/caches. |
+| `test/test-history-cache.mjs`, `test/test-history-block-time.mjs` | Cache-first History, timestamp provenance, network/slot isolation, races, paging. |
+| `test/test-registration.mjs` | Owned-account registration policy and bounded retries with deterministic SDK fixtures. |
+| `test/test-api-router.mjs` | Auth, context, serialization, background dispatch, and send/registration integration. |
 
-`npm test` order: derivation --   layering --   routes --   launchpad-quarantine --   contract --   dom --
-route-lifecycle --   vault --   thru-client --   api-router. Guards first, so structural breakage
-fails fast.
+These counts are the audited run's counts; use the final test output for any subsequent refresh. They are deterministic/local evidence only. Real-browser and live-chain checks are separate.
 
----
+## 4. `src/lib/` — vault and Thru client
 
-## 4. `src/lib/` --  the sacred layer
+Change these only for verified bugs or intentional, tested behavior.
 
-Change only for a verified bug or a tested additive primitive.
+### `src/lib/vault.js` — 778 lines
 
-### `src/lib/vault.js` --  737 lines
+Encrypted vault, keyring model, seed/private-key handling, HD account derivation, and password verification against the encrypted blob. Seed keyrings store generated/imported provenance and backup state. Decrypted vault/key material is held in the trusted session store, not ordinary local storage.
 
-Encrypted vault and keyring model. PBKDF2 600k + AES-256-GCM. Encrypted blob in
-`chrome.storage.local`; decrypted vault and derived key in `chrome.storage.session` only.
+### `src/lib/thru-client.js` — 1,178 lines
 
-Keyrings: `seed` (derives many HD accounts) and `privateKey` (exactly one). Each carries
-`origin: 'generated' | 'imported' | 'unknown'` and, for seeds, `backedUpAt`.
+RPC binding, native/token transactions, history decoding/detail, and official Thru program/SDK adapters. Token derivation and token instructions use the pinned `@thru/programs/token` package. The current deployed UI has no launchpad/deploy surface. The current RPC detail path distinguishes a header-declared fee from a charged fee, which the response does not provide.
 
-Notable functions: `createVault`, `unlock`, `lock`, `resetWallet`, `listKeyrings`,
-`createSeedKeyring` (generates a phrase **in the background** and never returns it),
-`addSeedKeyring`, `addPrivateKeyKeyring`, `renameKeyring`, `removeKeyring`, `setKeyringBackedUp`,
-`previewHdAccounts` (derives without persisting), `addHdAccounts` (batch, one AES write),
-`removeHdAccount`, `resolveAccount`, `exportAccountSecret`, `exportAccountPrivateKey`,
-`verifyMasterPassword`, `sanitizeLabel`.
+### `src/lib/networks.js` — 195 lines
 
-Password-verified operations re-check against the **encrypted blob**, not session state.
+Network/program configuration. Alphanet and Localnet are enabled; Testnet and Mainnet are declared but disabled. Custom RPC records cannot be activated under the v7 quarantine. Fee values are network-specific; do not transfer a native fee observation to token sends.
 
-### `src/lib/thru-client.js` --  1010 lines
-
-RPC, transaction construction, history decoding (native + token entries), token deployment,
-token account reads and token transfers.
-
-**Network binding matters here.** `configureNetwork(config)` sets the RPC URL and program
-addresses; `network-service` calls it on every config read and enabled built-in switch. Contract v7
-refuses custom activation and rewrites any stale custom/disabled active id to Alphanet before this
-binding call. Before binding existed the client memoized a hardcoded alphanet URL, so network
-switching was cosmetic.
-
-Token derivation and token instructions delegate to `@thru/programs/token` --
-`deriveTokenMintAddress` needs a mint authority and a **64-hex-character** seed;
-`generateMintSeed()` produces exactly that. Token transfers initialize the recipient's token
-account in a preceding transaction when missing (program-derived, no recipient key needed),
-and the token wire format uses a **one-byte** instruction tag -- pinned by goldens in
-test-thru-client.mjs.
-
-### `src/lib/networks.js` --  193 lines
-
-Every network as data. `alphanet` and `localnet` are `enabled: true`; `testnet` and `mainnet` are
-declared but `enabled: false` so the shape is exercised before they are real.
-
-Per-network fields that must never become module constants: `rpcUrl`, `explorerUrl`, the three
-program addresses, `faucetStateAccount`, `faucetMaxPerClaim`, `baseFeeUnits`, `feeReserveUnits`,
-`isTestnet`.
-
-`baseFeeUnits` is `1n` on alphanet (**measured**) and `null` on testnet/mainnet, so
-`tx.estimateFee` reports unknown rather than quoting a devnet number.
-
----
-
-## 5. `src/background/` --  the service worker
+## 5. `src/background/` — worker and services
 
 | File | Lines | Purpose |
-| --- | --- | --- |
-| `index.js` | 62 | Message listener (validates `sender.id`), inactivity auto-lock heartbeat |
-| `api-router.js` | 337 | Validates every method against the contract, enforces `auth`, preserves explicit retry policy, catches unserializable payloads |
-| `services/wallet-service.js` | 207 | Lifecycle, unlock backoff, export, creation-bound registration |
-| `services/keyring-service.js` | 101 | Multi-seed add/create/rename/remove/backup-state; creation-bound registration |
-| `services/account-service.js` | 180 | Public accounts, HD preview/batch/remove, preference ordering; schedules activation for every new HD index |
-| `services/tx-service.js` | 378 | Faucet, transfer, history (+token direction resolution), validation, fee estimate |
-| `services/token-service.js` | 330 | Deploy, registry, derivation, visibility, **owned balances, token transfers** |
-| `services/balance-service.js` | 201 | Batched + cached balances, **per-network** |
-| `services/pending-tx-service.js` | 255 | Submitted--  confirmed tracking, badge, **per-network** |
-| `services/registration-service.js` | 135 | Targeted self-signed owned-account registration, 3 bounded creation retries, network/lock/ownership checks; no periodic signing |
-| `services/history-service.js` | 155 | Storage-only per-(network,address) cache read (v12), serialized shared-scope writes, plus existing RPC-merged feed (v9) |
-| `services/preferences-service.js` | 178 | Order/pin/hide, whitelist, settings |
-| `services/network-service.js` | 266 | Enabled built-in selection, legacy custom-record quarantine/removal, **binds thru-client** |
+| --- | ---: | --- |
+| `index.js` | 112 | Message listener, trusted session storage, auto-lock heartbeat, side-panel preference restore |
+| `api-router.js` | 337 | Contract allowlist, auth enforcement, dispatch, error/JSON normalization |
+| `services/wallet-service.js` | 207 | Wallet lifecycle, unlock backoff, export, creation registration |
+| `services/keyring-service.js` | 101 | Multi-seed operations and creation-bound registration |
+| `services/account-service.js` | 181 | Account/HD operations, preferences, registration for new accounts |
+| `services/tx-service.js` | 519 | Faucet, native/token sends, History/detail, validation, fee estimate |
+| `services/token-service.js` | 386 | Token registry, deploy handler, derivation, visibility, balances, transfers |
+| `services/balance-service.js` | 218 | Batched/cached balances, network-scoped |
+| `services/pending-tx-service.js` | 285 | Submission/reconciliation state and badge, network-scoped |
+| `services/registration-service.js` | 135 | Exact owned-account self-registration; bounded creation retry, no periodic signing |
+| `services/history-service.js` | 194 | Storage-only per-network/address read, RPC feed merge, block-time provenance, serialized writes |
+| `services/preferences-service.js` | 224 | Account order/pin/hide, whitelist, security/display preferences |
+| `services/network-service.js` | 266 | Built-in network activation, custom-record quarantine, SDK client binding |
 | `services/contacts-service.js` | 82 | Address book |
-| `services/auth-service.js` | 99 | Unlock throttling with persisted backoff |
-| `services/system-service.js` | 189 | Auto-lock, activity stamping, diagnostics |
-| `services/event-service.js` | 47 | The **only** inbound push channel |
+| `services/auth-service.js` | 99 | Persisted unlock throttle/backoff |
+| `services/system-service.js` | 189 | Inactivity auto-lock, activity, diagnostics |
+| `services/event-service.js` | 47 | Background push events |
 
-Contract v12, **81 methods**, append-only except the documented v5 signing-auth, v6 destructive-settings, and v7 custom-network quarantine security breaks. v11 added checked sends; v12 added `tx.registerAccount` (unlocked, owned only) and storage-only `tx.getCachedHistory`. `src/shared/contract/manifest.js` is the allowlist, not just documentation.
+Registration is not a background sweep: creation/addition makes a bounded best-effort attempt for the newly added account; Send has a targeted JIT path for an owned recipient; Dashboard may use the existing active-account creation path after a successful absence check. Every registration is a real signed broadcast, even though the transaction declares zero fee.
 
-Deliberately unimplemented, returning `{ supported: false, reason }` rather than fabricated
-values: `tx.simulate`. (`token.getBalances` became real in contract v8.)
+## 6. `src/shared/` — both sides
 
----
-
-## 6. `src/ui/` --  the only frontend
-
-### `src/ui/kit/` --  domain-free primitives
+No DOM or `chrome.*` access. Contract v12 has **81 methods**. Security-policy exceptions are documented: v5 signing auth, v6 reset/auto-lock hardening, and v7 custom-network quarantine. v8–v11 add token, History/detail, and checked-send capabilities; v12 adds `tx.registerAccount` and `tx.getCachedHistory`.
 
 | File | Lines | Purpose |
-| --- | --- | --- |
-| `dom.js` | 285 | `h()`, `text()`, `clear()`, `render()`, `on()`, `disposer()`, `isSafeUrl()` |
-| `icon.js` | 168 | Icons as `[tag, attrs]` data --   real SVG nodes |
-| `button.js` | 166 | `Button`, `IconButton`, `CopyButton` |
-| `field.js` | 193 | `Field` --  label + control + error + hint + password reveal |
-| `feedback.js` | 124 | `Banner`, `Empty`, `Spinner`, `PageHeader`, `Actions`, `Stack`, `Row` |
-| `focus-trap.js` | 189 | `focusTrap()`, `collectFocusable()`, `isFocusable()` -- Tab wrap, Escape, focus restore |
+| --- | ---: | --- |
+| `contract/manifest.js` | 638 | UI/background contract allowlist and method metadata |
+| `format.js` | 82 | BigInt-safe amount formatting/parsing |
+| `refs.js` | 104 | Opaque account references and equality |
+| `network-scope.js` | 89 | Network-scoped vs global storage keys |
+| `flags.js` | 65 | Current runtime flags; no launchpad flag |
+| `autolock.js` | 36 | Shared auto-lock constants/helpers |
+| `side-panel.js` | 17 | Side-panel context marker/action |
 
-**`dom.js` is the entire XSS defense.** Text only via `textContent`; `on*` attribute names throw;
-`javascript:`/`vbscript:`/`file:`/`about:`/`blob:` and non-image `data:` URLs are refused; there is
-no prop that accepts markup.
+Network-specific balances, pending transactions, token state, and History are kept separate by network where applicable. Vault keys, account labels, and contacts are global wallet/device state.
 
-### `src/ui/domain/` --  wallet-aware components
+## 7. `src/ui/` — route UI
 
-`account-avatar.js` (59)  `account-row.js` (151)  `account-picker.js` (147, grouped by keyring)
- `asset-selector.js` (143)  `tx-card.js` (243, P1 transaction card: verb, context, signed delta, rel-time head, sig/meta actions, failed badge; P2 `onOpen` makes it a keyboard-operable control)
- `tx-detail-sheet.js` (308, P2 detail sheet: full signature + copy, explorer link, status/amount/counterparty/block, lazily-filled block time and header-DECLARED fee, "Not available" for everything the chain does not report)
- `asset-selector.js` (143)  `token-row.js` (88)  `password-prompt.js` (139,
-`requirePassword()`, focus-trapped)  `seed-phrase-grid.js` (160, grid + backup challenge)
+### Kit and domain components
 
-### `src/ui/app/` --  router and routes
+`src/ui/kit/`: `dom.js` (285), `icon.js` (194), `button.js` (171), `field.js` (193), `feedback.js` (124), `focus-trap.js` (189), `help-tooltip.js` (68).
 
-`bridge.js` (138)  `router.js` (175)  `guards.js` (138)  `boot.js` (250)  `shell.js` (141,
-topbar + network badge + footer)
+`src/ui/domain/`: account-avatar (60), account-row (151), account-picker (147), asset-selector (148), balance-hero (56), current-connection (118), panel-item (56), password-prompt (139), seed-phrase-grid (160), token-row (133), tx-card (238), tx-detail-sheet (308).
+
+### Router and route files
+
+`bridge.js` (158), `router.js` (175), `guards.js` (138), `boot.js` (260), `shell.js` (147), `side-panel-exclusion.js` (62).
 
 | Route | File | Lines |
-| --- | --- | --- |
+| --- | --- | ---: |
 | `/welcome` | `routes/welcome.js` | 295 |
 | `/unlock` | `routes/unlock.js` | 191 |
-| `/dashboard` | `routes/dashboard.js` | 333 |
-| `/accounts` | `routes/accounts.js` | 194 |
-| `/account?ref=` | `routes/account-detail.js` | 296 |
+| `/dashboard` | `routes/dashboard.js` | 501 |
+| `/accounts` | `routes/accounts.js` | 195 |
+| `/account?ref=` | `routes/account-detail.js` | 302 |
 | `/add-account` | `routes/add-account.js` | 392 |
 | `/keyring?id=` | `routes/keyring.js` | 190 |
 | `/export?ref=` | `routes/export.js` | 279 |
-| `/send` | `routes/send.js` | 1190 |
-| `/receive` | `routes/receive.js` | 176 |
+| `/send` | `routes/send.js` | 1,203 |
+| `/receive` | `routes/receive.js` | 177 |
 | `/faucet` | `routes/faucet.js` | 252 |
-| `/history` | `routes/history.js` | 443 |
-| `/settings` | `routes/settings.js` | 395 |
+| `/history` | `routes/history.js` | 392 |
+| `/settings` | `routes/settings.js` | 458 |
 | `/reset` | `routes/reset.js` | 169 |
 
-**Component contract:** every component returns `{ el, update(props), destroy() }`, and
-`destroy()` removes the *same* handler references it added. Use `disposer()`.
+Route lifecycle tests use a DOM shim; they do not establish actual rendered geometry, real Chrome focus behavior, or MV3 scheduling.
 
----
-
-## 7. `src/shared/` --  imported by both sides
-
-No `chrome.*`, no DOM.
-
-`contract/manifest.js` (638)  `format.js` (82, the only money math)  `refs.js` (92, opaque
-account refs for URLs)  `network-scope.js` (87, the per-network vs global split)
-`flags.js` (73)  `autolock.js` (36)
-
----
-
-## 8. `src/popup/` --  the shell
+## 8. `src/popup/` — shared popup/side-panel shell
 
 | File | Lines | Notes |
-| --- | --- | --- |
-| `popup.js` | 50 | Boot stub. Was 1,118 lines. |
-| `popup.html` | 30 | Shell with one `#app`. Was ~430 lines of static screen markup. |
-| `qr.js` | 130 | Canvas only, no network. Raised Thru-brand look (gradient worms, slate eyes, shadow) with a flat crimson degradation for contexts without roundRect/gradients. Used by `/receive`. |
+| --- | ---: | --- |
+| `popup.js` | 49 | Boot stub into `src/ui/app/boot.js` |
+| `popup.html` | 30 | Single `#app` shell |
+| `qr.js` | 130 | Canvas QR renderer |
+| `theme.js` | 48 | Theme selection/storage |
 
-`icons.js` (79, markup-string icons) and `toast.js` (60) are **deleted** -- `launchpad.js` was
-their only importer. Replacements: `src/ui/kit/icon.js` (SVG as data) and
-`src/ui/kit/feedback.js` (inline banners rather than transient toasts).
+The manifest panel path uses `popup.html?thru_panel=1`. On popup boot, the close listener is registered before async theme/bootstrap work; the popup broadcasts for compatibility and uses Chrome's direct close API when available. The Dashboard button explicitly opens the panel; Settings' Side Panel Mode is a separate opt-in for toolbar behavior and is restored by the worker only when enabled. Actual browser interaction is still open in `docs/MANUAL_SMOKE_CHECKLIST.md`.
 
-### `src/popup/styles/` --  3,274 lines
+`src/popup/styles/` totals **4,197 lines**: `tokens.css` 219, `base.css` 137, `utilities.css` 195, `components.css` 1,810, `kit.css` 426, `screens.css` 1,410. Import order is in `src/popup/popup.css`.
 
-`tokens.css` light + dark themes matched to thru.org (`[data-theme]`, user choice via `popup/theme.js`)  `base.css` (128)  `utilities.css` (194)
-`components.css` (1,724)  `kit.css` (345)  `screens.css` (731)
+## 9. Launchpad quarantine — not a shipped feature
 
-Import order matters: tokens --   base --   utilities --   components --   kit --   screens. `kit.css` loads
-after `components.css`, which is what lets `.btn.w-auto` beat `.btn { width: 100% }`.
+`src/launchpad/` is deleted. Its former page, flags, dashboard entry point, icons/toast helpers, and build entry are gone. `test/test-launchpad-quarantine.mjs` keeps the surface out of source/build output. Backend `token.*` methods do not imply a launchpad/deploy UI exists.
 
-`components.css` and `screens.css` still contain rules for deleted screens. Pruning them is
-pending; `check-routes.mjs` catches used-but-undefined, not defined-but-unused. The two blocks
-that died with the launchpad quarantine ARE pruned: `.launchpad-banner*` (62 lines of
-`screens.css`) and `#toast-container` + `.toast*` (50 lines of `components.css`).
+## 10. Manifest and remaining verification boundaries
 
----
+`src/manifest.json` is MV3. Popup and side panel share the page; permissions include storage, alarms, sidePanel, and clipboardRead. CSP is explicit and `scripts/check-csp.mjs` checks enabled RPC origins.
 
-## 9. `src/launchpad/` --  DELETED (quarantined)
+Open work not settled by automated tests/builds: real popup/side-panel layout, focus, QR and mutual exclusion; MV3 restart/timeout during registration or Send; live v12 registration; live token-transfer owner/fee behavior; current block-time availability/latency; charged-fee source and explorer-route confirmation; signing network-switch race; concurrent pending-record write race. See `docs/STATUS_AND_ROADMAP.md`, `docs/SEND_PATH_AUDIT.md`, and `docs/MANUAL_SMOKE_CHECKLIST.md`.
 
-Nothing lives here. The directory held `launchpad.js` (552), `launchpad.html` (443) and
-`launchpad.css` (1,057): a Launchpad/DEX/Predictions tab page that was feature-flagged off but
-still built, still shipped in `dist/`, still reachable by direct URL, and still switchable on
-with `popup.html?launchpad=1`.
+## 11. Traps
 
-Why deletion rather than a flag:
-
-- it interpolated token names, tickers, mint addresses and explorer URLs into
-  `innerHTML`/`insertAdjacentHTML`, outside the `src/ui/**` DOM-sink ratchet -- the wallet's
-  strongest XSS guardrail, bypassed by the one page nobody looked at;
-- its DEX tab quoted swaps with `parseFloat()` and a hard-coded `23.5294` rate, and its
-  "Execute Swap On-Chain" button was a `setTimeout` that reported a trade which never happened;
-- a flag decides what the UI advertises. It is not a security boundary.
-
-Deleted with it: `FEATURE_LAUNCHPAD`, `FEATURE_TOKEN_DEPLOY`, the `?launchpad=1` override, the
-dashboard `.launchpad-banner` control (the only `chrome.tabs.create` in the tree), and the
-launchpad entry points in `build.mjs`. `dist/` now ships exactly one page (`popup.html`) and two
-bundles. Backend `token.*` contract methods are untouched -- the contract is append-only.
-
-Recover the files from git history. A future launchpad is a new `src/features/launchpad/**`
-module with `launchpad.*` backend namespaces per `docs/MODULE_BOUNDARIES.md`, and
-`test-launchpad-quarantine.mjs` must be updated deliberately in that PR -- not weakened here.
-
----
-
-## 10. `src/manifest.json` --  30 lines
-
-MV3. Popup + side panel share the one `popup.html` file; the panel's manifest path adds
-`?thru_panel=1` so surface detection does not depend on window height. Permissions: `storage`,
-`alarms`, `sidePanel`, `clipboardRead`.
-
-CSP is `default-src 'none'` with explicit `script-src`/`style-src`/`img-src`/`font-src`/
-`connect-src`/`frame-src`/`form-action`/`base-uri`/`object-src`. **No inline `style=""` or
-`on*=""` anywhere** --  the browser refuses both.
-
----
-
-## 11. Traps --  things that will waste your time
-
-1. **Reload the extension, not just the popup.** Chrome caches the service worker, so a backend
-   fix appears not to work until the extension card's Reload button is used.
-2. **Money is BigInt internally, a STRING on the wire.** `JSON.stringify` throws on BigInt;
-   `api-router.js` now names the offending method and field.
-3. **The build only WARNS on CSS syntax errors.** Check for `-- -- [WARNING]`.
-4. **Do not ship a control before its destination route exists.** `check-routes.mjs` enforces it.
-5. **A test can assert a bug.** `generateMintSeed` had a test demanding the wrong seed length,
-   which would have blocked the correct fix.
-6. **Amount units differ by screen on purpose.** Faucet takes **base units**; Send takes **whole
-   THRU**. Verified on alphanet: claiming 10000 credits 10000 base units.
-7. **A transfer recipient must already exist on-chain.** Accounts this wallet creates are
-   registered automatically; an external unused address cannot receive.
-8. **Never hand-roll a program instruction.** `@thru/programs` ships `token`, `amm`, `multicall`,
-   `passkey-manager`, `clob`, `oracle`.
-9. **`chrome.storage.session` holds the unlocked session.** It survives a page reload but not an
-   extension reload. Use `system.diagnostics` before blaming auto-lock.
+1. **Reload the extension, not just the popup.** UI and service-worker bundles both change.
+2. **Money is BigInt internally and a string on the wire.** The message port is JSON.
+3. **The build warns on CSS syntax errors.** Read the full output for warnings.
+4. **Do not ship a control before its destination route exists.** `scripts/check-routes.mjs` enforces route reachability.
+5. **A test can assert a bug.** Verify expectations against the source/protocol rather than preserving an old fixture by habit.
+6. **Faucet and Send units differ.** Historical Alphanet evidence says faucet input is raw base units; Send is human-scale THRU. Do not generalize that observation to token fees.
+7. **Account existence is network-specific.** Creation attempts registration for new owned accounts; Send may JIT-activate an absent owned recipient. An external recipient must activate itself, and an offline lookup is not proof of absence.
+8. **Never hand-roll a program instruction** where the pinned official Thru bindings provide it.
+9. **`chrome.storage.session` holds unlocked session material.** Browser persistence/eviction behavior is a manual verification boundary.

@@ -10,6 +10,15 @@ Legend for how each was found:
 `TEST` automated · `BROWSER` manual testing by the user · `READ` code reading · `TOOL` a
 guardrail script caught it
 
+
+## Status convention — current as of 2026-09-26
+
+The defects in §§1–4 are **historical**: their old paths and failure descriptions are retained to
+explain the fixes, not to claim those paths still ship. §5 records resolved legacy duplication, not
+a current backlog. The current verification gaps are listed in §6; the popup/side-panel and History
+cross-network fixes in §§7–8 are implemented and locally tested, but their real-Chrome/live-RPC
+checks remain open. Check `src/` before treating any historical symptom as current.
+
 ---
 
 ## 1. The expensive ones
@@ -30,7 +39,7 @@ instead of a balance — never an error. It had probably been broken for months.
 Fix: `toPublicNetwork()` applied **only at the UI boundary**. The BigInt is not removed —
 `tx-service` needs the real value for faucet clamping — so internal getters are unchanged.
 
-Guard: `test-api-router.mjs` walks 13 real responses for BigInt, functions, symbols, typed
+Guard: `test/test-api-router.mjs` walks 13 real responses for BigInt, functions, symbols, typed
 arrays, `Map`/`Set` and cycles, and asserts `faucetMaxPerClaim` survives as a string that
 re-widens with `BigInt()`. Additionally `api-router.js` now `JSON.stringify`-checks every
 payload before returning and names the offending path.
@@ -114,13 +123,16 @@ constant and heal to envelope v1 on their first write.
 - `src/ui/kit/dom.js` `h()` is the only way to build a node. Text goes through `textContent`.
   `on*` attribute names throw. `javascript:`/`vbscript:`/`file:`/`about:`/`blob:` and non-image
   `data:` URLs are refused, including obfuscated forms. There is no prop that accepts markup.
-- `scripts/check-layering.mjs` greps for `innerHTML =`, `insertAdjacentHTML`, `outerHTML =`
-  under `src/ui` and `src/features`, as a **ratchet**: the per-file budget may only shrink, and
-  going below budget without lowering it also fails, so the list cannot rot into a permanent
-  exemption.
-- Sensitive operations are `auth: 'password'` in the contract, re-verified against the
-  encrypted blob rather than against session state. `test-contract.mjs` asserts this for eight
-  specific methods.
+- `scripts/check-layering.mjs` scans shipped `src/` (vendored QR code excluded) for prohibited
+  HTML injection sinks. Current count: zero. The deleted launchpad is also kept out of source and
+  `dist/` by `test/test-launchpad-quarantine.mjs`.
+- The background enforces each method's declared auth policy: secret export, password-gated
+  key/keyring changes, auto-lock, and security-setting changes require a password. `wallet.reset`
+  always requires explicit confirmation and also requires a password when the wallet is unlocked;
+  ordinary account operations follow their own contract policy. Value-moving transaction signing
+  uses `auth: 'signing'` and requires an unlocked wallet, with password re-auth only when the user
+  opts in (default false). v12 `tx.registerAccount` is the narrow unlocked-only, exact-owned-address
+  exception. `test/test-contract.mjs` guards these declared policies.
 - Contract v7 puts custom-network quarantine in `network-service`: direct activation fails with a
   stable, non-retryable code and stale active ids heal before `configureNetwork()`. Settings is a
   presentation of that invariant, not its enforcement point.
@@ -146,7 +158,7 @@ These are the most dangerous category, because reading them gives false confiden
 | `.w-100`, `.mt-*`, `.tag-accent`, `.status-dot`, `.spinning` at ~80 sites | defined nowhere. With `* { margin: 0 }` and non-flex wrappers, nothing supplied vertical spacing at all. |
 | `router.navigate('account-detail')` | `popup.html` had no `#screen-account-detail`, so `if (container)` failed silently and `mount()` never ran. |
 | Secret export | `data-action="go-export-password"` existed only *inside* `#screen-accounts`, and every path into that screen required already being inside it. A user could not retrieve their own recovery phrase. |
-| `manifest.json` `side_panel.default_path: popup.html` | The panel was declared and built, and nothing in the app could open it — the only way in was the browser's own menu. A declared capability with no caller, in the same family as `bridge.onEvent()`. Now Settings > Window > **Open side panel**, which calls `chrome.sidePanel.open({ windowId })` from a real user gesture and deliberately never calls `setPanelBehavior` (that would swap the toolbar popup for the panel for every user). |
+| `manifest.json` side panel with no in-wallet entry point | The original declaration had no app action. Current shipped behavior: the Dashboard header explicitly opens the panel; Settings has a separate opt-in **Side Panel Mode** toggle that calls `setPanelBehavior` only on user action, and the worker restores the stored choice after restart. A shared-page listener plus the supported direct-close API enforce popup/panel mutual exclusion. Deterministic tests cover message timing and mode state; real Chrome remains open in the manual checklist. |
 | `network.upsertCustom` | A contract method with a form, where the form was the unsafe part. Withdrawn from the UI rather than shipped; the method stays because the contract is append-only. |
 
 > **Lesson:** an API with no callers is not "ready for later", it is unverified code that reads
@@ -170,12 +182,12 @@ Recording these matters more than the ones I inherited.
 | Challenge positions by rejection sampling | `BROWSER` | Could cluster at 0,1,2, making "Word N" read as a question number. Now one per bucket, labelled "Word #N of your phrase". |
 | `seedKeyrings[0]` hardcoded in add-account | `BROWSER` | Once a second phrase existed there was no way to derive from it — defeating the entire point of multi-seed. |
 | A gear button navigating to `/keyring` before that route existed | `BROWSER` | Fell through to `legacyFallback`, matched no legacy screen, errored on a blank panel. **I shipped a control before its destination.** |
-| `test-contract.mjs`'s hand-maintained UI file list | `READ` (self) | Had stopped covering new files, which is precisely how the phantom `wallet.generateMnemonic` reached a finished route. Now walks directories. |
+| `test/test-contract.mjs`'s hand-maintained UI file list | `READ` (self) | Had stopped covering new files, which is precisely how the phantom `wallet.generateMnemonic` reached a finished route. Now walks directories. |
 | `check-layering.mjs` false positives on comments — **twice** | `TOOL` | First for DOM sinks, then again for imports and the single-seam rule, because I fixed stripping in one place only. The file documenting why `innerHTML` is banned failed the `innerHTML` rule. |
 | Base64url padding appended as `'=='` in my own test | `TEST` | — |
 | Margin utilities stacking on `.screen`'s gap | `BROWSER` | Defining the missing utilities fixed the flush-together screens but created 16/20/24/28px inconsistency. Resolved by making `gap` the single source of rhythm. |
 | `initialSupply` shown in the balance column | `READ` | Inherited, but I carried it forward initially. A mint's total supply is not your balance. |
-| `reset.js` built its `PageHeader` inline (`PageHeader({...}).el`) and discarded the instance | `TEST` (`test-route-lifecycle.mjs`) | The route's `destroy()` disposed its own listeners and the banner's, but the header's back-button click listener stayed attached to a node that was no longer in the document. Twelve other routes keep their header instance for exactly this reason; this one did not, and nothing caught it until a test counted listeners on detached nodes. |
+| `reset.js` built its `PageHeader` inline (`PageHeader({...}).el`) and discarded the instance | `TEST` (`test/test-route-lifecycle.mjs`) | The route's `destroy()` disposed its own listeners and the banner's, but the header's back-button click listener stayed attached to a node that was no longer in the document. Twelve other routes keep their header instance for exactly this reason; this one did not, and nothing caught it until a test counted listeners on detached nodes. |
 | `isFocusable()` first checked only the element's own `.hidden` class | `TEST` | This codebase hides sections with a `display:none` utility class on a *parent*, so controls inside a hidden section counted as Tab stops and focus would have gone somewhere invisible — reading to a keyboard user as "Tab stopped working". Now walks ancestors. |
 | A synchronous `requestAnimationFrame` in the test shim | `TEST` | The shim ran rAF callbacks inline, which changed ordering the app relies on: `requirePassword` captures the element to restore focus to when it builds its trap, *before* its rAF callback focuses the field. Inline rAF made the trap capture its own input, so focus was "restored" to a detached field. Browsers run rAF after the current task; the shim now queues a microtask. A fidelity bug in a test harness produces false failures that look like product bugs. |
 | `knownTokenAccounts` surviving a network switch (PR #6 review) | `READ` | The cache is chain state keyed only by address. Switching networks left it warm, so a send on a fresh chain would have skipped initializing the recipient's token account and reverted on-chain. `configureNetwork` now clears both caches whenever the chain identity changes. The worst of the four findings: silent, cross-network, and money-facing. |
@@ -212,125 +224,51 @@ official binding to be pinned against, so nothing could have caught its wire lay
 deploy path was in fact always-throwing on the first live call. Both halves were retired in the
 same change: `deriveTokenMintAddress(mintSeed, address)` (authority mandatory) plus
 `createInitializeMintInstruction` from `@thru/programs/token`, with derivation goldens pinned in
-test-thru-client.mjs.
+test/test-thru-client.mjs.
 
 > **Lesson:** a "sacred" hand-rolled encoder is only as trustworthy as its verifier. A wire
 > format that no official binding reproduces is not sacred — it is simply untested.
 
 ---
 
-## 5. Duplication found
+## 5. Legacy duplication — resolved or historical snapshot
 
-| Logic | Copies | Status |
-| --- | --- | --- |
-| `setError` | **8** | consolidated into `kit/field.js`, which also adds the `aria-invalid`/`aria-describedby` none of the eight had |
-| mnemonic grid render | 3 | consolidated into `domain/seed-phrase-grid.js` |
-| `refsEqual` | 3 | consolidated into `shared/refs.js` |
-| `FAUCET_MAX_PER_CLAIM` | 3 | still duplicated |
-| `formatThru` / `parseThruAmount` | 2 | `lib/thru-client.js:39-73` still duplicates `shared/format.js` |
-| `injectIcons` | 2 | still duplicated |
-| send form state + address check | 2 | **character-identical** copy-paste, not a divergence |
-| routing | 3 | `popup.js` `show()`, `ui/router.js`, `desktop.js` `switchTab()` — new stack is a 4th until the others are deleted |
+The following consolidations came out of the old multi-screen UI. These are lessons, not current
+open defects:
 
-The comparison that mattered: **neither copy was a superset.** The module had an empty-password
-guard, a reveal toggle, autofocus, clear-on-failure and a zero-amount guard the monolith lacked;
-the monolith had an inline error surface the module lost. The correct merge was the union — and
-teardown was broken in *both*.
+| Logic | Current status |
+| --- | --- |
+| Field error rendering (`setError`) | Shared through `src/ui/kit/field.js`. |
+| Seed-phrase grid | Shared through `src/ui/domain/seed-phrase-grid.js`. |
+| Account-reference equality/codec | Shared through `src/shared/refs.js`. |
+| Old popup/desktop routing, markup factories, duplicate icon injection | Historical legacy code; do not use its old counts as the current tree. |
 
-> **Lesson:** when deduplicating, diff behaviour before deleting either side. "The newer one is
-> better" was false here.
+For any additional duplication, inspect the current source before adding a count here. A historical
+monolith comparison is not evidence of duplicate code in the shipped route stack.
 
----
+> **Lesson:** when deduplicating, compare behavior before deleting either implementation. The old
+> versions differed; preserve the required behavior in the shared current component and its tests.
 
-## 6. What still has no test coverage
+## 6. Open verification gaps — as of 2026-09-26
 
-Stated plainly, because the gaps predict the next round of bugs.
+Automated coverage is materially stronger than the original audit: `scripts/check-routes.mjs`
+checks route reachability/CSS classes; `test/test-route-lifecycle.mjs` mounts all 14 routes through
+the real Router/guards/bridge and checks secret hygiene, listeners, focus-trap behavior, Send and
+History flows; focused suites cover registration, history cache/block-time, network scoping, the API
+router, and contract invariants. These tests use deterministic fixtures/DOM shims and do not close
+the following items:
 
-1. ~~**Reachability.** Nothing verifies a route can be navigated to from the UI.~~ Closed twice
-   over: `scripts/check-routes.mjs` proves every navigated path exists and every registered route is
-   reachable, and `test-route-lifecycle.mjs` clicks the real controls (topbar settings, topbar lock,
-   the four dashboard tiles, the account pill, Back) and asserts where each one lands.
-2. ~~**Rendering.** No route is ever mounted.~~ Closed: all 14 routes mount through the real Router,
-   guards, bridge and kit in no-vault / locked / unlocked states, with only
-   `chrome.runtime.sendMessage` mocked. Still true that no shim proves *what a browser paints* —
-   that residue is `docs/MANUAL_SMOKE_CHECKLIST.md`.
-3. ~~**CSS.** No check that a class used in JS exists in CSS.~~ Closed by `scripts/check-routes.mjs`,
-   which reports every class the new stack uses and whether all are defined (a separate
-   `check-css.mjs` was never needed).
-4. **Live chain.** Faucet/transfer program addresses, instruction layouts, the amount-unit
-   question and explorer URL patterns remain unverified against a running network.
-5. ~~**Legacy launchpad surface.**~~ Closed. `src/launchpad/**` is deleted rather than flagged off,
-   the DOM-sink ratchet now covers all of `src/`, and `test-launchpad-quarantine.mjs` asserts the
-   surface stays out of the source, the flags, the routes and a real `dist/` build.
+| Boundary | Still open |
+| --- | --- |
+| Real Chrome | Popup/side-panel layout and focus at narrow/wide sizes, QR rendering, clipboard prompt, actual mutual exclusion/toolbar mode, and MV3 worker eviction/restart. Use `docs/MANUAL_SMOKE_CHECKLIST.md`. |
+| Live v12 registration | Creation-time registration and Send JIT for an owned absent recipient on a live enabled network; include offline-vs-absent and exact target signer checks. |
+| Live token transfer | Recipient-owner acceptance when the recipient has never registered, and the actual token-program fee (`scripts/verify-token-transfer.mjs`). |
+| Send/pending races | A network switch after the final preflight while SDK signing is in progress, and concurrent pending-record read/modify/write operations (`docs/SEND_PATH_AUDIT.md`). |
+| History live data | Current block-time availability/latency per enabled network, charged-fee source beyond the current RPC response, and confirmation of the explorer route (`docs/HISTORY_REDESIGN_PLAN.md`). |
 
-The **route smoke test** that this section used to call the single highest-value addition now
-exists as `test-route-lifecycle.mjs` — built on a hand-rolled shim rather than jsdom, because the
-hard rule is no new dependencies and the shim only needs the DOM surface this codebase touches. It
-covers gaps 1, 2 and 3, adds listener-teardown and secret-hygiene assertions, and ships a negative
-control for each security claim so a vacuous assertion fails loudly.
+Do not mark these resolved based only on a green Node suite or a build.
 
-What remains uncovered is item 4 (live chain) and everything a browser owns: layout at narrow and
-wide widths, real focus rings, canvas QR output, side-panel behaviour, service-worker eviction. Those
-are checkboxes in `docs/MANUAL_SMOKE_CHECKLIST.md`, not test gaps to close in Node.
-| `.copy-address` nested inside `.monospace-block` | `BROWSER` (local agent audit) | A splitted edit dropped the interactive copy-box rules *inside* the unclosed `.monospace-block` rule. CSS nesting is VALID syntax — esbuild emitted 0 warnings and Chrome parsed it as the descendant selector `.monospace-block .copy-address`, which can never match `<button class="monospace-block copy-address">` (both classes on the same element). Result: `display:flex`, `cursor:pointer`, the hover wash, and the `.copied` green confirm were all silently dead in Chrome while every automated gate passed green. Fixed by closing `.monospace-block` first; `scripts/check-css-nesting.mjs` now bans nested rules outright and runs in both `npm test` chains. |
-
-> **Lesson:** "0 CSS warnings" certifies syntax, never semantics. Modern esbuild/Chrome
-> feature support (native nesting) turned what would once have been a build error into a
-> silent runtime no-op. Guardrails must encode *house intent* ("this repo's CSS is flat"),
-> not just "does the toolchain accept it".
-| P0 history feed: dupes on load-more + discarded `synced` flag | `BROWSER` (local agent code audit) | The merged feed paints fresh(15) + cached extras with cursor 15, but append was blind — a load-more page re-yielded already-painted signatures, rendering them twice in scrambled order. And the feed's offline honesty flag was returned to the UI and dropped on the floor, exactly the register-but-never-invoke class resurfacing one layer up (a *field* nobody used). Fixes: dedupe-on-append in history.js, and `synced:false` now drives a 'Showing cached activity — offline' label that clears when a synced page lands. Lifecycle reproduces the overlap fixture-side (35 unique entries, load-more re-yielding them) and verified the dedupe assertion FAILs when the fix is removed. |
-
-> **Lesson:** a merge in the backend is a *union*, a cursor is an *offset* — any frontend
-> appending to merged data must treat the append as dedupe-by-key, never as blind concat.
-> And every honesty field you mint (`synced`, `stale`, `fresh`) needs its UI consumer in the
-> same commit, or it is decorative.
-| Day-group count badge appended into the previous section's last card | `BROWSER` (local agent P1 audit) | At a day boundary the loop did `listHost.lastChild.appendChild(badge)` — but `lastChild` at that moment is the prior section's last `.tx-card`, not its `<header>`. Every header except the final one lost its count, and cards acquired a stray chip. Both failure modes are invisible to class-name checks and to the DOM shim's text assertions (the chip text rendered — in the wrong parent). Fix: identity reference (`currentHeader`) instead of positional access; lifecycle now asserts every header owns its badge AND every chip's parent is exactly a header. Both FAIL against the positional variant. |
-
-> **Lesson:** in incrementally-built DOM, `lastChild` is a positional guess, and positional
-> guesses decay the moment a sibling starts carrying structure of its own. Keep the node you
-> intend to mutate by identity. The shim DOES see this class — assert parent identity, not
-> just text presence ("the text was on screen" is not "the text was in the right parent").
-| P2 detail sheet: in-card controls would double-fire the open handler | `CAUGHT PRE-MERGE` (P2 implementation) | Making `.tx-card` an openable control put a click handler on an element that already CONTAINED a copy `<button>` and an explorer `<a>`. Because the kit's shim and the real DOM both bubble, clicking either would have run the card's open handler too — the copy button would silently open a sheet, and worse, the explorer link would open a background tab *and* a modal the user never asked for. Caught before it shipped by walking the event path from `target` up to the card and bailing on any `<button>`/`<a>` in between. Lifecycle asserts a copy click does NOT open the sheet. |
-
-> **Lesson:** promoting a container to a control inherits every descendant's clicks. A card
-> that grows an affordance must decide what its existing affordances mean *in the same
-> change*, or the outer handler quietly swallows the inner ones. The same applies to the
-> keyboard path: `Enter`/`Space` on a nested button must activate the button, not the card.
-
-| P2: a detail sheet parented to its card would vanish mid-read | `CAUGHT PRE-MERGE` (P2 implementation) | The Activity list repaints wholesale on a filter change, a `pendingTxChanged` event or load-more — `paintList()` destroys every card and rebuilds. A sheet appended inside the tapped card would have been torn out from under the user by a background event they did not trigger. Fixed by parenting the sheet to `document.body` (as `password-prompt.js` already does) and having the ROUTE own its lifetime, closing it explicitly in `destroy()`. Lifecycle asserts a sheet open at navigation time is gone afterwards and leaves no listener on a detached node. |
-
-> **Lesson:** a modal's lifetime is the ROUTE's, never a list row's. Any surface that must
-> survive a repaint has to live outside the subtree that repaints, with its owner holding
-> the reference — `{el, update, destroy}` plus an explicit close in the owner's `destroy()`.
-
-| P2: "fee" was one rename away from becoming a fabricated number | `CAUGHT PRE-MERGE` (P2 spike) | `Transaction.fee` is populated and reads like the answer to "what did this cost?" — it is not. The spike against the generated protobuf established that `TransactionExecutionResult` has NO charged-fee field at all (compute/memory/state units, vm_error, events, nonce — nothing else), so `Transaction.fee` is the sender's HEADER DECLARATION, an input to execution. Shipping it as "Fee" would have put a number in front of users that is not what they were debited. Mitigated structurally, not by comment: the field is named `feeDeclaredUnits` end to end, the wire carries `feeCharged: false`, the row is labelled "Fee (declared)", the sheet states inline that the network reports no charged fee, and `test-contract.mjs` fails if the return shape is ever renamed to a bare `feeUnits`. |
-
-> **Lesson:** a field that exists is not a field that means what its name suggests. Before
-> surfacing any chain value, check whether it is an INPUT the sender chose or an OUTPUT the
-> network reported — they read identically in a type signature and differently to a user.
-> Encode the distinction in the identifier, not in a comment, so a rename cannot erase it.
-
-| P2 detail sheet: tall sheets silently amputated their last rows instead of scrolling | `BROWSER` (user, on a real popup — **escaped every automated gate and two code audits**) | `.tx-sheet` inherits `display:flex; flex-direction:column` from `.modal-card` and adds `max-height:88%; overflow-y:auto`. Flex items default to `flex-shrink:1`, so once content exceeded the cap the children were **compressed to fit** rather than overflowing. `.detail-table` carries `overflow:hidden` (for its border-radius), so it absorbed the shrink and clipped its own last rows: "Block time" was sliced through the middle, "Fee (declared)" and "Program" vanished entirely, and the fee note sat flush against the wound. And because the children had been shrunk to fit, `scrollHeight === clientHeight` — `overflow-y:auto` had nothing to scroll and drew no scrollbar, so the missing rows gave no hint they existed. Fixed with `.tx-sheet > * { flex-shrink: 0 }` (plus `overscroll-behavior: contain` so the sheet does not scroll the list behind the backdrop). Verified by reverting the fix: `test-route-lifecycle.mjs` exits 1. |
-
-> **Lesson:** `overflow-y: auto` on a flex column is not a scroll container — it is a scroll
-> container *only if its children refuse to shrink*. Otherwise the browser resolves the
-> height conflict by compressing content, and an inner `overflow: hidden` (which every
-> rounded-corner container has) turns that compression into silent data loss. Whenever
-> `overflow-y: auto`, `max-height` and `display: flex` appear on the same element, the
-> children need `flex-shrink: 0` or the scroll is decorative.
->
-> **The process failure matters more than the CSS.** This shipped because the sheet was
-> never rendered — it was reasoned about. `npm test` runs on a hand-rolled DOM shim with no
-> layout engine, so it cannot compute a height and structurally *cannot* catch this class of
-> bug; both code audits read the CSS and agreed it looked right, because it does look right.
-> Two mitigations, both in this commit: a stylesheet-level invariant in
-> `test-route-lifecycle.mjs` (any flex-column scroll container must pin its children —
-> falsified by reverting the fix), and `scripts/preview-tx-sheet.html`, a dev-only harness
-> that renders the real built CSS at the true 408x600 popup size so a human can *look* at
-> overflow states. **Any change touching modal or sheet layout must be viewed in that
-> harness before it is called done.** "The CSS reads correctly" is not evidence about layout.
-
-## 7. Popup and side panel remained open together — `BROWSER` (user report) / `READ`
+## 7. Popup and side-panel mutual exclusion — FIXED in source; Chrome check OPEN
 
 The first exclusion attempt waited for `initTheme()` **and** `bridge.bootstrap()` before
 registering the panel's close-message listener. A popup opening during either round-trip could
@@ -352,24 +290,25 @@ manual smoke check — a Node shim cannot certify Chrome's side-panel UI.
 > can. Register cross-context listeners before *any* awaited initialization, and if the platform
 > offers a direct close API, do not make mutual exclusion rely solely on the other page being ready.
 
-## 8. History block times leaked across networks and stalled other accounts — `READ` / `TEST`
+## 8. History block-time cache leaked across networks — FIXED in source/tests; live check OPEN
 
 The first flat-History implementation memoized a timestamp by numeric **slot alone**. Two
 independent chains can both have slot 427 but different dates, so switching networks could
-show Alphanet's timestamp on Localnet. It also fetched every missing block header while
-holding the per-network storage-write queue: a slow header for account A could delay account
-B's refresh or cache removal. Only the first page was enriched; "Load more" returned raw
-slot-only cards.
+show Alphanet's timestamp on Localnet. It also fetched missing block headers while holding the
+per-network storage-write queue, so a slow header for one address could delay another address's
+refresh. The first version enriched only the first page; "Load more" returned raw slot-only cards.
 
-Fix: bind each header RPC to a captured SDK client and network; key the bounded successful
-lookup cache by network ID, RPC endpoint and slot, and discard a late response if the selected
-chain changed. Resolve the first page's block times before entering the serialized cache
-write, persisting `timestampSource: 'block'` so another worker can reuse verified times.
-Paginated `tx.listHistory` enriches only the displayed page while preserving its existing
-method/positional API; local submission times remain marked as local fallbacks. The focused
-`test-history-block-time.mjs` asserts cross-chain slot collisions, races, absent dates,
-queue progress and paging against mocked SDK methods. A public Alphanet RPC probe from this
-sandbox returned `fetch failed`, so a live-chain timestamp still requires manual smoke testing.
+Fix: bind each header RPC to a captured SDK client/network; key the bounded successful lookup cache
+by network ID, RPC endpoint, and slot; discard late replies after a network switch; and resolve block
+times outside the serialized cache-write section. The cache records verified provenance as
+`timestampSource: 'block'`. Paginated `tx.listHistory` enriches the displayed page while retaining
+its existing method/API. An actual local submission time is only a fallback for the wallet's own
+send; otherwise the card uses `Block <slot>` rather than an invented date.
 
-> **Lesson:** a block height is meaningful only together with its chain, and optional
-> enrichment RPCs should never run under the lock that protects unrelated cached accounts.
+`test/test-history-block-time.mjs` and `test/test-history-cache.mjs` exercise cross-network slot
+collisions, races, absent dates, write-queue progress, and paging against deterministic SDK
+fixtures. Those tests do not establish current live-node block-time availability or first-load
+latency; keep that check open in `docs/MANUAL_SMOKE_CHECKLIST.md`.
+
+> **Lesson:** a block height is meaningful only together with its chain, and optional enrichment
+> RPCs should never run under the lock that protects unrelated cached accounts.

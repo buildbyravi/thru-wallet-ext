@@ -1,237 +1,89 @@
-# Backend gaps for a Rabby-class UI
+# Backend capability inventory and open gaps
 
-**STATUS: Tiers A and B are implemented.** Contract v7, 74 methods. This document is kept as the
-rationale record and as the live list of what remains (Tier C, blocked on chain verification).
-For current state and next steps see `docs/STATUS_AND_ROADMAP.md` and `docs/PROJECT_LEDGER.md`.
+**Status as of 2026-09-26:** the originally identified Tier A and Tier B capabilities are implemented. This file distinguishes shipped code from behavior that is still unsupported or requires live-chain verification. Contract v12 has 81 methods; `src/shared/contract/manifest.js`, its router handlers, and tests are authoritative.
 
-| Tier | Blast radius | Status |
+| Tier | Meaning | Status |
 | --- | --- | --- |
-| A | new methods, new storage keys | ✅ done |
-| B | additive vault field or stored structure | ✅ done, each with migration + tests |
-| C | needs unverified Thru protocol behaviour | ⛔ blocked — interfaces exist, return `supported:false` |
-| D | changes an existing method's shape | forbidden, enforced by `test-contract.mjs` |
-
-What shipped, against the original list:
-
-- A1 batch balances → `tx.getBalances` / `tx.getCachedBalances` / `tx.getTotalBalance`
-- A2 non-blocking first paint → `system.bootstrap` no longer awaits network health
-- A3 push events → `event-service.js`; `accountsChanged`, `lockStateChanged`, `networkChanged`,
-  `balanceChanged`, `pendingTxChanged` all emitted and consumed
-- A4 ordering/pinning/hiding → `account.setOrder` / `setPinned` / `setHidden`
-- A5 whitelist → enforced inside `tx.send`, so a UI bug cannot bypass it
-- A6 preferences → `settings.get` / `settings.set`, unknown keys rejected
-- A7 history pagination → cursor form added without breaking the positional form
-- A8 custom networks → storage compatibility only since contract v7. `network.upsertCustom` /
-  `removeCustom` remain declared, but only removal has a UI caller. Legacy records are listed as
-  non-selectable; `network.setActive` refuses them in the background and stale selections heal
-  before RPC binding. Re-enablement remains blocked on the CSP/host-permission/capability/auth
-  design in `docs/STATUS_AND_ROADMAP.md` Step 2b.
-- A9 token registry → `token.import` / `setVisibility`, metadata normalized and scheme-allowlisted
-- A10 pending transactions → `pending-tx-service.js`, badge text, duplicate-submit protection
-- B1 derive-and-preview → `account.previewHd`, persists nothing
-- B2 remove one HD account → `account.removeHd`, refuses a keyring's last account
-- B3 backup state → `keyring.setBackedUp` + `backedUpAt`
-- B4 batch derivation → `account.addHdBatch`, one AES re-encrypt instead of N
-
-Beyond the original list: `keyring.createSeed` (generates a phrase in the background and
-registers it in one password-gated call, so fresh entropy never crosses the seam) and
-`wallet.exportPrivateKey` (one account's key, distinct from exporting the whole phrase).
-
-Both pre-existing defects noted at the bottom of the original analysis are fixed: the
-`symbol`/`imageUrl` vs `ticker`/`imageUri` mismatch, and the missing `clipboardRead` permission.
+| A | Additive service/API/storage capabilities | ✅ Implemented; see §1 |
+| B | Additive vault/account operations | ✅ Implemented and covered by tests; see §1 |
+| C | Protocol, live-chain, browser, or external integration uncertainty | ⚠️ Open or explicitly unsupported; see §2 |
+| D | Unreviewed in-place API shape changes | ⛔ Forbidden except documented security-policy changes; see §3 |
 
 ---
 
-## Ordered by **blast radius**, not by value
+## 1. Shipped capabilities
 
-The instruction "if backend breaks we fix later" is safe for RPC plumbing and wrong for the
-vault. A corrupted vault is unrecoverable key loss, so anything touching stored key material got
-a migration and a test regardless of devnet status. That decision is why the schema changes
-(`origin`, `backedUpAt`) did not require recreating test wallets.
+| Original gap | Shipped implementation |
+| --- | --- |
+| A1 — batch balances | `tx.getBalances`, `tx.getCachedBalances`, and `tx.getTotalBalance`; balance cache is network-scoped, and partial/unknown reads are not silently turned into fresh zeroes. |
+| A2 — first paint blocked by health RPC | Bootstrap returns without waiting for network-health probing; UI routes load secondary reads independently where implemented. Send renders after active account/network metadata and does not wait for balance, fee, token, or picker reads before showing its form. |
+| A3 — push events | `src/background/services/event-service.js` emits declared account, lock, network, balance, and pending-transaction events; the UI bridge consumes them. |
+| A4 — account order/pin/hide | Preference-backed account ordering, pinning, and hiding are implemented without changing vault keys. |
+| A5 — send whitelist | The whitelist preference is security-gated and enforced at the background signing boundary; generic `settings.set` cannot change security-sensitive keys. |
+| A6 — generic preferences | `settings.get`/`settings.set` use validated, versioned preferences; security fields use the separate password-gated `settings.setSecurity` path. |
+| A7 — history pagination | `tx.listHistory` supports cursor paging while retaining the legacy positional form. `tx.getHistoryFeed` provides the cache-merged first page and offline/sync status. |
+| A8 — custom RPC activation | Contract v7 deliberately quarantines custom activation: `network.setActive` accepts enabled built-ins only; stale custom/disabled/unknown active IDs heal before client binding. Legacy custom rows can be listed/removed but not selected. |
+| A9 — token registry and balances | Token registry/import/visibility APIs are implemented. `token.getBalances` reads owned balances for registry mints using official `@thru/programs/token` bindings; proven-zero and unknown/error remain distinct. Token state is network-scoped. |
+| A10 — pending transaction lifecycle | `pending-tx-service.js` tracks submissions, reconciliation, badge state, and duplicate protection. Pending records are network-scoped. A concurrent storage read-modify-write race remains open; see §2. |
+| B1 — derive and preview HD accounts | `account.previewHd` derives candidates without persisting them. |
+| B2 — remove one HD account | `account.removeHd` removes an eligible HD account while preserving the keyring's required remaining account. |
+| B3 — backup provenance/state | Seed keyrings record generated/imported origin and backup state (`backedUpAt`) through the keyring API. |
+| B4 — batch HD derivation | `account.addHdBatch` persists multiple derived accounts in one vault update. |
+| Additional — account/keyring creation | Seed creation keeps fresh entropy in the background; account/keyring creation paths use the bounded creation-bound account-activation helper. |
+| Additional — checked Send context | Contract v11 adds `tx.sendChecked` and `token.transferChecked`; source account and network from Review are checked at the backend boundary around preflight work. |
+| Additional — owned-account activation | Contract v12 adds `tx.registerAccount` (`auth: 'unlocked'`) for an exact address in the unlocked vault. It self-signs with that account; Send calls it just in time only after a successful absence check for a selected/typed owned recipient. External contacts are never registered by the sender. |
+| Additional — History first paint | Contract v12 adds storage-only `tx.getCachedHistory`; cache is scoped by network and address, painted before the RPC feed/pending reads, and serialized writes preserve concurrent accounts. Block-time provenance is retained. |
 
----
-
-## Tier A — pure additions
-
-### A1. Batch balances
-Rabby's switch-address screen shows a balance on every row. `tx.getAccountInfo(address)` is
-single-address, so an N-account switcher costs N round-trips and N RPC calls.
-→ `tx.getBalances({ addresses })`, concurrency-capped, partial failure per address.
-
-### A2. Non-blocking first paint
-`system.bootstrap` awaits `txService.checkNetworkHealth()` — a live RPC — before returning
-anything. The popup cannot paint until the network answers. Rabby paints instantly from cache and
-refreshes after.
-→ Serve a cached snapshot immediately; refresh health and balances in the background and push the
-result. `BUILD_SPEC.md` sets a 200 ms budget that today's bootstrap cannot meet on a slow RPC.
-
-### A3. Push events are declared but never emitted
-`bridge.onEvent` has zero callers and the background emits nothing. Every screen therefore polls
-or goes stale — this is why the dashboard balance does not refresh after a faucet claim.
-→ A real emitter, plus emissions on `accountsChanged`, `lockStateChanged`, `networkChanged`,
-`balanceChanged`, `pendingTxChanged`.
-
-### A4. Account ordering, pinning, hiding
-Rabby lets you reorder, pin and hide addresses. No equivalent exists.
-→ Local preference store; never touches the vault.
-
-### A5. Send whitelist
-Rabby gates sends to a whitelist when enabled.
-→ `whitelist.*` + an `enforceWhitelist` setting checked in `tx.send`.
-
-### A6. Generic preferences
-No store for theme, fiat currency, locale, "hide small balances", or first-run flags. Each new
-setting currently means a new bespoke storage key.
-→ One namespaced `settings.get/set`.
-
-### A7. History pagination
-`tx.listHistory(address, pageSize)` has no cursor, so infinite scroll is impossible.
-→ Cursor-based `tx.listHistory({ address, limit, cursor })` as a **new** parameter shape,
-keeping the old positional behaviour working.
-
-### A8. Custom networks / RPC override
-`src/lib/networks.js` is a static map. A stored overlay was added, but activating an arbitrary RPC
-without verified program ids is unsafe. Contract v7 therefore keeps legacy records only for
-listing/removal and limits activation to enabled built-ins. A real CustomRPC feature needs the four
-preconditions in `docs/STATUS_AND_ROADMAP.md` Step 2b; the overlay alone is not a feature.
-
-### A9. Token visibility and manual import
-`token.list` returns the local registry (tokens **this wallet deployed** plus manual imports) —
-it is a registry of *known mints*, not an asset list. Owned balances are layered on top by
-`token.getBalances`, which reads the account's real token accounts for exactly those mints
-(contract v8; was the C1 stub).
-
-### A10. Pending transaction lifecycle
-`tx.send` returns a signature and forgets. Nothing tracks confirmation, so the UI cannot show
-pending state, cannot badge the extension icon, and cannot warn about a duplicate submission.
-`BUILD_SPEC.md` specifies `draft → review → awaiting-auth → signed → submitted → confirmed`.
-→ Pending store + background poller + `tx.getPending` + badge text.
+These are implementation claims backed by `src/` and local tests, not a claim that the corresponding live-chain or real-browser checks have all been performed.
 
 ---
 
-## Tier B — additive vault changes, each with a migration and a test
+## 2. Open or unsupported capabilities
 
-### B1. Derive-and-preview without persisting
-Rabby's HDManager lists derived addresses with balances and lets you pick which to add.
-`account.addHd` only appends the next index — there is no way to look ahead.
-→ `keyring.previewAccounts({ keyringId, start, count })`: derives addresses in memory, persists
-nothing.
+### C1. Token balances — implemented; token-transfer behavior still needs live verification
 
-### B2. Remove a single HD account
-Rabby can delete one address. `vault.js` only ever pushes to `hdAccountIndices`; the sole removal
-path is deleting the entire keyring.
-→ `account.removeHd({ ref })`, refusing to remove the last account of the last keyring.
+`token.getBalances` is a real implementation, not the former capability stub. It reads the wallet's registry mints through the pinned official Token Program bindings. Missing token accounts are represented as proven zero; failed or malformed reads remain unknown. Mint decimals are read from chain data rather than trusted from editable registry metadata.
 
-### B3. Seed-phrase backup state
-Rabby nags until the phrase is confirmed backed up. `origin` (added in the previous commit)
-distinguishes generated from imported, but nothing records whether the user actually wrote it down.
-→ `backedUpAt` per seed keyring + `keyring.setBackedUp`.
+This does **not** establish the end-to-end behavior of `token.transferChecked` on a live node. Whether the Token Program accepts a never-registered wallet address as the owner of a sender-created token account, and what the token-program transaction actually costs, remain open. Use `scripts/verify-token-transfer.mjs` only in a network-reachable, throwaway-wallet environment; see `docs/STATUS_AND_ROADMAP.md` and `docs/MANUAL_SMOKE_CHECKLIST.md`.
 
-### B4. Batch HD derivation
-Adding 10 accounts costs 10 sequential `persistVaultUpdate` calls, each a full AES re-encrypt.
-→ `account.addHdBatch({ keyringId, indices })`, one write.
+### C2. Pre-send fee estimate — native and token cases are different
 
----
+The native transfer fee has a historical Alphanet observation of 1 base unit and is kept in per-network configuration with provenance. That observation does not establish the token-program fee. The Send UI does not substitute the native amount for an unmeasured token fee; it identifies that token fee as unmeasured. Reconfirm fee behavior for the current network before treating an estimate as a live-chain guarantee.
 
-## Tier C — blocked on unverified Thru behaviour
+### C2b. Charged fee in transaction history — not reported by the current detail response
 
-Build the interface and return `{ supported: false, reason }`. **Do not fabricate values.** A
-wrong fee or a fake balance in a wallet loses money.
+The transaction detail API exposes a header-declared fee (`feeDeclaredUnits`) and explicitly reports `feeCharged: false`; the UI labels the row **Fee (declared)**. A declared value is an input in the transaction header, not proof of what was debited. Do not relabel it as a charged/paid fee or infer a debit from the pre-send estimate.
 
-### C1. Owned token balances — RESOLVED (contract v8)
-The official `@thru/programs/token` bindings (`deriveTokenAccountAddress` +
-`parseTokenAccountData`) made `token.getBalances` real for every mint in the local registry:
-`{ supported: true, balances: [...] }`, with proven-zero distinguished from unknown and
-decimals read from the on-chain mint whenever a balance exists. Remaining sub-questions moved
-to `docs/STATUS_AND_ROADMAP.md` Step 8 (recipient-owner existence, token-program fee), each
-with a live probe in `scripts/verify-token-transfer.mjs`.
+The current RPC detail response has no charged-fee field. Whether an authoritative charged-fee value is available through another typed explorer surface remains open. Thru's documented [Explorer MCP overview](https://thru.org/docs/api-ref/explorer-mcp/overview/) is an agent-facing reference; it is not, by itself, a stable typed API contract for the extension.
 
-### C2. Fee estimation
-The send review needs a real "Network fee" line. The NATIVE transfer fee is measured (1 base
-unit on alphanet, per-network `baseFeeUnits`), and `tx.estimateFee` reports that with
-provenance. The TOKEN-program fee is a separate, still-unmeasured quantity — the token send
-UI declares it unmeasured rather than inheriting the native number.
-→ remaining: measure the token fee live (`scripts/verify-token-transfer.mjs`), then record it
-in per-network config.
+### C2c. Block time — optional, and the current lookup still needs live checks
 
-### C2b. Per-transaction CHARGED fee — not on the RPC surface at all
-Distinct from C2, which is about *estimating* a fee before sending. This is about reporting
-what a transaction in history actually cost, and the answer from the spike
-(`docs/archive/TX_DETAIL_SPIKE.md` §3.3) is that the chain does not report it:
-`TransactionExecutionResult` has no charged-fee field (compute/memory/state units, `vm_error`,
-events, `fee_payer_expected_nonce` — nothing else). `Transaction.fee` exists but is the
-sender's HEADER DECLARATION, an input to execution, not a receipt.
+Transactions carry a slot; an optional containing-block time can be resolved through the SDK. The shipped History path records a verified value with `timestampSource: 'block'`, scopes lookup/cache identity by network, RPC endpoint, and slot, and performs header reads outside the serialized cache-write section. Paginated entries are enriched as they are displayed. For the wallet's own sends, an actual local submission time may be used only as a fallback; otherwise the card shows `Block <slot>`.
 
-→ `tx.getDetail` returns `feeDeclaredUnits` (never `feeUnits`) plus `feeCharged: false`, and
-  the P2 detail sheet labels the row "Fee (declared)" and states inline that the network
-  reports no charged fee. It is **not** filled in from `network.baseFeeUnits`, even though
-  that measured value (1 unit on alphanet) currently agrees with the SDK's default — that
-  agreement is a coincidence of today's default, not a published invariant.
-→ remaining: the P2.5 explorer spike. If a charged fee exists anywhere it is behind the typed
-  (undocumented) API under `scan.thru.org`'s MCP tools. Until that is validated, the honest
-  answer stays "not reported".
-→ **Spike attempted 2026-09-20** (`docs/archive/EXPLORER_SPIKE.md` §7): live validation was blocked in
-  the spike environment (no route to Thru hosts); the official `get_transaction` tool docs
-  describe status/accounts/instructions/events and no charged-fee field. Still open; resume
-  via that doc's §11 checklist.
+`test/test-history-block-time.mjs` and `test/test-history-cache.mjs` exercise deterministic fixtures, collisions, races, missing-time fallback, and paging. They do not establish that every live node supplies block time or measure first-load latency. Recheck the current feed on each enabled network in a real environment.
 
-### C2c. Per-transaction wall-clock time — block-level only, and optional
-Transactions carry no time field. The containing block does (`BlockHeader.block_time` →
-`Block.blockTimeNs`), but it is optional on the wire and `@thru/sdk` only populates it when
-the node sent it.
-→ `tx.getDetail` fetches it via `blocks.get({slot})` and returns `blockTimeMs: null` when
-  absent; the sheet renders "Not available". Never substituted with the local clock, and
-  never inherited from a neighbouring entry (the list's day-grouping inference is
-  display-only and does not write timestamps — see `docs/HISTORY_REDESIGN_PLAN.md`).
-→ **RESOLVED on alphanet (2026-09-20, live manual smoke).** The open question was whether
-  alphanet populates `header.blockTime` at all — if it did not, every real sheet would read
-  "Block time: Not available", which is honest but useless. It does populate it: a faucet-claim
-  sheet against a live alphanet transaction (block 12871764) rendered a real wall-clock time,
-  confirming `BlockHeader.block_time` → `Block.blockTimeNs` → `blocks.get({slot})` carries
-  through end to end. The `null` branch remains the correct fallback for nodes that omit it and
-  is still exercised by fixtures; it is a degraded path, not the normal one.
-→ remaining: nothing on alphanet. Re-confirm per network when a second network goes live —
-  `blockTime` is optional on the wire, so its presence is a per-node property, not a protocol
-  guarantee. The `docs/MANUAL_SMOKE_CHECKLIST.md` row stays for that reason.
+### C3. Transaction simulation — unsupported
 
-### C3. Transaction simulation
-Rabby's signature feature — predicted balance changes before signing. Needs a simulate RPC.
-→ `tx.simulate({ ... })` → `supported:false`.
+`tx.simulate` remains an explicit unsupported capability. No predicted token/balance effect is fabricated, and there is no shipped transaction-simulation UI.
 
-### C4. dApp signing integration — hosted wallet only; extension path unverified
-Thru's current official wallet documentation describes `@thru/wallet` as a browser SDK for the
-hosted embedded wallet at `https://wallet.thru.org/embedded` (see the official
-[wallet overview](https://thru.org/docs/wallet/overview/)), not as an interoperability contract for
-an independently installed browser extension. The documented
-path uses `@thru/wallet` / `@thru/wallet/react`, `connect()` for account approval and discovery,
-`getSigningContext()` for managed-account versus fee-payer/signer context, and `signTransaction()`
-for wallet approval and canonical raw transaction bytes. The dApp submits those bytes separately.
-See the official [embedded integration](https://thru.org/docs/wallet/embedded-wallet-integration/)
-and [approval/signing lifecycle](https://thru.org/docs/wallet/approval-and-signing/) pages.
+### C4. dApp signing — no extension provider is shipped
 
-This extension is not the hosted iframe and must not pretend to be a drop-in provider. Do not invent
-an injected `window.thru` standard, copy the hosted iframe protocol, or treat the existence of
-`connect()`/`signTransaction()` as an extension trigger. An extension connector remains blocked until
-Thru documents a bring-your-own-signer or extension-compatible provider contract, including origin
-discovery, permissions, approval transport, signing ownership, and submission semantics.
+The official [Embedded Wallet Integration](https://thru.org/docs/wallet/embedded-wallet-integration/) describes the hosted iframe at `https://app.tid.sh/embedded`. `https://wallet.tid.sh` is the standalone wallet host and sends `X-Frame-Options: DENY`; it is not the embedded URL. These hosted-wallet APIs do not define an extension/BYO-signer provider contract. This extension does not inject `window.thru`, and no dApp connector is claimed shipped. Any extension integration requires a published and verified contract for origin discovery, permissions, approval transport, signing ownership, and submission semantics.
 
-Every C item is also an entry in `BUILD_SPEC.md` Part X (open questions). The single
-highest-value verification remains the faucet/transfer **unit scale**.
+Official Thru cross-checks: [Thru docs](https://thru.org/docs/), [API/SDK overview](https://thru.org/docs/api-ref/overview/), [`@thru/sdk`](https://thru.org/docs/sdks/web-packages/sdk/), [`@thru/programs`](https://thru.org/docs/sdks/web-packages/programs/), and [gRPC API overview](https://thru.org/docs/api-ref/grpc/overview/). Check against the exact dependency versions pinned by this repository.
+
+### Other open checks
+
+- Live contract-v12 account creation/registration and Send JIT activation, including MV3 worker suspension/restart behavior.
+- Live signing race if the selected network changes after the last preflight check but during SDK signing/submission.
+- Concurrent pending-record storage writes on the same network.
+- Real-Chrome popup/side-panel layout, focus, context exclusion, QR rendering, and worker lifecycle.
+- Confirmation of the explorer transaction route; do not turn an unverified URL convention into a protocol guarantee.
+
+The owners and the test/live/browser boundaries are tracked in `docs/STATUS_AND_ROADMAP.md`, `docs/SEND_PATH_AUDIT.md`, and `docs/MANUAL_SMOKE_CHECKLIST.md`.
 
 ---
 
-## Tier D — forbidden
+## 3. Contract compatibility rule
 
-Renaming or reshaping `tx.send`, `wallet.exportSecret`, `account.list`, or any existing method.
-The contract is append-only; `test-contract.mjs` enforces it in both directions.
-
----
-
-## Two pre-existing defects worth fixing alongside
-
-1. **Token field-name mismatch.** `token-service.js` sends `symbol`/`imageUrl`;
-   `thru-client.js` destructures `ticker`/`imageUri`. Every stored token record therefore has an
-   empty ticker and no image. Fixing the names also activates a currently-dead `<img>` branch in
-   `token-row.js`, so escaping must land in the same change.
-2. **`clipboardRead` is missing from `manifest.json`** while `popup.js` and `screens/send.js` call
-   `navigator.clipboard.readText()`. The Paste button always fails.
+Ordinary feature work appends methods rather than changing existing parameter or return shapes. This contract is not an excuse to preserve an unsafe policy: the documented v5 signing-auth, v6 destructive-settings, and v7 custom-network security changes are intentional in-place security exceptions. Contract tests in `test/test-contract.mjs` check method/router/UI agreement and key security invariants. Do not silently widen a method's authority or reinterpret an existing field.
