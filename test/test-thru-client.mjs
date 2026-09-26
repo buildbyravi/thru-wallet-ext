@@ -8,6 +8,7 @@ import {
   UNITS_PER_THRU,
   FAUCET_PROGRAM_ID,
   TRANSFER_PROGRAM_ID,
+  getClient,
 } from '../src/lib/thru-client.js';
 import { Transaction, keys, Signature } from '@thru/sdk';
 
@@ -181,8 +182,17 @@ import { Pubkey } from '@thru/sdk';
   // 32 bytes of 0x11, from Pubkey(new Uint8Array(32).fill(17)) — fixed, not generated.
   const GOLDEN_AUTHORITY = 'taEREREREREREREREREREREREREREREREREREREREREREg';
   const GOLDEN_SEED = 'abababababababababababababababababababababababababababababababab';
+  // Vectors are scoped to a token PROGRAM address: PDAs are a function of the program they
+  // live under, so the fresh-network reset (which moved the token program to its managed
+  // address) legitimately moved every mint and token account. Both scopes are pinned below.
+  // The pre-reset pair doubles as a derivation-MATH regression: same inputs, same old program
+  // in, byte-identical old addresses out — a silent change in the hashing would break these
+  // regardless of which program the network config points at.
+  const PRE_RESET_TOKEN_PROGRAM = 'taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKqq';
   const GOLDEN_MINT = 'tawqbPfCF69Kyo2hdPTIfoz5Safk--tIB3g2q0Z9dZFUBR';
   const GOLDEN_TOKEN_ACCOUNT = 'taz4AOOlJBtn8IzaX97sKpL9_leQlC0HHg6EuAnw6U3cmh';
+  const GOLDEN_MINT_CURRENT = 'ta-HTfNxabKvpVUFaijWJZtcbBbr5UIfgRI799VFmxEe3d';
+  const GOLDEN_TOKEN_ACCOUNT_CURRENT = 'taX3La-pAH8Q_k2_zJH3sK0z2tv_BSGNqambsc9CMCcs12';
 
   // Sanity: the fixture authority really is the 0x11-filled key, so the vectors below can
   // never silently flip to "whatever the generator produced this run".
@@ -191,11 +201,18 @@ import { Pubkey } from '@thru/sdk';
     'golden authority is the fixed 0x11-filled key',
   );
 
-  const mint = await deriveTokenMintAddress(GOLDEN_SEED, GOLDEN_AUTHORITY);
-  assert(mint === GOLDEN_MINT, `mint derivation is stable: ${mint}`);
+  const { deriveMintAddress: sdkDeriveMintAddress, deriveTokenAccountAddress: sdkDeriveTokenAccountAddress } = await import('@thru/programs/token');
+  const mintPreReset = (await sdkDeriveMintAddress(getClient(), GOLDEN_AUTHORITY, GOLDEN_SEED, PRE_RESET_TOKEN_PROGRAM))?.address;
+  assert(mintPreReset === GOLDEN_MINT, `mint derivation math is unchanged (pre-reset program): ${mintPreReset}`);
 
-  const tokenAccount = await deriveTokenAccountAddress(GOLDEN_AUTHORITY, GOLDEN_MINT);
-  assert(tokenAccount === GOLDEN_TOKEN_ACCOUNT, `token account derivation is stable: ${tokenAccount}`);
+  const tokenAccountPreReset = (await sdkDeriveTokenAccountAddress(getClient(), GOLDEN_AUTHORITY, GOLDEN_MINT, PRE_RESET_TOKEN_PROGRAM))?.address;
+  assert(tokenAccountPreReset === GOLDEN_TOKEN_ACCOUNT, `token account derivation math is unchanged (pre-reset program): ${tokenAccountPreReset}`);
+
+  const mint = await deriveTokenMintAddress(GOLDEN_SEED, GOLDEN_AUTHORITY);
+  assert(mint === GOLDEN_MINT_CURRENT, `mint derivation is stable on the configured token program: ${mint}`);
+
+  const tokenAccount = await deriveTokenAccountAddress(GOLDEN_AUTHORITY, GOLDEN_MINT_CURRENT);
+  assert(tokenAccount === GOLDEN_TOKEN_ACCOUNT_CURRENT, `token account derivation is stable on the configured token program: ${tokenAccount}`);
 
   let noAuthorityThrew = false;
   try { await deriveTokenMintAddress(GOLDEN_SEED); } catch { noAuthorityThrew = true; }
@@ -211,7 +228,7 @@ console.log('\n[11] Every program address in every network config is SDK-parseab
   const { listAllNetworks } = await import('../src/lib/networks.js');
   const { Pubkey } = await import('@thru/sdk');
 
-  const ADDRESS_FIELDS = ['faucetProgramId', 'faucetStateAccount', 'transferProgramId', 'tokenProgramId'];
+  const ADDRESS_FIELDS = ['faucetProgramId', 'faucetStateAccount', 'transferProgramId', 'tokenProgramId', 'accountCreateProgramId'];
   const all = listAllNetworks();
   let checked = 0;
 

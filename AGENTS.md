@@ -82,8 +82,9 @@ is red. Never weaken or skip a test to make it pass.
     **Self-signing invariant:** resolve the *target's* keypair from the unlocked vault. Both
     its public key and the public key derived from its private key must match the target address;
     that same pair must be the fee payer in `createOnChainAccount`. Account 1 must never sign
-    Account 4's registration. The ONLY activation transaction is Thru's native account-creation
-    program (`taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMD`, fee `0n`, nonce `0n`);
+    Account 4's registration. The ONLY activation transaction is the native account-creation
+    program (the network's configured `accountCreateProgramId` — the NOOP program on 0.4.0+
+    chains — with fee `0n`, nonce `0n`, stateUnits `1`);
     never claim the faucet or send a dummy/zero-value transfer to activate an account.
 11. **Every component returns `{ el, update, destroy }`** and `destroy()` removes the *same*
     handler references it added. Use `disposer()`; a fresh arrow passed to

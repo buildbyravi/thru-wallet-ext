@@ -5,6 +5,7 @@ import { keys, Pubkey } from '@thru/sdk';
 import { handleApiRequest } from '../src/background/api-router.js';
 import * as vault from '../src/lib/vault.js';
 import * as thruClient from '../src/lib/thru-client.js';
+import { getNetworkConfig } from '../src/lib/networks.js';
 import { registerCreatedAccount } from '../src/background/services/registration-service.js';
 
 function store() {
@@ -123,10 +124,13 @@ assert.equal((await call('account.getActive')).address, first.address, 'registra
 assert.deepEqual(signed[0].feePayer.privateKey, third.privateKey, 'SDK signed with the recipient\'s OWN key');
 assert.deepEqual(signed[0].feePayer.publicKey, third.publicKey, 'the fee payer is the TARGET, not Account 1');
 assert.deepEqual(signed[0].feePayerStateProof, { address: third.address });
-assert.equal(signed[0].program, 'taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMD',
-  'registration uses only the native account-creation program, not faucet or transfer');
-assert.deepEqual(signed[0].header, { fee: 0n, nonce: 0n },
-  'the native self-registration header is exactly zero fee and zero nonce');
+const alphaNet = getNetworkConfig('alphanet');
+assert.equal(signed[0].program, alphaNet.accountCreateProgramId,
+  'registration uses the configured account-creation program, not faucet or transfer');
+assert.notEqual(signed[0].program, alphaNet.faucetProgramId);
+assert.notEqual(signed[0].program, alphaNet.transferProgramId);
+assert.deepEqual(signed[0].header, { fee: 0n, nonce: 0n, stateUnits: 1 },
+  'the native self-registration header is exactly zero fee, zero nonce, and one state unit');
 assert.ok(!JSON.stringify(own).includes('privateKey'), 'the result contains no key material');
 const already = await call('tx.registerAccount', { address: third.address });
 assert.equal(already.created, false);
@@ -295,9 +299,9 @@ console.log('  ok - removing an account while its proof is pending cancels signi
 
 for (const tx of signed) {
   const target = tx.feePayerStateProof.address;
-  assert.equal(tx.program, 'taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMD',
-    'every registration uses the native account-creation program (no faucet/dummy transfer)');
-  assert.deepEqual(tx.header, { fee: 0n, nonce: 0n });
+  assert.equal(tx.program, getNetworkConfig('alphanet').accountCreateProgramId,
+    'every registration uses the configured account-creation program (no faucet/dummy transfer)');
+  assert.deepEqual(tx.header, { fee: 0n, nonce: 0n, stateUnits: 1 });
   assert.equal(Pubkey.from(tx.feePayer.publicKey).toThruFmt(), target,
     'every fee payer public key matches the target proof address');
   assert.equal(Pubkey.from(await keys.fromPrivateKey(tx.feePayer.privateKey)).toThruFmt(), target,
