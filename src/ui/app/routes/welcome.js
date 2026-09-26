@@ -65,16 +65,6 @@ export function WelcomeRoute({ navigate }) {
     clearBody();
     banner.clear();
 
-    body.appendChild(h('div', { class: 'notice warning' }, [
-      h('div', { class: 'row-flex' }, [
-        icon('warning', 15),
-        h('strong', { text: 'Experimental wallet' }),
-      ]),
-      h('p', { class: 'hint', text:
-        'Community-built and not audited. Use test-network funds only, and never a phrase that '
-        + 'holds anything you care about.' }),
-    ]));
-
     body.appendChild(track(OptionCard({
       iconName: 'plus',
       title: 'Create a new wallet',

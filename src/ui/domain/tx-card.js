@@ -68,6 +68,7 @@ function glyphFor(entry) {
   }
   if (entry.kind === 'token-account-init') return { name: 'coins', cls: 'received' };
   if (entry.kind === 'faucet') return { name: 'faucet', cls: 'faucet' };
+  if (entry.kind === 'registration') return { name: 'shield', cls: '' };
   return { name: 'info', cls: '' };
 }
 
@@ -85,6 +86,7 @@ function verbFor(entry) {
     case 'sent': return 'Send';
     case 'received': return 'Receive';
     case 'faucet': return 'Claim';
+    case 'registration': return 'Register account';
     case 'token-sent': return 'Send';
     case 'token-received': return 'Receive';
     case 'token-mint': return 'Mint';

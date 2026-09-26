@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import * as history from '../src/background/services/history-service.js';
 import * as networks from '../src/background/services/network-service.js';
 import * as thruClient from '../src/lib/thru-client.js';
+import { getNetworkConfig } from '../src/lib/networks.js';
 
 const data = new Map();
 let writes = 0;
@@ -22,11 +23,15 @@ const A = 'taAA_test_history';
 const B = 'taBB_test_history';
 const alphaEntry = { signature: 'ts_alpha_cache', kind: 'sent', amount: '123', timestamp: null };
 const localEntry = { signature: 'ts_local_cache', kind: 'received', amount: '456', timestamp: null };
+const ALPHA_CHAIN = history.chainFingerprint(getNetworkConfig('alphanet'));
+const LOCAL_CHAIN = history.chainFingerprint(getNetworkConfig('localnet'));
 data.set('thru_history_cache::alphanet', {
+  _chain: ALPHA_CHAIN,
   [A]: { entries: [alphaEntry], nextCursor: 8, updatedAt: 112233 },
   [B]: { entries: [{ signature: 'ts_other_account' }], nextCursor: null, updatedAt: 99 },
 });
 data.set('thru_history_cache::localnet', {
+  _chain: LOCAL_CHAIN,
   [A]: { entries: [localEntry], nextCursor: 4, updatedAt: 223344 },
 });
 
@@ -43,6 +48,33 @@ assert.equal(thruClient.getConfiguredNetwork().id, 'localnet', 'storage-only rea
 assert.deepEqual((await history.getCachedHistory(B)).entries, [{ signature: 'ts_other_account' }]);
 assert.deepEqual((await history.getCachedHistory('missing')).entries, [], 'missing cache is empty, not fabricated');
 console.log('  ok - history cache reads only the requested network/address and never touches RPC');
+
+// ---- Chain identity: the alphanet-reset regression ----
+// The chain was replaced under the SAME network id (and the same chainId). A cache
+// written against the previous genesis must never surface its rows again — neither
+// through the cached path nor through the merge in the feed — and the read itself
+// must not write storage.
+const writesBeforeDrop = writes;
+data.set('thru_history_cache::alphanet', {
+  _chain: 'alphanet|pre|reset|genesis|gone|gone',
+  [A]: { entries: [{ signature: 'ts_from_the_dead_chain' }] },
+});
+assert.deepEqual((await history.getCachedHistory(A)).entries, [],
+  'rows from a previous chain under the same network id are not served');
+// A pre-fingerprint cache (written before this check existed) is treated the same.
+data.set('thru_history_cache::alphanet', {
+  [A]: { entries: [{ signature: 'ts_pre_fingerprint_cache' }] },
+});
+assert.deepEqual((await history.getCachedHistory(A)).entries, [],
+  'a cache without a chain identity is not trusted');
+assert.equal(writes, writesBeforeDrop, 'dropping a stale cache is a read, not a write');
+// Restore the identity-verified cache the surrounding sections rely on.
+data.set('thru_history_cache::alphanet', {
+  _chain: ALPHA_CHAIN,
+  [A]: { entries: [alphaEntry], nextCursor: 8, updatedAt: 112233 },
+  [B]: { entries: [{ signature: 'ts_other_account' }], nextCursor: null, updatedAt: 99 },
+});
+console.log('  ok - history from a replaced chain is dropped instead of resurfacing');
 
 await networks.setActiveNetwork('localnet');
 assert.deepEqual((await history.getCachedHistory(A)).entries, [localEntry]);

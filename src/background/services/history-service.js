@@ -16,12 +16,44 @@
 import * as txService from './tx-service.js';
 import * as thruClient from '../../lib/thru-client.js';
 import { getActiveNetworkConfig, getActiveNetworkId } from './network-service.js';
+import { getNetworkConfig } from '../../lib/networks.js';
 import { scopedKey } from '../../shared/network-scope.js';
 
 // Per-network, per-address — the same scoped-key isolation as thru_balance_cache and
 // thru_pending_txs. History is not secret; it persists across locks exactly like balances.
 // Registered in network-scope.js SCOPED_KEYS alongside those two.
 const CACHE_BASE_KEY = 'thru_history_cache';
+
+/**
+ * The CHAIN identity a cache row belongs to — not the network identity. The alphanet
+ * reset replaced the chain under the SAME network id (and even the same chainId), so a
+ * per-network cache happily kept serving rows from a chain that no longer exists. The
+ * managed program set is the chain's identity from this wallet's perspective: it is
+ * exactly what changes when genesis is replaced (see networks.js), it is available
+ * offline, and it cannot drift from the transactions this wallet builds against it.
+ *
+ * Exported so tests can seed caches with the right (or a deliberately wrong) identity.
+ */
+export function chainFingerprint(network) {
+  return [
+    network?.id ?? '',
+    network?.transferProgramId ?? '',
+    network?.tokenProgramId ?? '',
+    network?.faucetProgramId ?? '',
+    network?.faucetStateAccount ?? '',
+    network?.accountCreateProgramId ?? '',
+  ].join('|');
+}
+
+function fingerprintFor(networkId) {
+  try {
+    return chainFingerprint(getNetworkConfig(networkId));
+  } catch {
+    // Custom/unknown network ids are not in the built-in table; the id is the best
+    // identity available and custom networks are quarantined from selection anyway.
+    return String(networkId ?? '');
+  }
+}
 const CACHE_LIMIT = 200;
 const PAGE_ON_OPEN = 15;
 
@@ -42,7 +74,14 @@ async function readScope(networkId) {
   const key = scopedKey(CACHE_BASE_KEY, networkId);
   const res = await chrome.storage.local.get(key);
   const scope = res?.[key];
-  return { key, scope: scope && typeof scope === 'object' && !Array.isArray(scope) ? scope : {} };
+  const stored = scope && typeof scope === 'object' && !Array.isArray(scope) ? scope : {};
+  // Chain-identity gate: rows written under a different genesis (or before this check
+  // existed) are dropped on READ, never merged into a live feed again. The read stays
+  // write-free; the discarded scope is overwritten the next time a fetch persists rows.
+  if (stored._chain !== fingerprintFor(networkId)) {
+    return { key, scope: { _chain: fingerprintFor(networkId) } };
+  }
+  return { key, scope: stored };
 }
 
 function cachedPage(scope, address) {

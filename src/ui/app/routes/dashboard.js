@@ -25,7 +25,7 @@
 
 import { h, disposer } from '../../kit/dom.js';
 import { icon } from '../../kit/icon.js';
-import { CopyButton } from '../../kit/button.js';
+import { CopyButton, Button } from '../../kit/button.js';
 import { Banner } from '../../kit/feedback.js';
 import { AccountAvatar, AddressText } from '../../domain/account-avatar.js';
 import { AssetRow } from '../../domain/token-row.js';
@@ -33,6 +33,7 @@ import { BalanceHero } from '../../domain/balance-hero.js';
 import { PanelItem } from '../../domain/panel-item.js';
 import * as bridge from '../bridge.js';
 import { formatThru, formatTokenAmount } from '../../../shared/format.js';
+import { encodeRef } from '../../../shared/refs.js';
 
 /**
  * Format indicative USD value from raw base units.
@@ -247,6 +248,68 @@ export function DashboardRoute({ navigate }) {
     faucetTile.el,
   ]);
 
+  // ---- Unbacked-up phrase reminder -----------------------------------------
+  // Wires the backupReminderDismissedAt preference, which existed since the first settings
+  // schema but was read by nothing. A generated phrase whose backup was never confirmed is
+  // the most dangerous state this wallet can be in (see welcome.js), and escaping the backup
+  // flow must not make it invisible. "Remind me later" only silences keyrings that already
+  // existed at dismissal time — a phrase created afterwards re-arms the notice via createdAt.
+  let reminderRef = null;
+  const reminderBtn = track(Button({
+    label: 'Back up now',
+    variant: 'accent',
+    iconName: 'shield',
+    onClick: () => {
+      if (reminderRef) navigate(`/export?ref=${encodeRef(reminderRef)}&mode=backup`);
+    },
+  }));
+  const reminderLaterBtn = track(Button({
+    label: 'Remind me later',
+    variant: 'text',
+    onClick: async () => {
+      try {
+        await bridge.send('settings.set', { patch: { backupReminderDismissedAt: Date.now() } });
+        reminderHost.replaceChildren();
+      } catch {
+        // Keep the notice visible when the dismissal cannot be recorded — a silently hidden
+        // warning is the exact failure this notice exists to prevent.
+      }
+    },
+  }));
+  const reminderHost = h('div');
+  // The notice is detached (not CSS-hidden) when there is nothing to remind about: the
+  // route-lifecycle suite asserts absence by text content, and a display:none node would
+  // leave the warning text "present" forever.
+  const reminderNotice = h('div', { class: 'notice warning' }, [
+    h('div', { class: 'row-flex' }, [
+      icon('shield', 15),
+      h('strong', { text: 'Back up your recovery phrase' }),
+    ]),
+    h('p', { class: 'hint', text:
+      'This wallet has been created, but its recovery phrase has not been confirmed as '
+      + 'written down. Nothing can recover it without those words.' }),
+    h('div', { class: 'row-flex' }, [reminderBtn.el, reminderLaterBtn.el]),
+  ]);
+
+  function renderBackupReminder(keyrings, prefs) {
+    const dismissedAt = Number(prefs?.backupReminderDismissedAt) || 0;
+    const pendingRing = (keyrings || []).find((ring) =>
+      ring?.type === 'seed'
+      && ring.origin === 'generated'
+      && !ring.backedUpAt
+      && (!dismissedAt || Number(ring.createdAt ?? 0) > dismissedAt));
+    if (pendingRing) {
+      reminderRef = {
+        keyringId: pendingRing.id,
+        accountIndex: pendingRing.hdIndices?.[0] ?? 0,
+      };
+      reminderHost.replaceChildren(reminderNotice);
+    } else {
+      reminderRef = null;
+      reminderHost.replaceChildren();
+    }
+  }
+
   function applyNetworkCapabilities(network) {
     const faucetAvailable = Boolean(network?.faucetProgramId && network?.faucetStateAccount);
     faucetTile.el.disabled = !faucetAvailable;
@@ -347,6 +410,17 @@ export function DashboardRoute({ navigate }) {
   async function load({ force = false } = {}) {
     banner.clear();
     balanceHero.setSpinning(true);
+
+    // Vault-level reminder first: it must render even if account or balance loading fails.
+    try {
+      const [keyrings, prefs] = await Promise.all([
+        bridge.send('keyring.list'),
+        bridge.send('settings.get'),
+      ]);
+      renderBackupReminder(keyrings, prefs);
+    } catch {
+      // No reminder data is better than a wrong reminder.
+    }
 
     try {
       currentNetwork = await bridge.send('network.getActive');
@@ -455,6 +529,7 @@ export function DashboardRoute({ navigate }) {
   const el = h('section', { class: 'screen dash-screen' }, [
     dashHeader,
     banner.el,
+    reminderHost,
     actionPanel,
     tabsBar,
     tokenLedgerHost,

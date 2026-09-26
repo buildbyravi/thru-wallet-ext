@@ -81,6 +81,7 @@ function verbFor(entry) {
     case 'sent': return 'Sent';
     case 'received': return 'Received';
     case 'faucet': return 'Faucet claim';
+    case 'registration': return 'Account registered';
     case 'token-sent': return 'Token sent';
     case 'token-received': return 'Token received';
     case 'token-mint': return 'Token minted';

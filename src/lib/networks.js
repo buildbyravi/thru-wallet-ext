@@ -12,7 +12,8 @@
 // Rule 2 is the one that is easy to get wrong, and getting it wrong means switching to mainnet
 // shows you devnet's pending transactions and a token list of mints that do not exist there.
 
-import { Pubkey } from '@thru/sdk';
+import { Pubkey, EOA_PROGRAM_ID, TOKEN_PROGRAM_ADDRESS, NOOP_PROGRAM_ADDRESS } from '@thru/sdk';
+import { BOOTSTRAP_PROGRAM_ADDRESSES, BOOTSTRAP_FAUCET_VAULT_ADDRESS } from '@thru/programs/bootstrap-addresses';
 
 /**
  * @typedef {Object} NetworkConfig
@@ -25,6 +26,7 @@ import { Pubkey } from '@thru/sdk';
  * @property {bigint|null} faucetMaxPerClaim  - Max claimable per faucet tx (null where no faucet)
  * @property {string} transferProgramId  - Native transfer program address
  * @property {string} tokenProgramId     - Token program address
+ * @property {string} accountCreateProgramId - Program the account-creation (fee-payer activation) transaction targets
  * @property {boolean} isTestnet    - Test/dev network. Drives faucet visibility and the badge.
  * @property {boolean} enabled      - Whether the network is selectable yet
  * @property {'devnet'|'testnet'|'mainnet'|'local'} environment
@@ -32,23 +34,28 @@ import { Pubkey } from '@thru/sdk';
  * @property {bigint|null} feeReserveUnits - What MAX should hold back, or null when unknown
  */
 
-// Program addresses are identical across Thru networks TODAY. Declared once so a change lands
-// in one place rather than being copy-pasted per entry.
+// Program addresses come from the official 0.4.0 packages — the managed-genesis registry that
+// replaced the old reserved "marker byte" system table at the alphanet reset. (The old
+// zero-filled addresses with byte 31 = 0x00 transfer / 0x03 account-create / 0xaa token /
+// 0xfa faucet no longer exist on-chain.) The packages are the single source of truth: a
+// redeployment lands here via a pinned version bump, not by copy-pasting strings.
 //
 // They are per-network fields on purpose: the transfer program address is not guaranteed to
 // survive the move to testnet, and neither is the fee. Anything network-specific belongs in the
 // entry, not in a module constant — thru-client already had to be un-hardcoded once for exactly
 // this reason.
-const TRANSFER_PROGRAM_ID = 'taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
-const TOKEN_PROGRAM_ID = 'taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKqq';
-const FAUCET_PROGRAM_ID = 'taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPr6';
-
-// The faucet state account previously declared here was 43 characters and REJECTED by the
-// SDK's own parser. It was never exercised because thru-client.js carried its own (valid)
-// 46-character copy and ignored this config entirely. Both now come from one constant, and
-// test-thru-client.mjs validates every address in every network against Pubkey.from so a
-// malformed one cannot ship again.
-const FAUCET_STATE_ACCOUNT = 'taxoImN8fTEOxXYnvgC6JZ0lN0n0qvZERwz_vlOjX3MkIn';
+//
+//  - Native transfers are EOA-program transfers (EOA_INSTRUCTION_TRANSFER = 1).
+//  - Account creation is a fee-payer activation transaction against the NOOP program — the
+//    same program @thru/sdk's own accounts.createAccount defaults to since 0.4.0.
+//  - The faucet is a managed program whose vault PDA plays the old "faucet state account"
+//    role — confirmed live on the reset chain (2026-09-26): a claim with the wallet's 16-byte
+//    layout credited 10,000 units from that vault. The layout is verified, not assumed.
+const TRANSFER_PROGRAM_ID = EOA_PROGRAM_ID;
+const TOKEN_PROGRAM_ID = TOKEN_PROGRAM_ADDRESS;
+const FAUCET_PROGRAM_ID = BOOTSTRAP_PROGRAM_ADDRESSES.faucet;
+const FAUCET_STATE_ACCOUNT = BOOTSTRAP_FAUCET_VAULT_ADDRESS;
+const ACCOUNT_CREATE_PROGRAM_ID = NOOP_PROGRAM_ADDRESS;
 
 export const NETWORKS = {
   alphanet: {
@@ -61,12 +68,14 @@ export const NETWORKS = {
     faucetMaxPerClaim: 10_000n,
     transferProgramId: TRANSFER_PROGRAM_ID,
     tokenProgramId: TOKEN_PROGRAM_ID,
+    accountCreateProgramId: ACCOUNT_CREATE_PROGRAM_ID,
     isTestnet: true,
     enabled: true,
     environment: 'devnet',
-    // MEASURED on alphanet 2026-08-18: a transfer between two registered accounts cost
-    // exactly 1 base unit. Only one amount and one size were sampled, so the reserve sits
-    // well above it rather than at it.
+    // MEASURED on the reset chain 2026-09-26 (after the 0.4.0 managed-genesis reset): a
+    // transfer between registered accounts cost exactly 1 base unit (10000 − 1234 − 1 = 8765).
+    // Only one amount and one size were sampled, so the reserve sits well above it rather
+    // than at it.
     baseFeeUnits: 1n,
     feeReserveUnits: 1000n,
   },
@@ -86,6 +95,7 @@ export const NETWORKS = {
     faucetMaxPerClaim: 10_000n,
     transferProgramId: TRANSFER_PROGRAM_ID,
     tokenProgramId: TOKEN_PROGRAM_ID,
+    accountCreateProgramId: ACCOUNT_CREATE_PROGRAM_ID,
     isTestnet: true,
     enabled: true,
     environment: 'local',
@@ -113,6 +123,7 @@ export const NETWORKS = {
     faucetMaxPerClaim: null,
     transferProgramId: TRANSFER_PROGRAM_ID,
     tokenProgramId: TOKEN_PROGRAM_ID,
+    accountCreateProgramId: ACCOUNT_CREATE_PROGRAM_ID,
     isTestnet: true,
     enabled: false,
     environment: 'testnet',
@@ -133,6 +144,7 @@ export const NETWORKS = {
     faucetMaxPerClaim: null,
     transferProgramId: TRANSFER_PROGRAM_ID,
     tokenProgramId: TOKEN_PROGRAM_ID,
+    accountCreateProgramId: ACCOUNT_CREATE_PROGRAM_ID,
     isTestnet: false,
     enabled: false,
     environment: 'mainnet',

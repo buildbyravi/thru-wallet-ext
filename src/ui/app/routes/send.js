@@ -764,14 +764,6 @@ export function SendRoute({ params, navigate, back }) {
       ? (destAccount.label || destAccount.keyring?.label || 'Account')
       : destContact?.label;
 
-    body.appendChild(h('div', { class: 'notice warning' }, [
-      h('div', { class: 'row-flex' }, [
-        icon('warning', 15),
-        h('strong', { text: 'Transfers cannot be reversed' }),
-      ]),
-      h('p', { class: 'hint', text: 'Check the address carefully. There is no way to undo a send.' }),
-    ]));
-
     const rows = [
       h('div', { class: 'detail-row' }, [
         h('span', { class: 'eyebrow', text: 'From' }),

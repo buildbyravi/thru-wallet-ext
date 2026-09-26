@@ -19,6 +19,7 @@ import { AccountAvatar } from '../../domain/account-avatar.js';
 import { keyringTypeLabel } from '../../domain/account-row.js';
 import { requirePassword } from '../../domain/password-prompt.js';
 import * as bridge from '../bridge.js';
+import { invalidate } from '../guards.js';
 import { decodeRef, encodeRef, refsEqual } from '../../../shared/refs.js';
 
 // The network config is already serialized across the background seam. Keep this route from
@@ -81,14 +82,14 @@ export function AccountDetailRoute({ params, navigate, back }) {
       const isActive = refsEqual(account.ref, activeRef);
       header.setTitle(account.label || 'Account');
 
-      render({ account, keyring, isSeed, isActive, network, accounts });
+      render({ account, keyring, isSeed, isActive, network, accounts, totalKeyrings: (keyrings || []).length });
     } catch (error) {
       while (body.firstChild) body.removeChild(body.firstChild);
       banner.set(error.message || 'Could not load this account.');
     }
   }
 
-  function render({ account, keyring, isSeed, isActive, network, accounts }) {
+  function render({ account, keyring, isSeed, isActive, network, accounts, totalKeyrings }) {
     for (const c of owned) c.destroy?.();
     owned.length = 0;
     while (body.firstChild) body.removeChild(body.firstChild);
@@ -262,24 +263,42 @@ export function AccountDetailRoute({ params, navigate, back }) {
       })).el);
     }
 
+    // Removing the only key source is a full wallet reset, not a source removal — the
+    // backend refuses to empty the vault (vault.js). The dialog says so and fulfils through
+    // the SAME contract call the /reset route makes, so "Remove this recovery phrase" is
+    // never a dead end that tells the user to find Reset somewhere else.
+    const onlySource = totalKeyrings <= 1;
     actions.push(track(Button({
       label: isSeed ? 'Remove recovery phrase' : 'Remove private key',
       variant: 'danger',
       iconName: 'warning',
       onClick: async () => {
         const removed = await requirePassword({
-          title: isSeed ? 'Remove this recovery phrase?' : 'Remove this private key?',
-          body: isSeed
-            ? `This removes the phrase and all ${keyring?.accountCount ?? 1} account(s) derived `
-              + 'from it. Without your written backup those funds are UNRECOVERABLE.'
-            : 'This removes the key and its account. Without a backup of the key those funds '
-              + 'are UNRECOVERABLE.',
-          confirmLabel: 'Remove permanently',
+          title: onlySource
+            ? 'Wipe this wallet?'
+            : (isSeed ? 'Remove this recovery phrase?' : 'Remove this private key?'),
+          body: onlySource
+            ? (isSeed
+              ? `This is the ONLY key source in this wallet, so removing it wipes the entire `
+                + `wallet on this device — the phrase and all ${keyring?.accountCount ?? 1} `
+                + 'account(s) derived from it, and every setting. Without your written backup '
+                + 'those funds are UNRECOVERABLE.'
+              : 'This is the ONLY key source in this wallet, so removing it wipes the entire '
+                + 'wallet on this device. Without a backup of the key those funds are UNRECOVERABLE.')
+            : (isSeed
+              ? `This removes the phrase and all ${keyring?.accountCount ?? 1} account(s) derived `
+                + 'from it. Without your written backup those funds are UNRECOVERABLE.'
+              : 'This removes the key and its account. Without a backup of the key those funds '
+                + 'are UNRECOVERABLE.'),
+          confirmLabel: onlySource ? 'Wipe this wallet' : 'Remove permanently',
           danger: true,
-          verify: (password) => bridge.send('keyring.remove', { keyringId: keyring.id, password }),
+          verify: onlySource
+            ? (password) => bridge.send('wallet.reset', { confirmation: true, password })
+            : (password) => bridge.send('keyring.remove', { keyringId: keyring.id, password }),
         });
         if (!removed) return;
-        navigate('/accounts', { replace: true });
+        invalidate();
+        navigate(onlySource ? '/welcome' : '/accounts', { replace: true });
       },
     })).el);
 

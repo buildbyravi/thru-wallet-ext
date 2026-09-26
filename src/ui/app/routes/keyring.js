@@ -16,6 +16,7 @@ import { PageHeader, Banner, Spinner } from '../../kit/feedback.js';
 import { keyringTypeLabel } from '../../domain/account-row.js';
 import { requirePassword } from '../../domain/password-prompt.js';
 import * as bridge from '../bridge.js';
+import { invalidate } from '../guards.js';
 import { encodeRef } from '../../../shared/refs.js';
 
 export function KeyringRoute({ params, navigate, back }) {
@@ -142,34 +143,46 @@ export function KeyringRoute({ params, navigate, back }) {
       })).el);
     }
 
-    // Removing the only source would leave a wallet with no keys, which is a reset, not a
-    // removal. The backend refuses it too; saying so here avoids an error dialog.
-    if (totalKeyrings > 1) {
-      actions.push(track(Button({
-        label: isSeed ? 'Remove this recovery phrase' : 'Remove this private key',
-        variant: 'danger',
-        iconName: 'trash',
-        onClick: async () => {
-          const removed = await requirePassword({
-            title: isSeed ? 'Remove this recovery phrase?' : 'Remove this private key?',
-            body: isSeed
+    // Removing the only key source is a full wallet reset, not a source removal — the
+    // backend refuses to empty the vault (vault.js). This screen used to hide the button and
+    // point at "Reset wallet from Settings", which does not exist there: the dialog now
+    // states the reset semantics and fulfils through the SAME contract call the /reset
+    // route makes (confirmation + password), so the path works from where the user is.
+    const onlySource = totalKeyrings <= 1;
+    actions.push(track(Button({
+      label: isSeed ? 'Remove this recovery phrase' : 'Remove this private key',
+      variant: 'danger',
+      iconName: 'trash',
+      onClick: async () => {
+        const removed = await requirePassword({
+          title: onlySource
+            ? 'Wipe this wallet?'
+            : (isSeed ? 'Remove this recovery phrase?' : 'Remove this private key?'),
+          body: onlySource
+            ? (isSeed
+              ? 'This is the ONLY key source in this wallet, so removing it wipes the entire '
+                + `wallet on this device — the phrase and all ${keyring.accountCount ?? accounts.length} `
+                + 'account(s) derived from it, and every setting. Without your written backup '
+                + 'those funds are UNRECOVERABLE.'
+              : 'This is the ONLY key source in this wallet, so removing it wipes the entire '
+                + 'wallet on this device. Without a backup of the key those funds are UNRECOVERABLE.')
+            : (isSeed
               ? `This removes the phrase and all ${keyring.accountCount ?? accounts.length} `
                 + 'account(s) derived from it. Without your written backup those funds are '
                 + 'UNRECOVERABLE.'
               : 'This removes the key and its account. Without a backup those funds are '
-                + 'UNRECOVERABLE.',
-            confirmLabel: 'Remove permanently',
-            danger: true,
-            verify: (password) => bridge.send('keyring.remove', { keyringId, password }),
-          });
-          if (removed) navigate('/accounts', { replace: true });
-        },
-      })).el);
-    } else {
-      body.appendChild(h('p', { class: 'hint', text:
-        'This is the only key source in this wallet, so it cannot be removed. Reset the wallet '
-        + 'from Settings instead.' }));
-    }
+                + 'UNRECOVERABLE.'),
+          confirmLabel: onlySource ? 'Wipe this wallet' : 'Remove permanently',
+          danger: true,
+          verify: onlySource
+            ? (password) => bridge.send('wallet.reset', { confirmation: true, password })
+            : (password) => bridge.send('keyring.remove', { keyringId, password }),
+        });
+        if (!removed) return;
+        invalidate();
+        navigate(onlySource ? '/welcome' : '/accounts', { replace: true });
+      },
+    })).el);
 
     body.appendChild(h('div', { class: 'stack stack-2' }, actions));
   }

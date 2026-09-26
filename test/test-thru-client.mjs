@@ -8,6 +8,8 @@ import {
   UNITS_PER_THRU,
   FAUCET_PROGRAM_ID,
   TRANSFER_PROGRAM_ID,
+  ACCOUNT_CREATE_PROGRAM_ID,
+  getClient,
 } from '../src/lib/thru-client.js';
 import { Transaction, keys, Signature } from '@thru/sdk';
 
@@ -129,6 +131,28 @@ const decodedOther = decodeHistoryEntry(otherProgramTx, alice.address);
 assert(decodedOther.kind === 'other', "a call to a program that isn't the known transfer/faucet address stays undecoded");
 assert(decodedOther.amount === null, 'no amount is inferred for an unrelated program');
 
+console.log('\n[7b] account-registration transactions decode as registration, never "Unknown transaction"');
+// The reported defect: the user\'s own account-registration pre-image (derive_account +
+// create_account against the account-creation program) rendered as "Unknown transaction".
+// It is claimed by program id BEFORE the transfer-shaped canDecode gate — while every OTHER
+// unknown program must keep failing that gate honestly (pinned by [7] above).
+const registrationTx = new Transaction({
+  feePayer: alice.publicKey,
+  program: ACCOUNT_CREATE_PROGRAM_ID,
+  header: { fee: 0n, nonce: 3n, startSlot: 0n },
+  accounts: { readWriteAccounts: [alice.publicKey] },
+  instructionData: new Uint8Array(24), // derive_account + create_account shape: not 16-byte Transfer data
+});
+registrationTx.setSignature(Signature.from(new Uint8Array(64)));
+registrationTx.executionResult = { vmError: 0 };
+const decodedReg = decodeHistoryEntry(registrationTx, alice.address);
+assert(decodedReg.kind === 'registration', 'an account-creation program call decodes as registration');
+assert(decodedReg.amount === null, 'registration carries no amount');
+assert(decodedReg.counterparty === null, 'registration has no counterparty');
+assert(decodedReg.success === true, 'a successful registration still reports success');
+const decodedRegOtherView = decodeHistoryEntry(registrationTx, bob.address);
+assert(decodedRegOtherView.kind === 'registration', 'the registration label does not depend on the viewer');
+
 console.log('\n[8] parseThruAmount converts human THRU amounts to exact raw units without floating-point rounding errors');
 assert(parseThruAmount('1') === UNITS_PER_THRU, '"1" parses to exactly 1e9 units');
 assert(parseThruAmount('1.5') === 1_500_000_000n, '"1.5" parses to 1,500,000,000 units');
@@ -181,8 +205,17 @@ import { Pubkey } from '@thru/sdk';
   // 32 bytes of 0x11, from Pubkey(new Uint8Array(32).fill(17)) — fixed, not generated.
   const GOLDEN_AUTHORITY = 'taEREREREREREREREREREREREREREREREREREREREREREg';
   const GOLDEN_SEED = 'abababababababababababababababababababababababababababababababab';
+  // Vectors are scoped to a token PROGRAM address: PDAs are a function of the program they
+  // live under, so the fresh-network reset (which moved the token program to its managed
+  // address) legitimately moved every mint and token account. Both scopes are pinned below.
+  // The pre-reset pair doubles as a derivation-MATH regression: same inputs, same old program
+  // in, byte-identical old addresses out — a silent change in the hashing would break these
+  // regardless of which program the network config points at.
+  const PRE_RESET_TOKEN_PROGRAM = 'taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKqq';
   const GOLDEN_MINT = 'tawqbPfCF69Kyo2hdPTIfoz5Safk--tIB3g2q0Z9dZFUBR';
   const GOLDEN_TOKEN_ACCOUNT = 'taz4AOOlJBtn8IzaX97sKpL9_leQlC0HHg6EuAnw6U3cmh';
+  const GOLDEN_MINT_CURRENT = 'ta-HTfNxabKvpVUFaijWJZtcbBbr5UIfgRI799VFmxEe3d';
+  const GOLDEN_TOKEN_ACCOUNT_CURRENT = 'taX3La-pAH8Q_k2_zJH3sK0z2tv_BSGNqambsc9CMCcs12';
 
   // Sanity: the fixture authority really is the 0x11-filled key, so the vectors below can
   // never silently flip to "whatever the generator produced this run".
@@ -191,11 +224,18 @@ import { Pubkey } from '@thru/sdk';
     'golden authority is the fixed 0x11-filled key',
   );
 
-  const mint = await deriveTokenMintAddress(GOLDEN_SEED, GOLDEN_AUTHORITY);
-  assert(mint === GOLDEN_MINT, `mint derivation is stable: ${mint}`);
+  const { deriveMintAddress: sdkDeriveMintAddress, deriveTokenAccountAddress: sdkDeriveTokenAccountAddress } = await import('@thru/programs/token');
+  const mintPreReset = (await sdkDeriveMintAddress(getClient(), GOLDEN_AUTHORITY, GOLDEN_SEED, PRE_RESET_TOKEN_PROGRAM))?.address;
+  assert(mintPreReset === GOLDEN_MINT, `mint derivation math is unchanged (pre-reset program): ${mintPreReset}`);
 
-  const tokenAccount = await deriveTokenAccountAddress(GOLDEN_AUTHORITY, GOLDEN_MINT);
-  assert(tokenAccount === GOLDEN_TOKEN_ACCOUNT, `token account derivation is stable: ${tokenAccount}`);
+  const tokenAccountPreReset = (await sdkDeriveTokenAccountAddress(getClient(), GOLDEN_AUTHORITY, GOLDEN_MINT, PRE_RESET_TOKEN_PROGRAM))?.address;
+  assert(tokenAccountPreReset === GOLDEN_TOKEN_ACCOUNT, `token account derivation math is unchanged (pre-reset program): ${tokenAccountPreReset}`);
+
+  const mint = await deriveTokenMintAddress(GOLDEN_SEED, GOLDEN_AUTHORITY);
+  assert(mint === GOLDEN_MINT_CURRENT, `mint derivation is stable on the configured token program: ${mint}`);
+
+  const tokenAccount = await deriveTokenAccountAddress(GOLDEN_AUTHORITY, GOLDEN_MINT_CURRENT);
+  assert(tokenAccount === GOLDEN_TOKEN_ACCOUNT_CURRENT, `token account derivation is stable on the configured token program: ${tokenAccount}`);
 
   let noAuthorityThrew = false;
   try { await deriveTokenMintAddress(GOLDEN_SEED); } catch { noAuthorityThrew = true; }
@@ -211,7 +251,7 @@ console.log('\n[11] Every program address in every network config is SDK-parseab
   const { listAllNetworks } = await import('../src/lib/networks.js');
   const { Pubkey } = await import('@thru/sdk');
 
-  const ADDRESS_FIELDS = ['faucetProgramId', 'faucetStateAccount', 'transferProgramId', 'tokenProgramId'];
+  const ADDRESS_FIELDS = ['faucetProgramId', 'faucetStateAccount', 'transferProgramId', 'tokenProgramId', 'accountCreateProgramId'];
   const all = listAllNetworks();
   let checked = 0;
 

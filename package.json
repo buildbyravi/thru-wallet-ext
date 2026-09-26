@@ -27,8 +27,8 @@
   },
   "homepage": "https://github.com/buildbyravi/thru-wallet-ext#readme",
   "dependencies": {
-    "@thru/programs": "0.3.16",
-    "@thru/sdk": "0.3.16"
+    "@thru/programs": "0.4.0",
+    "@thru/sdk": "0.4.0"
   },
   "devDependencies": {
     "esbuild": "0.28.1"
