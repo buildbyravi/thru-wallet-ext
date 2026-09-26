@@ -33,12 +33,9 @@ export function BalanceHero({
     d.on(refreshBtn, 'click', onRefresh);
   }
 
-  // Every amount cell carries t-numeral (guide §2.4): monospace + tabular
-  // digits, so a balance refresh never shifts the header layout. The USD
-  // readout is the balance hero, so it takes t-display off the v2 ladder.
-  const usdEl = h('div', { class: 'dash-balance-usd t-display t-numeral', text: usd });
+  const usdEl = h('div', { class: 'dash-balance-usd', text: usd });
   const row = h('div', { class: 'dash-balance-row' }, [usdEl, refreshBtn]);
-  const nativeEl = h('div', { class: 'dash-balance-native t-numeral', text: native });
+  const nativeEl = h('div', { class: 'dash-balance-native', text: native });
 
   const el = h('div', { class: 'dash-balance-hero' }, [row, nativeEl]);
 

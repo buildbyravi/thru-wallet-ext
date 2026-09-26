@@ -26,7 +26,7 @@ export function AccountRow({ account, active = false, balance = null, stale = fa
   const imported = account?.keyring?.type === 'privateKey';
 
   const balanceEl = h('span', {
-    class: ['row-value', 't-numeral', stale ? 'stale' : null].filter(Boolean),
+    class: ['row-value', stale ? 'stale' : null].filter(Boolean),
     // A dash for "not fetched yet" rather than 0. Showing 0 for an unknown balance is a
     // lie a user can act on.
     text: balance == null ? '—' : `${formatThru(BigInt(balance))} THRU`,

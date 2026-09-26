@@ -103,9 +103,9 @@ function counterpartyLabel(entry) {
  * rather than by index — a positional update is how the P1 day-header badge ended up inside
  * a transaction card, and that lesson applies here too.
  */
-function DetailRow(label, initial = UNKNOWN, { mono = false, tone = '', numeral = false } = {}) {
+function DetailRow(label, initial = UNKNOWN, { mono = false, tone = '' } = {}) {
   const value = h('span', {
-    class: ['detail-val', mono ? 'detail-sheet-mono' : null, numeral ? 't-numeral' : null, tone || null].filter(Boolean),
+    class: ['detail-val', mono ? 'detail-sheet-mono' : null, tone || null].filter(Boolean),
     text: initial == null ? UNKNOWN : String(initial),
   });
   return {
@@ -204,8 +204,7 @@ export function TxDetailSheet({ entry, network, knownAccounts, loadDetail, onClo
   const push = (row) => { rows.push(row); return row; };
 
   const statusRow = push(DetailRow('Status', statusText, { tone: failed ? 'negative' : '' }));
-  // Amount and fee cells carry t-numeral (guide §2.4) — tabular digits, no shift on update.
-  push(DetailRow('Amount', delta?.text ?? UNKNOWN, { mono: true, numeral: true, tone: delta?.cls || '' }));
+  push(DetailRow('Amount', delta?.text ?? UNKNOWN, { mono: true, tone: delta?.cls || '' }));
   // A faucet claim or a token-account init has no counterparty to speak of. Printing
   // "To: Not available" for those would imply a missing fact rather than an absent concept,
   // so the row is omitted entirely — but only when the decoder genuinely supplied none.
@@ -218,7 +217,7 @@ export function TxDetailSheet({ entry, network, knownAccounts, loadDetail, onClo
   // Lazily filled. They start at "Not available" and only ever move to a real value — so a
   // failed fetch leaves the honest state rather than degrading to one.
   const timeRow = push(DetailRow('Block time', UNKNOWN));
-  const feeRow = push(DetailRow('Fee (declared)', UNKNOWN, { mono: true, numeral: true }));
+  const feeRow = push(DetailRow('Fee (declared)', UNKNOWN, { mono: true }));
   const programRow = push(DetailRow('Program', entry?.programAddress
     ? truncateAddress(entry.programAddress) : UNKNOWN, { mono: true }));
 

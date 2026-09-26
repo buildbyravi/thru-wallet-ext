@@ -106,23 +106,14 @@ export function HistoryRoute({ back }) {
       h('span', { class: 'list-group-count', text: String(active.length) }),
     ]));
     for (const p of active) {
-      const verb = p.kind === 'faucet' ? 'Claiming' : 'Sending';
-      // The amount phrase gets its own t-numeral span (guide §2.4) — the verb
-      // stays prose, the numbers stay tabular.
-      const amountText = p.amountUnits
-        ? (p.displayAmount
-            ? String(p.displayAmount)
-            : `${formatThru(BigInt(p.amountUnits))} THRU`)
-        : null;
       pendingHost.appendChild(h('div', { class: 'row' }, [
         h('span', { class: 'row-glyph pending' }, icon('spinner', 13, { className: 'spinning' })),
         h('span', { class: 'row-body' }, [
-          amountText
-            ? h('span', { class: 'row-title' }, [
-              h('span', { text: `${verb} ` }),
-              h('span', { class: 't-numeral', text: amountText }),
-            ])
-            : h('span', { class: 'row-title', text: 'Transaction in flight' }),
+          h('span', { class: 'row-title', text: p.amountUnits
+            ? (p.displayAmount
+                ? `${p.kind === 'faucet' ? 'Claiming' : 'Sending'} ${p.displayAmount}`
+                : `${p.kind === 'faucet' ? 'Claiming' : 'Sending'} ${formatThru(BigInt(p.amountUnits))} THRU`)
+            : 'Transaction in flight' }),
           h('span', { class: 'row-sub', text: 'Waiting for confirmation' }),
         ]),
       ]));

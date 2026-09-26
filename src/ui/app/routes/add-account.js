@@ -159,7 +159,7 @@ export function AddAccountRoute({ navigate, back }) {
               h('span', { class: 'row-title', text: `Account ${entry.index + 1}` }),
               AddressText({ address: entry.address }),
             ]),
-            h('span', { class: 'row-value t-numeral', text: entry.added
+            h('span', { class: 'row-value', text: entry.added
               ? 'Already added'
               : entry.balance != null ? `${formatThru(BigInt(entry.balance))} THRU` : '—' }),
           ]));

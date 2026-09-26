@@ -181,7 +181,7 @@ export function TxCard({ entry, network, knownAccounts, onOpen } = {}) {
       return pieces;
     })()),
     h('span', { class: 'tx-card-amounts' }, delta
-      ? [h('span', { class: ['tx-amount', 't-numeral', delta.cls].join(' '), text: delta.text })]
+      ? [h('span', { class: ['tx-amount', delta.cls].join(' '), text: delta.text })]
       : []),
   ]);
 

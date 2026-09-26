@@ -73,7 +73,7 @@ export function AssetSelector({
       ]),
       h('span', { class: 'row-sub', text: 'Thru Native Token' }),
     ]),
-    h('span', { class: 'row-value t-numeral', text: nativeBalanceLabel
+    h('span', { class: 'row-value', text: nativeBalanceLabel
       ?? (nativeBalance == null ? 'balance unknown' : `${formatThru(BigInt(nativeBalance))} THRU`) }),
   ]);
   d.on(nativeRow, 'click', () => onSelect?.({ symbol: 'THRU', mintAddress: null, isNative: true }));
@@ -100,7 +100,7 @@ export function AssetSelector({
           h('span', { class: 'row-title', text: symbol }),
           h('span', { class: 'row-sub', text: token.name || 'Token' }),
         ]),
-        h('span', { class: 'row-value t-numeral', text: `${formatTokenAmount(balance, decimals)} ${symbol}` }),
+        h('span', { class: 'row-value', text: `${formatTokenAmount(balance, decimals)} ${symbol}` }),
       ]);
       d.on(row, 'click', () => onSelect?.({ ...token, isNative: false }));
       sendableRows.push(row);
