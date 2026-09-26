@@ -21,7 +21,7 @@ body {
   background: var(--bg);
   color: var(--text-1);
   font-family: var(--font-ui);
-  font-size: var(--fs-md);
+  font-size: var(--fs-300);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
@@ -45,15 +45,15 @@ body {
 }
 
 h1 {
-  font-size: var(--fs-xl);
-  font-weight: 650;
+  font-size: var(--fs-500);
+  font-weight: var(--w-semibold);
   letter-spacing: -0.015em;
   color: var(--text-1);
 }
 
 h2 {
-  font-size: var(--fs-lg);
-  font-weight: 620;
+  font-size: var(--fs-400);
+  font-weight: var(--w-semibold);
   letter-spacing: -0.01em;
   color: var(--text-1);
 }
@@ -64,10 +64,10 @@ h2 {
    that single choice carries most of the technical character. */
 .eyebrow {
   font-family: var(--font-mono);
-  font-size: var(--fs-xs);
-  font-weight: 500;
+  font-size: var(--fs-100);
+  font-weight: var(--w-medium);
   text-transform: uppercase;
-  letter-spacing: var(--eyebrow-tracking);
+  letter-spacing: var(--track-wide);
   color: var(--text-3);
 }
 
@@ -77,7 +77,7 @@ h2 {
 }
 
 .hint {
-  font-size: var(--fs-sm);
+  font-size: var(--fs-200);
   color: var(--text-3);
   line-height: 1.6;
 }

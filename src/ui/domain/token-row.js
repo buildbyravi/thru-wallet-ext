@@ -85,8 +85,10 @@ export function AssetRow({
   const infoCol = h('div', { class: 'token-row-info' }, [symbolRow, nameEl]);
 
   const displayAmount = balanceText == null ? '—' : extractAmount(balanceText);
+  // t-numeral on every amount cell (guide §2.4): fixed-width digits, zero
+  // layout shift when a balance refresh repaints the row.
   const amountEl = h('span', {
-    class: ['token-row-amount', stale ? 'stale' : null].filter(Boolean),
+    class: ['token-row-amount', 't-numeral', stale ? 'stale' : null].filter(Boolean),
     text: displayAmount,
   });
 
@@ -94,7 +96,7 @@ export function AssetRow({
   // '$12,847.20' on any row that did not supply a value, which read as a real balance.
   const displayUsd = usdValue != null ? usdValue : '—';
 
-  const usdEl = h('span', { class: 'token-row-usd', text: displayUsd });
+  const usdEl = h('span', { class: 'token-row-usd t-numeral', text: displayUsd });
   // The change cell exists only when a real change was supplied; null renders nothing.
   const changeEl = changePercent == null
     ? null

@@ -103,10 +103,7 @@
 .text-1 { color: var(--text-1); }
 .text-2 { color: var(--text-2); }
 .text-3 { color: var(--text-3); }
-.fs-xs { font-size: var(--fs-xs); }
-.fs-sm { font-size: var(--fs-sm); }
-.fs-lg { font-size: var(--fs-lg); }
-.strong { font-weight: 600; }
+.strong { font-weight: var(--w-semibold); }
 
 /* ---- Spinner. `.spinning` was referenced by the dashboard refresh
    button but @keyframes spin only existed in desktop.css, so the icon
@@ -189,7 +186,7 @@
 }
 
 .empty-state-title {
-  font-size: var(--fs-md);
-  font-weight: 600;
+  font-size: var(--fs-300);
+  font-weight: var(--w-semibold);
   color: var(--text-2);
 }

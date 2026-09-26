@@ -1,14 +1,19 @@
 /* ============================================================
    Design tokens — light theme, matched to the thru.org homepage.
-   
+
    The site reads as an instrument panel, not a web app: pale steel
    chrome, white working surfaces, hairline borders, near-zero radius,
-   monospace micro-labels, and brick red used sparingly as a signal
+   monospace micro-labels, and brick red used sparingily as a signal
    rather than as decoration.
 
    Integrated with Rabby structural information architecture:
    196px ink header (#1A1214), 3x2 action grid (88px cells), tabbed
    token ledger, and persistent connection status.
+
+   Design system v2 (docs/guides/01-DESIGN-SYSTEM.md):
+   - modular 1.25 type scale + one weight ladder (no intermediates)
+   - four-surface elevation ladder + layered shadows
+   - motion duration/easing tokens, reduced-motion honoured
    ============================================================ */
 
 :root {
@@ -45,16 +50,18 @@
   --yellow-400: #ffad42;
   --golden: #ffffbd;
 
-  /* ---- Application surfaces (Rabby structure, Thru identity) ----
-     bg        page / chrome
+  /* ---- Application surfaces — 4-step elevation ladder ----
+     bg        page — darker than cards so cards lift
      surface-1 the white working surface: cards, inputs, rows
-     surface-2 recessed panel: sidebars, grouped list backgrounds
-     surface-3 pressed / hover state on a recessed panel          */
-  --bg: #f2f4f7;
+     surface-2 recessed panel: list bg, input bg, grouped lists
+     surface-3 pressed / disabled state on a recessed panel
+     surface-raised: surface-1 + shadow-2 (floating cards)        */
+  --bg: #eef0f4;
   --surface-1: #ffffff;
-  --surface-2: #eef1f4;
-  --surface-3: #e0e5ec;
-  --surface-inset: #f7f9fa;
+  --surface-2: #f7f8fa;
+  --surface-3: #eceef2;
+  --surface-raised: #ffffff;
+  --overlay: rgba(14, 18, 22, 0.44);
 
   /* Rabby structure tokens */
   --header: #1a1214;
@@ -114,15 +121,34 @@
   --font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Mono', 'SFMono-Regular', Menlo, Consolas, monospace;
   --font-display: 'Inter Tight', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 
-  --fs-xs: 11px;
-  --fs-sm: 12px;
-  --fs-md: 13px;
-  --fs-lg: 15px;
-  --fs-xl: 18px;
-  --fs-2xl: 22px;
-  --fs-display: 32px;
+  /* 1.25 major-third-ish scale, locked. Do not add intermediates.
+     --fs-100 micro-label, eyebrow, badge
+     --fs-200 secondary body, metadata
+     --fs-300 DEFAULT body, list rows, buttons
+     --fs-400 emphasized body, input values
+     --fs-500 section heading
+     --fs-600 screen title
+     --fs-700 balance hero */
+  --fs-100: 11px;
+  --fs-200: 12px;
+  --fs-300: 13px;
+  --fs-400: 15px;
+  --fs-500: 20px;
+  --fs-600: 28px;
+  --fs-700: 40px;
 
-  --eyebrow-tracking: 0.09em;
+  --lh-tight: 1.15;
+  --lh-normal: 1.45;
+
+  /* One weight ladder. 650 is the "premium semibold" — heavier than
+     600, lighter than 700. Rabby/Linear/Stripe all sit here. */
+  --w-regular: 400;
+  --w-medium: 500;
+  --w-semibold: 650;
+
+  /* tracking: tight on big numbers, wide on micro labels */
+  --track-tight: -0.02em;
+  --track-wide: 0.08em;
 
   /* Spacing */
   --sp-1: 4px;
@@ -134,10 +160,12 @@
   --sp-7: 28px;
   --sp-8: 32px;
 
-  /* Shape */
-  --radius-sm: 6px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
+  /* Shape — graduated radius, not one value everywhere */
+  --radius-xs: 4px;   /* badges, chips, inline code  */
+  --radius-sm: 6px;   /* inputs, small buttons       */
+  --radius-md: 10px;  /* rows, list items            */
+  --radius-lg: 14px;  /* cards, sheets               */
+  --radius-xl: 20px;  /* modal, top sheet            */
   --radius-pill: 999px;
 
   /* Dimensions */
@@ -147,26 +175,49 @@
   --header-height: 196px;
   --topbar-height: 48px;
 
-  /* Elevation */
-  --shadow-sheet: 0 -1px 0 var(--border), 0 -12px 32px rgba(21, 27, 30, 0.12);
-  --shadow-pop: 0 1px 2px rgba(21, 27, 30, 0.06), 0 8px 24px rgba(21, 27, 30, 0.1);
-  --overlay-bg: rgba(21, 27, 30, 0.32);
+  /* Elevation — layered shadows.
+     cards = --shadow-1; floating (sheets, menus, modals) = --shadow-3;
+     interactive cards on hover = --shadow-2. */
+  --shadow-1: 0 1px 2px rgba(16, 20, 24, 0.06);
+  --shadow-2: 0 1px 2px rgba(16, 20, 24, 0.05), 0 4px 10px rgba(16, 20, 24, 0.05);
+  --shadow-3: 0 2px 4px rgba(16, 20, 24, 0.06), 0 8px 20px rgba(16, 20, 24, 0.08),
+              0 24px 48px rgba(16, 20, 24, 0.10);
+  --shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --shadow-pop: var(--shadow-3);
+  --shadow-sheet: 0 -1px 0 var(--border), 0 -8px 16px rgba(16, 20, 24, 0.06),
+                  0 -24px 56px rgba(16, 20, 24, 0.12);
 
-  /* Motion */
-  --t-fast: 100ms ease-out;
-  --t-base: 150ms ease-out;
-  --t-screen: 200ms cubic-bezier(0.2, 0, 0.2, 1);
+  /* Motion — durations and easings for micro-interactions.
+     --e-out   hover, press, colour and route transitions
+     --e-spring chips, toggles (overshoots slightly, then settles)
+     --d-1 90ms hover/focus · --d-2 160ms press/toggle ·
+     --d-3 240ms sheet/route · --d-4 320ms hero number count-up */
+  --e-out: cubic-bezier(0.2, 0, 0, 1);
+  --e-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --e-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+  --ease-out: var(--e-out);
+  --ease-spring: var(--e-spring);
+  --d-1: 90ms;
+  --d-2: 160ms;
+  --d-3: 240ms;
+  --d-4: 320ms;
+
+  /* Shorthand duration+easing pairs used by component transitions. */
+  --t-fast: var(--d-1) var(--e-out);
+  --t-base: var(--d-2) var(--e-out);
+  --t-screen: var(--d-3) var(--e-out);
 }
 
 /* ============================================================
    Dark theme — same thru.org scales, inverted.
    ============================================================ */
 [data-theme="dark"] {
-  --bg: #101517;
-  --surface-1: #1b2226;
-  --surface-2: #232c31;
-  --surface-3: #2c373d;
-  --surface-inset: #141a1d;
+  --bg: #0b0e10;
+  --surface-1: #161b1e;
+  --surface-2: #101416;
+  --surface-3: #1f262a;
+  --surface-raised: #1c2226;
+  --overlay: rgba(0, 0, 0, 0.66);
   --header: #101517;
   --header-2: #1a1214;
   --line: #242e33;
@@ -213,7 +264,49 @@
   --mark-2: #3fbfae;
   --mark-3: #e65b62;
 
-  --shadow-sheet: 0 -1px 0 var(--border), 0 -12px 32px rgba(0, 0, 0, 0.5);
-  --shadow-pop: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.45);
-  --overlay-bg: rgba(16, 21, 23, 0.55);
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-2: 0 1px 2px rgba(0, 0, 0, 0.35), 0 4px 10px rgba(0, 0, 0, 0.35);
+  --shadow-3: 0 2px 4px rgba(0, 0, 0, 0.4), 0 8px 20px rgba(0, 0, 0, 0.45),
+              0 24px 48px rgba(0, 0, 0, 0.5);
+  --shadow-sheet: 0 -1px 0 var(--border), 0 -8px 16px rgba(0, 0, 0, 0.35),
+                  0 -24px 56px rgba(0, 0, 0, 0.55);
+}
+
+/* ============================================================
+   Type utilities (01-DESIGN-SYSTEM.md §2.2).
+   ============================================================ */
+
+/* Monospace + tabular numerals for anything that renders an amount or
+   balance: digits are fixed-width, so a balance refresh never shifts
+   surrounding layout. The highest-leverage single change in v2. */
+.t-numeral {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1, 'zero' 1;
+  letter-spacing: var(--track-tight);
+}
+
+.t-eyebrow {
+  font-size: var(--fs-100);
+  font-weight: var(--w-semibold);
+  letter-spacing: var(--track-wide);
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.t-display {
+  font-size: var(--fs-700);
+  font-weight: var(--w-semibold);
+  line-height: var(--lh-tight);
+  letter-spacing: var(--track-tight);
+}
+
+/* ============================================================
+   Reduced motion — collapses every duration to a crossfade floor.
+   ============================================================ */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 1ms !important;
+    transition-duration: 1ms !important;
+  }
 }

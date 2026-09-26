@@ -27,7 +27,7 @@
   background: var(--accent-tint);
   border-color: var(--accent);
   color: var(--accent-bright);
-  font-weight: 600;
+  font-weight: var(--w-semibold);
 }
 
 /* Action grid collapses to three columns on networks with no faucet,
@@ -103,7 +103,7 @@
   align-items: center;
   justify-content: center;
   padding: var(--sp-4);
-  background: var(--overlay-bg);
+  background: var(--overlay);
   opacity: 0;
   transition: opacity var(--t-base);
 }
@@ -167,7 +167,7 @@
 
 .detail-hero .row-sub {
   font-family: var(--font-mono);
-  font-size: var(--fs-xs);
+  font-size: var(--fs-100);
   color: var(--text-3);
   word-break: break-all;
   line-height: 1.5;
@@ -197,7 +197,7 @@
 }
 
 .detail-val {
-  font-size: var(--fs-sm);
+  font-size: var(--fs-200);
   color: var(--text-1);
   text-align: right;
   min-width: 0;
@@ -256,7 +256,7 @@
   flex-direction: column;
   gap: var(--sp-1);
   padding: var(--sp-3);
-  background: var(--surface-inset);
+  background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
 }
@@ -270,7 +270,7 @@
 
 .detail-sheet-mono {
   font-family: var(--font-mono);
-  font-size: var(--fs-xs);
+  font-size: var(--fs-100);
   color: var(--text-1);
   word-break: break-all;
   line-height: 1.5;
@@ -279,7 +279,7 @@
 /* Provenance note under the fee row. Deliberately not .muted-small or a tooltip: the
    distinction between a declared fee and a charged one is load-bearing, not a footnote. */
 .tx-sheet-note {
-  font-size: var(--fs-xs);
+  font-size: var(--fs-100);
   color: var(--text-3);
   line-height: 1.5;
 }
@@ -298,13 +298,14 @@
   text-align: left;
   cursor: pointer;
   color: var(--text-1);
+  box-shadow: var(--shadow-1);
   transition: background var(--t-base), border-color var(--t-base), box-shadow var(--t-base);
 }
 
 .option-card:hover {
   background: var(--surface-2);
   border-color: var(--border-strong);
-  box-shadow: inset 2px 0 0 var(--accent);
+  box-shadow: inset 2px 0 0 var(--accent), var(--shadow-2);
 }
 
 .option-card-icon {
@@ -329,12 +330,12 @@
 }
 
 .option-card-title {
-  font-size: var(--fs-md);
-  font-weight: 600;
+  font-size: var(--fs-300);
+  font-weight: var(--w-semibold);
 }
 
 .option-card-sub {
-  font-size: var(--fs-sm);
+  font-size: var(--fs-200);
   color: var(--text-3);
   line-height: 1.45;
 }
@@ -357,7 +358,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--sp-1);
-  font-size: var(--fs-sm);
+  font-size: var(--fs-200);
   color: var(--text-2);
   line-height: 1.5;
 }
@@ -378,7 +379,7 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   font-family: var(--font-mono);
-  font-size: var(--fs-sm);
+  font-size: var(--fs-200);
   color: var(--text-1);
   cursor: pointer;
   transition: background var(--t-fast), border-color var(--t-fast);
@@ -393,7 +394,7 @@
   background: var(--accent-tint);
   border-color: var(--accent);
   color: var(--accent-bright);
-  font-weight: 600;
+  font-weight: var(--w-semibold);
 }
 
 /* ---- Tags ------------------------------------------------ */

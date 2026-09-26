@@ -219,7 +219,7 @@ export function SendRoute({ params, navigate, back }) {
     // -- From: now tappable. The legacy card had a chevron implying it was, but nothing was
     //    wired to it, so there was no way to send from a different account without leaving the
     //    screen and switching the active account first.
-    const fromBalance = h('span', { class: 'row-value', text: nativeBalanceText() });
+    const fromBalance = h('span', { class: 'row-value t-numeral', text: nativeBalanceText() });
     const fromCard = h('button', { type: 'button', class: 'row clickable' }, [
       AccountAvatar({
         address: account.address,
@@ -246,7 +246,7 @@ export function SendRoute({ params, navigate, back }) {
       h('span', { class: 'row-title', text: asset.symbol || 'TOKEN' }),
     ];
     if (asset.isNative) assetTitleChildren.push(h('span', { class: 'tag-native', text: 'Native' }));
-    const assetBalance = h('span', { class: 'row-value', text: assetBalanceText() });
+    const assetBalance = h('span', { class: 'row-value t-numeral', text: assetBalanceText() });
     const assetCard = h('button', { type: 'button', class: 'row clickable' }, [
       h('div', { class: 'token-row-avatar' }, asset.isNative
         ? icon('bolt', 15)
@@ -791,7 +791,7 @@ export function SendRoute({ params, navigate, back }) {
       ]),
       h('div', { class: 'detail-row' }, [
         h('span', { class: 'eyebrow', text: 'Amount' }),
-        h('div', { class: 'detail-val mono', text: displayAmount }),
+        h('div', { class: 'detail-val mono t-numeral', text: displayAmount }),
       ]),
     ];
 
@@ -807,7 +807,7 @@ export function SendRoute({ params, navigate, back }) {
     rows.push(h('div', { class: 'detail-row' }, [
       h('span', { class: 'eyebrow', text: 'Network fee' }),
       h('div', {
-        class: 'detail-val mono',
+        class: 'detail-val mono t-numeral',
         text: asset.isNative
           ? (feeInfo?.supported ? `${formatThru(feeUnits)} THRU` : 'unknown')
           : 'paid in THRU · unmeasured for token transfers',
@@ -817,7 +817,7 @@ export function SendRoute({ params, navigate, back }) {
     rows.push(h('div', { class: 'detail-row' }, [
       h('span', { class: 'eyebrow', text: 'Total' }),
       h('div', {
-        class: 'detail-val mono strong',
+        class: 'detail-val mono strong t-numeral',
         text: asset.isNative
           ? (feeInfo?.supported ? `${formatThru(total)} THRU` : `${formatThru(amountUnits)} THRU + fee`)
           : `${displayAmount} + THRU fee`,

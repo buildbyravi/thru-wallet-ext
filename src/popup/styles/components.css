@@ -18,8 +18,8 @@
   border-radius: var(--radius-md);
   padding: 11px 16px;
   font-family: var(--font-ui);
-  font-size: var(--fs-md);
-  font-weight: 600;
+  font-size: var(--fs-300);
+  font-weight: var(--w-semibold);
   letter-spacing: -0.005em;
   cursor: pointer;
   transition: background var(--t-base), border-color var(--t-base), color var(--t-base);
@@ -85,7 +85,7 @@
   background: transparent;
   color: var(--text-2);
   padding: var(--sp-2) var(--sp-1);
-  font-size: var(--fs-sm);
+  font-size: var(--fs-200);
   width: auto;
   align-self: center;
 }
@@ -108,12 +108,12 @@
 /* Size variants — used by desktop.html at 6 sites with no definition. */
 .btn.lg {
   padding: 14px 20px;
-  font-size: var(--fs-lg);
+  font-size: var(--fs-400);
 }
 
 .btn.sm {
   padding: 7px 12px;
-  font-size: var(--fs-sm);
+  font-size: var(--fs-200);
 }
 
 /* ---- Icon button ------------------------------------------ */
@@ -177,8 +177,8 @@
   color: var(--text-2);
   border-radius: var(--radius-pill);
   padding: 7px 13px;
-  font-size: var(--fs-sm);
-  font-weight: 600;
+  font-size: var(--fs-200);
+  font-weight: var(--w-semibold);
   cursor: pointer;
   transition: background var(--t-base), border-color var(--t-base), color var(--t-base);
 }
@@ -199,10 +199,10 @@
 
 .field > span {
   font-family: var(--font-mono);
-  font-size: var(--fs-xs);
-  font-weight: 500;
+  font-size: var(--fs-100);
+  font-weight: var(--w-medium);
   text-transform: uppercase;
-  letter-spacing: var(--eyebrow-tracking);
+  letter-spacing: var(--track-wide);
   color: var(--text-3);
 }
 
@@ -216,13 +216,13 @@ input[type="url"],
 input[type="search"],
 input[type="email"],
 textarea {
-  background: var(--surface-inset);
+  background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   padding: 11px 13px;
   color: var(--text-1);
   font-family: var(--font-mono);
-  font-size: var(--fs-md);
+  font-size: var(--fs-300);
   width: 100%;
   transition: border-color var(--t-base), background var(--t-base);
 }
@@ -259,7 +259,7 @@ textarea[aria-invalid="true"] {
   display: flex;
   align-items: center;
   gap: var(--sp-3);
-  font-size: var(--fs-md);
+  font-size: var(--fs-300);
   color: var(--text-2);
   cursor: pointer;
   user-select: none;
@@ -281,7 +281,7 @@ textarea[aria-invalid="true"] {
   border-left: 2px solid var(--negative);
   border-radius: var(--radius-md);
   padding: 10px 12px;
-  font-size: var(--fs-sm);
+  font-size: var(--fs-200);
   line-height: 1.5;
 }
 
@@ -309,12 +309,12 @@ textarea[aria-invalid="true"] {
 
 .monospace-block {
   font-family: var(--font-mono);
-  background: var(--surface-inset);
+  background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   padding: var(--sp-4);
   word-break: break-all;
-  font-size: var(--fs-md);
+  font-size: var(--fs-300);
   line-height: 1.65;
   color: var(--text-1);
 }
@@ -365,8 +365,8 @@ textarea[aria-invalid="true"] {
 .copy-address.copied .copy-address-text {
   flex: 0 0 auto;
   text-align: center;
-  font-size: var(--fs-sm);
-  font-weight: 600;
+  font-size: var(--fs-200);
+  font-weight: var(--w-semibold);
   letter-spacing: normal;
 }
 .copy-address.copied > .icon, .copy-address.copied > svg {
@@ -382,7 +382,7 @@ textarea[aria-invalid="true"] {
   border-radius: var(--radius-lg);
   padding: var(--sp-3);
   font-family: var(--font-mono);
-  font-size: var(--fs-sm);
+  font-size: var(--fs-200);
 }
 
 /* Tiles are the DIRECT span children only. Without the `>` this rule also matched each word's
@@ -407,7 +407,7 @@ textarea[aria-invalid="true"] {
 
 .mnemonic-grid > span > span {
   color: var(--text-1);
-  font-weight: 500;
+  font-weight: var(--w-medium);
 }
 
 /* ---- Tabs -------------------------------------------------- */
@@ -428,8 +428,8 @@ textarea[aria-invalid="true"] {
   border-radius: var(--radius-sm);
   padding: 8px 0;
   font-family: var(--font-ui);
-  font-size: var(--fs-sm);
-  font-weight: 600;
+  font-size: var(--fs-200);
+  font-weight: var(--w-semibold);
   color: var(--text-3);
   cursor: pointer;
   transition: background var(--t-base), color var(--t-base);
@@ -548,8 +548,8 @@ button.row { cursor: pointer; }
 }
 
 .row-title {
-  font-size: var(--fs-md);
-  font-weight: 600;
+  font-size: var(--fs-300);
+  font-weight: var(--w-semibold);
   color: var(--text-1);
   line-height: 1.4;
   overflow: hidden;
@@ -559,7 +559,7 @@ button.row { cursor: pointer; }
 
 .row-sub {
   font-family: var(--font-mono);
-  font-size: var(--fs-xs);
+  font-size: var(--fs-100);
   color: var(--text-3);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -568,7 +568,7 @@ button.row { cursor: pointer; }
 
 .row-value {
   font-family: var(--font-mono);
-  font-size: var(--fs-sm);
+  font-size: var(--fs-200);
   font-variant-numeric: tabular-nums;
   color: var(--text-1);
   flex-shrink: 0;
@@ -620,10 +620,10 @@ button.row { cursor: pointer; }
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   font-family: var(--font-mono);
-  font-size: var(--fs-xs);
-  font-weight: 500;
+  font-size: var(--fs-100);
+  font-weight: var(--w-medium);
   text-transform: uppercase;
-  letter-spacing: var(--eyebrow-tracking);
+  letter-spacing: var(--track-wide);
   color: var(--text-2);
 }
 
@@ -653,11 +653,11 @@ button.row { cursor: pointer; }
 .search-box input {
   width: 100%;
   padding-left: 36px;
-  background: var(--surface-inset);
+  background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   color: var(--text-1);
-  font-size: var(--fs-sm);
+  font-size: var(--fs-200);
 }
 
 .search-box input:focus {
@@ -692,7 +692,7 @@ button.row { cursor: pointer; }
   text-align: center;
   padding: var(--sp-6) var(--sp-3);
   color: var(--text-3);
-  font-size: var(--fs-sm);
+  font-size: var(--fs-200);
 }
 
 /* ---- Transaction preview ---------------------------------- */
@@ -711,7 +711,7 @@ button.row { cursor: pointer; }
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   font-size: 28px;
-  font-weight: 600;
+  font-weight: var(--w-semibold);
   letter-spacing: -0.02em;
   color: var(--text-1);
   text-align: center;
@@ -726,13 +726,13 @@ button.row { cursor: pointer; }
 }
 
 .tx-preview-label {
-  font-size: var(--fs-sm);
+  font-size: var(--fs-200);
   color: var(--text-3);
   flex-shrink: 0;
 }
 
 .tx-preview-value {
-  font-size: var(--fs-sm);
+  font-size: var(--fs-200);
   color: var(--text-1);
   text-align: right;
   word-break: break-all;
@@ -741,7 +741,7 @@ button.row { cursor: pointer; }
 
 .tx-preview-total .tx-preview-label,
 .tx-preview-total .tx-preview-value {
-  font-weight: 600;
+  font-weight: var(--w-semibold);
   color: var(--accent);
 }
 
@@ -791,8 +791,8 @@ button.row { cursor: pointer; }
   transform: translateY(-50%);
   display: flex;
   align-items: center;
-  font-size: var(--fs-xs);
-  font-weight: 600;
+  font-size: var(--fs-100);
+  font-weight: var(--w-semibold);
   pointer-events: none;
 }
 
@@ -833,8 +833,8 @@ button.row { cursor: pointer; }
 }
 
 .disclaimer-notice h2 {
-  font-size: var(--fs-lg);
-  font-weight: 600;
+  font-size: var(--fs-400);
+  font-weight: var(--w-semibold);
   color: var(--text-1);
   margin: 0;
 }
@@ -851,7 +851,7 @@ button.row { cursor: pointer; }
 }
 
 .disclaimer-list li {
-  font-size: var(--fs-sm);
+  font-size: var(--fs-200);
   color: var(--text-2);
   padding-left: 20px;
   position: relative;
@@ -873,7 +873,7 @@ button.row { cursor: pointer; }
   display: flex;
   align-items: center;
   gap: var(--sp-2);
-  font-size: var(--fs-sm);
+  font-size: var(--fs-200);
   color: var(--text-2);
   cursor: pointer;
   user-select: none;
@@ -912,7 +912,7 @@ button.row { cursor: pointer; }
 .drawer-backdrop {
   position: absolute;
   inset: 0;
-  background: var(--overlay-bg);
+  background: var(--overlay);
   backdrop-filter: blur(2px);
   opacity: 0;
   transition: opacity 180ms cubic-bezier(0.16, 1, 0.3, 1);
@@ -957,8 +957,8 @@ button.row { cursor: pointer; }
 }
 
 .drawer-title {
-  font-size: var(--fs-lg);
-  font-weight: 600;
+  font-size: var(--fs-400);
+  font-weight: var(--w-semibold);
   color: var(--text-1);
   margin: 0;
 }
@@ -989,15 +989,15 @@ button.row { cursor: pointer; }
 }
 
 .drawer-desc {
-  font-size: var(--fs-sm);
+  font-size: var(--fs-200);
   color: var(--text-3);
   margin: 0;
   line-height: 1.4;
 }
 
 .drawer-section-label {
-  font-size: var(--fs-xs);
-  font-weight: 600;
+  font-size: var(--fs-100);
+  font-weight: var(--w-semibold);
   color: var(--text-3);
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -1049,8 +1049,8 @@ button.row { cursor: pointer; }
 }
 
 .account-item-name {
-  font-size: var(--fs-md);
-  font-weight: 600;
+  font-size: var(--fs-300);
+  font-weight: var(--w-semibold);
   color: var(--text-1);
   white-space: nowrap;
   overflow: hidden;
@@ -1058,7 +1058,7 @@ button.row { cursor: pointer; }
 }
 
 .account-item-addr {
-  font-size: var(--fs-xs);
+  font-size: var(--fs-100);
   color: var(--text-3);
 }
 
@@ -1124,13 +1124,13 @@ button.row { cursor: pointer; }
 }
 
 .network-item-name {
-  font-size: var(--fs-md);
-  font-weight: 600;
+  font-size: var(--fs-300);
+  font-weight: var(--w-semibold);
   color: var(--text-1);
 }
 
 .network-item-url {
-  font-size: var(--fs-xs);
+  font-size: var(--fs-100);
   color: var(--text-3);
 }
 
@@ -1141,7 +1141,7 @@ button.row { cursor: pointer; }
 }
 
 .tag-subtle {
-  font-size: var(--fs-xs);
+  font-size: var(--fs-100);
   padding: 2px 6px;
   background: var(--surface-3);
   color: var(--text-3);
@@ -1155,7 +1155,7 @@ button.row { cursor: pointer; }
   color: var(--positive);
   border: 1px solid var(--positive-border);
   border-radius: var(--radius-sm);
-  font-weight: 600;
+  font-weight: var(--w-semibold);
 }
 
 /* Token logo with a CSS-only fallback.
@@ -1193,7 +1193,7 @@ button.row { cursor: pointer; }
   color: var(--accent);
   border: 1px solid var(--accent-border);
   border-radius: var(--radius-sm);
-  font-weight: 500;
+  font-weight: var(--w-medium);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -1249,13 +1249,13 @@ button.row { cursor: pointer; }
 }
 
 .token-row-symbol {
-  font-size: var(--fs-md);
+  font-size: var(--fs-300);
   font-weight: 700;
   color: var(--text-1);
 }
 
 .token-row-name {
-  font-size: var(--fs-xs);
+  font-size: var(--fs-100);
   color: var(--text-3);
 }
 
@@ -1266,14 +1266,14 @@ button.row { cursor: pointer; }
 }
 
 .token-row-balance {
-  font-size: var(--fs-md);
-  font-weight: 600;
+  font-size: var(--fs-300);
+  font-weight: var(--w-semibold);
   color: var(--text-1);
   font-variant-numeric: tabular-nums;
 }
 
 .token-row-mint {
-  font-size: var(--fs-xs);
+  font-size: var(--fs-100);
   color: var(--text-3);
 }
 
@@ -1376,7 +1376,7 @@ button.row { cursor: pointer; }
 }
 
 .change-amount {
-  font-size: var(--fs-lg);
+  font-size: var(--fs-400);
   font-weight: 700;
   color: var(--negative);
 }
@@ -1387,7 +1387,7 @@ button.row { cursor: pointer; }
 
 .change-tag {
   font-size: 11px;
-  font-weight: 600;
+  font-weight: var(--w-semibold);
   padding: 2px 8px;
   border-radius: 4px;
   background: var(--surface-3);
@@ -1406,7 +1406,7 @@ button.row { cursor: pointer; }
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: var(--fs-sm);
+  font-size: var(--fs-200);
 }
 
 .tx-review-label {
@@ -1415,7 +1415,7 @@ button.row { cursor: pointer; }
 
 .tx-review-val {
   color: var(--text-1);
-  font-weight: 500;
+  font-weight: var(--w-medium);
 }
 
 .tx-risk-box {
@@ -1424,7 +1424,7 @@ button.row { cursor: pointer; }
   gap: var(--sp-3);
   padding: 10px var(--sp-3);
   border-radius: var(--radius-md);
-  font-size: var(--fs-xs);
+  font-size: var(--fs-100);
   line-height: 1.4;
 }
 
@@ -1475,8 +1475,8 @@ button.row { cursor: pointer; }
   border: none;
   border-bottom: 2px solid transparent;
   color: var(--text-3);
-  font-size: var(--fs-sm);
-  font-weight: 600;
+  font-size: var(--fs-200);
+  font-weight: var(--w-semibold);
   padding: 8px 12px;
   cursor: pointer;
   transition: all var(--t-fast);
@@ -1544,13 +1544,13 @@ button.row { cursor: pointer; }
 }
 
 .send-from-name {
-  font-size: var(--fs-md);
-  font-weight: 600;
+  font-size: var(--fs-300);
+  font-weight: var(--w-semibold);
   color: var(--text-1);
 }
 
 .send-from-address {
-  font-size: var(--fs-xs);
+  font-size: var(--fs-100);
   color: var(--text-3);
 }
 
@@ -1561,7 +1561,7 @@ button.row { cursor: pointer; }
 }
 
 .send-from-balance {
-  font-size: var(--fs-sm);
+  font-size: var(--fs-200);
   color: var(--text-2);
   font-variant-numeric: tabular-nums;
 }
@@ -1614,13 +1614,13 @@ button.row { cursor: pointer; }
 }
 
 .send-token-symbol {
-  font-size: var(--fs-md);
+  font-size: var(--fs-300);
   font-weight: 700;
   color: var(--text-1);
 }
 
 .send-token-name {
-  font-size: var(--fs-xs);
+  font-size: var(--fs-100);
   color: var(--text-3);
 }
 
@@ -1637,8 +1637,8 @@ button.row { cursor: pointer; }
 }
 
 .send-token-balance {
-  font-size: var(--fs-md);
-  font-weight: 600;
+  font-size: var(--fs-300);
+  font-weight: var(--w-semibold);
   color: var(--text-1);
   font-variant-numeric: tabular-nums;
 }
@@ -1669,7 +1669,7 @@ button.row { cursor: pointer; }
 }
 
 .send-avail-hint {
-  font-size: var(--fs-xs);
+  font-size: var(--fs-100);
   color: var(--text-3);
 }
 
@@ -1686,8 +1686,8 @@ button.row { cursor: pointer; }
 .amount-input-box input {
   width: 100%;
   padding-right: 60px;
-  font-size: var(--fs-lg);
-  font-weight: 600;
+  font-size: var(--fs-400);
+  font-weight: var(--w-semibold);
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
@@ -1695,7 +1695,7 @@ button.row { cursor: pointer; }
 .amount-unit {
   position: absolute;
   right: var(--sp-3);
-  font-size: var(--fs-sm);
+  font-size: var(--fs-200);
   font-weight: 700;
   color: var(--text-3);
   pointer-events: none;
@@ -1764,25 +1764,25 @@ button.row { cursor: pointer; }
 }
 
 .token-item-symbol {
-  font-size: var(--fs-md);
+  font-size: var(--fs-300);
   font-weight: 700;
   color: var(--text-1);
 }
 
 .token-item-name {
-  font-size: var(--fs-xs);
+  font-size: var(--fs-100);
   color: var(--text-3);
 }
 
 .token-item-balance {
-  font-size: var(--fs-md);
-  font-weight: 600;
+  font-size: var(--fs-300);
+  font-weight: var(--w-semibold);
   color: var(--text-1);
   font-variant-numeric: tabular-nums;
 }
 
 .token-item-mint {
-  font-size: var(--fs-xs);
+  font-size: var(--fs-100);
   color: var(--text-3);
 }
 

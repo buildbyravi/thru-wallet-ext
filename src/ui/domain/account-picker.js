@@ -54,7 +54,7 @@ export function AccountPicker({
         AddressText({ address, chars: 6 }),
       ]),
       balance != null
-        ? h('span', { class: 'row-value', text: `${formatThru(BigInt(balance))} THRU · last known` })
+        ? h('span', { class: 'row-value t-numeral', text: `${formatThru(BigInt(balance))} THRU · last known` })
         : null,
       active ? h('span', { class: 'row-value' }, icon('check', 14)) : null,
     ]);
