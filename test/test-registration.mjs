@@ -131,6 +131,9 @@ assert.notEqual(signed[0].program, alphaNet.faucetProgramId);
 assert.notEqual(signed[0].program, alphaNet.transferProgramId);
 assert.deepEqual(signed[0].header, { fee: 0n, nonce: 0n, stateUnits: 1 },
   'the native self-registration header is exactly zero fee, zero nonce, and one state unit');
+// chainId is deliberately NOT in the pinned header: buildAndSign fetches it from the node at
+// build time (it reports 1 on the current chain — live-verified 2026-09-26), so the wallet
+// cannot sign against a stale pinned chain id after a future reset.
 assert.ok(!JSON.stringify(own).includes('privateKey'), 'the result contains no key material');
 const already = await call('tx.registerAccount', { address: third.address });
 assert.equal(already.created, false);

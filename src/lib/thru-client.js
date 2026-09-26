@@ -318,8 +318,12 @@ export async function createOnChainAccount(feePayer, { beforeSign } = {}) {
         // account-creation program — the NOOP program on 0.4.0+ chains (the SDK's own
         // accounts.createAccount default). The pre-reset reserved program (marker byte 0x03)
         // is gone from the chain. stateUnits: 1 is explicit because the reset chain refuses
-        // activation with vmError -497 (FEE_PAYER_ACTIVATION_REQUIRES_STATE_UNIT) otherwise;
-        // startSlot, chainId and expiryAfter are fetched from the node inside buildAndSign.
+        // activation with vmError -497 (FEE_PAYER_ACTIVATION_REQUIRES_STATE_UNIT) otherwise.
+        // Live-verified on the reset chain 2026-09-26 (registration ts2bMbIHRlcw…): the
+        // built header carried exactly { fee: 0n, nonce: 0n, stateUnits: 1, chainId: 1 } —
+        // chainId is fetched from the node at build time (it reports 1 today) rather than
+        // pinned, so a future chain-id move cannot silently produce wrong-chain signatures;
+        // startSlot and expiryAfter are fetched the same way.
         program: activeNetwork.accountCreateProgramId,
         header: { fee: 0n, nonce: 0n, stateUnits: 1 },
         feePayerStateProof: proofObj.proof,
@@ -354,18 +358,19 @@ export async function createOnChainAccount(feePayer, { beforeSign } = {}) {
 // claims of different amounts via the CLI and diffing the instruction bytes) and died with the
 // fresh-network reset, along with the old reserved "marker byte" address scheme they came from.
 //
-// The INSTRUCTION LAYOUT below is still that pre-reset reverse engineering and has NOT been
-// re-verified against the reset chain. Treat it as "well-sourced, not independently verified" —
-// if a claim fails outright with a low-level or format error, doubt the encoder first, not the
-// signing/submission code around it, since the account-index handling IS independently
-// verified: @thru/sdk's own InstructionContext JSDoc confirms account order is exactly
-// [feePayer, program, ...readWriteAccounts, ...readOnlyAccounts] after sorting, which is why
-// this uses buildInstructionData + getAccountIndex instead of hand-rolling that sort — it
-// delegates the part that's easy to get subtly wrong to the SDK's own verified logic.
+// The INSTRUCTION LAYOUT below is the pre-reset reverse engineering and is now LIVE-VERIFIED
+// against the reset chain (2026-09-26, claim tsjbbZW9sT… with this 16-byte layout against the
+// vault PDA, 10,000 units credited; the vault holds ~99.9M units). The vault's role as the
+// faucet's state account is confirmed by that claim, not assumed. The account-index handling
+// is independently verified too: @thru/sdk's own InstructionContext JSDoc confirms account
+// order is exactly [feePayer, program, ...readWriteAccounts, ...readOnlyAccounts] after
+// sorting, which is why this uses buildInstructionData + getAccountIndex instead of
+// hand-rolling that sort — it delegates the part that's easy to get subtly wrong to the SDK's
+// own verified logic.
 // The program/state constants remain exported for tests and for callers that want the alphanet
 // defaults, but the network calls below read from the CONFIGURED network so a switch takes
 // effect.
-export const FAUCET_MAX_PER_CLAIM = 10_000n; // per the CLI's own cap — pre-reset value, re-verify against the reset chain
+export const FAUCET_MAX_PER_CLAIM = 10_000n; // per the CLI's own cap — a full-cap claim of 10,000 succeeded on the reset chain (2026-09-26)
 
 /** Pure byte-layout encoder, kept separate from the network calls so it's directly testable. */
 export function encodeFaucetInstructionData(stateIdx, recipientIdx, amountUnits) {
@@ -425,7 +430,11 @@ export async function claimFaucet(feePayer, amount) {
   const { rawTransaction } = await getClient().transactions.buildAndSign({
     feePayer: { publicKey: feePayer.publicKey, privateKey: feePayer.privateKey },
     program: net.faucetProgramId,
-    header: { fee: 0n },
+    // fee 0n is the sponsored-claim design (pre-reset and post). stateUnits: 1 is stated
+    // explicitly — the claim writes vault state and this exact header was live-verified on
+    // the reset chain (2026-09-26, claim tsjbbZW9sT…, 10,000 units credited). chainId,
+    // nonce, startSlot and expiryAfter are fetched from the node inside buildAndSign.
+    header: { fee: 0n, stateUnits: 1 },
     accounts: { readWrite: [net.faucetStateAccount] },
     instructionData: ({ getAccountIndex }) =>
       encodeFaucetInstructionData(getAccountIndex(net.faucetStateAccount), getAccountIndex(address), amountUnits),
@@ -445,15 +454,15 @@ export async function claimFaucet(feePayer, amount) {
 // ---- Native transfer ----
 //
 // PROVENANCE: the instruction layout came from reverse-engineering a real `thru transfer`
-// transaction (confirmed on-chain signature ts_ItJeT7...), and it now has independent
-// corroboration: @thru/programs' eoa module emits byte-identical instructions (tag 1, u64
-// amount, u16 source, u16 destination) from the same buildAndSign path this wallet uses, and
-// @thru/sdk's accounts.create() confirms the self-registration flow beside it. The PROGRAM
-// ADDRESS is package-sourced at the top of this file — pre-reset it was the reserved zero
-// address with a 0x80 marker byte, and the fresh-network reset replaced that whole scheme with
-// managed-genesis addresses (the EOA program) while keeping the wire encoding identical.
-// Still not the same as watching a transfer succeed against live alphanet from here — that
-// needs scripts/verify-chain.mjs --send from a machine with RPC access.
+// transaction (confirmed on-chain signature ts_ItJeT7...), and it is now LIVE-VERIFIED on the
+// reset chain too (2026-09-26, transfer tsPbi9uzCb… with this 16-byte layout against the EOA
+// program; fee measured at exactly 1 base unit). @thru/programs' eoa module emits
+// byte-identical instructions (tag 1, u64 amount, u16 source, u16 destination) from the same
+// buildAndSign path this wallet uses, and @thru/sdk's accounts.create() confirms the
+// self-registration flow beside it. The PROGRAM ADDRESS is package-sourced at the top of this
+// file — pre-reset it was the reserved zero address with a 0x80 marker byte, and the
+// fresh-network reset replaced that whole scheme with managed-genesis addresses (the EOA
+// program) while keeping the wire encoding identical.
 
 /** Pure byte-layout encoder for a native transfer instruction, kept directly testable. */
 export function encodeTransferInstructionData(sourceIdx, destIdx, amountUnits) {
@@ -494,6 +503,11 @@ export async function sendTransfer(feePayer, toAddress, amount) {
   const { rawTransaction } = await getClient().transactions.buildAndSign({
     feePayer: { publicKey: feePayer.publicKey, privateKey: feePayer.privateKey },
     program: activeNetwork.transferProgramId,
+    // No fee here on purpose: the SDK default is 1 base unit, re-measured on the reset
+    // chain (2026-09-26, transfer tsPbi9uzCb…: 10000 − 1234 − 1 = 8765). stateUnits: 1 is
+    // stated explicitly to match that live-tested wire shape; chainId, nonce, startSlot and
+    // expiryAfter are fetched from the node inside buildAndSign.
+    header: { stateUnits: 1 },
     accounts: readWrite.length > 0 ? { readWrite } : undefined,
     instructionData: ({ getAccountIndex }) =>
       encodeTransferInstructionData(getAccountIndex(feePayer.address), getAccountIndex(toAddress), amountUnits),

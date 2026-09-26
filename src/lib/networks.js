@@ -49,8 +49,8 @@ import { BOOTSTRAP_PROGRAM_ADDRESSES, BOOTSTRAP_FAUCET_VAULT_ADDRESS } from '@th
 //  - Account creation is a fee-payer activation transaction against the NOOP program — the
 //    same program @thru/sdk's own accounts.createAccount defaults to since 0.4.0.
 //  - The faucet is a managed program whose vault PDA plays the old "faucet state account"
-//    role. Its instruction LAYOUT is still the pre-reset reverse engineering (see the encoder
-//    in thru-client.js) and must be re-verified against the reset chain before trusting it.
+//    role — confirmed live on the reset chain (2026-09-26): a claim with the wallet's 16-byte
+//    layout credited 10,000 units from that vault. The layout is verified, not assumed.
 const TRANSFER_PROGRAM_ID = EOA_PROGRAM_ID;
 const TOKEN_PROGRAM_ID = TOKEN_PROGRAM_ADDRESS;
 const FAUCET_PROGRAM_ID = BOOTSTRAP_PROGRAM_ADDRESSES.faucet;
@@ -72,9 +72,8 @@ export const NETWORKS = {
     isTestnet: true,
     enabled: true,
     environment: 'devnet',
-    // MEASURED on alphanet 2026-08-18 — BEFORE the fresh-network reset (0.4.0 era): a
-    // transfer between two registered accounts cost exactly 1 base unit. The reset chain may
-    // price differently; re-run scripts/measure-fee.mjs against it and update from measurement.
+    // MEASURED on the reset chain 2026-09-26 (after the 0.4.0 managed-genesis reset): a
+    // transfer between registered accounts cost exactly 1 base unit (10000 − 1234 − 1 = 8765).
     // Only one amount and one size were sampled, so the reserve sits well above it rather
     // than at it.
     baseFeeUnits: 1n,
