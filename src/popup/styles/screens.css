@@ -104,6 +104,13 @@
   gap: var(--sp-2);
   margin-top: auto;
   padding-top: var(--sp-4);
+  /* Keep the action row reachable on screens whose copy outgrows the popup (the reset
+     screen's "Erase this wallet" used to hide below the fold): the row pins to the
+     bottom of the viewport while its screen scrolls. Short screens are unaffected. */
+  position: sticky;
+  bottom: 0;
+  background: var(--surface-1);
+  z-index: 1;
 }
 
 /* Every form in this app is a vertical field stack. Declaring that once here
