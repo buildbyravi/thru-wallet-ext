@@ -2518,7 +2518,8 @@ async function backupEscapeTest() {
     click(buttons(router.root, /back up now/i)[0]);
     await settle();
     ok('the reminder re-enters the backup flow',
-      router.currentPath === '/export' && textOf(router.root).includes('Anyone with this can take your funds'));
+      router.currentPath === '/export'
+      && buttons(router.root, /enter password to reveal/i).length === 1);
     await revealAndReachChallenge();
 
     const words = SECRET_MNEMONIC.trim().split(/\s+/);

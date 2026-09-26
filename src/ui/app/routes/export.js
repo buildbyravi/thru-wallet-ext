@@ -97,21 +97,6 @@ export function ExportRoute({ params, navigate, back }) {
     clearBody();
     if (isBackupFlow) backupStep = { title: 'Back up phrase', resume: renderGate };
 
-    const warning = h('div', { class: 'notice danger' }, [
-      h('div', { class: 'row-flex' }, [
-        icon('warning', 16),
-        h('strong', { text: 'Anyone with this can take your funds' }),
-      ]),
-      h('ul', { class: 'warn-list' }, [
-        h('li', { text: wantsKeyOnly
-          ? 'This key controls this one address only — not your whole wallet.'
-          : 'This phrase controls EVERY account derived from it.' }),
-        h('li', { text: 'Never type it into a website, form, or support chat.' }),
-        h('li', { text: 'Never photograph it or store it in a password manager note.' }),
-        h('li', { text: 'Thru staff will never ask for it.' }),
-      ]),
-    ]);
-
     const revealBtn = Button({
       label: 'Enter password to reveal',
       variant: 'accent',
@@ -136,7 +121,6 @@ export function ExportRoute({ params, navigate, back }) {
     });
     owned.push(revealBtn);
 
-    body.appendChild(warning);
     body.appendChild(h('div', { class: 'screen-actions' }, revealBtn.el));
   }
 

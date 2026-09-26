@@ -224,12 +224,6 @@ export function AddAccountRoute({ navigate, back }) {
       maxLength: 32,
     }));
 
-    body.appendChild(h('div', { class: 'notice warning' }, [
-      h('strong', { text: 'You must write the new phrase down' }),
-      h('p', { class: 'hint', text:
-        'A new phrase is a new set of funds to lose. You will be shown it once and asked to '
-        + 'confirm it before it is used.' }),
-    ]));
     body.appendChild(nameField.el);
     body.appendChild(h('div', { class: 'screen-actions' }, [
       track(Button({
