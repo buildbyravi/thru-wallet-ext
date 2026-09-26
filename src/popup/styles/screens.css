@@ -981,6 +981,9 @@ form > .btn.text {
   align-items: center;
   text-align: center;
   padding: var(--sp-6) var(--sp-4) var(--sp-4);
+  /* Fill the screen's column so the form can be pushed to the bottom of the real popup
+     viewport (reference screens 3/4), instead of trailing right under the brand block. */
+  flex: 1;
 }
 
 .unlock-brand {
@@ -1008,6 +1011,9 @@ form > .btn.text {
   gap: var(--sp-4);
   width: 100%;
   text-align: left;
+  /* Password entry + Unlock + the reset link sit at the bottom of the viewport,
+     matching the reference screens while keeping the reset path visible. */
+  margin-top: auto;
 }
 
 .password-input-wrap {

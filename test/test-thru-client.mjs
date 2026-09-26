@@ -8,6 +8,7 @@ import {
   UNITS_PER_THRU,
   FAUCET_PROGRAM_ID,
   TRANSFER_PROGRAM_ID,
+  ACCOUNT_CREATE_PROGRAM_ID,
   getClient,
 } from '../src/lib/thru-client.js';
 import { Transaction, keys, Signature } from '@thru/sdk';
@@ -129,6 +130,28 @@ const otherProgramTx = new Transaction({
 const decodedOther = decodeHistoryEntry(otherProgramTx, alice.address);
 assert(decodedOther.kind === 'other', "a call to a program that isn't the known transfer/faucet address stays undecoded");
 assert(decodedOther.amount === null, 'no amount is inferred for an unrelated program');
+
+console.log('\n[7b] account-registration transactions decode as registration, never "Unknown transaction"');
+// The reported defect: the user\'s own account-registration pre-image (derive_account +
+// create_account against the account-creation program) rendered as "Unknown transaction".
+// It is claimed by program id BEFORE the transfer-shaped canDecode gate — while every OTHER
+// unknown program must keep failing that gate honestly (pinned by [7] above).
+const registrationTx = new Transaction({
+  feePayer: alice.publicKey,
+  program: ACCOUNT_CREATE_PROGRAM_ID,
+  header: { fee: 0n, nonce: 3n, startSlot: 0n },
+  accounts: { readWriteAccounts: [alice.publicKey] },
+  instructionData: new Uint8Array(24), // derive_account + create_account shape: not 16-byte Transfer data
+});
+registrationTx.setSignature(Signature.from(new Uint8Array(64)));
+registrationTx.executionResult = { vmError: 0 };
+const decodedReg = decodeHistoryEntry(registrationTx, alice.address);
+assert(decodedReg.kind === 'registration', 'an account-creation program call decodes as registration');
+assert(decodedReg.amount === null, 'registration carries no amount');
+assert(decodedReg.counterparty === null, 'registration has no counterparty');
+assert(decodedReg.success === true, 'a successful registration still reports success');
+const decodedRegOtherView = decodeHistoryEntry(registrationTx, bob.address);
+assert(decodedRegOtherView.kind === 'registration', 'the registration label does not depend on the viewer');
 
 console.log('\n[8] parseThruAmount converts human THRU amounts to exact raw units without floating-point rounding errors');
 assert(parseThruAmount('1') === UNITS_PER_THRU, '"1" parses to exactly 1e9 units');

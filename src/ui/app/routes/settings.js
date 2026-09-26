@@ -415,8 +415,9 @@ export function SettingsRoute({ navigate, back }) {
 
     // There is deliberately NO full-wallet reset on this screen: an unlocked wallet
     // should not be one tap from total destruction. Individual account/seed removal
-    // lives in Manage Accounts, and the only full reset is the forgotten-password
-    // recovery path on the lock screen (/reset, reached from /unlock).
+    // lives in Manage Accounts; removing the ONLY key source there is spelled out as a
+    // full wipe in its confirm dialog (it fulfils through wallet.reset), and the
+    // forgotten-password recovery path remains on the lock screen (/reset, from /unlock).
 
     // ---- About ----
     // Read from the manifest so it can never drift from the shipped version, unlike the

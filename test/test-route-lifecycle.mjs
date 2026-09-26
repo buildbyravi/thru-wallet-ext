@@ -4384,6 +4384,145 @@ async function offlineBalanceConsumersTest() {
   }
 }
 
+// ---- Last key source: a spelled-out wipe, never a dead end ------------------
+
+/**
+ * Regression for: "keyring settings only one key source shown cannot be removed and hint
+ * says to use Settings > Reset wallet — but no such Settings entry exists". The only-source
+ * removal is a FULL wallet reset, so its dialog now says exactly that (only key source,
+ * wipes the entire wallet, UNRECOVERABLE) and fulfils through wallet.reset — the same
+ * contract call /reset makes — then lands on /welcome. With more than one source the
+ * ordinary keyring.remove path is untouched and keeps its own copy.
+ */
+async function lastSourceRemovalTest() {
+  section('key sources: removing the only source is a stated wallet wipe with a working path');
+
+  let resetCalls = 0;
+  let resetArgs = null;
+  let removeCalls = 0;
+  let removeArgs = null;
+  const realReset = FIXTURES['wallet.reset'];
+  const realRemove = FIXTURES['keyring.remove'];
+  FIXTURES['wallet.reset'] = (args) => {
+    resetCalls += 1;
+    resetArgs = args;
+    return realReset(args);
+  };
+  FIXTURES['keyring.remove'] = (args) => {
+    removeCalls += 1;
+    removeArgs = args;
+    return realRemove(args);
+  };
+
+  try {
+    // ---- A. keyring route, ONE source -------------------------------------
+    resetBackend(SCENARIOS[2]);
+    backend.keyrings = [{ ...SEED_KEYRING }]; // the ONLY key source
+    resetDom();
+    guards.invalidate();
+    let router = await boot({ root: DOC.getElementById('app') });
+    await settle();
+    router.navigate(`/keyring?id=${SEED_KEYRING.id}`);
+    await settle();
+
+    const tree = router.root;
+    ok('the remove button is present even when it is the only source',
+      buttons(tree, /remove this recovery phrase/i).length === 1);
+    ok('no dead-end hint points at a Settings reset that does not exist',
+      !/reset the wallet from settings/i.test(textOf(tree)) && !/cannot be removed/i.test(textOf(tree)),
+      textOf(tree).slice(0, 160));
+
+    click(buttons(tree, /remove this recovery phrase/i)[0]);
+    await settle();
+    let overlay = DOC.body.lastChild;
+    ok('the dialog opened', isConnected(overlay) && overlay.classList.contains('modal-overlay'));
+    ok('the dialog states this is the ONLY key source', /only key source/i.test(textOf(overlay)));
+    ok('the dialog states it wipes the entire wallet', /wipes the entire wallet/i.test(textOf(overlay)));
+    ok('the dialog states the wipe is UNRECOVERABLE', /unrecoverable/i.test(textOf(overlay)));
+    ok('the confirm action is named as a wipe', buttons(overlay, /wipe this wallet/i).length === 1);
+    ok('the ordinary removal label is not offered for a wipe',
+      buttons(overlay, /remove permanently/i).length === 0);
+    ok('nothing has happened yet', resetCalls === 0 && removeCalls === 0);
+
+    type(allElements(overlay).find((el) => el.localName === 'input'), SECRET_PASSWORD);
+    click(buttons(overlay, /wipe this wallet/i)[0]);
+    await settle();
+
+    ok('the only-source removal fulfils through wallet.reset', resetCalls === 1);
+    ok('keyring.remove is never called for the only source', removeCalls === 0);
+    ok('the wipe carries the confirmation flag and the password',
+      resetArgs?.confirmation === true && resetArgs?.password === SECRET_PASSWORD);
+    ok('the wipe lands on the welcome screen', router.currentPath === '/welcome',
+      `got ${router.currentPath}`);
+    ok('the fixture vault is gone after the wipe', backend.hasVault === false);
+    ok('no Settings-reset hint survives anywhere on screen',
+      !/reset (the )?wallet from settings/i.test(textOf(DOC.body)));
+    ok('the typed password survives the wipe nowhere',
+      findSecrets([['password', SECRET_PASSWORD]]).length === 0);
+    router.stop();
+    await settle();
+
+    // ---- B. keyring route, MULTIPLE sources: the ordinary path is unchanged --
+    resetBackend(SCENARIOS[2]); // seed + imported key
+    resetDom();
+    guards.invalidate();
+    router = await boot({ root: DOC.getElementById('app') });
+    await settle();
+    router.navigate(`/keyring?id=${SEED_KEYRING.id}`);
+    await settle();
+
+    click(buttons(router.root, /remove this recovery phrase/i)[0]);
+    await settle();
+    overlay = DOC.body.lastChild;
+    ok('with several sources the dialog is an ordinary removal',
+      buttons(overlay, /remove permanently/i).length === 1
+      && !/only key source/i.test(textOf(overlay)));
+    type(allElements(overlay).find((el) => el.localName === 'input'), SECRET_PASSWORD);
+    click(buttons(overlay, /remove permanently/i)[0]);
+    await settle();
+
+    ok('with several sources the removal fulfils through keyring.remove',
+      removeCalls === 1 && removeArgs?.keyringId === SEED_KEYRING.id);
+    ok('a multi-source removal never calls wallet.reset', resetCalls === 1);
+    ok('the ordinary removal lands on Manage Accounts', router.currentPath === '/accounts',
+      `got ${router.currentPath}`);
+    router.stop();
+    await settle();
+
+    // ---- C. account-detail, ONE source ------------------------------------
+    resetBackend(SCENARIOS[2]);
+    backend.keyrings = [{ ...SEED_KEYRING }];
+    resetDom();
+    guards.invalidate();
+    router = await boot({ root: DOC.getElementById('app') });
+    await settle();
+    router.navigate(`/account?ref=${encodeRef(activeAccount().ref)}`);
+    await settle();
+
+    ok('account-detail offers the remove action for the only source',
+      buttons(router.root, /remove recovery phrase/i).length === 1);
+    click(buttons(router.root, /remove recovery phrase/i)[0]);
+    await settle();
+    overlay = DOC.body.lastChild;
+    ok('the account-detail dialog states the wipe just as plainly',
+      /only key source/i.test(textOf(overlay)) && /wipes the entire wallet/i.test(textOf(overlay))
+      && buttons(overlay, /wipe this wallet/i).length === 1);
+    type(allElements(overlay).find((el) => el.localName === 'input'), SECRET_PASSWORD);
+    click(buttons(overlay, /wipe this wallet/i)[0]);
+    await settle();
+
+    ok('account-detail also fulfils the only-source wipe through wallet.reset',
+      resetCalls === 2 && removeCalls === 1);
+    ok('the wipe from account-detail lands on the welcome screen',
+      router.currentPath === '/welcome', `got ${router.currentPath}`);
+    router.stop();
+    await settle();
+  } finally {
+    FIXTURES['wallet.reset'] = realReset;
+    FIXTURES['keyring.remove'] = realRemove;
+  }
+}
+
 // ---- Run -------------------------------------------------------------------
 
 const startedAt = Date.now();
@@ -4398,6 +4537,7 @@ try {
   await passwordModalTest();
   await exportSecretTest();
   await backupEscapeTest();
+  await lastSourceRemovalTest();
   await navigationTest();
   await progressiveSendTest();
   await ownRecipientRegistrationTest();

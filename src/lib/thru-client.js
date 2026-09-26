@@ -552,6 +552,9 @@ export function explorerAddressUrl(address) {
  * Reconstructs the same [feePayer, program, ...readWriteAccounts, ...readOnlyAccounts]
  * ordering used when the transaction was built (see the faucet/transfer functions above) to
  * resolve the account indices baked into known instruction data back into real addresses.
+ * `canDecode` gates the Transfer-family labels; account registration is claimed by its
+ * program id before that gate, and anything else stays an honest kind 'other' ("Unknown
+ * transaction" in the UI).
  */
 export function decodeHistoryEntry(tx, viewerAddress) {
   const signature = tx.getSignature()?.toThruFmt();
@@ -574,6 +577,7 @@ export function decodeHistoryEntry(tx, viewerAddress) {
   const faucetProgram = activeNetwork.faucetProgramId;
   const transferProgram = activeNetwork.transferProgramId;
   const tokenProgram = activeNetwork.tokenProgramId;
+  const accountCreateProgram = activeNetwork.accountCreateProgramId;
 
   // Token program entries have their own wire format: a ONE-byte instruction tag (the ABI's
   // TokenInstruction discriminant), unlike the 4-byte tags of the faucet/transfer programs.
@@ -608,6 +612,16 @@ export function decodeHistoryEntry(tx, viewerAddress) {
       entry.counterparty = addrAt(view.getUint16(4, true)); // its owner
       entry.amount = null;
     }
+    return entry;
+  }
+
+  if (programAddress && programAddress === accountCreateProgram) {
+    // The account-registration pre-image (derive_account + create_account) is NOT the
+    // transfer shape — no 16-byte Transfer data — so it must be claimed BEFORE canDecode
+    // or it lands on kind 'other'. It is the caller's own account being registered on
+    // chain: no amount and no counterparty to show. Unknown programs stay 'other' below;
+    // only this program id gets this label.
+    entry.kind = 'registration';
     return entry;
   }
 
