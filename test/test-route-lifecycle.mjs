@@ -931,7 +931,10 @@ const SEED_KEYRING = {
   id: 'kr_seed_1',
   type: 'seed',
   label: 'Recovery phrase',
-  origin: 'created',
+  // 'generated' is what vault.js records for a phrase created inside the wallet (see
+  // test-vault.mjs). The UI's backup reminders key on this exact value, so the fixture has
+  // to carry it or the unbacked-up states are untestable.
+  origin: 'generated',
   backedUpAt: null,
   accountCount: 2,
   hdIndices: [0, 1],
@@ -1214,7 +1217,18 @@ const FIXTURES = {
   'keyring.createSeed': () => ({ ...SEED_KEYRING, id: 'kr_seed_3' }),
   'keyring.addPrivateKey': () => ({ ...IMPORTED_KEYRING, id: 'kr_pk_2' }),
   'keyring.rename': ({ label } = {}) => ({ ...SEED_KEYRING, label: String(label || '') }),
-  'keyring.setBackedUp': () => ({ ...SEED_KEYRING, backedUpAt: Date.now() }),
+  'keyring.setBackedUp': ({ keyringId, backedUp } = {}) => {
+    // Records the outcome in backend state (like wallet.lock does), so tests can assert that
+    // a confirmed backup clears the unbacked-up reminders and an abandoned one does not.
+    const id = keyringId || SEED_KEYRING.id;
+    const at = backedUp === false ? null : Date.now();
+    const ring = backend.keyrings.find((k) => k.id === id);
+    if (ring) ring.backedUpAt = at;
+    for (const account of backend.accounts) {
+      if (account.keyring?.id === id) account.keyring.backedUpAt = at;
+    }
+    return { ...(ring || SEED_KEYRING), backedUpAt: at };
+  },
   'keyring.remove': () => ({ removed: true }),
 
   'network.list': () => networkList().map((n) => ({ ...n })),
@@ -1615,7 +1629,9 @@ function resetBackend(scenario) {
   backend.preferences = { ...PREFERENCES };
   backend.customNetworks = [NETWORK_CUSTOM];
   backend.accounts = [makeAccount(0), makeAccount(1)];
-  backend.keyrings = [SEED_KEYRING, IMPORTED_KEYRING];
+  // Cloned: fixtures that record outcomes (e.g. keyring.setBackedUp) mutate these, and the
+  // module constants must not carry state between tests.
+  backend.keyrings = [{ ...SEED_KEYRING }, { ...IMPORTED_KEYRING }];
   backend.contacts = [{ address: ADDRESS_B, label: 'Spending wallet', createdAt: 1750000003000 }];
   backend.lockout = { locked: false, failedAttempts: 0, retryInMs: 0 };
   backend.pending = [];
@@ -2421,6 +2437,165 @@ async function exportSecretTest() {
   ok('the wiped export subtree holds no phrase', !textOf(lockedEl).includes('thistle'));
 
   router.stop();
+  await settle();
+}
+
+// ---- Backup escape -------------------------------------------------------
+
+/**
+ * Regression for: "generate new wallet has bug if user back while verifying the words —
+ * wallet created". wallet.create persists the vault before backup (deliberate: the phrase is
+ * never held in UI state across navigation), so the backup flow is the safety net — and the
+ * header Back used to be a one-tap escape that landed the user inside a fully created wallet
+ * with nothing recorded and nothing explained. These checks pin the fixed state machine:
+ * leaving is asked about, abandoning never records a backup, completing records it exactly
+ * once, and the dashboard keeps the unbacked-up phrase visible.
+ */
+async function backupEscapeTest() {
+  section('backup: leaving the confirmation is deliberate and never records a backup');
+
+  resetBackend(SCENARIOS[2]);
+  resetDom();
+  guards.invalidate();
+  const router = await boot({ root: DOC.getElementById('app') });
+  await settle();
+
+  ok('the fixture models a phrase created in this wallet', backend.keyrings[0].origin === 'generated');
+
+  let setBackedUpCalls = 0;
+  const realSetBackedUp = FIXTURES['keyring.setBackedUp'];
+  FIXTURES['keyring.setBackedUp'] = (args) => {
+    setBackedUpCalls += 1;
+    return realSetBackedUp(args);
+  };
+
+  async function revealAndReachChallenge() {
+    router.navigate(`/export?ref=${encodeRef(activeAccount().ref)}&mode=backup`);
+    await settle();
+    click(buttons(router.root, /enter password to reveal/i)[0]);
+    await settle();
+    const overlay = DOC.body.lastChild;
+    type(allElements(overlay).find((el) => el.localName === 'input'), SECRET_PASSWORD);
+    click(buttons(overlay, /reveal secret/i)[0]);
+    await settle();
+    click(buttons(router.root, /written it down/i)[0]);
+    await settle();
+  }
+
+  try {
+    await revealAndReachChallenge();
+
+    const confirmBtn = buttons(router.root, /confirm backup/i)[0];
+    ok('the confirmation challenge is showing', Boolean(confirmBtn));
+    ok('confirm stays disabled until every position is answered', confirmBtn?.disabled === true);
+
+    // ---- The reported bug: Back while verifying ---------------------------------
+    click(buttons(router.root, /^back$/i)[0]);
+    await settle();
+    ok('backing out of the challenge asks first instead of leaving',
+      textOf(router.root).includes('Leave backup?'));
+    ok('the leave step states the wallet is already created',
+      textOf(router.root).includes('already been created'));
+    ok('nothing was marked backed up by backing out', setBackedUpCalls === 0);
+
+    click(buttons(router.root, /continue backup/i)[0]);
+    await settle();
+    ok('continue returns to the confirmation challenge',
+      textOf(router.root).includes('Word #') && !textOf(router.root).includes('Leave backup?'));
+    ok('the challenge is intact after returning', buttons(router.root, /confirm backup/i)[0]?.disabled === true);
+
+    click(buttons(router.root, /^back$/i)[0]);
+    await settle();
+    click(buttons(router.root, /^leave$/i)[0]);
+    await settle();
+    ok('a confirmed leave lands on the dashboard, not in limbo',
+      router.currentPath === '/dashboard', `got ${router.currentPath}`);
+    ok('the dashboard carries the unbacked-up phrase reminder',
+      textOf(router.root).includes('Back up your recovery phrase'));
+    ok('leaving still never marked the phrase backed up', setBackedUpCalls === 0);
+
+    // ---- Completing the challenge records the backup exactly once ---------------
+    click(buttons(router.root, /back up now/i)[0]);
+    await settle();
+    ok('the reminder re-enters the backup flow',
+      router.currentPath === '/export' && textOf(router.root).includes('Anyone with this can take your funds'));
+    await revealAndReachChallenge();
+
+    const words = SECRET_MNEMONIC.trim().split(/\s+/);
+    for (const row of allElements(router.root).filter((el) => el.classList?.contains('challenge-row'))) {
+      const match = /Word #(\d+)/.exec(row.textContent || '');
+      ok('each challenge question names a word position', Boolean(match));
+      if (!match) continue;
+      const correct = words[Number(match[1]) - 1];
+      const option = allElements(row).find(
+        (el) => el.localName === 'button' && (el.textContent || '').trim() === correct,
+      );
+      ok(`question ${match[1]} has exactly the right word as an option`, Boolean(option));
+      if (option) click(option);
+      await settle();
+    }
+    const confirm2 = buttons(router.root, /confirm backup/i)[0];
+    ok('confirm enables once every position is right', confirm2?.disabled === false);
+    click(confirm2);
+    await settle();
+    ok('confirming records the backup exactly once', setBackedUpCalls === 1);
+    ok('confirmation lands on the accounts screen',
+      router.currentPath === '/accounts', `got ${router.currentPath}`);
+
+    router.navigate('/dashboard');
+    await settle();
+    ok('a confirmed backup clears the dashboard reminder',
+      !textOf(router.root).includes('Back up your recovery phrase'));
+  } finally {
+    FIXTURES['keyring.setBackedUp'] = realSetBackedUp;
+  }
+
+  router.stop();
+  await settle();
+
+  // ---- Remind me later: dismissal, persistence, and re-arm --------------------
+  resetBackend(SCENARIOS[2]);
+  resetDom();
+  guards.invalidate();
+  const router2 = await boot({ root: DOC.getElementById('app') });
+  await settle();
+
+  ok('an unbacked-up generated phrase is reminded on open',
+    textOf(router2.root).includes('Back up your recovery phrase'));
+  click(buttons(router2.root, /remind me later/i)[0]);
+  await settle();
+  ok('remind me later records the dismissal', Number(backend.preferences.backupReminderDismissedAt) > 0);
+  ok('the reminder hides after the dismissal',
+    !textOf(router2.root).includes('Back up your recovery phrase'));
+
+  router2.navigate('/accounts');
+  await settle();
+  router2.navigate('/dashboard');
+  await settle();
+  ok('the dismissal survives a remount',
+    !textOf(router2.root).includes('Back up your recovery phrase'));
+
+  // A phrase created AFTER the dismissal re-arms the notice (createdAt rule).
+  backend.preferences.backupReminderDismissedAt = 2000;
+  backend.keyrings.push({ ...SEED_KEYRING, id: 'kr_seed_new', backedUpAt: null, createdAt: 9000 });
+  router2.navigate('/accounts');
+  await settle();
+  router2.navigate('/dashboard');
+  await settle();
+  ok('a phrase created after the dismissal re-arms the reminder',
+    textOf(router2.root).includes('Back up your recovery phrase'));
+
+  // Control: the same assertion FAILS when the phrase is backed up.
+  backend.preferences.backupReminderDismissedAt = null;
+  for (const ring of backend.keyrings) ring.backedUpAt = Date.now();
+  router2.navigate('/accounts');
+  await settle();
+  router2.navigate('/dashboard');
+  await settle();
+  ok('control: the reminder assertion FAILS when every phrase is backed up',
+    !textOf(router2.root).includes('Back up your recovery phrase'));
+
+  router2.stop();
   await settle();
 }
 
@@ -4222,6 +4397,7 @@ try {
   focusTrapTest();
   await passwordModalTest();
   await exportSecretTest();
+  await backupEscapeTest();
   await navigationTest();
   await progressiveSendTest();
   await ownRecipientRegistrationTest();
@@ -4243,7 +4419,7 @@ console.log(`  routes: ${ROUTE_PATHS.length}  scenarios: ${SCENARIOS.length}  `
 for (const method of chromeLog.calls) exercisedMethods.add(method);
 console.log(`  backend methods exercised: ${exercisedMethods.size} of ${Object.keys(FIXTURES).length} fixtures`);
 console.log(`  route mounts: ${SCENARIOS.length} scenarios x ${mountUrls().length} URLs, plus `
-  + 'settings, focus-trap, password-modal, export and negative-control passes');
+  + 'settings, focus-trap, password-modal, export, backup-escape and negative-control passes');
 
 if (failures > 0) {
   realConsole.error(`\n${failures} check(s) failed:`);
