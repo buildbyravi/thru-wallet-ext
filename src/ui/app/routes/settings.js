@@ -421,7 +421,7 @@ export function SettingsRoute({ navigate, back }) {
 
     // ---- About ----
     // Read from the manifest so it can never drift from the shipped version, unlike the
-    // hardcoded 'v0.1.0' the legacy settings screen showed against a 1.2.0 manifest.
+    // hardcoded 'v0.1.0' the legacy settings screen showed against a 1.3.0 manifest.
     let version = '—';
     try {
       version = chrome.runtime.getManifest().version;

@@ -1450,7 +1450,7 @@ function makeChrome() {
     getManifest: () => ({
       manifest_version: 3,
       name: 'Thru Wallet',
-      version: '1.2.0',
+      version: '1.3.0',
     }),
     sendMessage(message, callback) {
       // UI<->UI broadcast: in Chrome every OTHER extension context receives it.
