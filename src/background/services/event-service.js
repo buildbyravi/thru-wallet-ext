@@ -10,6 +10,7 @@
 // take down the service worker.
 
 import { EVENTS } from '../../shared/contract/manifest.js';
+import { syncActionIcon } from './icon-service.js';
 
 /**
  * Push an event to all open extension pages.
@@ -36,6 +37,9 @@ export function emitAccountsChanged(data) {
 
 export function emitLockStateChanged(unlocked) {
   emit('lockStateChanged', { unlocked });
+  // The toolbar icon mirrors lock state (lock badge while locked). Fire-and-forget —
+  // icon sync is decoration and must not block or fail a lock transition.
+  void syncActionIcon();
 }
 
 export function emitNetworkChanged(network) {
