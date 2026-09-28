@@ -56,6 +56,8 @@
 // it is unlocked-only, can sign ONLY for an owned address, declares fee 0, and must be called
 // from account creation or after the user selects an unregistered own Send recipient. It is
 // still a signed, on-chain transaction; no periodic signing loop is authorized.
+// tx.claimFaucet is also unlocked-only: claiming testnet faucet funds is an incoming credit
+// action and does not need signing re-authentication.
 export const CONTRACT_VERSION = 12;
 
 export const METHODS = {
@@ -324,9 +326,8 @@ export const METHODS = {
   'tx.claimFaucet': {
     params: ['amountUnits', 'password'],
     returns: '{ signature, blockHeight }',
-    auth: 'signing',
+    auth: 'unlocked',
     since: 1,
-    authSince: 5,
   },
   'tx.send': {
     params: ['toAddress', 'amountUnits', 'password'],

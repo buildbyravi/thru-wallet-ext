@@ -203,7 +203,6 @@ ok('wallet.reset can carry a password when unlocked', METHODS['wallet.reset']?.p
 // Settings. The secure default is still password-required, enforced inside api-router before a
 // signing handler runs.
 const MUST_USE_SIGNING_AUTH = [
-  'tx.claimFaucet',
   'tx.send',
   'tx.autoCreateAccount',
   'token.deploy',
@@ -213,6 +212,7 @@ for (const name of MUST_USE_SIGNING_AUTH) {
   ok(`${name} can carry a signing password`, METHODS[name]?.params.includes('password'));
   ok(`${name} records authSince v5`, METHODS[name]?.authSince === 5, `authSince is '${METHODS[name]?.authSince}'`);
 }
+ok('tx.claimFaucet uses unlocked auth', METHODS['tx.claimFaucet']?.auth === 'unlocked');
 
 section('Multi-seed keyring API is exposed');
 

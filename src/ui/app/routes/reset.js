@@ -44,14 +44,14 @@ export function ResetRoute({ navigate, back }) {
     placeholder: CONFIRM_PHRASE,
     autocomplete: 'off',
     onInput: (value) => {
-      resetBtn.update({ disabled: value.trim().toUpperCase() !== CONFIRM_PHRASE });
+      resetBtn.update({ disabled: value.trim() !== CONFIRM_PHRASE });
       confirmField.setError('');
     },
   }));
 
   async function performReset(password) {
     await bridge.send('wallet.reset', {
-      confirmation: confirmField.value.trim().toUpperCase(),
+      confirmation: confirmField.value.trim(),
       ...(password ? { password } : {}),
     });
     invalidate();
@@ -66,8 +66,8 @@ export function ResetRoute({ navigate, back }) {
     disabled: true,
     busyLabel: 'Erasing…',
     onClick: async () => {
-      if (confirmField.value.trim().toUpperCase() !== CONFIRM_PHRASE) {
-        confirmField.setError(`Type ${CONFIRM_PHRASE} exactly.`);
+      if (confirmField.value.trim() !== CONFIRM_PHRASE) {
+        confirmField.setError(`Type ${CONFIRM_PHRASE} exactly in uppercase.`);
         return;
       }
       banner.clear();

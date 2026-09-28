@@ -378,7 +378,6 @@ const gatedSigning = [
     fromAddress: res2.data.address, networkId: 'alphanet' }],
   ['token.transferChecked', { mintAddress: 'taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKqq',
     toAddress: res2.data.address, amountUnits: '1', fromAddress: res2.data.address, networkId: 'alphanet' }],
-  ['tx.claimFaucet', { amountUnits: '1' }],
   ['tx.autoCreateAccount', {}],
   ['token.deploy', {
     mintSeed: 'a'.repeat(64),

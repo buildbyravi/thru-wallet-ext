@@ -832,20 +832,27 @@ export function SendRoute({ params, navigate, back }) {
       variant: 'accent',
       iconName: 'send',
       busyLabel: 'Sending…',
-      onClick: () => submit(to),
+      onClick: () => submit(to, confirmBtn, editBtn),
     }));
 
     const editBtn = track(Button({
       label: 'Edit',
       variant: 'text',
-      onClick: () => renderForm({ to, amount: amountText }),
+      onClick: () => {
+        if (!submitting) renderForm({ to, amount: amountText });
+      },
     }));
 
     body.appendChild(h('div', { class: 'screen-actions' }, [confirmBtn.el, editBtn.el]));
   }
 
   // ---- Step 3: submit ----------------------------------------------------
-  async function submit(to) {
+  let submitting = false;
+  async function submit(to, confirmBtn, editBtn) {
+    if (submitting) return;
+    submitting = true;
+    confirmBtn?.update({ disabled: true });
+    editBtn?.update({ disabled: true });
     banner.clear();
     // Capture the reviewed facts BEFORE an async settings read or password prompt. Another
     // extension page may switch source/network while that dialog is open; the checked
@@ -902,6 +909,12 @@ export function SendRoute({ params, navigate, back }) {
           + 'and the explorer before trying again.', 'warning');
       } else {
         banner.set(error.message || 'The transfer failed.');
+      }
+    } finally {
+      submitting = false;
+      if (!destroyed) {
+        confirmBtn?.update({ disabled: false });
+        editBtn?.update({ disabled: false });
       }
     }
   }
