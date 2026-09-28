@@ -191,13 +191,15 @@ export function hasFaucet(networkConfig) {
  */
 export function explorerTxUrl(networkConfig, signature) {
   if (!networkConfig?.explorerUrl) return '';
-  return `${networkConfig.explorerUrl}/tx/${signature}`;
+  return `${networkConfig.explorerUrl}/tx/${signature}?network=${networkConfig.id}`;
 }
 
 /** Build explorer address URL, or '' when the network has no explorer. */
 export function explorerAddressUrl(networkConfig, address) {
   if (!networkConfig?.explorerUrl) return '';
-  return `${networkConfig.explorerUrl}/account/${address}`;
+  // scan.thru.org routes addresses under /address/ (not /account/) and scopes pages by an
+  // explicit ?network= id — verified against the live explorer 2026-09-27.
+  return `${networkConfig.explorerUrl}/address/${address}?network=${networkConfig.id}`;
 }
 
 /** Validate a Thru address using the SDK's checksum logic. */

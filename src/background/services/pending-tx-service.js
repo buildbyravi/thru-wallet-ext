@@ -154,7 +154,14 @@ const inFlightTransfers = new Set();
 export function beginTransfer({ networkId, from, to, amountUnits, mint = null }) {
   const key = JSON.stringify([networkId, from, to, String(amountUnits), mint]);
   if (inFlightTransfers.has(key)) {
-    const error = new Error('An identical transfer is already being sent. Check Activity before retrying.');
+    // Name the collision precisely: this guard only fires for the same network, same
+    // amount, same recipient still in flight. The old "identical transfer / check Activity"
+    // wording pointed people at unrelated rows (the in-flight send's own row does not
+    // exist until the SDK returns) and read like a phantom-duplicate bug.
+    const error = new Error(
+      'That exact transfer — same amount and same recipient — is still being sent. '
+        + 'Wait for it to finish before sending again.',
+    );
     error.code = 'DUPLICATE_SUBMISSION';
     error.retryable = false;
     throw error;

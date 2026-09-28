@@ -65,7 +65,13 @@ function trackClient() {
   const bound = thruClient.getClient();
   if (!savedClients.has(bound)) savedClients.set(bound, {
     block: bound.blocks.get,
+    height: bound.blocks.getBlockHeight,
     list: bound.transactions.listForAccount,
+  });
+  // The feed's chain-reality probe: a fixed huge height so no seeded row is treated as
+  // from another chain in this suite (that behavior has its own test in test-history-cache).
+  bound.blocks.getBlockHeight = async () => ({
+    finalized: 10_000_000n, locallyExecuted: 10_000_000n, clusterExecuted: 10_000_000n,
   });
   return bound;
 }
@@ -312,6 +318,7 @@ try {
 } finally {
   for (const [bound, original] of savedClients) {
     bound.blocks.get = original.block;
+    bound.blocks.getBlockHeight = original.height;
     bound.transactions.listForAccount = original.list;
   }
   await networks.setActiveNetwork('alphanet');

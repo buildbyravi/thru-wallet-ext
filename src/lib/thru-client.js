@@ -768,6 +768,18 @@ export async function getBlockTimeMs(slot, expectedNetworkId = activeNetwork.id)
   return request;
 }
 
+/**
+ * Current height snapshot ({ finalized, locallyExecuted, clusterExecuted } bigints).
+ *
+ * History caching uses the finalized height as chain-reality evidence: a cached row
+ * stamped above what this chain has produced cannot belong to it. The alphanet reset
+ * reuses the same managed program addresses, so offline fingerprints alone cannot see a
+ * genesis swap — a height comparison can. Read-only; never mutates.
+ */
+export async function getBlockHeight() {
+  return getClient().blocks.getBlockHeight();
+}
+
 // ---- Native Token Launchpad (v1.2) -----------------------------------------
 // Native built-in Token Program address on ThruVM (similar to SPL Token Program):
 // package-sourced at the top of this file.

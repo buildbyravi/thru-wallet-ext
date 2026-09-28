@@ -2570,6 +2570,72 @@ async function backupEscapeTest() {
   await settle();
 }
 
+// ---- Create & import flows -------------------------------------------------
+/**
+ * Onboarding must show the just-created phrase immediately and move to confirmation —
+ * the export password gate is for in-wallet re-auth, not creation. The mandated
+ * "Anyone with this can take your funds" warning stands with the words on every path,
+ * the handoff is one-shot (the in-wallet backup link keeps its gate), and multi-field
+ * forms are real <form>s whose Enter key submits (submit-type button + submit handler).
+ */
+async function createFlowBackupTest() {
+  section('Create and import flows');
+
+  // ---- Import form: the Enter-key path ------------------------------------
+  await resetBackend(SCENARIOS[0]);
+  resetDom();
+  guards.invalidate();
+  const router = await boot({ root: DOC.getElementById('app') });
+  await settle();
+  ok('a fresh profile lands on the welcome screen', router.currentPath === '/welcome', router.currentPath);
+  click(buttons(router.root, /already have a recovery phrase/i)[0]);
+  await settle();
+  const importForm = allElements(router.root).find((el) => el.localName === 'form');
+  ok('the import screen wraps its fields in a real form', Boolean(importForm), 'no form element');
+  const importBtn = buttons(router.root, /^import wallet$/i)[0];
+  ok('the import button is a submit button', importBtn?.getAttribute('type') === 'submit', importBtn?.getAttribute('type'));
+  importForm.dispatchEvent({ type: 'submit', cancelable: true });
+  await settle();
+  ok('submitting the form runs the import validation (the Enter key path)',
+    textOf(router.root).includes('Enter your recovery phrase.'), textOf(router.root).slice(0, 160));
+
+  // ---- Create flow: the fresh phrase skips the reveal gate -----------------
+  click(buttons(router.root, /back/i)[0]);
+  await settle();
+  click(buttons(router.root, /create a new wallet/i)[0]);
+  await settle();
+  const inputs = allElements(router.root).filter((el) => el.localName === 'input');
+  ok('the create form asks for a password twice', inputs.length === 2, String(inputs.length));
+  type(inputs[0], SECRET_PASSWORD);
+  type(inputs[1], SECRET_PASSWORD);
+  const createBtn = buttons(router.root, /^create wallet$/i)[0];
+  ok('the create button is a submit button', createBtn?.getAttribute('type') === 'submit', createBtn?.getAttribute('type'));
+  click(createBtn);
+  await settle();
+  ok('creating a wallet goes straight into backup', router.currentPath.startsWith('/export'), router.currentPath);
+  const shown = textOf(router.root);
+  ok('the fresh phrase is on screen immediately', shown.includes('thistle'), shown.slice(0, 160));
+  ok('no reveal-password gate interrupts creation', !shown.includes('Enter password to reveal'), shown.slice(0, 160));
+  ok('the mandated warning stands with the fresh phrase', shown.includes('Anyone with this can take your funds'));
+
+  // The handoff is one-shot: re-entering the backup link goes through the gate.
+  const exportEl = router.current?.el;
+  router.navigate('/accounts');
+  await settle();
+  router.navigate(`/export?ref=${encodeRef(activeAccount().ref)}&mode=backup`);
+  await settle();
+  ok('the in-wallet backup path still asks for the password',
+    textOf(router.root).includes('Enter password to reveal'), textOf(router.root).slice(0, 160));
+  TORN_DOWN.push(exportEl);
+  router.navigate('/dashboard');
+  await settle();
+  const detachedHits = findSecretsInTornDown(SECRETS);
+  ok('the phrase leaves no trace in detached nodes', detachedHits.length === 0, String(detachedHits.length));
+
+  router.stop();
+  await settle();
+}
+
 // ---- Source-level guards ---------------------------------------------------
 
 /**
@@ -3057,10 +3123,10 @@ async function navigationTest() {
     /^Copy address:/.test(copyAffordances[0].getAttribute('aria-label') || ''));
   // (The shim's selector engine is deliberately tiny — walk anchors instead of a[href*=].)
   const explorerLink = [...router.root.querySelectorAll?.('a') || []]
-    .find((a) => String(a.href || a.getAttribute?.('href') || '').includes('/account/'));
+    .find((a) => String(a.href || a.getAttribute?.('href') || '').includes('/address/'));
   const explorerHref = String(explorerLink?.getAttribute?.('href') || '');
   ok('the explorer link embeds the address on the active network',
-    explorerHref.includes(activeAccount().address),
+    explorerHref.includes(activeAccount().address) && explorerHref.includes('network=alphanet'),
     explorerHref || 'no explorer anchor found');
 
   // ---- Send: selecting a token asset (contract v8) -------------------------
@@ -4508,6 +4574,7 @@ try {
   await passwordModalTest();
   await exportSecretTest();
   await backupEscapeTest();
+  await createFlowBackupTest();
   await lastSourceRemovalTest();
   await navigationTest();
   await progressiveSendTest();

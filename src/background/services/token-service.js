@@ -289,7 +289,7 @@ export async function transferToken({ mintAddress, toAddress, amountUnits }, exp
       amountUnits: rawUnits.toString(),
       mint,
     })) {
-      const err = new Error('An identical transfer was just submitted. Check Activity before sending again.');
+      const err = new Error('The same transfer — same amount and same recipient — was just submitted. Check Activity before sending again.');
       err.code = 'DUPLICATE_SUBMISSION';
       throw err;
     }

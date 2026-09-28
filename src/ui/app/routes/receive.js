@@ -129,7 +129,9 @@ export function ReceiveRoute({ back }) {
     const actions = [];
 
     // '' when the network declares no explorer, in which case no link is shown at all.
-    const explorer = network?.explorerUrl ? `${network.explorerUrl}/account/${account.address}` : '';
+    const explorer = network?.explorerUrl
+      ? `${network.explorerUrl}/address/${account.address}?network=${network.id}`
+      : '';
     if (explorer) {
       actions.push(h('a', {
         class: 'btn secondary',

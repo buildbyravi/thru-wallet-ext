@@ -26,6 +26,7 @@ import { PageHeader, Banner } from '../../kit/feedback.js';
 import { SeedPhraseGrid, SeedPhraseChallenge } from '../../domain/seed-phrase-grid.js';
 import { requirePassword } from '../../domain/password-prompt.js';
 import * as bridge from '../bridge.js';
+import { clearFreshPhrases, takeFreshPhrase } from '../../domain/fresh-phrase.js';
 import { decodeRef } from '../../../shared/refs.js';
 
 export function ExportRoute({ params, navigate, back }) {
@@ -69,12 +70,35 @@ export function ExportRoute({ params, navigate, back }) {
     grid = null;
     challenge?.destroy();
     challenge = null;
+    clearFreshPhrases();
     for (const c of owned) c.destroy?.();
     owned.length = 0;
   }
 
   function clearBody() {
     while (body.firstChild) body.removeChild(body.firstChild);
+  }
+
+  /**
+   * The mandated secret-disclosure warning. It stands before the gate AND above the
+   * revealed secret: whichever path reaches the words (password reveal, or the fresh
+   * create-flow handoff that skips the gate), the warning is on screen with them.
+   */
+  function secretWarning() {
+    return h('div', { class: 'notice danger' }, [
+      h('div', { class: 'row-flex' }, [
+        icon('warning', 16),
+        h('strong', { text: 'Anyone with this can take your funds' }),
+      ]),
+      h('ul', { class: 'warn-list' }, [
+        h('li', { text: wantsKeyOnly
+          ? 'This key controls this one address only — not your whole wallet.'
+          : 'This phrase controls EVERY account derived from it.' }),
+        h('li', { text: 'Never type it into a website, form, or support chat.' }),
+        h('li', { text: 'Never photograph it or store it in a password manager note.' }),
+        h('li', { text: 'Thru staff will never ask for it.' }),
+      ]),
+    ]);
   }
 
   if (!ref) {
@@ -96,21 +120,19 @@ export function ExportRoute({ params, navigate, back }) {
   function renderGate() {
     clearBody();
     if (isBackupFlow) backupStep = { title: 'Back up phrase', resume: renderGate };
+    // A phrase generated in THIS session (wallet.create → backup) is shown directly: the
+    // user set the password seconds ago and the create screen already held this exact
+    // disclosure window. The password gate below is for in-wallet re-auth, not onboarding.
+    if (isBackupFlow && !wantsKeyOnly) {
+      const fresh = takeFreshPhrase(params.ref);
+      if (fresh) {
+        secret = fresh;
+        renderSecret();
+        return;
+      }
+    }
 
-    const warning = h('div', { class: 'notice danger' }, [
-      h('div', { class: 'row-flex' }, [
-        icon('warning', 16),
-        h('strong', { text: 'Anyone with this can take your funds' }),
-      ]),
-      h('ul', { class: 'warn-list' }, [
-        h('li', { text: wantsKeyOnly
-          ? 'This key controls this one address only — not your whole wallet.'
-          : 'This phrase controls EVERY account derived from it.' }),
-        h('li', { text: 'Never type it into a website, form, or support chat.' }),
-        h('li', { text: 'Never photograph it or store it in a password manager note.' }),
-        h('li', { text: 'Thru staff will never ask for it.' }),
-      ]),
-    ]);
+    const warning = secretWarning();
 
     const revealBtn = Button({
       label: 'Enter password to reveal',
@@ -153,6 +175,8 @@ export function ExportRoute({ params, navigate, back }) {
       banner.set('The wallet returned no secret for that account.');
       return;
     }
+
+    body.appendChild(secretWarning());
 
     body.appendChild(h('p', { class: 'hint', text: isMnemonic
       ? 'These words restore every account derived from this phrase. Order matters.'

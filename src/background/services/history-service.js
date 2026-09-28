@@ -167,6 +167,28 @@ export async function getHistoryFeed(address) {
       if (timeMs !== null) blockTimes.set(slot, timeMs);
     })); // at most PAGE_ON_OPEN unique headers; duplicate slots share one request
 
+    // Chain-reality evidence from the live fetch: a cached row stamped above what this
+    // chain has produced cannot belong to it. The alphanet reset reuses the same managed
+    // program addresses, so the offline _chain fingerprint alone cannot see a genesis
+    // swap — the previous incarnation's rows (far higher slots) must not resurface beside
+    // fresh ones. Resolved outside the write queue, like the block headers above.
+    let headSlot = null;
+    try {
+      const height = await thruClient.getBlockHeight();
+      const finalized = height?.finalized;
+      headSlot = finalized == null ? null : Number(finalized);
+      if (!Number.isFinite(headSlot)) headSlot = null;
+    } catch {
+      headSlot = null;
+    }
+    if (headSlot == null && fresh.length) {
+      // Fallback when the height query is unavailable: the newest page's own slots bound
+      // what this chain has produced. A cached row newer than the newest page cannot
+      // exist — it would BE in that page.
+      headSlot = fresh.reduce((m, e) => (Number(e?.slot) > m ? Number(e.slot) : m), 0) || null;
+    }
+    const onThisChain = (e) => headSlot == null || e?.slot == null || Number(e.slot) <= headSlot;
+
     // Local submittedAt/settledAt is a real event time, but not the chain's block time.
     // Keep it only as a fallback for our own sends when a block time is unavailable.
     const pendingKey = scopedKey('thru_pending_txs', network.id);
@@ -207,7 +229,7 @@ export async function getHistoryFeed(address) {
       }
       const entries = [
         ...fresh,
-        ...latest.entries.filter((e) => e?.signature && !seen.has(e.signature)),
+        ...latest.entries.filter((e) => e?.signature && !seen.has(e.signature) && onThisChain(e)),
       ].slice(0, CACHE_LIMIT);
       latestScope[address] = { entries, nextCursor, updatedAt: Date.now() };
       return { changed: true, value: entries };

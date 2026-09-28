@@ -26,7 +26,9 @@ import { decodeRef, encodeRef, refsEqual } from '../../../shared/refs.js';
 // importing lib/networks.js: that module imports Pubkey from @thru/sdk and would put the SDK's
 // protobuf/runtime graph in the popup bundle for a URL-builder helper.
 function explorerAddressUrl(network, address) {
-  return network?.explorerUrl ? `${network.explorerUrl}/account/${address}` : '';
+  return network?.explorerUrl
+    ? `${network.explorerUrl}/address/${address}?network=${network.id}`
+    : '';
 }
 
 /** One label/value row in the detail table. */
