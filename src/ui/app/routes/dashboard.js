@@ -330,6 +330,30 @@ export function DashboardRoute({ navigate }) {
   }
 
   // ---- Pending Transactions ------------------------------------------------
+  let pendingPollTimer = null;
+
+  function stopPendingPoll() {
+    if (pendingPollTimer) {
+      clearInterval(pendingPollTimer);
+      pendingPollTimer = null;
+    }
+  }
+
+  function startPendingPoll() {
+    if (pendingPollTimer) return;
+    pendingPollTimer = setInterval(async () => {
+      try {
+        const res = await bridge.send('tx.reconcilePending');
+        if (res?.settled > 0) {
+          const next = await bridge.send('tx.getPending').catch(() => []);
+          renderPending(next);
+        }
+      } catch {
+        // ignore
+      }
+    }, 1_000);
+  }
+
   function renderPending(list) {
     const active = (list || []).filter((r) => r.status === 'submitted');
     const count = active.length;
@@ -337,9 +361,11 @@ export function DashboardRoute({ navigate }) {
       pendingBadge.textContent = `${count} pending`;
       pendingBadge.classList.remove('hidden');
       historyTile.setBadge(count);
+      startPendingPoll();
     } else {
       pendingBadge.classList.add('hidden');
       historyTile.setBadge(null);
+      stopPendingPoll();
     }
   }
 
@@ -491,6 +517,7 @@ export function DashboardRoute({ navigate }) {
   return {
     el,
     destroy() {
+      stopPendingPoll();
       disposeAssets();
       for (const c of owned) c.destroy?.();
       owned.length = 0;

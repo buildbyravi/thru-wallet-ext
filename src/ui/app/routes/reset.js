@@ -44,8 +44,18 @@ export function ResetRoute({ navigate, back }) {
     placeholder: CONFIRM_PHRASE,
     autocomplete: 'off',
     onInput: (value) => {
-      resetBtn.update({ disabled: value.trim() !== CONFIRM_PHRASE });
-      confirmField.setError('');
+      const trimmed = value.trim();
+      if (trimmed === CONFIRM_PHRASE) {
+        confirmField.setError('');
+        resetBtn.update({ disabled: false });
+      } else {
+        resetBtn.update({ disabled: true });
+        if (trimmed.length > 0 && trimmed.toUpperCase() === CONFIRM_PHRASE) {
+          confirmField.setError(`Type ${CONFIRM_PHRASE} in uppercase.`);
+        } else {
+          confirmField.setError('');
+        }
+      }
     },
   }));
 

@@ -66,6 +66,7 @@ export function SendRoute({ params, navigate, back }) {
   let feeRequestSeq = 0;
   let destroyed = false;
   let switchingAccount = false;
+  let submitting = false;
 
   function track(c) { owned.push(c); return c; }
 
@@ -110,6 +111,7 @@ export function SendRoute({ params, navigate, back }) {
   let subView = null;
 
   function handleBack() {
+    if (submitting) return;
     if (subView) {
       subView = null;
       renderForm(formState);
@@ -847,10 +849,10 @@ export function SendRoute({ params, navigate, back }) {
   }
 
   // ---- Step 3: submit ----------------------------------------------------
-  let submitting = false;
   async function submit(to, confirmBtn, editBtn) {
     if (submitting) return;
     submitting = true;
+    confirmBtn?.setBusy?.(true);
     confirmBtn?.update({ disabled: true });
     editBtn?.update({ disabled: true });
     banner.clear();
@@ -913,6 +915,7 @@ export function SendRoute({ params, navigate, back }) {
     } finally {
       submitting = false;
       if (!destroyed) {
+        confirmBtn?.setBusy?.(false);
         confirmBtn?.update({ disabled: false });
         editBtn?.update({ disabled: false });
       }

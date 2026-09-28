@@ -136,3 +136,23 @@ assert.deepEqual(await pendingTx.list(), []);
 await networks.setActiveNetwork('localnet');
 assert.equal((await pendingTx.list())[0].signature, 'ts_fixture');
 console.log('  ok - a late send tracks/badges only the original network');
+
+console.log('[tx sync] reconcile settles confirmed tx and triggers balance refresh');
+const client = thruClient.getClient();
+const origList = client.transactions?.listForAccount;
+if (!client.transactions) client.transactions = {};
+client.transactions.listForAccount = async () => ({
+  transactions: [{
+    getSignature: () => ({ toThruFmt: () => 'ts_fixture' }),
+    program: { toThruFmt: () => 'taPROGRAM' },
+    executionResult: { vmError: 0 },
+    slot: 12345n,
+  }],
+});
+const reconcileResult = await pendingTx.reconcile();
+assert.equal(reconcileResult.settled, 1);
+const pendingAfter = await pendingTx.listPending();
+assert.equal(pendingAfter.length, 0);
+client.transactions.listForAccount = origList;
+console.log('  ok - reconcile settles confirmed tx in 1s sync and refreshes balances');
+

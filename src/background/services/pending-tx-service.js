@@ -15,6 +15,7 @@
 // users money that never moved.
 
 import * as thruClient from '../../lib/thru-client.js';
+import { getBalances } from './balance-service.js';
 import { emit } from './event-service.js';
 import { getActiveNetworkId } from './network-service.js';
 import { scopedKey } from '../../shared/network-scope.js';
@@ -115,13 +116,10 @@ export async function track(tx) {
     // Badge/events are best-effort after storing the signature; never change the send result.
   }
 
-  // The only reconcile triggers were bootstrap and unlock, so a send whose sendAndTrack
-  // ALREADY returned confirmed stayed "pending" for the entire popup session — the
-  // stuck-pending defect the manual smoke run hit. Active self-service: one pass shortly
-  // after submit (covers the common already-confirmed case), one later pass (covers history
-  // lag). Both no-op once the record settled and swallow every error — a timer must never
-  // surface an offline failure. unref keeps Node-based tests from being held open.
-  for (const ms of [2_000, 10_000]) {
+  // Active self-service: with 100-300ms block times on Thru L1 (4-6 blocks per second),
+  // check eagerly at 1s intervals. Pass list no-ops once settled and swallows errors.
+  // unref keeps Node-based tests from being held open.
+  for (const ms of [1_000, 2_000, 3_000, 5_000]) {
     const timer = setTimeout(() => { reconcile().catch(() => {}); }, ms);
     timer.unref?.();
   }
@@ -179,9 +177,9 @@ export function beginTransfer({ networkId, from, to, amountUnits, mint = null })
  * native (mintless) candidates.
  *
  * @param {{ from: string, to: string, amountUnits: string, mint?: string }} candidate
- * @param {number} [windowMs=15000]
+ * @param {number} [windowMs=3000]
  */
-export async function isProbableDuplicate(candidate, windowMs = 15_000) {
+export async function isProbableDuplicate(candidate, windowMs = 3_000) {
   const all = await readAll();
   const cutoff = Date.now() - windowMs;
   const mint = candidate.mint || null;
@@ -207,8 +205,17 @@ async function settle(signature, status, error = null) {
   await writeAll(next);
   await updateBadge(next);
   emit('pendingTxChanged', { pending: next.filter((r) => r.status === TX_STATUS.SUBMITTED) });
-  return next.find((r) => r.signature === signature) || null;
+  const settledRecord = next.find((r) => r.signature === signature) || null;
+  if (status === TX_STATUS.CONFIRMED && settledRecord) {
+    const addrs = [settledRecord.from, settledRecord.to].filter((a) => typeof a === 'string' && a);
+    if (addrs.length) {
+      getBalances(addrs).catch(() => {});
+    }
+  }
+  return settledRecord;
 }
+
+let reconciling = false;
 
 /**
  * Check every submitted record against the chain and settle whatever has resolved.
@@ -220,48 +227,54 @@ async function settle(signature, status, error = null) {
  * @returns {Promise<{ checked: number, settled: number }>}
  */
 export async function reconcile() {
-  const pending = await listPending();
-  if (!pending.length) return { checked: 0, settled: 0 };
+  if (reconciling) return { checked: 0, settled: 0 };
+  reconciling = true;
+  try {
+    const pending = await listPending();
+    if (!pending.length) return { checked: 0, settled: 0 };
 
-  let settledCount = 0;
-  const byAddress = new Map();
-  for (const record of pending) {
-    if (!record.from) continue;
-    if (!byAddress.has(record.from)) byAddress.set(record.from, []);
-    byAddress.get(record.from).push(record);
-  }
-
-  for (const [address, records] of byAddress) {
-    let history = [];
-    try {
-      history = await thruClient.listAccountHistory(address, 25);
-    } catch {
-      continue; // network down: leave records pending, do not guess
+    let settledCount = 0;
+    const byAddress = new Map();
+    for (const record of pending) {
+      if (!record.from) continue;
+      if (!byAddress.has(record.from)) byAddress.set(record.from, []);
+      byAddress.get(record.from).push(record);
     }
-    const seen = new Map(
-      history
-        .filter((entry) => entry?.signature)
-        .map((entry) => [String(entry.signature), entry]),
-    );
 
-    for (const record of records) {
-      const match = seen.get(record.signature);
-      if (match) {
-        const status = match.success === false ? TX_STATUS.FAILED : TX_STATUS.CONFIRMED;
-        await settle(record.signature, status, match.success === false ? 'Transaction failed on-chain.' : null);
-        settledCount += 1;
-      } else if (Date.now() - record.submittedAt > WATCH_TIMEOUT_MS) {
-        await settle(
-          record.signature,
-          TX_STATUS.UNKNOWN,
-          'Could not confirm this transaction. Check the explorer.',
-        );
-        settledCount += 1;
+    for (const [address, records] of byAddress) {
+      let history = [];
+      try {
+        history = await thruClient.listAccountHistory(address, 25);
+      } catch {
+        continue; // network down: leave records pending, do not guess
+      }
+      const seen = new Map(
+        history
+          .filter((entry) => entry?.signature)
+          .map((entry) => [String(entry.signature), entry]),
+      );
+
+      for (const record of records) {
+        const match = seen.get(record.signature);
+        if (match) {
+          const status = match.success === false ? TX_STATUS.FAILED : TX_STATUS.CONFIRMED;
+          await settle(record.signature, status, match.success === false ? 'Transaction failed on-chain.' : null);
+          settledCount += 1;
+        } else if (Date.now() - record.submittedAt > WATCH_TIMEOUT_MS) {
+          await settle(
+            record.signature,
+            TX_STATUS.UNKNOWN,
+            'Could not confirm this transaction. Check the explorer.',
+          );
+          settledCount += 1;
+        }
       }
     }
-  }
 
-  return { checked: pending.length, settled: settledCount };
+    return { checked: pending.length, settled: settledCount };
+  } finally {
+    reconciling = false;
+  }
 }
 
 /** Remove settled records, keeping anything still in flight. */
