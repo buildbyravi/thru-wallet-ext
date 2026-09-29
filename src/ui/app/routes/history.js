@@ -47,10 +47,25 @@ export function HistoryRoute({ back }) {
   const listHost = h('div', { class: 'list' });
   const pendingHost = h('div', { class: ['stack', 'stack-2', 'hidden'] });
   const filterRow = h('div', { class: 'row-flex wrap' });
+  const refreshIcon = icon('refresh', 14);
+  const refreshBtn = h('button', {
+    type: 'button',
+    class: 'icon-btn',
+    title: 'Refresh history',
+    'aria-label': 'Refresh history',
+  }, refreshIcon);
+  d.on(refreshBtn, 'click', () => {
+    refreshIcon.classList.add('spinning');
+    load().finally(() => setTimeout(() => refreshIcon.classList.remove('spinning'), 300));
+  });
+
   const moreHost = h('div', {});
-  // "History", matching the dashboard tile that leads here. Cards form a flat stream:
-  // a missing chain timestamp is labelled by block slot, not with a synthetic day header.
-  const header = PageHeader({ title: 'History', onBack: () => back() });
+
+  const header = PageHeader({
+    title: 'History',
+    onBack: () => back(),
+    right: refreshBtn,
+  });
 
   const el = h('section', { class: 'screen' }, [
     header.el,
@@ -328,7 +343,7 @@ export function HistoryRoute({ back }) {
         entries = cached.entries;
         cursor = cached.nextCursor ?? null;
         feedSynced = false;
-        banner.set('Showing cached activity — checking network…', 'warning');
+        refreshIcon.classList.add('spinning');
         paintList();
         paintPending();
       }
@@ -377,6 +392,7 @@ export function HistoryRoute({ back }) {
     } finally {
       if (isCurrent(seq)) {
         feedLoading = false;
+        refreshIcon.classList.remove('spinning');
         paintMore();
       }
     }
@@ -399,6 +415,13 @@ export function HistoryRoute({ back }) {
   }
 
   load();
+
+  const autoRefreshTimer = setInterval(() => {
+    if (!destroyed && !feedLoading) {
+      load();
+    }
+  }, 30_000);
+  d.add(() => clearInterval(autoRefreshTimer));
 
   d.add(
     bridge.onEvent('pendingTxChanged', ({ pending: next } = {}) => {

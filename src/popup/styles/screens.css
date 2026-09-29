@@ -1034,6 +1034,14 @@ form > .btn.text {
   gap: var(--sp-3);
 }
 
+.unlock-logo {
+  display: block;
+  width: 64px;
+  height: 64px;
+  border-radius: var(--radius-lg);
+  object-fit: contain;
+}
+
 .unlock-icon-wrap {
   display: inline-flex;
   align-items: center;

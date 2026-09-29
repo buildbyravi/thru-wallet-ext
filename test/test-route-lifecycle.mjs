@@ -4567,8 +4567,8 @@ async function historyCacheFirstTest() {
         && held.some((item) => item.message.method === 'tx.getPending')
         && held.some((item) => item.message.method === 'account.list'),
       textOf(route.el).slice(0, 280));
-    ok('cached rows are labelled stale and cannot offer load-more until the feed revalidates',
-      /cached activity.*checking network/i.test(textOf(route.el))
+    ok('cached rows are shown while revalidating and cannot offer load-more until the feed revalidates',
+      Boolean(route.el.querySelector('.spinning'))
         && buttons(route.el, /load more/i).length === 0);
     reply('tx.getHistoryFeed', { entries: [fresh], nextCursor: 15, synced: true });
     await settle();

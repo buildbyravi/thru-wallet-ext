@@ -24,7 +24,8 @@
     "storage",
     "alarms",
     "sidePanel",
-    "clipboardRead"
+    "clipboardRead",
+    "notifications"
   ],
   "side_panel": {
     "default_path": "popup.html?thru_panel=1"

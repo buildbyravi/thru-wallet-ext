@@ -33,20 +33,22 @@ export function AppShell({ navigate, onNetworkChange }) {
   }, icon('settings', 16));
   d.on(settingsBtn, 'click', () => navigate('/settings'));
 
-  const lockBtn = h('button', {
-    type: 'button',
-    class: 'icon-btn danger-hover',
-    title: 'Lock wallet',
-    'aria-label': 'Lock wallet',
-  }, icon('lock', 15));
-  d.on(lockBtn, 'click', async () => {
+  async function lockWallet() {
     try {
       await bridge.send('wallet.lock');
     } catch {
       // safe fallback
     }
     navigate('/unlock', { replace: true });
-  });
+  }
+
+  const lockBtn = h('button', {
+    type: 'button',
+    class: 'icon-btn danger-hover',
+    title: 'Lock wallet',
+    'aria-label': 'Lock wallet',
+  }, icon('lock', 15));
+  d.on(lockBtn, 'click', () => void lockWallet());
 
   // ---- Presence is activity ----------------------------------------------
   // Auto-lock is inactivity-based ("Lock after inactivity"), and someone staring at an

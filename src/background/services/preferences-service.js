@@ -32,6 +32,9 @@ const DEFAULTS = {
   hiddenTokens: [],          // [mintAddress]
   customTokens: [],          // [{ mintAddress, networkId, symbol, name, decimals, addedAt }]
 
+  // Notifications
+  desktopNotifications: true,
+
   // First-run / nagging state
   disclaimerAcknowledgedAt: null,
   backupReminderDismissedAt: null,

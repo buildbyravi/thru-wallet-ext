@@ -399,6 +399,41 @@ export function SettingsRoute({ navigate, back }) {
       sidePanelRow,
     ]));
 
+    // ---- Desktop Notifications ----
+    const notifKnob = h('span', { class: 'toggle-knob' });
+    const notifSwitch = h('button', {
+      type: 'button',
+      class: ['toggle-switch', preferences?.desktopNotifications !== false ? 'active' : null].filter(Boolean),
+      role: 'switch',
+      'aria-checked': String(preferences?.desktopNotifications !== false),
+      'aria-label': 'Desktop Notifications',
+    }, notifKnob);
+
+    d.on(notifSwitch, 'click', async () => {
+      const current = preferences?.desktopNotifications !== false;
+      const next = !current;
+      banner.clear();
+      try {
+        await bridge.send('settings.set', { patch: { desktopNotifications: next } });
+        if (!preferences) preferences = {};
+        preferences.desktopNotifications = next;
+        notifSwitch.classList.toggle('active', next);
+        notifSwitch.setAttribute('aria-checked', String(next));
+      } catch (err) {
+        banner.set(err?.message || 'Could not update notification preferences.');
+      }
+    });
+
+    const notifLabelGroup = h('div', { class: 'toggle-label-group' }, [
+      icon('bell', 18),
+      h('span', { text: 'Desktop Notifications' }),
+    ]);
+    const notifRow = h('div', { class: 'toggle-row' }, [notifLabelGroup, notifSwitch]);
+
+    body.appendChild(h('section', { class: 'stack stack-2' }, [
+      notifRow,
+    ]));
+
     // ---- Appearance ----
     const appearanceHeader = SectionHeader('Appearance');
     const appearanceHelp = HelpTooltip({
@@ -411,6 +446,26 @@ export function SettingsRoute({ navigate, back }) {
     body.appendChild(h('section', { class: 'stack stack-2' }, [
       appearanceHeader,
       h('div', { class: 'row-flex wrap' }, themeChips()),
+    ]));
+
+    // ---- Session ----
+    const lockSessionBtn = track(Button({
+      label: 'Lock wallet',
+      variant: 'secondary',
+      iconName: 'lock',
+      onClick: async () => {
+        try {
+          await bridge.send('wallet.lock');
+        } catch {
+          // safe fallback
+        }
+        navigate('/unlock', { replace: true });
+      },
+    }));
+    body.appendChild(h('section', { class: 'stack stack-2' }, [
+      SectionHeader('Session'),
+      lockSessionBtn.el,
+      h('p', { class: 'muted', text: 'Lock your wallet immediately to protect decrypted keys. Shortcut: Ctrl+L' }),
     ]));
 
     // There is deliberately NO full-wallet reset on this screen: an unlocked wallet

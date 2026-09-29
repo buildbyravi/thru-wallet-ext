@@ -32,6 +32,7 @@ import { PageHeader, Banner, Spinner } from '../../kit/feedback.js';
 import { AccountAvatar } from '../../domain/account-avatar.js';
 import { AccountPicker } from '../../domain/account-picker.js';
 import { AssetSelector } from '../../domain/asset-selector.js';
+import { TokenAvatar } from '../../domain/token-avatar.js';
 import { requirePassword } from '../../domain/password-prompt.js';
 import * as bridge from '../bridge.js';
 import { formatThru, parseThruAmount, formatTokenAmount, parseTokenAmount, truncateAddress } from '../../../shared/format.js';
@@ -120,7 +121,29 @@ export function SendRoute({ params, navigate, back }) {
     back();
   }
 
-  const header = PageHeader({ title: 'Send', onBack: () => handleBack() });
+  const refreshIcon = icon('refresh', 14);
+  const refreshBtn = h('button', {
+    type: 'button',
+    class: 'icon-btn',
+    title: 'Refresh balances',
+    'aria-label': 'Refresh balances',
+  }, refreshIcon);
+  d.on(refreshBtn, 'click', () => {
+    refreshIcon.classList.add('spinning');
+    if (account?.address) {
+      refreshNativeBalance(loadSeq, account.address);
+      refreshTokenBalances(loadSeq, account.address);
+      refreshFee(loadSeq);
+      refreshTokenList(loadSeq);
+    }
+    setTimeout(() => refreshIcon.classList.remove('spinning'), 600);
+  });
+
+  const header = PageHeader({
+    title: 'Send',
+    onBack: () => handleBack(),
+    right: refreshBtn,
+  });
   const el = h('section', { class: 'screen' }, [header.el, banner.el, body]);
 
   function clearBody() {
@@ -250,9 +273,7 @@ export function SendRoute({ params, navigate, back }) {
     if (asset.isNative) assetTitleChildren.push(h('span', { class: 'tag-native', text: 'Native' }));
     const assetBalance = h('span', { class: 'row-value', text: assetBalanceText() });
     const assetCard = h('button', { type: 'button', class: 'row clickable' }, [
-      h('div', { class: 'token-row-avatar' }, asset.isNative
-        ? icon('bolt', 15)
-        : h('span', { text: (asset.symbol || 'TOKEN').slice(0, 3).toUpperCase() })),
+      TokenAvatar({ symbol: asset.symbol, imageUrl: asset.imageUrl, isNative: asset.isNative }),
       h('span', { class: 'row-body' }, [
         h('span', { class: 'row-flex', style: { gap: '6px' } }, assetTitleChildren),
         h('span', { class: 'row-sub', text: asset.isNative ? 'Thru Native Token' : (asset.name || 'Token') }),
@@ -1240,6 +1261,15 @@ export function SendRoute({ params, navigate, back }) {
       if (!id || id !== network?.id) load();
     },
   }));
+
+  const autoRefreshTimer = setInterval(() => {
+    if (!destroyed && subView === null && account?.address) {
+      refreshNativeBalance(loadSeq, account.address);
+      refreshTokenBalances(loadSeq, account.address);
+    }
+  }, 30_000);
+  d.add(() => clearInterval(autoRefreshTimer));
+
   load();
 
   return {

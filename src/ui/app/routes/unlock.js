@@ -28,6 +28,7 @@ import { icon } from '../../kit/icon.js';
 import { Field } from '../../kit/field.js';
 import { Button } from '../../kit/button.js';
 import { Banner } from '../../kit/feedback.js';
+import { APP_ICON_URL } from '../../../shared/tokens.js';
 import * as bridge from '../bridge.js';
 import { invalidate, resolveReturnTo } from '../guards.js';
 
@@ -162,7 +163,7 @@ export function UnlockRoute({ params, navigate, knownPaths }) {
   const el = h('section', { class: 'screen' }, [
     h('div', { class: 'unlock-container' }, [
       h('div', { class: 'unlock-brand' }, [
-        h('div', { class: 'unlock-icon-wrap' }, icon('lock', 24)),
+        h('img', { src: APP_ICON_URL, width: 64, height: 64, class: 'unlock-logo', alt: 'Thru' }),
         h('h1', { text: 'Welcome back' }),
         h('p', { class: 'muted', text: 'Enter your password to unlock your wallet.' }),
       ]),

@@ -72,11 +72,12 @@ const SHAPES = {
     ['circle', { cx: 12, cy: 12, r: 3 }],
     ['path', { d: 'M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z' }],
   ],
-  refresh: [
-    ['polyline', { points: '23 4 23 10 17 10' }],
-    ['polyline', { points: '1 20 1 14 7 14' }],
-    ['path', { d: 'M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15' }],
-  ],
+  refresh: Object.assign([
+    ['path', {
+      d: 'M13.4375 6.3125H11C10.6891 6.3125 10.4375 6.06055 10.4375 5.74999C10.4375 5.43945 10.6891 5.1875 11 5.1875H11.9785C11.0959 3.94028 9.64441 3.12501 8.00002 3.12501C5.30762 3.12501 3.12502 5.30764 3.12502 7.99999C3.12502 10.6924 5.30764 12.875 8.00002 12.875C10.6924 12.875 12.875 10.6924 12.875 7.99999C12.875 7.68946 13.1265 7.43751 13.4375 7.43751C13.748 7.43751 14 7.68946 14 7.99999C14 11.3137 11.3134 14 8.00001 14C4.68652 14 2 11.3137 2 7.99999C2 4.68631 4.68652 2 8.00001 2C10.011 2 11.7872 2.99148 12.875 4.51054V3.5C12.875 3.18944 13.1265 2.9375 13.4375 2.9375C13.748 2.9375 14 3.18944 14 3.5V5.75C14 6.06055 13.748 6.3125 13.4375 6.3125Z',
+      fill: 'currentColor',
+    }],
+  ], { viewBox: '0 0 16 16', fill: 'currentColor' }),
   external: [
     ['path', { d: 'M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6' }],
     ['polyline', { points: '15 3 21 3 21 9' }],
@@ -156,6 +157,22 @@ const SHAPES = {
     ['path', { d: 'M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3' }],
     ['line', { x1: 12, y1: 17, x2: 12.01, y2: 17 }],
   ],
+  bell: [
+    ['path', { d: 'M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9' }],
+    ['path', { d: 'M13.73 21a2 2 0 0 1-3.46 0' }],
+  ],
+  pending: Object.assign([
+    ['path', {
+      d: 'M23.3665 12C23.7256 12 24.0185 12.2912 23.9991 12.6495C23.8559 15.2914 22.8419 17.819 21.1058 19.8327C19.2279 22.0108 16.6298 23.4428 13.7844 23.868C10.939 24.2932 8.03537 23.6834 5.60195 22.1496C3.16853 20.6158 1.36706 18.2599 0.525371 15.5106C-0.316314 12.7613 -0.142268 9.80146 1.01584 7.16962C2.17394 4.53778 4.23913 2.40891 6.83557 1.17044C9.432 -0.068032 12.3871 -0.333791 15.1631 0.421526C17.7295 1.11981 19.985 2.64786 21.583 4.75749C21.7997 5.0436 21.7199 5.4487 21.4223 5.64947C21.1247 5.85024 20.7221 5.77048 20.5035 5.4858C19.0813 3.63355 17.0872 2.29179 14.8215 1.67532C12.3461 1.00179 9.71099 1.23877 7.39571 2.34313C5.08043 3.4475 3.23888 5.34583 2.20618 7.69268C1.17348 10.0395 1.01828 12.6789 1.76882 15.1304C2.51936 17.582 4.12576 19.6828 6.29567 21.0505C8.46559 22.4183 11.0548 22.962 13.5921 22.5829C16.1294 22.2037 18.4461 20.9268 20.1207 18.9845C21.6534 17.2067 22.5549 14.9798 22.6966 12.6494C22.7184 12.2912 23.0074 12 23.3665 12Z',
+      fill: 'currentColor',
+    }],
+  ], { viewBox: '0 0 24 24', fill: 'currentColor' }),
+  pendingSpin: Object.assign([
+    ['path', {
+      d: 'M9.08354 0.851769C9.18588 0.913191 9.25963 1.01275 9.28856 1.12855C9.31749 1.24434 9.29924 1.36689 9.23782 1.46923C9.17639 1.57157 9.07683 1.64531 8.96103 1.67425C8.84523 1.70318 8.72268 1.68492 8.62034 1.6235C7.82899 1.1484 6.92302 0.898169 5.99999 0.899768C3.1833 0.899768 0.899999 3.18302 0.899999 5.99965C0.899999 8.81629 3.1833 11.0995 5.99999 11.0995C8.81669 11.0995 11.1 8.81628 11.1 5.99965C11.1016 5.07678 10.8515 4.17094 10.3765 3.37966C10.3461 3.32899 10.326 3.27282 10.3173 3.21437C10.3086 3.15592 10.3115 3.09633 10.3258 3.039C10.3402 2.98167 10.3657 2.92773 10.4008 2.88025C10.436 2.83277 10.4802 2.79268 10.5309 2.76227C10.5816 2.73187 10.6377 2.71175 10.6962 2.70305C10.7546 2.69435 10.8142 2.69725 10.8716 2.71158C10.9289 2.72592 10.9828 2.7514 11.0303 2.78658C11.0778 2.82176 11.1179 2.86595 11.1483 2.91662C11.7072 3.84777 12.0016 4.91366 12 5.99965C12 9.31322 9.31364 11.9995 5.99999 11.9995C2.68635 11.9995 -1.17424e-07 9.31322 -2.62268e-07 5.99965C-4.07112e-07 2.68608 2.68635 -0.000211833 5.99999 -0.000211978C7.10099 -0.000212026 8.15954 0.297231 9.08354 0.851769Z',
+      fill: 'currentColor',
+    }],
+  ], { viewBox: '0 0 12 12', fill: 'currentColor' }),
 };
 
 export const ICON_NAMES = Object.keys(SHAPES);
@@ -164,7 +181,7 @@ export const ICON_NAMES = Object.keys(SHAPES);
  * Build an icon as an SVG node.
  * @param {string} name
  * @param {number} [size=16]
- * @param {{ title?: string, className?: string }} [options]
+ * @param {{ title?: string, className?: string, viewBox?: string, fill?: string, stroke?: string, strokeWidth?: number }} [options]
  *   Pass `title` only for a standalone meaningful graphic. An icon inside a button that
  *   already has an accessible name must stay aria-hidden, or screen readers announce it
  *   twice.
@@ -174,21 +191,31 @@ export function icon(name, size = 16, options = {}) {
   const shapes = SHAPES[name];
   if (!shapes) throw new Error(`icon(): unknown icon '${name}'. Add its geometry to src/ui/kit/icon.js.`);
 
+  const hasCustomFill = Object.prototype.hasOwnProperty.call(shapes, 'fill');
+  const viewBox = options.viewBox || shapes.viewBox || '0 0 24 24';
+  const fill = options.fill || (hasCustomFill ? shapes.fill : null) || 'none';
+  const stroke = options.stroke || shapes.stroke || (hasCustomFill ? 'none' : 'currentColor');
+  const strokeWidth = options.strokeWidth ?? shapes.strokeWidth ?? (hasCustomFill ? 0 : 2);
+
   const children = shapes.map(([tag, attrs]) => h(tag, attrs));
   if (options.title) {
     children.unshift(h('title', { text: options.title }));
   }
 
-  return h('svg', {
+  const svgAttrs = {
     width: size,
     height: size,
-    viewBox: '0 0 24 24',
-    fill: 'none',
-    stroke: 'currentColor',
-    'stroke-width': 2,
-    'stroke-linecap': 'round',
-    'stroke-linejoin': 'round',
+    viewBox,
+    fill,
     class: options.className,
     ...(options.title ? { role: 'img' } : { 'aria-hidden': 'true', focusable: 'false' }),
-  }, children);
+  };
+  if (stroke !== 'none') {
+    svgAttrs.stroke = stroke;
+    svgAttrs['stroke-width'] = strokeWidth;
+    svgAttrs['stroke-linecap'] = 'round';
+    svgAttrs['stroke-linejoin'] = 'round';
+  }
+
+  return h('svg', svgAttrs, children);
 }

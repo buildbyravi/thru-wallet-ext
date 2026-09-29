@@ -18,6 +18,7 @@ import * as thruClient from '../../lib/thru-client.js';
 import { getActiveNetworkConfig, getActiveNetworkId } from './network-service.js';
 import { getNetworkConfig } from '../../lib/networks.js';
 import { scopedKey } from '../../shared/network-scope.js';
+import { getPreferences } from './preferences-service.js';
 
 // Per-network, per-address — the same scoped-key isolation as thru_balance_cache and
 // thru_pending_txs. History is not secret; it persists across locks exactly like balances.
@@ -343,6 +344,28 @@ export async function settleTransaction(signature, status, error = null, network
     }
     return { changed, value: changed };
   });
+
+  // Desktop notification if enabled
+  try {
+    if (chrome?.notifications?.create && (status === 'confirmed' || status === 'failed')) {
+      const prefs = await getPreferences().catch(() => null);
+      if (prefs?.desktopNotifications !== false) {
+        const title = status === 'confirmed' ? 'Transaction Confirmed' : 'Transaction Failed';
+        const msg = status === 'confirmed'
+          ? `Transfer confirmed on Thru (${netId}).`
+          : `Transfer failed on Thru: ${error || 'Unknown error'}`;
+        chrome.notifications.create(`thru-tx-${signature}`, {
+          type: 'basic',
+          iconUrl: 'icons/icon128.png',
+          title,
+          message: msg,
+          priority: 1,
+        });
+      }
+    }
+  } catch {
+    // Non-blocking notification
+  }
 }
 
 /**

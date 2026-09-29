@@ -97,13 +97,6 @@ export function DashboardRoute({ navigate }) {
     onResult: (err) => banner.set(err ? 'Could not copy — clipboard permission denied.' : ''),
   }));
 
-  const gasBtn = h('button', {
-    type: 'button',
-    class: 'dash-header-btn',
-    title: 'Gas / Network',
-    'aria-label': 'Gas / Network',
-  }, icon('gas', 14));
-  d.on(gasBtn, 'click', () => navigate('/settings'));
 
   // Side panel: the windowId is cached at mount, never awaited inside the click handler.
   // chrome.sidePanel.open() only runs inside a transient user gesture, and an await
@@ -179,7 +172,6 @@ export function DashboardRoute({ navigate }) {
   });
 
   const headerActions = h('div', { class: 'dash-header-actions' }, [
-    gasBtn,
     sidePanelBtn,
     settingsBtn,
     lockBtn,
