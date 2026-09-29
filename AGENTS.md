@@ -35,6 +35,7 @@ Conflict resolution: `STATUS_AND_ROADMAP.md` wins on **current engineering state
 npm install
 npm run build      # node build.mjs -> dist/
 npm test           # guards (derivation, layering, CSP, routes, launchpad quarantine, contract, dom, route lifecycle) then vault, thru-client, api-router
+node scripts/git-push.mjs  # pushes to origin using GITHUB_TOKEN in .env (avoids GCM hanging in subshells)
 ```
 
 All test suites live in `test/` (`test/test-*.mjs`); the `npm test` chain runs them by path.
@@ -43,6 +44,8 @@ Load `dist/` unpacked via `chrome://extensions` -- Developer mode -- Load unpack
 
 Run `npm run build && npm test` **before and after** every change. Never report success while either
 is red. Never weaken or skip a test to make it pass.
+
+**Git Push Invariant:** Always push using `node scripts/git-push.mjs`. The GitHub personal access token is stored in `.env` (`GITHUB_TOKEN`). Standard `git push` hangs in non-interactive agent subshells waiting for Windows GUI Git Credential Manager.
 
 ## Hard rules
 
