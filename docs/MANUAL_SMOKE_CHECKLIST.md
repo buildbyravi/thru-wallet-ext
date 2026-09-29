@@ -204,11 +204,14 @@ fails every call with "fetch failed" — that is the network, not the wallet).
    Each `scan.thru.org` link opens with `?network=betanet` and shows the transaction.
 2. Import the printed disposable creator key (Add account → Import private key). The
    dashboard shows the creator's LAB balance (1,000.000000).
-3. Tokens bar → **Add token** → paste the mint address → **Check on chain**. Symbol and
+3. Click anywhere in the balance box (or the Tokens strip) — the token drawer slides up
+   with the THRU row, the LAB row, search, and **Add custom token**. Search filters the
+   list live; Escape or Close dismisses it.
+4. **Add custom token** → paste the mint address → **Check on chain**. Symbol and
    Decimals fill from the chain ("Verified on chain"). An unknown address is refused
-   with "No token mint exists at that address."
-4. **Add to wallet** — the row joins the ledger with the on-chain balance, and a
-   "LAB added to your token list." notice appears after the refresh.
+   with "No token mint exists at that address." Then **Add to wallet** — the row joins
+   the drawer list with the on-chain balance, and a "Token added to your token list."
+   notice appears behind the drawer.
 5. Send 250.5 LAB to the recipient address the script printed. Review shows the plain
    summary (never a seed or key), and the confirmed row shows the tx. The recipient's
    balance appears after the next refresh (~6s blocks) with no action from them.

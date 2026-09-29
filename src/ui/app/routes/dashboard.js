@@ -8,32 +8,34 @@
 //        hover title explains what it does — no extra chrome for a one-line explanation)
 //        + Settings gear icon + Lock wallet button.
 //      - USD-first BalanceHero: 32px bold USD amount + frameless refresh icon + native THRU
-//        caption. No 24h delta line — this wallet has no market-data source, so a delta
-//        would be fabricated.
+//        caption + a quiet token-symbols summary line. The whole box is the token-drawer
+//        entry (Rabby's clickable balance card): click anywhere in it, or Enter/Space.
+//        No 24h delta line — this wallet has no market-data source, so a delta would be
+//        fabricated.
 //      - '1 pending' badge in header when pending transactions exist.
 //   2. 3x2 Action Panel (.dashboard-panel-grid):
 //      - 3 columns, 1px hairline gap, 88px cell height, pure white cells, hover #FDF0F1.
 //      - Row 1: Send (/send), Receive (/receive), Swap (disabled/roadmap).
 //      - Row 2: History (/history, with badge count), Security/Approvals, Faucet (/faucet).
-//   3. Token Ledger:
-//      - Section label: 'Tokens' (active, #C43A40 underline). There is deliberately no
-//        'Activity' tab here: recent transactions already have the History tile above and
-//        the full /history screen with filters, and a second, shallower copy of the same
-//        list is a dead tab.
-//      - White card container with 8px radius, border-t dividers.
-//      - Token rows: 32px token disc/logo, symbol (THRU, USDC), Betanet network badge, name, amount, USD value.
+//   3. Token strip + drawer (Rabby balance-card → token-drawer):
+//      - The TOKEN LIST lives in the drawer (src/ui/domain/token-drawer.js), opened from
+//        the balance box — "click anywhere in the box". The dashboard body keeps one quiet
+//        .token-strip row ('Tokens · N assets') where the inline ledger used to be, as the
+//        standing affordance for the same drawer.
+//      - The drawer owns search, the white ledger rows (32px token disc/logo, symbol,
+//        Betanet network badge, name, amount, USD value), and 'Add custom token' (mint
+//        verified on-chain before import).
 
 import { h, disposer } from '../../kit/dom.js';
 import { icon } from '../../kit/icon.js';
-import { CopyButton, Button } from '../../kit/button.js';
-import { Field } from '../../kit/field.js';
+import { CopyButton } from '../../kit/button.js';
 import { Banner } from '../../kit/feedback.js';
 import { AccountAvatar, AddressText } from '../../domain/account-avatar.js';
-import { AssetRow } from '../../domain/token-row.js';
 import { BalanceHero } from '../../domain/balance-hero.js';
 import { PanelItem } from '../../domain/panel-item.js';
+import { TokenDrawer } from '../../domain/token-drawer.js';
 import * as bridge from '../bridge.js';
-import { formatThru, formatTokenAmount } from '../../../shared/format.js';
+import { formatThru } from '../../../shared/format.js';
 
 /**
  * Format indicative USD value from raw base units.
@@ -54,7 +56,6 @@ export function DashboardRoute({ navigate }) {
   const owned = [];
   let account = null;
   let currentNetwork = null;
-  let assetRows = [];
   // '$0.00' until the first REAL value lands. The old default painted a fabricated
   // '$12,847.20' on first frame for every wallet, including fresh ones with a zero balance.
   let currentBalanceUsd = '$0.00';
@@ -191,6 +192,8 @@ export function DashboardRoute({ navigate }) {
   // ---- 196px Ink Header: USD-First BalanceHero ----------------------------
   const balanceHero = track(BalanceHero({
     onRefresh: () => load({ force: true }),
+    // The whole box is the token-drawer entry — Rabby's clickable balance card.
+    onOpen: () => openDrawer(),
   }));
 
   const pendingBadge = h('div', { class: 'dash-pending-badge hidden', text: '1 pending' });
@@ -254,235 +257,68 @@ export function DashboardRoute({ navigate }) {
     faucetTile.el.title = faucetAvailable ? 'Faucet' : 'Faucet unavailable on this network';
   }
 
-  // ---- Token Ledger --------------------------------------------------------
-  // One section, one tab. The former 'Activity' tab rendered a five-entry preview of the
-  // same list that /history already shows in full with filters, and it duplicated the
-  // History tile two rows up. Recent transactions belong in History; the dashboard keeps
-  // the ledger.
-  const tokensTabBtn = h('button', {
-    type: 'button',
-    class: 'dash-tab-btn active',
-    text: 'Tokens',
-  });
+  // ---- Token drawer + strip (Rabby balance-card → token-drawer) -------------
+  // The token list lives in the drawer, opened from the balance box ("click anywhere in
+  // the box") or from the quiet strip below the action panel. load() keeps a snapshot so
+  // the drawer opens instantly and repaints when balances or the registry change.
+  let drawer = null;
+  let assetsSnapshot = {
+    nativeText: '—',
+    nativeUsd: null,
+    tokens: [],
+    stale: false,
+    tokenState: null,
+  };
 
-  const tabsBar = h('div', { class: 'dash-tabs-bar' }, [tokensTabBtn]);
-
-  const tokenLedgerHost = h('div', { class: 'token-ledger' });
-
-  // ---- Add custom token ---------------------------------------------------
-  // Before this, a token only existed in this wallet if THIS wallet deployed it — the
-  // token.import API had no UI at all. "Add custom token" is the MetaMask flow: paste the
-  // mint (contract) address, the chain verifies it and supplies the real decimals, then the
-  // record joins the ledger. Decimals are read from the chain on purpose: sends burn base
-  // units of the actual decimals, so free-typed metadata corrupts amounts (a wrong-decimals
-  // custom token is worse than no token).
-  let addTokenOpen = false;
-  let checking = false;
-  let submitting = false;
-  let lookup = null;
-
-  function setAddTokenOpen(open, { reset = false } = {}) {
-    addTokenOpen = Boolean(open);
-    addTokenPanel.hidden = !addTokenOpen;
-    addTokenBtn.setAttribute('aria-expanded', String(addTokenOpen));
-    if (!addTokenOpen && reset) {
-      for (const f of [mintField, symbolField, nameField, decimalsField]) {
-        f.value = '';
-        f.setError('');
-      }
-      lookup = null;
-      addBtn.el.disabled = true;
-      addTokenHint.textContent = '';
-    }
-    if (addTokenOpen) mintField.focus();
-  }
-
-  async function checkMint() {
-    const mint = mintField.value.trim();
-    if (!mint || checking) return;
-    checking = true;
-    checkBtn.setBusy(true);
-    mintField.setError('');
-    try {
-      const info = await bridge.send('token.readMint', { mintAddress: mint });
-      if (!info || info.exists === false) {
-        lookup = null;
-        addBtn.el.disabled = true;
-        mintField.setError('No token mint exists at that address.');
-        addTokenHint.textContent = '';
-        return;
-      }
-      lookup = info;
-      symbolField.value = info.ticker || '';
-      if (!nameField.value.trim()) nameField.value = info.ticker || '';
-      decimalsField.value = String(info.decimals ?? '');
-      addTokenHint.textContent = `Verified on chain · ${info.decimals} decimals · supply ${info.supply ?? '—'}.`;
-      addBtn.el.disabled = false;
-    } catch (err) {
-      lookup = null;
-      addBtn.el.disabled = true;
-      addTokenHint.textContent = '';
-      mintField.setError(err?.message || 'Could not read that address from the chain.');
-    } finally {
-      checking = false;
-      checkBtn.setBusy(false);
-    }
-  }
-
-  async function submitAdd() {
-    const mint = mintField.value.trim();
-    const symbol = symbolField.value.trim();
-    const name = nameField.value.trim();
-    const decimals = Number(decimalsField.value.trim());
-    if (!mint || submitting) return;
-    symbolField.setError('');
-    decimalsField.setError('');
-    if (!lookup || lookup.exists === false) {
-      mintField.setError('Check the address on-chain first.');
-      return;
-    }
-    if (!symbol) {
-      symbolField.setError('Symbol is required.');
-      return;
-    }
-    if (!Number.isInteger(decimals) || decimals < 0 || decimals > 18) {
-      decimalsField.setError('Use a whole number 0–18.');
-      return;
-    }
-    submitting = true;
-    addBtn.setBusy(true);
-    try {
-      await bridge.send('token.import', {
-        mintAddress: mint, symbol, name: name || symbol, decimals,
-      });
-      setAddTokenOpen(false, { reset: true });
-      await load({ force: true });
-      // After load(): it clears the banner first (every load starts fresh), so the success
-      // notice would vanish if it were set before the refresh.
-      banner.set(`${symbol} added to your token list.`, 'info');
-    } catch (err) {
-      mintField.setError(err?.message || 'Could not save that token.');
-    } finally {
-      submitting = false;
-      addBtn.setBusy(false);
-    }
-  }
-
-  // Named handler so destroy() can removeEventListener it — a raw h() on:{} listener that
-  // outlives the route is exactly the detached-listener leak the teardown sweeps reject.
-  const onAddTokenClick = () => setAddTokenOpen(!addTokenOpen);
-  const addTokenBtn = h('button', {
-    type: 'button',
-    class: 'dash-add-token',
-    title: 'Add custom token by mint (contract) address',
-    'aria-expanded': 'false',
-    on: { click: onAddTokenClick },
-  }, [icon('plus'), h('span', { text: 'Add token' })]);
-  tabsBar.appendChild(addTokenBtn);
-
-  const mintField = Field({
-    label: 'Token mint (contract address)',
-    placeholder: 'ta… mint address',
-    hint: 'Verified against the chain before adding.',
-    onInput: () => {
-      lookup = null;
-      addBtn.el.disabled = true;
-    },
-    onEnter: () => { void checkMint(); },
-  });
-  const symbolField = Field({ label: 'Symbol', maxLength: 12, placeholder: 'e.g. LAB' });
-  const nameField = Field({ label: 'Name', maxLength: 48, placeholder: 'Token name (optional)' });
-  const decimalsField = Field({
-    label: 'Decimals',
-    inputMode: 'numeric',
-    maxLength: 2,
-    hint: 'Filled from the chain on lookup.',
-  });
-  const checkBtn = Button({ label: 'Check on chain', onClick: () => { void checkMint(); } });
-  const addBtn = Button({ label: 'Add to wallet', primary: true, onClick: () => { void submitAdd(); } });
-  addBtn.el.disabled = true;
-  const cancelBtn = Button({
-    label: 'Cancel',
-    variant: 'text',
-    onClick: () => setAddTokenOpen(false, { reset: true }),
-  });
-  const addTokenHint = h('p', { class: 'add-token-hint', text: '' });
-
-  const addTokenPanel = h('div', { class: 'add-token-panel', hidden: true }, [
-    mintField.el,
-    addTokenHint,
-    checkBtn.el,
-    symbolField.el,
-    nameField.el,
-    decimalsField.el,
-    h('div', { class: 'add-token-actions' }, [addBtn.el, cancelBtn.el]),
-  ]);
-
-  owned.push(
-    { destroy: () => addTokenBtn.removeEventListener('click', onAddTokenClick) },
-    mintField, symbolField, nameField, decimalsField, checkBtn, addBtn, cancelBtn,
-  );
-
-  function disposeAssets() {
-    for (const row of assetRows) row.destroy();
-    assetRows = [];
-    while (tokenLedgerHost.firstChild) tokenLedgerHost.removeChild(tokenLedgerHost.firstChild);
-  }
-
-  function renderAssets(nativeText, tokens, stale, tokenState) {
-    disposeAssets();
-
-    const netName = currentNetwork?.label || currentNetwork?.id || 'Betanet';
-
-    // Native THRU row. No changePercent: there is no 24h data source, so any percentage
-    // here would be fabricated market data.
-    assetRows.push(AssetRow({
-      symbol: 'THRU',
-      name: 'Thru Native Token',
-      balanceText: nativeText,
-      usdValue: currentBalanceUsd,
-      network: netName,
-      isNative: true,
+  function updateAssets(nativeText, tokens, stale, tokenState) {
+    assetsSnapshot = {
+      nativeText,
+      nativeUsd: currentBalanceUsd,
+      tokens: tokens || [],
       stale,
-    }));
-
-    const allTokens = [...(tokens || [])];
-    // If no deployed tokens, offer USDC row for full Rabby token ledger preview
-    if (!allTokens.some((t) => t.symbol === 'USDC')) {
-      allTokens.push({
-        symbol: 'USDC',
-        name: 'USD Coin',
-        decimals: 6,
-        isSample: true,
-      });
-    }
-
-    for (const token of allTokens) {
-      if (token.hidden) continue;
-      const state = tokenState?.get(token.mintAddress);
-      let balanceText = null;
-      if (token.isSample) {
-        balanceText = '0.00 USDC';
-      } else if (state && state.error !== true && state.amountUnits != null) {
-        const decimals = Number.isInteger(state.decimals) ? state.decimals
-          : (Number.isInteger(token.decimals) ? token.decimals : 0);
-        balanceText = `${formatTokenAmount(BigInt(state.amountUnits), decimals)} ${token.symbol || 'TOKEN'}`;
-      } else if (state && state.error !== true && state.tokenAccountExists === false) {
-        balanceText = `0 ${token.symbol || 'TOKEN'}`;
-      }
-      assetRows.push(AssetRow({
-        symbol: token.symbol,
-        name: token.name,
-        balanceText,
-        network: netName,
-        mintAddress: token.mintAddress,
-        imageUrl: token.imageUrl,
-        usdValue: '$0.00',
-      }));
-    }
-
-    for (const row of assetRows) tokenLedgerHost.appendChild(row.el);
+      tokenState,
+    };
+    // The balance box summarizes what the drawer holds — REAL symbols only. The sample
+    // USDC preview row is not a holding and must never appear beside real balances.
+    const realTokens = assetsSnapshot.tokens.filter((t) => !t.hidden && !t.isSample);
+    balanceHero.update({
+      summary: ['THRU', ...realTokens.map((t) => t.symbol)].join(' · '),
+    });
+    stripCount.textContent = realTokens.length === 0
+      ? 'THRU only'
+      : `${realTokens.length + 1} assets`;
+    drawer?.update(assetsSnapshot);
   }
+
+  function openDrawer() {
+    if (drawer) return;
+    drawer = TokenDrawer({
+      assets: assetsSnapshot,
+      networkLabel: currentNetwork?.label || currentNetwork?.id || 'Betanet',
+      onReadMint: (mintAddress) => bridge.send('token.readMint', { mintAddress }),
+      onImportToken: (params) => bridge.send('token.import', params),
+      onChanged: async () => {
+        await load({ force: true });
+        // After load(): it clears the banner first (every load starts fresh), so the
+        // success notice would vanish if it were set before the refresh.
+        banner.set('Token added to your token list.', 'info');
+      },
+      onClose: () => { drawer = null; },
+    });
+  }
+
+  const stripCount = h('span', { class: 'token-strip-count', text: 'THRU only' });
+  const tokenStrip = h('button', {
+    type: 'button',
+    class: 'token-strip',
+    'aria-label': 'Open token list',
+  }, [
+    icon('coins', 14),
+    h('span', { class: 'token-strip-label', text: 'Tokens' }),
+    stripCount,
+    icon('chevronRight', 12),
+  ]);
+  d.on(tokenStrip, 'click', () => openDrawer());
 
   // ---- Pending Transactions ------------------------------------------------
   let pendingPollTimer = null;
@@ -570,7 +406,7 @@ export function DashboardRoute({ navigate }) {
           usd: currentBalanceUsd,
           native: formatted,
         });
-        renderAssets(formatted, [], entry.stale);
+        updateAssets(formatted, [], entry.stale, null);
       }
     } catch {
       // cache miss is not an error
@@ -620,7 +456,7 @@ export function DashboardRoute({ navigate }) {
     const tokenState = tokenBalancesResult.status === 'fulfilled'
       ? new Map((tokenBalancesResult.value?.balances || []).map((b) => [b.mintAddress, b]))
       : null;
-    renderAssets(nativeText, tokens,
+    updateAssets(nativeText, tokens,
       infoResult.status === 'rejected' || infoResult.value?.stale === true, tokenState);
 
     if (pendingResult.status === 'fulfilled') {
@@ -637,9 +473,7 @@ export function DashboardRoute({ navigate }) {
     dashHeader,
     banner.el,
     actionPanel,
-    tabsBar,
-    addTokenPanel,
-    tokenLedgerHost,
+    tokenStrip,
   ]);
 
   load();
@@ -653,7 +487,7 @@ export function DashboardRoute({ navigate }) {
         // it is UNKNOWN, not a zero the dashboard may display as a new balance.
         balanceHero.update({ usd: '—', native: 'Balance unavailable' });
         currentBalanceUsd = '—';
-        assetRows[0]?.setBalance(null, true, '—');
+        updateAssets('Balance unavailable', assetsSnapshot.tokens, true, assetsSnapshot.tokenState);
         return;
       }
       const raw = BigInt(entry.balance || '0');
@@ -663,7 +497,7 @@ export function DashboardRoute({ navigate }) {
         usd: currentBalanceUsd,
         native: formatted,
       });
-      if (assetRows[0]) assetRows[0].setBalance(formatted, entry.stale, currentBalanceUsd);
+      updateAssets(formatted, assetsSnapshot.tokens, entry.stale, assetsSnapshot.tokenState);
     }),
     bridge.onEvent('accountsChanged', () => load()),
     bridge.onEvent('pendingTxChanged', ({ pending } = {}) => renderPending(pending)),
@@ -674,7 +508,8 @@ export function DashboardRoute({ navigate }) {
     el,
     destroy() {
       stopPendingPoll();
-      disposeAssets();
+      drawer?.destroy();
+      drawer = null;
       for (const c of owned) c.destroy?.();
       owned.length = 0;
       banner.destroy();

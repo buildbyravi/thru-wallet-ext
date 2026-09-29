@@ -2668,7 +2668,7 @@ async function createFlowBackupTest() {
   await settle();
 }
 
-// ---- Add custom token: paste a mint, verified on chain, then it joins the ledger ----
+// ---- Add custom token: paste a mint, verified on chain, then it joins the drawer ----
 {
   section('assets: Add custom token (paste a mint, verified on chain)');
 
@@ -2678,50 +2678,140 @@ async function createFlowBackupTest() {
   const router = await boot({ root: DOC.getElementById('app') });
   await settle();
 
-  click(buttons(router.root, /add token/i)[0]);
+  click(router.root.querySelector('.dash-balance-hero'));
   await settle();
-  const opened = textOf(router.root);
-  ok('the add-token panel opens from the Tokens bar', opened.includes('Token mint (contract address)'), opened.slice(0, 160));
-  ok('the panel states the address is verified first',
+  const drawerCard = () => allElements(DOC.body).find((el) => el.classList?.contains?.('token-drawer'));
+  ok('the drawer opens from the balance box', Boolean(drawerCard()), 'no .token-drawer in document.body');
+
+  click(buttons(drawerCard(), /add custom token/i)[0]);
+  await settle();
+  const opened = textOf(drawerCard());
+  ok('the add-token form opens inside the drawer', opened.includes('Token mint (contract address)'), opened.slice(0, 160));
+  ok('the form states the address is verified first',
     opened.includes('Verified against the chain before adding.'));
 
-  const panelInputs = () => allElements(router.root).filter((el) => el.localName === 'input');
-  const mintInput = panelInputs().find((el) =>
-    String(el.getAttribute?.('placeholder') || el.placeholder || '').includes('mint address'))
-    || panelInputs()[0];
-  ok('the mint field is the first control', Boolean(mintInput), 'mint input not found');
+  const drawerInputs = () => allElements(drawerCard()).filter((el) => el.localName === 'input');
+  // Not `.includes('mint address')`: the SEARCH field's placeholder ("Symbol, name, or mint
+  // address") contains that substring too and would swallow the mint input.
+  const mintInput = drawerInputs().find((el) => {
+    const ph = String(el.getAttribute?.('placeholder') || el.placeholder || '');
+    return ph.includes('mint address') && !ph.includes('Symbol');
+  });
+  ok('the mint field is found by its placeholder', Boolean(mintInput), 'mint input not found');
 
   // An unknown address is refused BEFORE import — the whole point of the chain lookup.
   type(mintInput, 'ta1notamint00000000000000000000000000000000');
-  click(buttons(router.root, /check on chain/i)[0]);
+  click(buttons(drawerCard(), /check on chain/i)[0]);
   await settle();
   ok('an unknown address is refused before import',
-    textOf(router.root).includes('No token mint exists at that address.'));
+    textOf(drawerCard()).includes('No token mint exists at that address.'));
 
   // The verified lookup fills symbol and DECIMALS from the chain, not from the user.
   type(mintInput, CUSTOM_MINT_FIXTURE);
-  click(buttons(router.root, /check on chain/i)[0]);
+  click(buttons(drawerCard(), /check on chain/i)[0]);
   await settle();
-  const inputsAfter = allElements(router.root).filter((el) => el.localName === 'input');
+  const inputsAfter = drawerInputs();
   ok('the lookup fills symbol from the chain',
     inputsAfter.some((el) => el.value === 'LAB'), inputsAfter.map((el) => el.value).join('|'));
   ok('the lookup fills decimals from the chain',
     inputsAfter.some((el) => el.value === '6'), inputsAfter.map((el) => el.value).join('|'));
-  ok('the panel reports the verified read', textOf(router.root).includes('Verified on chain'));
+  ok('the drawer reports the verified read', textOf(drawerCard()).includes('Verified on chain'));
 
-  click(buttons(router.root, /add to wallet/i)[0]);
+  click(buttons(drawerCard(), /add to wallet/i)[0]);
   await settle();
   ok('the import confirms in a notice', textOf(router.root).includes('added to your token list'));
-  // textOf() reads every text node including hidden ones — assert the panel's hidden state,
+  // textOf() reads every text node including hidden ones — assert the form's hidden state,
   // not the absence of its copy.
-  const panelEl = allElements(router.root).find((el) => el.classList?.contains?.('add-token-panel'));
-  ok('the panel closes after a successful import',
+  const panelEl = allElements(drawerCard()).find((el) => el.classList?.contains?.('add-token-panel'));
+  ok('the form closes after a successful import',
     panelEl?.hidden === true, `panel.hidden=${panelEl?.hidden}`);
-  ok('the imported token joins the token ledger',
-    textOf(router.root).includes('LAB'), textOf(router.root).slice(0, 200));
+  ok('the imported token joins the drawer list',
+    textOf(drawerCard()).includes('LAB'), textOf(drawerCard()).slice(0, 200));
+
+  click(buttons(drawerCard(), /^close$/i)[0]);
+  await settle();
+  ok('the drawer closes and leaves no document keydown listener',
+    !allElements(DOC.body).some((el) => el.classList?.contains?.('token-drawer'))
+      && DOC.listeners.filter((l) => l.type === 'keydown').length === 0);
 
   router.stop();
   await settle();
+}
+
+// ---- Token drawer: the box opens it, search filters, teardown is clean ----
+{
+  section('tokens: the balance box opens the token drawer (Rabby-style)');
+
+  resetBackend(SCENARIOS[2]);
+  resetDom();
+  guards.invalidate();
+  const router = await boot({ root: DOC.getElementById('app') });
+  await settle();
+
+  const heroBox = router.root.querySelector('.dash-balance-hero');
+  ok('the balance box is a keyboard-operable control',
+    heroBox?.getAttribute('role') === 'button' && heroBox?.getAttribute('tabindex') === '0'
+      && (heroBox?.getAttribute('aria-label') || '').length > 0,
+    `role=${heroBox?.getAttribute('role')} tabindex=${heroBox?.getAttribute('tabindex')}`);
+  ok('the dashboard body keeps a quiet strip and no inline ledger',
+    Boolean(router.root.querySelector('.token-strip'))
+      && allElements(router.root).every((el) => !el.classList?.contains?.('token-ledger')));
+
+  // Click anywhere in the box → the drawer lists the assets.
+  click(heroBox);
+  await settle();
+  const drawerCard = () => allElements(DOC.body).find((el) => el.classList?.contains?.('token-drawer'));
+  ok('clicking the box opens the token drawer', Boolean(drawerCard()));
+  ok('the drawer lists the native row', textOf(drawerCard()).includes('Thru Native Token'),
+    textOf(drawerCard()).slice(0, 160));
+  ok('the drawer lists the registered token', textOf(drawerCard()).includes('SMK'));
+
+  // Search narrows the list live.
+  const searchInput = allElements(drawerCard()).find((el) =>
+    el.localName === 'input' && String(el.getAttribute?.('placeholder') || '').includes('Symbol'));
+  ok('the drawer has a search field', Boolean(searchInput), 'search input not found');
+  type(searchInput, 'smk');
+  await settle();
+  ok('search narrows the list to the matching token',
+    textOf(drawerCard()).includes('SMK') && !textOf(drawerCard()).includes('Thru Native Token'),
+    textOf(drawerCard()).slice(0, 200));
+  type(searchInput, 'zzz');
+  await settle();
+  ok('an empty search result is stated, not left blank',
+    textOf(drawerCard()).includes('No tokens match'), textOf(drawerCard()).slice(0, 200));
+  type(searchInput, '');
+  await settle();
+
+  // Escape closes and releases the document keydown listener (the P2 rule).
+  pressKey(drawerCard(), 'Escape');
+  await settle();
+  ok('Escape closes the drawer',
+    !allElements(DOC.body).some((el) => el.classList?.contains?.('token-drawer')));
+  ok('the drawer released its document keydown listener',
+    DOC.listeners.filter((l) => l.type === 'keydown').length === 0,
+    String(DOC.listeners.filter((l) => l.type === 'keydown').length));
+
+  // The strip is the second affordance; Close closes too.
+  click(buttons(router.root, /open token list/i)[0]);
+  await settle();
+  ok('the Tokens strip opens the same drawer', Boolean(drawerCard()));
+  click(buttons(drawerCard(), /^close$/i)[0]);
+  await settle();
+  ok('the Close button closes the drawer',
+    !allElements(DOC.body).some((el) => el.classList?.contains?.('token-drawer')));
+
+  // Keyboard path: Enter on the focused box opens the drawer.
+  pressKey(heroBox, 'Enter');
+  await settle();
+  ok('Enter on the balance box opens the drawer', Boolean(drawerCard()));
+  pressKey(drawerCard(), 'Escape');
+  await settle();
+
+  router.stop();
+  await settle();
+  ok('dashboard teardown leaves no drawer and no detached listeners',
+    !allElements(DOC.body).some((el) => el.classList?.contains?.('token-drawer'))
+      && detachedListeners().length === 0, JSON.stringify(detachedListeners().slice(0, 3)));
 }
 
 // ---- Source-level guards ---------------------------------------------------
@@ -3046,13 +3136,20 @@ async function navigationTest() {
   ok('the dashboard copy button wears the shared dash-header-btn treatment',
     dashCopy?.classList?.contains('dash-header-btn'), dashCopy?.className);
 
-  // The "Activity" tab duplicated the History tile two rows up and the full /history
-  // screen; only "Tokens" remains on the ledger.
+  // The token list moved into the Rabby-style drawer (opened from the balance box); the
+  // dashboard body has no inline ledger and no tabs bar — only a quiet Tokens strip.
   const dashTabs = allElements(app).filter((el) => el.classList?.contains?.('dash-tab-btn'));
-  ok('the dashboard token ledger has exactly one tab', dashTabs.length === 1,
-    dashTabs.map((t) => t.textContent).join(', '));
-  ok('the single dashboard tab is Tokens (no Activity tab)',
-    /^tokens$/i.test(dashTabs[0]?.textContent || ''), dashTabs[0]?.textContent);
+  ok('the dashboard has no inline ledger tab bar (the list lives in the drawer)',
+    dashTabs.length === 0, dashTabs.map((t) => t.textContent).join(', '));
+  ok('the dashboard body carries no inline token ledger',
+    allElements(app).every((el) => !el.classList?.contains?.('token-ledger')));
+  const heroBox = app.querySelector?.('.dash-balance-hero');
+  ok('the balance box is the drawer opener (role=button, tabindex, label)',
+    heroBox?.getAttribute('role') === 'button' && heroBox?.getAttribute('tabindex') === '0'
+      && (heroBox?.getAttribute('aria-label') || '').length > 0,
+    `role=${heroBox?.getAttribute('role')} tabindex=${heroBox?.getAttribute('tabindex')}`);
+  ok('a quiet Tokens strip is the standing drawer affordance',
+    Boolean(app.querySelector?.('.token-strip')));
 
   // No fabricated numbers: the old first paint showed a placeholder "$12,847.20" balance
   // and a static "+2.14%" 24h delta that no load() path ever updated.
