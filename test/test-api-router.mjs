@@ -351,6 +351,51 @@ try {
   assert.match(sent.data.signature, /^ts[A-Za-z0-9_-]+$/);
   assert.equal(storage.get('thru_pending_txs::betanet')?.[0].signature, sent.data.signature,
     'the signature is already recorded before the UI receives it');
+  assert.equal(storage.get('thru_history_cache::betanet')?.[res2.data.address]?.entries?.[0]?.signature, sent.data.signature,
+    'the signature is immediately recorded in local history cache');
+
+  // Duplicate check detects the in-flight/recent transfer
+  const dupCheck = await handleApiRequest({
+    method: 'tx.checkDuplicate',
+    params: {
+      toAddress: accountsList[1].address,
+      amountUnits: '1',
+      fromAddress: res2.data.address,
+    },
+  });
+  assert.equal(dupCheck.ok, true);
+  assert.equal(dupCheck.data.isDuplicate, true, 'repeated transfer is detected');
+
+  // Attempting duplicate send without allowDuplicate throws DUPLICATE_SUBMISSION
+  const dupSend = await handleApiRequest({
+    method: 'tx.sendChecked',
+    params: {
+      toAddress: accountsList[1].address,
+      amountUnits: '1',
+      fromAddress: res2.data.address,
+      networkId: 'betanet',
+      allowDuplicate: false,
+    },
+  });
+  assert.equal(dupSend.ok, false);
+  assert.equal(dupSend.error.code, 'DUPLICATE_SUBMISSION');
+
+  // Reset accounts.get mock so second send does not block on previous balance refresh
+  releasePostSendBalance?.();
+  sdkForSend.accounts.get = () => Promise.resolve({ meta: { balance: 100n } });
+
+  // Attempting duplicate send WITH allowDuplicate succeeds
+  const dupSendAllowed = await handleApiRequest({
+    method: 'tx.sendChecked',
+    params: {
+      toAddress: accountsList[1].address,
+      amountUnits: '1',
+      fromAddress: res2.data.address,
+      networkId: 'betanet',
+      allowDuplicate: true,
+    },
+  });
+  assert.equal(dupSendAllowed.ok, true, dupSendAllowed.error?.message);
 } finally {
   releasePostSendBalance?.();
   sdkForSend.accounts.get = beforeGet;

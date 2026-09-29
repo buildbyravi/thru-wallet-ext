@@ -752,6 +752,7 @@ export function SendRoute({ params, navigate, back }) {
   // ---- Step 2: review ----------------------------------------------------
   function renderReview(to, amountText) {
     clearBody();
+    subView = 'review';
     header.setTitle('Confirm send');
 
     const symbol = asset.isNative ? 'THRU' : (asset.symbol || 'TOKEN');
@@ -825,17 +826,42 @@ export function SendRoute({ params, navigate, back }) {
 
     body.appendChild(h('div', { class: 'detail-table' }, rows));
 
-    // The confirm control is `accent`, not `primary`. The legacy global Enter handler clicked the
-    // first enabled .btn.primary in the visible screen, which on this step was Sign & Broadcast.
-    // Nothing on this step is .btn.primary, and this route registers no Enter handler here, so
-    // broadcasting requires a deliberate click.
+    // Repeated transaction warning & 2nd confirmation (Rabby pattern)
+    let isRepeatConfirmed = false;
+    let isRepeatDetected = false;
+
+    const repeatWarnBox = h('div', { class: ['notice', 'warning', 'hidden'] });
+    const repeatWarningText = h('p', { class: 'hint', text: '' });
+    const repeatCheckbox = h('input', {
+      type: 'checkbox',
+      id: 'send-repeat-confirm-check',
+    });
+    const repeatCheckboxLabel = h('label', {
+      for: 'send-repeat-confirm-check',
+      class: 'checkbox-field',
+    }, [
+      repeatCheckbox,
+      h('span', { text: 'I understand this is a repeated transfer and want to proceed.' }),
+    ]);
+
+    repeatWarnBox.appendChild(repeatWarningText);
+    repeatWarnBox.appendChild(repeatCheckboxLabel);
+    body.appendChild(repeatWarnBox);
+
     const confirmBtn = track(Button({
       label: 'Sign & send',
       variant: 'accent',
       iconName: 'send',
       busyLabel: 'Sending…',
-      onClick: () => submit(to, confirmBtn, editBtn),
+      onClick: () => submit(to, confirmBtn, editBtn, isRepeatConfirmed),
     }));
+
+    viewDisposer.on(repeatCheckbox, 'change', () => {
+      isRepeatConfirmed = Boolean(repeatCheckbox.checked);
+      if (isRepeatDetected) {
+        confirmBtn.update({ disabled: !isRepeatConfirmed });
+      }
+    });
 
     const editBtn = track(Button({
       label: 'Edit',
@@ -846,10 +872,29 @@ export function SendRoute({ params, navigate, back }) {
     }));
 
     body.appendChild(h('div', { class: 'screen-actions' }, [confirmBtn.el, editBtn.el]));
+
+    // Check duplicate asynchronously
+    bridge.send('tx.checkDuplicate', {
+      toAddress: to,
+      amountUnits: amountUnits.toString(),
+      mintAddress: asset.mintAddress || null,
+      fromAddress: account.address,
+    }).then((dup) => {
+      if (dup?.isDuplicate && !destroyed && subView === 'review') {
+        isRepeatDetected = true;
+        repeatWarnBox.classList.remove('hidden');
+        const timing = dup.isPending
+          ? 'is currently pending on-chain'
+          : `was submitted ${dup.elapsedMs ? Math.round(dup.elapsedMs / 1000) : 'a few'}s ago`;
+        repeatWarningText.textContent = `⚠️ Repeated transfer: An identical transfer of this amount to this recipient ${timing}.`;
+        banner.set('Repeated transfer detected. Confirm below to proceed.', 'warning');
+        confirmBtn.update({ disabled: !isRepeatConfirmed });
+      }
+    }).catch(() => {});
   }
 
   // ---- Step 3: submit ----------------------------------------------------
-  async function submit(to, confirmBtn, editBtn) {
+  async function submit(to, confirmBtn, editBtn, allowDuplicate = false) {
     if (submitting) return;
     submitting = true;
     confirmBtn?.setBusy?.(true);
@@ -870,9 +915,9 @@ export function SendRoute({ params, navigate, back }) {
     try {
       const method = reviewed.asset.isNative ? 'tx.sendChecked' : 'token.transferChecked';
       const params = reviewed.asset.isNative
-        ? { toAddress: to, amountUnits: reviewed.amountUnits.toString() }
+        ? { toAddress: to, amountUnits: reviewed.amountUnits.toString(), allowDuplicate: Boolean(allowDuplicate) }
         : { mintAddress: reviewed.asset.mintAddress, toAddress: to,
-          amountUnits: reviewed.amountUnits.toString() };
+          amountUnits: reviewed.amountUnits.toString(), allowDuplicate: Boolean(allowDuplicate) };
       params.fromAddress = reviewed.fromAddress;
       params.networkId = reviewed.network.id;
       const symbol = reviewed.asset.isNative ? 'THRU' : (reviewed.asset.symbol || 'TOKEN');

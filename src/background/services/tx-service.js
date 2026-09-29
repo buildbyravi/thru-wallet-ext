@@ -92,7 +92,7 @@ export async function claimFaucet(amountUnits) {
  * @param {string} toAddress
  * @param {string|number|bigint} amountUnits
  */
-export async function sendTransfer(toAddress, amountUnits, expected = null) {
+export async function sendTransfer(toAddress, amountUnits, expected = null, { allowDuplicate = false } = {}) {
   const target = String(toAddress || '').trim();
   if (!thruClient.isValidThruAddress(target)) {
     throw new Error('That does not look like a valid Thru address.');
@@ -122,12 +122,15 @@ export async function sendTransfer(toAddress, amountUnits, expected = null) {
   try {
     await assertWhitelisted(target);
 
-    if (await pending.isProbableDuplicate({
+    if (!allowDuplicate && await pending.isProbableDuplicate({
       from: feePayer.address,
       to: target,
       amountUnits: rawUnits.toString(),
     })) {
-      const err = new Error('The same transfer — same amount and same recipient — was just submitted. Check Activity before sending again.');
+      const err = new Error(
+        'A transfer with the same amount and recipient is still pending or was submitted within the last 30 seconds. '
+        + 'Confirm if you intend to repeat this transfer.',
+      );
       err.code = 'DUPLICATE_SUBMISSION';
       throw err;
     }
@@ -175,8 +178,27 @@ export async function sendTransfer(toAddress, amountUnits, expected = null) {
 }
 
 /** Contract v11: same transfer, but bound to the account and network the user reviewed. */
-export function sendTransferChecked({ toAddress, amountUnits, fromAddress, networkId } = {}) {
-  return sendTransfer(toAddress, amountUnits, { fromAddress, networkId });
+export function sendTransferChecked({ toAddress, amountUnits, fromAddress, networkId, allowDuplicate = false } = {}) {
+  return sendTransfer(toAddress, amountUnits, { fromAddress, networkId }, { allowDuplicate: Boolean(allowDuplicate) });
+}
+
+/**
+ * Query whether an identical transfer is currently pending or was recently submitted.
+ *
+ * @param {{ toAddress: string, amountUnits: string, mintAddress?: string, fromAddress?: string }} params
+ */
+export async function checkDuplicate({ toAddress, amountUnits, mintAddress = null, fromAddress = null } = {}) {
+  const target = String(toAddress || '').trim();
+  const feePayer = fromAddress ? { address: fromAddress } : await vault.getActiveAccount().catch(() => null);
+  if (!feePayer?.address || !target || !amountUnits) {
+    return { isDuplicate: false, isPending: false, elapsedMs: null, signature: null };
+  }
+  return pending.getDuplicateInfo({
+    from: feePayer.address,
+    to: target,
+    amountUnits: String(amountUnits),
+    mint: mintAddress || null,
+  });
 }
 
 /**

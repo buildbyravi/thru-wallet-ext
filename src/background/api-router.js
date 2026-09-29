@@ -157,6 +157,7 @@ const handlers = Object.assign(Object.create(null), {
   'tx.clearSettled': () => pendingTxService.clearSettled(),
   'tx.estimateFee': ({ toAddress, amountUnits }) => txService.estimateFee({ toAddress, amountUnits }),
   'tx.simulate': ({ toAddress, amountUnits }) => txService.simulate({ toAddress, amountUnits }),
+  'tx.checkDuplicate': (params) => txService.checkDuplicate(params),
 
   // ---- Tokens and launchpad --------------------------------------------
   'token.deploy': (params) => tokenService.deployToken(params),

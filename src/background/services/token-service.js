@@ -251,7 +251,7 @@ export async function readRegisteredTokenBalances(owner, registry, {
  * @param {string} params.toAddress
  * @param {string|number|bigint} params.amountUnits raw units of the mint
  */
-export async function transferToken({ mintAddress, toAddress, amountUnits }, expected = null) {
+export async function transferToken({ mintAddress, toAddress, amountUnits, allowDuplicate = false }, expected = null) {
   const mint = String(mintAddress || '').trim();
   if (!thruClient.isValidThruAddress(mint)) {
     throw new Error('That does not look like a valid token mint address.');
@@ -283,13 +283,16 @@ export async function transferToken({ mintAddress, toAddress, amountUnits }, exp
   try {
     await assertWhitelisted(target);
 
-    if (await pending.isProbableDuplicate({
+    if (!allowDuplicate && await pending.isProbableDuplicate({
       from: feePayer.address,
       to: target,
       amountUnits: rawUnits.toString(),
       mint,
     })) {
-      const err = new Error('The same transfer — same amount and same recipient — was just submitted. Check Activity before sending again.');
+      const err = new Error(
+        'A token transfer with the same amount and recipient is still pending or was submitted within the last 30 seconds. '
+        + 'Confirm if you intend to repeat this transfer.',
+      );
       err.code = 'DUPLICATE_SUBMISSION';
       throw err;
     }
@@ -343,8 +346,8 @@ export async function transferToken({ mintAddress, toAddress, amountUnits }, exp
 }
 
 /** Contract v11: bind a token transfer to the source account and chain on Review. */
-export function transferTokenChecked({ fromAddress, networkId, ...params } = {}) {
-  return transferToken(params, { fromAddress, networkId });
+export function transferTokenChecked({ fromAddress, networkId, allowDuplicate = false, ...params } = {}) {
+  return transferToken({ ...params, allowDuplicate: Boolean(allowDuplicate) }, { fromAddress, networkId });
 }
 
 /**

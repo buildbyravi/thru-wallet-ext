@@ -67,7 +67,10 @@
 // faucet funds is an incoming-credit action, and demanding signing re-authentication for it
 // bought nothing. Old callers that still SEND a password keep working — the param is
 // ignored, not rejected.
-export const CONTRACT_VERSION = 14;
+//
+// v15 appends tx.checkDuplicate to detect repeat transfers within 30s or while in flight,
+// and supports optional allowDuplicate on send methods for user-confirmed repeat transfers.
+export const CONTRACT_VERSION = 15;
 
 export const METHODS = {
   // ---- System ------------------------------------------------------------
@@ -339,7 +342,7 @@ export const METHODS = {
     since: 1,
   },
   'tx.send': {
-    params: ['toAddress', 'amountUnits', 'password'],
+    params: ['toAddress', 'amountUnits', 'password', 'allowDuplicate'],
     returns: '{ signature, blockHeight }',
     auth: 'signing',
     since: 1,
@@ -446,6 +449,12 @@ export const METHODS = {
     auth: 'none',
     since: 4,
   },
+  'tx.checkDuplicate': {
+    params: ['toAddress', 'amountUnits', 'mintAddress', 'fromAddress'],
+    returns: '{ isDuplicate, isPending, elapsedMs, signature } — detects duplicate/repeated transfers within 30s or while in flight',
+    auth: 'none',
+    since: 15,
+  },
 
   // ---- Tokens and launchpad --------------------------------------------
   'token.deploy': {
@@ -517,7 +526,7 @@ export const METHODS = {
     since: 4,
   },
   'token.transfer': {
-    params: ['mintAddress', 'toAddress', 'amountUnits', 'password'],
+    params: ['mintAddress', 'toAddress', 'amountUnits', 'password', 'allowDuplicate'],
     returns: '{ signature, blockHeight, recipientTokenAccountCreated, initSignature } — sends raw '
       + 'units of the MINT (never THRU) from the active account\'s token account, initializing '
       + 'the recipient\'s token account first when missing. Errors carry stable codes: '
@@ -605,14 +614,14 @@ export const METHODS = {
   },
   // ---- Contract v11: additive reviewed-context signing -----------------
   'tx.sendChecked': {
-    params: ['toAddress', 'amountUnits', 'fromAddress', 'networkId', 'password'],
+    params: ['toAddress', 'amountUnits', 'fromAddress', 'networkId', 'password', 'allowDuplicate'],
     returns: '{ signature, blockHeight } — same transfer as tx.send; refuses with '
       + 'SEND_CONTEXT_CHANGED if the active account/network differs from Review',
     auth: 'signing',
     since: 11,
   },
   'token.transferChecked': {
-    params: ['mintAddress', 'toAddress', 'amountUnits', 'fromAddress', 'networkId', 'password'],
+    params: ['mintAddress', 'toAddress', 'amountUnits', 'fromAddress', 'networkId', 'password', 'allowDuplicate'],
     returns: '{ signature, blockHeight, recipientTokenAccountCreated, initSignature } — same '
       + 'token transfer as token.transfer; refuses with SEND_CONTEXT_CHANGED on a stale Review',
     auth: 'signing',

@@ -207,4 +207,34 @@ await networks.setActiveNetwork('localnet');
 assert.deepEqual((await history.getCachedHistory(A)).entries, [localEntry]);
 console.log('  ok - deleting one address\'s cache leaves other accounts and networks intact');
 
+// ---- Rabby pattern: newly submitted transactions appear in local history cache immediately ----
+await networks.setActiveNetwork('betanet');
+await history.recordSubmittedTransaction({
+  signature: 'ts_submitted_rabby_style',
+  kind: 'transfer',
+  from: A,
+  to: B,
+  amountUnits: '777000',
+  networkId: 'betanet',
+});
+const immediate = await history.getCachedHistory(A);
+assert.equal(immediate.entries[0]?.signature, 'ts_submitted_rabby_style');
+assert.equal(immediate.entries[0]?.status, 'submitted');
+assert.equal(immediate.entries[0]?.kind, 'sent');
+assert.equal(immediate.entries[0]?.counterparty, B);
+
+// Recipient cache also receives incoming entry if it exists in scope
+const recipientCache = await history.getCachedHistory(B);
+assert.equal(recipientCache.entries[0]?.signature, 'ts_submitted_rabby_style');
+assert.equal(recipientCache.entries[0]?.kind, 'received');
+assert.equal(recipientCache.entries[0]?.counterparty, A);
+
+// Settle transaction updates status to confirmed
+await history.settleTransaction('ts_submitted_rabby_style', 'confirmed', null, 'betanet');
+const settled = await history.getCachedHistory(A);
+assert.equal(settled.entries[0]?.signature, 'ts_submitted_rabby_style');
+assert.equal(settled.entries[0]?.status, 'confirmed');
+assert.equal(settled.entries[0]?.success, true);
+console.log('  ok - freshly submitted transactions persist immediately to local history cache and settle cleanly');
+
 localClient.blocks.getBlockHeight = originalHeight;

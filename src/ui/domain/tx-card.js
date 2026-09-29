@@ -24,7 +24,8 @@ import { formatThru, formatTokenAmount, truncateAddress } from '../../shared/for
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 /** Formatted time for the card head: YYYY/MM/DD HH:mm like Rabby, falling back to Block <slot>. */
-export function relTime(ts, slot) {
+export function relTime(ts, slot, status = null) {
+  if (status === 'submitted') return 'Pending · Just now';
   const t = Number(ts);
   if (Number.isFinite(t) && t > 0 && Number.isFinite(new Date(t).getTime())) {
     const d = new Date(t);
@@ -61,6 +62,7 @@ export function dayLabelForKey(key) {
 }
 
 function glyphFor(entry) {
+  if (entry.status === 'submitted') return { name: 'spinner', cls: 'pending spinning' };
   if (entry.success === false) return { name: 'x', cls: 'failed' };
   if (entry.kind === 'sent' || entry.kind === 'token-sent') return { name: 'send', cls: 'sent' };
   if (entry.kind === 'received' || entry.kind === 'token-received' || entry.kind === 'token-mint') {
@@ -141,7 +143,7 @@ export function TxCard({ entry, network, knownAccounts, onOpen } = {}) {
   const interactive = typeof onOpen === 'function';
 
   const head = h('div', { class: 'tx-card-head' }, [
-    h('span', { class: 'tx-card-time', text: relTime(entry.timestamp, entry.slot) }),
+    h('span', { class: 'tx-card-time', text: relTime(entry.timestamp, entry.slot, entry.status) }),
     h('span', { class: 'tx-card-meta' }, (() => {
       const bits = [];
       if (network?.label) bits.push(h('span', { class: 'tx-card-net', text: network.label }));
@@ -175,10 +177,11 @@ export function TxCard({ entry, network, knownAccounts, onOpen } = {}) {
   const sub = contextFor(entry, knownAccounts);
 
   const body = h('div', { class: 'tx-card-body' }, [
-    h('span', { class: ['row-glyph', glyph.cls].filter(Boolean) }, icon(glyph.name, 14)),
+    h('span', { class: ['row-glyph', glyph.cls].filter(Boolean) }, icon(glyph.name, 14, glyph.cls?.includes('spinning') ? { className: 'spinning' } : {})),
     h('span', { class: 'tx-card-main' }, (() => {
       const pieces = [titleRow];
-      if (failed) pieces.push(h('span', { class: 'tx-card-badge failed', text: 'Failed on-chain' }));
+      if (entry.status === 'submitted') pieces.push(h('span', { class: 'tx-card-badge pending', text: 'Pending' }));
+      else if (failed) pieces.push(h('span', { class: 'tx-card-badge failed', text: 'Failed on-chain' }));
       if (sub) pieces.push(h('span', { class: 'tx-card-sub', text: sub }));
       return pieces;
     })()),

@@ -59,6 +59,7 @@ ok('contract v10 documents the transaction-detail addition', CONTRACT_VERSION >=
 ok('contract v11 pins a reviewed send to a source account and network', CONTRACT_VERSION >= 11);
 ok('contract v13 documents the faucet auth/param change', CONTRACT_VERSION >= 13);
 ok('contract v14 documents the token.readMint addition', CONTRACT_VERSION >= 14);
+ok('contract v15 documents the tx.checkDuplicate addition', CONTRACT_VERSION >= 15);
 
 // Contract v10 invariants. tx.getDetail is a read, so it must NOT have acquired an auth
 // gate it does not need — but more importantly its declared return shape must keep saying
@@ -108,7 +109,7 @@ for (const [method, legacy] of [
 }
 
 section('Contract v12 creation-bound registration and cache-first history');
-ok('the contract advances to v14 without reusing earlier numbers', CONTRACT_VERSION === 14);
+ok('the contract advances to v15 without reusing earlier numbers', CONTRACT_VERSION === 15);
 const register = METHODS['tx.registerAccount'];
 ok('tx.registerAccount is unlocked-only, explicitly targets an address, and has no password field',
   register?.since === 12 && register?.auth === 'unlocked'
@@ -130,6 +131,17 @@ ok('token.import stays unlocked-only and metadata-only',
   METHODS['token.import']?.auth === 'unlocked'
     && JSON.stringify(METHODS['token.import']?.params)
       === JSON.stringify(['mintAddress', 'symbol', 'name', 'decimals']));
+
+section('Contract v15 duplicate detection and repeat-send confirmation');
+const checkDup = METHODS['tx.checkDuplicate'];
+ok('tx.checkDuplicate is a read-only, no-auth duplicate lookup',
+  checkDup?.since === 15 && checkDup?.auth === 'none'
+    && JSON.stringify(checkDup?.params) === JSON.stringify(['toAddress', 'amountUnits', 'mintAddress', 'fromAddress']));
+ok('send methods declare optional allowDuplicate param',
+  METHODS['tx.send']?.params.includes('allowDuplicate')
+    && METHODS['tx.sendChecked']?.params.includes('allowDuplicate')
+    && METHODS['token.transfer']?.params.includes('allowDuplicate')
+    && METHODS['token.transferChecked']?.params.includes('allowDuplicate'));
 
 section('Contract and router agree in both directions');
 

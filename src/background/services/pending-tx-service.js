@@ -19,6 +19,7 @@ import { getBalances } from './balance-service.js';
 import { emit } from './event-service.js';
 import { getActiveNetworkId } from './network-service.js';
 import { scopedKey } from '../../shared/network-scope.js';
+import { recordSubmittedTransaction, settleTransaction } from './history-service.js';
 
 // Per-network. A transaction signature exists on exactly one chain, so a shared store would
 // show devnet's pending transfers after switching to mainnet — and would badge the extension
@@ -105,6 +106,11 @@ export async function track(tx) {
   };
   await writeAll([record, ...list.filter((r) => r.signature !== record.signature)], networkId);
   try {
+    await recordSubmittedTransaction(record);
+  } catch {
+    // History cache is best-effort after storing the signature; never change the send result.
+  }
+  try {
     if (await getActiveNetworkId() === networkId) {
       const updated = await readAll(networkId);
       await updateBadge(updated);
@@ -170,28 +176,60 @@ export function beginTransfer({ networkId, from, to, amountUnits, mint = null })
 }
 
 /**
- * Whether an identical transfer was submitted within the last few seconds.
- * Used to block a double-click from broadcasting twice.
+ * Whether an identical transfer is currently pending on-chain or was submitted
+ * within the last 30 seconds.
  *
- * `mint` is part of identity: a native send and a token send with the same from/to/amount
- * are NOT duplicates of each other. Legacy records carry no mint (null) and only ever match
- * native (mintless) candidates.
+ * Used to prevent accidental repeat sends, double-clicks, and duplicate submissions.
+ * On Betanet with ~6-second blocks, any identical unconfirmed transfer (status: SUBMITTED)
+ * is treated as an active in-flight duplicate regardless of age. Any identical transfer
+ * submitted within the 30-second window is also flagged as a repeat transfer.
  *
  * @param {{ from: string, to: string, amountUnits: string, mint?: string }} candidate
- * @param {number} [windowMs=3000]
+ * @param {number} [windowMs=30000]
  */
-export async function isProbableDuplicate(candidate, windowMs = 3_000) {
+export async function isProbableDuplicate(candidate, windowMs = 30_000) {
   const all = await readAll();
   const cutoff = Date.now() - windowMs;
   const mint = candidate.mint || null;
   return all.some((r) => (
-    r.submittedAt >= cutoff
-    && r.status === TX_STATUS.SUBMITTED
-    && r.from === candidate.from
+    r.from === candidate.from
     && r.to === candidate.to
     && r.amountUnits === String(candidate.amountUnits)
     && (r.mint || null) === mint
+    && (r.status === TX_STATUS.SUBMITTED || r.submittedAt >= cutoff)
   ));
+}
+
+/**
+ * Detailed duplicate check for the UI to display repeated-transaction warnings
+ * and prompt for a 2nd confirmation.
+ *
+ * @param {{ from: string, to: string, amountUnits: string, mint?: string }} candidate
+ * @param {number} [windowMs=30000]
+ * @returns {Promise<{ isDuplicate: boolean, isPending: boolean, elapsedMs: number | null, signature: string | null }>}
+ */
+export async function getDuplicateInfo(candidate, windowMs = 30_000) {
+  const all = await readAll();
+  const cutoff = Date.now() - windowMs;
+  const mint = candidate.mint || null;
+  const match = all.find((r) => (
+    r.from === candidate.from
+    && r.to === candidate.to
+    && r.amountUnits === String(candidate.amountUnits)
+    && (r.mint || null) === mint
+    && (r.status === TX_STATUS.SUBMITTED || r.submittedAt >= cutoff)
+  ));
+  if (!match) {
+    return { isDuplicate: false, isPending: false, elapsedMs: null, signature: null };
+  }
+  const isPending = match.status === TX_STATUS.SUBMITTED;
+  const elapsedMs = match.submittedAt ? Math.max(0, Date.now() - match.submittedAt) : null;
+  return {
+    isDuplicate: true,
+    isPending,
+    elapsedMs,
+    signature: match.signature,
+  };
 }
 
 async function settle(signature, status, error = null) {
@@ -207,6 +245,11 @@ async function settle(signature, status, error = null) {
   await updateBadge(next);
   emit('pendingTxChanged', { pending: next.filter((r) => r.status === TX_STATUS.SUBMITTED) });
   const settledRecord = next.find((r) => r.signature === signature) || null;
+  try {
+    await settleTransaction(signature, status, error, settledRecord?.networkId || null);
+  } catch {
+    // History cache update is best-effort
+  }
   if (status === TX_STATUS.CONFIRMED && settledRecord) {
     const addrs = [settledRecord.from, settledRecord.to].filter((a) => typeof a === 'string' && a);
     if (addrs.length) {

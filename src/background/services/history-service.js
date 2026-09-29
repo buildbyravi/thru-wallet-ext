@@ -228,9 +228,12 @@ export async function getHistoryFeed(address) {
           if (e.timestamp) e.timestampSource = submittedTime ? 'submitted' : previous?.timestampSource || null;
         }
       }
+      const pendingCached = latest.entries.filter((e) => e?.status === 'submitted' && e?.signature && !seen.has(e.signature));
+      const olderCached = latest.entries.filter((e) => e?.status !== 'submitted' && e?.signature && !seen.has(e.signature) && onThisChain(e));
       const entries = [
+        ...pendingCached,
         ...fresh,
-        ...latest.entries.filter((e) => e?.signature && !seen.has(e.signature) && onThisChain(e)),
+        ...olderCached,
       ].slice(0, CACHE_LIMIT);
       latestScope[address] = { entries, nextCursor, updatedAt: Date.now() };
       return { changed: true, value: entries };
@@ -241,6 +244,105 @@ export async function getHistoryFeed(address) {
     // Offline / unreachable RPC: the cached page, honestly labelled as not synced.
     return { entries: cached.entries, nextCursor: cached.nextCursor ?? 0, synced: false };
   }
+}
+
+/**
+ * Persist a freshly submitted transaction into the local history cache immediately.
+ * This matches the Rabby pattern: outgoing transactions appear in the local activity stream
+ * instantaneously without waiting for on-chain block mining / indexing.
+ *
+ * @param {{ signature: string, kind: string, from: string, to?: string, amountUnits?: string,
+ *   mint?: string, displayAmount?: string, tokenSymbol?: string, tokenDecimals?: number, networkId?: string }} tx
+ */
+export async function recordSubmittedTransaction(tx) {
+  if (!tx?.signature || !tx?.from) return;
+  const networkId = tx.networkId || await getActiveNetworkId();
+  const entry = {
+    signature: String(tx.signature),
+    slot: null,
+    timestamp: Date.now(),
+    timestampSource: 'submitted',
+    status: 'submitted',
+    kind: tx.kind === 'token' ? 'token-sent' : (tx.kind === 'faucet' ? 'faucet' : 'sent'),
+    from: tx.from,
+    to: tx.to || null,
+    counterparty: tx.to || null,
+    amount: tx.amountUnits != null ? String(tx.amountUnits) : null,
+    displayAmount: tx.displayAmount || null,
+    tokenSymbol: tx.tokenSymbol || null,
+    tokenDecimals: tx.tokenDecimals != null ? Number(tx.tokenDecimals) : null,
+    tokenMint: tx.mint || null,
+    success: true,
+  };
+
+  await updateScope(networkId, (scope) => {
+    // 1. Update sender's history cache
+    const page = cachedPage(scope, tx.from);
+    const existing = page.entries.filter((e) => e?.signature !== entry.signature);
+    scope[tx.from] = {
+      entries: [entry, ...existing].slice(0, CACHE_LIMIT),
+      nextCursor: page.nextCursor ?? 0,
+      updatedAt: Date.now(),
+    };
+
+    // 2. If the recipient is also an account in this wallet's cache, record the incoming side
+    if (tx.to && tx.to !== tx.from && Object.prototype.hasOwnProperty.call(scope, tx.to)) {
+      const recipientPage = cachedPage(scope, tx.to);
+      const recipientEntry = {
+        ...entry,
+        kind: tx.kind === 'token' ? 'token-received' : 'received',
+        counterparty: tx.from,
+      };
+      const existingRecipient = recipientPage.entries.filter((e) => e?.signature !== entry.signature);
+      scope[tx.to] = {
+        entries: [recipientEntry, ...existingRecipient].slice(0, CACHE_LIMIT),
+        nextCursor: recipientPage.nextCursor ?? 0,
+        updatedAt: Date.now(),
+      };
+    }
+
+    return { changed: true, value: true };
+  });
+}
+
+/**
+ * Update a settled transaction in the local history cache when confirmation or failure is detected.
+ *
+ * @param {string} signature
+ * @param {string} status 'confirmed' | 'failed' | 'unknown'
+ * @param {string|null} [error=null]
+ * @param {string|null} [networkId=null]
+ */
+export async function settleTransaction(signature, status, error = null, networkId = null) {
+  if (!signature) return;
+  const netId = networkId || await getActiveNetworkId();
+  await updateScope(netId, (scope) => {
+    let changed = false;
+    for (const [address, page] of Object.entries(scope)) {
+      if (address.startsWith('_') || !page?.entries || !Array.isArray(page.entries)) continue;
+      let accountChanged = false;
+      const nextEntries = page.entries.map((e) => {
+        if (e?.signature !== signature) return e;
+        accountChanged = true;
+        changed = true;
+        return {
+          ...e,
+          status,
+          success: status === 'confirmed',
+          error: error || (status === 'failed' ? (e.error || 'Transaction failed on-chain.') : null),
+          settledAt: Date.now(),
+        };
+      });
+      if (accountChanged) {
+        scope[address] = {
+          ...page,
+          entries: nextEntries,
+          updatedAt: Date.now(),
+        };
+      }
+    }
+    return { changed, value: changed };
+  });
 }
 
 /**
