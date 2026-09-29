@@ -16,7 +16,8 @@ import { icon } from '../kit/icon.js';
  *   summary   one quiet line of token symbols (e.g. 'THRU · LAB') — real symbols only,
  *             the Rabby balance-card chain-chips analog
  *   onRefresh handler for the refresh balance icon button
- *   onOpen    handler for the box itself: the whole hero is the token-drawer entry
+ *   onOpen    handler for the box itself: the whole hero is the token-drawer entry;
+ *             it also renders an 'Assets ›' cue inside the box (no separate button)
  *             (Rabby's clickable balance card). When present the hero becomes a real
  *             control — role=button, tabindex=0, Enter/Space — not just a div with a
  *             mouse handler.
@@ -55,6 +56,17 @@ export function BalanceHero({
     text: summary,
   });
 
+  // The in-box cue replaces the old standalone "Tokens" strip below the action grid. It is
+  // decoration for the box's own click target (aria-hidden): the box already has a role,
+  // a label and Enter/Space handling, so a second button here would be a duplicate control.
+  const ctaEl = onOpen
+    ? h('span', { class: 'dash-balance-cta', 'aria-hidden': 'true' }, [
+      h('span', { text: 'Assets' }),
+      icon('chevronRight', 12),
+    ])
+    : null;
+  const footRow = h('div', { class: 'dash-balance-foot' }, [summaryEl, ctaEl]);
+
   const elAttrs = { class: 'dash-balance-hero' };
   if (onOpen) {
     elAttrs.role = 'button';
@@ -63,7 +75,7 @@ export function BalanceHero({
     elAttrs['aria-label'] = 'Open token list';
     elAttrs.class = 'dash-balance-hero clickable';
   }
-  const el = h('div', elAttrs, [row, nativeEl, summaryEl]);
+  const el = h('div', elAttrs, [row, nativeEl, footRow]);
 
   if (onOpen) {
     d.on(el, 'click', () => onOpen());

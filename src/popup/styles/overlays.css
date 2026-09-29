@@ -1,0 +1,435 @@
+/* ============================================================
+   Overlays — toast, token drawer views, security sheet, balance-box cue.
+
+   Loaded AFTER screens.css (see popup.css). Flat CSS only: no nesting
+   (scripts/check-css-nesting.mjs). Every colour is an existing token.
+   ============================================================ */
+
+/* ---- Toast -----------------------------------------------------------------
+   Fixed, above every sheet (.modal-overlay is 2000), never part of the layout flow. */
+.toast-host {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: 14px;
+  z-index: 2100;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 10px 10px 12px;
+  background: var(--ink, #151b1e);
+  color: var(--ink-ink, #ffffff);
+  border-radius: 10px;
+  border-left: 3px solid var(--steel-300, #a4b3bc);
+  box-shadow: 0 8px 24px rgba(21, 27, 30, 0.28);
+  pointer-events: auto;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+.toast.open {
+  opacity: 1;
+  transform: translateY(0);
+}
+.toast.leaving {
+  opacity: 0;
+  transform: translateY(8px);
+}
+.toast-success { border-left-color: #3fbfae; }
+.toast-info    { border-left-color: var(--steel-300, #a4b3bc); }
+.toast-warning { border-left-color: var(--yellow-400, #ffad42); }
+.toast-error   { border-left-color: var(--brick-300, #ed787e); }
+.toast-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  margin-top: 1px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+}
+.toast-success .toast-icon { color: #3fbfae; }
+.toast-warning .toast-icon { color: var(--yellow-400, #ffad42); }
+.toast-error .toast-icon   { color: var(--brick-300, #ed787e); }
+.toast-body {
+  flex: 1;
+  min-width: 0;
+}
+.toast-title {
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+.toast-message {
+  margin: 2px 0 0;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.72);
+}
+.toast-action,
+.toast-close {
+  flex-shrink: 0;
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+.toast-action {
+  align-self: center;
+  padding: 4px 8px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #ffffff;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.14);
+}
+.toast-action:hover { background: rgba(255, 255, 255, 0.24); }
+.toast-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  opacity: 0.7;
+}
+.toast-close:hover { opacity: 1; background: rgba(255, 255, 255, 0.12); }
+.toast-action:focus-visible,
+.toast-close:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: 1px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .toast,
+  .toast.leaving { transition: none; transform: none; }
+}
+
+/* ---- Balance box cue -----------------------------------------------------------
+   Replaces the standalone "Tokens" strip that used to sit under the action grid. */
+.dash-balance-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  min-width: 0;
+}
+.dash-balance-foot .dash-balance-summary {
+  flex: 1;
+  min-width: 0;
+  margin-top: 0;
+}
+.dash-balance-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.72);
+}
+.dash-balance-hero.clickable:hover .dash-balance-cta {
+  color: #ffffff;
+}
+
+/* ---- Token drawer: two mutually exclusive views ---------------------------------
+   .hidden removes the inactive view from layout AND from the focus trap. */
+.token-view {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.token-view.hidden {
+  display: none;
+}
+.token-drawer.is-adding {
+  min-height: 60%;
+}
+.token-drawer-head .icon-btn {
+  flex-shrink: 0;
+}
+
+.add-token-tools {
+  display: flex;
+  justify-content: flex-start;
+  margin: -6px 0 0;
+}
+.add-token-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  background: var(--surface-1, #ffffff);
+  border: 1px solid var(--border, #e0e5ec);
+  border-top: 2px solid var(--positive, #1c7d76);
+  border-radius: 8px;
+}
+.add-token-preview.hidden {
+  display: none;
+}
+.add-token-preview-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.add-token-preview-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.add-token-preview-symbol {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--title, #151b1e);
+}
+.add-token-verified {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--positive, #1c7d76);
+}
+.add-token-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+.add-token-stats dt {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--foot, #6a7580);
+}
+.add-token-stats dd {
+  margin: 2px 0 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--title, #151b1e);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.add-token-stat-value.mono {
+  font-family: var(--font-mono);
+  font-weight: 500;
+}
+.add-token-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0;
+  padding: 8px 10px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--body, #3e4a52);
+  background: var(--gold-tint, #fdf4e6);
+  border: 1px solid var(--gold-border, #f0d5a8);
+  border-radius: 6px;
+}
+.add-token-note svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: var(--gold, #d4922a);
+}
+.add-token-note.hidden {
+  display: none;
+}
+.add-token-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.add-token-actions .hidden {
+  display: none;
+}
+
+/* The new row lands with a brief accent wash so the eye finds it when the list returns. */
+.token-ledger-row.just-added {
+  animation: token-row-flash 1.6s ease-out 1;
+}
+@keyframes token-row-flash {
+  0% { background: var(--accent-tint, #fdf0f1); }
+  100% { background: transparent; }
+}
+
+/* ---- Security sheet ---------------------------------------------------------------
+   Status is carried by the glyph AND the wording — never by colour alone. The card itself
+   reuses .tx-sheet (bottom anchoring, slide-up, shrink guard). */
+.security-sheet {
+  gap: 12px;
+}
+.security-summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: var(--positive-tint, #e8f5f4);
+  border: 1px solid var(--positive-border, #a8d8d4);
+  border-radius: 8px;
+}
+.security-summary.attention {
+  background: var(--gold-tint, #fdf4e6);
+  border-color: var(--gold-border, #f0d5a8);
+}
+.security-summary.unknown,
+.security-summary.loading {
+  background: var(--surface-2, #eef1f4);
+  border-color: var(--border, #e0e5ec);
+}
+.security-summary-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--surface-1, #ffffff);
+  color: var(--positive, #1c7d76);
+}
+.security-summary.attention .security-summary-icon {
+  color: var(--gold, #d4922a);
+}
+.security-summary-text {
+  flex: 1;
+  min-width: 0;
+}
+.security-summary-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--title, #151b1e);
+}
+.security-summary-sub {
+  margin: 2px 0 0;
+  font-size: 11px;
+  color: var(--body, #3e4a52);
+}
+.security-meter {
+  height: 4px;
+  margin-top: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(21, 27, 30, 0.1);
+}
+.security-meter-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--positive, #1c7d76);
+  transition: width 240ms ease;
+}
+.security-summary.attention .security-meter-fill {
+  background: var(--gold, #d4922a);
+}
+
+.security-list {
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-1, #ffffff);
+  border: 1px solid var(--border, #e0e5ec);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.security-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--border, #e0e5ec);
+}
+.security-row:last-child {
+  border-bottom: 0;
+}
+.security-row-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  margin-top: 1px;
+  border-radius: 50%;
+  background: var(--surface-2, #eef1f4);
+  color: var(--foot, #6a7580);
+}
+.security-row.ok .security-row-icon {
+  background: var(--positive-tint, #e8f5f4);
+  color: var(--positive, #1c7d76);
+}
+.security-row.warn .security-row-icon {
+  background: var(--gold-tint, #fdf4e6);
+  color: var(--gold, #d4922a);
+}
+.security-row-body {
+  flex: 1;
+  min-width: 0;
+}
+.security-row-title {
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--title, #151b1e);
+}
+.security-row-detail {
+  margin: 2px 0 0;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--body, #3e4a52);
+}
+.security-row-action {
+  flex-shrink: 0;
+  align-self: center;
+  padding: 5px 10px;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--accent, #c43a40);
+  background: var(--accent-tint, #fdf0f1);
+  border: 1px solid var(--accent-border, #f0b8bb);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.security-row-action:hover {
+  background: #ffffff;
+}
+.security-row-action:focus-visible {
+  outline: 2px solid var(--accent, #c43a40);
+  outline-offset: 2px;
+}
+.security-skel {
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--surface-2, #eef1f4), var(--surface-1, #ffffff), var(--surface-2, #eef1f4));
+  background-size: 200% 100%;
+  animation: security-shimmer 1.2s linear infinite;
+}
+.security-skel.wide {
+  height: 40px;
+  width: 100%;
+}
+.security-skel.row {
+  height: 46px;
+  margin: 6px 12px;
+}
+@keyframes security-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .security-skel,
+  .token-ledger-row.just-added { animation: none; }
+  .security-meter-fill { transition: none; }
+}

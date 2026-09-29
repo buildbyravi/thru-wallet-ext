@@ -17,23 +17,25 @@
 //      - 3 columns, 1px hairline gap, 88px cell height, pure white cells, hover #FDF0F1.
 //      - Row 1: Send (/send), Receive (/receive), Swap (disabled/roadmap).
 //      - Row 2: History (/history, with badge count), Security/Approvals, Faucet (/faucet).
-//   3. Token strip + drawer (Rabby balance-card → token-drawer):
+//   3. Token drawer (Rabby balance-card → asset-list popup):
 //      - The TOKEN LIST lives in the drawer (src/ui/domain/token-drawer.js), opened from
-//        the balance box — "click anywhere in the box". The dashboard body keeps one quiet
-//        .token-strip row ('Tokens · N assets') where the inline ledger used to be, as the
-//        standing affordance for the same drawer.
-//      - The drawer owns search, the white ledger rows (32px token disc/logo, symbol,
-//        Betanet network badge, name, amount, USD value), and 'Add custom token' (mint
-//        verified on-chain before import).
+//        the balance box — "click anywhere in the box". There is NO separate Tokens
+//        button below the grid: the box carries its own 'Assets ›' cue instead.
+//      - The drawer owns search, the ledger rows and the two-view 'Add custom token' flow
+//        (mint verified on-chain before import; the list is hidden while adding).
+//   4. Security tile → SecuritySheet (real posture checks), never an inline banner.
+//      Transient one-line feedback uses toast(), persistent state uses Banner.
 
 import { h, disposer } from '../../kit/dom.js';
 import { icon } from '../../kit/icon.js';
 import { CopyButton } from '../../kit/button.js';
 import { Banner } from '../../kit/feedback.js';
+import { toast } from '../../kit/toast.js';
 import { AccountAvatar, AddressText } from '../../domain/account-avatar.js';
 import { BalanceHero } from '../../domain/balance-hero.js';
 import { PanelItem } from '../../domain/panel-item.js';
 import { TokenDrawer } from '../../domain/token-drawer.js';
+import { SecuritySheet } from '../../domain/security-sheet.js';
 import * as bridge from '../bridge.js';
 import { formatThru } from '../../../shared/format.js';
 
@@ -131,7 +133,7 @@ export function DashboardRoute({ navigate }) {
   d.on(sidePanelBtn, 'click', () => {
     try {
       if (!chrome?.sidePanel?.open) {
-        banner.set('This browser has no side panel API. The popup keeps working as usual.', 'warning');
+        toast({ tone: 'warning', title: 'Side panel unavailable', message: 'This browser has no side panel API. The popup keeps working as usual.' });
         return;
       }
       const openCall = chrome.sidePanel.open(
@@ -146,10 +148,10 @@ export function DashboardRoute({ navigate }) {
           }
         })
         .catch((error) => {
-          banner.set(error?.message || 'Could not open the side panel.', 'warning');
+          toast({ tone: 'warning', title: 'Could not open the side panel', message: error?.message || '' });
         });
     } catch (error) {
-      banner.set(error?.message || 'Could not open the side panel.', 'warning');
+      toast({ tone: 'warning', title: 'Could not open the side panel', message: error?.message || '' });
     }
   });
 
@@ -221,7 +223,7 @@ export function DashboardRoute({ navigate }) {
     iconName: 'swap',
     label: 'Swap',
     disabled: true,
-    onClick: () => banner.set('Swap is planned for a future upgrade.', 'info'),
+    onClick: () => toast({ tone: 'info', title: 'Swap is coming later', message: 'Swap is planned for a future upgrade.' }),
   }));
 
   const historyTile = track(PanelItem({
@@ -233,7 +235,7 @@ export function DashboardRoute({ navigate }) {
   const securityTile = track(PanelItem({
     iconName: 'shield',
     label: 'Security',
-    onClick: () => banner.set('Security & Approvals coming soon on Thru Betanet.', 'info'),
+    onClick: () => openSecurity(),
   }));
 
   const faucetTile = track(PanelItem({
@@ -270,13 +272,16 @@ export function DashboardRoute({ navigate }) {
     tokenState: null,
   };
 
+  // `tokens` / `tokenState` === undefined mean "keep what the drawer already has". The cached
+  // first paint used to pass [] here, which BLANKED every real token in an open drawer until the
+  // live reads landed (the "wallet tokens flash while adding a custom token" bug).
   function updateAssets(nativeText, tokens, stale, tokenState) {
     assetsSnapshot = {
       nativeText,
       nativeUsd: currentBalanceUsd,
-      tokens: tokens || [],
+      tokens: tokens === undefined ? assetsSnapshot.tokens : (tokens || []),
       stale,
-      tokenState,
+      tokenState: tokenState === undefined ? assetsSnapshot.tokenState : tokenState,
     };
     // The balance box summarizes what the drawer holds — REAL symbols only. The sample
     // USDC preview row is not a holding and must never appear beside real balances.
@@ -284,9 +289,6 @@ export function DashboardRoute({ navigate }) {
     balanceHero.update({
       summary: ['THRU', ...realTokens.map((t) => t.symbol)].join(' · '),
     });
-    stripCount.textContent = realTokens.length === 0
-      ? 'THRU only'
-      : `${realTokens.length + 1} assets`;
     drawer?.update(assetsSnapshot);
   }
 
@@ -297,28 +299,41 @@ export function DashboardRoute({ navigate }) {
       networkLabel: currentNetwork?.label || currentNetwork?.id || 'Betanet',
       onReadMint: (mintAddress) => bridge.send('token.readMint', { mintAddress }),
       onImportToken: (params) => bridge.send('token.import', params),
-      onChanged: async () => {
-        await load({ force: true });
-        // After load(): it clears the banner first (every load starts fresh), so the
-        // success notice would vanish if it were set before the refresh.
-        banner.set('Token added to your token list.', 'info');
-      },
+      // The drawer waits for this BEFORE it shows the list again and raises its own
+      // "added" toast, so the user never sees a half-refreshed list.
+      onChanged: () => load({ force: true }),
       onClose: () => { drawer = null; },
     });
   }
 
-  const stripCount = h('span', { class: 'token-strip-count', text: 'THRU only' });
-  const tokenStrip = h('button', {
-    type: 'button',
-    class: 'token-strip',
-    'aria-label': 'Open token list',
-  }, [
-    icon('coins', 14),
-    h('span', { class: 'token-strip-label', text: 'Tokens' }),
-    stripCount,
-    icon('chevronRight', 12),
-  ]);
-  d.on(tokenStrip, 'click', () => openDrawer());
+  // ---- Security sheet --------------------------------------------------------------
+  // Three read-only calls; each is allowed to fail on its own so one slow read cannot hide
+  // the other two checks (a failed read becomes an 'unknown' row, never a fake pass).
+  let security = null;
+
+  async function loadSecuritySnapshot() {
+    const [prefs, autoLock, keyrings] = await Promise.allSettled([
+      bridge.send('settings.get'),
+      bridge.send('system.getAutoLock'),
+      bridge.send('keyring.list'),
+    ]);
+    return {
+      prefs: prefs.status === 'fulfilled' ? prefs.value : null,
+      autoLockMinutes: autoLock.status === 'fulfilled' ? Number(autoLock.value) : null,
+      keyrings: keyrings.status === 'fulfilled' ? keyrings.value : null,
+      networkLabel: currentNetwork?.label || currentNetwork?.id || 'Betanet',
+      isTestNetwork: (currentNetwork?.id || 'betanet') !== 'mainnet',
+    };
+  }
+
+  function openSecurity() {
+    if (security) return;
+    security = SecuritySheet({
+      load: loadSecuritySnapshot,
+      onNavigate: (route) => navigate(route),
+      onClose: () => { security = null; },
+    });
+  }
 
   // ---- Pending Transactions ------------------------------------------------
   let pendingPollTimer = null;
@@ -406,7 +421,7 @@ export function DashboardRoute({ navigate }) {
           usd: currentBalanceUsd,
           native: formatted,
         });
-        updateAssets(formatted, [], entry.stale, null);
+        updateAssets(formatted, undefined, entry.stale, undefined);
       }
     } catch {
       // cache miss is not an error
@@ -473,7 +488,6 @@ export function DashboardRoute({ navigate }) {
     dashHeader,
     banner.el,
     actionPanel,
-    tokenStrip,
   ]);
 
   load();
@@ -510,6 +524,8 @@ export function DashboardRoute({ navigate }) {
       stopPendingPoll();
       drawer?.destroy();
       drawer = null;
+      security?.destroy();
+      security = null;
       for (const c of owned) c.destroy?.();
       owned.length = 0;
       banner.destroy();

@@ -453,38 +453,8 @@ form > .btn.text {
 
 /* ---- Token strip + drawer ----------------------------------------------- */
 /* The token list lives in the Rabby-style drawer (src/ui/domain/token-drawer.js, opened
-   from the balance box). The dashboard body keeps one quiet strip row as the standing
-   affordance; the old tabs bar + inline ledger are gone. */
-.token-strip {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  box-sizing: border-box;
-  width: calc(100% - 24px);
-  margin: 0 12px 12px;
-  padding: 12px 14px;
-  background: #ffffff;
-  border: 0;
-  border-radius: 8px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--title, #151b1e);
-  text-align: left;
-  cursor: pointer;
-}
-.token-strip:hover {
-  background: #fafbfc;
-}
-.token-strip-label {
-  flex: 1;
-}
-.token-strip-count {
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--foot, #6a7580);
-}
-
+   from the balance box). There is no standalone Tokens strip any more; the in-box
+   'Assets ›' cue and the two-view drawer styles live in overlays.css. */
 /* The drawer card itself reuses .tx-sheet (bottom anchoring, slide-up, shrink guard). */
 .token-drawer {
   gap: 12px;
@@ -506,29 +476,6 @@ form > .btn.text {
 }
 .token-drawer .token-drawer-add {
   width: 100%;
-}
-
-.add-token-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 12px;
-  background: var(--surface-2, #f7f8fa);
-  border: 1px solid var(--border, #ececf1);
-  border-radius: 8px;
-}
-.add-token-panel[hidden] {
-  display: none;
-}
-.add-token-hint {
-  margin: -4px 0 0;
-  font-size: 11px;
-  color: var(--foot, #6a7580);
-}
-.add-token-actions {
-  display: flex;
-  gap: 8px;
-  align-items: center;
 }
 
 .token-ledger {

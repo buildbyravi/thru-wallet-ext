@@ -2668,9 +2668,9 @@ async function createFlowBackupTest() {
   await settle();
 }
 
-// ---- Add custom token: paste a mint, verified on chain, then it joins the drawer ----
+// ---- Add custom token: two views, paste a mint, verified on chain, then the list returns ----
 {
-  section('assets: Add custom token (paste a mint, verified on chain)');
+  section('assets: Add custom token (two views, verified on chain)');
 
   resetBackend(SCENARIOS[2]);
   resetDom();
@@ -2683,15 +2683,26 @@ async function createFlowBackupTest() {
   const drawerCard = () => allElements(DOC.body).find((el) => el.classList?.contains?.('token-drawer'));
   ok('the drawer opens from the balance box', Boolean(drawerCard()), 'no .token-drawer in document.body');
 
+  const views = () => allElements(drawerCard()).filter((el) => el.classList?.contains?.('token-view'));
+  const listViewHidden = () => views()[0]?.classList?.contains?.('hidden') === true;
+  const addViewHidden = () => views()[1]?.classList?.contains?.('hidden') === true;
+  ok('the drawer has exactly two views and opens on the list',
+    views().length === 2 && !listViewHidden() && addViewHidden());
+
   click(buttons(drawerCard(), /add custom token/i)[0]);
   await settle();
-  const opened = textOf(drawerCard());
-  ok('the add-token form opens inside the drawer', opened.includes('Token mint (contract address)'), opened.slice(0, 160));
-  ok('the form states the address is verified first',
-    opened.includes('Verified against the chain before adding.'));
+  const opened = textOf(views()[1]);
+  ok('the add view opens', !addViewHidden() && opened.includes('Token mint address'), opened.slice(0, 160));
+  // REGRESSION: the wallet ledger used to stay on screen between the form and its button.
+  ok('the token list is hidden while a token is being added', listViewHidden());
+  ok('the token ledger lives only in the hidden list view',
+    allElements(views()[0]).some((el) => el.classList?.contains?.('token-ledger'))
+      && !allElements(views()[1]).some((el) => el.classList?.contains?.('token-ledger')));
+  ok('the add view states the address is checked first',
+    opened.includes('We look it up on the Thru network before anything is saved.'));
 
   const drawerInputs = () => allElements(drawerCard()).filter((el) => el.localName === 'input');
-  // Not `.includes('mint address')`: the SEARCH field's placeholder ("Symbol, name, or mint
+  // Not `.includes('mint address')` alone: the SEARCH field's placeholder ("Symbol, name, or mint
   // address") contains that substring too and would swallow the mint input.
   const mintInput = drawerInputs().find((el) => {
     const ph = String(el.getAttribute?.('placeholder') || el.placeholder || '');
@@ -2701,38 +2712,99 @@ async function createFlowBackupTest() {
 
   // An unknown address is refused BEFORE import — the whole point of the chain lookup.
   type(mintInput, 'ta1notamint00000000000000000000000000000000');
-  click(buttons(drawerCard(), /check on chain/i)[0]);
+  click(buttons(drawerCard(), /find token/i)[0]);
   await settle();
   ok('an unknown address is refused before import',
-    textOf(drawerCard()).includes('No token mint exists at that address.'));
+    textOf(views()[1]).includes('No token mint exists at that address'));
+  const previewEl = () => allElements(drawerCard()).find((el) => el.classList?.contains?.('add-token-preview'));
+  ok('no preview is shown for an unknown address', previewEl()?.classList?.contains?.('hidden') === true);
 
-  // The verified lookup fills symbol and DECIMALS from the chain, not from the user.
+  // The verified lookup shows symbol and DECIMALS from the chain, read-only.
   type(mintInput, CUSTOM_MINT_FIXTURE);
-  click(buttons(drawerCard(), /check on chain/i)[0]);
+  click(buttons(drawerCard(), /find token/i)[0]);
   await settle();
-  const inputsAfter = drawerInputs();
-  ok('the lookup fills symbol from the chain',
-    inputsAfter.some((el) => el.value === 'LAB'), inputsAfter.map((el) => el.value).join('|'));
-  ok('the lookup fills decimals from the chain',
-    inputsAfter.some((el) => el.value === '6'), inputsAfter.map((el) => el.value).join('|'));
-  ok('the drawer reports the verified read', textOf(drawerCard()).includes('Verified on chain'));
+  const previewText = textOf(previewEl());
+  ok('the preview is revealed after a verified lookup', previewEl()?.classList?.contains?.('hidden') === false);
+  ok('the preview shows the chain ticker', previewText.includes('LAB'), previewText);
+  ok('the preview shows chain decimals', /Decimals\s*6/.test(previewText), previewText);
+  ok('the preview reports the verified read', previewText.includes('Verified on chain'));
+  ok('there is no editable Decimals input (decimals come from the chain)',
+    !drawerInputs().some((el) => String(el.getAttribute?.('placeholder') || '').toLowerCase().includes('decimals'))
+      && !textOf(views()[1]).includes('Filled from the chain on lookup.'));
+  ok('the chain ticker means no Symbol field is asked for',
+    allElements(views()[1]).filter((el) => el.localName === 'label' && textOf(el).startsWith('Symbol'))
+      .every((el) => el.classList?.contains?.('hidden')));
 
-  click(buttons(drawerCard(), /add to wallet/i)[0]);
+  // Save: while the import + reload are in flight the list must STAY hidden.
+  click(buttons(drawerCard(), /^add token$/i)[0]);
+  ok('the list stays hidden while the token is saving (no stale-list flash)', listViewHidden() && !addViewHidden());
   await settle();
-  ok('the import confirms in a notice', textOf(router.root).includes('added to your token list'));
-  // textOf() reads every text node including hidden ones — assert the form's hidden state,
-  // not the absence of its copy.
-  const panelEl = allElements(drawerCard()).find((el) => el.classList?.contains?.('add-token-panel'));
-  ok('the form closes after a successful import',
-    panelEl?.hidden === true, `panel.hidden=${panelEl?.hidden}`);
-  ok('the imported token joins the drawer list',
-    textOf(drawerCard()).includes('LAB'), textOf(drawerCard()).slice(0, 200));
+  ok('after saving, the list view returns', !listViewHidden() && addViewHidden());
+  ok('the import confirms in a toast', textOf(DOC.body).includes('LAB added'));
+  ok('no inline banner carries the confirmation', !textOf(router.root).includes('added to your token list'));
+  ok('the imported token joins the drawer list', textOf(views()[0]).includes('LAB'), textOf(views()[0]).slice(0, 200));
+  ok('the new row is highlighted once',
+    allElements(views()[0]).some((el) => el.classList?.contains?.('just-added')));
+
+  // A mint already in the list is refused without a network call.
+  click(buttons(drawerCard(), /add custom token/i)[0]);
+  await settle();
+  const mintInput2 = drawerInputs().find((el) => {
+    const ph = String(el.getAttribute?.('placeholder') || el.placeholder || '');
+    return ph.includes('mint address') && !ph.includes('Symbol');
+  });
+  ok('reopening the add view starts from a clean form', mintInput2?.value === '', `value=${mintInput2?.value}`);
+  type(mintInput2, CUSTOM_MINT_FIXTURE);
+  click(buttons(drawerCard(), /find token/i)[0]);
+  await settle();
+  ok('a token already in the list is refused', textOf(views()[1]).includes('already in your list'));
+
+  // Back returns to the list without saving anything.
+  const back = allElements(drawerCard()).find((el) => el.getAttribute?.('aria-label') === 'Back to tokens');
+  click(back);
+  await settle();
+  ok('back returns to the list', !listViewHidden() && addViewHidden());
 
   click(buttons(drawerCard(), /^close$/i)[0]);
   await settle();
   ok('the drawer closes and leaves no document keydown listener',
     !allElements(DOC.body).some((el) => el.classList?.contains?.('token-drawer'))
       && DOC.listeners.filter((l) => l.type === 'keydown').length === 0);
+
+  router.stop();
+  await settle();
+}
+
+// ---- Security tile: a real sheet, not a "coming soon" banner ------------------------
+{
+  section('security: the tile opens a real sheet built from live settings');
+
+  resetBackend(SCENARIOS[2]);
+  resetDom();
+  guards.invalidate();
+  const router = await boot({ root: DOC.getElementById('app') });
+  await settle();
+
+  const tile = buttons(router.root, /security/i)[0];
+  ok('the Security tile exists and is enabled', Boolean(tile) && tile.disabled !== true);
+  click(tile);
+  await settle();
+  const sheet = () => allElements(DOC.body).find((el) => el.classList?.contains?.('security-sheet'));
+  ok('clicking Security opens the sheet', Boolean(sheet()));
+  ok('no inline "coming soon" notice is inserted into the dashboard',
+    !/coming soon/i.test(textOf(router.root)));
+  const sheetText = textOf(sheet());
+  ok('the sheet reports auto-lock from live settings', /Auto-lock/i.test(sheetText), sheetText.slice(0, 200));
+  ok('the sheet reports the signing protection state', /sign/i.test(sheetText), sheetText.slice(0, 200));
+  ok('the sheet is honest about site connections',
+    sheetText.includes('does not expose a provider to websites yet'));
+  ok('the sheet lists rows as a list',
+    allElements(sheet()).filter((el) => el.getAttribute?.('role') === 'listitem').length >= 4);
+
+  click(buttons(sheet(), /^close$/i)[0]);
+  await settle();
+  ok('the sheet closes and leaves no document keydown listener',
+    !sheet() && DOC.listeners.filter((l) => l.type === 'keydown').length === 0);
 
   router.stop();
   await settle();
@@ -2753,9 +2825,11 @@ async function createFlowBackupTest() {
     heroBox?.getAttribute('role') === 'button' && heroBox?.getAttribute('tabindex') === '0'
       && (heroBox?.getAttribute('aria-label') || '').length > 0,
     `role=${heroBox?.getAttribute('role')} tabindex=${heroBox?.getAttribute('tabindex')}`);
-  ok('the dashboard body keeps a quiet strip and no inline ledger',
-    Boolean(router.root.querySelector('.token-strip'))
+  ok('the dashboard body has no standalone Tokens button and no inline ledger',
+    !router.root.querySelector('.token-strip')
       && allElements(router.root).every((el) => !el.classList?.contains?.('token-ledger')));
+  ok('the balance box carries its own Assets cue',
+    Boolean(heroBox?.querySelector?.('.dash-balance-cta')));
 
   // Click anywhere in the box → the drawer lists the assets.
   click(heroBox);
@@ -2791,10 +2865,12 @@ async function createFlowBackupTest() {
     DOC.listeners.filter((l) => l.type === 'keydown').length === 0,
     String(DOC.listeners.filter((l) => l.type === 'keydown').length));
 
-  // The strip is the second affordance; Close closes too.
-  click(buttons(router.root, /open token list/i)[0]);
+  // The box is the ONLY entry (no standalone Tokens button); Close closes too.
+  ok('no standalone button offers to open the token list',
+    buttons(router.root, /open token list/i).length === 0);
+  click(heroBox);
   await settle();
-  ok('the Tokens strip opens the same drawer', Boolean(drawerCard()));
+  ok('clicking the box again opens the same drawer', Boolean(drawerCard()));
   click(buttons(drawerCard(), /^close$/i)[0]);
   await settle();
   ok('the Close button closes the drawer',
@@ -3148,8 +3224,8 @@ async function navigationTest() {
     heroBox?.getAttribute('role') === 'button' && heroBox?.getAttribute('tabindex') === '0'
       && (heroBox?.getAttribute('aria-label') || '').length > 0,
     `role=${heroBox?.getAttribute('role')} tabindex=${heroBox?.getAttribute('tabindex')}`);
-  ok('a quiet Tokens strip is the standing drawer affordance',
-    Boolean(app.querySelector?.('.token-strip')));
+  ok('there is no standalone Tokens strip (the box is the only drawer entry)',
+    !app.querySelector?.('.token-strip'));
 
   // No fabricated numbers: the old first paint showed a placeholder "$12,847.20" balance
   // and a static "+2.14%" 24h delta that no load() path ever updated.
