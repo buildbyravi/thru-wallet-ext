@@ -16,7 +16,7 @@ import * as client from '../src/lib/thru-client.js';
 import { getNetworkConfig } from '../src/lib/networks.js';
 import { formatThru } from '../src/shared/format.js';
 
-const networkId = process.argv[2] || 'alphanet';
+const networkId = process.argv[2] || 'betanet';
 const claims = Number(process.argv[3] || 12);
 const network = getNetworkConfig(networkId);
 client.configureNetwork(network);

@@ -5,7 +5,9 @@
 **Telegram Support Group:** [t.me/+dA8TwsOECcIxZWZl](https://t.me/+dA8TwsOECcIxZWZl)  
 **Issue Tracker:** [github.com/buildbyravi/thru-wallet-ext/issues](https://github.com/buildbyravi/thru-wallet-ext/issues)
 
-Welcome to the Thru Wallet support document. Thru Wallet is an experimental, self-custody Chrome extension for Thru's alphanet, built with `@thru/sdk` (including its `@thru/sdk/crypto` subpath) and `@thru/programs`.
+Welcome to the Thru Wallet support document. Thru Wallet is an experimental, self-custody Chrome extension for Thru's betanet, built with `@thru/sdk` (including its `@thru/sdk/crypto` subpath) and `@thru/programs`.
+
+**Betanet is Thru's final testnet before mainnet** — a 10-node network that replaced the single-node alphanet. Expect faster blocks (100–300 ms) and occasional testnet instability until mainnet.
 
 ---
 
@@ -25,13 +27,13 @@ If you encounter bugs, unexpected behavior, or have questions:
 
 ## 2. Known Limitations & Technical Context
 
-Because Thru's alphanet is an active, evolving testnet environment, users should be aware of several technical caveats:
+Because Thru's betanet is an active, evolving testnet environment, users should be aware of several technical caveats:
 
-*   **Alphanet Scope Only:** The wallet only targets Thru's alphanet (`rpc.alphanet.thru.org`). Network state, balances, and accounts on alphanet may be reset or wiped by network operators at any time.
+*   **Betanet Scope Only:** The wallet only targets Thru's betanet (`rpc.betanet.thru.org`). Network state, balances, and accounts on betanet may be reset or wiped by network operators at any time.
 *   **Unaudited Codebase:** This wallet is a community-built open-source project and has not undergone a formal third-party security audit.
 *   **Reverse-Engineered Instruction Layouts:** 
     *   The **Faucet** (`taAAAA...Pr6`) and **Transfer** (`taAAAA...ICA`) system program addresses and instruction byte structures were derived via transaction disassembly and differential analysis rather than published developer documentation.
-    *   While reserved program address markers (`0xfa` and `0x80`) confirm these program patterns, future alphanet updates may alter program layouts.
+    *   While reserved program address markers (`0xfa` and `0x80`) confirm these program patterns, future betanet updates may alter program layouts.
 *   **Unconfirmed Explorer Routing:** Deep links to transaction hashes and account addresses point to `scan.thru.org`, but exact URL route formats on the official block explorer may change over time.
 *   **No Injected dApp Provider:** The wallet does not inject a web provider (`window.thru`) into web pages. It functions strictly as a standalone key manager and transaction signer.
 
@@ -40,10 +42,10 @@ Because Thru's alphanet is an active, evolving testnet environment, users should
 ## 3. Frequently Asked Questions (FAQ)
 
 ### Q: Which networks are supported?
-**A:** Thru Wallet supports Thru Alphanet (`rpc.alphanet.thru.org`). Mainnet support will be added upon network release.
+**A:** Thru Wallet supports Thru Betanet (`rpc.betanet.thru.org`). Mainnet support will be added upon network release.
 
 ### Q: Is this safe to use with real money or mainnet funds?
-**A:** **No.** This extension is designed exclusively for Thru's **alphanet testnet**. It is intended for testing, development, and experimental use. **Do not import keys containing real assets or financial value.**
+**A:** **No.** This extension is designed exclusively for Thru's **betanet testnet**. It is intended for testing, development, and experimental use. **Do not import keys containing real assets or financial value.**
 
 ### Q: How do I back up my wallet?
 **A:** You can back up your wallet using your **12-word BIP-39 recovery phrase**:
@@ -66,5 +68,5 @@ Because Thru's alphanet is an active, evolving testnet environment, users should
 ### Q: What should I do if my transactions fail?
 **A:** 
 1.  Verify that your account has been initialized on-chain using the **Create Account** step before attempting transfers or faucet claims.
-2.  Ensure the alphanet RPC node (`rpc.alphanet.thru.org`) is online and accessible.
-3.  Check the error message on screen; if the RPC endpoint returns a sequence/nonce mismatch or low-level format error, check GitHub Issues for alphanet protocol updates.
+2.  Ensure the betanet RPC node (`rpc.betanet.thru.org`) is online and accessible.
+3.  Check the error message on screen; if the RPC endpoint returns a sequence/nonce mismatch or low-level format error, check GitHub Issues for betanet protocol updates.

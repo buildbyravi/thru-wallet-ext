@@ -39,7 +39,7 @@ function makeStore() {
 }
 globalThis.chrome = { storage: { local: makeStore(), session: makeStore() } };
 
-const networkId = process.argv[2] || 'alphanet';
+const networkId = process.argv[2] || 'betanet';
 const { getNetworkConfig } = await import('../src/lib/networks.js');
 const thruClient = await import('../src/lib/thru-client.js');
 

@@ -28,6 +28,11 @@ import * as pendingTxService from './services/pending-tx-service.js';
 import * as historyService from './services/history-service.js';
 import { isKnownMethod, getMethodSpec, CONTRACT_VERSION } from '../shared/contract/manifest.js';
 
+// Methods the UI polls on its own schedule (background sync of pending tx state). A call to
+// one of these is NOT user activity and must not refresh the auto-lock idle stamp — see the
+// stamp comment in handleApiRequest.
+const SYNC_READ_METHODS = new Set(['tx.getPending', 'tx.reconcilePending']);
+
 const handlers = Object.assign(Object.create(null), {
   // ---- System ------------------------------------------------------------
   //
@@ -298,8 +303,12 @@ export async function handleApiRequest(request) {
   try {
     const data = await handlers[method](params);
     // Stamp only after a successful call so a locked-out unlock attempt cannot be used to
-    // keep a session alive indefinitely.
-    await systemService.touchActivity();
+    // keep a session alive indefinitely. Background SYNC reads are exempt: the dashboard and
+    // history screens poll these every second while a pending tx is on screen, and stamping
+    // them would defeat auto-lock for as long as the wallet is merely open.
+    if (!SYNC_READ_METHODS.has(method)) {
+      await systemService.touchActivity();
+    }
 
     const payload = data === undefined ? null : data;
 

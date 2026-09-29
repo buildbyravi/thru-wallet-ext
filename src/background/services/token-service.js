@@ -82,7 +82,7 @@ export async function listDeployedTokens() {
   const deployed = (Array.isArray(raw) ? raw : []).map((t) => normalizeToken(t, hidden));
   // Imported mints were stored in global preferences without a network before this audit.
   // Do not copy ambiguous legacy records to every chain: they default to the original
-  // Alphanet only; importing the same mint on another network creates a separate record.
+  // Betanet only; importing the same mint on another network creates a separate record.
   const imported = prefs.customTokens
     .filter((t) => (t.networkId || DEFAULT_NETWORK) === networkId)
     .map((t) => ({ ...normalizeToken(t, hidden), source: 'imported' }));

@@ -15,7 +15,7 @@ Companion document: `docs/UI_REBUILD_PLAN.md`.
 ## ROLE
 
 You are the sole engineer rebuilding the frontend of `thru-wallet-ext`, a Chrome MV3 self-custody
-wallet for the Thru L1 (devnet/alphanet). You are rebuilding the UI to match the information
+wallet for the Thru L1 (devnet/betanet). You are rebuilding the UI to match the information
 architecture and interaction quality of Rabby Wallet, while keeping the existing background/vault
 layer intact and working at every commit.
 
@@ -220,7 +220,7 @@ Next: <next item>
 - A change would require editing vault crypto, or altering an existing contract method's shape.
 - A test fails and the fix would mean weakening or skipping the test.
 - A product decision is needed (fee model, launchpad curve parameters, whether to support
-  watch-only addresses or hardware wallets, devnet vs alphanet default).
+  watch-only addresses or hardware wallets, devnet vs betanet default).
 - `docs/reference/` is empty and a task genuinely requires exact visual fidelity.
 - You are about to introduce a second router, a second store, or a second way of building DOM.
 

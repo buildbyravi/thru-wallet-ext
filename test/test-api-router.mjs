@@ -54,7 +54,7 @@ const res1 = await handleApiRequest({ method: 'system.bootstrap' });
 assert.equal(res1.ok, true);
 assert.equal(res1.data.hasVault, false);
 assert.equal(res1.data.unlocked, false);
-assert.equal(res1.data.network.id, 'alphanet');
+assert.equal(res1.data.network.id, 'betanet');
 console.log('  ok - bootstrap reports hasVault: false');
 
 console.log('[2] Create vault via API router');
@@ -252,7 +252,7 @@ for (const [method, extra] of [
   const missing = await handleApiRequest({ method, params });
   assert.equal(missing.error?.code, 'INVALID_REQUEST', `${method} requires a reviewed context`);
   const wrongAccount = await handleApiRequest({ method, params: {
-    ...params, fromAddress: 'taEREREREREREREREREREREREREREREREREREREREREREg', networkId: 'alphanet',
+    ...params, fromAddress: 'taEREREREREREREREREREREREREREREREREREREREREREg', networkId: 'betanet',
   } });
   assert.equal(wrongAccount.error?.code, 'SEND_CONTEXT_CHANGED', `${method} must pin the source`);
   assert.equal(wrongAccount.error?.retryable, false);
@@ -261,7 +261,7 @@ for (const [method, extra] of [
   } });
   assert.equal(wrongNetwork.error?.code, 'SEND_CONTEXT_CHANGED', `${method} must pin the chain`);
   const correct = await handleApiRequest({ method, params: {
-    ...params, fromAddress: res2.data.address, networkId: 'alphanet',
+    ...params, fromAddress: res2.data.address, networkId: 'betanet',
   } });
   assert.equal(correct.ok, false);
   assert.match(correct.error.message, /address you're sending from/i,
@@ -295,12 +295,12 @@ try {
     toAddress: accountsList[1].address,
     amountUnits: '1',
     fromAddress: res2.data.address,
-    networkId: 'alphanet',
+    networkId: 'betanet',
   } });
   await waitFor(() => typeof releaseRecipient === 'function', 'checked send to reach the held recipient RPC');
   const doubleClick = await handleApiRequest({ method: 'tx.sendChecked', params: {
     toAddress: accountsList[1].address, amountUnits: '1',
-    fromAddress: res2.data.address, networkId: 'alphanet',
+    fromAddress: res2.data.address, networkId: 'betanet',
   } });
   assert.equal(doubleClick.error?.code, 'DUPLICATE_SUBMISSION',
     'a bridge timeout / second click cannot submit the same in-flight transfer twice');
@@ -311,7 +311,7 @@ try {
   assert.equal(interrupted.error?.retryable, false);
 } finally {
   recipientReader.get = originalRecipientGet;
-  await handleApiRequest({ method: 'network.setActive', params: { networkId: 'alphanet' } });
+  await handleApiRequest({ method: 'network.setActive', params: { networkId: 'betanet' } });
 }
 console.log('  ok - duplicate in-flight sends are refused; a network change during RPC cancels before signing');
 
@@ -341,7 +341,7 @@ try {
   let replied = false;
   const request = handleApiRequest({ method: 'tx.sendChecked', params: {
     toAddress: accountsList[1].address, amountUnits: '1',
-    fromAddress: res2.data.address, networkId: 'alphanet',
+    fromAddress: res2.data.address, networkId: 'betanet',
   } }).then((response) => { replied = true; return response; });
   await waitFor(() => typeof releasePostSendBalance === 'function',
     'the advisory balance refresh to start');
@@ -349,14 +349,14 @@ try {
   const sent = await request;
   assert.equal(sent.ok, true, sent.error?.message);
   assert.match(sent.data.signature, /^ts[A-Za-z0-9_-]+$/);
-  assert.equal(storage.get('thru_pending_txs::alphanet')?.[0].signature, sent.data.signature,
+  assert.equal(storage.get('thru_pending_txs::betanet')?.[0].signature, sent.data.signature,
     'the signature is already recorded before the UI receives it');
 } finally {
   releasePostSendBalance?.();
   sdkForSend.accounts.get = beforeGet;
   sdkForSend.transactions.buildAndSign = beforeBuild;
   sdkForSend.transactions.sendAndTrack = beforeTrack;
-  storage.delete('thru_pending_txs::alphanet'); // keep following auth/isolation fixtures independent
+  storage.delete('thru_pending_txs::betanet'); // keep following auth/isolation fixtures independent
 }
 console.log('  ok - a stalled balance refresh cannot conceal an already-submitted transfer');
 
@@ -375,9 +375,9 @@ const gatedSigning = [
   ['tx.send', { toAddress: res2.data.address, amountUnits: '1' }],
   ['tx.send', { toAddress: res2.data.address, amountUnits: '1', password: 'wrong password' }],
   ['tx.sendChecked', { toAddress: res2.data.address, amountUnits: '1',
-    fromAddress: res2.data.address, networkId: 'alphanet' }],
+    fromAddress: res2.data.address, networkId: 'betanet' }],
   ['token.transferChecked', { mintAddress: 'taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKqq',
-    toAddress: res2.data.address, amountUnits: '1', fromAddress: res2.data.address, networkId: 'alphanet' }],
+    toAddress: res2.data.address, amountUnits: '1', fromAddress: res2.data.address, networkId: 'betanet' }],
   ['tx.autoCreateAccount', {}],
   ['token.deploy', {
     mintSeed: 'a'.repeat(64),
@@ -440,7 +440,7 @@ const SERIALIZATION_PROBES = [
   ['system.bootstrap', {}],
   ['network.getActive', {}],
   ['network.list', {}],
-  ['network.setActive', { networkId: 'alphanet' }],
+  ['network.setActive', { networkId: 'betanet' }],
   ['account.getActive', {}],
   ['account.list', { withBalances: true }],
   ['account.getActiveRef', {}],
@@ -535,9 +535,9 @@ for (const k of ['vault', 'unlocked_session', 'active_account_ref']) {
 }
 console.log('  ok - vault, session and active-ref keys are global, never scoped');
 
-assert.equal(scopedKey('thru_pending_txs', 'alphanet'), 'thru_pending_txs::alphanet');
-assert.equal(baseKeyOf('thru_pending_txs::alphanet'), 'thru_pending_txs');
-assert.equal(networkOf('thru_pending_txs::alphanet'), 'alphanet');
+assert.equal(scopedKey('thru_pending_txs', 'betanet'), 'thru_pending_txs::betanet');
+assert.equal(baseKeyOf('thru_pending_txs::betanet'), 'thru_pending_txs');
+assert.equal(networkOf('thru_pending_txs::betanet'), 'betanet');
 assert.equal(networkOf('vault'), null, 'an unscoped key reports no network');
 assert.throws(() => scopedKey('thru_pending_txs', ''), 'a missing network id must throw, not silently produce a global key');
 console.log('  ok - scopedKey round-trips and refuses an empty network id');
@@ -545,7 +545,7 @@ console.log('  ok - scopedKey round-trips and refuses an empty network id');
 // Only enabled networks are selectable; declared-but-unfinished ones stay out of the UI.
 const selectable = listNetworks().map((n) => n.id);
 const declared = listAllNetworks().map((n) => n.id);
-assert.equal(selectable.includes('alphanet'), true, 'alphanet is selectable');
+assert.equal(selectable.includes('betanet'), true, 'betanet is selectable');
 assert.equal(declared.includes('mainnet'), true, 'mainnet is declared');
 assert.equal(selectable.includes('mainnet'), false, 'mainnet is NOT selectable while unverified');
 assert.equal(declared.includes('testnet'), true, 'testnet is declared');
@@ -556,39 +556,39 @@ console.log(`  ok - ${selectable.length} of ${declared.length} networks selectab
 await handleApiRequest({ method: 'wallet.unlock', params: { password: 'Password123!' } });
 const activeAcct = (await handleApiRequest({ method: 'account.getActive' })).data;
 
-await handleApiRequest({ method: 'network.setActive', params: { networkId: 'alphanet' } });
+await handleApiRequest({ method: 'network.setActive', params: { networkId: 'betanet' } });
 const { track } = await import('../src/background/services/pending-tx-service.js');
 await track({
-  signature: 'sig-on-alphanet',
+  signature: 'sig-on-betanet',
   kind: 'transfer',
   from: activeAcct.address,
   to: activeAcct.address,
   amountUnits: '1',
-  networkId: 'alphanet',
+  networkId: 'betanet',
 });
 const alphaPending = (await handleApiRequest({ method: 'tx.getPending' })).data;
-assert.equal(alphaPending.some((r) => r.signature === 'sig-on-alphanet'), true, 'the record is visible on the network it was made on');
+assert.equal(alphaPending.some((r) => r.signature === 'sig-on-betanet'), true, 'the record is visible on the network it was made on');
 
 await handleApiRequest({ method: 'network.setActive', params: { networkId: 'localnet' } });
 const localPending = (await handleApiRequest({ method: 'tx.getPending' })).data;
 assert.equal(
-  localPending.some((r) => r.signature === 'sig-on-alphanet'),
+  localPending.some((r) => r.signature === 'sig-on-betanet'),
   false,
-  'an alphanet transaction must NOT appear after switching to localnet',
+  'an betanet transaction must NOT appear after switching to localnet',
 );
 console.log('  ok - pending transactions do not leak across a network switch');
 
-await handleApiRequest({ method: 'network.setActive', params: { networkId: 'alphanet' } });
+await handleApiRequest({ method: 'network.setActive', params: { networkId: 'betanet' } });
 const backAgain = (await handleApiRequest({ method: 'tx.getPending' })).data;
 assert.equal(
-  backAgain.some((r) => r.signature === 'sig-on-alphanet'),
+  backAgain.some((r) => r.signature === 'sig-on-betanet'),
   true,
   'switching back restores that network\'s own records rather than having wiped them',
 );
 console.log('  ok - switching back preserves each network\'s own records');
 
 // Token registry scope must match the deployed-token scope. The imported registry was kept
-// in global prefs without a networkId, so a localnet import previously appeared on Alphanet
+// in global prefs without a networkId, so a localnet import previously appeared on Betanet
 // (and vice versa), even though the same mint address can name different chain state.
 const importedMint = accountsList[1].address;
 const alphaImport = await handleApiRequest({
@@ -596,19 +596,19 @@ const alphaImport = await handleApiRequest({
   params: { mintAddress: importedMint, name: 'Alpha-only', symbol: 'ALP', decimals: 6 },
 });
 assert.equal(alphaImport.ok, true);
-assert.equal(alphaImport.data.networkId, 'alphanet');
+assert.equal(alphaImport.data.networkId, 'betanet');
 assert.equal((await handleApiRequest({ method: 'token.list' })).data
   .some((row) => row.mintAddress === importedMint && row.symbol === 'ALP'), true);
 await handleApiRequest({ method: 'network.setActive', params: { networkId: 'localnet' } });
 assert.equal((await handleApiRequest({ method: 'token.list' })).data
-  .some((row) => row.mintAddress === importedMint), false, 'Alphanet import must not leak onto localnet');
+  .some((row) => row.mintAddress === importedMint), false, 'Betanet import must not leak onto localnet');
 const localImport = await handleApiRequest({
   method: 'token.import',
   params: { mintAddress: importedMint, name: 'Local-only', symbol: 'LOC', decimals: 3 },
 });
 assert.equal(localImport.ok, true);
 assert.equal(localImport.data.networkId, 'localnet');
-await handleApiRequest({ method: 'network.setActive', params: { networkId: 'alphanet' } });
+await handleApiRequest({ method: 'network.setActive', params: { networkId: 'betanet' } });
 assert.equal((await handleApiRequest({ method: 'token.list' })).data
   .find((row) => row.mintAddress === importedMint)?.symbol, 'ALP',
 'imports for two networks must remain independent');
@@ -627,8 +627,8 @@ await handleApiRequest({ method: 'network.setActive', params: { networkId: 'loca
 assert.equal((await handleApiRequest({ method: 'token.list' })).data
   .some((row) => row.mintAddress === 'legacy-imported-mint'), false);
 storage.set('thru_prefs', originalPrefs);
-await handleApiRequest({ method: 'network.setActive', params: { networkId: 'alphanet' } });
-console.log('  ok - imported token records are network-scoped; legacy records default only to alphanet');
+await handleApiRequest({ method: 'network.setActive', params: { networkId: 'betanet' } });
+console.log('  ok - imported token records are network-scoped; legacy records default only to betanet');
 
 // Account labels are the counter-example: they describe an address, not a chain, so they must
 // survive a switch.
@@ -636,7 +636,7 @@ await handleApiRequest({ method: 'account.setLabel', params: { address: activeAc
 await handleApiRequest({ method: 'network.setActive', params: { networkId: 'localnet' } });
 const labelAfterSwitch = (await handleApiRequest({ method: 'account.getActive' })).data.label;
 assert.equal(labelAfterSwitch, 'CrossNet', 'account labels are global and survive a network switch');
-await handleApiRequest({ method: 'network.setActive', params: { networkId: 'alphanet' } });
+await handleApiRequest({ method: 'network.setActive', params: { networkId: 'betanet' } });
 console.log('  ok - account labels are global and survive a network switch');
 
 console.log('[11] Contract-v7 custom-network quarantine is background-enforced');
@@ -655,7 +655,7 @@ storage.set('thru_custom_networks', [legacyCustom]);
 // must survive router normalization, and neither persisted selection nor thru-client binding moves.
 const thruClient = await import('../src/lib/thru-client.js');
 const { getNetworkConfig } = await import('../src/lib/networks.js');
-await handleApiRequest({ method: 'network.setActive', params: { networkId: 'alphanet' } });
+await handleApiRequest({ method: 'network.setActive', params: { networkId: 'betanet' } });
 const configuredBeforeRefusal = { ...thruClient.getConfiguredNetwork() };
 const storedBeforeRefusal = storage.get('thru_active_network');
 const customRefusal = await handleApiRequest({
@@ -675,7 +675,7 @@ console.log('  ok - direct custom activation is permanently refused with storage
 // N2: legacy records remain visible for deletion and carry an explicit non-selectable contract.
 const listedNetworks = await handleApiRequest({ method: 'network.list' });
 assert.equal(listedNetworks.ok, true);
-const listedBuiltIn = listedNetworks.data.find((network) => network.id === 'alphanet');
+const listedBuiltIn = listedNetworks.data.find((network) => network.id === 'betanet');
 const listedCustom = listedNetworks.data.find((network) => network.id === LEGACY_CUSTOM_ID);
 assert.equal(listedBuiltIn.selectable, true);
 assert.equal(listedCustom.custom, true);
@@ -692,11 +692,11 @@ assert.equal(thruClient.getConfiguredNetwork().id, LEGACY_CUSTOM_ID,
   'control: the old client accepted this incomplete custom record');
 const healedActive = await handleApiRequest({ method: 'network.getActive' });
 assert.equal(healedActive.ok, true);
-assert.equal(healedActive.data.id, 'alphanet');
-assert.equal(storage.get('thru_active_network'), 'alphanet');
-assert.equal(thruClient.getConfiguredNetwork().id, 'alphanet');
+assert.equal(healedActive.data.id, 'betanet');
+assert.equal(storage.get('thru_active_network'), 'betanet');
+assert.equal(thruClient.getConfiguredNetwork().id, 'betanet');
 assert.notEqual(thruClient.getConfiguredNetwork().rpcUrl, legacyCustom.rpcUrl);
-console.log('  ok - network.getActive heals storage and binds alphanet instead of the legacy endpoint');
+console.log('  ok - network.getActive heals storage and binds betanet instead of the legacy endpoint');
 
 // N4: system.bootstrap is the fresh-worker startup path. Run it while locked so its background
 // balance refresh cannot make a live RPC call; the network heal itself remains fully exercised.
@@ -706,9 +706,9 @@ thruClient.configureNetwork(legacyCustom);
 const healedBootstrap = await handleApiRequest({ method: 'system.bootstrap' });
 assert.equal(healedBootstrap.ok, true);
 assert.equal(healedBootstrap.data.unlocked, false);
-assert.equal(healedBootstrap.data.network.id, 'alphanet');
-assert.equal(storage.get('thru_active_network'), 'alphanet');
-assert.equal(thruClient.getConfiguredNetwork().id, 'alphanet');
+assert.equal(healedBootstrap.data.network.id, 'betanet');
+assert.equal(storage.get('thru_active_network'), 'betanet');
+assert.equal(thruClient.getConfiguredNetwork().id, 'betanet');
 await handleApiRequest({
   method: 'wallet.unlock',
   params: { password: 'Password123!' },
@@ -722,14 +722,14 @@ const disabledRefusal = await handleApiRequest({
 });
 assert.equal(disabledRefusal.ok, false);
 assert.match(disabledRefusal.error.message, /unknown network/i);
-assert.equal(storage.get('thru_active_network'), 'alphanet');
+assert.equal(storage.get('thru_active_network'), 'betanet');
 storage.set('thru_active_network', 'testnet');
 thruClient.configureNetwork(getNetworkConfig('localnet'));
 const healedDisabled = await handleApiRequest({ method: 'network.getActive' });
 assert.equal(healedDisabled.ok, true);
-assert.equal(healedDisabled.data.id, 'alphanet');
-assert.equal(storage.get('thru_active_network'), 'alphanet');
-assert.equal(thruClient.getConfiguredNetwork().id, 'alphanet');
+assert.equal(healedDisabled.data.id, 'betanet');
+assert.equal(storage.get('thru_active_network'), 'betanet');
+assert.equal(thruClient.getConfiguredNetwork().id, 'betanet');
 console.log('  ok - disabled built-ins are refused directly and healed when found in storage');
 
 // N6/N7: removal is still available to an unlocked wallet, including when it is the first call to
@@ -743,8 +743,8 @@ const removedCustom = await handleApiRequest({
 assert.equal(removedCustom.ok, true);
 assert.equal(removedCustom.data.removed, LEGACY_CUSTOM_ID);
 assert.equal(storage.get('thru_custom_networks').length, 0);
-assert.equal(storage.get('thru_active_network'), 'alphanet');
-assert.equal(thruClient.getConfiguredNetwork().id, 'alphanet');
+assert.equal(storage.get('thru_active_network'), 'betanet');
+assert.equal(thruClient.getConfiguredNetwork().id, 'betanet');
 const removedAgain = await handleApiRequest({
   method: 'network.removeCustom',
   params: { networkId: LEGACY_CUSTOM_ID },
@@ -758,7 +758,7 @@ const deletedActivation = await handleApiRequest({
 assert.equal(deletedActivation.ok, false);
 assert.notEqual(deletedActivation.error.code, 'CUSTOM_NETWORK_DISABLED',
   'a deleted record is unknown, not a stored custom network');
-assert.equal(storage.get('thru_active_network'), 'alphanet');
+assert.equal(storage.get('thru_active_network'), 'betanet');
 console.log('  ok - removal remains available; deleted/unknown ids cannot become active');
 
 console.log('[12] Reset is background-enforced');

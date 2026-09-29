@@ -21,7 +21,7 @@
 //        the full /history screen with filters, and a second, shallower copy of the same
 //        list is a dead tab.
 //      - White card container with 8px radius, border-t dividers.
-//      - Token rows: 32px token disc/logo, symbol (THRU, USDC), Alphanet network badge, name, amount, USD value.
+//      - Token rows: 32px token disc/logo, symbol (THRU, USDC), Betanet network badge, name, amount, USD value.
 
 import { h, disposer } from '../../kit/dom.js';
 import { icon } from '../../kit/icon.js';
@@ -229,7 +229,7 @@ export function DashboardRoute({ navigate }) {
   const securityTile = track(PanelItem({
     iconName: 'shield',
     label: 'Security',
-    onClick: () => banner.set('Security & Approvals coming soon on Thru Alphanet.', 'info'),
+    onClick: () => banner.set('Security & Approvals coming soon on Thru Betanet.', 'info'),
   }));
 
   const faucetTile = track(PanelItem({
@@ -277,7 +277,7 @@ export function DashboardRoute({ navigate }) {
   function renderAssets(nativeText, tokens, stale, tokenState) {
     disposeAssets();
 
-    const netName = currentNetwork?.label || currentNetwork?.id || 'Alphanet';
+    const netName = currentNetwork?.label || currentNetwork?.id || 'Betanet';
 
     // Native THRU row. No changePercent: there is no 24h data source, so any percentage
     // here would be fabricated market data.

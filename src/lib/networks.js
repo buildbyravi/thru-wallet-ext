@@ -35,7 +35,8 @@ import { BOOTSTRAP_PROGRAM_ADDRESSES, BOOTSTRAP_FAUCET_VAULT_ADDRESS } from '@th
  */
 
 // Program addresses come from the official 0.4.0 packages — the managed-genesis registry that
-// replaced the old reserved "marker byte" system table at the alphanet reset. (The old
+// replaced the old reserved "marker byte" system table at the 2026-09-26 managed-genesis
+// reset. (The old
 // zero-filled addresses with byte 31 = 0x00 transfer / 0x03 account-create / 0xaa token /
 // 0xfa faucet no longer exist on-chain.) The packages are the single source of truth: a
 // redeployment lands here via a pinned version bump, not by copy-pasting strings.
@@ -58,10 +59,10 @@ const FAUCET_STATE_ACCOUNT = BOOTSTRAP_FAUCET_VAULT_ADDRESS;
 const ACCOUNT_CREATE_PROGRAM_ID = NOOP_PROGRAM_ADDRESS;
 
 export const NETWORKS = {
-  alphanet: {
-    id: 'alphanet',
-    label: 'Alphanet',
-    rpcUrl: 'https://rpc.alphanet.thru.org',
+  betanet: {
+    id: 'betanet',
+    label: 'Betanet',
+    rpcUrl: 'https://rpc.betanet.thru.org',
     explorerUrl: 'https://scan.thru.org',
     faucetProgramId: FAUCET_PROGRAM_ID,
     faucetStateAccount: FAUCET_STATE_ACCOUNT,
@@ -71,11 +72,13 @@ export const NETWORKS = {
     accountCreateProgramId: ACCOUNT_CREATE_PROGRAM_ID,
     isTestnet: true,
     enabled: true,
-    environment: 'devnet',
-    // MEASURED on the reset chain 2026-09-26 (after the 0.4.0 managed-genesis reset): a
-    // transfer between registered accounts cost exactly 1 base unit (10000 − 1234 − 1 = 8765).
-    // Only one amount and one size were sampled, so the reserve sits well above it rather
-    // than at it.
+    // Betanet is Thru's testnet stage — its LAST one before mainnet (10 nodes, announced at
+    // TOKEN2049). The previous single-node alphanet is gone.
+    environment: 'testnet',
+    // MEASURED on the managed-genesis chain 2026-09-26 (same 0.4.0 program deployment betanet
+    // runs): a transfer between registered accounts cost exactly 1 base unit (10000 − 1234 −
+    // 1 = 8765). Only one amount and one size were sampled, so the reserve sits well above it
+    // rather than at it. Re-verify on betanet with scripts/measure-fee.mjs.
     baseFeeUnits: 1n,
     feeReserveUnits: 1000n,
   },
@@ -109,8 +112,9 @@ export const NETWORKS = {
     feeReserveUnits: 1000n,
   },
 
-  // Declared but NOT enabled. Present so the shape, storage scoping and UI paths exist and are
-  // exercised before either network is real. Enabling it requires two deliberate edits: set
+  // Declared but NOT enabled. This is the reserved slot for a future Thru-declared 'testnet'
+  // endpoint — Betanet (above) is the live testnet today. Present so the shape, storage scoping
+  // and UI paths exist and are exercised. Enabling it requires two deliberate edits: set
   // `enabled: true` here and add its verified RPC origin to manifest.json connect-src.
   //
   // Left disabled deliberately: the RPC host, the faucet situation and whether program addresses
@@ -158,7 +162,7 @@ export const NETWORKS = {
   },
 };
 
-export const DEFAULT_NETWORK = 'alphanet';
+export const DEFAULT_NETWORK = 'betanet';
 
 /** Get network config by id, throws if unknown. */
 export function getNetworkConfig(networkId) {

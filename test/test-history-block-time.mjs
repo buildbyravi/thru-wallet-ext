@@ -15,7 +15,7 @@ NETWORKS.localnet.enabled = true;
 import { relTime } from '../src/ui/domain/tx-card.js';
 
 const data = new Map();
-const alphaScope = 'thru_history_cache::alphanet';
+const alphaScope = 'thru_history_cache::betanet';
 const localScope = 'thru_history_cache::localnet';
 globalThis.chrome = {
   runtime: { sendMessage: () => Promise.resolve() },
@@ -75,7 +75,7 @@ function trackClient() {
   });
   return bound;
 }
-await networks.setActiveNetwork('alphanet');
+await networks.setActiveNetwork('betanet');
 let alphaClient = trackClient();
 let alphaCalls = 0;
 let localClient;
@@ -86,8 +86,8 @@ try {
     assert.equal(options?.view, BlockView.HEADER_ONLY, 'History only requests block headers');
     return { blockTimeNs: NS_A };
   };
-  assert.equal(await thruClient.getBlockTimeMs(slot, 'alphanet'), MS_A);
-  assert.equal(await thruClient.getBlockTimeMs(slot, 'alphanet'), MS_A);
+  assert.equal(await thruClient.getBlockTimeMs(slot, 'betanet'), MS_A);
+  assert.equal(await thruClient.getBlockTimeMs(slot, 'betanet'), MS_A);
   assert.equal(alphaCalls, 1, 'successful lookups are cached within a network');
   assert.equal(relTime(MS_A, slot), format(MS_A));
   assert.equal(relTime(null, slot), `Block ${slot}`);
@@ -106,17 +106,17 @@ try {
     };
     assert.equal(await thruClient.getBlockTimeMs(slot, 'localnet'), MS_B,
       'the same slot on another chain has its own block time');
-    assert.equal(localCalls, 1, 'the second chain did not reuse an Alphanet cache entry');
+    assert.equal(localCalls, 1, 'the second chain did not reuse an Betanet cache entry');
   } finally {
     localClient.blocks.get = originalLocalBlock;
   }
-  await networks.setActiveNetwork('alphanet');
+  await networks.setActiveNetwork('betanet');
   alphaClient = trackClient();
-  assert.equal(await thruClient.getBlockTimeMs(slot, 'alphanet'), MS_A);
+  assert.equal(await thruClient.getBlockTimeMs(slot, 'betanet'), MS_A);
   assert.equal(alphaCalls, 1, 'switching back can reuse only the correct chain\'s entry');
   console.log('  ok - header-only block times are valid, bounded-date, cached and network-scoped');
 
-  // A late Alphanet lookup must not overwrite a Localnet result even when their slots match.
+  // A late Betanet lookup must not overwrite a Localnet result even when their slots match.
   const late = deferred();
   let started = false;
   alphaClient.blocks.get = ({ slot: requested }) => {
@@ -124,7 +124,7 @@ try {
     started = true;
     return late.promise;
   };
-  const oldChain = thruClient.getBlockTimeMs(428, 'alphanet');
+  const oldChain = thruClient.getBlockTimeMs(428, 'betanet');
   await waitFor(() => started);
   await networks.setActiveNetwork('localnet');
   const local = trackClient();
@@ -137,19 +137,19 @@ try {
   }
   late.resolve({ blockTimeNs: NS_A });
   assert.equal(await oldChain, null, 'an in-flight result for an unselected chain is discarded');
-  await networks.setActiveNetwork('alphanet');
+  await networks.setActiveNetwork('betanet');
   alphaClient = trackClient();
   alphaClient.blocks.get = async () => ({ blockTimeNs: NS_A });
-  assert.equal(await thruClient.getBlockTimeMs(428, 'alphanet'), MS_A);
+  assert.equal(await thruClient.getBlockTimeMs(428, 'betanet'), MS_A);
 
   alphaClient.blocks.get = async () => { throw new Error('offline'); };
-  assert.equal(await thruClient.getBlockTimeMs(429, 'alphanet'), null);
+  assert.equal(await thruClient.getBlockTimeMs(429, 'betanet'), null);
   alphaClient.blocks.get = async () => ({ blockTimeNs: NS_A });
-  assert.equal(await thruClient.getBlockTimeMs(429, 'alphanet'), MS_A,
+  assert.equal(await thruClient.getBlockTimeMs(429, 'betanet'), MS_A,
     'an unavailable block is retried, not cached as an invented time');
-  assert.equal(await thruClient.getBlockTimeMs('not a slot', 'alphanet'), null);
-  assert.equal(await thruClient.getBlockTimeMs('429.5', 'alphanet'), null);
-  assert.equal(await thruClient.getBlockTimeMs('9007199254740993', 'alphanet'), null);
+  assert.equal(await thruClient.getBlockTimeMs('not a slot', 'betanet'), null);
+  assert.equal(await thruClient.getBlockTimeMs('429.5', 'betanet'), null);
+  assert.equal(await thruClient.getBlockTimeMs('9007199254740993', 'betanet'), null);
 
   const sharedHeader = deferred();
   let sharedCalls = 0;
@@ -158,8 +158,8 @@ try {
     sharedCalls += 1;
     return sharedHeader.promise;
   };
-  const sharedA = thruClient.getBlockTimeMs(435, 'alphanet');
-  const sharedB = thruClient.getBlockTimeMs('435', 'alphanet');
+  const sharedA = thruClient.getBlockTimeMs(435, 'betanet');
+  const sharedB = thruClient.getBlockTimeMs('435', 'betanet');
   try {
     await waitFor(() => sharedCalls > 0);
     assert.equal(sharedCalls, 1, 'concurrent requests for one chain/slot share one RPC');
@@ -171,7 +171,7 @@ try {
 
   // The own submittedAt timestamp is real, but it is not the chain's block time. Where the
   // block header is available it must win, even when a pending record already has a date.
-  data.set('thru_pending_txs::alphanet', [
+  data.set('thru_pending_txs::betanet', [
     { signature: 'ts_chain_time', submittedAt: 1_600_000_000_000 },
   ]);
   alphaClient.transactions.listForAccount = async () => ({ transactions: [
@@ -216,7 +216,7 @@ try {
   assert.equal(absent.entries[0].timestamp, null, 'zero or missing block time is not a date');
   assert.equal(relTime(absent.entries[0].timestamp, absent.entries[0].slot), 'Block 432');
 
-  data.set('thru_pending_txs::alphanet', [
+  data.set('thru_pending_txs::betanet', [
     { signature: 'ts_submitted', submittedAt: 1_600_000_000_000 },
   ]);
   alphaClient.transactions.listForAccount = async () => ({ transactions: [fakeTransaction('ts_submitted', 436)] });
@@ -300,7 +300,7 @@ try {
   assert.equal(Object.hasOwn(data.get(localScope) || {}, 'ta_stale_header'), false);
   console.log('  ok - a chain switch during timestamp resolution invalidates the feed');
 
-  await networks.setActiveNetwork('alphanet');
+  await networks.setActiveNetwork('betanet');
   alphaClient = trackClient();
   alphaClient.transactions.listForAccount = async () => ({ transactions: [fakeTransaction('ts_page_stale', 451)] });
   const latePageHeader = deferred();
@@ -321,7 +321,7 @@ try {
     bound.blocks.getBlockHeight = original.height;
     bound.transactions.listForAccount = original.list;
   }
-  await networks.setActiveNetwork('alphanet');
+  await networks.setActiveNetwork('betanet');
 }
 
 console.log('History block-time tests passed.');

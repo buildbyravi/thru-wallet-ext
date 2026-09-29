@@ -4,7 +4,7 @@
 // against a live network:
 //
 //   - The amount field is BASE UNITS, and says so. That is now CONFIRMED rather than assumed:
-//     claiming 10000 credited exactly 10000 base units on alphanet. The legacy label said "raw
+//     claiming 10000 credited exactly 10000 base units on betanet. The legacy label said "raw
 //     units" without explaining what that meant next to a Send screen that takes whole THRU.
 //   - The cap comes from the ACTIVE NETWORK's faucetMaxPerClaim, not a hardcoded 10_000n copied
 //     into three files.

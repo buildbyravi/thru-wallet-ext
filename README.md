@@ -1,9 +1,11 @@
-# Thru Wallet — Alphanet
+# Thru Wallet — Betanet
 
 Chrome MV3 self-custody wallet extension for the **Thru native Layer 1**. Built with vanilla ES modules, esbuild, and real Thru packages (`@thru/sdk` and its `@thru/sdk/crypto` subpath, plus `@thru/programs`).
 
+**Betanet is Thru's final testnet before mainnet.** It replaces the single-node alphanet (which processed over 10 million blocks) with a 10-node network and much faster blocks (100–300 ms). Network id: `betanet` (`https://rpc.betanet.thru.org`, explorer `https://scan.thru.org` with `?network=betanet`).
+
 > [!WARNING]
-> Not production-ready. Use only with alphanet/devnet funds until security review and mainnet readiness are complete.
+> Not production-ready. Use only with betanet/devnet funds until security review and mainnet readiness are complete.
 
 ---
 
@@ -15,7 +17,7 @@ Chrome MV3 self-custody wallet extension for the **Thru native Layer 1**. Built 
 - Contract method count: **74**.
 - Signing methods use `auth: 'signing'`: password re-authentication is required by default, with a password-gated user opt-out for session-only signing.
 - Reset and auto-lock changes are background-hardened in contract v6.
-- Contract v7 quarantines legacy custom networks at the background boundary: saved records stay listable/removable, but direct activation is permanently refused and a stale active selection self-heals to Alphanet before RPC binding.
+- Contract v7 quarantines legacy custom networks at the background boundary: saved records stay listable/removable, but direct activation is permanently refused and a stale active selection self-heals to Betanet before RPC binding.
 - Every route is mounted by a test: `test-route-lifecycle.mjs` drives all 14 routes through the real Router, guards and bridge in no-vault / locked / unlocked states, and asserts teardown, secret hygiene, modal focus trapping and the Settings guarantees. Layout, real focus and the side panel itself are a browser runbook: [`docs/MANUAL_SMOKE_CHECKLIST.md`](docs/MANUAL_SMOKE_CHECKLIST.md).
 - Settings no longer offers "Add custom network". `network.upsertCustom` remains for contract compatibility but has no UI caller. A legacy saved record is shown as **not selectable**, with Remove as its only action; `network.setActive` enforces the same quarantine in the background.
 - The manifest's side panel is reachable from the wallet: Settings > Window > **Open side panel**. It calls `chrome.sidePanel.open()` from a user gesture and never calls `setPanelBehavior`, so the toolbar icon still opens the popup.
@@ -151,13 +153,13 @@ Load `dist/` as an unpacked extension in Chrome/Chromium after `npm run build`.
 These are not part of `npm test` because they touch a live network:
 
 ```bash
-node scripts/verify-live-e2e.mjs alphanet
-node scripts/verify-autoregister.mjs alphanet
-node scripts/verify-chain.mjs alphanet
-node scripts/measure-fee.mjs alphanet
+node scripts/verify-live-e2e.mjs betanet
+node scripts/verify-autoregister.mjs betanet
+node scripts/verify-chain.mjs betanet
+node scripts/measure-fee.mjs betanet
 ```
 
-Historical alphanet results are tracked in `docs/STATUS_AND_ROADMAP.md` and `docs/PROJECT_LEDGER.md`.
+Historical testnet results are tracked in `docs/STATUS_AND_ROADMAP.md` and `docs/PROJECT_LEDGER.md`.
 
 ---
 

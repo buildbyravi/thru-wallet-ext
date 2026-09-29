@@ -284,16 +284,16 @@ console.log('\n[11] Every program address in every network config is SDK-parseab
 }
 
 console.log('\n[12] configureNetwork actually rebinds the client');
-// The regression this guards: thru-client memoized one client against a hardcoded alphanet URL,
+// The regression this guards: thru-client memoized one client against a hardcoded betanet URL,
 // so switching network changed the badge and the scoped storage while every RPC call still went
-// to alphanet. Network switching was cosmetic.
+// to betanet. Network switching was cosmetic.
 {
   const client = await import('../src/lib/thru-client.js');
   const { getNetworkConfig } = await import('../src/lib/networks.js');
 
   assert(
-    client.getConfiguredNetwork().rpcUrl === client.ALPHANET_RPC,
-    'defaults to alphanet before any configuration',
+    client.getConfiguredNetwork().rpcUrl === client.BETANET_RPC,
+    'defaults to betanet before any configuration',
   );
 
   const local = getNetworkConfig('localnet');
@@ -310,8 +310,8 @@ console.log('\n[12] configureNetwork actually rebinds the client');
   assert(fromWire.faucetMaxPerClaim === 5000n, 'a string cap is widened back to BigInt');
 
   // Restore, so anything importing later sees the default.
-  client.configureNetwork(getNetworkConfig('alphanet'));
-  assert(client.getConfiguredNetwork().id === 'alphanet', 'rebinding back to alphanet works');
+  client.configureNetwork(getNetworkConfig('betanet'));
+  assert(client.getConfiguredNetwork().id === 'betanet', 'rebinding back to betanet works');
 }
 
 console.log('\n[12b] A failed account RPC is unknown, NOT a missing account with zero balance');

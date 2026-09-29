@@ -13,8 +13,8 @@ included) so diffs here are real listing diffs.
 | Website (listing) | <https://thruwallet.vercel.app> (`homepage_url` in `src/manifest.json`) |
 | Support | Telegram group <https://t.me/+dA8TwsOECcIxZWZl> (shown in Settings → About) |
 | Privacy policy URL (as submitted) | <https://github.com/buildbyravi/thru-wallet-ext/blob/main/PRIVACY.md> |
-| Package version at last sync | `1.3.1` (`src/manifest.json`) |
-| Last synced with the live listing | 2026-09-27 |
+| Package version at last sync | `1.4.0` (`src/manifest.json`) |
+| Last synced with the live listing | 2026-09-29 |
 
 ---
 
@@ -35,7 +35,7 @@ High-performance self-custody wallet and key manager for Thru.
 **Description**
 
 ```text
-Thru Wallet is an experimental, open-source self-custody wallet for Thru's alphanet blockchain.
+Thru Wallet is an experimental, open-source self-custody wallet for Thru's betanet blockchain.
 
 Key Features:
 
@@ -53,7 +53,7 @@ Key Features:
 
 - Zero Telemetry: No analytics, tracking, third-party scripts, or remote code execution.
 
-Notice: This is community-built, open-source software for the Thru Alphanet testnet. It is not affiliated with or endorsed by Unto Labs and has not been audited. Do not use with real financial value.
+Notice: This is community-built, open-source software for the Thru Betanet testnet. It is not affiliated with or endorsed by Unto Labs and has not been audited. Do not use with real financial value.
 ```
 
 **Category**
@@ -71,7 +71,7 @@ English
 ## 2. Single purpose description
 
 ```text
-A dedicated cryptocurrency key and transaction manager for the Thru Alphanet testnet, enabling users to store encrypted keys, review transaction details, and perform transfers on the Thru blockchain.
+A dedicated cryptocurrency key and transaction manager for the Thru Betanet testnet, enabling users to store encrypted keys, review transaction details, and perform transfers on the Thru blockchain.
 ```
 
 ## 3. Permission justifications
@@ -164,6 +164,7 @@ review status.
 
 | Date | What changed | Notes |
 | --- | --- | --- |
+| 2026-09-29 | Package `1.4.0` — **Betanet migration**: the wallet now targets `betanet` (`rpc.betanet.thru.org`), Thru's final testnet before mainnet (10 nodes, 100–300 ms blocks; the single-node alphanet is gone). Explorer links use `?network=betanet`; auto-lock no longer counts background sync as activity; faucet claims no longer ask for the password; RESET must be typed in uppercase | Description bullets: mention Betanet (final testnet before mainnet) when the store copy is next touched |
 | 2026-09-28 | Package `1.3.1` — Auto-lock fixed (the worker restarted on every alarm tick and reset the idle clock, so it never fired at any setting); toolbar icon now shows a lock badge while the wallet is locked (like Rabby); create-wallet shows the phrase immediately (no reveal-password gate); Enter submits the import/create forms; explorer links use `/address/?network=`; duplicate-send errors name the exact collision | Fixes shipped as bug reports from manual testing; no description changes |
 | 2026-09-27 | Package `1.3.0` — the `@thru/sdk` 0.4.0 release; Website field set to thruwallet.vercel.app; Telegram support group added (Settings → About); Localnet network removed from the shipped wallet (custom chains come later); `connect-src` tightened to the alphanet RPC only | Mirror the new Website/support fields into the dashboard; description bullets unchanged |
 | 2026-09-26 | Initial capture of the live listing into this file | Mirrors the listing as submitted (package `1.2.0`); all §6 claims verified against code |

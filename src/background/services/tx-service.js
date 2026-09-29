@@ -110,7 +110,7 @@ export async function sendTransfer(toAddress, amountUnits, expected = null) {
 
   const feePayer = await vault.getActiveAccount();
   // Bind the client BEFORE querying/signing. A direct checked request after a worker restart
-  // must not silently use the thru-client module's default Alphanet binding on another network.
+  // must not silently use the thru-client module's default Betanet binding on another network.
   const network = await getActiveNetworkConfig();
   await assertSendContext(expected, feePayer);
   if (feePayer.address === target) {
@@ -132,7 +132,7 @@ export async function sendTransfer(toAddress, amountUnits, expected = null) {
       throw err;
     }
 
-    // VERIFIED ON ALPHANET 2026-08-18: the transfer program requires the RECIPIENT account to
+    // VERIFIED ON BETANET 2026-08-18: the transfer program requires the RECIPIENT account to
     // already exist on-chain. Sending to a never-registered address reverts with vmError=-765,
     // which five different instruction layouts all produced identically — the byte layout was
     // never the problem. The sender cannot register someone else's account (createOnChainAccount
@@ -469,9 +469,10 @@ export async function autoCreateAccount() {
 /**
  * Estimate the network fee for a transfer, from the ACTIVE network's config.
  *
- * The fee is a per-network value, not a constant. It was measured on alphanet devnet, and the
- * transfer program and its fee schedule may both change at testnet — so a network whose fee has
- * not been measured reports `supported: false` rather than quoting a devnet number as if it
+ * The fee is a per-network value, not a constant. It was measured on the managed-genesis
+ * testnet chain (2026-09-26, the same program deployment betanet runs), and the transfer
+ * program and its fee schedule may both change between deployments — so a network whose fee
+ * has not been measured reports `supported: false` rather than quoting an old number as if it
  * applied. A guessed fee on a live network is the most expensive kind of guess.
  *
  * `reserveUnits` is what MAX should hold back. It sits well above the observed fee because only

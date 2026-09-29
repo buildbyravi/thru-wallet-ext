@@ -3,18 +3,18 @@
 **Repository:** [github.com/buildbyravi/thru-wallet-ext](https://github.com/buildbyravi/thru-wallet-ext)  
 **Manifest Version:** Manifest V3  
 
-Thru Wallet is an experimental, open-source, self-custody browser extension designed for Thru's alphanet (a non-EVM RISC-V Layer-1 blockchain built by Unto Labs). Security and transparency are paramount to establishing user trust.
+Thru Wallet is an experimental, open-source, self-custody browser extension designed for Thru's betanet (a non-EVM RISC-V Layer-1 blockchain built by Unto Labs). Security and transparency are paramount to establishing user trust.
 
 ---
 
 ## 1. Threat Model & Scope Notice
 
 > [!CAUTION]
-> **ALPHANET SOFTWARE**  
-> Thru Wallet is designed strictly for testnet/alphanet evaluation, development, and experimentation. **Do not use this wallet with mainnet assets or any keys holding real financial value.**
+> **BETANET SOFTWARE**  
+> Thru Wallet is designed strictly for testnet/betanet evaluation, development, and experimentation. **Do not use this wallet with mainnet assets or any keys holding real financial value.**
 
 ### Threat Assumptions & Boundaries
-*   **Target Network:** Thru Alphanet (`rpc.alphanet.thru.org`).
+*   **Target Network:** Thru Betanet (`rpc.betanet.thru.org`).
 *   **Host Environment:** Chrome / Chromium extension runtime executing under Manifest V3 security boundaries.
 *   **Out-of-Scope Risks:** Compromised local host machines (e.g., OS keyloggers, malware with access to browser process memory), physical access to unlocked hardware, or vulnerabilities within the underlying WebCrypto implementation.
 

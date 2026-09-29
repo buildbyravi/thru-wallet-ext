@@ -98,7 +98,7 @@ console.log('  ok - eleven mints were checked with at most four concurrent reads
 
 console.log('[send intent] in-flight guard includes chain and mint, releases after failure');
 const { beginTransfer } = await import('../src/background/services/pending-tx-service.js');
-const intent = { networkId: 'alphanet', from: 'sender', to: 'recipient', amountUnits: '100' };
+const intent = { networkId: 'betanet', from: 'sender', to: 'recipient', amountUnits: '100' };
 const releaseNative = beginTransfer(intent);
 assert.throws(() => beginTransfer(intent), (error) => error.code === 'DUPLICATE_SUBMISSION');
 const releaseMintA = beginTransfer({ ...intent, mint: 'mint-a' });

@@ -14,7 +14,7 @@ import { keys, Pubkey } from '@thru/sdk';
 import * as client from '../src/lib/thru-client.js';
 import { getNetworkConfig } from '../src/lib/networks.js';
 
-const networkId = process.argv[2] || 'alphanet';
+const networkId = process.argv[2] || 'betanet';
 const network = getNetworkConfig(networkId);
 client.configureNetwork(network);
 const CAP = network.faucetMaxPerClaim ?? 10_000n;

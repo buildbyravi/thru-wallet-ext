@@ -774,7 +774,7 @@ Token created
 $THRUX  Thru X Market
 Mint: ta...mint [Copy]
 Creator: Main Account ta...creator
-Network: Alphanet
+Network: Betanet
 Tx: abc...xyz [Explorer]
 
 Market status

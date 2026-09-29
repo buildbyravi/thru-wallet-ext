@@ -57,6 +57,7 @@ ok('contract v8 documents the token-transfer addition', CONTRACT_VERSION >= 8);
 ok('contract v9 documents the history-feed cache addition', CONTRACT_VERSION >= 9);
 ok('contract v10 documents the transaction-detail addition', CONTRACT_VERSION >= 10);
 ok('contract v11 pins a reviewed send to a source account and network', CONTRACT_VERSION >= 11);
+ok('contract v13 documents the faucet auth/param change', CONTRACT_VERSION >= 13);
 
 // Contract v10 invariants. tx.getDetail is a read, so it must NOT have acquired an auth
 // gate it does not need — but more importantly its declared return shape must keep saying
@@ -106,7 +107,7 @@ for (const [method, legacy] of [
 }
 
 section('Contract v12 creation-bound registration and cache-first history');
-ok('the additive contract advances to v12 without reusing v11', CONTRACT_VERSION === 12);
+ok('the contract advances to v13 without reusing earlier numbers', CONTRACT_VERSION === 13);
 const register = METHODS['tx.registerAccount'];
 ok('tx.registerAccount is unlocked-only, explicitly targets an address, and has no password field',
   register?.since === 12 && register?.auth === 'unlocked'

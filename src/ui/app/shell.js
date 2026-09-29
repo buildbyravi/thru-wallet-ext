@@ -77,7 +77,7 @@ export function AppShell({ navigate, onNetworkChange }) {
 
   // ---- CurrentConnection Footer -------------------------------------------
   const connectionFooter = CurrentConnection({
-    networkLabel: 'Alphanet',
+    networkLabel: 'Betanet',
     onNetworkClick: () => navigate('/settings'),
   });
 

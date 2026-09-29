@@ -3,7 +3,7 @@
 // Built-in networks come from src/lib/networks.js and are immutable. Custom networks live in a
 // storage overlay that used to let a user point the wallet at a local devnet node without editing
 // source; since contract v7 the overlay is retained only so an existing record can be listed and
-// deleted. A custom entry may not shadow a built-in id, so `alphanet` always means alphanet.
+// deleted. A custom entry may not shadow a built-in id, so `betanet` always means betanet.
 //
 // CONTRACT v7 SECURITY BREAK — a custom network can be STORED, LISTED and REMOVED, but it can
 // never be ACTIVE:
@@ -131,9 +131,9 @@ export async function getActiveNetworkId() {
  * Get the currently active network configuration.
  *
  * Also BINDS thru-client to it. That binding is the thing that makes network switching real:
- * thru-client memoizes one RPC client and previously hardcoded the alphanet URL, so selecting
+ * thru-client memoizes one RPC client and previously hardcoded an RPC URL, so selecting
  * another network changed the badge and the scoped storage while every RPC call still went to
- * alphanet. Doing it here rather than only in setActiveNetwork means a fresh service worker —
+ * the old endpoint. Doing it here rather than only in setActiveNetwork means a fresh service worker —
  * which MV3 restarts aggressively — is bound correctly on its first read instead of only after
  * the user happens to switch.
  *

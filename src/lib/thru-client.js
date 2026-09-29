@@ -1,17 +1,18 @@
 // Thin wrapper around @thru/sdk.
 //
-// NOTE: alphanet is pre-testnet, unaudited infrastructure. Expect instability, resets, and
-// breaking SDK changes — this whole file may need updates as Thru moves toward testnet/mainnet.
+// NOTE: betanet is Thru's FINAL testnet before mainnet — unaudited infrastructure. Expect
+// instability and resets until mainnet; the SDK (still 0.4.0) may still see breaking changes.
 //
-// NETWORK BINDING: this module used to hardcode the alphanet RPC URL and memoize a single
+// NETWORK BINDING: this module used to hardcode an RPC URL and memoize a single
 // client at first use, while the program addresses were module constants duplicating the ones
 // in src/lib/networks.js. That made network switching COSMETIC: selecting localnet changed the
-// badge and scoped local storage, but every RPC call still went to alphanet, and a network with
+// badge and scoped local storage, but every RPC call still went to the old endpoint, and a
+// network with
 // different program addresses could not have worked at all.
 //
 // The active network is now injected by the background via configureNetwork(). This module
 // still does not import networks.js or any service — it holds whatever it was given and falls
-// back to the alphanet defaults, so it stays independently testable.
+// back to the betanet defaults, so it stays independently testable.
 
 import { createThruClient, Signature, Pubkey, PageRequest, BlockView, keys as sdkKeys, EOA_PROGRAM_ID, TOKEN_PROGRAM_ADDRESS, NOOP_PROGRAM_ADDRESS, ROOT_MANAGER_PROGRAM_ADDRESS } from '@thru/sdk';
 // Official program bindings. BUILD_SPEC Part IX: prefer @thru/sdk (including its crypto
@@ -31,14 +32,14 @@ import {
 import { BOOTSTRAP_PROGRAM_ADDRESSES, BOOTSTRAP_FAUCET_VAULT_ADDRESS } from '@thru/programs/bootstrap-addresses';
 import { scopedKey } from '../shared/network-scope.js';
 
-export const ALPHANET_RPC = 'https://rpc.alphanet.thru.org';
+export const BETANET_RPC = 'https://rpc.betanet.thru.org';
 
 // Canonical program addresses, taken from the 0.4.0 packages rather than hand-copied: the
-// alphanet reset replaced the old reserved "marker byte" system table (zero-filled 32-byte
+// betanet reset replaced the old reserved "marker byte" system table (zero-filled 32-byte
 // addresses with byte 31 = 0x00 transfer / 0x03 account-create / 0xaa token / 0xfa faucet)
 // with managed-genesis addresses, and the packages are where the next redeployment will land
 // too. Everything network-shaped still flows through the CONFIGURED network below; these are
-// only the alphanet defaults for tests and direct importers.
+// only the betanet defaults for tests and direct importers.
 export const TRANSFER_PROGRAM_ID = EOA_PROGRAM_ID;
 export const TOKEN_PROGRAM_ID = TOKEN_PROGRAM_ADDRESS;
 export const FAUCET_PROGRAM_ID = BOOTSTRAP_PROGRAM_ADDRESSES.faucet;
@@ -48,8 +49,8 @@ export const ACCOUNT_CREATE_PROGRAM_ID = NOOP_PROGRAM_ADDRESS;
 // Defaults, used until configureNetwork() is called. Kept so tests and any direct importer
 // behave as before rather than failing on an unset network.
 const DEFAULT_NETWORK = Object.freeze({
-  id: 'alphanet',
-  rpcUrl: ALPHANET_RPC,
+  id: 'betanet',
+  rpcUrl: BETANET_RPC,
   faucetProgramId: FAUCET_PROGRAM_ID,
   faucetStateAccount: FAUCET_STATE_ACCOUNT,
   faucetMaxPerClaim: 10_000n,
@@ -367,7 +368,7 @@ export async function createOnChainAccount(feePayer, { beforeSign } = {}) {
 // sorting, which is why this uses buildInstructionData + getAccountIndex instead of
 // hand-rolling that sort — it delegates the part that's easy to get subtly wrong to the SDK's
 // own verified logic.
-// The program/state constants remain exported for tests and for callers that want the alphanet
+// The program/state constants remain exported for tests and for callers that want the betanet
 // defaults, but the network calls below read from the CONFIGURED network so a switch takes
 // effect.
 export const FAUCET_MAX_PER_CLAIM = 10_000n; // per the CLI's own cap — a full-cap claim of 10,000 succeeded on the reset chain (2026-09-26)
@@ -384,12 +385,12 @@ export function encodeFaucetInstructionData(stateIdx, recipientIdx, amountUnits)
 }
 
 /**
- * Claim tokens from the alphanet faucet, submitted on-chain directly.
+ * Claim tokens from the betanet faucet, submitted on-chain directly.
  *
  * Self-Signing: each wallet signs its OWN faucet transaction with fee: 0n, so no sponsor keys
  * or third-party fee payers are involved.
  *
- * CORRECTION (verified on alphanet 2026-08-18): this comment previously claimed a freshly
+ * CORRECTION (verified on betanet 2026-08-18): this comment previously claimed a freshly
  * generated wallet with 0 balance "can claim directly without requiring prior funding". It
  * cannot — the node rejects the transaction with "[not_found] account not found" until the
  * fee payer exists on-chain. The account still needs no FUNDING, only registration, which is
@@ -414,7 +415,7 @@ export async function claimFaucet(feePayer, amount) {
   // The fee payer must already exist on-chain, or the node rejects the whole transaction with
   // "[not_found] account not found".
   //
-  // VERIFIED ON ALPHANET 2026-08-18: a freshly generated address fails here, and succeeds
+  // VERIFIED ON BETANET 2026-08-18: a freshly generated address fails here, and succeeds
   // immediately after createOnChainAccount. sendTransfer has always done this; claimFaucet did
   // not, so the very first thing a new wallet might do — tap Faucet — was the one path that
   // failed. The comment above this function previously asserted the opposite ("even a freshly
@@ -527,9 +528,9 @@ export async function sendTransfer(feePayer, toAddress, amount) {
 // ---- Explorer links ----
 //
 // scan.thru.org is confirmed real (fetched its homepage directly — "Thru Explorer - Block
-// Explorer for Thru Network", tracking thru-alphanet). Its exact /tx/ and /address/ route
+// Explorer for Thru Network", tracking thru-betanet). Its exact /tx/ and /address/ route
 // pattern is NOT independently confirmed, though — the homepage had no live example links to
-// check against (it showed "Network: alphanet \u25cf offline" with empty tables when checked,
+// check against (it showed "Network: betanet \u25cf offline" with empty tables when checked,
 // which is itself worth knowing separately from the URL-guessing question). /tx/{signature} and
 // /address/{address} is the near-universal convention across block explorers generally
 // (Etherscan, Solscan, Solana Explorer, Basescan all use exactly this), so that's the guess
@@ -772,7 +773,7 @@ export async function getBlockTimeMs(slot, expectedNetworkId = activeNetwork.id)
  * Current height snapshot ({ finalized, locallyExecuted, clusterExecuted } bigints).
  *
  * History caching uses the finalized height as chain-reality evidence: a cached row
- * stamped above what this chain has produced cannot belong to it. The alphanet reset
+ * stamped above what this chain has produced cannot belong to it. The betanet reset
  * reuses the same managed program addresses, so offline fingerprints alone cannot see a
  * genesis swap — a height comparison can. Read-only; never mutates.
  */

@@ -4,7 +4,7 @@ Rules for any agent working in `thru-wallet-ext`. Read this first, then `CONTEXT
 
 ## What this is
 
-Chrome MV3 self-custody wallet for the **Thru L1** blockchain (devnet/alphanet). Vanilla ES modules
+Chrome MV3 self-custody wallet for the **Thru L1** blockchain (devnet/betanet). Vanilla ES modules
 bundled with esbuild. No framework. Real `@thru/sdk` (including its `@thru/sdk/crypto` subpath) + `@thru/programs`.
 
 ## Documents
@@ -144,7 +144,7 @@ bare version, the failure is in the **request** direction.
   the SDK requires 64 hex, which would have blocked the correct fix. Check what a test is
   protecting before trusting it.
 - **Amount units differ by screen on purpose.** Faucet takes BASE UNITS; Send takes whole THRU.
-  Verified on alphanet: claiming 10000 credits exactly 10000 base units.
+  Verified on alphanet (2026-09-26, same managed programs betanet runs): claiming 10000 credits credited exactly 10000 base units.
 - **A transfer recipient must already exist on-chain.** Accounts this wallet creates are
   registered automatically; an external never-used address cannot receive.
 - **Never hand-roll a program instruction or address derivation.** `@thru/programs` ships them.

@@ -56,9 +56,14 @@
 // it is unlocked-only, can sign ONLY for an owned address, declares fee 0, and must be called
 // from account creation or after the user selects an unregistered own Send recipient. It is
 // still a signed, on-chain transaction; no periodic signing loop is authorized.
-// tx.claimFaucet is also unlocked-only: claiming testnet faucet funds is an incoming credit
-// action and does not need signing re-authentication.
-export const CONTRACT_VERSION = 12;
+//
+// v13 modifies tx.claimFaucet (the first modified method since the v5 signing-auth break,
+// same precedent: a behavior break gets a version, not silence). Auth drops from 'signing'
+// to 'unlocked' and the vestigial password param leaves the declaration: claiming testnet
+// faucet funds is an incoming-credit action, and demanding signing re-authentication for it
+// bought nothing. Old callers that still SEND a password keep working — the param is
+// ignored, not rejected.
+export const CONTRACT_VERSION = 13;
 
 export const METHODS = {
   // ---- System ------------------------------------------------------------
@@ -324,7 +329,7 @@ export const METHODS = {
     since: 1,
   },
   'tx.claimFaucet': {
-    params: ['amountUnits', 'password'],
+    params: ['amountUnits'],
     returns: '{ signature, blockHeight }',
     auth: 'unlocked',
     since: 1,

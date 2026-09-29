@@ -25,8 +25,9 @@ import { scopedKey } from '../../shared/network-scope.js';
 const CACHE_BASE_KEY = 'thru_history_cache';
 
 /**
- * The CHAIN identity a cache row belongs to — not the network identity. The alphanet
- * reset replaced the chain under the SAME network id (and even the same chainId), so a
+ * The CHAIN identity a cache row belongs to — not the network identity. A testnet reset can
+ * replace the chain under the SAME network id (and even the same chainId) — it already
+ * happened on the previous testnet — so a
  * per-network cache happily kept serving rows from a chain that no longer exists. The
  * managed program set is the chain's identity from this wallet's perspective: it is
  * exactly what changes when genesis is replaced (see networks.js), it is available
@@ -70,7 +71,7 @@ function cachedBlockTime(entry, slot) {
 
 async function readScope(networkId) {
   // Capture the storage key ONCE. A network switch between two separate key reads could
-  // otherwise mix an Alphanet scope with a write keyed to another network.
+  // otherwise mix an Betanet scope with a write keyed to another network.
   const key = scopedKey(CACHE_BASE_KEY, networkId);
   const res = await chrome.storage.local.get(key);
   const scope = res?.[key];
@@ -168,8 +169,8 @@ export async function getHistoryFeed(address) {
     })); // at most PAGE_ON_OPEN unique headers; duplicate slots share one request
 
     // Chain-reality evidence from the live fetch: a cached row stamped above what this
-    // chain has produced cannot belong to it. The alphanet reset reuses the same managed
-    // program addresses, so the offline _chain fingerprint alone cannot see a genesis
+    // chain has produced cannot belong to it. A genesis swap can reuse the same managed
+    // program addresses (the previous testnet's resets did), so the offline _chain fingerprint alone cannot see a genesis
     // swap — the previous incarnation's rows (far higher slots) must not resurface beside
     // fresh ones. Resolved outside the write queue, like the block headers above.
     let headSlot = null;

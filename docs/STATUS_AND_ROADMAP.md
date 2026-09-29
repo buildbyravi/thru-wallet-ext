@@ -74,7 +74,7 @@ These results are deterministic/local. They do not close the browser or live-cha
 These are prior observations, not certification of the newer v12 registration path or token transfer:
 
 - Faucet amount units were observed as raw base units (a claim of 10000 credited 10000 base units).
-- The native THRU transfer path/program and a 1-base-unit Alphanet fee were previously exercised. This does **not** measure the token-program fee.
+- The native THRU transfer path/program and a 1-base-unit Betanet fee were previously exercised. This does **not** measure the token-program fee.
 - Basic native History decoding and an earlier account-creation registration path were exercised. The earlier `scripts/verify-autoregister.mjs` result is not a substitute for a fresh multi-account v12 activation pass.
 - An earlier live API-router run completed; it does not certify current browser layout, worker suspension, or the new v12 flows.
 
@@ -156,7 +156,7 @@ output, the side panel, service-worker eviction, the clipboard permission prompt
 
 The original UI withdrawal was incomplete: a saved legacy row still called `network.setActive`, and
 the background accepted it. Because custom records carry no verified transfer/token program ids,
-`thru-client` would silently use Alphanet defaults against the custom endpoint.
+`thru-client` would silently use Betanet defaults against the custom endpoint.
 
 Contract v7 closes that path at the security boundary:
 
@@ -240,7 +240,7 @@ hold: Chrome 122+ extensions can call WebAuthn against RP IDs covered by host pe
 Three probes gate any implementation, all answerable by throwaway-key verification scripts
 rather than research: (1) which on-chain program **revision** is live (bindings ship legacy and
 AuthorityRecord encoders side by side), (2) whether a distinct-account fee payer validates on
-alphanet, (3) one live VALIDATE proving extension-origin `clientDataJSON` is accepted. Held
+betanet, (3) one live VALIDATE proving extension-origin `clientDataJSON` is accepted. Held
 constraints: no keyring branch inside `checkAuth` (the challenge is only constructible after
 instruction building, at the tx/passkey service), full `PasskeyMetadata` storage (credentialId,
 X/Y, rpId, authIdx — never seed-derived), recovery-authority flow precedes any

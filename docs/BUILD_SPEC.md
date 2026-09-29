@@ -389,7 +389,7 @@ metadata as a protocol fact.
 ### Network
 
 Network data and program configuration are owned by `src/lib/networks.js` and the background
-network service. Alphanet is enabled; Localnet, Testnet and Mainnet are declared but disabled.
+network service. Betanet is enabled; Localnet, Testnet and Mainnet are declared but disabled.
 Contract v7 makes stored custom RPC records inert/listable/removable and rejects their activation
 before the client can bind an unverified endpoint. Do not describe arbitrary custom-network support
 as shipped.

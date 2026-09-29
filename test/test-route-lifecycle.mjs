@@ -883,10 +883,10 @@ function clearTimers() {
 // fixtures renders the way it does in the browser. Where a shape is wrong the route shows an empty
 // state instead of failing, which is why the assertions also check that expected content appeared.
 
-const NETWORK_ALPHANET = {
-  id: 'alphanet',
-  label: 'Alphanet',
-  rpcUrl: 'https://rpc.alphanet.thru.org',
+const NETWORK_BETANET = {
+  id: 'betanet',
+  label: 'Betanet',
+  rpcUrl: 'https://rpc.betanet.thru.org',
   explorerUrl: 'https://scan.thru.org',
   faucetProgramId: 'ta1faucetprogramidprogramidprogramidprogramid1',
   faucetStateAccount: 'ta1stateaccountstateaccountstateaccountstate1',
@@ -902,7 +902,7 @@ const NETWORK_ALPHANET = {
   selectable: true,
 };
 
-const NETWORK_TESTNET = { ...NETWORK_ALPHANET, id: 'testnet', label: 'Testnet',
+const NETWORK_TESTNET = { ...NETWORK_BETANET, id: 'testnet', label: 'Testnet',
   rpcUrl: 'https://rpc.testnet.thru.org', explorerUrl: 'https://scan.testnet.thru.org',
   faucetProgramId: null, environment: 'testnet', baseFeeUnits: null, feeReserveUnits: null };
 
@@ -914,8 +914,8 @@ const NETWORK_CUSTOM = {
   rpcUrl: 'https://my-node.example/rpc',
   explorerUrl: '',
   faucetProgramId: null,
-  transferProgramId: NETWORK_ALPHANET.transferProgramId,
-  tokenProgramId: NETWORK_ALPHANET.tokenProgramId,
+  transferProgramId: NETWORK_BETANET.transferProgramId,
+  tokenProgramId: NETWORK_BETANET.tokenProgramId,
   isTestnet: false,
   enabled: true,
   environment: 'custom',
@@ -995,7 +995,7 @@ const HISTORY_ENTRIES = [
     signature: 'sig1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
     slot: 10231,
     success: true,
-    programAddress: NETWORK_ALPHANET.transferProgramId,
+    programAddress: NETWORK_BETANET.transferProgramId,
     kind: 'transfer',
     amount: '100000',
     counterparty: ADDRESS_B,
@@ -1005,7 +1005,7 @@ const HISTORY_ENTRIES = [
     signature: 'sig2bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
     slot: 10188,
     success: true,
-    programAddress: NETWORK_ALPHANET.faucetProgramId,
+    programAddress: NETWORK_BETANET.faucetProgramId,
     kind: 'faucet',
     amount: '10000',
     counterparty: null,
@@ -1015,7 +1015,7 @@ const HISTORY_ENTRIES = [
     signature: 'sig3cccccccccccccccccccccccccccccccccccccccc',
     slot: 10102,
     success: false,
-    programAddress: NETWORK_ALPHANET.transferProgramId,
+    programAddress: NETWORK_BETANET.transferProgramId,
     kind: 'transfer',
     amount: '500',
     counterparty: ADDRESS_B,
@@ -1036,7 +1036,7 @@ const DETAIL_ENTRIES = [
     signature: 'sigDETAIL_first_aaaaaaaaaaaaaaaaaaaaaaaaaaa',
     slot: 50100,
     success: true,
-    programAddress: NETWORK_ALPHANET.transferProgramId,
+    programAddress: NETWORK_BETANET.transferProgramId,
     kind: 'sent',
     amount: '750000',
     counterparty: ADDRESS_B,
@@ -1046,7 +1046,7 @@ const DETAIL_ENTRIES = [
     signature: 'sigDETAIL_second_bbbbbbbbbbbbbbbbbbbbbbbbbbb',
     slot: 50050,
     success: false,
-    programAddress: NETWORK_ALPHANET.transferProgramId,
+    programAddress: NETWORK_BETANET.transferProgramId,
     kind: 'received',
     amount: '1250000',
     counterparty: ADDRESS_B,
@@ -1058,7 +1058,7 @@ const DETAIL_ENTRIES = [
     signature: 'sigDETAIL_absent_ccccccccccccccccccccccccccc',
     slot: 50010,
     success: true,
-    programAddress: NETWORK_ALPHANET.transferProgramId,
+    programAddress: NETWORK_BETANET.transferProgramId,
     kind: 'sent',
     amount: '333000',
     counterparty: ADDRESS_B,
@@ -1071,7 +1071,7 @@ const backend = {
   hasVault: false,
   unlocked: false,
   activeIndex: 0,
-  activeNetworkId: 'alphanet',
+  activeNetworkId: 'betanet',
   autoLockMinutes: 15,
   preferences: { ...PREFERENCES },
   customNetworks: [NETWORK_CUSTOM],
@@ -1086,7 +1086,7 @@ const backend = {
 function activeNetwork() {
   if (backend.activeNetworkId === 'testnet') return NETWORK_TESTNET;
   if (backend.activeNetworkId.startsWith('custom:')) return NETWORK_CUSTOM;
-  return NETWORK_ALPHANET;
+  return NETWORK_BETANET;
 }
 
 function activeAccount() {
@@ -1094,7 +1094,7 @@ function activeAccount() {
 }
 
 function networkList() {
-  return [NETWORK_ALPHANET, NETWORK_TESTNET, ...backend.customNetworks];
+  return [NETWORK_BETANET, NETWORK_TESTNET, ...backend.customNetworks];
 }
 
 /** Fixture errors carry the same shape api-router puts on the wire. */
@@ -1624,7 +1624,7 @@ function resetBackend(scenario) {
   backend.hasVault = scenario.hasVault;
   backend.unlocked = scenario.unlocked;
   backend.activeIndex = 0;
-  backend.activeNetworkId = 'alphanet';
+  backend.activeNetworkId = 'betanet';
   backend.autoLockMinutes = 15;
   backend.preferences = { ...PREFERENCES };
   backend.customNetworks = [NETWORK_CUSTOM];
@@ -1869,7 +1869,7 @@ async function runScenario(scenario) {
   ok(`${scenario.id}: boot() landed on ${scenario.landing}`, router?.currentPath === scenario.landing,
     `got ${router?.currentPath}`);
   ok(`${scenario.id}: the shell renders the network badge and health dot`,
-    /Alphanet/.test(textOf(app)) && app.querySelectorAll('.health-dot, .status-dot').length >= 0);
+    /Betanet/.test(textOf(app)) && app.querySelectorAll('.health-dot, .status-dot').length >= 0);
 
   // Listener baseline AFTER boot: boot's own hashchange/unload listeners are meant to stay.
   const baselineDoc = DOC.listeners.length;
@@ -1983,7 +1983,7 @@ async function settingsTest() {
     customRow?.getAttribute('aria-disabled') === 'true',
     `aria-disabled=${customRow?.getAttribute('aria-disabled')}`);
   ok('built-in network rows remain selectable buttons',
-    buttons(tree, /^Alphanet/i).length === 1, buttons(tree, /Alphanet/i).map(labelOf).join(', '));
+    buttons(tree, /^Betanet/i).length === 1, buttons(tree, /Betanet/i).map(labelOf).join(', '));
 
   const callsBeforeInertClick = chromeLog.calls.filter((method) => method === 'network.setActive').length;
   click(customRow);
@@ -1994,7 +1994,7 @@ async function settingsTest() {
   ok('clicking the inert custom row does not navigate away', router.currentPath === '/settings',
     router.currentPath);
   ok('clicking the inert custom row cannot change the active network',
-    backend.activeNetworkId === 'alphanet', backend.activeNetworkId);
+    backend.activeNetworkId === 'betanet', backend.activeNetworkId);
 
   // A stale page or devtools caller still goes through the real bridge. The fixture mirrors the
   // background's contract-v7 enforcement so this proves the refusal shape reaches callers intact.
@@ -2010,7 +2010,7 @@ async function settingsTest() {
   ok('the direct refusal is permanent, not retryable', directError?.retryable === false,
     `retryable=${directError?.retryable}`);
   ok('direct rejection leaves the built-in network active',
-    backend.activeNetworkId === 'alphanet', backend.activeNetworkId);
+    backend.activeNetworkId === 'betanet', backend.activeNetworkId);
 
   const removeButtons = buttons(tree, /remove my node/i);
   ok('Remove is the custom row\'s only button action',
@@ -3126,7 +3126,7 @@ async function navigationTest() {
     .find((a) => String(a.href || a.getAttribute?.('href') || '').includes('/address/'));
   const explorerHref = String(explorerLink?.getAttribute?.('href') || '');
   ok('the explorer link embeds the address on the active network',
-    explorerHref.includes(activeAccount().address) && explorerHref.includes('network=alphanet'),
+    explorerHref.includes(activeAccount().address) && explorerHref.includes('network=betanet'),
     explorerHref || 'no explorer anchor found');
 
   // ---- Send: selecting a token asset (contract v8) -------------------------
@@ -3243,7 +3243,7 @@ async function navigationTest() {
     signature: 'sig_stuck_manual_smoke_aaaaaaaaaaaaaaaaaaaaa', kind: 'transfer',
     from: activeAccount().address, to: ADDRESS_B,
     amountUnits: '5000000000', mint: null, displayAmount: '5 THRU',
-    networkId: 'alphanet', status: 'submitted', submittedAt: Date.now(),
+    networkId: 'betanet', status: 'submitted', submittedAt: Date.now(),
     settledAt: null, error: null,
   };
 
@@ -3302,7 +3302,7 @@ async function navigationTest() {
     signature: `sigdup_${String(i).padStart(38, '0')}`,
     slot: 20000 - i,
     success: true,
-    programAddress: NETWORK_ALPHANET.transferProgramId,
+    programAddress: NETWORK_BETANET.transferProgramId,
     kind: 'transfer',
     amount: String(5000 + i),
     counterparty: ADDRESS_B,
@@ -3367,13 +3367,13 @@ async function navigationTest() {
   const startOfToday = new Date(NOW).setHours(0, 0, 0, 0);
   const CARD_ENTRIES = [
     { signature: 'tsCARD_A_sent_today_aaaaaaaaaaaaaaaaaaaaaaa', slot: 30000,
-      success: true, programAddress: NETWORK_ALPHANET.transferProgramId, kind: 'sent',
+      success: true, programAddress: NETWORK_BETANET.transferProgramId, kind: 'sent',
       amount: '100000', counterparty: ADDRESS_B, timestamp: NOW },
     { signature: 'tsCARD_B_received_yesterday_aaaaaaaaaaaaaaaaa', slot: 29900,
-      success: true, programAddress: NETWORK_ALPHANET.transferProgramId, kind: 'received',
+      success: true, programAddress: NETWORK_BETANET.transferProgramId, kind: 'received',
       amount: '250000', counterparty: ADDRESS_B, timestamp: startOfToday - 3600000 },
     { signature: 'tsCARD_C_failed_older_aaaaaaaaaaaaaaaaaaaaaaa', slot: 29800,
-      success: false, programAddress: NETWORK_ALPHANET.transferProgramId, kind: 'sent',
+      success: false, programAddress: NETWORK_BETANET.transferProgramId, kind: 'sent',
       amount: '1', counterparty: ADDRESS_B, timestamp: startOfToday - 2 * 86400000 - 3600000 },
   ];
   FIXTURES['tx.getHistoryFeed'] = () => ({
@@ -3417,10 +3417,10 @@ async function navigationTest() {
   FIXTURES['tx.getHistoryFeed'] = () => ({
     entries: [
       { signature: 'tsNOTIME1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', slot: 41000,
-        success: true, programAddress: NETWORK_ALPHANET.transferProgramId, kind: 'sent',
+        success: true, programAddress: NETWORK_BETANET.transferProgramId, kind: 'sent',
         amount: '90000', counterparty: SELF_B.address, timestamp: null },
       { signature: 'tsNOTIME2aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', slot: 40900,
-        success: true, programAddress: NETWORK_ALPHANET.transferProgramId, kind: 'received',
+        success: true, programAddress: NETWORK_BETANET.transferProgramId, kind: 'received',
         amount: '40000', counterparty: ADDRESS_B, timestamp: null },
     ],
     nextCursor: null,
@@ -3438,13 +3438,13 @@ async function navigationTest() {
   FIXTURES['tx.getHistoryFeed'] = () => ({
     entries: [
       { signature: 'tsMIX1_newer_today_aaaaaaaaaaaaaaaaaaaaaaa', slot: 30500,
-        success: true, programAddress: NETWORK_ALPHANET.transferProgramId, kind: 'sent',
+        success: true, programAddress: NETWORK_BETANET.transferProgramId, kind: 'sent',
         amount: '90000', counterparty: ADDRESS_B, timestamp: NOW },
       { signature: 'tsMIX2_wire_no_time_aaaaaaaaaaaaaaaaaaaaaaaa', slot: 30400,
-        success: true, programAddress: NETWORK_ALPHANET.transferProgramId, kind: 'received',
+        success: true, programAddress: NETWORK_BETANET.transferProgramId, kind: 'received',
         amount: '40000', counterparty: ADDRESS_B, timestamp: null },
       { signature: 'tsMIX3_older_today_aaaaaaaaaaaaaaaaaaaaaaa', slot: 30300,
-        success: true, programAddress: NETWORK_ALPHANET.transferProgramId, kind: 'sent',
+        success: true, programAddress: NETWORK_BETANET.transferProgramId, kind: 'sent',
         amount: '90000', counterparty: ADDRESS_B, timestamp: startOfToday },
     ],
     nextCursor: null,
@@ -3555,7 +3555,7 @@ async function navigationTest() {
     .find((a) => /explorer/i.test(labelOf(a)));
   ok('P2: the sheet links to the explorer using the short-sig explorer URL logic',
     Boolean(sheetExplorer)
-      && sheetExplorer.getAttribute('href') === `${NETWORK_ALPHANET.explorerUrl}/tx/${DETAIL_ENTRIES[1].signature}`,
+      && sheetExplorer.getAttribute('href') === `${NETWORK_BETANET.explorerUrl}/tx/${DETAIL_ENTRIES[1].signature}`,
     sheetExplorer?.getAttribute('href'));
   ok('P2: no secret and no full address string reaches the URL or session history',
     secretInUrls().length === 0
@@ -3630,7 +3630,7 @@ async function navigationTest() {
       signature: 'sigDETAIL_stranger_ddddddddddddddddddddddddd',
       slot: 50200,
       success: true,
-      programAddress: NETWORK_ALPHANET.transferProgramId,
+      programAddress: NETWORK_BETANET.transferProgramId,
       kind: 'sent',
       amount: '100000',
       counterparty: STRANGER,
@@ -4071,7 +4071,7 @@ async function progressiveSendTest() {
   ok('native signing uses the checked method, with the reviewed account and network',
     chromeLog.calls.includes('tx.sendChecked')
       && /0\.0001 THRU sent/.test(textOf(switched.el))
-      && /Submitted on Alphanet/.test(textOf(switched.el)),
+      && /Submitted on Betanet/.test(textOf(switched.el)),
     chromeLog.calls.slice(-12).join(','));
   switched.destroy();
   accountHolds.restore();
@@ -4269,7 +4269,7 @@ async function historyCacheFirstTest() {
   resetBackend(SCENARIOS[2]);
   resetDom();
   const alpha = { signature: 'ts_cached_alpha_aaaaaaaaaaaaaaaaaaaa', slot: '101',
-    success: true, kind: 'sent', programAddress: NETWORK_ALPHANET.transferProgramId,
+    success: true, kind: 'sent', programAddress: NETWORK_BETANET.transferProgramId,
     amount: '1000000', counterparty: ADDRESS_B, timestamp: null };
   const fresh = { ...alpha, signature: 'ts_fresh_alpha_bbbbbbbbbbbbbbbbbbbb', slot: '501', amount: '2000000' };
   const testnet = { ...alpha, signature: 'ts_cached_testnet_cccccccccccccccc', slot: '202', amount: '3000000' };
@@ -4278,7 +4278,7 @@ async function historyCacheFirstTest() {
   const held = [];
   FIXTURES['tx.getCachedHistory'] = ({ address } = {}) => ({
     address, networkId: activeNetwork().id,
-    entries: [activeNetwork().id === 'alphanet' ? alpha : testnet],
+    entries: [activeNetwork().id === 'betanet' ? alpha : testnet],
     nextCursor: 15, updatedAt: Date.now(),
   });
   chrome.runtime.sendMessage = (message, callback) => {
@@ -4330,11 +4330,11 @@ async function historyCacheFirstTest() {
       /Block 101/.test(textOf(route.el)) && /cached activity.*could not sync/i.test(textOf(route.el))
         && chromeLog.calls.filter((method) => method === 'tx.listHistory').length === rawCallsBefore);
 
-    // A further refresh is still awaiting the ALPHANET feed when another extension page
+    // A further refresh is still awaiting the BETANET feed when another extension page
     // switches networks. The old reply must not overwrite the NEW network's cached cards.
     emitEvent('pendingTxChanged', {});
     await settle();
-    ok('a second Alphanet feed is in flight before the switch',
+    ok('a second Betanet feed is in flight before the switch',
       held.some((item) => item.message.method === 'tx.getHistoryFeed'));
     backend.activeNetworkId = 'testnet';
     emitEvent('networkChanged', { id: 'testnet' });
@@ -4344,7 +4344,7 @@ async function historyCacheFirstTest() {
       textOf(route.el).slice(0, 270));
     reply('tx.getHistoryFeed', { entries: [fresh], nextCursor: null, synced: true });
     await settle();
-    ok('a late Alphanet feed is discarded instead of overwriting Testnet cache',
+    ok('a late Betanet feed is discarded instead of overwriting Testnet cache',
       /Block 202/.test(textOf(route.el)) && !/Block 501/.test(textOf(route.el)));
 
     // Detach while the Testnet feed is pending, then release it; it must not mutate a

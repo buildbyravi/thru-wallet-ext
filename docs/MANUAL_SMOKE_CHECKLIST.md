@@ -16,7 +16,7 @@ enough to have never been checked in a browser at all.
 
 - **Automated/local:** Node tests and build guards cover source structure, contract agreement, route behavior, deterministic cache/registration fixtures, and DOM assertions. They do not certify rendered layout or Chrome scheduling.
 - **Real browser — OPEN:** popup and side-panel layout/focus/QR, actual mutual exclusion and toolbar-mode behavior, clipboard prompt, and MV3 worker suspension/restart. Complete the relevant boxes below in Chrome.
-- **Live chain — OPEN where marked:** v12 account activation, token-transfer recipient-owner/fee behavior, current block-time availability/latency, charged-fee source, and explorer route. A historical native-Alphanet observation or a mocked test does not close these checks.
+- **Live chain — OPEN where marked:** v12 account activation, token-transfer recipient-owner/fee behavior, current block-time availability/latency, charged-fee source, and explorer route. A historical native-Betanet observation or a mocked test does not close these checks.
 
 Run it before merging any change to `src/ui/**`, `src/popup/**` or `src/manifest.json`, and after any
 change to the side panel, the popup width, or the modal/focus behaviour.
@@ -130,7 +130,7 @@ hash directly (`#/send`) where the UI has no link, so unmigrated or unreachable 
 
 ### Send: slow/offline, cross-context and bridge smoke (after reloading the extension)
 
-- [ ] Open Send on Alphanet with a funded account and multiple registered tokens. The **form**
+- [ ] Open Send on Betanet with a funded account and multiple registered tokens. The **form**
   appears once the active account and network are known; the token ledger may still be checking.
   A slow token query must NOT leave Send on a full-screen "Loading" spinner. Type recipient and
   amount while it is checking; those inputs and focus must survive the balance update.
@@ -147,7 +147,7 @@ hash directly (`#/send`) where the UI has no link, so unmigrated or unreachable 
   case, failed activation must not claim success or enable Review. Repeat with signing
   password re-auth enabled: activation is the explicit unlocked-only v12 exception;
   actually moving value still requires the configured signing prompt.
-- [ ] Block the alphanet RPC for the extension worker (DevTools request blocking, or go
+- [ ] Block the betanet RPC for the extension worker (DevTools request blocking, or go
   offline at the OS level) and revisit Send. A saved balance, if any, says **last
   known**. Otherwise the UI says checking/unavailable, never a fabricated `0 THRU`. Max and
   Review remain disabled until a live balance AND a usable native fee reserve arrive. Retry
@@ -246,9 +246,9 @@ wallet; never paste a real seed into DevTools or its command history:
     thru_active_network: 'legacy-smoke',
   });
   ```
-  Open the popup. It must show Alphanet, and
+  Open the popup. It must show Betanet, and
   `(await chrome.storage.local.get('thru_active_network')).thru_active_network` must be
-  `'alphanet'`; the legacy endpoint must never appear as the bound/active network.
+  `'betanet'`; the legacy endpoint must never appear as the bound/active network.
 - [ ] In Settings, **Legacy smoke** is still listed, says **not selectable**, and its main row cannot
   be focused or clicked as a network control. **Remove** is its only action.
 - [ ] From an extension-page console, send the bypass request directly:
@@ -257,7 +257,7 @@ wallet; never paste a real seed into DevTools or its command history:
     params: { networkId: 'legacy-smoke' } });
   ```
   It must return `{ ok: false, error: { code: 'CUSTOM_NETWORK_DISABLED', retryable: false, ... } }`;
-  the badge and stored active id must remain Alphanet.
+  the badge and stored active id must remain Betanet.
 - [ ] Click Remove. The legacy row disappears and built-in switching still works. There is
   deliberately no Add control; re-enablement requires all four conditions in
   `docs/STATUS_AND_ROADMAP.md` Step 2b.

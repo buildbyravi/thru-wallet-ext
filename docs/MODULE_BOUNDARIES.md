@@ -233,7 +233,7 @@ Intent example shape:
 {
   id: 'intent_...',
   kind: 'dex.swap',
-  networkId: 'alphanet',
+  networkId: 'betanet',
   accountRef: { keyringId: '...', accountIndex: 0 },
   review: {
     title: 'Swap THRU to TOKEN',

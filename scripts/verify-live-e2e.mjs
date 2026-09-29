@@ -13,7 +13,7 @@
 
 import { readFileSync } from 'node:fs';
 
-const networkId = process.argv[2] || 'alphanet';
+const networkId = process.argv[2] || 'betanet';
 
 // ---- In-memory chrome mock (same shape the existing tests use) -------------
 function makeStore() {

@@ -37,7 +37,7 @@ function extractAmount(text) {
  *   changePercent  24h change string. Only pass it from a REAL source — the default is null
  *                  (no cell at all). This wallet has no price feed, so a default value here
  *                  would be fabricated market data.
- *   network        network label (default 'Alphanet')
+ *   network        network label (default 'Betanet')
  *   mintAddress    optional mint address
  *   imageUrl       optional remote logo URL
  *   isNative       renders the Native bolt glyph
@@ -50,7 +50,7 @@ export function AssetRow({
   balanceText = null,
   usdValue = null,
   changePercent = null,
-  network = 'Alphanet',
+  network = 'Betanet',
   mintAddress = null,
   imageUrl = null,
   isNative = false,
@@ -60,7 +60,7 @@ export function AssetRow({
   const d = disposer();
   const ticker = String(symbol || (isNative ? 'THRU' : 'TOKEN'));
   const initials = ticker.slice(0, 3).toUpperCase();
-  const networkName = String(network || 'Alphanet');
+  const networkName = String(network || 'Betanet');
 
   const safeLogo = imageUrl && isSafeUrl(imageUrl) && /^(https?:|data:image\/)/i.test(imageUrl)
     ? imageUrl

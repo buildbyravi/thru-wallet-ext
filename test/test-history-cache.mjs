@@ -27,9 +27,9 @@ const A = 'taAA_test_history';
 const B = 'taBB_test_history';
 const alphaEntry = { signature: 'ts_alpha_cache', kind: 'sent', amount: '123', timestamp: null };
 const localEntry = { signature: 'ts_local_cache', kind: 'received', amount: '456', timestamp: null };
-const ALPHA_CHAIN = history.chainFingerprint(getNetworkConfig('alphanet'));
+const ALPHA_CHAIN = history.chainFingerprint(getNetworkConfig('betanet'));
 const LOCAL_CHAIN = history.chainFingerprint(getNetworkConfig('localnet'));
-data.set('thru_history_cache::alphanet', {
+data.set('thru_history_cache::betanet', {
   _chain: ALPHA_CHAIN,
   [A]: { entries: [alphaEntry], nextCursor: 8, updatedAt: 112233 },
   [B]: { entries: [{ signature: 'ts_other_account' }], nextCursor: null, updatedAt: 99 },
@@ -39,13 +39,13 @@ data.set('thru_history_cache::localnet', {
   [A]: { entries: [localEntry], nextCursor: 4, updatedAt: 223344 },
 });
 
-await networks.setActiveNetwork('alphanet');
+await networks.setActiveNetwork('betanet');
 // A storage-only cache read must not even REBIND the SDK client (a read can be used offline).
 thruClient.configureNetwork((await import('../src/lib/networks.js')).getNetworkConfig('localnet'));
 const before = writes;
 const cached = await history.getCachedHistory(A);
 assert.deepEqual(cached, {
-  address: A, networkId: 'alphanet', entries: [alphaEntry], nextCursor: 8, updatedAt: 112233,
+  address: A, networkId: 'betanet', entries: [alphaEntry], nextCursor: 8, updatedAt: 112233,
 });
 assert.equal(writes, before, 'storage-only history read does not write');
 assert.equal(thruClient.getConfiguredNetwork().id, 'localnet', 'storage-only read does not bind RPC');
@@ -53,27 +53,27 @@ assert.deepEqual((await history.getCachedHistory(B)).entries, [{ signature: 'ts_
 assert.deepEqual((await history.getCachedHistory('missing')).entries, [], 'missing cache is empty, not fabricated');
 console.log('  ok - history cache reads only the requested network/address and never touches RPC');
 
-// ---- Chain identity: the alphanet-reset regression ----
+// ---- Chain identity: the betanet-reset regression ----
 // The chain was replaced under the SAME network id (and the same chainId). A cache
 // written against the previous genesis must never surface its rows again — neither
 // through the cached path nor through the merge in the feed — and the read itself
 // must not write storage.
 const writesBeforeDrop = writes;
-data.set('thru_history_cache::alphanet', {
-  _chain: 'alphanet|pre|reset|genesis|gone|gone',
+data.set('thru_history_cache::betanet', {
+  _chain: 'betanet|pre|reset|genesis|gone|gone',
   [A]: { entries: [{ signature: 'ts_from_the_dead_chain' }] },
 });
 assert.deepEqual((await history.getCachedHistory(A)).entries, [],
   'rows from a previous chain under the same network id are not served');
 // A pre-fingerprint cache (written before this check existed) is treated the same.
-data.set('thru_history_cache::alphanet', {
+data.set('thru_history_cache::betanet', {
   [A]: { entries: [{ signature: 'ts_pre_fingerprint_cache' }] },
 });
 assert.deepEqual((await history.getCachedHistory(A)).entries, [],
   'a cache without a chain identity is not trusted');
 assert.equal(writes, writesBeforeDrop, 'dropping a stale cache is a read, not a write');
 // Restore the identity-verified cache the surrounding sections rely on.
-data.set('thru_history_cache::alphanet', {
+data.set('thru_history_cache::betanet', {
   _chain: ALPHA_CHAIN,
   [A]: { entries: [alphaEntry], nextCursor: 8, updatedAt: 112233 },
   [B]: { entries: [{ signature: 'ts_other_account' }], nextCursor: null, updatedAt: 99 },
@@ -110,7 +110,7 @@ try {
     await new Promise((resolve) => setImmediate(resolve));
   }
   assert.equal(typeof finish, 'function', 'live RPC started');
-  await networks.setActiveNetwork('alphanet');
+  await networks.setActiveNetwork('betanet');
   const writesAfterSwitch = writes; // the network selection itself writes its active ID
   finish();
   await assert.rejects(late, (error) => error.code === 'NETWORK_CHANGED');
@@ -135,7 +135,7 @@ try {
   ]);
   assert.equal(feedX.synced, true);
   assert.equal(feedY.synced, true);
-  const scope = data.get('thru_history_cache::alphanet');
+  const scope = data.get('thru_history_cache::betanet');
   assert.ok(Object.hasOwn(scope, 'ta_concurrent_X') && Object.hasOwn(scope, 'ta_concurrent_Y'),
     'concurrent same-network writes keep both address entries');
 } finally {
@@ -148,7 +148,7 @@ console.log('  ok - parallel account refreshes cannot clobber one another in the
 // This reset reused the SAME managed program addresses, so the offline _chain fingerprint
 // did not change. Only chain-reality evidence — a cached row's slot above the live chain's
 // height — can see that the old rows' slots never happened on THIS chain.
-data.set('thru_history_cache::alphanet', {
+data.set('thru_history_cache::betanet', {
   _chain: ALPHA_CHAIN,
   [A]: { entries: [alphaEntry], nextCursor: 8, updatedAt: 112233 },
   [B]: { entries: [{ signature: 'ts_other_account' }], nextCursor: null, updatedAt: 99 },
@@ -190,7 +190,7 @@ assert.ok(!fullFeed.entries.some((e) => e.signature === 'ts_pre_reset_row'),
 const emptyFeed = await history.getHistoryFeed('ta_orphan_empty');
 assert.deepEqual(emptyFeed.entries.map((e) => e.signature), [],
   'a cached row beyond the chain height is dropped even with no fresh rows');
-const scopeAfter = data.get('thru_history_cache::alphanet');
+const scopeAfter = data.get('thru_history_cache::betanet');
 assert.ok(!scopeAfter.ta_orphan_full.entries.some((e) => e.signature === 'ts_pre_reset_row'),
   'the persisted scope drops the orphan row');
 assert.deepEqual(scopeAfter.ta_orphan_empty.entries, [],

@@ -4,9 +4,9 @@
 // the faucet, and sends a tiny transfer to a second throwaway key. It never touches your vault,
 // never reads chrome.storage, and never prints a private key.
 //
-//   node scripts/verify-chain.mjs                 # alphanet
+//   node scripts/verify-chain.mjs                 # betanet
 //   node scripts/verify-chain.mjs localnet        # local node (entry declared in networks.js; not selectable in the wallet)
-//   node scripts/verify-chain.mjs alphanet --send # also do the transfer leg
+//   node scripts/verify-chain.mjs betanet --send # also do the transfer leg
 //
 // The transfer leg is opt-in because it needs the faucet leg to have actually funded the
 // account, and on a fresh/reset devnet that is not guaranteed.
@@ -27,7 +27,7 @@ import { getNetworkConfig, hasFaucet, explorerTxUrl } from '../src/lib/networks.
 import { UNITS_PER_THRU, formatThru } from '../src/shared/format.js';
 
 const argv = process.argv.slice(2);
-const networkId = argv.find((a) => !a.startsWith('--')) || 'alphanet';
+const networkId = argv.find((a) => !a.startsWith('--')) || 'betanet';
 const doSend = argv.includes('--send');
 
 const findings = [];
