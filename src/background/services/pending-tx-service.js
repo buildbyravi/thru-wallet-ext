@@ -116,10 +116,11 @@ export async function track(tx) {
     // Badge/events are best-effort after storing the signature; never change the send result.
   }
 
-  // Active self-service: with 100-300ms block times on Thru L1 (4-6 blocks per second),
-  // check eagerly at 1s intervals. Pass list no-ops once settled and swallows errors.
-  // unref keeps Node-based tests from being held open.
-  for (const ms of [1_000, 2_000, 3_000, 5_000]) {
+  // Active self-service: betanet blocks land every ~6 seconds (verified on the explorer
+  // 2026-09-29 — consecutive blocks 5-6s apart), so a transfer settles in about one block.
+  // The passes cover the first two block times plus history-lag slack. The pass list
+  // no-ops once settled and swallows errors. unref keeps Node-based tests from hanging.
+  for (const ms of [2_000, 5_000, 8_000, 12_000]) {
     const timer = setTimeout(() => { reconcile().catch(() => {}); }, ms);
     timer.unref?.();
   }

@@ -2,7 +2,7 @@
 
 Chrome MV3 self-custody wallet extension for the **Thru native Layer 1**. Built with vanilla ES modules, esbuild, and real Thru packages (`@thru/sdk` and its `@thru/sdk/crypto` subpath, plus `@thru/programs`).
 
-**Betanet is Thru's final testnet before mainnet.** It replaces the single-node alphanet (which processed over 10 million blocks) with a 10-node network and much faster blocks (100–300 ms). Network id: `betanet` (`https://rpc.betanet.thru.org`, explorer `https://scan.thru.org` with `?network=betanet`).
+**Betanet is Thru's final testnet before mainnet** (official launch at the TOKEN2049 Singapore event, early October 2026 — the chain is already live). It replaces the single-node alphanet (which processed over 10 million blocks) with a 10-node network and ~6-second blocks — a transfer settles in about one block. Network id: `betanet` (`https://rpc.betanet.thru.org`, explorer `https://scan.thru.org` with `?network=betanet`).
 
 > [!WARNING]
 > Not production-ready. Use only with betanet/devnet funds until security review and mainnet readiness are complete.

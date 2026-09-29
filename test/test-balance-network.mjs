@@ -154,5 +154,5 @@ assert.equal(reconcileResult.settled, 1);
 const pendingAfter = await pendingTx.listPending();
 assert.equal(pendingAfter.length, 0);
 client.transactions.listForAccount = origList;
-console.log('  ok - reconcile settles confirmed tx in 1s sync and refreshes balances');
+console.log('  ok - reconcile settles confirmed tx in the sync passes and refreshes balances');
 

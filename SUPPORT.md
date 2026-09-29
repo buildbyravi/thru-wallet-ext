@@ -7,7 +7,7 @@
 
 Welcome to the Thru Wallet support document. Thru Wallet is an experimental, self-custody Chrome extension for Thru's betanet, built with `@thru/sdk` (including its `@thru/sdk/crypto` subpath) and `@thru/programs`.
 
-**Betanet is Thru's final testnet before mainnet** — a 10-node network that replaced the single-node alphanet. Expect faster blocks (100–300 ms) and occasional testnet instability until mainnet.
+**Betanet is Thru's final testnet before mainnet** (official launch at the TOKEN2049 Singapore event, early October 2026) — a 10-node network that replaced the single-node alphanet. Blocks land every ~6 seconds, so a transfer settles in about one block. Expect occasional testnet instability until mainnet.
 
 ---
 

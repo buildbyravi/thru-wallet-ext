@@ -351,7 +351,7 @@ export function DashboardRoute({ navigate }) {
       } catch {
         // ignore
       }
-    }, 1_000);
+    }, 2_000); // ~6s blocks: one check every 2s settles within a beat of the block landing
   }
 
   function renderPending(list) {
