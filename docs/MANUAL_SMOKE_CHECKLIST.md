@@ -194,6 +194,25 @@ Also check the redirects a browser can trigger but the tests cannot:
 - [ ] A garbage hash (`#/nope`) lands on `/unlock` rather than a blank panel.
 - [ ] Browser Back from a deep screen returns to the previous screen, not to a dead end.
 
+### Tokens: deploy, add, send, receive (betanet)
+
+Run from a machine that can reach `https://rpc.betanet.thru.org` (a sandboxed environment
+fails every call with "fetch failed" — that is the network, not the wallet).
+
+1. `node scripts/token-lab.mjs --show-keys` — all six steps report OK and the summary
+   prints a mint ("contract") address, a deploy tx, a supply-mint tx, and a transfer tx.
+   Each `scan.thru.org` link opens with `?network=betanet` and shows the transaction.
+2. Import the printed disposable creator key (Add account → Import private key). The
+   dashboard shows the creator's LAB balance (1,000.000000).
+3. Tokens bar → **Add token** → paste the mint address → **Check on chain**. Symbol and
+   Decimals fill from the chain ("Verified on chain"). An unknown address is refused
+   with "No token mint exists at that address."
+4. **Add to wallet** — the row joins the ledger with the on-chain balance, and a
+   "LAB added to your token list." notice appears after the refresh.
+5. Send 250.5 LAB to the recipient address the script printed. Review shows the plain
+   summary (never a seed or key), and the confirmed row shows the tx. The recipient's
+   balance appears after the next refresh (~6s blocks) with no action from them.
+
 ## 4. Keyboard and focus
 
 `src/ui/kit/focus-trap.js` is unit-tested against a DOM shim. These are the parts only a browser can

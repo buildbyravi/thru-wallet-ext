@@ -58,6 +58,7 @@ ok('contract v9 documents the history-feed cache addition', CONTRACT_VERSION >= 
 ok('contract v10 documents the transaction-detail addition', CONTRACT_VERSION >= 10);
 ok('contract v11 pins a reviewed send to a source account and network', CONTRACT_VERSION >= 11);
 ok('contract v13 documents the faucet auth/param change', CONTRACT_VERSION >= 13);
+ok('contract v14 documents the token.readMint addition', CONTRACT_VERSION >= 14);
 
 // Contract v10 invariants. tx.getDetail is a read, so it must NOT have acquired an auth
 // gate it does not need — but more importantly its declared return shape must keep saying
@@ -107,7 +108,7 @@ for (const [method, legacy] of [
 }
 
 section('Contract v12 creation-bound registration and cache-first history');
-ok('the contract advances to v13 without reusing earlier numbers', CONTRACT_VERSION === 13);
+ok('the contract advances to v14 without reusing earlier numbers', CONTRACT_VERSION === 14);
 const register = METHODS['tx.registerAccount'];
 ok('tx.registerAccount is unlocked-only, explicitly targets an address, and has no password field',
   register?.since === 12 && register?.auth === 'unlocked'
@@ -119,6 +120,16 @@ ok('tx.getCachedHistory is a read-only, no-auth, address-scoped method',
 ok('legacy tx.autoCreateAccount remains signing-gated and unchanged',
   METHODS['tx.autoCreateAccount']?.auth === 'signing'
     && JSON.stringify(METHODS['tx.autoCreateAccount']?.params) === JSON.stringify(['password']));
+
+section('Contract v14 chain-verified custom-token import');
+const readMint = METHODS['token.readMint'];
+ok('token.readMint is a read-only, no-auth, mint-scoped lookup',
+  readMint?.since === 14 && readMint?.auth === 'none'
+    && JSON.stringify(readMint?.params) === JSON.stringify(['mintAddress']));
+ok('token.import stays unlocked-only and metadata-only',
+  METHODS['token.import']?.auth === 'unlocked'
+    && JSON.stringify(METHODS['token.import']?.params)
+      === JSON.stringify(['mintAddress', 'symbol', 'name', 'decimals']));
 
 section('Contract and router agree in both directions');
 

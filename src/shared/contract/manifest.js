@@ -21,6 +21,10 @@
 //      the default before the RPC client is bound. Custom records can still be stored, listed, and
 //      removed for compatibility; they can no longer become active.
 //
+//      Contract v14 is purely additive: `token.readMint` reads a mint account straight from
+//      the chain so "Add custom token" can verify a pasted contract address and pre-fill the
+//      chain's own symbol/decimals instead of trusting free-typed metadata (which made the
+//      custom token unusable — send/receive burn real base units of the actual decimals).
 //      Contract v8 is purely additive (no existing method changed): `token.transfer` adds a
 //      signing-gated token send, and `token.getBalances` now returns real owned balances for
 //      registry mints instead of the capability stub (`docs/BACKEND_GAPS.md` C1 resolved) —
@@ -63,7 +67,7 @@
 // faucet funds is an incoming-credit action, and demanding signing re-authentication for it
 // bought nothing. Old callers that still SEND a password keep working — the param is
 // ignored, not rejected.
-export const CONTRACT_VERSION = 13;
+export const CONTRACT_VERSION = 14;
 
 export const METHODS = {
   // ---- System ------------------------------------------------------------
@@ -483,6 +487,16 @@ export const METHODS = {
     returns: 'the saved record — metadata only, does not prove the mint exists on-chain',
     auth: 'unlocked',
     since: 4,
+  },
+  'token.readMint': {
+    params: ['mintAddress'],
+    returns: '{ exists, decimals, ticker, creator, mintAuthority, freezeAuthority, hasFreezeAuthority, '
+      + 'supply } — the chain\'s own view of a mint account (or exists:false). supply is a '
+      + 'base-unit string or null (BigInt never crosses the message port). '
+      + 'UIs call this before token.import so a pasted contract address is verified and the '
+      + 'symbol/decimals are read from the chain, not typed in.',
+    auth: 'none',
+    since: 14,
   },
   'token.setVisibility': {
     params: ['mintAddress', 'hidden'],

@@ -445,6 +445,44 @@ form > .btn.text {
   color: var(--title, #151b1e);
 }
 
+/* Not a .dash-tab-btn: the ledger has exactly one tab (Tokens). This is an action,
+   so it gets a quiet text-button look on the right of the tabs bar. */
+.dash-add-token {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: transparent;
+  border: 0;
+  padding: 2px 4px 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent, #c43a40);
+  cursor: pointer;
+}
+.add-token-panel {
+  background: #ffffff;
+  border-radius: 8px;
+  margin: 0 12px 12px;
+  padding: 12px 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.add-token-panel[hidden] {
+  display: none;
+}
+.add-token-hint {
+  margin: -4px 0 0;
+  font-size: 11px;
+  color: var(--foot, #6a7580);
+}
+.add-token-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
 .token-ledger {
   background: #ffffff;
   border-radius: 8px;

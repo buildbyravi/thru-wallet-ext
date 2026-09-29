@@ -165,6 +165,7 @@ const handlers = Object.assign(Object.create(null), {
   'token.deriveTokenAccount': ({ ownerAddress, mintAddress }) => tokenService.deriveTokenAccount(ownerAddress, mintAddress),
   'token.generateSeed': () => tokenService.generateMintSeed(),
   'token.import': ({ mintAddress, symbol, name, decimals }) => tokenService.importToken({ mintAddress, symbol, name, decimals }),
+  'token.readMint': ({ mintAddress }) => tokenService.readMint({ mintAddress }),
   'token.setVisibility': ({ mintAddress, hidden }) => tokenService.setVisibility(mintAddress, hidden),
   'token.getBalances': ({ address }) => tokenService.getTokenBalances({ address }),
   'token.transfer': (params) => tokenService.transferToken(params),

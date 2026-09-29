@@ -361,6 +361,27 @@ export function transferTokenChecked({ fromAddress, networkId, ...params } = {})
  * @param {string} mintSeed 64 hex characters
  * @param {string} [mintAuthorityAddress] defaults to the active account
  */
+/**
+ * Read a mint account straight from the chain. Powers "Add custom token": the pasted
+ * contract address is verified against the ledger and the symbol/decimals come from the
+ * chain itself, so a typo fails here instead of producing a token whose amounts are wrong.
+ */
+export async function readMint({ mintAddress }) {
+  const mint = String(mintAddress || '').trim();
+  if (!mint) {
+    throw new Error('A mint address is required.');
+  }
+  const info = await thruClient.readMintAccount(mint);
+  if (!info || info.exists === false) {
+    return { exists: false };
+  }
+  return {
+    ...info,
+    // BigInt is internal-only: message ports carry strings (see token.getBalances amountUnits).
+    supply: info.supply == null ? null : String(info.supply),
+  };
+}
+
 export async function deriveMintAddress(mintSeed, mintAuthorityAddress) {
   const authority = mintAuthorityAddress || (await vault.getActiveAccount())?.address;
   return thruClient.deriveTokenMintAddress(mintSeed, authority);

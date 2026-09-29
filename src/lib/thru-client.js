@@ -25,6 +25,7 @@ import {
   createTransferInstruction as sdkCreateTokenTransferInstruction,
   createInitializeAccountInstruction as sdkCreateInitializeAccountInstruction,
   createInitializeMintInstruction as sdkCreateInitializeMintInstruction,
+  createMintToInstruction as sdkCreateMintToInstruction,
   parseTokenAccountData as sdkParseTokenAccountData,
   parseMintAccountData as sdkParseMintAccountData,
   isAccountNotFoundError as sdkIsAccountNotFoundError,
@@ -1135,6 +1136,57 @@ export async function sendTokenTransfer({ feePayer, mintAddress, recipientAddres
  *
  * @param {string} networkId
  */
+
+/**
+ * Mint units of a mint into one owner's token account. Only the mint authority (the wallet
+ * that deployed the mint) can do this. The destination token account is initialized first
+ * when missing — the creator's own account almost always needs it.
+ *
+ * This is the step that gives a mint its supply. InitializeMint alone leaves supply at 0;
+ * deployTokenMint now calls this when initialSupply > 0 so its registry record cannot
+ * claim supply that was never minted.
+ */
+export async function mintToToken({ feePayer, mintAddress, destinationOwner, amountUnits }) {
+  const amount = BigInt(amountUnits);
+  if (amount <= 0n) {
+    throw new Error('Amount must be a positive whole number of base units.');
+  }
+
+  const ownerAddress = destinationOwner || Pubkey.from(feePayer.publicKey).toThruFmt();
+  const init = await initializeTokenAccount(feePayer, ownerAddress, mintAddress);
+  const dest = await sdkDeriveTokenAccountAddress(getClient(), ownerAddress, mintAddress, activeNetwork.tokenProgramId);
+
+  const { rawTransaction } = await getClient().transactions.buildAndSign({
+    feePayer: { publicKey: feePayer.publicKey, privateKey: feePayer.privateKey },
+    program: activeNetwork.tokenProgramId,
+    // Mint authority is the feePayer at index 0; both the mint (supply) and the destination
+    // token account (balance) change, so both go in readWrite.
+    accounts: { readWrite: [mintAddress, dest.address] },
+    instructionData: sdkCreateMintToInstruction({
+      mintAccountBytes: Pubkey.from(mintAddress).toBytes(),
+      destinationAccountBytes: Pubkey.from(dest.address).toBytes(),
+      authorityAccountBytes: Pubkey.from(feePayer.publicKey).toBytes(),
+      amount,
+    }),
+  });
+
+  for await (const update of getClient().transactions.sendAndTrack(rawTransaction)) {
+    if (update.executionResult) {
+      if (update.executionResult.vmError === 0) {
+        return {
+          signature: update.signature?.value ? Signature.from(update.signature.value).toThruFmt() : null,
+          tokenAccount: dest.address,
+          tokenAccountInitSignature: init.signature,
+        };
+      }
+      const err = new Error(`Token mint reverted on-chain (vmError=${update.executionResult.vmError}).`);
+      err.code = 'TOKEN_MINT_FAILED';
+      throw err;
+    }
+  }
+  throw new Error('Token mint never returned an execution result (timed out?).');
+}
+
 export async function getDeployedTokens(networkId) {
   const key = networkId ? scopedKey(DEPLOYED_TOKENS_KEY, networkId) : DEPLOYED_TOKENS_KEY;
   const stored = await chrome.storage.local.get(key);
@@ -1244,5 +1296,21 @@ export async function deployTokenMint({
 
   await saveDeployedToken(tokenRecord, networkId);
   onProgress({ step: 'success', message: 'Token deployed successfully!', token: tokenRecord });
+
+  // Mint the recorded initial supply to the creator. InitializeMint creates supply 0, so
+  // without this step the registry record would claim units that do not exist on-chain.
+  if (BigInt(initialSupply) > 0n) {
+    onProgress({ step: 'minting_supply', message: 'Minting initial supply…' });
+    const minted = await mintToToken({
+      feePayer,
+      mintAddress,
+      destinationOwner: address,
+      amountUnits: initialSupply,
+    });
+    onProgress({ step: 'minted_supply', message: 'Initial supply minted.', signature: minted.signature });
+    tokenRecord.initialSupplyTx = minted.signature;
+    await saveDeployedToken(tokenRecord, networkId);
+  }
+
   return tokenRecord;
 }

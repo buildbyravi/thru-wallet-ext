@@ -90,6 +90,7 @@ const TOKEN_FIXTURE = {
   initialSupply: '1000000000',
 };
 const TOKEN_ACCOUNT_FIXTURE = 'ta1smktokenaccount0000000000000000000000';
+const CUSTOM_MINT_FIXTURE = 'ta1custommintfixture000000000000000000000000';
 
 /** Every string that must never appear in the DOM, by kind. */
 const SECRETS = [
@@ -1292,6 +1293,37 @@ const FIXTURES = {
     reason: null,
   }),
   'token.deriveTokenAccount': () => TOKEN_ACCOUNT_FIXTURE,
+  'token.readMint': ({ mintAddress } = {}) => {
+    if (mintAddress === CUSTOM_MINT_FIXTURE) {
+      return {
+        exists: true,
+        decimals: 6,
+        ticker: 'LAB',
+        creator: ADDRESS_B,
+        mintAuthority: ADDRESS_B,
+        freezeAuthority: null,
+        hasFreezeAuthority: false,
+        supply: '1000000000',
+      };
+    }
+    return { exists: false };
+  },
+  'token.import': ({ mintAddress, symbol, name, decimals } = {}) => {
+    if (!mintAddress) throw apiError('VALIDATION_ERROR', 'A mint address is required.');
+    const record = {
+      mintAddress,
+      symbol,
+      name,
+      decimals,
+      imageUrl: '',
+      hidden: false,
+      source: 'imported',
+    };
+    backend.tokens = backend.tokens
+      .filter((t) => t.mintAddress !== mintAddress)
+      .concat(record);
+    return { ...record, networkId: activeNetwork().id };
+  },
   'token.transferChecked': ({ fromAddress, networkId } = {}) => {
     if (fromAddress !== activeAccount().address || networkId !== activeNetwork().id) {
       throw apiError('SEND_CONTEXT_CHANGED', 'Review source or network changed.');
@@ -2631,6 +2663,62 @@ async function createFlowBackupTest() {
   await settle();
   const detachedHits = findSecretsInTornDown(SECRETS);
   ok('the phrase leaves no trace in detached nodes', detachedHits.length === 0, String(detachedHits.length));
+
+  router.stop();
+  await settle();
+}
+
+// ---- Add custom token: paste a mint, verified on chain, then it joins the ledger ----
+{
+  section('assets: Add custom token (paste a mint, verified on chain)');
+
+  resetBackend(SCENARIOS[2]);
+  resetDom();
+  guards.invalidate();
+  const router = await boot({ root: DOC.getElementById('app') });
+  await settle();
+
+  click(buttons(router.root, /add token/i)[0]);
+  await settle();
+  const opened = textOf(router.root);
+  ok('the add-token panel opens from the Tokens bar', opened.includes('Token mint (contract address)'), opened.slice(0, 160));
+  ok('the panel states the address is verified first',
+    opened.includes('Verified against the chain before adding.'));
+
+  const panelInputs = () => allElements(router.root).filter((el) => el.localName === 'input');
+  const mintInput = panelInputs().find((el) =>
+    String(el.getAttribute?.('placeholder') || el.placeholder || '').includes('mint address'))
+    || panelInputs()[0];
+  ok('the mint field is the first control', Boolean(mintInput), 'mint input not found');
+
+  // An unknown address is refused BEFORE import — the whole point of the chain lookup.
+  type(mintInput, 'ta1notamint00000000000000000000000000000000');
+  click(buttons(router.root, /check on chain/i)[0]);
+  await settle();
+  ok('an unknown address is refused before import',
+    textOf(router.root).includes('No token mint exists at that address.'));
+
+  // The verified lookup fills symbol and DECIMALS from the chain, not from the user.
+  type(mintInput, CUSTOM_MINT_FIXTURE);
+  click(buttons(router.root, /check on chain/i)[0]);
+  await settle();
+  const inputsAfter = allElements(router.root).filter((el) => el.localName === 'input');
+  ok('the lookup fills symbol from the chain',
+    inputsAfter.some((el) => el.value === 'LAB'), inputsAfter.map((el) => el.value).join('|'));
+  ok('the lookup fills decimals from the chain',
+    inputsAfter.some((el) => el.value === '6'), inputsAfter.map((el) => el.value).join('|'));
+  ok('the panel reports the verified read', textOf(router.root).includes('Verified on chain'));
+
+  click(buttons(router.root, /add to wallet/i)[0]);
+  await settle();
+  ok('the import confirms in a notice', textOf(router.root).includes('added to your token list'));
+  // textOf() reads every text node including hidden ones — assert the panel's hidden state,
+  // not the absence of its copy.
+  const panelEl = allElements(router.root).find((el) => el.classList?.contains?.('add-token-panel'));
+  ok('the panel closes after a successful import',
+    panelEl?.hidden === true, `panel.hidden=${panelEl?.hidden}`);
+  ok('the imported token joins the token ledger',
+    textOf(router.root).includes('LAB'), textOf(router.root).slice(0, 200));
 
   router.stop();
   await settle();

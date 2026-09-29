@@ -630,6 +630,59 @@ storage.set('thru_prefs', originalPrefs);
 await handleApiRequest({ method: 'network.setActive', params: { networkId: 'betanet' } });
 console.log('  ok - imported token records are network-scoped; legacy records default only to betanet');
 
+// token.readMint (contract v14) — the custom-token lookup. "Add custom token" must verify the
+// pasted mint on-chain and take decimals from the chain, not from a text box, so this drives
+// the real mint layout through the real parse path (stubbed SDK account read only).
+console.log('[token.readMint] custom-token lookup reads the chain and validates its input');
+{
+  const sdkForMint = clientForRace.getClient();
+  const beforeGet = sdkForMint.accounts.get;
+  const { TokenMintAccount } = await import('@thru/programs/token');
+  // TickerField layout is [length, 8 chars] — the length byte goes first.
+  const tickerBytes = new Uint8Array(9);
+  tickerBytes[0] = 3;
+  tickerBytes.set(new TextEncoder().encode('LAB'), 1);
+  const built = TokenMintAccount.builder();
+  built.set_decimals(6);
+  built.set_supply(42n);
+  built.set_has_freeze_authority(0);
+  built.set_ticker(tickerBytes);
+  const mintBytes = built.finish().buffer;
+  const FIXTURE_MINT = 'taMINTLOOKUPFIXTURE00000000000000000000000000';
+  try {
+    sdkForMint.accounts.get = (address) => {
+      if (address === FIXTURE_MINT) return Promise.resolve({ data: { data: mintBytes } });
+      const err = new Error('account not found');
+      err.code = 5;
+      return Promise.reject(err);
+    };
+
+    const missing = await handleApiRequest({ method: 'token.readMint', params: {} });
+    assert.equal(missing.ok, false);
+    assert.match(missing.error?.message, /mint address is required/i);
+
+    const absent = await handleApiRequest({
+      method: 'token.readMint',
+      params: { mintAddress: 'taMINTNOTHERE000000000000000000000000000000000' },
+    });
+    assert.equal(absent.ok, true);
+    assert.equal(absent.data.exists, false);
+
+    const found = await handleApiRequest({
+      method: 'token.readMint',
+      params: { mintAddress: FIXTURE_MINT },
+    });
+    assert.equal(found.ok, true, found.error?.message);
+    assert.equal(found.data.exists, true);
+    assert.equal(found.data.decimals, 6, 'decimals come from the chain');
+    assert.equal(found.data.ticker, 'LAB');
+    assert.equal(found.data.supply, '42', 'supply crosses the port as a base-unit string');
+    console.log('  ok - token.readMint validates input, reports {exists:false}, and returns chain-decided decimals');
+  } finally {
+    sdkForMint.accounts.get = beforeGet;
+  }
+}
+
 // Account labels are the counter-example: they describe an address, not a chain, so they must
 // survive a switch.
 await handleApiRequest({ method: 'account.setLabel', params: { address: activeAcct.address, label: 'CrossNet' } });

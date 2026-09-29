@@ -26,6 +26,7 @@
 import { h, disposer } from '../../kit/dom.js';
 import { icon } from '../../kit/icon.js';
 import { CopyButton, Button } from '../../kit/button.js';
+import { Field } from '../../kit/field.js';
 import { Banner } from '../../kit/feedback.js';
 import { AccountAvatar, AddressText } from '../../domain/account-avatar.js';
 import { AssetRow } from '../../domain/token-row.js';
@@ -268,6 +269,160 @@ export function DashboardRoute({ navigate }) {
 
   const tokenLedgerHost = h('div', { class: 'token-ledger' });
 
+  // ---- Add custom token ---------------------------------------------------
+  // Before this, a token only existed in this wallet if THIS wallet deployed it — the
+  // token.import API had no UI at all. "Add custom token" is the MetaMask flow: paste the
+  // mint (contract) address, the chain verifies it and supplies the real decimals, then the
+  // record joins the ledger. Decimals are read from the chain on purpose: sends burn base
+  // units of the actual decimals, so free-typed metadata corrupts amounts (a wrong-decimals
+  // custom token is worse than no token).
+  let addTokenOpen = false;
+  let checking = false;
+  let submitting = false;
+  let lookup = null;
+
+  function setAddTokenOpen(open, { reset = false } = {}) {
+    addTokenOpen = Boolean(open);
+    addTokenPanel.hidden = !addTokenOpen;
+    addTokenBtn.setAttribute('aria-expanded', String(addTokenOpen));
+    if (!addTokenOpen && reset) {
+      for (const f of [mintField, symbolField, nameField, decimalsField]) {
+        f.value = '';
+        f.setError('');
+      }
+      lookup = null;
+      addBtn.el.disabled = true;
+      addTokenHint.textContent = '';
+    }
+    if (addTokenOpen) mintField.focus();
+  }
+
+  async function checkMint() {
+    const mint = mintField.value.trim();
+    if (!mint || checking) return;
+    checking = true;
+    checkBtn.setBusy(true);
+    mintField.setError('');
+    try {
+      const info = await bridge.send('token.readMint', { mintAddress: mint });
+      if (!info || info.exists === false) {
+        lookup = null;
+        addBtn.el.disabled = true;
+        mintField.setError('No token mint exists at that address.');
+        addTokenHint.textContent = '';
+        return;
+      }
+      lookup = info;
+      symbolField.value = info.ticker || '';
+      if (!nameField.value.trim()) nameField.value = info.ticker || '';
+      decimalsField.value = String(info.decimals ?? '');
+      addTokenHint.textContent = `Verified on chain · ${info.decimals} decimals · supply ${info.supply ?? '—'}.`;
+      addBtn.el.disabled = false;
+    } catch (err) {
+      lookup = null;
+      addBtn.el.disabled = true;
+      addTokenHint.textContent = '';
+      mintField.setError(err?.message || 'Could not read that address from the chain.');
+    } finally {
+      checking = false;
+      checkBtn.setBusy(false);
+    }
+  }
+
+  async function submitAdd() {
+    const mint = mintField.value.trim();
+    const symbol = symbolField.value.trim();
+    const name = nameField.value.trim();
+    const decimals = Number(decimalsField.value.trim());
+    if (!mint || submitting) return;
+    symbolField.setError('');
+    decimalsField.setError('');
+    if (!lookup || lookup.exists === false) {
+      mintField.setError('Check the address on-chain first.');
+      return;
+    }
+    if (!symbol) {
+      symbolField.setError('Symbol is required.');
+      return;
+    }
+    if (!Number.isInteger(decimals) || decimals < 0 || decimals > 18) {
+      decimalsField.setError('Use a whole number 0–18.');
+      return;
+    }
+    submitting = true;
+    addBtn.setBusy(true);
+    try {
+      await bridge.send('token.import', {
+        mintAddress: mint, symbol, name: name || symbol, decimals,
+      });
+      setAddTokenOpen(false, { reset: true });
+      await load({ force: true });
+      // After load(): it clears the banner first (every load starts fresh), so the success
+      // notice would vanish if it were set before the refresh.
+      banner.set(`${symbol} added to your token list.`, 'info');
+    } catch (err) {
+      mintField.setError(err?.message || 'Could not save that token.');
+    } finally {
+      submitting = false;
+      addBtn.setBusy(false);
+    }
+  }
+
+  // Named handler so destroy() can removeEventListener it — a raw h() on:{} listener that
+  // outlives the route is exactly the detached-listener leak the teardown sweeps reject.
+  const onAddTokenClick = () => setAddTokenOpen(!addTokenOpen);
+  const addTokenBtn = h('button', {
+    type: 'button',
+    class: 'dash-add-token',
+    title: 'Add custom token by mint (contract) address',
+    'aria-expanded': 'false',
+    on: { click: onAddTokenClick },
+  }, [icon('plus'), h('span', { text: 'Add token' })]);
+  tabsBar.appendChild(addTokenBtn);
+
+  const mintField = Field({
+    label: 'Token mint (contract address)',
+    placeholder: 'ta… mint address',
+    hint: 'Verified against the chain before adding.',
+    onInput: () => {
+      lookup = null;
+      addBtn.el.disabled = true;
+    },
+    onEnter: () => { void checkMint(); },
+  });
+  const symbolField = Field({ label: 'Symbol', maxLength: 12, placeholder: 'e.g. LAB' });
+  const nameField = Field({ label: 'Name', maxLength: 48, placeholder: 'Token name (optional)' });
+  const decimalsField = Field({
+    label: 'Decimals',
+    inputMode: 'numeric',
+    maxLength: 2,
+    hint: 'Filled from the chain on lookup.',
+  });
+  const checkBtn = Button({ label: 'Check on chain', onClick: () => { void checkMint(); } });
+  const addBtn = Button({ label: 'Add to wallet', primary: true, onClick: () => { void submitAdd(); } });
+  addBtn.el.disabled = true;
+  const cancelBtn = Button({
+    label: 'Cancel',
+    variant: 'text',
+    onClick: () => setAddTokenOpen(false, { reset: true }),
+  });
+  const addTokenHint = h('p', { class: 'add-token-hint', text: '' });
+
+  const addTokenPanel = h('div', { class: 'add-token-panel', hidden: true }, [
+    mintField.el,
+    addTokenHint,
+    checkBtn.el,
+    symbolField.el,
+    nameField.el,
+    decimalsField.el,
+    h('div', { class: 'add-token-actions' }, [addBtn.el, cancelBtn.el]),
+  ]);
+
+  owned.push(
+    { destroy: () => addTokenBtn.removeEventListener('click', onAddTokenClick) },
+    mintField, symbolField, nameField, decimalsField, checkBtn, addBtn, cancelBtn,
+  );
+
   function disposeAssets() {
     for (const row of assetRows) row.destroy();
     assetRows = [];
@@ -483,6 +638,7 @@ export function DashboardRoute({ navigate }) {
     banner.el,
     actionPanel,
     tabsBar,
+    addTokenPanel,
     tokenLedgerHost,
   ]);
 
