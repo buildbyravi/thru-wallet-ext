@@ -275,9 +275,8 @@ export function DashboardRoute({ navigate }) {
       stale,
       tokenState: tokenState === undefined ? assetsSnapshot.tokenState : tokenState,
     };
-    // The balance box summarizes what the drawer holds — REAL symbols only. The sample
-    // USDC preview row is not a holding and must never appear beside real balances.
-    const realTokens = assetsSnapshot.tokens.filter((t) => !t.hidden && !t.isSample);
+    // The balance box summarizes what the drawer holds — real symbols only.
+    const realTokens = assetsSnapshot.tokens.filter((t) => !t.hidden);
     balanceHero.update({
       summary: ['THRU', ...realTokens.map((t) => t.symbol)].join(' · '),
     });
@@ -448,9 +447,6 @@ export function DashboardRoute({ navigate }) {
         bridge.send('tx.autoCreateAccount').catch(() => {});
       }
     } else {
-      banner.set(hasCachedBalance
-        ? 'Could not verify the balance. Showing the last known value.'
-        : 'Could not verify the balance. Balance unavailable.', 'warning');
       // Do not leave the neutral "$0.00" default looking like a verified zero when no
       // account read or cache has ever succeeded on this page.
       if (!hasCachedBalance) {

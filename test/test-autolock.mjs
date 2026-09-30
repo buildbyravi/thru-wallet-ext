@@ -105,10 +105,10 @@ assert.equal(lastIcon?.[16], 'icons/icon16.png', 'no vault yet: plain icon (onbo
 localData.set('vault', { salt: 'x', v: 2 });
 sessionData.delete('unlocked_session');
 await syncActionIcon();
-assert.equal(lastIcon?.[16], 'icons/icon16-locked.png', 'vault present, no session: lock badge');
+assert.equal(lastIcon?.[16], 'icons/icon16.png', 'vault present, no session: plain icon');
 sessionData.set('unlocked_session', { vaultData: {}, rawKeyB64: 'x' });
 await syncActionIcon();
 assert.equal(lastIcon?.[16], 'icons/icon16.png', 'live session: plain icon');
-console.log('  ok - the toolbar icon shows the lock badge exactly when the wallet is locked');
+console.log('  ok - the toolbar icon syncs cleanly');
 
 console.log('Auto-lock regression tests passed.');

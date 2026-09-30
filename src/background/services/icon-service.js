@@ -8,12 +8,6 @@
 
 import { hasVault, isUnlocked } from '../../lib/vault.js';
 
-const LOCKED_PATHS = Object.freeze({
-  16: 'icons/icon16-locked.png',
-  48: 'icons/icon48-locked.png',
-  128: 'icons/icon128-locked.png',
-});
-
 const DEFAULT_PATHS = Object.freeze({
   16: 'icons/icon16.png',
   48: 'icons/icon48.png',
@@ -28,11 +22,7 @@ const DEFAULT_PATHS = Object.freeze({
 export async function syncActionIcon() {
   try {
     if (typeof chrome === 'undefined' || !chrome.action?.setIcon) return;
-    const unlocked = await isUnlocked().catch(() => false);
-    // Locked means: there is something to lock, and nobody holds a session. Onboarding
-    // (no vault) keeps the plain icon — a lock badge over "set up your wallet" is noise.
-    const locked = !unlocked && (await hasVault().catch(() => false));
-    await chrome.action.setIcon({ path: locked ? LOCKED_PATHS : DEFAULT_PATHS });
+    await chrome.action.setIcon({ path: DEFAULT_PATHS });
   } catch {
     // safe fallback: the manifest default icon stays
   }

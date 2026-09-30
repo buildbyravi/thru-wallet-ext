@@ -29,8 +29,7 @@
 //   - Every async step is guarded by an attempt counter, so editing the address mid-lookup
 //     can never apply a stale result.
 //
-// Honesty rules, unchanged: a balance that could not be read is "—", never a zero; the
-// sample USDC row is a deliberate preview row (0.00), never counted as a holding.
+// Honesty rules, unchanged: a balance that could not be read is "—", never a zero.
 //
 // Overlay, backdrop, focus trap, open animation and teardown come from kit/sheet.js (shared with
 // the security sheet). Every node comes from h(); every handler goes through the sheet's
@@ -154,19 +153,13 @@ export function TokenDrawer({
     }
 
     const allTokens = [...(data.tokens || [])];
-    // Preview row when no USDC is registered — kept from the original ledger design.
-    if (!allTokens.some((t) => t.symbol === 'USDC')) {
-      allTokens.push({ symbol: 'USDC', name: 'USD Coin', decimals: 6, isSample: true });
-    }
 
     for (const token of allTokens) {
       if (token.hidden) continue;
       if (!matchesQuery(query, token)) continue;
       const state = data.tokenState?.get(token.mintAddress);
       let balanceText = null;
-      if (token.isSample) {
-        balanceText = '0.00 USDC';
-      } else if (state && state.error !== true && state.amountUnits != null) {
+      if (state && state.error !== true && state.amountUnits != null) {
         const decimals = Number.isInteger(state.decimals) ? state.decimals
           : (Number.isInteger(token.decimals) ? token.decimals : 0);
         balanceText = `${formatTokenAmount(BigInt(state.amountUnits), decimals)} ${token.symbol || 'TOKEN'}`;

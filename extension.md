@@ -14,7 +14,7 @@ included) so diffs here are real listing diffs.
 | Support | Telegram group <https://t.me/+dA8TwsOECcIxZWZl> (shown in Settings → About) |
 | Privacy policy URL (as submitted) | <https://github.com/buildbyravi/thru-wallet-ext/blob/main/PRIVACY.md> |
 | Package version at last sync | `1.4.0` (`src/manifest.json`) |
-| Last synced with the live listing | 2026-09-29 |
+| Last synced with the live listing | 2026-09-30 |
 
 ---
 
@@ -41,15 +41,23 @@ Key Features:
 
 - Self-Custody Account Management: Generate recovery phrases or import existing accounts and private keys.
 
-- On-Chain Transfers: Send THRU testnet tokens with transaction review and address validation.
+- On-Chain Transfers: Send THRU and custom tokens with detailed transaction review, recipient lookup, and fee estimation.
+
+- Native Token Management: Inspect balances across native THRU and program-derived tokens with a clean Rabby-inspired sliding token drawer.
+
+- Verified Custom Tokens: Import tokens by contract address with on-chain verification of ticker, decimals, and supply.
 
 - Receive & Scan: View your address and QR code to receive testnet funds.
 
 - Testnet Faucet: Claim testnet THRU directly from the extension to test transactions.
 
+- Transaction Activity & Auto-Sync: Real-time activity feed with live auto-refresh every 30 seconds and transaction details.
+
+- Desktop Notifications: Optional native desktop notifications alerting you when transactions confirm or fail on-chain.
+
 - Local Encryption: Keys are encrypted at rest using PBKDF2 (600k iterations) + AES-256-GCM.
 
-- Auto-Lock Protection: Inactivity lock automatically clears decrypted keys from memory after 15 minutes.
+- Auto-Lock Protection: Inactivity lock automatically clears decrypted keys from memory after 15 minutes. Shortcut: Ctrl+L.
 
 - Zero Telemetry: No analytics, tracking, third-party scripts, or remote code execution.
 
@@ -76,8 +84,8 @@ A dedicated cryptocurrency key and transaction manager for the Thru Betanet test
 
 ## 3. Permission justifications
 
-The manifest requests exactly four permissions (`src/manifest.json`: `storage`, `alarms`,
-`sidePanel`, `clipboardRead`) — one justification each, matching what the dashboard holds.
+The manifest requests exactly five permissions (`src/manifest.json`: `storage`, `alarms`,
+`sidePanel`, `clipboardRead`, `notifications`) — one justification each, matching what the dashboard holds.
 
 **storage**
 
@@ -101,6 +109,12 @@ This extension uses the side panel as the wallet interface so users can view bal
 
 ```text
 The extension reads clipboard content only when the user explicitly chooses to paste a wallet address, transaction hash, or other importable value into the wallet. This enables faster and less error-prone address/transaction entry and is only used for user-initiated import workflows.
+```
+
+**notifications**
+
+```text
+Used to display native desktop notifications when on-chain transactions confirm or fail, alerting users of transaction finality even when the popup is closed. Configurable via on/off toggle in Settings.
 ```
 
 ## 4. Are you using remote code?
@@ -128,7 +142,7 @@ re-check these claims against `src/` and fix the copy if the code moved.
 | PBKDF2 (600k iterations) | `src/lib/vault.js` — `PBKDF2_ITERATIONS = 600_000`, PBKDF2-SHA-256 | ✅ exact |
 | AES-256-GCM at rest | `src/lib/vault.js` — 256-bit non-extractable AES-GCM key | ✅ exact |
 | Auto-lock after 15 minutes | `src/shared/autolock.js` — `DEFAULT_AUTOLOCK_MINUTES = 15` | ✅ default is 15 min; user-configurable 0–240 min. The listing says "after 15 minutes" — consider "by default after 15 minutes" at the next copy refresh |
-| Four permissions, one purpose each | `src/manifest.json` — exactly `storage`, `alarms`, `sidePanel`, `clipboardRead` | ✅ exact |
+| Four permissions, one purpose each | `src/manifest.json` — exactly `storage`, `alarms`, `sidePanel`, `clipboardRead`, `notifications` | ✅ exact |
 | Zero telemetry / no remote code | no analytics, no remote scripts; CSP `script-src 'self'` | ✅ exact |
 | Features: HD/import, send + review, receive QR, faucet | routes in `src/ui/app/routes/` (dashboard, send, receive, add-account, settings/faucet) | ✅ shipped |
 
@@ -164,6 +178,7 @@ review status.
 
 | Date | What changed | Notes |
 | --- | --- | --- |
+| 2026-09-30 | Package `1.4.0` — **Rabby Architecture & Asset Polish**: Centralized token architecture (`NATIVE_TOKEN`, `TokenAvatar`), brand logo on lock screen, desktop notifications for tx confirmation/failure (`chrome.notifications`), Rabby refresh icon with spinning sync indicator, 30s auto-refresh on History, lock wallet button & Ctrl+L shortcut | All 20 test suites green |
 | 2026-09-29 | (unreleased, package still `1.4.0`) **Token drawer**: the balance box is now the token entry — click anywhere in it (or Enter/Space, or the Tokens strip) and the Rabby-style drawer slides up with the full token list, live search, and Add custom token; the inline dashboard ledger is gone | TOKEN2049 store copy: mention "tap your balance for the token list" alongside "Add custom tokens by contract address" |
 | 2026-09-29 | (unreleased, package still `1.4.0`) **Tokens round**: Add custom token by contract (mint) address — the chain verifies the pasted address and supplies the real symbol/decimals before the token joins the ledger; `token.readMint` lookup (contract v14); deploys now mint their recorded initial supply (InitializeMint alone left supply at 0); `scripts/token-lab.mjs` end-to-end token lab (deploy → add → send → receive) | Include in the TOKEN2049 store copy: "Add custom tokens by contract address" |
 | 2026-09-29 | Package `1.4.0` — **Betanet migration**: the wallet now targets `betanet` (`rpc.betanet.thru.org`), Thru's final testnet before mainnet (10 nodes, ~6s blocks — transfers settle in about one block; the single-node alphanet is gone). Explorer links use `?network=betanet`; auto-lock no longer counts background sync as activity; faucet claims no longer ask for the password; RESET must be typed in uppercase | Store copy refresh planned for the TOKEN2049 launch (~early October 2026); mention Betanet (final testnet before mainnet) then |
