@@ -1557,7 +1557,20 @@ function generatePromoMarquee() {
   </body>
   </html>`;
 
-  renderHtmlToImage(html, path.resolve(STORE_DIR, 'promo-marquee-1400x560.png'), 1400, 560);
+  const rawPng = path.resolve(STORE_DIR, 'promo-marquee-raw.png');
+  const targetJpg = path.resolve(STORE_DIR, 'promo-marquee-1400x560.jpg');
+  renderHtmlToImage(html, rawPng, 1400, 560);
+  try {
+    execFileSync('powershell', [
+      '-NoProfile',
+      '-Command',
+      `Add-Type -AssemblyName System.Drawing; $img = [System.Drawing.Image]::FromFile('${rawPng}'); $codec = [System.Drawing.Imaging.ImageCodecInfo]::GetImageEncoders() | Where-Object { $_.MimeType -eq 'image/jpeg' }; $p = New-Object System.Drawing.Imaging.EncoderParameters(1); $p.Param[0] = New-Object System.Drawing.Imaging.EncoderParameter([System.Drawing.Imaging.Encoder]::Quality, [long]88); $img.Save('${targetJpg}', $codec, $p); $img.Dispose()`,
+    ]);
+    if (fs.existsSync(rawPng)) fs.unlinkSync(rawPng);
+    console.log('✓ Optimized Marquee Banner (JPEG 1400x560):', targetJpg);
+  } catch (e) {
+    console.error('Failed to convert marquee banner to JPG:', e.message);
+  }
 }
 
 // Generate store documentation
@@ -1577,7 +1590,7 @@ This directory contains all the visual assets required for publishing and featur
 | \`screenshot-4-activity.png\` | 1280 x 800 px (16:10) | Live Activity Feed & Auto-Sync | Store Listing -> Screenshots |
 | \`screenshot-5-security.png\` | 1280 x 800 px (16:10) | Self-Custody Security & Shortcuts | Store Listing -> Screenshots |
 | \`promo-small-440x280.png\` | 440 x 280 px | Small Promotional Tile | Store Listing -> Promotional images -> Small tile |
-| \`promo-marquee-1400x560.png\` | 1400 x 560 px | Marquee Promotional Banner | Store Listing -> Promotional images -> Marquee tile |
+| \`promo-marquee-1400x560.jpg\` | 1400 x 560 px | Marquee Promotional Banner | Store Listing -> Promotional images -> Marquee tile |
 
 ## Regeneration
 

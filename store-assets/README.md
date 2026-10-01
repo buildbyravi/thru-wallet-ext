@@ -13,7 +13,7 @@ This directory contains all the visual assets required for publishing and featur
 | `screenshot-4-activity.png` | 1280 x 800 px (16:10) | Live Activity Feed & Auto-Sync | Store Listing -> Screenshots |
 | `screenshot-5-security.png` | 1280 x 800 px (16:10) | Self-Custody Security & Shortcuts | Store Listing -> Screenshots |
 | `promo-small-440x280.png` | 440 x 280 px | Small Promotional Tile | Store Listing -> Promotional images -> Small tile |
-| `promo-marquee-1400x560.png` | 1400 x 560 px | Marquee Promotional Banner | Store Listing -> Promotional images -> Marquee tile |
+| `promo-marquee-1400x560.jpg` | 1400 x 560 px | Marquee Promotional Banner | Store Listing -> Promotional images -> Marquee tile |
 
 ## Regeneration
 
