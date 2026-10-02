@@ -366,16 +366,17 @@ form > .btn.text {
   width: 22px;
   height: 22px;
   padding: 0;
-  color: rgba(255, 255, 255, 0.45);
-  border-radius: 4px;
+  color: rgba(255, 255, 255, 0.5);
+  border-radius: 50%;
   align-self: center;
   margin-bottom: 2px;
   cursor: pointer;
-  transition: color 0.15s ease, background 0.15s ease;
+  transition: color 0.15s ease, opacity 0.15s ease;
 }
 
 .dash-balance-hero .dash-header-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: transparent;
+  border: 0;
   color: #ffffff;
 }
 .dash-balance-native {
