@@ -82,7 +82,7 @@ export function DashboardRoute({ navigate }) {
     pillMark,
     pillName,
     pillAddr,
-    h('span', { class: 'account-pill-chevron' }, icon('chevronDown', 12)),
+    h('span', { class: 'account-pill-chevron' }, icon('chevronRight', 12)),
   ]);
   d.on(pill, 'click', () => navigate('/accounts'));
 

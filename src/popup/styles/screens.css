@@ -230,10 +230,10 @@ form > .btn.text {
 .dash-header-btn {
   background: rgba(255, 255, 255, 0.08);
   border: 0;
-  border-radius: 6px;
+  border-radius: 7px;
   color: #ffffff;
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -258,14 +258,15 @@ form > .btn.text {
 .dash-header .account-pill {
   background: rgba(255, 255, 255, 0.08);
   border: 0;
-  border-radius: 6px;
-  padding: 5px 8px;
+  border-radius: 7px;
+  padding: 5px 10px;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   cursor: pointer;
   color: #ffffff;
-  max-width: 200px;
+  max-width: 240px;
+  transition: background 0.15s ease;
 }
 .dash-header .account-pill:hover {
   background: rgba(255, 255, 255, 0.14);
@@ -274,23 +275,31 @@ form > .btn.text {
   font-size: 14px;
   font-weight: 600;
   color: #ffffff;
-  max-width: 80px;
+  max-width: 120px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .dash-header .account-pill-address {
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.6);
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.65);
   font-family: var(--font-mono);
+  white-space: nowrap;
 }
 .dash-header .account-pill .byte-mark {
   width: 20px;
   height: 20px;
-  padding: 1px;
+  padding: 0;
   border: 0;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.15);
+  border-radius: 0;
+  background: transparent;
+  color: #ffffff;
+}
+.dash-header .account-pill-chevron {
+  display: inline-flex;
+  align-items: center;
+  color: rgba(255, 255, 255, 0.55);
+  flex-shrink: 0;
 }
 
 /* ---- Balance Hero inside header ---------------------------------------- */
