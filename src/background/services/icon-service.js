@@ -1,12 +1,11 @@
-// Toolbar icon follows wallet lock state — a Rabby-style lock badge on the action icon
-// while the wallet is locked (vault present, no live session), the plain icon otherwise
-// (unlocked, or still setting up with no vault yet).
+// Toolbar icon — one plain branded icon at every state.
 //
-// Chrome resets the action icon to the manifest default on every browser start, so the
-// background re-applies the right variant at every worker start and on every lock-state
-// change (emitLockStateChanged is the single funnel for those).
-
-import { hasVault, isUnlocked } from '../../lib/vault.js';
+// History: this used to swap between the plain icon and a red-lock-badge variant on lock
+// state. The badge read as clutter at 16px and shipped three extra PNGs per size, so the
+// local cleanup pass (2026-09-30) dropped the variants: the wallet's lock state lives in
+// the popup itself, not the toolbar. syncActionIcon is kept (and re-run on lock-state
+// changes) because Chrome resets the action icon to the manifest default on every browser
+// start; the background re-asserts the plain icon at every worker start.
 
 const DEFAULT_PATHS = Object.freeze({
   16: 'icons/icon16.png',
@@ -15,8 +14,8 @@ const DEFAULT_PATHS = Object.freeze({
 });
 
 /**
- * Point the toolbar icon at the right variant for the CURRENT state. Idempotent and
- * best-effort: the icon is decoration and must never throw into a lock transition.
+ * Point the toolbar icon at the plain branded icon. Idempotent and best-effort: the icon
+ * is decoration and must never throw into a lock transition.
  * @returns {Promise<void>}
  */
 export async function syncActionIcon() {

@@ -284,14 +284,15 @@ wallet; never paste a real seed into DevTools or its command history:
   deliberately no Add control; re-enablement requires all four conditions in
   `docs/STATUS_AND_ROADMAP.md` Step 2b.
 
-### Auto-lock and the lock badge
+### Auto-lock
 
 1. Settings → Lock after inactivity → **1 min** (password prompt appears).
 2. Touch nothing for ~2 minutes (close the popup first). Reopen: the wallet asks to unlock.
    **The regression this pins:** auto-lock used to be defeated by the service worker
    re-stamping activity on every alarm tick — it never fired at any setting.
-3. While unlocked, the toolbar icon has **no** lock badge; when locked (and after a browser
-   restart with a wallet set up) the icon shows the small lock badge, like Rabby's.
+3. The toolbar icon is the plain branded one at every state (the lock-badge variant was
+   dropped on 2026-09-30 as clutter). After a browser restart with a wallet set up, the
+   icon should simply show the plain Thru icon, locked or not.
 4. With a **1 min** window, sit on the send review screen and move the pointer occasionally:
    the wallet must NOT lock while you are actively using it (presence counts as activity).
 

@@ -142,7 +142,7 @@ re-check these claims against `src/` and fix the copy if the code moved.
 | PBKDF2 (600k iterations) | `src/lib/vault.js` — `PBKDF2_ITERATIONS = 600_000`, PBKDF2-SHA-256 | ✅ exact |
 | AES-256-GCM at rest | `src/lib/vault.js` — 256-bit non-extractable AES-GCM key | ✅ exact |
 | Auto-lock after 15 minutes | `src/shared/autolock.js` — `DEFAULT_AUTOLOCK_MINUTES = 15` | ✅ default is 15 min; user-configurable 0–240 min. The listing says "after 15 minutes" — consider "by default after 15 minutes" at the next copy refresh |
-| Four permissions, one purpose each | `src/manifest.json` — exactly `storage`, `alarms`, `sidePanel`, `clipboardRead`, `notifications` | ✅ exact |
+| Five permissions, one purpose each | `src/manifest.json` — exactly `storage`, `alarms`, `sidePanel`, `clipboardRead`, `notifications` | ✅ exact |
 | Zero telemetry / no remote code | no analytics, no remote scripts; CSP `script-src 'self'` | ✅ exact |
 | Features: HD/import, send + review, receive QR, faucet | routes in `src/ui/app/routes/` (dashboard, send, receive, add-account, settings/faucet) | ✅ shipped |
 

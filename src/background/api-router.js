@@ -135,7 +135,11 @@ const handlers = Object.assign(Object.create(null), {
   // ---- Transactions and RPC --------------------------------------------
   'tx.getAccountInfo': ({ address }) => txService.getAccountInfo(address),
   'tx.claimFaucet': ({ amountUnits }) => txService.claimFaucet(amountUnits),
-  'tx.send': ({ toAddress, amountUnits }) => txService.sendTransfer(toAddress, amountUnits),
+  // `allowDuplicate` must be threaded through: the handler destructures its params, and the
+  // T17 audit found this line silently dropping the flag the contract declares (a confirmed
+  // repeat transfer could never proceed on this path). Keep in sync with tx.sendChecked.
+  'tx.send': ({ toAddress, amountUnits, allowDuplicate }) =>
+    txService.sendTransfer(toAddress, amountUnits, null, { allowDuplicate: Boolean(allowDuplicate) }),
   'tx.sendChecked': (params) => txService.sendTransferChecked(params),
   'tx.listHistory': ({ address, pageSize, limit, cursor } = {}) => (
     limit !== undefined || cursor !== undefined

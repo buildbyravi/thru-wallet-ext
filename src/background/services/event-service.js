@@ -37,8 +37,9 @@ export function emitAccountsChanged(data) {
 
 export function emitLockStateChanged(unlocked) {
   emit('lockStateChanged', { unlocked });
-  // The toolbar icon mirrors lock state (lock badge while locked). Fire-and-forget —
-  // icon sync is decoration and must not block or fail a lock transition.
+  // The toolbar icon is the plain branded one at every state; syncing it here re-asserts
+  // the manifest icon Chrome resets on browser start. Fire-and-forget — icon sync is
+  // decoration and must not block or fail a lock transition.
   void syncActionIcon();
 }
 

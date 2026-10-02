@@ -396,6 +396,29 @@ try {
     },
   });
   assert.equal(dupSendAllowed.ok, true, dupSendAllowed.error?.message);
+
+  // The LEGACY tx.send path must honor allowDuplicate exactly like tx.sendChecked — its
+  // handler destructures params and once dropped the flag entirely (found in the T17 audit:
+  // the contract declared allowDuplicate on tx.send but the router ignored it, so a confirmed
+  // repeat transfer could never proceed on that path).
+  const dupSendLegacy = await handleApiRequest({
+    method: 'tx.send',
+    params: {
+      toAddress: accountsList[1].address, amountUnits: '1',
+      allowDuplicate: false,
+    },
+  });
+  assert.equal(dupSendLegacy.ok, false);
+  assert.equal(dupSendLegacy.error.code, 'DUPLICATE_SUBMISSION');
+
+  const dupSendLegacyAllowed = await handleApiRequest({
+    method: 'tx.send',
+    params: {
+      toAddress: accountsList[1].address, amountUnits: '1',
+      allowDuplicate: true,
+    },
+  });
+  assert.equal(dupSendLegacyAllowed.ok, true, dupSendLegacyAllowed.error?.message);
 } finally {
   releasePostSendBalance?.();
   sdkForSend.accounts.get = beforeGet;
