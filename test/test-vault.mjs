@@ -209,6 +209,12 @@ assert(keyrings.length === 3 && keyrings.some((ring) => ring.id === privateKeyri
 const importedV2 = await vault.getActiveAccount();
 assert(importedV2.address === secondPrivate.address, 'separate private-key keyring resolves its own address');
 assert(importedV2.label === 'Cold import', 'imported private key uses given label as account name');
+// Ring-label fallback: keys imported BEFORE label persistence existed carry a custom
+// keyring name but no labels[address] entry. Clearing the account label simulates that
+// state; resolveAccount must surface the ring name, not 'Imported N'.
+await vault.setAccountLabel(secondPrivate.address, '');
+assert((await vault.getActiveAccount()).label === 'Cold import',
+  'cleared label falls back to the custom keyring name, not "Imported N"');
 await vault.lock();
 assert(!(await vault.isUnlocked()), 'locking clears every V2 keyring session');
 await vault.unlock('keyring migration password');
