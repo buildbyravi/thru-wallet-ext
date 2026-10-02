@@ -2,6 +2,7 @@
 
 **Repository:** [github.com/buildbyravi/thru-wallet-ext](https://github.com/buildbyravi/thru-wallet-ext)  
 **Website:** [thruwallet.vercel.app](https://thruwallet.vercel.app)  
+**Telegram Channel:** [t.me/walletext](https://t.me/walletext)  
 **Telegram Support Group:** [t.me/+dA8TwsOECcIxZWZl](https://t.me/+dA8TwsOECcIxZWZl)  
 **Issue Tracker:** [github.com/buildbyravi/thru-wallet-ext/issues](https://github.com/buildbyravi/thru-wallet-ext/issues)
 
@@ -18,7 +19,7 @@ If you encounter bugs, unexpected behavior, or have questions:
 1.  **Join the Telegram Support Group:** Connect with the team and community at [t.me/+dA8TwsOECcIxZWZl](https://t.me/+dA8TwsOECcIxZWZl).
 2.  **Search Existing Issues:** Check the [GitHub Issues](https://github.com/buildbyravi/thru-wallet-ext/issues) page to see if your bug or request has already been reported.
 3.  **Open a New Issue:** Provide clear details including:
-    *   Extension version (`1.3.0`)
+    *   Extension version (`1.4.0`)
     *   Chrome browser version and OS
     *   Exact steps to reproduce the issue
     *   Relevant error messages (do **NOT** post your seed phrase or private key!)

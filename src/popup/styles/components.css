@@ -448,50 +448,32 @@ textarea[aria-invalid="true"] {
    Rendered by renderByteMark() in popup.js. ------------------ */
 
 .byte-mark {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  grid-template-rows: repeat(4, 1fr);
-  gap: 1px;
-  width: 28px;
-  height: 28px;
-  padding: 2px;
-  background: var(--surface-2);
-  border: 1px solid var(--border-hairline);
-  border-radius: var(--radius-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
   flex-shrink: 0;
-  overflow: hidden;
+  color: var(--color-fg-muted);
 }
 
-.byte-mark.imported { border-radius: var(--radius-pill); }
+.byte-mark.imported {
+  color: var(--color-fg-muted);
+}
 
 /* No address yet. Reads as a blank slot rather than a real identity. */
 .byte-mark.empty {
-  background: var(--surface-3);
-  border-style: dashed;
-  border-color: var(--border);
+  opacity: 0.3;
 }
-
-.byte-mark i {
-  border-radius: 1px;
-}
-
-.byte-mark .m0 { background: var(--mark-0); }
-.byte-mark .m1 { background: var(--mark-1); }
-.byte-mark .m2 { background: var(--mark-2); }
-.byte-mark .m3 { background: var(--mark-3); }
 
 .byte-mark.sm {
-  width: 20px;
-  height: 20px;
-  padding: 1px;
-  border-radius: 4px;
+  width: 18px;
+  height: 18px;
 }
 
 .byte-mark.lg {
   width: 32px;
   height: 32px;
-  padding: 2px;
-  border-radius: var(--radius-md);
 }
 
 /* ---- List rows (accounts, history, future assets) ----------

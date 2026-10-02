@@ -488,12 +488,16 @@ export async function addPrivateKeyKeyring(privateKeyHex, password, label = '') 
   await verifyPassword(password);
   const vaultData = await getVaultData();
   const ring = privateKeyKeyring(privateKeyHex, label || `Imported key ${vaultData.keyrings.filter((item) => item.type === 'privateKey').length + 1}`);
-  await sdkKeys.fromPrivateKey(parsePrivateKeyHex(ring.privateKeyHex));
+  const publicKey = await sdkKeys.fromPrivateKey(parsePrivateKeyHex(ring.privateKeyHex));
+  const address = Pubkey.from(publicKey).toThruFmt();
   if (vaultData.keyrings.some((item) => item.type === 'privateKey' && item.privateKeyHex === ring.privateKeyHex)) {
     throw new Error('That private key is already in this wallet.');
   }
   vaultData.keyrings.push(ring);
   await persistVaultUpdate(vaultData);
+  if (label && label.trim()) {
+    await setAccountLabel(address, label.trim());
+  }
   await setActiveRef(accountRef(ring.id));
   return { id: ring.id, type: ring.type, label: ring.label, origin: ring.origin };
 }
@@ -674,7 +678,10 @@ export async function resolveAccount(ref) {
   const publicKey = await sdkKeys.fromPrivateKey(privateKey);
   const address = Pubkey.from(publicKey).toThruFmt();
   const importedIndex = vaultData.keyrings.filter((item) => item.type === 'privateKey').findIndex((item) => item.id === ring.id);
-  const label = labels[address] || `Imported ${importedIndex + 1}`;
+  const defaultPkName = ring.label && !ring.label.startsWith('Imported private key') && !ring.label.startsWith('Imported key')
+    ? ring.label
+    : `Imported ${importedIndex + 1}`;
+  const label = labels[address] || defaultPkName;
   return {
     address,
     publicKey,

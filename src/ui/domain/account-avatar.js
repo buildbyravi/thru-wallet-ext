@@ -11,12 +11,13 @@
 // collides for all placeholder states is worse than none, because it looks like identity.
 
 import { h } from '../kit/dom.js';
+import { icon } from '../kit/icon.js';
 
 /**
  * @param {Object} props
  *   address   string
- *   imported  true for a private-key keyring (renders round)
- *   size      'sm' | 'md' (default 'md')
+ *   imported  true for a private-key keyring (renders key icon)
+ *   size      'sm' | 'md' | 'lg' (default 'md')
  */
 export function AccountAvatar({ address, imported = false, size = 'md' } = {}) {
   const src = String(address || '');
@@ -31,13 +32,10 @@ export function AccountAvatar({ address, imported = false, size = 'md' } = {}) {
     return h('span', { class: [...classes, 'empty'], 'aria-hidden': 'true' });
   }
 
-  const cells = [];
-  for (let i = 0; i < 16; i += 1) {
-    const code = src.charCodeAt((i * 7 + 3) % src.length) || 0;
-    cells.push(h('i', { class: `m${code % 4}` }));
-  }
-
-  return h('span', { class: classes, 'aria-hidden': 'true' }, cells);
+  const iconSize = size === 'sm' ? 14 : size === 'lg' ? 24 : 18;
+  return h('span', { class: classes, 'aria-hidden': 'true' }, [
+    icon(imported ? 'key' : 'seed', iconSize),
+  ]);
 }
 
 /**

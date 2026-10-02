@@ -11,7 +11,7 @@ included) so diffs here are real listing diffs.
 | Item ID | `ocahgpmgfeapjnceaknkikanjikhjgok` |
 | Developer dashboard | <https://chrome.google.com/webstore/devconsole> |
 | Website (listing) | <https://thruwallet.vercel.app> (`homepage_url` in `src/manifest.json`) |
-| Support | Telegram group <https://t.me/+dA8TwsOECcIxZWZl> (shown in Settings → About) |
+| Support | Telegram channel <https://t.me/walletext> · Telegram group <https://t.me/+dA8TwsOECcIxZWZl> (both shown in Settings → About) |
 | Privacy policy URL (as submitted) | <https://github.com/buildbyravi/thru-wallet-ext/blob/main/PRIVACY.md> |
 | Package version at last sync | `1.4.0` (`src/manifest.json`) |
 | Last synced with the live listing | 2026-09-30 |
