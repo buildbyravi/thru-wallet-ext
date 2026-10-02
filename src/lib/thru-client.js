@@ -1,7 +1,7 @@
 // Thin wrapper around @thru/sdk.
 //
 // NOTE: betanet is Thru's FINAL testnet before mainnet — unaudited infrastructure. Expect
-// instability and resets until mainnet; the SDK (still 0.4.0) may still see breaking changes.
+// instability and resets until mainnet; the SDK (0.4.x) may still see breaking changes.
 //
 // NETWORK BINDING: this module used to hardcode an RPC URL and memoize a single
 // client at first use, while the program addresses were module constants duplicating the ones

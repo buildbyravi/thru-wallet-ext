@@ -34,7 +34,7 @@ import { BOOTSTRAP_PROGRAM_ADDRESSES, BOOTSTRAP_FAUCET_VAULT_ADDRESS } from '@th
  * @property {bigint|null} feeReserveUnits - What MAX should hold back, or null when unknown
  */
 
-// Program addresses come from the official 0.4.0 packages — the managed-genesis registry that
+// Program addresses come from the official 0.4.x packages — the managed-genesis registry that
 // replaced the old reserved "marker byte" system table at the 2026-09-26 managed-genesis
 // reset. (The old
 // zero-filled addresses with byte 31 = 0x00 transfer / 0x03 account-create / 0xaa token /
