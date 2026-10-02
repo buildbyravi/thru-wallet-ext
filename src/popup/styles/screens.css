@@ -259,41 +259,46 @@ form > .btn.text {
   background: rgba(255, 255, 255, 0.08);
   border: 0;
   border-radius: 7px;
-  padding: 5px 10px;
+  padding: 5px 8px;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   cursor: pointer;
   color: #ffffff;
-  max-width: 240px;
+  width: 220px;
+  max-width: calc(100% - 138px);
+  box-sizing: border-box;
   transition: background 0.15s ease;
 }
 .dash-header .account-pill:hover {
   background: rgba(255, 255, 255, 0.14);
 }
 .dash-header .account-pill-name {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   color: #ffffff;
-  max-width: 120px;
+  flex: 1 1 0;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .dash-header .account-pill-address {
-  font-size: 12px;
+  font-size: 11px;
   color: rgba(255, 255, 255, 0.65);
   font-family: var(--font-mono);
   white-space: nowrap;
+  flex-shrink: 0;
 }
 .dash-header .account-pill .byte-mark {
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   padding: 0;
   border: 0;
   border-radius: 0;
   background: transparent;
   color: #ffffff;
+  flex-shrink: 0;
 }
 .dash-header .account-pill-chevron {
   display: inline-flex;

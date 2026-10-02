@@ -387,7 +387,7 @@ export function DashboardRoute({ navigate }) {
           size: 'sm',
         }));
         pillName.textContent = account.label || 'Account';
-        pillAddr.replaceChildren(AddressText({ address: account.address, chars: 4 }));
+        pillAddr.replaceChildren(AddressText({ address: account.address, chars: 6 }));
       }
     } catch (error) {
       banner.set(error.message || 'Could not load the active account.');
