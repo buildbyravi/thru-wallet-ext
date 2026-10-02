@@ -202,7 +202,7 @@ form > .btn.text {
 .dash-header {
   position: relative;
   height: 196px;
-  background: var(--header, #1a1214);
+  background: var(--header-gradient, radial-gradient(135% 125% at 50% 90%, #4a1820 0%, #2e1116 55%, #1d0a0d 100%));
   color: #ffffff;
   padding: 12px 16px 14px;
   overflow: hidden;
@@ -229,7 +229,7 @@ form > .btn.text {
 
 .dash-header-btn {
   background: rgba(255, 255, 255, 0.08);
-  border: 0;
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 7px;
   color: #ffffff;
   width: 30px;
@@ -239,9 +239,11 @@ form > .btn.text {
   justify-content: center;
   cursor: pointer;
   padding: 0;
+  transition: background 0.15s ease, border-color 0.15s ease;
 }
 .dash-header-btn:hover {
   background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.25);
 }
 
 /* CopyButton's "copied" confirmation, dark-header edition. components.css's
@@ -250,14 +252,14 @@ form > .btn.text {
 .dash-header .dash-header-btn.copied {
   background: rgba(63, 191, 174, 0.14);
   color: #3fbfae;
-  border: 0;
+  border-color: rgba(63, 191, 174, 0.3);
   animation: none;
 }
 
 /* Account chip inside header */
 .dash-header .account-pill {
   background: rgba(255, 255, 255, 0.08);
-  border: 0;
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 7px;
   padding: 5px 8px;
   display: inline-flex;
@@ -268,10 +270,11 @@ form > .btn.text {
   width: 220px;
   max-width: calc(100% - 138px);
   box-sizing: border-box;
-  transition: background 0.15s ease;
+  transition: background 0.15s ease, border-color 0.15s ease;
 }
 .dash-header .account-pill:hover {
   background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.22);
 }
 .dash-header .account-pill-name {
   font-size: 13px;
