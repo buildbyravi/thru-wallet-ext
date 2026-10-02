@@ -847,12 +847,12 @@ export function SendRoute({ params, navigate, back }) {
 
     body.appendChild(h('div', { class: 'detail-table' }, rows));
 
-    // Repeated transaction warning & 2nd confirmation (Rabby pattern)
+    // Repeated transaction confirmation (quiet row, no caution-tape card)
     let isRepeatConfirmed = false;
     let isRepeatDetected = false;
 
-    const repeatWarnBox = h('div', { class: ['notice', 'warning', 'hidden'] });
-    const repeatWarningText = h('p', { class: 'hint', text: '' });
+    const repeatRow = h('div', { class: ['send-repeat-row', 'hidden'] });
+    const repeatNoticeText = h('p', { class: 'hint', text: '' });
     const repeatCheckbox = h('input', {
       type: 'checkbox',
       id: 'send-repeat-confirm-check',
@@ -865,9 +865,9 @@ export function SendRoute({ params, navigate, back }) {
       h('span', { text: 'I understand this is a repeated transfer and want to proceed.' }),
     ]);
 
-    repeatWarnBox.appendChild(repeatWarningText);
-    repeatWarnBox.appendChild(repeatCheckboxLabel);
-    body.appendChild(repeatWarnBox);
+    repeatRow.appendChild(repeatNoticeText);
+    repeatRow.appendChild(repeatCheckboxLabel);
+    body.appendChild(repeatRow);
 
     const confirmBtn = track(Button({
       label: 'Sign & send',
@@ -903,12 +903,11 @@ export function SendRoute({ params, navigate, back }) {
     }).then((dup) => {
       if (dup?.isDuplicate && !destroyed && subView === 'review') {
         isRepeatDetected = true;
-        repeatWarnBox.classList.remove('hidden');
+        repeatRow.classList.remove('hidden');
         const timing = dup.isPending
           ? 'is currently pending on-chain'
           : `was submitted ${dup.elapsedMs ? Math.round(dup.elapsedMs / 1000) : 'a few'}s ago`;
-        repeatWarningText.textContent = `⚠️ Repeated transfer: An identical transfer of this amount to this recipient ${timing}.`;
-        banner.set('Repeated transfer detected. Confirm below to proceed.', 'warning');
+        repeatNoticeText.textContent = `An identical transfer of this amount to this recipient ${timing}. Confirm below to proceed.`;
         confirmBtn.update({ disabled: !isRepeatConfirmed });
       }
     }).catch(() => {});

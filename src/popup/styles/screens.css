@@ -1475,6 +1475,20 @@ form > .btn.text {
   pointer-events: none;
 }
 
+/* Quiet duplicate transfer confirmation row on Send review (replaces caution card) */
+.send-repeat-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: 10px 12px;
+  background: var(--surface-inset);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  margin-top: var(--sp-3);
+}
 
-
-
+.send-repeat-row .hint {
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  margin: 0;
+}
