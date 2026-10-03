@@ -67,6 +67,17 @@ async function readRaw() {
  */
 export async function getPreferences() {
   const stored = await readRaw();
+  const storedVersion = stored.version === undefined ? 0 : Number(stored.version);
+  if (!Number.isInteger(storedVersion) || storedVersion < 0) {
+    throw new Error('Preferences schema version is malformed.');
+  }
+  if (storedVersion > PREFS_VERSION) {
+    throw new Error(`Preferences schema ${storedVersion} is newer than this wallet. Update the extension.`);
+  }
+
+  // v0 was the same fields without an envelope version. Applying defaults is its explicit,
+  // lossless migration; the next preference write persists version 1. Never relabel a future
+  // record as current, because security fields may have changed meaning.
   const merged = { ...DEFAULTS, ...stored, version: PREFS_VERSION };
   for (const field of ARRAY_FIELDS) {
     if (!Array.isArray(merged[field])) merged[field] = [...DEFAULTS[field]];

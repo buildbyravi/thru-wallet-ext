@@ -25,7 +25,12 @@ import { recordSubmittedTransaction, settleTransaction } from './history-service
 // show devnet's pending transfers after switching to mainnet — and would badge the extension
 // icon for transactions that can never confirm on the current network.
 const PENDING_BASE_KEY = 'thru_pending_txs';
+const PENDING_SCHEMA_VERSION = 1;
 const MAX_RECORDS = 50;
+
+// Serialize every read-modify-write per network. Distinct transfers and reconciliation can finish
+// in either order; without this queue the last storage write silently erased the other signature.
+const pendingUpdates = new Map();
 
 // Give up watching after this long and mark the record 'unknown' rather than guessing.
 const WATCH_TIMEOUT_MS = 5 * 60_000;
@@ -45,19 +50,44 @@ async function readAll(networkId = null) {
   try {
     const key = await pendingKey(networkId);
     const res = await chrome.storage.local.get(key);
-    const list = res?.[key];
-    return Array.isArray(list) ? list : [];
-  } catch {
+    const stored = res?.[key];
+    // v0 was a bare array. Read it without rewriting; the next mutation performs the migration.
+    if (Array.isArray(stored)) return stored;
+    if (stored && typeof stored === 'object') {
+      if (stored.version > PENDING_SCHEMA_VERSION) {
+        throw new Error(`Pending transaction schema ${stored.version} is newer than this wallet.`);
+      }
+      return Array.isArray(stored.records) ? stored.records : [];
+    }
+    return [];
+  } catch (error) {
+    if (/newer than this wallet/.test(error?.message || '')) throw error;
     return [];
   }
 }
 
 async function writeAll(list, networkId = null) {
-  try {
-    await chrome.storage.local.set({ [await pendingKey(networkId)]: list.slice(0, MAX_RECORDS) });
-  } catch {
-    // ignore
-  }
+  const key = await pendingKey(networkId);
+  await chrome.storage.local.set({
+    [key]: { version: PENDING_SCHEMA_VERSION, records: list.slice(0, MAX_RECORDS) },
+  });
+}
+
+function updateAll(networkId, edit) {
+  const id = networkId;
+  const queueKey = String(id || 'active');
+  const prior = pendingUpdates.get(queueKey) || Promise.resolve();
+  const update = prior.catch(() => {}).then(async () => {
+    const resolvedId = id || await getActiveNetworkId();
+    const list = await readAll(resolvedId);
+    const { next, value } = await edit(list);
+    if (next) await writeAll(next, resolvedId);
+    return value;
+  });
+  pendingUpdates.set(queueKey, update);
+  return update.finally(() => {
+    if (pendingUpdates.get(queueKey) === update) pendingUpdates.delete(queueKey);
+  });
 }
 
 async function updateBadge(list) {
@@ -89,7 +119,6 @@ export async function track(tx) {
   // A network switch can finish while the SDK is signing. The signature still belongs to
   // the chain where the send began, not the network selected when this storage call runs.
   const networkId = tx.networkId || await getActiveNetworkId();
-  const list = await readAll(networkId);
   const record = {
     signature: String(tx.signature),
     kind: tx.kind || 'transfer',
@@ -104,7 +133,10 @@ export async function track(tx) {
     settledAt: null,
     error: null,
   };
-  await writeAll([record, ...list.filter((r) => r.signature !== record.signature)], networkId);
+  await updateAll(networkId, (list) => ({
+    next: [record, ...list.filter((r) => r.signature !== record.signature)],
+    value: record,
+  }));
   try {
     await recordSubmittedTransaction(record);
   } catch {
@@ -233,15 +265,18 @@ export async function getDuplicateInfo(candidate, windowMs = 30_000) {
 }
 
 async function settle(signature, status, error = null) {
-  const list = await readAll();
-  let changed = false;
-  const next = list.map((r) => {
-    if (r.signature !== signature || r.status !== TX_STATUS.SUBMITTED) return r;
-    changed = true;
-    return { ...r, status, settledAt: Date.now(), error };
+  const networkId = await getActiveNetworkId();
+  const result = await updateAll(networkId, (list) => {
+    let changed = false;
+    const next = list.map((r) => {
+      if (r.signature !== signature || r.status !== TX_STATUS.SUBMITTED) return r;
+      changed = true;
+      return { ...r, status, settledAt: Date.now(), error };
+    });
+    return { next: changed ? next : null, value: changed ? next : null };
   });
-  if (!changed) return null;
-  await writeAll(next);
+  if (!result) return null;
+  const next = result;
   await updateBadge(next);
   emit('pendingTxChanged', { pending: next.filter((r) => r.status === TX_STATUS.SUBMITTED) });
   const settledRecord = next.find((r) => r.signature === signature) || null;
@@ -323,9 +358,11 @@ export async function reconcile() {
 
 /** Remove settled records, keeping anything still in flight. */
 export async function clearSettled() {
-  const list = await readAll();
-  const next = list.filter((r) => r.status === TX_STATUS.SUBMITTED);
-  await writeAll(next);
+  const networkId = await getActiveNetworkId();
+  const next = await updateAll(networkId, (list) => {
+    const kept = list.filter((r) => r.status === TX_STATUS.SUBMITTED);
+    return { next: kept, value: kept };
+  });
   await updateBadge(next);
   return { remaining: next.length };
 }

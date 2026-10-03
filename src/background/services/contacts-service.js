@@ -11,20 +11,31 @@ import { isValidThruAddress } from '../../lib/thru-client.js';
 import { sanitizeLabel } from '../../lib/vault.js';
 
 const CONTACTS_KEY = 'thru_contacts';
+const CONTACTS_SCHEMA_VERSION = 1;
 const MAX_CONTACTS = 200;
 
 async function readAll() {
   try {
     const res = await chrome.storage.local.get(CONTACTS_KEY);
-    const list = res?.[CONTACTS_KEY];
-    return Array.isArray(list) ? list : [];
-  } catch {
+    const stored = res?.[CONTACTS_KEY];
+    if (Array.isArray(stored)) return stored; // schema v0; migrated on the next mutation
+    if (stored && typeof stored === 'object') {
+      if (stored.version > CONTACTS_SCHEMA_VERSION) {
+        throw new Error(`Contacts schema ${stored.version} is newer than this wallet.`);
+      }
+      return Array.isArray(stored.records) ? stored.records : [];
+    }
+    return [];
+  } catch (error) {
+    if (/newer than this wallet/.test(error?.message || '')) throw error;
     return [];
   }
 }
 
 async function writeAll(list) {
-  await chrome.storage.local.set({ [CONTACTS_KEY]: list.slice(0, MAX_CONTACTS) });
+  await chrome.storage.local.set({
+    [CONTACTS_KEY]: { version: CONTACTS_SCHEMA_VERSION, records: list.slice(0, MAX_CONTACTS) },
+  });
 }
 
 /**
