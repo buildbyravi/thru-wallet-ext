@@ -1,0 +1,305 @@
+<!doctype html>
+<!--
+  Visual harness for the Send Review duplicate transaction warning box.
+  NOT shipped in dist/. Used to visually compare:
+    1. Option A (Previous notice warning box)
+    2. Option B (Quiet inset row)
+    3. Option C (Rabby-style security badge card)
+
+  Usage:
+    npm run build
+    open scripts/preview-duplicate-tx.html
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Send Review Duplicate Warning Preview</title>
+<link rel="stylesheet" href="../dist/popup.css" />
+<style>
+  body {
+    width: auto;
+    padding: 24px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: #0f1315;
+    color: #e0e6eb;
+  }
+  .harness-title { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+  .harness-desc { font-size: 13px; color: #8899a6; margin-bottom: 24px; }
+  .harness-grid { display: flex; gap: 24px; flex-wrap: wrap; }
+  .harness-col { display: flex; flex-direction: column; gap: 8px; }
+  .harness-label { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #a0b0bc; }
+
+  /* 408 x 600 viewport reproducing popup */
+  .viewport {
+    position: relative;
+    width: 408px;
+    height: 560px;
+    border: 1px solid #2a353c;
+    border-radius: 12px;
+    overflow: hidden;
+    background: var(--surface-1);
+    display: flex;
+    flex-direction: column;
+  }
+
+  .demo-header {
+    height: 48px;
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    border-bottom: 1px solid var(--border);
+    gap: 12px;
+  }
+  .demo-header h2 { font-size: 15px; font-weight: 600; margin: 0; }
+  .demo-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .demo-actions {
+    padding: 16px;
+    border-top: 1px solid var(--border);
+    background: var(--surface-1);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  /* Option C Custom CSS */
+  .security-repeat-card {
+    background: #241417;
+    border: 1px solid rgba(237, 56, 69, 0.28);
+    border-radius: var(--radius-md);
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .security-repeat-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .security-repeat-badge {
+    width: 26px;
+    height: 26px;
+    border-radius: 6px;
+    background: rgba(237, 56, 69, 0.18);
+    border: 1px solid rgba(237, 56, 69, 0.35);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #ed3845;
+    flex-shrink: 0;
+  }
+  .security-repeat-titles {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+  .security-repeat-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #f3a8ae;
+  }
+  .security-repeat-desc {
+    font-size: 11px;
+    color: #bfa0a4;
+  }
+  .security-repeat-confirm {
+    padding-top: 8px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+  }
+</style>
+</head>
+<body>
+
+  <div class="harness-title">Send Review: Duplicate Transaction Box Comparison</div>
+  <div class="harness-desc">Compare the 3 visual variants below. Test clicking the checkbox to enable the "Sign & send" button.</div>
+
+  <div class="harness-grid">
+
+    <!-- OPTION A -->
+    <div class="harness-col">
+      <div class="harness-label" style="color: #f0b35a;">Option A: Previous Warning Box</div>
+      <div class="viewport">
+        <div class="demo-header">
+          <button class="btn icon-btn" style="border:0; padding:0; background:transparent;">←</button>
+          <h2>Confirm send</h2>
+        </div>
+        <div class="demo-body">
+          <div class="detail-table">
+            <div class="detail-row">
+              <span class="eyebrow">From</span>
+              <div class="detail-val">
+                <div>Account 1</div>
+                <div class="mono hint">tazA...6jK</div>
+              </div>
+            </div>
+            <div class="detail-row">
+              <span class="eyebrow">To</span>
+              <div class="detail-val">
+                <div class="strong">Account 2</div>
+                <div class="mono" style="word-break: break-all;">tazUYAYNXQAA8Dmwel-bVjLj8G5hJA5NCo3Fn1sfyD-ryZ</div>
+              </div>
+            </div>
+            <div class="detail-row">
+              <span class="eyebrow">Amount</span>
+              <div class="detail-val mono">10.00 THRU</div>
+            </div>
+            <div class="detail-row">
+              <span class="eyebrow">Network fee</span>
+              <div class="detail-val mono">0.0001 THRU</div>
+            </div>
+            <div class="detail-row">
+              <span class="eyebrow">Total</span>
+              <div class="detail-val mono strong">10.0001 THRU</div>
+            </div>
+          </div>
+
+          <!-- OPTION A BOX -->
+          <div class="notice warning">
+            <p class="hint" style="color: inherit; margin: 0;">
+              ⚠️ Repeated transfer: An identical transfer of this amount to this recipient was submitted 14s ago.
+            </p>
+            <label for="check-a" class="checkbox-field">
+              <input type="checkbox" id="check-a" onchange="document.getElementById('btn-a').disabled = !this.checked">
+              <span>I understand this is a repeated transfer and want to proceed.</span>
+            </label>
+          </div>
+        </div>
+        <div class="demo-actions">
+          <button id="btn-a" class="btn accent" disabled>Sign & send</button>
+          <button class="btn text">Edit</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- OPTION B -->
+    <div class="harness-col">
+      <div class="harness-label" style="color: #64b5f6;">Option B: Current Quiet Row</div>
+      <div class="viewport">
+        <div class="demo-header">
+          <button class="btn icon-btn" style="border:0; padding:0; background:transparent;">←</button>
+          <h2>Confirm send</h2>
+        </div>
+        <div class="demo-body">
+          <div class="detail-table">
+            <div class="detail-row">
+              <span class="eyebrow">From</span>
+              <div class="detail-val">
+                <div>Account 1</div>
+                <div class="mono hint">tazA...6jK</div>
+              </div>
+            </div>
+            <div class="detail-row">
+              <span class="eyebrow">To</span>
+              <div class="detail-val">
+                <div class="strong">Account 2</div>
+                <div class="mono" style="word-break: break-all;">tazUYAYNXQAA8Dmwel-bVjLj8G5hJA5NCo3Fn1sfyD-ryZ</div>
+              </div>
+            </div>
+            <div class="detail-row">
+              <span class="eyebrow">Amount</span>
+              <div class="detail-val mono">10.00 THRU</div>
+            </div>
+            <div class="detail-row">
+              <span class="eyebrow">Network fee</span>
+              <div class="detail-val mono">0.0001 THRU</div>
+            </div>
+            <div class="detail-row">
+              <span class="eyebrow">Total</span>
+              <div class="detail-val mono strong">10.0001 THRU</div>
+            </div>
+          </div>
+
+          <!-- OPTION B ROW -->
+          <div class="send-repeat-row">
+            <p class="hint">An identical transfer of this amount to this recipient was submitted 14s ago. Confirm below to proceed.</p>
+            <label for="check-b" class="checkbox-field">
+              <input type="checkbox" id="check-b" onchange="document.getElementById('btn-b').disabled = !this.checked">
+              <span>I understand this is a repeated transfer and want to proceed.</span>
+            </label>
+          </div>
+        </div>
+        <div class="demo-actions">
+          <button id="btn-b" class="btn accent" disabled>Sign & send</button>
+          <button class="btn text">Edit</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- OPTION C -->
+    <div class="harness-col">
+      <div class="harness-label" style="color: #ff5252;">Option C: Rabby Security Card</div>
+      <div class="viewport">
+        <div class="demo-header">
+          <button class="btn icon-btn" style="border:0; padding:0; background:transparent;">←</button>
+          <h2>Confirm send</h2>
+        </div>
+        <div class="demo-body">
+          <div class="detail-table">
+            <div class="detail-row">
+              <span class="eyebrow">From</span>
+              <div class="detail-val">
+                <div>Account 1</div>
+                <div class="mono hint">tazA...6jK</div>
+              </div>
+            </div>
+            <div class="detail-row">
+              <span class="eyebrow">To</span>
+              <div class="detail-val">
+                <div class="strong">Account 2</div>
+                <div class="mono" style="word-break: break-all;">tazUYAYNXQAA8Dmwel-bVjLj8G5hJA5NCo3Fn1sfyD-ryZ</div>
+              </div>
+            </div>
+            <div class="detail-row">
+              <span class="eyebrow">Amount</span>
+              <div class="detail-val mono">10.00 THRU</div>
+            </div>
+            <div class="detail-row">
+              <span class="eyebrow">Network fee</span>
+              <div class="detail-val mono">0.0001 THRU</div>
+            </div>
+            <div class="detail-row">
+              <span class="eyebrow">Total</span>
+              <div class="detail-val mono strong">10.0001 THRU</div>
+            </div>
+          </div>
+
+          <!-- OPTION C CARD -->
+          <div class="security-repeat-card">
+            <div class="security-repeat-header">
+              <div class="security-repeat-badge">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <polyline points="12 6 12 12 16 14"></polyline>
+                </svg>
+              </div>
+              <div class="security-repeat-titles">
+                <div class="security-repeat-title">Repeated Transaction</div>
+                <div class="security-repeat-desc">Identical send was submitted 14s ago</div>
+              </div>
+            </div>
+            <div class="security-repeat-confirm">
+              <label for="check-c" class="checkbox-field">
+                <input type="checkbox" id="check-c" onchange="document.getElementById('btn-c').disabled = !this.checked">
+                <span>I want to send this duplicate transfer anyway</span>
+              </label>
+            </div>
+          </div>
+        </div>
+        <div class="demo-actions">
+          <button id="btn-c" class="btn accent" disabled>Sign & send</button>
+          <button class="btn text">Edit</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+</body>
+</html>

@@ -847,12 +847,11 @@ export function SendRoute({ params, navigate, back }) {
 
     body.appendChild(h('div', { class: 'detail-table' }, rows));
 
-    // Repeated transaction confirmation (quiet row, no caution-tape card)
+    // Repeated transaction confirmation (Option C: Rabby security card)
     let isRepeatConfirmed = false;
     let isRepeatDetected = false;
 
-    const repeatRow = h('div', { class: ['send-repeat-row', 'hidden'] });
-    const repeatNoticeText = h('p', { class: 'hint', text: '' });
+    const repeatDesc = h('div', { class: 'security-repeat-desc', text: '' });
     const repeatCheckbox = h('input', {
       type: 'checkbox',
       id: 'send-repeat-confirm-check',
@@ -862,12 +861,21 @@ export function SendRoute({ params, navigate, back }) {
       class: 'checkbox-field',
     }, [
       repeatCheckbox,
-      h('span', { text: 'I understand this is a repeated transfer and want to proceed.' }),
+      h('span', { text: 'I want to send this duplicate transfer anyway' }),
     ]);
 
-    repeatRow.appendChild(repeatNoticeText);
-    repeatRow.appendChild(repeatCheckboxLabel);
-    body.appendChild(repeatRow);
+    const repeatCard = h('div', { class: ['security-repeat-card', 'hidden'] }, [
+      h('div', { class: 'security-repeat-header' }, [
+        h('div', { class: 'security-repeat-badge' }, [icon('clock', 14)]),
+        h('div', { class: 'security-repeat-titles' }, [
+          h('div', { class: 'security-repeat-title', text: 'Repeated Transaction' }),
+          repeatDesc,
+        ]),
+      ]),
+      h('div', { class: 'security-repeat-confirm' }, [repeatCheckboxLabel]),
+    ]);
+
+    body.appendChild(repeatCard);
 
     const confirmBtn = track(Button({
       label: 'Sign & send',
@@ -903,11 +911,11 @@ export function SendRoute({ params, navigate, back }) {
     }).then((dup) => {
       if (dup?.isDuplicate && !destroyed && subView === 'review') {
         isRepeatDetected = true;
-        repeatRow.classList.remove('hidden');
+        repeatCard.classList.remove('hidden');
         const timing = dup.isPending
           ? 'is currently pending on-chain'
           : `was submitted ${dup.elapsedMs ? Math.round(dup.elapsedMs / 1000) : 'a few'}s ago`;
-        repeatNoticeText.textContent = `An identical transfer of this amount to this recipient ${timing}. Confirm below to proceed.`;
+        repeatDesc.textContent = `Identical send ${timing}`;
         confirmBtn.update({ disabled: !isRepeatConfirmed });
       }
     }).catch(() => {});
