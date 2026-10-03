@@ -13,10 +13,12 @@ const PREFS_VERSION = 1;
 const DEFAULTS = {
   version: PREFS_VERSION,
 
-  // Display
+  // Display / window behavior
   fiatCurrency: 'USD',
   hideSmallBalances: false,
   smallBalanceThreshold: '0',
+  theme: 'system',
+  sidePanelMode: false,
 
   // Account management (Rabby: address ordering, pinning, hiding)
   accountOrder: [],          // [address] — explicit sort order, unlisted accounts fall to the end
@@ -50,6 +52,28 @@ const SECURITY_FIELDS = new Set([
   'whitelist',
   'requirePasswordForSigning',
 ]);
+
+const BOOLEAN_FIELDS = new Set([
+  'hideSmallBalances', 'sidePanelMode', 'desktopNotifications',
+  'enforceWhitelist', 'requirePasswordForSigning',
+]);
+const THEMES = new Set(['light', 'dark', 'system']);
+
+function validatePreferenceValue(key, value) {
+  if (ARRAY_FIELDS.has(key)) {
+    if (!Array.isArray(value)) throw new Error(`'${key}' must be an array.`);
+    return value;
+  }
+  if (BOOLEAN_FIELDS.has(key)) {
+    if (typeof value !== 'boolean') throw new Error(`'${key}' must be a boolean.`);
+    return value;
+  }
+  if (key === 'theme') {
+    if (!THEMES.has(value)) throw new Error("'theme' must be light, dark, or system.");
+    return value;
+  }
+  return value;
+}
 
 async function readRaw() {
   try {
@@ -103,12 +127,7 @@ export async function setPreferences(patch) {
       rejected.push(key);
       continue;
     }
-    if (ARRAY_FIELDS.has(key)) {
-      if (!Array.isArray(value)) throw new Error(`'${key}' must be an array.`);
-      next[key] = value;
-    } else {
-      next[key] = value;
-    }
+    next[key] = validatePreferenceValue(key, value);
   }
 
   if (rejected.length) {
