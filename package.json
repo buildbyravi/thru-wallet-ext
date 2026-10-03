@@ -1,6 +1,6 @@
 {
   "name": "thru-wallet-ext",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "High-performance self-custody wallet and key manager for Thru",
   "type": "module",
   "scripts": {

@@ -13,7 +13,7 @@ included) so diffs here are real listing diffs.
 | Website (listing) | <https://thruwallet.vercel.app> (`homepage_url` in `src/manifest.json`) |
 | Support | Telegram channel <https://t.me/walletext> (store listing + `SUPPORT.md`) · Telegram group <https://t.me/+dA8TwsOECcIxZWZl> (shown in Settings → About) |
 | Privacy policy URL (as submitted) | <https://github.com/buildbyravi/thru-wallet-ext/blob/main/PRIVACY.md> |
-| Package version at last sync | `1.4.0` (`src/manifest.json`) |
+| Package version at last sync | `1.4.1` (`src/manifest.json`) |
 | Last synced with the live listing | 2026-09-30 |
 
 ---
@@ -178,6 +178,7 @@ review status.
 
 | Date | What changed | Notes |
 | --- | --- | --- |
+| 2026-10-03 | Package `1.4.1` — **@thru 0.4.1 sync + pre-merge hardening**: `@thru/sdk` & `@thru/programs` 0.4.1 (addresses/PDA vectors verified unchanged); duplicate-send guard now tracks transfers at **submission** so the "Repeated Transaction" security card covers the whole pending window (was: warning only after confirmation); `tx.send` honors `allowDuplicate`; dark-mode readability (action grid, drawer ledger, connection footer); imported-key names persist and all private keys group under one "Private Key" section; Send account rows match Manage Accounts | 20 suites / 1,641 assertions green; store upload of 1.4.1 pending |
 | 2026-09-30 | Package `1.4.0` — **Rabby Architecture & Asset Polish**: Centralized token architecture (`NATIVE_TOKEN`, `TokenAvatar`), brand logo on lock screen, desktop notifications for tx confirmation/failure (`chrome.notifications`), Rabby refresh icon with spinning sync indicator, 30s auto-refresh on History, lock wallet button & Ctrl+L shortcut | All 20 test suites green |
 | 2026-09-29 | (unreleased, package still `1.4.0`) **Token drawer**: the balance box is now the token entry — click anywhere in it (or Enter/Space, or the Tokens strip) and the Rabby-style drawer slides up with the full token list, live search, and Add custom token; the inline dashboard ledger is gone | TOKEN2049 store copy: mention "tap your balance for the token list" alongside "Add custom tokens by contract address" |
 | 2026-09-29 | (unreleased, package still `1.4.0`) **Tokens round**: Add custom token by contract (mint) address — the chain verifies the pasted address and supplies the real symbol/decimals before the token joins the ledger; `token.readMint` lookup (contract v14); deploys now mint their recorded initial supply (InitializeMint alone left supply at 0); `scripts/token-lab.mjs` end-to-end token lab (deploy → add → send → receive) | Include in the TOKEN2049 store copy: "Add custom tokens by contract address" |
