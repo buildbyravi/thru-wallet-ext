@@ -1,6 +1,6 @@
 # Backend capability inventory and open gaps
 
-**Status as of 2026-09-26:** the originally identified Tier A and Tier B capabilities are implemented. This file distinguishes shipped code from behavior that is still unsupported or requires live-chain verification. Contract v12 has 81 methods; `src/shared/contract/manifest.js`, its router handlers, and tests are authoritative.
+**Status as of 2026-10-03:** the originally identified Tier A and Tier B capabilities are implemented. This file distinguishes shipped code from behavior that is still unsupported or requires live-chain verification. Contract v16 has 81 methods; `src/shared/contract/manifest.js`, its router handlers, and tests are authoritative.
 
 | Tier | Meaning | Status |
 | --- | --- | --- |

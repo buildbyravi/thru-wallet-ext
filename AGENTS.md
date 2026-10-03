@@ -113,7 +113,9 @@ could be affected.
 | past, present, future build tracking | `docs/PROJECT_LEDGER.md` |
 | "what's done, what's next?" | `docs/STATUS_AND_ROADMAP.md` — **start here for active work** |
 | "where is X?" | `CONTEXT.md` — file-by-file map with `file:line` refs |
-| feature separation / SDK-adapter boundaries | `docs/MODULE_BOUNDARIES.md` |
+| stable dependency/storage/signing architecture | `docs/ARCHITECTURE.md` |
+| durable choices and trade-offs | `docs/DECISIONS.md` |
+| future feature separation / SDK-adapter boundaries | `docs/MODULE_BOUNDARIES.md` |
 | AI-agent/MCP safety | `llms.txt`, then `docs/MCP_AGENT_INTEGRATION.md` |
 | "has this broken before?" | `docs/DEFECT_LOG.md` — every defect, root cause and lesson |
 | product intent, security policy, QA matrix | `docs/BUILD_SPEC.md` |

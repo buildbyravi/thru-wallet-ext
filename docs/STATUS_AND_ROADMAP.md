@@ -20,8 +20,8 @@ Companion docs: `docs/DOCS_INDEX.md` · `docs/PROJECT_LEDGER.md` · `CONTEXT.md`
 
 ### The frontend rebuild is DONE
 
-One stack. `FLAGS.NEXT_UI` is `true`, the legacy tree is deleted, and there is no fallback path
-left. All 14 routes are real:
+One stack. The migration flag and legacy tree are deleted, and there is no fallback path left.
+All 14 routes are real:
 
 ```
 /welcome  /unlock  /dashboard  /accounts  /account  /add-account  /keyring

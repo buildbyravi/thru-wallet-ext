@@ -88,7 +88,7 @@ No launchpad, DEX, swap, or prediction UI is shipped. The old `src/launchpad/` t
 | --- | --- |
 | `npm test` | PASS on the 2026-09-26 documentation-only change: derivation 16, QR 15, layering 70 files/0 sinks, CSP, routes 14/14, CSS nesting, quarantine 47, contract 77, DOM/refs 130, route lifecycle 904, plus vault, Thru client, token/balance, History, registration, and API-router suites. |
 | `npm run build` | PASS on the final documentation-only change; `build.mjs` regenerated `dist/` from current source. |
-| Contract | v12, 81 methods. v12 registration/history APIs are additive; security changes are documented above. |
+| Contract | v16, 81 methods. v16 deliberately retires unbound legacy send methods after zero shipped callers; registration/history APIs remain. |
 | Signing | Signing methods use `auth: 'signing'`. The wallet must be unlocked; password re-authentication is required only when the user enables it in Settings. That opt-in is itself password-gated. |
 | Registration | Exact ownership is checked in the background, the target account is the signer, Send JIT does not touch external recipients, and retry behavior is covered by deterministic registration/API tests. |
 | History | Flat card stream, storage-only cache-first paint, per-network/address cache, network-scoped block-time lookup, and provenance/fallback behavior are covered by deterministic tests. |
