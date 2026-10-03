@@ -315,7 +315,7 @@ ok(
 applyQueryOverrides('?debug=1');
 ok('a supported override still works, so the check above is not vacuous', FLAGS.DEBUG_ROUTING === true);
 FLAGS.DEBUG_ROUTING = before.DEBUG_ROUTING;
-ok('the remaining flags are only NEXT_UI and DEBUG_ROUTING', JSON.stringify(Object.keys(FLAGS).sort()) === '["DEBUG_ROUTING","NEXT_UI"]');
+ok('the only remaining flag is non-persistent routing diagnostics', JSON.stringify(Object.keys(FLAGS)) === '["DEBUG_ROUTING"]');
 
 // ---------------------------------------------------------------------------
 // 4. Routes and controls

@@ -27,6 +27,15 @@ import * as balanceService from './services/balance-service.js';
 import * as pendingTxService from './services/pending-tx-service.js';
 import * as historyService from './services/history-service.js';
 import { isKnownMethod, getMethodSpec, CONTRACT_VERSION } from '../shared/contract/manifest.js';
+import { beginSigningOperation } from './services/signing-guard.js';
+
+// Every operation in this set can build/sign/submit a transaction. The guard starts at the
+// application boundary, before a handler reads the active account/network, and prevents a second
+// extension page from rebinding the singleton Thru adapter until the operation settles.
+const TRANSACTION_METHODS = new Set([
+  'tx.claimFaucet', 'tx.sendChecked', 'tx.autoCreateAccount', 'tx.registerAccount',
+  'token.deploy', 'token.transferChecked',
+]);
 
 // Methods the UI polls on its own schedule (background sync of pending tx state). A call to
 // one of these is NOT user activity and must not refresh the auto-lock idle stamp — see the
@@ -135,11 +144,6 @@ const handlers = Object.assign(Object.create(null), {
   // ---- Transactions and RPC --------------------------------------------
   'tx.getAccountInfo': ({ address }) => txService.getAccountInfo(address),
   'tx.claimFaucet': ({ amountUnits }) => txService.claimFaucet(amountUnits),
-  // `allowDuplicate` must be threaded through: the handler destructures its params, and the
-  // T17 audit found this line silently dropping the flag the contract declares (a confirmed
-  // repeat transfer could never proceed on this path). Keep in sync with tx.sendChecked.
-  'tx.send': ({ toAddress, amountUnits, allowDuplicate }) =>
-    txService.sendTransfer(toAddress, amountUnits, null, { allowDuplicate: Boolean(allowDuplicate) }),
   'tx.sendChecked': (params) => txService.sendTransferChecked(params),
   'tx.listHistory': ({ address, pageSize, limit, cursor } = {}) => (
     limit !== undefined || cursor !== undefined
@@ -173,7 +177,6 @@ const handlers = Object.assign(Object.create(null), {
   'token.readMint': ({ mintAddress }) => tokenService.readMint({ mintAddress }),
   'token.setVisibility': ({ mintAddress, hidden }) => tokenService.setVisibility(mintAddress, hidden),
   'token.getBalances': ({ address }) => tokenService.getTokenBalances({ address }),
-  'token.transfer': (params) => tokenService.transferToken(params),
   'token.transferChecked': (params) => tokenService.transferTokenChecked(params),
 
   // ---- Preferences -----------------------------------------------------
@@ -306,6 +309,7 @@ export async function handleApiRequest(request) {
   const authError = await checkAuth(spec, params);
   if (authError) return authError;
 
+  const releaseSigningOperation = TRANSACTION_METHODS.has(method) ? beginSigningOperation() : null;
   try {
     const data = await handlers[method](params);
     // Stamp only after a successful call so a locked-out unlock attempt cannot be used to
@@ -348,5 +352,7 @@ export async function handleApiRequest(request) {
           : /network|timeout|fetch|rate|unavailable/i.test(message),
       },
     };
+  } finally {
+    releaseSigningOperation?.();
   }
 }

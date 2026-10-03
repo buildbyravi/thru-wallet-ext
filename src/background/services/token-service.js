@@ -251,7 +251,7 @@ export async function readRegisteredTokenBalances(owner, registry, {
  * @param {string} params.toAddress
  * @param {string|number|bigint} params.amountUnits raw units of the mint
  */
-export async function transferToken({ mintAddress, toAddress, amountUnits, allowDuplicate = false }, expected = null) {
+async function transferToken({ mintAddress, toAddress, amountUnits, allowDuplicate = false }, expected) {
   const mint = String(mintAddress || '').trim();
   if (!thruClient.isValidThruAddress(mint)) {
     throw new Error('That does not look like a valid token mint address.');

@@ -195,7 +195,10 @@ export async function getHistoryFeed(address) {
     // Keep it only as a fallback for our own sends when a block time is unavailable.
     const pendingKey = scopedKey('thru_pending_txs', network.id);
     const pendingRes = await chrome.storage.local.get(pendingKey).catch(() => ({}));
-    const pendingList = Array.isArray(pendingRes?.[pendingKey]) ? pendingRes[pendingKey] : [];
+    const pendingStored = pendingRes?.[pendingKey];
+    const pendingList = Array.isArray(pendingStored)
+      ? pendingStored // schema v0
+      : (Array.isArray(pendingStored?.records) ? pendingStored.records : []);
     const pendingTimestamps = new Map(pendingList
       .map((p) => [p?.signature, validTimeMs(p?.submittedAt) || validTimeMs(p?.settledAt)])
       .filter(([signature, ms]) => Boolean(signature) && ms !== null));

@@ -17,7 +17,9 @@ Purpose: map the maintained documentation and point readers to the implementatio
 
 ### For architecture or UI work
 
-1. `docs/MODULE_BOUNDARIES.md` — current core boundaries and clearly labelled, unshipped feature-module target.
+1. `docs/ARCHITECTURE.md` — implemented dependency, signing, storage, and verification boundaries.
+2. `docs/DECISIONS.md` — durable decisions, rejected alternatives, trade-offs, and consequences.
+3. `docs/MODULE_BOUNDARIES.md` — current core boundaries and clearly labelled, unshipped feature-module target.
 2. `docs/MANUAL_SMOKE_CHECKLIST.md` — real-Chrome checks for popup and side panel; this is a runbook, not automated evidence.
 3. `test/test-route-lifecycle.mjs` and `scripts/check-routes.mjs` — deterministic route, lifecycle, reachability, and CSS-class guards.
 

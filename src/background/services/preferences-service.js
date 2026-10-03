@@ -13,10 +13,12 @@ const PREFS_VERSION = 1;
 const DEFAULTS = {
   version: PREFS_VERSION,
 
-  // Display
+  // Display / window behavior
   fiatCurrency: 'USD',
   hideSmallBalances: false,
   smallBalanceThreshold: '0',
+  theme: 'system',
+  sidePanelMode: false,
 
   // Account management (Rabby: address ordering, pinning, hiding)
   accountOrder: [],          // [address] — explicit sort order, unlisted accounts fall to the end
@@ -51,6 +53,28 @@ const SECURITY_FIELDS = new Set([
   'requirePasswordForSigning',
 ]);
 
+const BOOLEAN_FIELDS = new Set([
+  'hideSmallBalances', 'sidePanelMode', 'desktopNotifications',
+  'enforceWhitelist', 'requirePasswordForSigning',
+]);
+const THEMES = new Set(['light', 'dark', 'system']);
+
+function validatePreferenceValue(key, value) {
+  if (ARRAY_FIELDS.has(key)) {
+    if (!Array.isArray(value)) throw new Error(`'${key}' must be an array.`);
+    return value;
+  }
+  if (BOOLEAN_FIELDS.has(key)) {
+    if (typeof value !== 'boolean') throw new Error(`'${key}' must be a boolean.`);
+    return value;
+  }
+  if (key === 'theme') {
+    if (!THEMES.has(value)) throw new Error("'theme' must be light, dark, or system.");
+    return value;
+  }
+  return value;
+}
+
 async function readRaw() {
   try {
     const res = await chrome.storage.local.get(PREFS_KEY);
@@ -67,6 +91,17 @@ async function readRaw() {
  */
 export async function getPreferences() {
   const stored = await readRaw();
+  const storedVersion = stored.version === undefined ? 0 : Number(stored.version);
+  if (!Number.isInteger(storedVersion) || storedVersion < 0) {
+    throw new Error('Preferences schema version is malformed.');
+  }
+  if (storedVersion > PREFS_VERSION) {
+    throw new Error(`Preferences schema ${storedVersion} is newer than this wallet. Update the extension.`);
+  }
+
+  // v0 was the same fields without an envelope version. Applying defaults is its explicit,
+  // lossless migration; the next preference write persists version 1. Never relabel a future
+  // record as current, because security fields may have changed meaning.
   const merged = { ...DEFAULTS, ...stored, version: PREFS_VERSION };
   for (const field of ARRAY_FIELDS) {
     if (!Array.isArray(merged[field])) merged[field] = [...DEFAULTS[field]];
@@ -92,12 +127,7 @@ export async function setPreferences(patch) {
       rejected.push(key);
       continue;
     }
-    if (ARRAY_FIELDS.has(key)) {
-      if (!Array.isArray(value)) throw new Error(`'${key}' must be an array.`);
-      next[key] = value;
-    } else {
-      next[key] = value;
-    }
+    next[key] = validatePreferenceValue(key, value);
   }
 
   if (rejected.length) {

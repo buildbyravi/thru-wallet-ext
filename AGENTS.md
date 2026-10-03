@@ -4,8 +4,105 @@ Rules for any agent working in `thru-wallet-ext`. Read this first, then `CONTEXT
 
 ## What this is
 
-Chrome MV3 self-custody wallet for the **Thru L1** blockchain (devnet/betanet). Vanilla ES modules
-bundled with esbuild. No framework. Real `@thru/sdk` (including its `@thru/sdk/crypto` subpath) + `@thru/programs`.
+Chrome MV3 self-custody wallet for the **Thru L1** blockchain. Alphanet was the earlier
+single-node network; Betanet is the current/final-testnet stage; Mainnet is the target. Vanilla ES
+modules bundled with esbuild. No framework. Real `@thru/sdk` (including its
+`@thru/sdk/crypto` subpath) + `@thru/programs`.
+
+## Mainnet-ready engineering directive
+
+This repository is production software now. Betanet is a deployment stage, not permission for
+temporary security, architecture, validation, protocol behavior, or storage. Engineer every private
+key, transaction, and persisted wallet state as though it already belongs to a Mainnet user.
+
+For every change: **preserve → understand → reuse → centralize → isolate → test → verify → ship →
+document → delete obsolete code**. Never copy → patch → duplicate → hide → “fix later.” Read the
+implementation, tests, defect history, current docs, dependency boundaries, and blast radius before
+editing. Search for equivalent names and behavior before adding any helper, service, component,
+validation, API call, CSS, transaction builder, or signing path. Implement the smallest correct
+change in the correct layer.
+
+Optimize for correctness, security, auditability, maintainability, deterministic behavior, upgrade
+safety, reuse, testability, and controlled blast radius—not for making one screen work quickly.
+Duplication is a security problem: address validation, amount parsing/formatting, network identity,
+account resolution, transaction preparation/validation, authorization, signing, password checks,
+asset/error normalization, storage schemas, and SDK adaptation each require one authoritative
+implementation. Reuse established security-sensitive wallet primitives; UI components must not
+reimplement them. Modularity means stable responsibilities and limited dependencies, not one file
+per function.
+
+Use these status terms precisely: **IMPLEMENTED, TESTED, VERIFIED AGAINST LIVE NETWORK,
+UNVERIFIED, PARTIALLY IMPLEMENTED, BLOCKED, PLANNED, DEPRECATED, SECURITY REVIEW REQUIRED,
+EXTERNAL AUDIT REQUIRED**. Never claim verification that did not occur or describe plans as shipped.
+Do not use “community build,” “prototype,” “testnet only,” “temporary implementation,” or “not for
+real funds” as an excuse or status unless factually necessary.
+
+### Architecture and compatibility invariants
+
+- Core wallet capabilities (vault/keyrings, accounts, networks, assets, balances, transactions,
+  signing, receive, history, settings, security) remain independent of optional products. Optional
+  features belong under `src/features/<feature>/` when that isolation provides real value and may
+  request wallet operations only through stable application interfaces. They never access private
+  keys, mnemonics, decrypted vaults, or encryption keys.
+- Dependency direction is UI → application/service interface → bridge → backend API contract →
+  backend services → Thru adapter/vault/RPC. UI never imports backend, crypto, vault, or raw RPC
+  implementation; backend never imports UI. Contain Thru SDK churn at the adapter/infrastructure
+  boundary. Never scatter SDK calls across UI/features or hand-roll crypto, derivation, program
+  addresses, instruction encoding, or protocol serialization when an official implementation exists.
+- Pin all Thru SDK/program dependencies exactly. An upgrade requires changelog/API review, full and
+  deterministic wallet/encoding/network/migration tests, bundle inspection, a recorded reason, and
+  before/after behavior comparison. If derivation or another golden vector changes unexpectedly,
+  stop and determine why; never merely update the expected value.
+- Protect golden vectors for mnemonic/key derivation, public keys, address encoding, amount
+  conversion, transaction encoding/decoding, and critical network identifiers. Unexpected drift
+  fails the build.
+- Treat backend APIs as compatibility boundaries. Prefer additive methods, migrate every caller,
+  prove zero references and tests, then deliberately remove legacy methods. Do not silently reshape
+  existing methods.
+- Version persisted vault, preferences, account metadata, address book, networks, token registry,
+  pending transactions, assets, and feature state. Every schema change requires an explicit
+  old → migration → new path with regression fixtures. Never assume an empty wallet or silently
+  reinterpret old data. Stop for clarification before changing storage semantics.
+- Identify networks with explicit stable identity—not display names—and scope balances, pending
+  transactions, history/cache, token metadata, assets, and network settings by network. Keys,
+  keyrings, wallets, and account labels may be global. Switching networks must never leak state.
+
+### Transaction and signing invariants
+
+Transactions move explicitly through draft → validated → review → authenticated → signed → submitted
+→ pending → confirmed. Represent rejected, simulation-failed, submission-failed, timeout,
+network-error, and unknown distinctly. RPC acceptance is not confirmation. Before signing, verify the
+active account and network, recipient, amount, sufficient balance, authorization, and freshness where
+applicable. Prevent duplicate submission, replay, stale-account/network signing, and review-to-sign
+recipient or amount alteration.
+
+There is one authoritative signing path. DEX, Launchpad, Prediction, NFT, and future modules request
+signatures through wallet services and never access seeds/private keys or implement signing. Do not
+guess protocol wire formats, fee units, activation semantics, token standards, simulation, explorer
+routes, signing behavior, or provider standards; unsupported is safer than fabricated behavior.
+
+### Delivery, migration, and security review
+
+Migrate legacy UI by strangling one path at a time: replacement → behavior comparison → tests → route
+switch → verification → old-code deletion. A temporary compatibility layer must state its purpose,
+dependencies, exit condition, and deletion criteria. Once replacement is proven, delete old routes,
+handlers, markup, CSS, helpers, and compatibility code; Git is rollback.
+
+Before merge, explicitly review whether the change can expose secrets, bypass password/signing
+authorization, alter recipient/amount/derivation, mix network data, weaken CSP, enable XSS/replay or
+duplicate submission, persist secrets, or create another signing path. Add focused tests for every
+applicable risk. Diagnostics may record method, error category, network ID, timing, state transition,
+module, and appropriate transaction signatures; never log mnemonics, private keys, passwords,
+decrypted vaults, encryption keys, or raw secrets. Keep diagnostics local unless safe telemetry is
+deliberately designed.
+
+Do not weaken quality gates. Done means implemented in the correct layer, one source of truth,
+regression coverage, security review, successful build/full tests, reachability verification,
+real-browser checks where required, current documentation, and deletion of replaced legacy code.
+Keep commits small and logically isolated. Stop instead of guessing when product/protocol/network
+semantics are uncertain, an SDK invariant changes, a test would need weakening, a second source of
+truth/router/store/bridge is proposed, a security boundary is crossed, or persisted-wallet migration
+could be affected.
 
 ## Documents
 
@@ -16,7 +113,9 @@ bundled with esbuild. No framework. Real `@thru/sdk` (including its `@thru/sdk/c
 | past, present, future build tracking | `docs/PROJECT_LEDGER.md` |
 | "what's done, what's next?" | `docs/STATUS_AND_ROADMAP.md` — **start here for active work** |
 | "where is X?" | `CONTEXT.md` — file-by-file map with `file:line` refs |
-| feature separation / SDK-adapter boundaries | `docs/MODULE_BOUNDARIES.md` |
+| stable dependency/storage/signing architecture | `docs/ARCHITECTURE.md` |
+| durable choices and trade-offs | `docs/DECISIONS.md` |
+| future feature separation / SDK-adapter boundaries | `docs/MODULE_BOUNDARIES.md` |
 | AI-agent/MCP safety | `llms.txt`, then `docs/MCP_AGENT_INTEGRATION.md` |
 | "has this broken before?" | `docs/DEFECT_LOG.md` — every defect, root cause and lesson |
 | product intent, security policy, QA matrix | `docs/BUILD_SPEC.md` |
@@ -75,10 +174,14 @@ is red. Never weaken or skip a test to make it pass.
 9. **Secrets never touch** URLs, `location.hash`, router params or history, `data-*` attributes,
    `localStorage`, `sessionStorage`, `window`, or `console.*`. Clear them on lock, on navigate
    away, and in `destroy()`. Use `src/shared/refs.js` to name an account in a URL.
-10. **Password re-authentication is required by default** before export, signing,
-    security-setting changes, keyring add/rename/remove, and reset. Signing has a user-visible
-    session-only opt-out, but changing that opt-out is itself password-gated. Use
-    `requirePassword()` from `src/ui/domain/password-prompt.js`. **Narrow contract-v12 exception:**
+10. **Password re-authentication is always required** before export, security-setting changes,
+    keyring add/rename/remove, and unlocked reset. Transaction signing requires an unlocked session
+    by default; the user may opt into per-sign password re-authentication, and changing that setting
+    in either direction is password-gated. This session-only default is an explicit product decision,
+    not permission for alternate signing paths: every value-moving method still uses centralized
+    `auth: 'signing'`, reviewed account/network binding, and the one signing service. Use
+    `requirePassword()` from `src/ui/domain/password-prompt.js` when the preference requires it.
+    **Narrow contract-v12 exception:**
     `tx.registerAccount` is unlocked-only for a vault-owned address at account creation or when
     selected as an unregistered own Send recipient. It still signs/broadcasts; never add a
     periodic all-accounts signing loop or allow arbitrary recipient registration.

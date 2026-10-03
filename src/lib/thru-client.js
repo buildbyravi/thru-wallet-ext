@@ -816,6 +816,7 @@ export async function getBlockHeight() {
 // Native built-in Token Program address on ThruVM (similar to SPL Token Program):
 // package-sourced at the top of this file.
 export const DEPLOYED_TOKENS_KEY = 'thru_deployed_tokens';
+const DEPLOYED_TOKENS_SCHEMA_VERSION = 1;
 
 /**
  * Generate a mint seed: 32 random bytes as 64 hex characters.
@@ -1220,8 +1221,15 @@ export async function mintToToken({ feePayer, mintAddress, destinationOwner, amo
 export async function getDeployedTokens(networkId) {
   const key = networkId ? scopedKey(DEPLOYED_TOKENS_KEY, networkId) : DEPLOYED_TOKENS_KEY;
   const stored = await chrome.storage.local.get(key);
-  const tokens = stored?.[key];
-  return Array.isArray(tokens) ? tokens : [];
+  const value = stored?.[key];
+  if (Array.isArray(value)) return value; // schema v0; migrated on next mutation
+  if (value && typeof value === 'object') {
+    if (value.version > DEPLOYED_TOKENS_SCHEMA_VERSION) {
+      throw new Error(`Deployed-token schema ${value.version} is newer than this wallet.`);
+    }
+    return Array.isArray(value.records) ? value.records : [];
+  }
+  return [];
 }
 
 /**
@@ -1233,7 +1241,9 @@ export async function saveDeployedToken(tokenInfo, networkId) {
   const key = networkId ? scopedKey(DEPLOYED_TOKENS_KEY, networkId) : DEPLOYED_TOKENS_KEY;
   const tokens = await getDeployedTokens(networkId);
   tokens.unshift(tokenInfo);
-  await chrome.storage.local.set({ [key]: tokens });
+  await chrome.storage.local.set({
+    [key]: { version: DEPLOYED_TOKENS_SCHEMA_VERSION, records: tokens },
+  });
 }
 
 /**

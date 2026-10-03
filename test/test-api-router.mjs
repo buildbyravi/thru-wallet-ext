@@ -164,11 +164,11 @@ assert.equal(prefsDefault.data.requirePasswordForSigning, false);
 // params and are instead proven in the gated direction below, where the auth check
 // stops them before they could reach the network.)
 const sessionOnlyAuth = [
-  ['tx.send', { toAddress: res2.data.address, amountUnits: '1' }, /address you're sending from/i],
-  ['token.transfer', {
+  ['tx.sendChecked', { toAddress: res2.data.address, amountUnits: '1', fromAddress: res2.data.address, networkId: 'betanet' }, /address you're sending from/i],
+  ['token.transferChecked', {
     mintAddress: 'taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKqq',
-    toAddress: res2.data.address,
-    amountUnits: '1',
+    toAddress: res2.data.address, amountUnits: '1',
+    fromAddress: res2.data.address, networkId: 'betanet',
   }, /address you're sending from/i],
 ];
 for (const [method, params, pattern] of sessionOnlyAuth) {
@@ -182,8 +182,8 @@ for (const [method, params, pattern] of sessionOnlyAuth) {
 // chose session-only, so a (wrong) password is neither verified nor used — the call
 // proceeds to the handler, which fails on its own local rules here.
 const passwordIgnoredWhileGateOff = await handleApiRequest({
-  method: 'tx.send',
-  params: { toAddress: res2.data.address, amountUnits: '1', password: 'wrong password' },
+  method: 'tx.sendChecked',
+  params: { toAddress: res2.data.address, amountUnits: '1', password: 'wrong password', fromAddress: res2.data.address, networkId: 'betanet' },
 });
 assert.equal(passwordIgnoredWhileGateOff.ok, false);
 assert.notEqual(passwordIgnoredWhileGateOff.error.code, 'AUTH_REQUIRED');
@@ -210,8 +210,8 @@ assert.equal(sessionOnlyWithPassword.ok, true);
 assert.equal(sessionOnlyWithPassword.data.requirePasswordForSigning, false);
 
 const sessionOnlySend = await handleApiRequest({
-  method: 'tx.send',
-  params: { toAddress: res2.data.address, amountUnits: '1' },
+  method: 'tx.sendChecked',
+  params: { toAddress: res2.data.address, amountUnits: '1', fromAddress: res2.data.address, networkId: 'betanet' },
 });
 assert.equal(sessionOnlySend.ok, false);
 assert.notEqual(sessionOnlySend.error.code, 'AUTH_REQUIRED');
@@ -233,7 +233,7 @@ const sessionOnlyTokenGuards = [
     /whole number of base units/i],
 ];
 for (const [params, pattern] of sessionOnlyTokenGuards) {
-  const res = await handleApiRequest({ method: 'token.transfer', params });
+  const res = await handleApiRequest({ method: 'token.transferChecked', params: { ...params, fromAddress: res2.data.address, networkId: 'betanet' } });
   assert.equal(res.ok, false, `token.transfer ${pattern} must fail`);
   assert.notEqual(res.error.code, 'AUTH_REQUIRED', `token.transfer ${pattern} must pass auth`);
   assert.match(res.error.message, pattern, `token.transfer guard message for ${pattern}`);
@@ -284,13 +284,25 @@ networksModule.NETWORKS.localnet.enabled = true;
 // DURING the live recipient RPC must be caught before the SDK signs. Hold the SDK read
 // (no public RPC) and deliberately interleave network.setActive.
 const clientForRace = await import('../src/lib/thru-client.js');
-const recipientReader = clientForRace.getClient().accounts;
+const raceClient = clientForRace.getClient();
+const recipientReader = raceClient.accounts;
 const originalRecipientGet = recipientReader.get;
+const originalRaceBuild = raceClient.transactions.buildAndSign;
+const originalRaceTrack = raceClient.transactions.sendAndTrack;
 let releaseRecipient = null;
+let raceAccountReads = 0;
 try {
-  recipientReader.get = () => new Promise((resolve) => {
-    releaseRecipient = () => resolve({ meta: { balance: 100n } });
-  });
+  raceClient.transactions.buildAndSign = async () => ({ rawTransaction: new Uint8Array(1) });
+  raceClient.transactions.sendAndTrack = async function* () {
+    yield { executionResult: { vmError: 0 }, signature: { value: new Uint8Array(64).fill(6) } };
+  };
+  recipientReader.get = () => {
+    raceAccountReads += 1;
+    if (raceAccountReads > 1) return Promise.resolve({ meta: { balance: 100n } });
+    return new Promise((resolve) => {
+      releaseRecipient = () => resolve({ meta: { balance: 100n } });
+    });
+  };
   const pendingChecked = handleApiRequest({ method: 'tx.sendChecked', params: {
     toAddress: accountsList[1].address,
     amountUnits: '1',
@@ -304,16 +316,22 @@ try {
   } });
   assert.equal(doubleClick.error?.code, 'DUPLICATE_SUBMISSION',
     'a bridge timeout / second click cannot submit the same in-flight transfer twice');
-  await handleApiRequest({ method: 'network.setActive', params: { networkId: 'localnet' } });
+  const blockedSwitch = await handleApiRequest({ method: 'network.setActive', params: { networkId: 'localnet' } });
+  assert.equal(blockedSwitch.error?.code, 'SIGNING_IN_PROGRESS');
+  assert.equal(blockedSwitch.error?.retryable, true);
   releaseRecipient();
-  const interrupted = await pendingChecked;
-  assert.equal(interrupted.error?.code, 'SEND_CONTEXT_CHANGED');
-  assert.equal(interrupted.error?.retryable, false);
+  const sentOnReviewedNetwork = await pendingChecked;
+  assert.equal(sentOnReviewedNetwork.ok, true, sentOnReviewedNetwork.error?.message);
+  const switchAfterSend = await handleApiRequest({ method: 'network.setActive', params: { networkId: 'localnet' } });
+  assert.equal(switchAfterSend.ok, true, switchAfterSend.error?.message);
 } finally {
   recipientReader.get = originalRecipientGet;
+  raceClient.transactions.buildAndSign = originalRaceBuild;
+  raceClient.transactions.sendAndTrack = originalRaceTrack;
   await handleApiRequest({ method: 'network.setActive', params: { networkId: 'betanet' } });
+  storage.delete('thru_pending_txs::betanet');
 }
-console.log('  ok - duplicate in-flight sends are refused; a network change during RPC cancels before signing');
+console.log('  ok - duplicate sends are refused and network switching is locked through signing/submission');
 
 // The SDK can finish broadcasting and return a signature before a balance RPC responds.
 // A post-send refresh is advisory: waiting for it would turn a successful transfer into a
@@ -349,7 +367,7 @@ try {
   const sent = await request;
   assert.equal(sent.ok, true, sent.error?.message);
   assert.match(sent.data.signature, /^ts[A-Za-z0-9_-]+$/);
-  assert.equal(storage.get('thru_pending_txs::betanet')?.[0].signature, sent.data.signature,
+  assert.equal(storage.get('thru_pending_txs::betanet')?.records?.[0].signature, sent.data.signature,
     'the signature is already recorded before the UI receives it');
   assert.equal(storage.get('thru_history_cache::betanet')?.[res2.data.address]?.entries?.[0]?.signature, sent.data.signature,
     'the signature is immediately recorded in local history cache');
@@ -397,28 +415,6 @@ try {
   });
   assert.equal(dupSendAllowed.ok, true, dupSendAllowed.error?.message);
 
-  // The LEGACY tx.send path must honor allowDuplicate exactly like tx.sendChecked — its
-  // handler destructures params and once dropped the flag entirely (found in the T17 audit:
-  // the contract declared allowDuplicate on tx.send but the router ignored it, so a confirmed
-  // repeat transfer could never proceed on that path).
-  const dupSendLegacy = await handleApiRequest({
-    method: 'tx.send',
-    params: {
-      toAddress: accountsList[1].address, amountUnits: '1',
-      allowDuplicate: false,
-    },
-  });
-  assert.equal(dupSendLegacy.ok, false);
-  assert.equal(dupSendLegacy.error.code, 'DUPLICATE_SUBMISSION');
-
-  const dupSendLegacyAllowed = await handleApiRequest({
-    method: 'tx.send',
-    params: {
-      toAddress: accountsList[1].address, amountUnits: '1',
-      allowDuplicate: true,
-    },
-  });
-  assert.equal(dupSendLegacyAllowed.ok, true, dupSendLegacyAllowed.error?.message);
 } finally {
   releasePostSendBalance?.();
   sdkForSend.accounts.get = beforeGet;
@@ -465,7 +461,7 @@ try {
     networkId: 'betanet',
   } });
   await waitFor(() => {
-    const list = storage.get('thru_pending_txs::betanet');
+    const list = storage.get('thru_pending_txs::betanet')?.records;
     return Array.isArray(list) && list.length > 0 && list[0].status === 'submitted';
   }, 'the pending record to land at submission, before executionResult');
   const dupCheckPending = await handleApiRequest({
@@ -503,8 +499,6 @@ assert.equal(enableWithPassword.data.requirePasswordForSigning, true);
 // (claimFaucet / autoCreateAccount / token.deploy), where the auth check is the only
 // thing standing between a no-password call and a real network transaction.
 const gatedSigning = [
-  ['tx.send', { toAddress: res2.data.address, amountUnits: '1' }],
-  ['tx.send', { toAddress: res2.data.address, amountUnits: '1', password: 'wrong password' }],
   ['tx.sendChecked', { toAddress: res2.data.address, amountUnits: '1',
     fromAddress: res2.data.address, networkId: 'betanet' }],
   ['token.transferChecked', { mintAddress: 'taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKqq',
@@ -517,11 +511,6 @@ const gatedSigning = [
     decimals: 6,
     description: '',
     imageUrl: '',
-  }],
-  ['token.transfer', {
-    mintAddress: 'taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKqq',
-    toAddress: res2.data.address,
-    amountUnits: '1',
   }],
 ];
 for (const [method, params] of gatedSigning) {

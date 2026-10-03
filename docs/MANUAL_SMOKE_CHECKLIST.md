@@ -65,7 +65,7 @@ To open the panel two ways, and check both:
 Confirm what the toggle does and does not do. With Side Panel Mode **off** (the default),
 clicking the toolbar icon opens the **popup**, not the panel. With it **on**, the toolbar icon
 opens the panel — that is the explicit opt-in, applied on the toggle's click and re-applied by
-the background on every service-worker restart from the stored `thru_side_panel_mode` flag.
+the background on every service-worker restart from the versioned `preferences.sidePanelMode` value.
 `test/test-route-lifecycle.mjs` asserts that `setPanelBehavior` is called ONLY by that settings toggle
 (allowlist) and never by load/boot/anything else. If the toolbar icon ever starts opening the
 panel while the toggle is off, that is a regression, not a feature.
