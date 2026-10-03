@@ -10,12 +10,42 @@ documentation truthfulness, and the deterministic build/test gates. This was a s
 no live-chain transaction, real-Chrome lifecycle/layout test, or external security audit was
 performed.
 
-**Result:** **SECURITY REVIEW REQUIRED** before Mainnet. No critical defect was confirmed in this
-pass. Two high, three medium, and two low findings remain. The existing deterministic controls are
+**Result at audit time:** **SECURITY REVIEW REQUIRED** before Mainnet. No critical defect was
+confirmed. Two high, three medium, and two low findings were identified; source remediations are
+recorded below. The existing deterministic controls are
 substantial: exact dependency pins, stable derivation vectors, centralized API auth, an encrypted
 versioned vault, trusted-context session storage, strict CSP, zero runtime DOM injection sinks,
 network-scoped chain state, checked UI send calls, and broad contract/lifecycle regression coverage.
-Those controls do not close the findings below.
+Those controls did not close the findings below at audit time.
+
+### Remediation update — 2026-10-03
+
+All seven source findings were addressed on this branch:
+
+- **MR-01:** a centralized signing-operation guard now prevents `network.setActive` from mutating the
+  singleton Thru adapter from before account/network resolution through submission completion.
+  Native send and owned-account registration interleaving tests prove the lock and its release.
+- **MR-02:** contract v16 removes the retired `tx.send` and `token.transfer` handlers and manifest
+  entries after confirming shipped UI callers use only checked methods. Contract guards prevent the
+  weaker signing paths from returning.
+- **MR-03:** pending records use a per-network serialized mutation queue and a versioned envelope.
+  A concurrent-track regression proves two distinct submissions cannot overwrite one another.
+- **MR-04:** durable vault, preferences, contacts, account labels, pending transactions, and deployed
+  token records now have explicit schema handling. Legacy records migrate on mutation and future
+  versions fail closed. Balance/history data remain explicitly disposable, network-scoped caches;
+  History additionally carries a chain fingerprint and both are safely rebuilt from RPC.
+- **MR-05:** the user selected session-only signing as the explicit default. `AGENTS.md` now matches
+  implementation: changing signing protection is password-gated, while every value-moving call uses
+  centralized signing auth, reviewed context, and the network mutation lock.
+- **MR-06:** current status now records contract v16, the current audit baseline/test evidence, and
+  separates Alphanet from Betanet observation provenance.
+- **MR-07:** derivation provenance records verification against pinned SDK 0.4.1 without changing any
+  golden address.
+
+**Residual verification:** source remediation is **IMPLEMENTED and TESTED**, not verified against a
+live network or real Chrome lifecycle. Those checks and an external audit remain required before a
+Mainnet readiness claim.
+
 
 ### Findings
 
@@ -155,11 +185,11 @@ brought current.
 
 ### Mainnet gate
 
-Do not represent this build as Mainnet-ready until MR-01 and MR-02 are closed, MR-03 has durable
-concurrency tests, MR-04 has an approved migration plan, and MR-05 has an explicit security-policy
-decision. Real-Chrome checks and the open live-chain checks in `docs/STATUS_AND_ROADMAP.md` remain
-mandatory. An external audit remains **EXTERNAL AUDIT REQUIRED**; this source review is not a
-substitute.
+MR-01 through MR-07 now have source remediations and deterministic coverage. Do not represent this
+build as Mainnet-ready until the real-Chrome checks and open live-chain checks in
+`docs/STATUS_AND_ROADMAP.md` are completed. An external audit remains **EXTERNAL AUDIT REQUIRED**;
+this source review and remediation are not a substitute.
+
 
 ### Verification performed for this audit
 

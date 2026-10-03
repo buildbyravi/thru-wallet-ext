@@ -172,10 +172,14 @@ is red. Never weaken or skip a test to make it pass.
 9. **Secrets never touch** URLs, `location.hash`, router params or history, `data-*` attributes,
    `localStorage`, `sessionStorage`, `window`, or `console.*`. Clear them on lock, on navigate
    away, and in `destroy()`. Use `src/shared/refs.js` to name an account in a URL.
-10. **Password re-authentication is required by default** before export, signing,
-    security-setting changes, keyring add/rename/remove, and reset. Signing has a user-visible
-    session-only opt-out, but changing that opt-out is itself password-gated. Use
-    `requirePassword()` from `src/ui/domain/password-prompt.js`. **Narrow contract-v12 exception:**
+10. **Password re-authentication is always required** before export, security-setting changes,
+    keyring add/rename/remove, and unlocked reset. Transaction signing requires an unlocked session
+    by default; the user may opt into per-sign password re-authentication, and changing that setting
+    in either direction is password-gated. This session-only default is an explicit product decision,
+    not permission for alternate signing paths: every value-moving method still uses centralized
+    `auth: 'signing'`, reviewed account/network binding, and the one signing service. Use
+    `requirePassword()` from `src/ui/domain/password-prompt.js` when the preference requires it.
+    **Narrow contract-v12 exception:**
     `tx.registerAccount` is unlocked-only for a vault-owned address at account creation or when
     selected as an unregistered own Send recipient. It still signs/broadcasts; never add a
     periodic all-accounts signing loop or allow arbitrary recipient registration.
