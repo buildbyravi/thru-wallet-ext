@@ -63,17 +63,26 @@ function normalizeTxResult(result) {
 export async function claimFaucet(amountUnits) {
   const feePayer = await vault.getActiveAccount();
   const rawUnits = BigInt(amountUnits);
-  const result = normalizeTxResult(await thruClient.claimFaucet(feePayer, rawUnits));
+  // Bind the network BEFORE the claim so a submission-time tracking hook records the chain
+  // the claim was built for (same reason sendTransfer binds early).
   const network = await getActiveNetworkConfig();
-
-  await pending.track({
-    signature: result.signature,
-    kind: 'faucet',
-    from: feePayer.address,
-    to: feePayer.address,
-    amountUnits: rawUnits.toString(),
-    networkId: network.id,
-  });
+  let trackedSignature = null;
+  const trackSubmitted = (signature) => {
+    if (!signature || trackedSignature === signature) return null;
+    trackedSignature = signature;
+    return pending.track({
+      signature,
+      kind: 'faucet',
+      from: feePayer.address,
+      to: feePayer.address,
+      amountUnits: rawUnits.toString(),
+      networkId: network.id,
+    });
+  };
+  const result = normalizeTxResult(await thruClient.claimFaucet(feePayer, rawUnits, {
+    onSubmitted: trackSubmitted,
+  }));
+  if (!trackedSignature) await trackSubmitted(result.signature);
   await balances.getBalances([feePayer.address]);
 
   return result;
@@ -154,16 +163,28 @@ export async function sendTransfer(toAddress, amountUnits, expected = null, { al
     // Recipient lookup can take seconds. Refuse a stale review if another extension page
     // changed the source or chain while this RPC was in flight.
     await assertSendContext(expected, await vault.getActiveAccount());
-    const result = normalizeTxResult(await thruClient.sendTransfer(feePayer, target, rawUnits));
-
-    await pending.track({
-      signature: result.signature,
-      kind: 'transfer',
-      from: feePayer.address,
-      to: target,
-      amountUnits: rawUnits.toString(),
-      networkId: network.id,
-    });
+    // Track at SUBMISSION — onSubmitted fires when the sendAndTrack stream carries the
+    // signature, before executionResult. The pending window is exactly when the duplicate
+    // warning must work (reported 2026-10-03: "send, then try resend — no warning until tx
+    // is confirmed"). The post-return call is a fallback for streams that never fired the
+    // hook; track() dedupes by signature.
+    let trackedSignature = null;
+    const trackSubmitted = (signature) => {
+      if (!signature || trackedSignature === signature) return null;
+      trackedSignature = signature;
+      return pending.track({
+        signature,
+        kind: 'transfer',
+        from: feePayer.address,
+        to: target,
+        amountUnits: rawUnits.toString(),
+        networkId: network.id,
+      });
+    };
+    const result = normalizeTxResult(await thruClient.sendTransfer(feePayer, target, rawUnits, {
+      onSubmitted: trackSubmitted,
+    }));
+    if (!trackedSignature) await trackSubmitted(result.signature);
     // The chain has already returned a signature. Do not hold the signing response behind
     // another RPC just to repaint a balance: an offline balance node could otherwise make a
     // completed send hit the bridge timeout and look like an unknown submission.

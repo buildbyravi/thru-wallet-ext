@@ -386,6 +386,36 @@ export function encodeFaucetInstructionData(stateIdx, recipientIdx, amountUnits)
 }
 
 /**
+ * Submission notice for sendAndTrack streams.
+ *
+ * The stream delivers the accepted submission's signature BEFORE the executionResult
+ * (progressive SendAndTrackTxnUpdate: status / consensusStatus / signature, then the
+ * result). Callers that record `submitted` state — pending tracking, the
+ * duplicate-transfer warning — need the signature at SUBMISSION: on betanet's ~6-second
+ * blocks, waiting for executionResult left the whole pending window undetectable
+ * (reported 2026-10-03: "no warning until tx is confirmed"). Purely additive: fires
+ * `onSubmitted(signature)` exactly once, never throws into the stream, and every send's
+ * return semantics are unchanged.
+ */
+async function* withSubmittedNotice(updates, onSubmitted) {
+  let fired = false;
+  for await (const update of updates) {
+    if (!fired && update.signature?.value) {
+      fired = true;
+      if (typeof onSubmitted === 'function') {
+        try {
+          const p = onSubmitted(Signature.from(update.signature.value).toThruFmt());
+          if (p && typeof p.catch === 'function') p.catch(() => {});
+        } catch {
+          // Tracking is best-effort; never affect the send stream.
+        }
+      }
+    }
+    yield update;
+  }
+}
+
+/**
  * Claim tokens from the betanet faucet, submitted on-chain directly.
  *
  * Self-Signing: each wallet signs its OWN faucet transaction with fee: 0n, so no sponsor keys
@@ -397,7 +427,7 @@ export function encodeFaucetInstructionData(stateIdx, recipientIdx, amountUnits)
  * fee payer exists on-chain. The account still needs no FUNDING, only registration, which is
  * what createOnChainAccount does and what the guard below now handles.
  */
-export async function claimFaucet(feePayer, amount) {
+export async function claimFaucet(feePayer, amount, { onSubmitted = null } = {}) {
   // Read from the configured network, not the module constants, so a network switch actually
   // reaches a different faucet.
   const net = activeNetwork;
@@ -442,7 +472,7 @@ export async function claimFaucet(feePayer, amount) {
       encodeFaucetInstructionData(getAccountIndex(net.faucetStateAccount), getAccountIndex(address), amountUnits),
   });
 
-  for await (const update of getClient().transactions.sendAndTrack(rawTransaction)) {
+  for await (const update of withSubmittedNotice(getClient().transactions.sendAndTrack(rawTransaction), onSubmitted)) {
     if (update.executionResult) {
       if (update.executionResult.vmError === 0) {
         return update.signature?.value ? Signature.from(update.signature.value).toThruFmt() : undefined;
@@ -486,7 +516,7 @@ export function encodeTransferInstructionData(sourceIdx, destIdx, amountUnits) {
  * header.fee is overridden, so the sender still needs a balance covering amount + fee, which
  * a brand-new account won't have yet (auto-creating it doesn't fund it).
  */
-export async function sendTransfer(feePayer, toAddress, amount) {
+export async function sendTransfer(feePayer, toAddress, amount, { onSubmitted = null } = {}) {
   const amountUnits = BigInt(amount);
   if (amountUnits <= 0n) {
     throw new Error('Amount must be a positive whole number of base units.');
@@ -515,7 +545,7 @@ export async function sendTransfer(feePayer, toAddress, amount) {
       encodeTransferInstructionData(getAccountIndex(feePayer.address), getAccountIndex(toAddress), amountUnits),
   });
 
-  for await (const update of getClient().transactions.sendAndTrack(rawTransaction)) {
+  for await (const update of withSubmittedNotice(getClient().transactions.sendAndTrack(rawTransaction), onSubmitted)) {
     if (update.executionResult) {
       if (update.executionResult.vmError === 0) {
         return update.signature?.value ? Signature.from(update.signature.value).toThruFmt() : undefined;
@@ -1043,7 +1073,7 @@ export async function initializeTokenAccount(feePayer, ownerAddress, mintAddress
  *
  * @returns {Promise<{ signature: string|null, recipientTokenAccountCreated: boolean, initSignature: string|null }>}
  */
-export async function sendTokenTransfer({ feePayer, mintAddress, recipientAddress, amountUnits }) {
+export async function sendTokenTransfer({ feePayer, mintAddress, recipientAddress, amountUnits, onSubmitted = null }) {
   const amount = BigInt(amountUnits);
   if (amount <= 0n) {
     throw new Error('Amount must be a positive whole number of base units.');
@@ -1108,7 +1138,7 @@ export async function sendTokenTransfer({ feePayer, mintAddress, recipientAddres
     }),
   });
 
-  for await (const update of getClient().transactions.sendAndTrack(rawTransaction)) {
+  for await (const update of withSubmittedNotice(getClient().transactions.sendAndTrack(rawTransaction), onSubmitted)) {
     if (update.executionResult) {
       if (update.executionResult.vmError === 0) {
         return {

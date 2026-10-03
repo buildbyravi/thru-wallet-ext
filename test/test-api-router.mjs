@@ -428,6 +428,69 @@ try {
 }
 console.log('  ok - a stalled balance refresh cannot conceal an already-submitted transfer');
 
+// A transfer the network has ACCEPTED but not yet EXECUTED is a pending transfer, and the
+// duplicate warning must see it. Reported bug (2026-10-03): "send, then try resend — no
+// warning until the first tx is confirmed". Root cause: pending.track() only ran when the
+// SDK stream delivered executionResult, so thru_pending_txs stayed empty for the whole
+// pending window and tx.checkDuplicate had nothing to match. The record must land at
+// SUBMISSION — the first stream update that carries a signature.
+console.log('[duplicate check] a submitted-but-unexecuted transfer is already detectable');
+const sdkForPending = clientForRace.getClient();
+const beforePendingGet = sdkForPending.accounts.get;
+const beforePendingBuild = sdkForPending.transactions.buildAndSign;
+const beforePendingTrack = sdkForPending.transactions.sendAndTrack;
+let releasePendingExec = null;
+try {
+  sdkForPending.accounts.get = () => Promise.resolve({ meta: { balance: 100n } });
+  sdkForPending.transactions.buildAndSign = async () => ({ rawTransaction: new Uint8Array(1) });
+  sdkForPending.transactions.sendAndTrack = async function* () {
+    // Submission accepted: the signature is public, executionResult is NOT there yet —
+    // the real stream's progressive SendAndTrackTxnUpdate shape (status/consensusStatus/
+    // signature first, executionResult later).
+    yield { status: 1, consensusStatus: 0, signature: { value: new Uint8Array(64).fill(9) } };
+    await new Promise((resolve) => {
+      releasePendingExec = () => resolve();
+    });
+    yield {
+      status: 1,
+      consensusStatus: 0,
+      executionResult: { vmError: 0 },
+      signature: { value: new Uint8Array(64).fill(9) },
+    };
+  };
+  const slowSend = handleApiRequest({ method: 'tx.sendChecked', params: {
+    toAddress: accountsList[1].address,
+    amountUnits: '1',
+    fromAddress: res2.data.address,
+    networkId: 'betanet',
+  } });
+  await waitFor(() => {
+    const list = storage.get('thru_pending_txs::betanet');
+    return Array.isArray(list) && list.length > 0 && list[0].status === 'submitted';
+  }, 'the pending record to land at submission, before executionResult');
+  const dupCheckPending = await handleApiRequest({
+    method: 'tx.checkDuplicate',
+    params: {
+      toAddress: accountsList[1].address, amountUnits: '1', fromAddress: res2.data.address,
+    },
+  });
+  assert.equal(dupCheckPending.ok, true);
+  assert.equal(dupCheckPending.data.isDuplicate, true,
+    'a submitted-but-unexecuted identical transfer must be detectable');
+  assert.equal(dupCheckPending.data.isPending, true,
+    'it is pending (status submitted), not merely recent');
+  releasePendingExec();
+  const slowResult = await slowSend;
+  assert.equal(slowResult.ok, true, slowResult.error?.message);
+} finally {
+  releasePendingExec?.();
+  sdkForPending.accounts.get = beforePendingGet;
+  sdkForPending.transactions.buildAndSign = beforePendingBuild;
+  sdkForPending.transactions.sendAndTrack = beforePendingTrack;
+  storage.delete('thru_pending_txs::betanet');
+}
+console.log('  ok - a submitted-but-unexecuted transfer is already detectable as a duplicate');
+
 const enableWithPassword = await handleApiRequest({
   method: 'settings.setSecurity',
   params: { patch: { requirePasswordForSigning: true }, password: 'Password123!' },
