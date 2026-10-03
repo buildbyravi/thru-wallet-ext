@@ -26,6 +26,7 @@ import { PageHeader, Banner } from '../../kit/feedback.js';
 import { SeedPhraseGrid, SeedPhraseChallenge } from '../../domain/seed-phrase-grid.js';
 import { requirePassword } from '../../domain/password-prompt.js';
 import * as bridge from '../bridge.js';
+import { clearFreshPhrases, takeFreshPhrase } from '../../domain/fresh-phrase.js';
 import { decodeRef } from '../../../shared/refs.js';
 
 export function ExportRoute({ params, navigate, back }) {
@@ -40,13 +41,26 @@ export function ExportRoute({ params, navigate, back }) {
   let secret = null;
   let grid = null;
   let challenge = null;
+  /**
+   * Which backup step the leave-confirm returns to ({ title, resume }). Set only in backup
+   * mode; the header Back must not be a one-tap escape from an unconfirmed backup.
+   */
+  let backupStep = null;
   const owned = [];
 
   const banner = Banner({ tone: 'error' });
   const body = h('div', { class: 'stack stack-4' });
   const header = PageHeader({
     title: isBackupFlow ? 'Back up phrase' : wantsKeyOnly ? 'Export private key' : 'Export secret',
-    onBack: () => back(),
+    // In the backup flow this must not silently leave: a generated wallet whose backup was
+    // never confirmed is created-but-unsafe, and escaping used to be one tap that landed the
+    // user inside a fully working wallet with no explanation. The leave step states what the
+    // wallet's state actually is and makes leaving a decision. Any other mode has nothing
+    // mandatory in progress and keeps plain back().
+    onBack: () => {
+      if (isBackupFlow && backupStep) renderLeaveStep(backupStep);
+      else back();
+    },
   });
   const el = h('section', { class: 'screen' }, [header.el, banner.el, body]);
 
@@ -56,12 +70,35 @@ export function ExportRoute({ params, navigate, back }) {
     grid = null;
     challenge?.destroy();
     challenge = null;
+    clearFreshPhrases();
     for (const c of owned) c.destroy?.();
     owned.length = 0;
   }
 
   function clearBody() {
     while (body.firstChild) body.removeChild(body.firstChild);
+  }
+
+  /**
+   * The mandated secret-disclosure warning. It stands before the gate AND above the
+   * revealed secret: whichever path reaches the words (password reveal, or the fresh
+   * create-flow handoff that skips the gate), the warning is on screen with them.
+   */
+  function secretWarning() {
+    return h('div', { class: 'notice danger' }, [
+      h('div', { class: 'row-flex' }, [
+        icon('warning', 16),
+        h('strong', { text: 'Anyone with this can take your funds' }),
+      ]),
+      h('ul', { class: 'warn-list' }, [
+        h('li', { text: wantsKeyOnly
+          ? 'This key controls this one address only — not your whole wallet.'
+          : 'This phrase controls EVERY account derived from it.' }),
+        h('li', { text: 'Never type it into a website, form, or support chat.' }),
+        h('li', { text: 'Never photograph it or store it in a password manager note.' }),
+        h('li', { text: 'Thru staff will never ask for it.' }),
+      ]),
+    ]);
   }
 
   if (!ref) {
@@ -82,21 +119,20 @@ export function ExportRoute({ params, navigate, back }) {
   // ---- Step 1: warn, then authenticate ------------------------------------
   function renderGate() {
     clearBody();
+    if (isBackupFlow) backupStep = { title: 'Back up phrase', resume: renderGate };
+    // A phrase generated in THIS session (wallet.create → backup) is shown directly: the
+    // user set the password seconds ago and the create screen already held this exact
+    // disclosure window. The password gate below is for in-wallet re-auth, not onboarding.
+    if (isBackupFlow && !wantsKeyOnly) {
+      const fresh = takeFreshPhrase(params.ref);
+      if (fresh) {
+        secret = fresh;
+        renderSecret();
+        return;
+      }
+    }
 
-    const warning = h('div', { class: 'notice danger' }, [
-      h('div', { class: 'row-flex' }, [
-        icon('warning', 16),
-        h('strong', { text: 'Anyone with this can take your funds' }),
-      ]),
-      h('ul', { class: 'warn-list' }, [
-        h('li', { text: wantsKeyOnly
-          ? 'This key controls this one address only — not your whole wallet.'
-          : 'This phrase controls EVERY account derived from it.' }),
-        h('li', { text: 'Never type it into a website, form, or support chat.' }),
-        h('li', { text: 'Never photograph it or store it in a password manager note.' }),
-        h('li', { text: 'Thru staff will never ask for it.' }),
-      ]),
-    ]);
+    const warning = secretWarning();
 
     const revealBtn = Button({
       label: 'Enter password to reveal',
@@ -129,6 +165,7 @@ export function ExportRoute({ params, navigate, back }) {
   // ---- Step 2: reveal --------------------------------------------------------
   function renderSecret() {
     clearBody();
+    if (isBackupFlow) backupStep = { title: 'Back up phrase', resume: renderSecret };
 
     // 'hd' carries a mnemonic; 'privateKey' and 'imported' carry a hex key.
     const isMnemonic = secret.kind === 'hd' && Boolean(secret.mnemonic);
@@ -138,6 +175,8 @@ export function ExportRoute({ params, navigate, back }) {
       banner.set('The wallet returned no secret for that account.');
       return;
     }
+
+    body.appendChild(secretWarning());
 
     body.appendChild(h('p', { class: 'hint', text: isMnemonic
       ? 'These words restore every account derived from this phrase. Order matters.'
@@ -221,6 +260,7 @@ export function ExportRoute({ params, navigate, back }) {
     // so it cannot be recovered by removing a class in devtools while answering.
     clearBody();
     header.setTitle('Confirm backup');
+    backupStep = { title: 'Confirm backup', resume: () => renderChallengeStep(phrase) };
 
     const confirmBtn = Button({
       label: 'Confirm backup',
@@ -263,6 +303,48 @@ export function ExportRoute({ params, navigate, back }) {
       + 'shown on this step.' }));
     body.appendChild(challenge.el);
     body.appendChild(h('div', { class: 'screen-actions' }, [confirmBtn.el, backBtn.el]));
+  }
+
+  // ---- Leave confirm (backup flow only) ------------------------------------
+  // Backing out mid-flow used to be one tap and landed the user inside a fully created
+  // wallet with no backup and no explanation. Leaving is now an explicit choice that states
+  // the consequence, and this path never calls keyring.setBackedUp — abandoning the
+  // confirmation must not record one.
+  function renderLeaveStep({ title, resume }) {
+    clearBody();
+    header.setTitle('Leave backup?');
+
+    body.appendChild(h('div', { class: 'notice danger' }, [
+      h('div', { class: 'row-flex' }, [
+        icon('warning', 16),
+        h('strong', { text: 'Your wallet has already been created' }),
+      ]),
+      h('p', { class: 'hint', text:
+        'The phrase has not been confirmed as written down. Without it nothing can recover '
+        + 'this wallet — not the password, not anyone else. Continue the backup unless your '
+        + 'words are already stored somewhere safe.' }),
+    ]));
+
+    const continueBtn = Button({
+      label: 'Continue backup',
+      variant: 'primary',
+      onClick: () => {
+        header.setTitle(title);
+        resume();
+      },
+    });
+    const leaveBtn = Button({
+      label: 'Leave',
+      variant: 'text',
+      onClick: () => {
+        // Deliberately not back(): a confirmed leave goes to the wallet's home, where the
+        // unbacked-up phrase reminder is waiting, instead of wherever history happened to
+        // point (or the /unlock fallback when there is no history at all).
+        navigate('/dashboard', { replace: true });
+      },
+    });
+    owned.push(continueBtn, leaveBtn);
+    body.appendChild(h('div', { class: 'screen-actions' }, [continueBtn.el, leaveBtn.el]));
   }
 
   renderGate();

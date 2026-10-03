@@ -16,12 +16,46 @@
 import * as txService from './tx-service.js';
 import * as thruClient from '../../lib/thru-client.js';
 import { getActiveNetworkConfig, getActiveNetworkId } from './network-service.js';
+import { getNetworkConfig } from '../../lib/networks.js';
 import { scopedKey } from '../../shared/network-scope.js';
+import { getPreferences } from './preferences-service.js';
 
 // Per-network, per-address — the same scoped-key isolation as thru_balance_cache and
 // thru_pending_txs. History is not secret; it persists across locks exactly like balances.
 // Registered in network-scope.js SCOPED_KEYS alongside those two.
 const CACHE_BASE_KEY = 'thru_history_cache';
+
+/**
+ * The CHAIN identity a cache row belongs to — not the network identity. A testnet reset can
+ * replace the chain under the SAME network id (and even the same chainId) — it already
+ * happened on the previous testnet — so a
+ * per-network cache happily kept serving rows from a chain that no longer exists. The
+ * managed program set is the chain's identity from this wallet's perspective: it is
+ * exactly what changes when genesis is replaced (see networks.js), it is available
+ * offline, and it cannot drift from the transactions this wallet builds against it.
+ *
+ * Exported so tests can seed caches with the right (or a deliberately wrong) identity.
+ */
+export function chainFingerprint(network) {
+  return [
+    network?.id ?? '',
+    network?.transferProgramId ?? '',
+    network?.tokenProgramId ?? '',
+    network?.faucetProgramId ?? '',
+    network?.faucetStateAccount ?? '',
+    network?.accountCreateProgramId ?? '',
+  ].join('|');
+}
+
+function fingerprintFor(networkId) {
+  try {
+    return chainFingerprint(getNetworkConfig(networkId));
+  } catch {
+    // Custom/unknown network ids are not in the built-in table; the id is the best
+    // identity available and custom networks are quarantined from selection anyway.
+    return String(networkId ?? '');
+  }
+}
 const CACHE_LIMIT = 200;
 const PAGE_ON_OPEN = 15;
 
@@ -38,11 +72,18 @@ function cachedBlockTime(entry, slot) {
 
 async function readScope(networkId) {
   // Capture the storage key ONCE. A network switch between two separate key reads could
-  // otherwise mix an Alphanet scope with a Localnet write.
+  // otherwise mix an Betanet scope with a write keyed to another network.
   const key = scopedKey(CACHE_BASE_KEY, networkId);
   const res = await chrome.storage.local.get(key);
   const scope = res?.[key];
-  return { key, scope: scope && typeof scope === 'object' && !Array.isArray(scope) ? scope : {} };
+  const stored = scope && typeof scope === 'object' && !Array.isArray(scope) ? scope : {};
+  // Chain-identity gate: rows written under a different genesis (or before this check
+  // existed) are dropped on READ, never merged into a live feed again. The read stays
+  // write-free; the discarded scope is overwritten the next time a fetch persists rows.
+  if (stored._chain !== fingerprintFor(networkId)) {
+    return { key, scope: { _chain: fingerprintFor(networkId) } };
+  }
+  return { key, scope: stored };
 }
 
 function cachedPage(scope, address) {
@@ -128,6 +169,28 @@ export async function getHistoryFeed(address) {
       if (timeMs !== null) blockTimes.set(slot, timeMs);
     })); // at most PAGE_ON_OPEN unique headers; duplicate slots share one request
 
+    // Chain-reality evidence from the live fetch: a cached row stamped above what this
+    // chain has produced cannot belong to it. A genesis swap can reuse the same managed
+    // program addresses (the previous testnet's resets did), so the offline _chain fingerprint alone cannot see a genesis
+    // swap — the previous incarnation's rows (far higher slots) must not resurface beside
+    // fresh ones. Resolved outside the write queue, like the block headers above.
+    let headSlot = null;
+    try {
+      const height = await thruClient.getBlockHeight();
+      const finalized = height?.finalized;
+      headSlot = finalized == null ? null : Number(finalized);
+      if (!Number.isFinite(headSlot)) headSlot = null;
+    } catch {
+      headSlot = null;
+    }
+    if (headSlot == null && fresh.length) {
+      // Fallback when the height query is unavailable: the newest page's own slots bound
+      // what this chain has produced. A cached row newer than the newest page cannot
+      // exist — it would BE in that page.
+      headSlot = fresh.reduce((m, e) => (Number(e?.slot) > m ? Number(e.slot) : m), 0) || null;
+    }
+    const onThisChain = (e) => headSlot == null || e?.slot == null || Number(e.slot) <= headSlot;
+
     // Local submittedAt/settledAt is a real event time, but not the chain's block time.
     // Keep it only as a fallback for our own sends when a block time is unavailable.
     const pendingKey = scopedKey('thru_pending_txs', network.id);
@@ -166,9 +229,12 @@ export async function getHistoryFeed(address) {
           if (e.timestamp) e.timestampSource = submittedTime ? 'submitted' : previous?.timestampSource || null;
         }
       }
+      const pendingCached = latest.entries.filter((e) => e?.status === 'submitted' && e?.signature && !seen.has(e.signature));
+      const olderCached = latest.entries.filter((e) => e?.status !== 'submitted' && e?.signature && !seen.has(e.signature) && onThisChain(e));
       const entries = [
+        ...pendingCached,
         ...fresh,
-        ...latest.entries.filter((e) => e?.signature && !seen.has(e.signature)),
+        ...olderCached,
       ].slice(0, CACHE_LIMIT);
       latestScope[address] = { entries, nextCursor, updatedAt: Date.now() };
       return { changed: true, value: entries };
@@ -178,6 +244,127 @@ export async function getHistoryFeed(address) {
     if (error?.code === 'NETWORK_CHANGED') throw error;
     // Offline / unreachable RPC: the cached page, honestly labelled as not synced.
     return { entries: cached.entries, nextCursor: cached.nextCursor ?? 0, synced: false };
+  }
+}
+
+/**
+ * Persist a freshly submitted transaction into the local history cache immediately.
+ * This matches the Rabby pattern: outgoing transactions appear in the local activity stream
+ * instantaneously without waiting for on-chain block mining / indexing.
+ *
+ * @param {{ signature: string, kind: string, from: string, to?: string, amountUnits?: string,
+ *   mint?: string, displayAmount?: string, tokenSymbol?: string, tokenDecimals?: number, networkId?: string }} tx
+ */
+export async function recordSubmittedTransaction(tx) {
+  if (!tx?.signature || !tx?.from) return;
+  const networkId = tx.networkId || await getActiveNetworkId();
+  const entry = {
+    signature: String(tx.signature),
+    slot: null,
+    timestamp: Date.now(),
+    timestampSource: 'submitted',
+    status: 'submitted',
+    kind: tx.kind === 'token' ? 'token-sent' : (tx.kind === 'faucet' ? 'faucet' : 'sent'),
+    from: tx.from,
+    to: tx.to || null,
+    counterparty: tx.to || null,
+    amount: tx.amountUnits != null ? String(tx.amountUnits) : null,
+    displayAmount: tx.displayAmount || null,
+    tokenSymbol: tx.tokenSymbol || null,
+    tokenDecimals: tx.tokenDecimals != null ? Number(tx.tokenDecimals) : null,
+    tokenMint: tx.mint || null,
+    success: true,
+  };
+
+  await updateScope(networkId, (scope) => {
+    // 1. Update sender's history cache
+    const page = cachedPage(scope, tx.from);
+    const existing = page.entries.filter((e) => e?.signature !== entry.signature);
+    scope[tx.from] = {
+      entries: [entry, ...existing].slice(0, CACHE_LIMIT),
+      nextCursor: page.nextCursor ?? 0,
+      updatedAt: Date.now(),
+    };
+
+    // 2. If the recipient is also an account in this wallet's cache, record the incoming side
+    if (tx.to && tx.to !== tx.from && Object.prototype.hasOwnProperty.call(scope, tx.to)) {
+      const recipientPage = cachedPage(scope, tx.to);
+      const recipientEntry = {
+        ...entry,
+        kind: tx.kind === 'token' ? 'token-received' : 'received',
+        counterparty: tx.from,
+      };
+      const existingRecipient = recipientPage.entries.filter((e) => e?.signature !== entry.signature);
+      scope[tx.to] = {
+        entries: [recipientEntry, ...existingRecipient].slice(0, CACHE_LIMIT),
+        nextCursor: recipientPage.nextCursor ?? 0,
+        updatedAt: Date.now(),
+      };
+    }
+
+    return { changed: true, value: true };
+  });
+}
+
+/**
+ * Update a settled transaction in the local history cache when confirmation or failure is detected.
+ *
+ * @param {string} signature
+ * @param {string} status 'confirmed' | 'failed' | 'unknown'
+ * @param {string|null} [error=null]
+ * @param {string|null} [networkId=null]
+ */
+export async function settleTransaction(signature, status, error = null, networkId = null) {
+  if (!signature) return;
+  const netId = networkId || await getActiveNetworkId();
+  await updateScope(netId, (scope) => {
+    let changed = false;
+    for (const [address, page] of Object.entries(scope)) {
+      if (address.startsWith('_') || !page?.entries || !Array.isArray(page.entries)) continue;
+      let accountChanged = false;
+      const nextEntries = page.entries.map((e) => {
+        if (e?.signature !== signature) return e;
+        accountChanged = true;
+        changed = true;
+        return {
+          ...e,
+          status,
+          success: status === 'confirmed',
+          error: error || (status === 'failed' ? (e.error || 'Transaction failed on-chain.') : null),
+          settledAt: Date.now(),
+        };
+      });
+      if (accountChanged) {
+        scope[address] = {
+          ...page,
+          entries: nextEntries,
+          updatedAt: Date.now(),
+        };
+      }
+    }
+    return { changed, value: changed };
+  });
+
+  // Desktop notification if enabled
+  try {
+    if (chrome?.notifications?.create && (status === 'confirmed' || status === 'failed')) {
+      const prefs = await getPreferences().catch(() => null);
+      if (prefs?.desktopNotifications !== false) {
+        const title = status === 'confirmed' ? 'Transaction Confirmed' : 'Transaction Failed';
+        const msg = status === 'confirmed'
+          ? `Transfer confirmed on Thru (${netId}).`
+          : `Transfer failed on Thru: ${error || 'Unknown error'}`;
+        chrome.notifications.create(`thru-tx-${signature}`, {
+          type: 'basic',
+          iconUrl: 'icons/icon128.png',
+          title,
+          message: msg,
+          priority: 1,
+        });
+      }
+    }
+  } catch {
+    // Non-blocking notification
   }
 }
 

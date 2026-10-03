@@ -550,7 +550,7 @@ const { CurrentConnection } = await import('../src/ui/domain/current-connection.
 
 let netClicked = false;
 const conn = CurrentConnection({
-  networkLabel: 'Alphanet',
+  networkLabel: 'Betanet',
   onNetworkClick: () => { netClicked = true; },
 });
 
@@ -598,7 +598,7 @@ ok('CurrentConnection destroy() removes the network-button listener',
 // First paint must be honest: before any health check runs, the pip carries no status
 // class at all (neutral grey in CSS), never a green "healthy" nobody measured.
 const { CurrentConnection: Conn2 } = await import('../src/ui/domain/current-connection.js');
-const conn2 = Conn2({ networkLabel: 'Alphanet' });
+const conn2 = Conn2({ networkLabel: 'Betanet' });
 const pip2 = conn2.el.querySelector('.current-connection-pip');
 ok('fresh footer pip is neutral until the first health check',
   !pip2.classList.contains('healthy') && !pip2.classList.contains('slow') && !pip2.classList.contains('offline'));

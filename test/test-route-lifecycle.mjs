@@ -90,6 +90,7 @@ const TOKEN_FIXTURE = {
   initialSupply: '1000000000',
 };
 const TOKEN_ACCOUNT_FIXTURE = 'ta1smktokenaccount0000000000000000000000';
+const CUSTOM_MINT_FIXTURE = 'ta1custommintfixture000000000000000000000000';
 
 /** Every string that must never appear in the DOM, by kind. */
 const SECRETS = [
@@ -883,10 +884,10 @@ function clearTimers() {
 // fixtures renders the way it does in the browser. Where a shape is wrong the route shows an empty
 // state instead of failing, which is why the assertions also check that expected content appeared.
 
-const NETWORK_ALPHANET = {
-  id: 'alphanet',
-  label: 'Alphanet',
-  rpcUrl: 'https://rpc.alphanet.thru.org',
+const NETWORK_BETANET = {
+  id: 'betanet',
+  label: 'Betanet',
+  rpcUrl: 'https://rpc.betanet.thru.org',
   explorerUrl: 'https://scan.thru.org',
   faucetProgramId: 'ta1faucetprogramidprogramidprogramidprogramid1',
   faucetStateAccount: 'ta1stateaccountstateaccountstateaccountstate1',
@@ -902,7 +903,7 @@ const NETWORK_ALPHANET = {
   selectable: true,
 };
 
-const NETWORK_TESTNET = { ...NETWORK_ALPHANET, id: 'testnet', label: 'Testnet',
+const NETWORK_TESTNET = { ...NETWORK_BETANET, id: 'testnet', label: 'Testnet',
   rpcUrl: 'https://rpc.testnet.thru.org', explorerUrl: 'https://scan.testnet.thru.org',
   faucetProgramId: null, environment: 'testnet', baseFeeUnits: null, feeReserveUnits: null };
 
@@ -914,8 +915,8 @@ const NETWORK_CUSTOM = {
   rpcUrl: 'https://my-node.example/rpc',
   explorerUrl: '',
   faucetProgramId: null,
-  transferProgramId: NETWORK_ALPHANET.transferProgramId,
-  tokenProgramId: NETWORK_ALPHANET.tokenProgramId,
+  transferProgramId: NETWORK_BETANET.transferProgramId,
+  tokenProgramId: NETWORK_BETANET.tokenProgramId,
   isTestnet: false,
   enabled: true,
   environment: 'custom',
@@ -931,7 +932,10 @@ const SEED_KEYRING = {
   id: 'kr_seed_1',
   type: 'seed',
   label: 'Recovery phrase',
-  origin: 'created',
+  // 'generated' is what vault.js records for a phrase created inside the wallet (see
+  // test-vault.mjs). The UI's backup reminders key on this exact value, so the fixture has
+  // to carry it or the unbacked-up states are untestable.
+  origin: 'generated',
   backedUpAt: null,
   accountCount: 2,
   hdIndices: [0, 1],
@@ -992,7 +996,7 @@ const HISTORY_ENTRIES = [
     signature: 'sig1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
     slot: 10231,
     success: true,
-    programAddress: NETWORK_ALPHANET.transferProgramId,
+    programAddress: NETWORK_BETANET.transferProgramId,
     kind: 'transfer',
     amount: '100000',
     counterparty: ADDRESS_B,
@@ -1002,7 +1006,7 @@ const HISTORY_ENTRIES = [
     signature: 'sig2bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
     slot: 10188,
     success: true,
-    programAddress: NETWORK_ALPHANET.faucetProgramId,
+    programAddress: NETWORK_BETANET.faucetProgramId,
     kind: 'faucet',
     amount: '10000',
     counterparty: null,
@@ -1012,7 +1016,7 @@ const HISTORY_ENTRIES = [
     signature: 'sig3cccccccccccccccccccccccccccccccccccccccc',
     slot: 10102,
     success: false,
-    programAddress: NETWORK_ALPHANET.transferProgramId,
+    programAddress: NETWORK_BETANET.transferProgramId,
     kind: 'transfer',
     amount: '500',
     counterparty: ADDRESS_B,
@@ -1033,7 +1037,7 @@ const DETAIL_ENTRIES = [
     signature: 'sigDETAIL_first_aaaaaaaaaaaaaaaaaaaaaaaaaaa',
     slot: 50100,
     success: true,
-    programAddress: NETWORK_ALPHANET.transferProgramId,
+    programAddress: NETWORK_BETANET.transferProgramId,
     kind: 'sent',
     amount: '750000',
     counterparty: ADDRESS_B,
@@ -1043,7 +1047,7 @@ const DETAIL_ENTRIES = [
     signature: 'sigDETAIL_second_bbbbbbbbbbbbbbbbbbbbbbbbbbb',
     slot: 50050,
     success: false,
-    programAddress: NETWORK_ALPHANET.transferProgramId,
+    programAddress: NETWORK_BETANET.transferProgramId,
     kind: 'received',
     amount: '1250000',
     counterparty: ADDRESS_B,
@@ -1055,7 +1059,7 @@ const DETAIL_ENTRIES = [
     signature: 'sigDETAIL_absent_ccccccccccccccccccccccccccc',
     slot: 50010,
     success: true,
-    programAddress: NETWORK_ALPHANET.transferProgramId,
+    programAddress: NETWORK_BETANET.transferProgramId,
     kind: 'sent',
     amount: '333000',
     counterparty: ADDRESS_B,
@@ -1068,7 +1072,7 @@ const backend = {
   hasVault: false,
   unlocked: false,
   activeIndex: 0,
-  activeNetworkId: 'alphanet',
+  activeNetworkId: 'betanet',
   autoLockMinutes: 15,
   preferences: { ...PREFERENCES },
   customNetworks: [NETWORK_CUSTOM],
@@ -1083,7 +1087,7 @@ const backend = {
 function activeNetwork() {
   if (backend.activeNetworkId === 'testnet') return NETWORK_TESTNET;
   if (backend.activeNetworkId.startsWith('custom:')) return NETWORK_CUSTOM;
-  return NETWORK_ALPHANET;
+  return NETWORK_BETANET;
 }
 
 function activeAccount() {
@@ -1091,7 +1095,7 @@ function activeAccount() {
 }
 
 function networkList() {
-  return [NETWORK_ALPHANET, NETWORK_TESTNET, ...backend.customNetworks];
+  return [NETWORK_BETANET, NETWORK_TESTNET, ...backend.customNetworks];
 }
 
 /** Fixture errors carry the same shape api-router puts on the wire. */
@@ -1214,7 +1218,18 @@ const FIXTURES = {
   'keyring.createSeed': () => ({ ...SEED_KEYRING, id: 'kr_seed_3' }),
   'keyring.addPrivateKey': () => ({ ...IMPORTED_KEYRING, id: 'kr_pk_2' }),
   'keyring.rename': ({ label } = {}) => ({ ...SEED_KEYRING, label: String(label || '') }),
-  'keyring.setBackedUp': () => ({ ...SEED_KEYRING, backedUpAt: Date.now() }),
+  'keyring.setBackedUp': ({ keyringId, backedUp } = {}) => {
+    // Records the outcome in backend state (like wallet.lock does), so tests can assert that
+    // a confirmed backup clears the unbacked-up reminders and an abandoned one does not.
+    const id = keyringId || SEED_KEYRING.id;
+    const at = backedUp === false ? null : Date.now();
+    const ring = backend.keyrings.find((k) => k.id === id);
+    if (ring) ring.backedUpAt = at;
+    for (const account of backend.accounts) {
+      if (account.keyring?.id === id) account.keyring.backedUpAt = at;
+    }
+    return { ...(ring || SEED_KEYRING), backedUpAt: at };
+  },
   'keyring.remove': () => ({ removed: true }),
 
   'network.list': () => networkList().map((n) => ({ ...n })),
@@ -1278,6 +1293,37 @@ const FIXTURES = {
     reason: null,
   }),
   'token.deriveTokenAccount': () => TOKEN_ACCOUNT_FIXTURE,
+  'token.readMint': ({ mintAddress } = {}) => {
+    if (mintAddress === CUSTOM_MINT_FIXTURE) {
+      return {
+        exists: true,
+        decimals: 6,
+        ticker: 'LAB',
+        creator: ADDRESS_B,
+        mintAuthority: ADDRESS_B,
+        freezeAuthority: null,
+        hasFreezeAuthority: false,
+        supply: '1000000000',
+      };
+    }
+    return { exists: false };
+  },
+  'token.import': ({ mintAddress, symbol, name, decimals } = {}) => {
+    if (!mintAddress) throw apiError('VALIDATION_ERROR', 'A mint address is required.');
+    const record = {
+      mintAddress,
+      symbol,
+      name,
+      decimals,
+      imageUrl: '',
+      hidden: false,
+      source: 'imported',
+    };
+    backend.tokens = backend.tokens
+      .filter((t) => t.mintAddress !== mintAddress)
+      .concat(record);
+    return { ...record, networkId: activeNetwork().id };
+  },
   'token.transferChecked': ({ fromAddress, networkId } = {}) => {
     if (fromAddress !== activeAccount().address || networkId !== activeNetwork().id) {
       throw apiError('SEND_CONTEXT_CHANGED', 'Review source or network changed.');
@@ -1436,7 +1482,7 @@ function makeChrome() {
     getManifest: () => ({
       manifest_version: 3,
       name: 'Thru Wallet',
-      version: '1.2.0',
+      version: '1.3.1',
     }),
     sendMessage(message, callback) {
       // UI<->UI broadcast: in Chrome every OTHER extension context receives it.
@@ -1610,12 +1656,14 @@ function resetBackend(scenario) {
   backend.hasVault = scenario.hasVault;
   backend.unlocked = scenario.unlocked;
   backend.activeIndex = 0;
-  backend.activeNetworkId = 'alphanet';
+  backend.activeNetworkId = 'betanet';
   backend.autoLockMinutes = 15;
   backend.preferences = { ...PREFERENCES };
   backend.customNetworks = [NETWORK_CUSTOM];
   backend.accounts = [makeAccount(0), makeAccount(1)];
-  backend.keyrings = [SEED_KEYRING, IMPORTED_KEYRING];
+  // Cloned: fixtures that record outcomes (e.g. keyring.setBackedUp) mutate these, and the
+  // module constants must not carry state between tests.
+  backend.keyrings = [{ ...SEED_KEYRING }, { ...IMPORTED_KEYRING }];
   backend.contacts = [{ address: ADDRESS_B, label: 'Spending wallet', createdAt: 1750000003000 }];
   backend.lockout = { locked: false, failedAttempts: 0, retryInMs: 0 };
   backend.pending = [];
@@ -1853,7 +1901,7 @@ async function runScenario(scenario) {
   ok(`${scenario.id}: boot() landed on ${scenario.landing}`, router?.currentPath === scenario.landing,
     `got ${router?.currentPath}`);
   ok(`${scenario.id}: the shell renders the network badge and health dot`,
-    /Alphanet/.test(textOf(app)) && app.querySelectorAll('.health-dot, .status-dot').length >= 0);
+    /Betanet/.test(textOf(app)) && app.querySelectorAll('.health-dot, .status-dot').length >= 0);
 
   // Listener baseline AFTER boot: boot's own hashchange/unload listeners are meant to stay.
   const baselineDoc = DOC.listeners.length;
@@ -1967,7 +2015,7 @@ async function settingsTest() {
     customRow?.getAttribute('aria-disabled') === 'true',
     `aria-disabled=${customRow?.getAttribute('aria-disabled')}`);
   ok('built-in network rows remain selectable buttons',
-    buttons(tree, /^Alphanet/i).length === 1, buttons(tree, /Alphanet/i).map(labelOf).join(', '));
+    buttons(tree, /^Betanet/i).length === 1, buttons(tree, /Betanet/i).map(labelOf).join(', '));
 
   const callsBeforeInertClick = chromeLog.calls.filter((method) => method === 'network.setActive').length;
   click(customRow);
@@ -1978,7 +2026,7 @@ async function settingsTest() {
   ok('clicking the inert custom row does not navigate away', router.currentPath === '/settings',
     router.currentPath);
   ok('clicking the inert custom row cannot change the active network',
-    backend.activeNetworkId === 'alphanet', backend.activeNetworkId);
+    backend.activeNetworkId === 'betanet', backend.activeNetworkId);
 
   // A stale page or devtools caller still goes through the real bridge. The fixture mirrors the
   // background's contract-v7 enforcement so this proves the refusal shape reaches callers intact.
@@ -1994,7 +2042,7 @@ async function settingsTest() {
   ok('the direct refusal is permanent, not retryable', directError?.retryable === false,
     `retryable=${directError?.retryable}`);
   ok('direct rejection leaves the built-in network active',
-    backend.activeNetworkId === 'alphanet', backend.activeNetworkId);
+    backend.activeNetworkId === 'betanet', backend.activeNetworkId);
 
   const removeButtons = buttons(tree, /remove my node/i);
   ok('Remove is the custom row\'s only button action',
@@ -2424,6 +2472,424 @@ async function exportSecretTest() {
   await settle();
 }
 
+// ---- Backup escape -------------------------------------------------------
+
+/**
+ * Regression for: "generate new wallet has bug if user back while verifying the words —
+ * wallet created". wallet.create persists the vault before backup (deliberate: the phrase is
+ * never held in UI state across navigation), so the backup flow is the safety net — and the
+ * header Back used to be a one-tap escape that landed the user inside a fully created wallet
+ * with nothing recorded and nothing explained. These checks pin the fixed state machine:
+ * leaving is asked about, abandoning never records a backup, completing records it exactly
+ * once, and the dashboard keeps the unbacked-up phrase visible.
+ */
+async function backupEscapeTest() {
+  section('backup: leaving the confirmation is deliberate and never records a backup');
+
+  resetBackend(SCENARIOS[2]);
+  resetDom();
+  guards.invalidate();
+  const router = await boot({ root: DOC.getElementById('app') });
+  await settle();
+
+  ok('the fixture models a phrase created in this wallet', backend.keyrings[0].origin === 'generated');
+
+  let setBackedUpCalls = 0;
+  const realSetBackedUp = FIXTURES['keyring.setBackedUp'];
+  FIXTURES['keyring.setBackedUp'] = (args) => {
+    setBackedUpCalls += 1;
+    return realSetBackedUp(args);
+  };
+
+  async function revealAndReachChallenge() {
+    router.navigate(`/export?ref=${encodeRef(activeAccount().ref)}&mode=backup`);
+    await settle();
+    ok('the export password gate carries its warning',
+      textOf(router.root).includes('Anyone with this can take your funds'));
+    click(buttons(router.root, /enter password to reveal/i)[0]);
+    await settle();
+    const overlay = DOC.body.lastChild;
+    type(allElements(overlay).find((el) => el.localName === 'input'), SECRET_PASSWORD);
+    click(buttons(overlay, /reveal secret/i)[0]);
+    await settle();
+    click(buttons(router.root, /written it down/i)[0]);
+    await settle();
+  }
+
+  try {
+    await revealAndReachChallenge();
+
+    const confirmBtn = buttons(router.root, /confirm backup/i)[0];
+    ok('the confirmation challenge is showing', Boolean(confirmBtn));
+    ok('confirm stays disabled until every position is answered', confirmBtn?.disabled === true);
+
+    // ---- The reported bug: Back while verifying ---------------------------------
+    click(buttons(router.root, /^back$/i)[0]);
+    await settle();
+    ok('backing out of the challenge asks first instead of leaving',
+      textOf(router.root).includes('Leave backup?'));
+    ok('the leave step states the wallet is already created',
+      textOf(router.root).includes('already been created'));
+    ok('nothing was marked backed up by backing out', setBackedUpCalls === 0);
+
+    click(buttons(router.root, /continue backup/i)[0]);
+    await settle();
+    ok('continue returns to the confirmation challenge',
+      textOf(router.root).includes('Word #') && !textOf(router.root).includes('Leave backup?'));
+    ok('the challenge is intact after returning', buttons(router.root, /confirm backup/i)[0]?.disabled === true);
+
+    click(buttons(router.root, /^back$/i)[0]);
+    await settle();
+    click(buttons(router.root, /^leave$/i)[0]);
+    await settle();
+    ok('a confirmed leave lands on the dashboard, not in limbo',
+      router.currentPath === '/dashboard', `got ${router.currentPath}`);
+    ok('the dashboard shows no backup nag',
+      !textOf(router.root).includes('Back up your recovery phrase'));
+    ok('leaving still never marked the phrase backed up', setBackedUpCalls === 0);
+
+    // ---- Completing the challenge records the backup exactly once ---------------
+    await revealAndReachChallenge();
+
+    const words = SECRET_MNEMONIC.trim().split(/\s+/);
+    for (const row of allElements(router.root).filter((el) => el.classList?.contains('challenge-row'))) {
+      const match = /Word #(\d+)/.exec(row.textContent || '');
+      ok('each challenge question names a word position', Boolean(match));
+      if (!match) continue;
+      const correct = words[Number(match[1]) - 1];
+      const option = allElements(row).find(
+        (el) => el.localName === 'button' && (el.textContent || '').trim() === correct,
+      );
+      ok(`question ${match[1]} has exactly the right word as an option`, Boolean(option));
+      if (option) click(option);
+      await settle();
+    }
+    const confirm2 = buttons(router.root, /confirm backup/i)[0];
+    ok('confirm enables once every position is right', confirm2?.disabled === false);
+    click(confirm2);
+    await settle();
+    ok('confirming records the backup exactly once', setBackedUpCalls === 1);
+    ok('confirmation lands on the accounts screen',
+      router.currentPath === '/accounts', `got ${router.currentPath}`);
+
+    router.navigate('/dashboard');
+    await settle();
+    ok('a confirmed backup leaves no backup nag behind',
+      !textOf(router.root).includes('Back up your recovery phrase'));
+  } finally {
+    FIXTURES['keyring.setBackedUp'] = realSetBackedUp;
+  }
+
+  router.stop();
+  await settle();
+
+  // ---- The dashboard backup nag is gone -------------------------------------
+  // Per review: the reminder card looked cheap and is removed. The backup ENTRY POINTS
+  // (account/keyring "Back up recovery phrase", and the create-flow challenge) stay.
+  resetBackend(SCENARIOS[2]); // fixture phrase is generated and NOT backed up
+  resetDom();
+  guards.invalidate();
+  const router2 = await boot({ root: DOC.getElementById('app') });
+  await settle();
+
+  ok('the dashboard shows no backup nag even with an unbacked-up phrase',
+    !textOf(router2.root).includes('Back up your recovery phrase'));
+  ok('the nag buttons are gone with it',
+    buttons(router2.root, /remind me later/i).length === 0
+    && buttons(router2.root, /back up now/i).length === 0);
+
+  router2.stop();
+  await settle();
+}
+
+// ---- Create & import flows -------------------------------------------------
+/**
+ * Onboarding must show the just-created phrase immediately and move to confirmation —
+ * the export password gate is for in-wallet re-auth, not creation. The mandated
+ * "Anyone with this can take your funds" warning stands with the words on every path,
+ * the handoff is one-shot (the in-wallet backup link keeps its gate), and multi-field
+ * forms are real <form>s whose Enter key submits (submit-type button + submit handler).
+ */
+async function createFlowBackupTest() {
+  section('Create and import flows');
+
+  // ---- Import form: the Enter-key path ------------------------------------
+  await resetBackend(SCENARIOS[0]);
+  resetDom();
+  guards.invalidate();
+  const router = await boot({ root: DOC.getElementById('app') });
+  await settle();
+  ok('a fresh profile lands on the welcome screen', router.currentPath === '/welcome', router.currentPath);
+  click(buttons(router.root, /already have a recovery phrase/i)[0]);
+  await settle();
+  const importForm = allElements(router.root).find((el) => el.localName === 'form');
+  ok('the import screen wraps its fields in a real form', Boolean(importForm), 'no form element');
+  const importBtn = buttons(router.root, /^import wallet$/i)[0];
+  ok('the import button is a submit button', importBtn?.getAttribute('type') === 'submit', importBtn?.getAttribute('type'));
+  importForm.dispatchEvent({ type: 'submit', cancelable: true });
+  await settle();
+  ok('submitting the form runs the import validation (the Enter key path)',
+    textOf(router.root).includes('Enter your recovery phrase.'), textOf(router.root).slice(0, 160));
+
+  // ---- Create flow: the fresh phrase skips the reveal gate -----------------
+  click(buttons(router.root, /back/i)[0]);
+  await settle();
+  click(buttons(router.root, /create a new wallet/i)[0]);
+  await settle();
+  const inputs = allElements(router.root).filter((el) => el.localName === 'input');
+  ok('the create form asks for a password twice', inputs.length === 2, String(inputs.length));
+  type(inputs[0], SECRET_PASSWORD);
+  type(inputs[1], SECRET_PASSWORD);
+  const createBtn = buttons(router.root, /^create wallet$/i)[0];
+  ok('the create button is a submit button', createBtn?.getAttribute('type') === 'submit', createBtn?.getAttribute('type'));
+  click(createBtn);
+  await settle();
+  ok('creating a wallet goes straight into backup', router.currentPath.startsWith('/export'), router.currentPath);
+  const shown = textOf(router.root);
+  ok('the fresh phrase is on screen immediately', shown.includes('thistle'), shown.slice(0, 160));
+  ok('no reveal-password gate interrupts creation', !shown.includes('Enter password to reveal'), shown.slice(0, 160));
+  ok('the mandated warning stands with the fresh phrase', shown.includes('Anyone with this can take your funds'));
+
+  // The handoff is one-shot: re-entering the backup link goes through the gate.
+  const exportEl = router.current?.el;
+  router.navigate('/accounts');
+  await settle();
+  router.navigate(`/export?ref=${encodeRef(activeAccount().ref)}&mode=backup`);
+  await settle();
+  ok('the in-wallet backup path still asks for the password',
+    textOf(router.root).includes('Enter password to reveal'), textOf(router.root).slice(0, 160));
+  TORN_DOWN.push(exportEl);
+  router.navigate('/dashboard');
+  await settle();
+  const detachedHits = findSecretsInTornDown(SECRETS);
+  ok('the phrase leaves no trace in detached nodes', detachedHits.length === 0, String(detachedHits.length));
+
+  router.stop();
+  await settle();
+}
+
+// ---- Add custom token: two views, paste a mint, verified on chain, then the list returns ----
+{
+  section('assets: Add custom token (two views, verified on chain)');
+
+  resetBackend(SCENARIOS[2]);
+  resetDom();
+  guards.invalidate();
+  const router = await boot({ root: DOC.getElementById('app') });
+  await settle();
+
+  click(router.root.querySelector('.dash-balance-hero'));
+  await settle();
+  const drawerCard = () => allElements(DOC.body).find((el) => el.classList?.contains?.('token-drawer'));
+  ok('the drawer opens from the balance box', Boolean(drawerCard()), 'no .token-drawer in document.body');
+
+  const views = () => allElements(drawerCard()).filter((el) => el.classList?.contains?.('token-view'));
+  const listViewHidden = () => views()[0]?.classList?.contains?.('hidden') === true;
+  const addViewHidden = () => views()[1]?.classList?.contains?.('hidden') === true;
+  ok('the drawer has exactly two views and opens on the list',
+    views().length === 2 && !listViewHidden() && addViewHidden());
+
+  click(buttons(drawerCard(), /add custom token/i)[0]);
+  await settle();
+  const opened = textOf(views()[1]);
+  ok('the add view opens', !addViewHidden() && opened.includes('Token mint address'), opened.slice(0, 160));
+  // REGRESSION: the wallet ledger used to stay on screen between the form and its button.
+  ok('the token list is hidden while a token is being added', listViewHidden());
+  ok('the token ledger lives only in the hidden list view',
+    allElements(views()[0]).some((el) => el.classList?.contains?.('token-ledger'))
+      && !allElements(views()[1]).some((el) => el.classList?.contains?.('token-ledger')));
+  ok('the add view states the address is checked first',
+    opened.includes('We look it up on the Thru network before anything is saved.'));
+
+  const drawerInputs = () => allElements(drawerCard()).filter((el) => el.localName === 'input');
+  // Not `.includes('mint address')` alone: the SEARCH field's placeholder ("Symbol, name, or mint
+  // address") contains that substring too and would swallow the mint input.
+  const mintInput = drawerInputs().find((el) => {
+    const ph = String(el.getAttribute?.('placeholder') || el.placeholder || '');
+    return ph.includes('mint address') && !ph.includes('Symbol');
+  });
+  ok('the mint field is found by its placeholder', Boolean(mintInput), 'mint input not found');
+
+  // An unknown address is refused BEFORE import — the whole point of the chain lookup.
+  type(mintInput, 'ta1notamint00000000000000000000000000000000');
+  click(buttons(drawerCard(), /find token/i)[0]);
+  await settle();
+  ok('an unknown address is refused before import',
+    textOf(views()[1]).includes('No token mint exists at that address'));
+  const previewEl = () => allElements(drawerCard()).find((el) => el.classList?.contains?.('add-token-preview'));
+  ok('no preview is shown for an unknown address', previewEl()?.classList?.contains?.('hidden') === true);
+
+  // The verified lookup shows symbol and DECIMALS from the chain, read-only.
+  type(mintInput, CUSTOM_MINT_FIXTURE);
+  click(buttons(drawerCard(), /find token/i)[0]);
+  await settle();
+  const previewText = textOf(previewEl());
+  ok('the preview is revealed after a verified lookup', previewEl()?.classList?.contains?.('hidden') === false);
+  ok('the preview shows the chain ticker', previewText.includes('LAB'), previewText);
+  ok('the preview shows chain decimals', /Decimals\s*6/.test(previewText), previewText);
+  ok('the preview reports the verified read', previewText.includes('Verified on chain'));
+  ok('there is no editable Decimals input (decimals come from the chain)',
+    !drawerInputs().some((el) => String(el.getAttribute?.('placeholder') || '').toLowerCase().includes('decimals'))
+      && !textOf(views()[1]).includes('Filled from the chain on lookup.'));
+  ok('the chain ticker means no Symbol field is asked for',
+    allElements(views()[1]).filter((el) => el.localName === 'label' && textOf(el).startsWith('Symbol'))
+      .every((el) => el.classList?.contains?.('hidden')));
+
+  // Save: while the import + reload are in flight the list must STAY hidden.
+  click(buttons(drawerCard(), /^add token$/i)[0]);
+  ok('the list stays hidden while the token is saving (no stale-list flash)', listViewHidden() && !addViewHidden());
+  await settle();
+  ok('after saving, the list view returns', !listViewHidden() && addViewHidden());
+  ok('the import confirms in a toast', textOf(DOC.body).includes('LAB added'));
+  ok('no inline banner carries the confirmation', !textOf(router.root).includes('added to your token list'));
+  ok('the imported token joins the drawer list', textOf(views()[0]).includes('LAB'), textOf(views()[0]).slice(0, 200));
+  ok('the new row is highlighted once',
+    allElements(views()[0]).some((el) => el.classList?.contains?.('just-added')));
+
+  // A mint already in the list is refused without a network call.
+  click(buttons(drawerCard(), /add custom token/i)[0]);
+  await settle();
+  const mintInput2 = drawerInputs().find((el) => {
+    const ph = String(el.getAttribute?.('placeholder') || el.placeholder || '');
+    return ph.includes('mint address') && !ph.includes('Symbol');
+  });
+  ok('reopening the add view starts from a clean form', mintInput2?.value === '', `value=${mintInput2?.value}`);
+  type(mintInput2, CUSTOM_MINT_FIXTURE);
+  click(buttons(drawerCard(), /find token/i)[0]);
+  await settle();
+  ok('a token already in the list is refused', textOf(views()[1]).includes('already in your list'));
+
+  // Back returns to the list without saving anything.
+  const back = allElements(drawerCard()).find((el) => el.getAttribute?.('aria-label') === 'Back to tokens');
+  click(back);
+  await settle();
+  ok('back returns to the list', !listViewHidden() && addViewHidden());
+
+  click(buttons(drawerCard(), /^close$/i)[0]);
+  await settle();
+  ok('the drawer closes and leaves no document keydown listener',
+    !allElements(DOC.body).some((el) => el.classList?.contains?.('token-drawer'))
+      && DOC.listeners.filter((l) => l.type === 'keydown').length === 0);
+
+  router.stop();
+  await settle();
+}
+
+// ---- Security tile: a real sheet, not a "coming soon" banner ------------------------
+{
+  section('security: the tile opens a real sheet built from live settings');
+
+  resetBackend(SCENARIOS[2]);
+  resetDom();
+  guards.invalidate();
+  const router = await boot({ root: DOC.getElementById('app') });
+  await settle();
+
+  const tile = buttons(router.root, /security/i)[0];
+  ok('the Security tile exists and is enabled', Boolean(tile) && tile.disabled !== true);
+  click(tile);
+  await settle();
+  const sheet = () => allElements(DOC.body).find((el) => el.classList?.contains?.('security-sheet'));
+  ok('clicking Security opens the sheet', Boolean(sheet()));
+  ok('no inline "coming soon" notice is inserted into the dashboard',
+    !/coming soon/i.test(textOf(router.root)));
+  const sheetText = textOf(sheet());
+  ok('the sheet reports auto-lock from live settings', /Auto-lock/i.test(sheetText), sheetText.slice(0, 200));
+  ok('the sheet reports the signing protection state', /sign/i.test(sheetText), sheetText.slice(0, 200));
+  ok('the sheet is honest about site connections',
+    sheetText.includes('does not expose a provider to websites yet'));
+  ok('the sheet lists rows as a list',
+    allElements(sheet()).filter((el) => el.getAttribute?.('role') === 'listitem').length >= 4);
+
+  click(buttons(sheet(), /^close$/i)[0]);
+  await settle();
+  ok('the sheet closes and leaves no document keydown listener',
+    !sheet() && DOC.listeners.filter((l) => l.type === 'keydown').length === 0);
+
+  router.stop();
+  await settle();
+}
+
+// ---- Token drawer: the box opens it, search filters, teardown is clean ----
+{
+  section('tokens: the balance box opens the token drawer (Rabby-style)');
+
+  resetBackend(SCENARIOS[2]);
+  resetDom();
+  guards.invalidate();
+  const router = await boot({ root: DOC.getElementById('app') });
+  await settle();
+
+  const heroBox = router.root.querySelector('.dash-balance-hero');
+  ok('the balance box is a keyboard-operable control',
+    heroBox?.getAttribute('role') === 'button' && heroBox?.getAttribute('tabindex') === '0'
+      && (heroBox?.getAttribute('aria-label') || '').length > 0,
+    `role=${heroBox?.getAttribute('role')} tabindex=${heroBox?.getAttribute('tabindex')}`);
+  ok('the dashboard body has no standalone Tokens button and no inline ledger',
+    !router.root.querySelector('.token-strip')
+      && allElements(router.root).every((el) => !el.classList?.contains?.('token-ledger')));
+  ok('the balance box carries its own Assets cue',
+    Boolean(heroBox?.querySelector?.('.dash-balance-cta')));
+
+  // Click anywhere in the box → the drawer lists the assets.
+  click(heroBox);
+  await settle();
+  const drawerCard = () => allElements(DOC.body).find((el) => el.classList?.contains?.('token-drawer'));
+  ok('clicking the box opens the token drawer', Boolean(drawerCard()));
+  ok('the drawer lists the native row', textOf(drawerCard()).includes('Thru Native Token'),
+    textOf(drawerCard()).slice(0, 160));
+  ok('the drawer lists the registered token', textOf(drawerCard()).includes('SMK'));
+
+  // Search narrows the list live.
+  const searchInput = allElements(drawerCard()).find((el) =>
+    el.localName === 'input' && String(el.getAttribute?.('placeholder') || '').includes('Symbol'));
+  ok('the drawer has a search field', Boolean(searchInput), 'search input not found');
+  type(searchInput, 'smk');
+  await settle();
+  ok('search narrows the list to the matching token',
+    textOf(drawerCard()).includes('SMK') && !textOf(drawerCard()).includes('Thru Native Token'),
+    textOf(drawerCard()).slice(0, 200));
+  type(searchInput, 'zzz');
+  await settle();
+  ok('an empty search result is stated, not left blank',
+    textOf(drawerCard()).includes('No tokens match'), textOf(drawerCard()).slice(0, 200));
+  type(searchInput, '');
+  await settle();
+
+  // Escape closes and releases the document keydown listener (the P2 rule).
+  pressKey(drawerCard(), 'Escape');
+  await settle();
+  ok('Escape closes the drawer',
+    !allElements(DOC.body).some((el) => el.classList?.contains?.('token-drawer')));
+  ok('the drawer released its document keydown listener',
+    DOC.listeners.filter((l) => l.type === 'keydown').length === 0,
+    String(DOC.listeners.filter((l) => l.type === 'keydown').length));
+
+  // The box is the ONLY entry (no standalone Tokens button); Close closes too.
+  ok('no standalone button offers to open the token list',
+    buttons(router.root, /open token list/i).length === 0);
+  click(heroBox);
+  await settle();
+  ok('clicking the box again opens the same drawer', Boolean(drawerCard()));
+  click(buttons(drawerCard(), /^close$/i)[0]);
+  await settle();
+  ok('the Close button closes the drawer',
+    !allElements(DOC.body).some((el) => el.classList?.contains?.('token-drawer')));
+
+  // Keyboard path: Enter on the focused box opens the drawer.
+  pressKey(heroBox, 'Enter');
+  await settle();
+  ok('Enter on the balance box opens the drawer', Boolean(drawerCard()));
+  pressKey(drawerCard(), 'Escape');
+  await settle();
+
+  router.stop();
+  await settle();
+  ok('dashboard teardown leaves no drawer and no detached listeners',
+    !allElements(DOC.body).some((el) => el.classList?.contains?.('token-drawer'))
+      && detachedListeners().length === 0, JSON.stringify(detachedListeners().slice(0, 3)));
+}
+
 // ---- Source-level guards ---------------------------------------------------
 
 /**
@@ -2746,13 +3212,20 @@ async function navigationTest() {
   ok('the dashboard copy button wears the shared dash-header-btn treatment',
     dashCopy?.classList?.contains('dash-header-btn'), dashCopy?.className);
 
-  // The "Activity" tab duplicated the History tile two rows up and the full /history
-  // screen; only "Tokens" remains on the ledger.
+  // The token list moved into the Rabby-style drawer (opened from the balance box); the
+  // dashboard body has no inline ledger and no tabs bar — only a quiet Tokens strip.
   const dashTabs = allElements(app).filter((el) => el.classList?.contains?.('dash-tab-btn'));
-  ok('the dashboard token ledger has exactly one tab', dashTabs.length === 1,
-    dashTabs.map((t) => t.textContent).join(', '));
-  ok('the single dashboard tab is Tokens (no Activity tab)',
-    /^tokens$/i.test(dashTabs[0]?.textContent || ''), dashTabs[0]?.textContent);
+  ok('the dashboard has no inline ledger tab bar (the list lives in the drawer)',
+    dashTabs.length === 0, dashTabs.map((t) => t.textContent).join(', '));
+  ok('the dashboard body carries no inline token ledger',
+    allElements(app).every((el) => !el.classList?.contains?.('token-ledger')));
+  const heroBox = app.querySelector?.('.dash-balance-hero');
+  ok('the balance box is the drawer opener (role=button, tabindex, label)',
+    heroBox?.getAttribute('role') === 'button' && heroBox?.getAttribute('tabindex') === '0'
+      && (heroBox?.getAttribute('aria-label') || '').length > 0,
+    `role=${heroBox?.getAttribute('role')} tabindex=${heroBox?.getAttribute('tabindex')}`);
+  ok('there is no standalone Tokens strip (the box is the only drawer entry)',
+    !app.querySelector?.('.token-strip'));
 
   // No fabricated numbers: the old first paint showed a placeholder "$12,847.20" balance
   // and a static "+2.14%" 24h delta that no load() path ever updated.
@@ -2911,10 +3384,10 @@ async function navigationTest() {
     /^Copy address:/.test(copyAffordances[0].getAttribute('aria-label') || ''));
   // (The shim's selector engine is deliberately tiny — walk anchors instead of a[href*=].)
   const explorerLink = [...router.root.querySelectorAll?.('a') || []]
-    .find((a) => String(a.href || a.getAttribute?.('href') || '').includes('/account/'));
+    .find((a) => String(a.href || a.getAttribute?.('href') || '').includes('/address/'));
   const explorerHref = String(explorerLink?.getAttribute?.('href') || '');
   ok('the explorer link embeds the address on the active network',
-    explorerHref.includes(activeAccount().address),
+    explorerHref.includes(activeAccount().address) && explorerHref.includes('network=betanet'),
     explorerHref || 'no explorer anchor found');
 
   // ---- Send: selecting a token asset (contract v8) -------------------------
@@ -3031,7 +3504,7 @@ async function navigationTest() {
     signature: 'sig_stuck_manual_smoke_aaaaaaaaaaaaaaaaaaaaa', kind: 'transfer',
     from: activeAccount().address, to: ADDRESS_B,
     amountUnits: '5000000000', mint: null, displayAmount: '5 THRU',
-    networkId: 'alphanet', status: 'submitted', submittedAt: Date.now(),
+    networkId: 'betanet', status: 'submitted', submittedAt: Date.now(),
     settledAt: null, error: null,
   };
 
@@ -3090,7 +3563,7 @@ async function navigationTest() {
     signature: `sigdup_${String(i).padStart(38, '0')}`,
     slot: 20000 - i,
     success: true,
-    programAddress: NETWORK_ALPHANET.transferProgramId,
+    programAddress: NETWORK_BETANET.transferProgramId,
     kind: 'transfer',
     amount: String(5000 + i),
     counterparty: ADDRESS_B,
@@ -3155,13 +3628,13 @@ async function navigationTest() {
   const startOfToday = new Date(NOW).setHours(0, 0, 0, 0);
   const CARD_ENTRIES = [
     { signature: 'tsCARD_A_sent_today_aaaaaaaaaaaaaaaaaaaaaaa', slot: 30000,
-      success: true, programAddress: NETWORK_ALPHANET.transferProgramId, kind: 'sent',
+      success: true, programAddress: NETWORK_BETANET.transferProgramId, kind: 'sent',
       amount: '100000', counterparty: ADDRESS_B, timestamp: NOW },
     { signature: 'tsCARD_B_received_yesterday_aaaaaaaaaaaaaaaaa', slot: 29900,
-      success: true, programAddress: NETWORK_ALPHANET.transferProgramId, kind: 'received',
+      success: true, programAddress: NETWORK_BETANET.transferProgramId, kind: 'received',
       amount: '250000', counterparty: ADDRESS_B, timestamp: startOfToday - 3600000 },
     { signature: 'tsCARD_C_failed_older_aaaaaaaaaaaaaaaaaaaaaaa', slot: 29800,
-      success: false, programAddress: NETWORK_ALPHANET.transferProgramId, kind: 'sent',
+      success: false, programAddress: NETWORK_BETANET.transferProgramId, kind: 'sent',
       amount: '1', counterparty: ADDRESS_B, timestamp: startOfToday - 2 * 86400000 - 3600000 },
   ];
   FIXTURES['tx.getHistoryFeed'] = () => ({
@@ -3205,10 +3678,10 @@ async function navigationTest() {
   FIXTURES['tx.getHistoryFeed'] = () => ({
     entries: [
       { signature: 'tsNOTIME1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', slot: 41000,
-        success: true, programAddress: NETWORK_ALPHANET.transferProgramId, kind: 'sent',
+        success: true, programAddress: NETWORK_BETANET.transferProgramId, kind: 'sent',
         amount: '90000', counterparty: SELF_B.address, timestamp: null },
       { signature: 'tsNOTIME2aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', slot: 40900,
-        success: true, programAddress: NETWORK_ALPHANET.transferProgramId, kind: 'received',
+        success: true, programAddress: NETWORK_BETANET.transferProgramId, kind: 'received',
         amount: '40000', counterparty: ADDRESS_B, timestamp: null },
     ],
     nextCursor: null,
@@ -3226,13 +3699,13 @@ async function navigationTest() {
   FIXTURES['tx.getHistoryFeed'] = () => ({
     entries: [
       { signature: 'tsMIX1_newer_today_aaaaaaaaaaaaaaaaaaaaaaa', slot: 30500,
-        success: true, programAddress: NETWORK_ALPHANET.transferProgramId, kind: 'sent',
+        success: true, programAddress: NETWORK_BETANET.transferProgramId, kind: 'sent',
         amount: '90000', counterparty: ADDRESS_B, timestamp: NOW },
       { signature: 'tsMIX2_wire_no_time_aaaaaaaaaaaaaaaaaaaaaaaa', slot: 30400,
-        success: true, programAddress: NETWORK_ALPHANET.transferProgramId, kind: 'received',
+        success: true, programAddress: NETWORK_BETANET.transferProgramId, kind: 'received',
         amount: '40000', counterparty: ADDRESS_B, timestamp: null },
       { signature: 'tsMIX3_older_today_aaaaaaaaaaaaaaaaaaaaaaa', slot: 30300,
-        success: true, programAddress: NETWORK_ALPHANET.transferProgramId, kind: 'sent',
+        success: true, programAddress: NETWORK_BETANET.transferProgramId, kind: 'sent',
         amount: '90000', counterparty: ADDRESS_B, timestamp: startOfToday },
     ],
     nextCursor: null,
@@ -3343,7 +3816,7 @@ async function navigationTest() {
     .find((a) => /explorer/i.test(labelOf(a)));
   ok('P2: the sheet links to the explorer using the short-sig explorer URL logic',
     Boolean(sheetExplorer)
-      && sheetExplorer.getAttribute('href') === `${NETWORK_ALPHANET.explorerUrl}/tx/${DETAIL_ENTRIES[1].signature}`,
+      && sheetExplorer.getAttribute('href') === `${NETWORK_BETANET.explorerUrl}/tx/${DETAIL_ENTRIES[1].signature}`,
     sheetExplorer?.getAttribute('href'));
   ok('P2: no secret and no full address string reaches the URL or session history',
     secretInUrls().length === 0
@@ -3418,7 +3891,7 @@ async function navigationTest() {
       signature: 'sigDETAIL_stranger_ddddddddddddddddddddddddd',
       slot: 50200,
       success: true,
-      programAddress: NETWORK_ALPHANET.transferProgramId,
+      programAddress: NETWORK_BETANET.transferProgramId,
       kind: 'sent',
       amount: '100000',
       counterparty: STRANGER,
@@ -3859,7 +4332,7 @@ async function progressiveSendTest() {
   ok('native signing uses the checked method, with the reviewed account and network',
     chromeLog.calls.includes('tx.sendChecked')
       && /0\.0001 THRU sent/.test(textOf(switched.el))
-      && /Submitted on Alphanet/.test(textOf(switched.el)),
+      && /Submitted on Betanet/.test(textOf(switched.el)),
     chromeLog.calls.slice(-12).join(','));
   switched.destroy();
   accountHolds.restore();
@@ -4057,7 +4530,7 @@ async function historyCacheFirstTest() {
   resetBackend(SCENARIOS[2]);
   resetDom();
   const alpha = { signature: 'ts_cached_alpha_aaaaaaaaaaaaaaaaaaaa', slot: '101',
-    success: true, kind: 'sent', programAddress: NETWORK_ALPHANET.transferProgramId,
+    success: true, kind: 'sent', programAddress: NETWORK_BETANET.transferProgramId,
     amount: '1000000', counterparty: ADDRESS_B, timestamp: null };
   const fresh = { ...alpha, signature: 'ts_fresh_alpha_bbbbbbbbbbbbbbbbbbbb', slot: '501', amount: '2000000' };
   const testnet = { ...alpha, signature: 'ts_cached_testnet_cccccccccccccccc', slot: '202', amount: '3000000' };
@@ -4066,7 +4539,7 @@ async function historyCacheFirstTest() {
   const held = [];
   FIXTURES['tx.getCachedHistory'] = ({ address } = {}) => ({
     address, networkId: activeNetwork().id,
-    entries: [activeNetwork().id === 'alphanet' ? alpha : testnet],
+    entries: [activeNetwork().id === 'betanet' ? alpha : testnet],
     nextCursor: 15, updatedAt: Date.now(),
   });
   chrome.runtime.sendMessage = (message, callback) => {
@@ -4094,8 +4567,8 @@ async function historyCacheFirstTest() {
         && held.some((item) => item.message.method === 'tx.getPending')
         && held.some((item) => item.message.method === 'account.list'),
       textOf(route.el).slice(0, 280));
-    ok('cached rows are labelled stale and cannot offer load-more until the feed revalidates',
-      /cached activity.*checking network/i.test(textOf(route.el))
+    ok('cached rows are shown while revalidating and cannot offer load-more until the feed revalidates',
+      Boolean(route.el.querySelector('.spinning'))
         && buttons(route.el, /load more/i).length === 0);
     reply('tx.getHistoryFeed', { entries: [fresh], nextCursor: 15, synced: true });
     await settle();
@@ -4118,11 +4591,11 @@ async function historyCacheFirstTest() {
       /Block 101/.test(textOf(route.el)) && /cached activity.*could not sync/i.test(textOf(route.el))
         && chromeLog.calls.filter((method) => method === 'tx.listHistory').length === rawCallsBefore);
 
-    // A further refresh is still awaiting the ALPHANET feed when another extension page
+    // A further refresh is still awaiting the BETANET feed when another extension page
     // switches networks. The old reply must not overwrite the NEW network's cached cards.
     emitEvent('pendingTxChanged', {});
     await settle();
-    ok('a second Alphanet feed is in flight before the switch',
+    ok('a second Betanet feed is in flight before the switch',
       held.some((item) => item.message.method === 'tx.getHistoryFeed'));
     backend.activeNetworkId = 'testnet';
     emitEvent('networkChanged', { id: 'testnet' });
@@ -4132,7 +4605,7 @@ async function historyCacheFirstTest() {
       textOf(route.el).slice(0, 270));
     reply('tx.getHistoryFeed', { entries: [fresh], nextCursor: null, synced: true });
     await settle();
-    ok('a late Alphanet feed is discarded instead of overwriting Testnet cache',
+    ok('a late Betanet feed is discarded instead of overwriting Testnet cache',
       /Block 202/.test(textOf(route.el)) && !/Block 501/.test(textOf(route.el)));
 
     // Detach while the Testnet feed is pending, then release it; it must not mutate a
@@ -4209,6 +4682,145 @@ async function offlineBalanceConsumersTest() {
   }
 }
 
+// ---- Last key source: a spelled-out wipe, never a dead end ------------------
+
+/**
+ * Regression for: "keyring settings only one key source shown cannot be removed and hint
+ * says to use Settings > Reset wallet — but no such Settings entry exists". The only-source
+ * removal is a FULL wallet reset, so its dialog now says exactly that (only key source,
+ * wipes the entire wallet, UNRECOVERABLE) and fulfils through wallet.reset — the same
+ * contract call /reset makes — then lands on /welcome. With more than one source the
+ * ordinary keyring.remove path is untouched and keeps its own copy.
+ */
+async function lastSourceRemovalTest() {
+  section('key sources: removing the only source is a stated wallet wipe with a working path');
+
+  let resetCalls = 0;
+  let resetArgs = null;
+  let removeCalls = 0;
+  let removeArgs = null;
+  const realReset = FIXTURES['wallet.reset'];
+  const realRemove = FIXTURES['keyring.remove'];
+  FIXTURES['wallet.reset'] = (args) => {
+    resetCalls += 1;
+    resetArgs = args;
+    return realReset(args);
+  };
+  FIXTURES['keyring.remove'] = (args) => {
+    removeCalls += 1;
+    removeArgs = args;
+    return realRemove(args);
+  };
+
+  try {
+    // ---- A. keyring route, ONE source -------------------------------------
+    resetBackend(SCENARIOS[2]);
+    backend.keyrings = [{ ...SEED_KEYRING }]; // the ONLY key source
+    resetDom();
+    guards.invalidate();
+    let router = await boot({ root: DOC.getElementById('app') });
+    await settle();
+    router.navigate(`/keyring?id=${SEED_KEYRING.id}`);
+    await settle();
+
+    const tree = router.root;
+    ok('the remove button is present even when it is the only source',
+      buttons(tree, /remove this recovery phrase/i).length === 1);
+    ok('no dead-end hint points at a Settings reset that does not exist',
+      !/reset the wallet from settings/i.test(textOf(tree)) && !/cannot be removed/i.test(textOf(tree)),
+      textOf(tree).slice(0, 160));
+
+    click(buttons(tree, /remove this recovery phrase/i)[0]);
+    await settle();
+    let overlay = DOC.body.lastChild;
+    ok('the dialog opened', isConnected(overlay) && overlay.classList.contains('modal-overlay'));
+    ok('the dialog states this is the ONLY key source', /only key source/i.test(textOf(overlay)));
+    ok('the dialog states it wipes the entire wallet', /wipes the entire wallet/i.test(textOf(overlay)));
+    ok('the dialog states the wipe is UNRECOVERABLE', /unrecoverable/i.test(textOf(overlay)));
+    ok('the confirm action is named as a wipe', buttons(overlay, /wipe this wallet/i).length === 1);
+    ok('the ordinary removal label is not offered for a wipe',
+      buttons(overlay, /remove permanently/i).length === 0);
+    ok('nothing has happened yet', resetCalls === 0 && removeCalls === 0);
+
+    type(allElements(overlay).find((el) => el.localName === 'input'), SECRET_PASSWORD);
+    click(buttons(overlay, /wipe this wallet/i)[0]);
+    await settle();
+
+    ok('the only-source removal fulfils through wallet.reset', resetCalls === 1);
+    ok('keyring.remove is never called for the only source', removeCalls === 0);
+    ok('the wipe carries the confirmation flag and the password',
+      resetArgs?.confirmation === 'RESET' && resetArgs?.password === SECRET_PASSWORD);
+    ok('the wipe lands on the welcome screen', router.currentPath === '/welcome',
+      `got ${router.currentPath}`);
+    ok('the fixture vault is gone after the wipe', backend.hasVault === false);
+    ok('no Settings-reset hint survives anywhere on screen',
+      !/reset (the )?wallet from settings/i.test(textOf(DOC.body)));
+    ok('the typed password survives the wipe nowhere',
+      findSecrets([['password', SECRET_PASSWORD]]).length === 0);
+    router.stop();
+    await settle();
+
+    // ---- B. keyring route, MULTIPLE sources: the ordinary path is unchanged --
+    resetBackend(SCENARIOS[2]); // seed + imported key
+    resetDom();
+    guards.invalidate();
+    router = await boot({ root: DOC.getElementById('app') });
+    await settle();
+    router.navigate(`/keyring?id=${SEED_KEYRING.id}`);
+    await settle();
+
+    click(buttons(router.root, /remove this recovery phrase/i)[0]);
+    await settle();
+    overlay = DOC.body.lastChild;
+    ok('with several sources the dialog is an ordinary removal',
+      buttons(overlay, /remove permanently/i).length === 1
+      && !/only key source/i.test(textOf(overlay)));
+    type(allElements(overlay).find((el) => el.localName === 'input'), SECRET_PASSWORD);
+    click(buttons(overlay, /remove permanently/i)[0]);
+    await settle();
+
+    ok('with several sources the removal fulfils through keyring.remove',
+      removeCalls === 1 && removeArgs?.keyringId === SEED_KEYRING.id);
+    ok('a multi-source removal never calls wallet.reset', resetCalls === 1);
+    ok('the ordinary removal lands on Manage Accounts', router.currentPath === '/accounts',
+      `got ${router.currentPath}`);
+    router.stop();
+    await settle();
+
+    // ---- C. account-detail, ONE source ------------------------------------
+    resetBackend(SCENARIOS[2]);
+    backend.keyrings = [{ ...SEED_KEYRING }];
+    resetDom();
+    guards.invalidate();
+    router = await boot({ root: DOC.getElementById('app') });
+    await settle();
+    router.navigate(`/account?ref=${encodeRef(activeAccount().ref)}`);
+    await settle();
+
+    ok('account-detail offers the remove action for the only source',
+      buttons(router.root, /remove recovery phrase/i).length === 1);
+    click(buttons(router.root, /remove recovery phrase/i)[0]);
+    await settle();
+    overlay = DOC.body.lastChild;
+    ok('the account-detail dialog states the wipe just as plainly',
+      /only key source/i.test(textOf(overlay)) && /wipes the entire wallet/i.test(textOf(overlay))
+      && buttons(overlay, /wipe this wallet/i).length === 1);
+    type(allElements(overlay).find((el) => el.localName === 'input'), SECRET_PASSWORD);
+    click(buttons(overlay, /wipe this wallet/i)[0]);
+    await settle();
+
+    ok('account-detail also fulfils the only-source wipe through wallet.reset',
+      resetCalls === 2 && removeCalls === 1);
+    ok('the wipe from account-detail lands on the welcome screen',
+      router.currentPath === '/welcome', `got ${router.currentPath}`);
+    router.stop();
+    await settle();
+  } finally {
+    FIXTURES['wallet.reset'] = realReset;
+    FIXTURES['keyring.remove'] = realRemove;
+  }
+}
+
 // ---- Run -------------------------------------------------------------------
 
 const startedAt = Date.now();
@@ -4222,6 +4834,9 @@ try {
   focusTrapTest();
   await passwordModalTest();
   await exportSecretTest();
+  await backupEscapeTest();
+  await createFlowBackupTest();
+  await lastSourceRemovalTest();
   await navigationTest();
   await progressiveSendTest();
   await ownRecipientRegistrationTest();
@@ -4243,7 +4858,7 @@ console.log(`  routes: ${ROUTE_PATHS.length}  scenarios: ${SCENARIOS.length}  `
 for (const method of chromeLog.calls) exercisedMethods.add(method);
 console.log(`  backend methods exercised: ${exercisedMethods.size} of ${Object.keys(FIXTURES).length} fixtures`);
 console.log(`  route mounts: ${SCENARIOS.length} scenarios x ${mountUrls().length} URLs, plus `
-  + 'settings, focus-trap, password-modal, export and negative-control passes');
+  + 'settings, focus-trap, password-modal, export, backup-escape and negative-control passes');
 
 if (failures > 0) {
   realConsole.error(`\n${failures} check(s) failed:`);

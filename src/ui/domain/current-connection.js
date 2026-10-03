@@ -10,13 +10,13 @@ import { icon } from '../kit/icon.js';
  *
  * @param {Object} props
  *   site            connected dApp site info ({ origin } or null)
- *   networkLabel    display name for the network (default 'Alphanet')
+ *   networkLabel    display name for the network (default 'Betanet')
  *   onNetworkClick  handler when clicking the network badge (e.g. navigate to /settings)
  *   onClick         optional fallback handler
  */
 export function CurrentConnection({
   site = null,
-  networkLabel = 'Alphanet',
+  networkLabel = 'Betanet',
   onNetworkClick,
   onClick,
 } = {}) {
@@ -63,7 +63,7 @@ export function CurrentConnection({
      * Update any subset of the footer's state.
      *
      * Two call forms, one component:
-     *   conn.update({ network: 'Alphanet', healthStatus: 'healthy' })   — preferred
+     *   conn.update({ network: 'Betanet', healthStatus: 'healthy' })   — preferred
      *   conn.update(site, network, latencyMs, healthStatus)             — legacy positional
      *
      * The positional form forced callers to pad with `undefined` for every earlier slot

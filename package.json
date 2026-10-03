@@ -1,19 +1,20 @@
 {
   "name": "thru-wallet-ext",
-  "version": "1.2.0",
+  "version": "1.4.1",
   "description": "High-performance self-custody wallet and key manager for Thru",
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
-    "test": "node test/test-derivation.mjs && node test/test-qr.mjs && node scripts/check-layering.mjs && node scripts/check-csp.mjs && node scripts/check-routes.mjs && node scripts/check-css-nesting.mjs && node test/test-launchpad-quarantine.mjs && node test/test-contract.mjs && node test/test-ui-dom.mjs && node test/test-route-lifecycle.mjs && node test/test-vault.mjs && node test/test-thru-client.mjs && node test/test-token-balances.mjs && node test/test-balance-network.mjs && node test/test-history-cache.mjs && node test/test-history-block-time.mjs && node test/test-registration.mjs && node test/test-api-router.mjs",
-    "test:guards": "node test/test-derivation.mjs && node test/test-qr.mjs && node scripts/check-layering.mjs && node scripts/check-csp.mjs && node scripts/check-routes.mjs && node scripts/check-css-nesting.mjs && node test/test-launchpad-quarantine.mjs && node test/test-contract.mjs && node test/test-ui-dom.mjs && node test/test-route-lifecycle.mjs"
+    "test": "node test/test-derivation.mjs && node test/test-qr.mjs && node scripts/check-layering.mjs && node scripts/check-csp.mjs && node scripts/check-routes.mjs && node scripts/check-css-nesting.mjs && node test/test-launchpad-quarantine.mjs && node test/test-contract.mjs && node test/test-security-checks.mjs && node test/test-ui-dom.mjs && node test/test-route-lifecycle.mjs && node test/test-vault.mjs && node test/test-thru-client.mjs && node test/test-token-balances.mjs && node test/test-balance-network.mjs && node test/test-history-cache.mjs && node test/test-history-block-time.mjs && node test/test-registration.mjs && node test/test-api-router.mjs && node test/test-autolock.mjs",
+    "test:guards": "node test/test-derivation.mjs && node test/test-qr.mjs && node scripts/check-layering.mjs && node scripts/check-csp.mjs && node scripts/check-routes.mjs && node scripts/check-css-nesting.mjs && node test/test-launchpad-quarantine.mjs && node test/test-contract.mjs && node test/test-security-checks.mjs && node test/test-ui-dom.mjs && node test/test-route-lifecycle.mjs && node test/test-autolock.mjs",
+    "push": "node scripts/git-push.mjs"
   },
   "keywords": [
     "thru",
     "blockchain",
     "wallet",
     "browser-extension",
-    "alphanet",
+    "betanet",
     "crypto"
   ],
   "author": "",
@@ -25,10 +26,10 @@
   "bugs": {
     "url": "https://github.com/buildbyravi/thru-wallet-ext/issues"
   },
-  "homepage": "https://github.com/buildbyravi/thru-wallet-ext#readme",
+  "homepage": "https://thruwallet.vercel.app",
   "dependencies": {
-    "@thru/programs": "0.3.16",
-    "@thru/sdk": "0.3.16"
+    "@thru/programs": "0.4.1",
+    "@thru/sdk": "0.4.1"
   },
   "devDependencies": {
     "esbuild": "0.28.1"

@@ -32,6 +32,7 @@ Read `AGENTS.md` first for repository rules, then `docs/STATUS_AND_ROADMAP.md` f
 | Change permissions/CSP | `src/manifest.json`, `scripts/check-csp.mjs` |
 | Check a live chain | `scripts/verify-*.mjs` (manual, never part of `npm test`) |
 | Check actual Chrome rendering | `docs/MANUAL_SMOKE_CHECKLIST.md` |
+| Update the Chrome Web Store listing | `extension.md` (listing copy + justifications; edit there, then mirror to the dashboard) |
 
 ## 2. Architecture and boundaries
 
@@ -86,7 +87,7 @@ RPC binding, native/token transactions, history decoding/detail, and official Th
 
 ### `src/lib/networks.js` — 195 lines
 
-Network/program configuration. Alphanet and Localnet are enabled; Testnet and Mainnet are declared but disabled. Custom RPC records cannot be activated under the v7 quarantine. Fee values are network-specific; do not transfer a native fee observation to token sends.
+Network/program configuration. Betanet is enabled; Localnet, Testnet and Mainnet are declared but disabled (tests re-enable Localnet in-process). Custom RPC records cannot be activated under the v7 quarantine. Fee values are network-specific; do not transfer a native fee observation to token sends.
 
 ## 5. `src/background/` — worker and services
 
@@ -189,7 +190,7 @@ Open work not settled by automated tests/builds: real popup/side-panel layout, f
 3. **The build warns on CSS syntax errors.** Read the full output for warnings.
 4. **Do not ship a control before its destination route exists.** `scripts/check-routes.mjs` enforces route reachability.
 5. **A test can assert a bug.** Verify expectations against the source/protocol rather than preserving an old fixture by habit.
-6. **Faucet and Send units differ.** Historical Alphanet evidence says faucet input is raw base units; Send is human-scale THRU. Do not generalize that observation to token fees.
+6. **Faucet and Send units differ.** Historical Alphanet evidence (the pre-betanet testnet) says faucet input is raw base units; Send is human-scale THRU. Do not generalize that observation to token fees.
 7. **Account existence is network-specific.** Creation attempts registration for new owned accounts; Send may JIT-activate an absent owned recipient. An external recipient must activate itself, and an offline lookup is not proof of absence.
 8. **Never hand-roll a program instruction** where the pinned official Thru bindings provide it.
 9. **`chrome.storage.session` holds unlocked session material.** Browser persistence/eviction behavior is a manual verification boundary.

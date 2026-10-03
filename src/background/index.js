@@ -3,7 +3,8 @@
 
 import { lock } from '../lib/vault.js';
 import { handleApiRequest } from './api-router.js';
-import { ensureAutoLockAlarm, shouldAutoLock, touchActivity } from './services/system-service.js';
+import { ensureAutoLockAlarm, shouldAutoLock } from './services/system-service.js';
+import { syncActionIcon } from './services/icon-service.js';
 import { emitLockStateChanged } from './services/event-service.js';
 import { CLOSE_SIDE_PANEL_ACTION } from '../shared/side-panel.js';
 
@@ -107,6 +108,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   return true;
 });
 
-// A fresh worker with a live session should not be treated as idle since epoch.
-touchActivity();
+// A fresh worker with a live session must NOT be treated as active right now. The idle
+// stamp lives in chrome.storage.session and survives worker restarts; stamping it here
+// used to reset the idle clock moments before every check — chrome.alarms wakes (and so
+// restarts) this worker on each tick, so auto-lock could never fire ("set 1 min, 30
+// minutes later still unlocked"). The no-stamp fallback in shouldAutoLock() is what
+// protects sessions that predate activity tracking.
+syncActionIcon();
 ensureAutoLockAlarm();

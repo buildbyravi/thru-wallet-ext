@@ -4,7 +4,7 @@ Rules for any agent working in `thru-wallet-ext`. Read this first, then `CONTEXT
 
 ## What this is
 
-Chrome MV3 self-custody wallet for the **Thru L1** blockchain (devnet/alphanet). Vanilla ES modules
+Chrome MV3 self-custody wallet for the **Thru L1** blockchain (devnet/betanet). Vanilla ES modules
 bundled with esbuild. No framework. Real `@thru/sdk` (including its `@thru/sdk/crypto` subpath) + `@thru/programs`.
 
 ## Documents
@@ -35,6 +35,7 @@ Conflict resolution: `STATUS_AND_ROADMAP.md` wins on **current engineering state
 npm install
 npm run build      # node build.mjs -> dist/
 npm test           # guards (derivation, layering, CSP, routes, launchpad quarantine, contract, dom, route lifecycle) then vault, thru-client, api-router
+node scripts/git-push.mjs  # pushes to origin using GITHUB_TOKEN in .env (avoids GCM hanging in subshells)
 ```
 
 All test suites live in `test/` (`test/test-*.mjs`); the `npm test` chain runs them by path.
@@ -43,6 +44,8 @@ Load `dist/` unpacked via `chrome://extensions` -- Developer mode -- Load unpack
 
 Run `npm run build && npm test` **before and after** every change. Never report success while either
 is red. Never weaken or skip a test to make it pass.
+
+**Git Push Invariant:** Always push using `node scripts/git-push.mjs`. The GitHub personal access token is stored in `.env` (`GITHUB_TOKEN`). Standard `git push` hangs in non-interactive agent subshells waiting for Windows GUI Git Credential Manager.
 
 ## Hard rules
 
@@ -82,8 +85,9 @@ is red. Never weaken or skip a test to make it pass.
     **Self-signing invariant:** resolve the *target's* keypair from the unlocked vault. Both
     its public key and the public key derived from its private key must match the target address;
     that same pair must be the fee payer in `createOnChainAccount`. Account 1 must never sign
-    Account 4's registration. The ONLY activation transaction is Thru's native account-creation
-    program (`taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMD`, fee `0n`, nonce `0n`);
+    Account 4's registration. The ONLY activation transaction is the native account-creation
+    program (the network's configured `accountCreateProgramId` — the NOOP program on 0.4.0+
+    chains — with fee `0n`, nonce `0n`, stateUnits `1`);
     never claim the faucet or send a dummy/zero-value transfer to activate an account.
 11. **Every component returns `{ el, update, destroy }`** and `destroy()` removes the *same*
     handler references it added. Use `disposer()`; a fresh arrow passed to
@@ -140,7 +144,7 @@ bare version, the failure is in the **request** direction.
   the SDK requires 64 hex, which would have blocked the correct fix. Check what a test is
   protecting before trusting it.
 - **Amount units differ by screen on purpose.** Faucet takes BASE UNITS; Send takes whole THRU.
-  Verified on alphanet: claiming 10000 credits exactly 10000 base units.
+  Verified on alphanet (2026-09-26, same managed programs betanet runs): claiming 10000 credits credited exactly 10000 base units.
 - **A transfer recipient must already exist on-chain.** Accounts this wallet creates are
   registered automatically; an external never-used address cannot receive.
 - **Never hand-roll a program instruction or address derivation.** `@thru/programs` ships them.

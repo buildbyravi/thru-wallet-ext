@@ -17,22 +17,10 @@
 // token account renders as "no balance". A row that says why it cannot act is honest; a
 // selectable row that cannot complete a send is not.
 
-import { h, disposer, isSafeUrl } from '../kit/dom.js';
+import { h, disposer } from '../kit/dom.js';
 import { icon } from '../kit/icon.js';
 import { formatThru, formatTokenAmount } from '../../shared/format.js';
-
-function tokenAvatar(token) {
-  const symbol = token.symbol || 'TOKEN';
-  const logo = token.imageUrl && isSafeUrl(token.imageUrl) && /^(https?:|data:image\/)/i.test(token.imageUrl)
-    ? token.imageUrl
-    : null;
-  return logo
-    ? h('div', { class: 'token-row-logo-stack' }, [
-      h('div', { class: 'token-row-avatar' }, h('span', { text: symbol.slice(0, 3).toUpperCase() })),
-      h('img', { class: 'token-row-logo', src: logo, alt: '' }),
-    ])
-    : h('div', { class: 'token-row-avatar' }, h('span', { text: symbol.slice(0, 3).toUpperCase() }));
-}
+import { TokenAvatar } from './token-avatar.js';
 
 /**
  * @param {Object} props
@@ -65,7 +53,7 @@ export function AssetSelector({
     class: ['row', 'clickable', selectedMint === null ? 'active' : null].filter(Boolean),
     'aria-current': selectedMint === null ? 'true' : null,
   }, [
-    h('div', { class: 'token-row-avatar' }, icon('bolt', 15)),
+    TokenAvatar({ isNative: true }),
     h('span', { class: 'row-body' }, [
       h('span', { class: 'row-flex', style: { gap: '6px' } }, [
         h('span', { class: 'row-title', text: 'THRU' }),
@@ -95,7 +83,7 @@ export function AssetSelector({
         class: ['row', 'clickable', selectedMint === token.mintAddress ? 'active' : null].filter(Boolean),
         'aria-current': selectedMint === token.mintAddress ? 'true' : null,
       }, [
-        tokenAvatar(token),
+        TokenAvatar({ symbol, imageUrl: token.imageUrl, isNative: false }),
         h('span', { class: 'row-body' }, [
           h('span', { class: 'row-title', text: symbol }),
           h('span', { class: 'row-sub', text: token.name || 'Token' }),
@@ -109,7 +97,7 @@ export function AssetSelector({
       : token.tokenAccountExists === false || balance === 0n ? 'no balance'
         : balancesPending ? 'checking balance' : 'balance unknown';
       unavailable.push(h('div', { class: 'row', 'aria-disabled': 'true', style: { opacity: '0.55' } }, [
-        tokenAvatar(token),
+        TokenAvatar({ symbol, imageUrl: token.imageUrl, isNative: false }),
         h('span', { class: 'row-body' }, [
           h('span', { class: 'row-title', text: symbol }),
           h('span', { class: 'row-sub', text: token.name || 'Token' }),

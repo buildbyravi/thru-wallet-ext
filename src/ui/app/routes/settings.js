@@ -399,6 +399,41 @@ export function SettingsRoute({ navigate, back }) {
       sidePanelRow,
     ]));
 
+    // ---- Desktop Notifications ----
+    const notifKnob = h('span', { class: 'toggle-knob' });
+    const notifSwitch = h('button', {
+      type: 'button',
+      class: ['toggle-switch', preferences?.desktopNotifications !== false ? 'active' : null].filter(Boolean),
+      role: 'switch',
+      'aria-checked': String(preferences?.desktopNotifications !== false),
+      'aria-label': 'Desktop Notifications',
+    }, notifKnob);
+
+    d.on(notifSwitch, 'click', async () => {
+      const current = preferences?.desktopNotifications !== false;
+      const next = !current;
+      banner.clear();
+      try {
+        await bridge.send('settings.set', { patch: { desktopNotifications: next } });
+        if (!preferences) preferences = {};
+        preferences.desktopNotifications = next;
+        notifSwitch.classList.toggle('active', next);
+        notifSwitch.setAttribute('aria-checked', String(next));
+      } catch (err) {
+        banner.set(err?.message || 'Could not update notification preferences.');
+      }
+    });
+
+    const notifLabelGroup = h('div', { class: 'toggle-label-group' }, [
+      icon('bell', 18),
+      h('span', { text: 'Desktop Notifications' }),
+    ]);
+    const notifRow = h('div', { class: 'toggle-row' }, [notifLabelGroup, notifSwitch]);
+
+    body.appendChild(h('section', { class: 'stack stack-2' }, [
+      notifRow,
+    ]));
+
     // ---- Appearance ----
     const appearanceHeader = SectionHeader('Appearance');
     const appearanceHelp = HelpTooltip({
@@ -413,14 +448,35 @@ export function SettingsRoute({ navigate, back }) {
       h('div', { class: 'row-flex wrap' }, themeChips()),
     ]));
 
+    // ---- Session ----
+    const lockSessionBtn = track(Button({
+      label: 'Lock wallet',
+      variant: 'secondary',
+      iconName: 'lock',
+      onClick: async () => {
+        try {
+          await bridge.send('wallet.lock');
+        } catch {
+          // safe fallback
+        }
+        navigate('/unlock', { replace: true });
+      },
+    }));
+    body.appendChild(h('section', { class: 'stack stack-2' }, [
+      SectionHeader('Session'),
+      lockSessionBtn.el,
+      h('p', { class: 'muted', text: 'Lock your wallet immediately to protect decrypted keys. Shortcut: Ctrl+L' }),
+    ]));
+
     // There is deliberately NO full-wallet reset on this screen: an unlocked wallet
     // should not be one tap from total destruction. Individual account/seed removal
-    // lives in Manage Accounts, and the only full reset is the forgotten-password
-    // recovery path on the lock screen (/reset, reached from /unlock).
+    // lives in Manage Accounts; removing the ONLY key source there is spelled out as a
+    // full wipe in its confirm dialog (it fulfils through wallet.reset), and the
+    // forgotten-password recovery path remains on the lock screen (/reset, from /unlock).
 
     // ---- About ----
     // Read from the manifest so it can never drift from the shipped version, unlike the
-    // hardcoded 'v0.1.0' the legacy settings screen showed against a 1.2.0 manifest.
+    // hardcoded 'v0.1.0' the legacy settings screen showed against a 1.3.0 manifest.
     let version = '—';
     try {
       version = chrome.runtime.getManifest().version;
@@ -437,6 +493,28 @@ export function SettingsRoute({ navigate, back }) {
         h('div', { class: 'detail-row' }, [
           h('span', { class: 'eyebrow', text: 'Networks' }),
           h('div', { class: 'detail-val', text: `${networks.length} available` }),
+        ]),
+        h('div', { class: 'detail-row' }, [
+          h('span', { class: 'eyebrow', text: 'Website' }),
+          h('div', { class: 'detail-val' }, [
+            h('a', {
+              href: 'https://thruwallet.vercel.app',
+              target: '_blank',
+              rel: 'noopener noreferrer',
+              text: 'thruwallet.vercel.app',
+            }),
+          ]),
+        ]),
+        h('div', { class: 'detail-row' }, [
+          h('span', { class: 'eyebrow', text: 'Support' }),
+          h('div', { class: 'detail-val' }, [
+            h('a', {
+              href: 'https://t.me/+dA8TwsOECcIxZWZl',
+              target: '_blank',
+              rel: 'noopener noreferrer',
+              text: 'Telegram group',
+            }),
+          ]),
         ]),
       ]),
     ]));

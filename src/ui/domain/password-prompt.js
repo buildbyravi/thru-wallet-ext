@@ -65,18 +65,27 @@ export function requirePassword({
       resolve(value);
     }
 
+    let busy = false;
+
     async function confirm() {
+      if (busy || settled) return;
       const value = password.value;
       if (!value) {
         password.setError('Enter your password.');
         password.focus();
         return;
       }
+      busy = true;
+      confirmBtn.setBusy(true);
+      cancelBtn.update({ disabled: true });
       try {
         const result = await verify(value);
         password.clearSecret();
         finish(result === undefined ? true : result);
       } catch (error) {
+        busy = false;
+        confirmBtn.setBusy(false);
+        cancelBtn.update({ disabled: false });
         password.clearSecret();
         password.setError(error?.message || 'Incorrect password.');
         password.focus();
@@ -93,7 +102,9 @@ export function requirePassword({
     const cancelBtn = Button({
       label: 'Cancel',
       variant: 'text',
-      onClick: () => finish(null),
+      onClick: () => {
+        if (!busy) finish(null);
+      },
     });
 
     const card = h('div', {
@@ -116,6 +127,7 @@ export function requirePassword({
 
     // Clicking the backdrop cancels; clicking inside must not.
     d.on(overlay, 'mousedown', (event) => {
+      if (busy) return;
       if (event.target === overlay) finish(null);
     });
 
@@ -123,7 +135,9 @@ export function requirePassword({
     // it: Tab wraps between the first and last control instead of walking into the page behind
     // the overlay, and Escape cancels. See src/ui/kit/focus-trap.js.
     trap = focusTrap(card, {
-      onEscape: () => finish(null),
+      onEscape: () => {
+        if (!busy) finish(null);
+      },
       initial: password.control,
     });
 

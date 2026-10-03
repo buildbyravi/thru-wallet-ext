@@ -81,6 +81,7 @@ function verbFor(entry) {
     case 'sent': return 'Sent';
     case 'received': return 'Received';
     case 'faucet': return 'Faucet claim';
+    case 'registration': return 'Account registered';
     case 'token-sent': return 'Token sent';
     case 'token-received': return 'Token received';
     case 'token-mint': return 'Token minted';
@@ -159,8 +160,10 @@ export function TxDetailSheet({ entry, network, knownAccounts, loadDetail, onClo
   }
 
   // ---- Head: verb + status, then the full signature -------------------------
-  const failed = entry?.success === false;
-  const statusText = entry?.success === true ? 'Succeeded'
+  const isPending = entry?.status === 'submitted';
+  const failed = !isPending && entry?.success === false;
+  const statusText = isPending ? 'Pending (Waiting for confirmation)'
+    : entry?.success === true ? 'Succeeded'
     : entry?.success === false ? 'Failed on-chain'
       : UNKNOWN; // null = the node returned no execution result; that is not "succeeded"
 
@@ -171,8 +174,8 @@ export function TxDetailSheet({ entry, network, knownAccounts, loadDetail, onClo
   }));
 
   const head = h('div', { class: 'modal-head' }, [
-    h('span', { class: ['modal-icon', failed ? 'danger' : ''].filter(Boolean) },
-      icon(failed ? 'warning' : 'history', 18)),
+    h('span', { class: ['modal-icon', isPending ? 'pending' : (failed ? 'danger' : '')].filter(Boolean) },
+      icon(isPending ? 'spinner' : (failed ? 'warning' : 'history'), 18, isPending ? { className: 'spinning' } : {})),
     h('h2', { text: verbFor(entry) }),
   ]);
 
@@ -203,7 +206,7 @@ export function TxDetailSheet({ entry, network, knownAccounts, loadDetail, onClo
   const rows = [];
   const push = (row) => { rows.push(row); return row; };
 
-  const statusRow = push(DetailRow('Status', statusText, { tone: failed ? 'negative' : '' }));
+  const statusRow = push(DetailRow('Status', statusText, { tone: isPending ? 'pending' : (failed ? 'negative' : '') }));
   push(DetailRow('Amount', delta?.text ?? UNKNOWN, { mono: true, tone: delta?.cls || '' }));
   // A faucet claim or a token-account init has no counterparty to speak of. Printing
   // "To: Not available" for those would imply a missing fact rather than an absent concept,

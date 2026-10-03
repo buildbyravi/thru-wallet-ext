@@ -33,20 +33,39 @@ export function AppShell({ navigate, onNetworkChange }) {
   }, icon('settings', 16));
   d.on(settingsBtn, 'click', () => navigate('/settings'));
 
-  const lockBtn = h('button', {
-    type: 'button',
-    class: 'icon-btn danger-hover',
-    title: 'Lock wallet',
-    'aria-label': 'Lock wallet',
-  }, icon('lock', 15));
-  d.on(lockBtn, 'click', async () => {
+  async function lockWallet() {
     try {
       await bridge.send('wallet.lock');
     } catch {
       // safe fallback
     }
     navigate('/unlock', { replace: true });
-  });
+  }
+
+  const lockBtn = h('button', {
+    type: 'button',
+    class: 'icon-btn danger-hover',
+    title: 'Lock wallet',
+    'aria-label': 'Lock wallet',
+  }, icon('lock', 15));
+  d.on(lockBtn, 'click', () => void lockWallet());
+
+  // ---- Presence is activity ----------------------------------------------
+  // Auto-lock is inactivity-based ("Lock after inactivity"), and someone staring at an
+  // open popup is NOT idle — without this, a 1-minute window locked the wallet out from
+  // under a person reading the send review screen before they could press Send. Real user
+  // events refresh the idle stamp at most once every 15s (each ping is one message, and
+  // the router stamps on it); no timer runs while the popup is untouched.
+  const ACTIVITY_PING_MS = 15_000;
+  let lastPingAt = 0;
+  function pingActivity() {
+    const now = Date.now();
+    if (now - lastPingAt < ACTIVITY_PING_MS) return;
+    lastPingAt = now;
+    void bridge.send('system.ping').catch(() => {});
+  }
+  d.on(document, 'pointerdown', pingActivity);
+  d.on(document, 'pointermove', pingActivity);
 
   // Hidden from first paint: no current screen can show it (see file header). A future
   // header-less route opts in by toggling the class off in setChromeVisible.
@@ -60,7 +79,7 @@ export function AppShell({ navigate, onNetworkChange }) {
 
   // ---- CurrentConnection Footer -------------------------------------------
   const connectionFooter = CurrentConnection({
-    networkLabel: 'Alphanet',
+    networkLabel: 'Betanet',
     onNetworkClick: () => navigate('/settings'),
   });
 
@@ -68,6 +87,11 @@ export function AppShell({ navigate, onNetworkChange }) {
   const outlet = h('main', { class: 'app-outlet' });
 
   const el = h('div', { class: 'app-shell' }, [topbar, outlet, connectionFooter.el]);
+  // Keydown presence is scoped to the shell root, never document/window: the ambient
+  // keydown surface is reserved for modal Escape traps and is pinned at zero by the
+  // route lifecycle suite (so a trap that forgets to release cannot hide behind ours).
+  // Keys typed anywhere inside the UI still bubble through here.
+  d.on(el, 'keydown', pingActivity);
 
   function isDashboardPath(path) {
     if (path) return path === '/dashboard' || path.startsWith('/dashboard?');

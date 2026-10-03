@@ -44,14 +44,24 @@ export function ResetRoute({ navigate, back }) {
     placeholder: CONFIRM_PHRASE,
     autocomplete: 'off',
     onInput: (value) => {
-      resetBtn.update({ disabled: value.trim().toUpperCase() !== CONFIRM_PHRASE });
-      confirmField.setError('');
+      const trimmed = value.trim();
+      if (trimmed === CONFIRM_PHRASE) {
+        confirmField.setError('');
+        resetBtn.update({ disabled: false });
+      } else {
+        resetBtn.update({ disabled: true });
+        if (trimmed.length > 0 && trimmed.toUpperCase() === CONFIRM_PHRASE) {
+          confirmField.setError(`Type ${CONFIRM_PHRASE} in uppercase.`);
+        } else {
+          confirmField.setError('');
+        }
+      }
     },
   }));
 
   async function performReset(password) {
     await bridge.send('wallet.reset', {
-      confirmation: confirmField.value.trim().toUpperCase(),
+      confirmation: confirmField.value.trim(),
       ...(password ? { password } : {}),
     });
     invalidate();
@@ -66,8 +76,8 @@ export function ResetRoute({ navigate, back }) {
     disabled: true,
     busyLabel: 'Erasing…',
     onClick: async () => {
-      if (confirmField.value.trim().toUpperCase() !== CONFIRM_PHRASE) {
-        confirmField.setError(`Type ${CONFIRM_PHRASE} exactly.`);
+      if (confirmField.value.trim() !== CONFIRM_PHRASE) {
+        confirmField.setError(`Type ${CONFIRM_PHRASE} exactly in uppercase.`);
         return;
       }
       banner.clear();
@@ -108,9 +118,8 @@ export function ResetRoute({ navigate, back }) {
   // Shown only when the wallet is locked, so the absence of a password step reads as
   // intentional rather than as a missing safeguard.
   const lockNotice = h('p', { class: ['hint', 'hidden'], text:
-    'Your wallet is locked, so no password is required to reset it. That is deliberate: this '
-    + 'screen exists for the case where you have forgotten it. Resetting cannot reveal your '
-    + 'keys, only remove them from this device.' });
+    'Your wallet is locked, so no password is required — this screen exists for the case '
+    + 'where you have forgotten it. Resetting removes your keys; it cannot reveal them.' });
 
   // Tracked like every other component here: PageHeader owns the back button's click listener,
   // and an untracked instance leaves that listener on a detached node after destroy(). Every
@@ -134,13 +143,9 @@ export function ResetRoute({ navigate, back }) {
     ]),
 
     h('p', { class: 'muted', text:
-      'Your funds stay on the blockchain. They are only reachable again if you have your '
-      + 'recovery phrase or private key written down somewhere else. If you do not, resetting '
-      + 'loses them permanently.' }),
-
-    h('p', { class: 'hint', text:
-      'If you only want to remove one account or one recovery phrase, do that from Accounts '
-      + 'instead — this is all-or-nothing.' }),
+      'Your funds stay on the blockchain and are reachable again only with your recovery '
+      + 'phrase or private key. If those are not written down, resetting loses access '
+      + 'permanently.' }),
 
     lockNotice,
     confirmField.el,

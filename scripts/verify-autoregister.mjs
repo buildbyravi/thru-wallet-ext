@@ -41,7 +41,7 @@ globalThis.chrome = {
   storage: { local: makeStore(), session: makeStore() },
 };
 
-const networkId = process.argv[2] || 'alphanet';
+const networkId = process.argv[2] || 'betanet';
 const { handleApiRequest } = await import('../src/background/api-router.js');
 
 const PASSWORD = 'AutoReg-Password-1!';

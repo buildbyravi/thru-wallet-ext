@@ -29,9 +29,10 @@ import { icon } from '../../kit/icon.js';
 import { Button } from '../../kit/button.js';
 import { Field } from '../../kit/field.js';
 import { PageHeader, Banner, Spinner } from '../../kit/feedback.js';
-import { AccountAvatar } from '../../domain/account-avatar.js';
+import { AccountAvatar, AddressText } from '../../domain/account-avatar.js';
 import { AccountPicker } from '../../domain/account-picker.js';
 import { AssetSelector } from '../../domain/asset-selector.js';
+import { TokenAvatar } from '../../domain/token-avatar.js';
 import { requirePassword } from '../../domain/password-prompt.js';
 import * as bridge from '../bridge.js';
 import { formatThru, parseThruAmount, formatTokenAmount, parseTokenAmount, truncateAddress } from '../../../shared/format.js';
@@ -66,6 +67,7 @@ export function SendRoute({ params, navigate, back }) {
   let feeRequestSeq = 0;
   let destroyed = false;
   let switchingAccount = false;
+  let submitting = false;
 
   function track(c) { owned.push(c); return c; }
 
@@ -110,6 +112,7 @@ export function SendRoute({ params, navigate, back }) {
   let subView = null;
 
   function handleBack() {
+    if (submitting) return;
     if (subView) {
       subView = null;
       renderForm(formState);
@@ -118,7 +121,29 @@ export function SendRoute({ params, navigate, back }) {
     back();
   }
 
-  const header = PageHeader({ title: 'Send', onBack: () => handleBack() });
+  const refreshIcon = icon('refresh', 14);
+  const refreshBtn = h('button', {
+    type: 'button',
+    class: 'icon-btn',
+    title: 'Refresh balances',
+    'aria-label': 'Refresh balances',
+  }, refreshIcon);
+  d.on(refreshBtn, 'click', () => {
+    refreshIcon.classList.add('spinning');
+    if (account?.address) {
+      refreshNativeBalance(loadSeq, account.address);
+      refreshTokenBalances(loadSeq, account.address);
+      refreshFee(loadSeq);
+      refreshTokenList(loadSeq);
+    }
+    setTimeout(() => refreshIcon.classList.remove('spinning'), 600);
+  });
+
+  const header = PageHeader({
+    title: 'Send',
+    onBack: () => handleBack(),
+    right: refreshBtn,
+  });
   const el = h('section', { class: 'screen' }, [header.el, banner.el, body]);
 
   function clearBody() {
@@ -227,9 +252,9 @@ export function SendRoute({ params, navigate, back }) {
       }),
       h('span', { class: 'row-body' }, [
         h('span', { class: 'row-title', text: account.label || 'Account' }),
-        // Which SOURCE this account came from, so "send from" is unambiguous when several
-        // accounts share a similar name.
-        h('span', { class: 'row-sub', text: account.keyring?.label || 'Unknown source' }),
+        // Same second line as Manage Accounts (AddressText, 6…6 truncation): the account
+        // identity shown here must read exactly like the key-manage list it points into.
+        AddressText({ address: account.address }),
       ]),
       fromBalance,
       h('span', { class: 'account-pill-chevron' }, icon('chevronRight', 13)),
@@ -248,11 +273,9 @@ export function SendRoute({ params, navigate, back }) {
     if (asset.isNative) assetTitleChildren.push(h('span', { class: 'tag-native', text: 'Native' }));
     const assetBalance = h('span', { class: 'row-value', text: assetBalanceText() });
     const assetCard = h('button', { type: 'button', class: 'row clickable' }, [
-      h('div', { class: 'token-row-avatar' }, asset.isNative
-        ? icon('bolt', 15)
-        : h('span', { text: (asset.symbol || 'TOKEN').slice(0, 3).toUpperCase() })),
+      TokenAvatar({ symbol: asset.symbol, imageUrl: asset.imageUrl, isNative: asset.isNative }),
       h('span', { class: 'row-body' }, [
-        h('span', { class: 'row-flex', style: { gap: '6px' } }, assetTitleChildren),
+        h('span', { class: 'row-flex' }, assetTitleChildren),
         h('span', { class: 'row-sub', text: asset.isNative ? 'Thru Native Token' : (asset.name || 'Token') }),
       ]),
       assetBalance,
@@ -750,6 +773,7 @@ export function SendRoute({ params, navigate, back }) {
   // ---- Step 2: review ----------------------------------------------------
   function renderReview(to, amountText) {
     clearBody();
+    subView = 'review';
     header.setTitle('Confirm send');
 
     const symbol = asset.isNative ? 'THRU' : (asset.symbol || 'TOKEN');
@@ -763,14 +787,6 @@ export function SendRoute({ params, navigate, back }) {
     const destLabel = destAccount
       ? (destAccount.label || destAccount.keyring?.label || 'Account')
       : destContact?.label;
-
-    body.appendChild(h('div', { class: 'notice warning' }, [
-      h('div', { class: 'row-flex' }, [
-        icon('warning', 15),
-        h('strong', { text: 'Transfers cannot be reversed' }),
-      ]),
-      h('p', { class: 'hint', text: 'Check the address carefully. There is no way to undo a send.' }),
-    ]));
 
     const rows = [
       h('div', { class: 'detail-row' }, [
@@ -831,29 +847,87 @@ export function SendRoute({ params, navigate, back }) {
 
     body.appendChild(h('div', { class: 'detail-table' }, rows));
 
-    // The confirm control is `accent`, not `primary`. The legacy global Enter handler clicked the
-    // first enabled .btn.primary in the visible screen, which on this step was Sign & Broadcast.
-    // Nothing on this step is .btn.primary, and this route registers no Enter handler here, so
-    // broadcasting requires a deliberate click.
+    // Repeated transaction confirmation (Option C: Rabby security card)
+    let isRepeatConfirmed = false;
+    let isRepeatDetected = false;
+
+    const repeatDesc = h('div', { class: 'security-repeat-desc', text: '' });
+    const repeatCheckbox = h('input', {
+      type: 'checkbox',
+      id: 'send-repeat-confirm-check',
+    });
+    const repeatCheckboxLabel = h('label', {
+      for: 'send-repeat-confirm-check',
+      class: 'checkbox-field',
+    }, [
+      repeatCheckbox,
+      h('span', { text: 'I want to send this duplicate transfer anyway' }),
+    ]);
+
+    const repeatCard = h('div', { class: ['security-repeat-card', 'hidden'] }, [
+      h('div', { class: 'security-repeat-header' }, [
+        h('div', { class: 'security-repeat-badge' }, [icon('clock', 14)]),
+        h('div', { class: 'security-repeat-titles' }, [
+          h('div', { class: 'security-repeat-title', text: 'Repeated Transaction' }),
+          repeatDesc,
+        ]),
+      ]),
+      h('div', { class: 'security-repeat-confirm' }, [repeatCheckboxLabel]),
+    ]);
+
+    body.appendChild(repeatCard);
+
     const confirmBtn = track(Button({
       label: 'Sign & send',
       variant: 'accent',
       iconName: 'send',
       busyLabel: 'Sending…',
-      onClick: () => submit(to),
+      onClick: () => submit(to, confirmBtn, editBtn, isRepeatConfirmed),
     }));
+
+    viewDisposer.on(repeatCheckbox, 'change', () => {
+      isRepeatConfirmed = Boolean(repeatCheckbox.checked);
+      if (isRepeatDetected) {
+        confirmBtn.update({ disabled: !isRepeatConfirmed });
+      }
+    });
 
     const editBtn = track(Button({
       label: 'Edit',
       variant: 'text',
-      onClick: () => renderForm({ to, amount: amountText }),
+      onClick: () => {
+        if (!submitting) renderForm({ to, amount: amountText });
+      },
     }));
 
     body.appendChild(h('div', { class: 'screen-actions' }, [confirmBtn.el, editBtn.el]));
+
+    // Check duplicate asynchronously
+    bridge.send('tx.checkDuplicate', {
+      toAddress: to,
+      amountUnits: amountUnits.toString(),
+      mintAddress: asset.mintAddress || null,
+      fromAddress: account.address,
+    }).then((dup) => {
+      if (dup?.isDuplicate && !destroyed && subView === 'review') {
+        isRepeatDetected = true;
+        repeatCard.classList.remove('hidden');
+        const timing = dup.isPending
+          ? 'is currently pending on-chain'
+          : `was submitted ${dup.elapsedMs ? Math.round(dup.elapsedMs / 1000) : 'a few'}s ago`;
+        repeatDesc.textContent = `Identical send ${timing}`;
+        confirmBtn.update({ disabled: !isRepeatConfirmed });
+      }
+    }).catch(() => {});
   }
 
   // ---- Step 3: submit ----------------------------------------------------
-  async function submit(to) {
+  async function submit(to, confirmBtn, editBtn, allowDuplicate = false) {
+    if (submitting) return;
+    submitting = true;
+    confirmBtn?.setBusy?.(true);
+    confirmBtn?.update({ disabled: true });
+    editBtn?.update({ disabled: true });
     banner.clear();
     // Capture the reviewed facts BEFORE an async settings read or password prompt. Another
     // extension page may switch source/network while that dialog is open; the checked
@@ -869,9 +943,9 @@ export function SendRoute({ params, navigate, back }) {
     try {
       const method = reviewed.asset.isNative ? 'tx.sendChecked' : 'token.transferChecked';
       const params = reviewed.asset.isNative
-        ? { toAddress: to, amountUnits: reviewed.amountUnits.toString() }
+        ? { toAddress: to, amountUnits: reviewed.amountUnits.toString(), allowDuplicate: Boolean(allowDuplicate) }
         : { mintAddress: reviewed.asset.mintAddress, toAddress: to,
-          amountUnits: reviewed.amountUnits.toString() };
+          amountUnits: reviewed.amountUnits.toString(), allowDuplicate: Boolean(allowDuplicate) };
       params.fromAddress = reviewed.fromAddress;
       params.networkId = reviewed.network.id;
       const symbol = reviewed.asset.isNative ? 'THRU' : (reviewed.asset.symbol || 'TOKEN');
@@ -910,6 +984,13 @@ export function SendRoute({ params, navigate, back }) {
           + 'and the explorer before trying again.', 'warning');
       } else {
         banner.set(error.message || 'The transfer failed.');
+      }
+    } finally {
+      submitting = false;
+      if (!destroyed) {
+        confirmBtn?.setBusy?.(false);
+        confirmBtn?.update({ disabled: false });
+        editBtn?.update({ disabled: false });
       }
     }
   }
@@ -1187,6 +1268,15 @@ export function SendRoute({ params, navigate, back }) {
       if (!id || id !== network?.id) load();
     },
   }));
+
+  const autoRefreshTimer = setInterval(() => {
+    if (!destroyed && subView === null && account?.address) {
+      refreshNativeBalance(loadSeq, account.address);
+      refreshTokenBalances(loadSeq, account.address);
+    }
+  }, 30_000);
+  d.add(() => clearInterval(autoRefreshTimer));
+
   load();
 
   return {

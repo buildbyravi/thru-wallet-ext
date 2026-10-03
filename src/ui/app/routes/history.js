@@ -47,10 +47,25 @@ export function HistoryRoute({ back }) {
   const listHost = h('div', { class: 'list' });
   const pendingHost = h('div', { class: ['stack', 'stack-2', 'hidden'] });
   const filterRow = h('div', { class: 'row-flex wrap' });
+  const refreshIcon = icon('refresh', 14);
+  const refreshBtn = h('button', {
+    type: 'button',
+    class: 'icon-btn',
+    title: 'Refresh history',
+    'aria-label': 'Refresh history',
+  }, refreshIcon);
+  d.on(refreshBtn, 'click', () => {
+    refreshIcon.classList.add('spinning');
+    load().finally(() => setTimeout(() => refreshIcon.classList.remove('spinning'), 300));
+  });
+
   const moreHost = h('div', {});
-  // "History", matching the dashboard tile that leads here. Cards form a flat stream:
-  // a missing chain timestamp is labelled by block slot, not with a synthetic day header.
-  const header = PageHeader({ title: 'History', onBack: () => back() });
+
+  const header = PageHeader({
+    title: 'History',
+    onBack: () => back(),
+    right: refreshBtn,
+  });
 
   const el = h('section', { class: 'screen' }, [
     header.el,
@@ -89,6 +104,38 @@ export function HistoryRoute({ back }) {
 
   // ---- Day-grouped cards (P1) ---------------------------------------------
   // Row-era rendering (describe/glyphFor/entryRow) is gone: tx-card.js owns the card.
+  let pendingPollTimer = null;
+
+  function stopPendingPoll() {
+    if (pendingPollTimer) {
+      clearInterval(pendingPollTimer);
+      pendingPollTimer = null;
+    }
+  }
+
+  function startPendingPoll() {
+    if (pendingPollTimer) return;
+    pendingPollTimer = setInterval(async () => {
+      if (destroyed) {
+        stopPendingPoll();
+        return;
+      }
+      try {
+        const res = await bridge.send('tx.reconcilePending');
+        if (res?.settled > 0) {
+          const next = await bridge.send('tx.getPending').catch(() => []);
+          if (!destroyed) {
+            pending = Array.isArray(next) ? next : [];
+            paintPending();
+            load({ pendingHint: pending });
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }, 2_000); // ~6s blocks: one check every 2s settles within a beat of the block landing
+  }
+
   function paintPending() {
     while (pendingHost.firstChild) pendingHost.removeChild(pendingHost.firstChild);
     // Belt-and-braces with the reconcile-on-view above: a signature the history list already
@@ -99,7 +146,11 @@ export function HistoryRoute({ back }) {
     const active = pending.filter((p) => p.status === 'submitted'
       && !displayed.has(String(p.signature)));
     pendingHost.classList.toggle('hidden', active.length === 0);
-    if (!active.length) return;
+    if (!active.length) {
+      stopPendingPoll();
+      return;
+    }
+    startPendingPoll();
 
     pendingHost.appendChild(h('header', { class: 'list-group-header' }, [
       h('span', { text: 'Pending' }),
@@ -292,7 +343,7 @@ export function HistoryRoute({ back }) {
         entries = cached.entries;
         cursor = cached.nextCursor ?? null;
         feedSynced = false;
-        banner.set('Showing cached activity — checking network…', 'warning');
+        refreshIcon.classList.add('spinning');
         paintList();
         paintPending();
       }
@@ -341,6 +392,7 @@ export function HistoryRoute({ back }) {
     } finally {
       if (isCurrent(seq)) {
         feedLoading = false;
+        refreshIcon.classList.remove('spinning');
         paintMore();
       }
     }
@@ -350,6 +402,7 @@ export function HistoryRoute({ back }) {
     // Invalidate all outstanding cached, live, pending and load-more replies immediately.
     // Empty the previous account's list before starting the next identity's reads.
     loadSeq += 1;
+    stopPendingPoll();
     closeSheet();
     account = null;
     network = null;
@@ -362,6 +415,13 @@ export function HistoryRoute({ back }) {
   }
 
   load();
+
+  const autoRefreshTimer = setInterval(() => {
+    if (!destroyed && !feedLoading) {
+      load();
+    }
+  }, 30_000);
+  d.add(() => clearInterval(autoRefreshTimer));
 
   d.add(
     bridge.onEvent('pendingTxChanged', ({ pending: next } = {}) => {
@@ -376,6 +436,7 @@ export function HistoryRoute({ back }) {
     el,
     destroy() {
       destroyed = true;
+      stopPendingPoll();
       loadSeq += 1; // discard every late bridge reply after navigation
       // The sheet lives on document.body, so route teardown must close it explicitly or it
       // outlives the screen that owns it.

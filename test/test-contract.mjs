@@ -57,6 +57,9 @@ ok('contract v8 documents the token-transfer addition', CONTRACT_VERSION >= 8);
 ok('contract v9 documents the history-feed cache addition', CONTRACT_VERSION >= 9);
 ok('contract v10 documents the transaction-detail addition', CONTRACT_VERSION >= 10);
 ok('contract v11 pins a reviewed send to a source account and network', CONTRACT_VERSION >= 11);
+ok('contract v13 documents the faucet auth/param change', CONTRACT_VERSION >= 13);
+ok('contract v14 documents the token.readMint addition', CONTRACT_VERSION >= 14);
+ok('contract v15 documents the tx.checkDuplicate addition', CONTRACT_VERSION >= 15);
 
 // Contract v10 invariants. tx.getDetail is a read, so it must NOT have acquired an auth
 // gate it does not need — but more importantly its declared return shape must keep saying
@@ -106,7 +109,7 @@ for (const [method, legacy] of [
 }
 
 section('Contract v12 creation-bound registration and cache-first history');
-ok('the additive contract advances to v12 without reusing v11', CONTRACT_VERSION === 12);
+ok('the contract advances to v15 without reusing earlier numbers', CONTRACT_VERSION === 15);
 const register = METHODS['tx.registerAccount'];
 ok('tx.registerAccount is unlocked-only, explicitly targets an address, and has no password field',
   register?.since === 12 && register?.auth === 'unlocked'
@@ -118,6 +121,27 @@ ok('tx.getCachedHistory is a read-only, no-auth, address-scoped method',
 ok('legacy tx.autoCreateAccount remains signing-gated and unchanged',
   METHODS['tx.autoCreateAccount']?.auth === 'signing'
     && JSON.stringify(METHODS['tx.autoCreateAccount']?.params) === JSON.stringify(['password']));
+
+section('Contract v14 chain-verified custom-token import');
+const readMint = METHODS['token.readMint'];
+ok('token.readMint is a read-only, no-auth, mint-scoped lookup',
+  readMint?.since === 14 && readMint?.auth === 'none'
+    && JSON.stringify(readMint?.params) === JSON.stringify(['mintAddress']));
+ok('token.import stays unlocked-only and metadata-only',
+  METHODS['token.import']?.auth === 'unlocked'
+    && JSON.stringify(METHODS['token.import']?.params)
+      === JSON.stringify(['mintAddress', 'symbol', 'name', 'decimals']));
+
+section('Contract v15 duplicate detection and repeat-send confirmation');
+const checkDup = METHODS['tx.checkDuplicate'];
+ok('tx.checkDuplicate is a read-only, no-auth duplicate lookup',
+  checkDup?.since === 15 && checkDup?.auth === 'none'
+    && JSON.stringify(checkDup?.params) === JSON.stringify(['toAddress', 'amountUnits', 'mintAddress', 'fromAddress']));
+ok('send methods declare optional allowDuplicate param',
+  METHODS['tx.send']?.params.includes('allowDuplicate')
+    && METHODS['tx.sendChecked']?.params.includes('allowDuplicate')
+    && METHODS['token.transfer']?.params.includes('allowDuplicate')
+    && METHODS['token.transferChecked']?.params.includes('allowDuplicate'));
 
 section('Contract and router agree in both directions');
 
@@ -203,7 +227,6 @@ ok('wallet.reset can carry a password when unlocked', METHODS['wallet.reset']?.p
 // Settings. The secure default is still password-required, enforced inside api-router before a
 // signing handler runs.
 const MUST_USE_SIGNING_AUTH = [
-  'tx.claimFaucet',
   'tx.send',
   'tx.autoCreateAccount',
   'token.deploy',
@@ -213,6 +236,7 @@ for (const name of MUST_USE_SIGNING_AUTH) {
   ok(`${name} can carry a signing password`, METHODS[name]?.params.includes('password'));
   ok(`${name} records authSince v5`, METHODS[name]?.authSince === 5, `authSince is '${METHODS[name]?.authSince}'`);
 }
+ok('tx.claimFaucet uses unlocked auth', METHODS['tx.claimFaucet']?.auth === 'unlocked');
 
 section('Multi-seed keyring API is exposed');
 

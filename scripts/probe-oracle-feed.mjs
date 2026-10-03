@@ -14,7 +14,7 @@
 //   node scripts/probe-oracle-feed.mjs --seed 'thru-usd'            # derive + read by seed
 //   node scripts/probe-oracle-feed.mjs --address taQlm...           # read a known feed address
 //   node scripts/probe-oracle-feed.mjs --seed 0x68656c6c6f          # explicit 32-byte hex seed
-//   node scripts/probe-oracle-feed.mjs --address ta... --network alphanet
+//   node scripts/probe-oracle-feed.mjs --address ta... --network betanet
 //
 // All output is raw wire/parse evidence. A missing feed prints exists:false — that is a result,
 // not an error. Do not invent feed values.
@@ -29,7 +29,7 @@ const flag = (name) => {
   return i >= 0 ? args[i + 1] : undefined;
 };
 
-const networkId = flag('--network') || 'alphanet';
+const networkId = flag('--network') || 'betanet';
 const seed = flag('--seed');
 const address = flag('--address');
 

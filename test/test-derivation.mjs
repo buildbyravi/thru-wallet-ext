@@ -33,7 +33,10 @@ import { keys, Pubkey } from '@thru/sdk';
 
 // A deliberately public, well-known test phrase. It must never hold real funds.
 const VECTORS = {
-  sdkVersion: '0.3.16',
+  // Vectors were generated on 0.3.16 and VERIFIED unchanged on 0.4.0 (all 16 derivation
+  // checks pass; the key crypto is byte-identical across the reset releases). Recorded here
+  // per the version-drift policy below.
+  sdkVersion: '0.4.0',
   phrase: 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about',
   hd: [
     { index: 0, address: 'taogps3bfPUvvkQDAk4c6EY6wNcIcLrG9JL10WukBf3hLg' },

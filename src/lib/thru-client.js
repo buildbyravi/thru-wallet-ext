@@ -1,19 +1,20 @@
 // Thin wrapper around @thru/sdk.
 //
-// NOTE: alphanet is pre-testnet, unaudited infrastructure. Expect instability, resets, and
-// breaking SDK changes — this whole file may need updates as Thru moves toward testnet/mainnet.
+// NOTE: betanet is Thru's FINAL testnet before mainnet — unaudited infrastructure. Expect
+// instability and resets until mainnet; the SDK (0.4.x) may still see breaking changes.
 //
-// NETWORK BINDING: this module used to hardcode the alphanet RPC URL and memoize a single
+// NETWORK BINDING: this module used to hardcode an RPC URL and memoize a single
 // client at first use, while the program addresses were module constants duplicating the ones
 // in src/lib/networks.js. That made network switching COSMETIC: selecting localnet changed the
-// badge and scoped local storage, but every RPC call still went to alphanet, and a network with
+// badge and scoped local storage, but every RPC call still went to the old endpoint, and a
+// network with
 // different program addresses could not have worked at all.
 //
 // The active network is now injected by the background via configureNetwork(). This module
 // still does not import networks.js or any service — it holds whatever it was given and falls
-// back to the alphanet defaults, so it stays independently testable.
+// back to the betanet defaults, so it stays independently testable.
 
-import { createThruClient, Signature, Pubkey, PageRequest, BlockView, keys as sdkKeys } from '@thru/sdk';
+import { createThruClient, Signature, Pubkey, PageRequest, BlockView, keys as sdkKeys, EOA_PROGRAM_ID, TOKEN_PROGRAM_ADDRESS, NOOP_PROGRAM_ADDRESS, ROOT_MANAGER_PROGRAM_ADDRESS } from '@thru/sdk';
 // Official program bindings. BUILD_SPEC Part IX: prefer @thru/sdk (including its crypto
 // subpath) and @thru/programs over hand-written protocol code wherever the SDK provides it.
 // These replace a hand-rolled derivation that called a non-existent SDK method.
@@ -24,26 +25,39 @@ import {
   createTransferInstruction as sdkCreateTokenTransferInstruction,
   createInitializeAccountInstruction as sdkCreateInitializeAccountInstruction,
   createInitializeMintInstruction as sdkCreateInitializeMintInstruction,
+  createMintToInstruction as sdkCreateMintToInstruction,
   parseTokenAccountData as sdkParseTokenAccountData,
   parseMintAccountData as sdkParseMintAccountData,
   isAccountNotFoundError as sdkIsAccountNotFoundError,
 } from '@thru/programs/token';
+import { BOOTSTRAP_PROGRAM_ADDRESSES, BOOTSTRAP_FAUCET_VAULT_ADDRESS } from '@thru/programs/bootstrap-addresses';
 import { scopedKey } from '../shared/network-scope.js';
 
-export const ALPHANET_RPC = 'https://rpc.alphanet.thru.org';
+export const BETANET_RPC = 'https://rpc.betanet.thru.org';
+
+// Canonical program addresses, taken from the 0.4.0 packages rather than hand-copied: the
+// betanet reset replaced the old reserved "marker byte" system table (zero-filled 32-byte
+// addresses with byte 31 = 0x00 transfer / 0x03 account-create / 0xaa token / 0xfa faucet)
+// with managed-genesis addresses, and the packages are where the next redeployment will land
+// too. Everything network-shaped still flows through the CONFIGURED network below; these are
+// only the betanet defaults for tests and direct importers.
+export const TRANSFER_PROGRAM_ID = EOA_PROGRAM_ID;
+export const TOKEN_PROGRAM_ID = TOKEN_PROGRAM_ADDRESS;
+export const FAUCET_PROGRAM_ID = BOOTSTRAP_PROGRAM_ADDRESSES.faucet;
+export const FAUCET_STATE_ACCOUNT = BOOTSTRAP_FAUCET_VAULT_ADDRESS;
+export const ACCOUNT_CREATE_PROGRAM_ID = NOOP_PROGRAM_ADDRESS;
 
 // Defaults, used until configureNetwork() is called. Kept so tests and any direct importer
 // behave as before rather than failing on an unset network.
 const DEFAULT_NETWORK = Object.freeze({
-  id: 'alphanet',
-  rpcUrl: ALPHANET_RPC,
-  faucetProgramId: 'taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPr6',
-  // 46 characters and SDK-parseable. networks.js previously declared a 43-character value here
-  // that Pubkey.from() rejects; it was never caught because this module ignored that config.
-  faucetStateAccount: 'taxoImN8fTEOxXYnvgC6JZ0lN0n0qvZERwz_vlOjX3MkIn',
+  id: 'betanet',
+  rpcUrl: BETANET_RPC,
+  faucetProgramId: FAUCET_PROGRAM_ID,
+  faucetStateAccount: FAUCET_STATE_ACCOUNT,
   faucetMaxPerClaim: 10_000n,
-  transferProgramId: 'taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
-  tokenProgramId: 'taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKqq',
+  transferProgramId: TRANSFER_PROGRAM_ID,
+  tokenProgramId: TOKEN_PROGRAM_ID,
+  accountCreateProgramId: ACCOUNT_CREATE_PROGRAM_ID,
 });
 
 let activeNetwork = DEFAULT_NETWORK;
@@ -76,6 +90,7 @@ export function configureNetwork(config) {
       : BigInt(config.faucetMaxPerClaim),
     transferProgramId: config.transferProgramId || DEFAULT_NETWORK.transferProgramId,
     tokenProgramId: config.tokenProgramId || DEFAULT_NETWORK.tokenProgramId,
+    accountCreateProgramId: config.accountCreateProgramId || DEFAULT_NETWORK.accountCreateProgramId,
   };
   if (next.rpcUrl !== activeNetwork.rpcUrl) {
     // Drop the memoized client so the next call builds one against the new endpoint.
@@ -108,21 +123,30 @@ export function isValidThruAddress(address) {
 }
 
 /**
- * Lightweight RPC health check — times a single accounts.get() call against a known
- * address. Returns { status, latencyMs } without throwing. Called once on popup open
+ * Lightweight RPC health check — times a single accounts.get() call against a genesis
+ * address and returns { status, latencyMs } without throwing. Called once on popup open
  * to drive the footer network indicator; deliberately not polled.
+ *
+ * The probe address must survive chain resets. The old probe used the zero address, which
+ * used to BE the EOA program account and simply answered; after the 0.4.0 reset the zero
+ * account exists nowhere, so ACCOUNT_NOT_FOUND came back and every healthy node was
+ * reported "offline". Two rules keep this honest: probe a genesis address that any
+ * deployment of this chain family has (the immutable root Manager), and treat the SDK's
+ * own ACCOUNT_NOT_FOUND as a SUCCESSFUL probe — the node answered, which is all a health
+ * ping measures.
  */
 export async function checkNetworkHealth() {
   const start = performance.now();
   try {
-    // Use the zero address — always fast to look up, doesn't need to exist
-    await getClient().accounts.get('taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA');
-    const latencyMs = Math.round(performance.now() - start);
-    if (latencyMs < 500) return { status: 'healthy', latencyMs };
-    return { status: 'slow', latencyMs };
-  } catch {
-    return { status: 'offline', latencyMs: null };
+    await getClient().accounts.get(ROOT_MANAGER_PROGRAM_ADDRESS);
+  } catch (err) {
+    if (!sdkIsAccountNotFoundError(err)) {
+      return { status: 'offline', latencyMs: null };
+    }
   }
+  const latencyMs = Math.round(performance.now() - start);
+  if (latencyMs < 500) return { status: 'healthy', latencyMs };
+  return { status: 'slow', latencyMs };
 }
 
 // 1 THRU = 1e9 base units.
@@ -292,8 +316,18 @@ export async function createOnChainAccount(feePayer, { beforeSign } = {}) {
 
       const { rawTransaction } = await client.transactions.buildAndSign({
         feePayer: signer,
-        program: 'taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMD',
-        header: { fee: 0n, nonce: 0n },
+        // Account creation is a fee-payer activation against the network's configured
+        // account-creation program — the NOOP program on 0.4.0+ chains (the SDK's own
+        // accounts.createAccount default). The pre-reset reserved program (marker byte 0x03)
+        // is gone from the chain. stateUnits: 1 is explicit because the reset chain refuses
+        // activation with vmError -497 (FEE_PAYER_ACTIVATION_REQUIRES_STATE_UNIT) otherwise.
+        // Live-verified on the reset chain 2026-09-26 (registration ts2bMbIHRlcw…): the
+        // built header carried exactly { fee: 0n, nonce: 0n, stateUnits: 1, chainId: 1 } —
+        // chainId is fetched from the node at build time (it reports 1 today) rather than
+        // pinned, so a future chain-id move cannot silently produce wrong-chain signatures;
+        // startSlot and expiryAfter are fetched the same way.
+        program: activeNetwork.accountCreateProgramId,
+        header: { fee: 0n, nonce: 0n, stateUnits: 1 },
         feePayerStateProof: proofObj.proof,
       });
       assertRegistrationNetwork(network);
@@ -319,23 +353,26 @@ export async function createOnChainAccount(feePayer, { beforeSign } = {}) {
 
 // ---- Faucet ----
 //
-// PROVENANCE: the program address, state account, and instruction layout below came from
-// reverse-engineering real `thru faucet withdraw` transactions (submitting two claims of
-// different amounts via the CLI and diffing the resulting instruction bytes) — not from
-// Thru's own docs, and not independently re-confirmed against alphanet from this sandboxed
-// environment (no network access to rpc.alphanet.thru.org from here). Treat the address and
-// layout as "well-sourced, not independently verified" — if a claim fails outright with a
-// low-level or format error, doubt these constants first, not the signing/submission code
-// around them, since the account-index handling below IS independently verified: @thru/sdk's
-// own InstructionContext JSDoc confirms account order is exactly
-// [feePayer, program, ...readWriteAccounts, ...readOnlyAccounts] after sorting, which is why
-// this uses buildInstructionData + getAccountIndex instead of hand-rolling that sort — it
-// delegates the part that's easy to get subtly wrong to the SDK's own verified logic.
-// These remain exported for tests and for callers that want the alphanet defaults, but the
-// network calls below now read from the CONFIGURED network so a switch actually takes effect.
-export const FAUCET_PROGRAM_ID = 'taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPr6';
-export const FAUCET_STATE_ACCOUNT = 'taxoImN8fTEOxXYnvgC6JZ0lN0n0qvZERwz_vlOjX3MkIn';
-export const FAUCET_MAX_PER_CLAIM = 10_000n; // per the CLI's own cap
+// PROVENANCE: the faucet PROGRAM ADDRESS and state account are now taken from the official
+// 0.4.0 packages (see the constants at the top of this file): a managed faucet program with a
+// vault PDA that plays the pre-reset "faucet state account" role. The pre-reset addresses were
+// themselves reverse-engineered from real `thru faucet withdraw` transactions (submitting two
+// claims of different amounts via the CLI and diffing the instruction bytes) and died with the
+// fresh-network reset, along with the old reserved "marker byte" address scheme they came from.
+//
+// The INSTRUCTION LAYOUT below is the pre-reset reverse engineering and is now LIVE-VERIFIED
+// against the reset chain (2026-09-26, claim tsjbbZW9sT… with this 16-byte layout against the
+// vault PDA, 10,000 units credited; the vault holds ~99.9M units). The vault's role as the
+// faucet's state account is confirmed by that claim, not assumed. The account-index handling
+// is independently verified too: @thru/sdk's own InstructionContext JSDoc confirms account
+// order is exactly [feePayer, program, ...readWriteAccounts, ...readOnlyAccounts] after
+// sorting, which is why this uses buildInstructionData + getAccountIndex instead of
+// hand-rolling that sort — it delegates the part that's easy to get subtly wrong to the SDK's
+// own verified logic.
+// The program/state constants remain exported for tests and for callers that want the betanet
+// defaults, but the network calls below read from the CONFIGURED network so a switch takes
+// effect.
+export const FAUCET_MAX_PER_CLAIM = 10_000n; // per the CLI's own cap — a full-cap claim of 10,000 succeeded on the reset chain (2026-09-26)
 
 /** Pure byte-layout encoder, kept separate from the network calls so it's directly testable. */
 export function encodeFaucetInstructionData(stateIdx, recipientIdx, amountUnits) {
@@ -349,18 +386,48 @@ export function encodeFaucetInstructionData(stateIdx, recipientIdx, amountUnits)
 }
 
 /**
- * Claim tokens from the alphanet faucet, submitted on-chain directly.
+ * Submission notice for sendAndTrack streams.
+ *
+ * The stream delivers the accepted submission's signature BEFORE the executionResult
+ * (progressive SendAndTrackTxnUpdate: status / consensusStatus / signature, then the
+ * result). Callers that record `submitted` state — pending tracking, the
+ * duplicate-transfer warning — need the signature at SUBMISSION: on betanet's ~6-second
+ * blocks, waiting for executionResult left the whole pending window undetectable
+ * (reported 2026-10-03: "no warning until tx is confirmed"). Purely additive: fires
+ * `onSubmitted(signature)` exactly once, never throws into the stream, and every send's
+ * return semantics are unchanged.
+ */
+async function* withSubmittedNotice(updates, onSubmitted) {
+  let fired = false;
+  for await (const update of updates) {
+    if (!fired && update.signature?.value) {
+      fired = true;
+      if (typeof onSubmitted === 'function') {
+        try {
+          const p = onSubmitted(Signature.from(update.signature.value).toThruFmt());
+          if (p && typeof p.catch === 'function') p.catch(() => {});
+        } catch {
+          // Tracking is best-effort; never affect the send stream.
+        }
+      }
+    }
+    yield update;
+  }
+}
+
+/**
+ * Claim tokens from the betanet faucet, submitted on-chain directly.
  *
  * Self-Signing: each wallet signs its OWN faucet transaction with fee: 0n, so no sponsor keys
  * or third-party fee payers are involved.
  *
- * CORRECTION (verified on alphanet 2026-08-18): this comment previously claimed a freshly
+ * CORRECTION (verified on betanet 2026-08-18): this comment previously claimed a freshly
  * generated wallet with 0 balance "can claim directly without requiring prior funding". It
  * cannot — the node rejects the transaction with "[not_found] account not found" until the
  * fee payer exists on-chain. The account still needs no FUNDING, only registration, which is
  * what createOnChainAccount does and what the guard below now handles.
  */
-export async function claimFaucet(feePayer, amount) {
+export async function claimFaucet(feePayer, amount, { onSubmitted = null } = {}) {
   // Read from the configured network, not the module constants, so a network switch actually
   // reaches a different faucet.
   const net = activeNetwork;
@@ -379,7 +446,7 @@ export async function claimFaucet(feePayer, amount) {
   // The fee payer must already exist on-chain, or the node rejects the whole transaction with
   // "[not_found] account not found".
   //
-  // VERIFIED ON ALPHANET 2026-08-18: a freshly generated address fails here, and succeeds
+  // VERIFIED ON BETANET 2026-08-18: a freshly generated address fails here, and succeeds
   // immediately after createOnChainAccount. sendTransfer has always done this; claimFaucet did
   // not, so the very first thing a new wallet might do — tap Faucet — was the one path that
   // failed. The comment above this function previously asserted the opposite ("even a freshly
@@ -395,13 +462,17 @@ export async function claimFaucet(feePayer, amount) {
   const { rawTransaction } = await getClient().transactions.buildAndSign({
     feePayer: { publicKey: feePayer.publicKey, privateKey: feePayer.privateKey },
     program: net.faucetProgramId,
-    header: { fee: 0n },
+    // fee 0n is the sponsored-claim design (pre-reset and post). stateUnits: 1 is stated
+    // explicitly — the claim writes vault state and this exact header was live-verified on
+    // the reset chain (2026-09-26, claim tsjbbZW9sT…, 10,000 units credited). chainId,
+    // nonce, startSlot and expiryAfter are fetched from the node inside buildAndSign.
+    header: { fee: 0n, stateUnits: 1 },
     accounts: { readWrite: [net.faucetStateAccount] },
     instructionData: ({ getAccountIndex }) =>
       encodeFaucetInstructionData(getAccountIndex(net.faucetStateAccount), getAccountIndex(address), amountUnits),
   });
 
-  for await (const update of getClient().transactions.sendAndTrack(rawTransaction)) {
+  for await (const update of withSubmittedNotice(getClient().transactions.sendAndTrack(rawTransaction), onSubmitted)) {
     if (update.executionResult) {
       if (update.executionResult.vmError === 0) {
         return update.signature?.value ? Signature.from(update.signature.value).toThruFmt() : undefined;
@@ -414,18 +485,16 @@ export async function claimFaucet(feePayer, amount) {
 
 // ---- Native transfer ----
 //
-// PROVENANCE: same situation as the faucet above — program address and instruction layout
-// came from reverse-engineering a real `thru transfer` transaction (confirmed on-chain
-// signature ts_ItJeT7...), not from Thru's own docs, not independently re-confirmed against
-// alphanet from here. One extra check this time that increases my confidence in it: decoding
-// both this address and the faucet's with Pubkey.from(...).toBytes() shows both are 32 zero
-// bytes with a single marker byte in the last position (0x80 here, 0xfa for the faucet) — the
-// same reserved-program pattern @thru/sdk's own accounts.create() uses internally (a
-// zero-filled 32-byte address with byte 3 in the last position). That's an independent
-// structural signal this is a real reserved system program, not a typo or a fabrication — but
-// it's still not the same as watching a transfer succeed against live alphanet myself.
-// Native transfer program address: EOA program (32 zero bytes)
-export const TRANSFER_PROGRAM_ID = 'taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+// PROVENANCE: the instruction layout came from reverse-engineering a real `thru transfer`
+// transaction (confirmed on-chain signature ts_ItJeT7...), and it is now LIVE-VERIFIED on the
+// reset chain too (2026-09-26, transfer tsPbi9uzCb… with this 16-byte layout against the EOA
+// program; fee measured at exactly 1 base unit). @thru/programs' eoa module emits
+// byte-identical instructions (tag 1, u64 amount, u16 source, u16 destination) from the same
+// buildAndSign path this wallet uses, and @thru/sdk's accounts.create() confirms the
+// self-registration flow beside it. The PROGRAM ADDRESS is package-sourced at the top of this
+// file — pre-reset it was the reserved zero address with a 0x80 marker byte, and the
+// fresh-network reset replaced that whole scheme with managed-genesis addresses (the EOA
+// program) while keeping the wire encoding identical.
 
 /** Pure byte-layout encoder for a native transfer instruction, kept directly testable. */
 export function encodeTransferInstructionData(sourceIdx, destIdx, amountUnits) {
@@ -447,7 +516,7 @@ export function encodeTransferInstructionData(sourceIdx, destIdx, amountUnits) {
  * header.fee is overridden, so the sender still needs a balance covering amount + fee, which
  * a brand-new account won't have yet (auto-creating it doesn't fund it).
  */
-export async function sendTransfer(feePayer, toAddress, amount) {
+export async function sendTransfer(feePayer, toAddress, amount, { onSubmitted = null } = {}) {
   const amountUnits = BigInt(amount);
   if (amountUnits <= 0n) {
     throw new Error('Amount must be a positive whole number of base units.');
@@ -466,12 +535,17 @@ export async function sendTransfer(feePayer, toAddress, amount) {
   const { rawTransaction } = await getClient().transactions.buildAndSign({
     feePayer: { publicKey: feePayer.publicKey, privateKey: feePayer.privateKey },
     program: activeNetwork.transferProgramId,
+    // No fee here on purpose: the SDK default is 1 base unit, re-measured on the reset
+    // chain (2026-09-26, transfer tsPbi9uzCb…: 10000 − 1234 − 1 = 8765). stateUnits: 1 is
+    // stated explicitly to match that live-tested wire shape; chainId, nonce, startSlot and
+    // expiryAfter are fetched from the node inside buildAndSign.
+    header: { stateUnits: 1 },
     accounts: readWrite.length > 0 ? { readWrite } : undefined,
     instructionData: ({ getAccountIndex }) =>
       encodeTransferInstructionData(getAccountIndex(feePayer.address), getAccountIndex(toAddress), amountUnits),
   });
 
-  for await (const update of getClient().transactions.sendAndTrack(rawTransaction)) {
+  for await (const update of withSubmittedNotice(getClient().transactions.sendAndTrack(rawTransaction), onSubmitted)) {
     if (update.executionResult) {
       if (update.executionResult.vmError === 0) {
         return update.signature?.value ? Signature.from(update.signature.value).toThruFmt() : undefined;
@@ -485,9 +559,9 @@ export async function sendTransfer(feePayer, toAddress, amount) {
 // ---- Explorer links ----
 //
 // scan.thru.org is confirmed real (fetched its homepage directly — "Thru Explorer - Block
-// Explorer for Thru Network", tracking thru-alphanet). Its exact /tx/ and /address/ route
+// Explorer for Thru Network", tracking thru-betanet). Its exact /tx/ and /address/ route
 // pattern is NOT independently confirmed, though — the homepage had no live example links to
-// check against (it showed "Network: alphanet \u25cf offline" with empty tables when checked,
+// check against (it showed "Network: betanet \u25cf offline" with empty tables when checked,
 // which is itself worth knowing separately from the URL-guessing question). /tx/{signature} and
 // /address/{address} is the near-universal convention across block explorers generally
 // (Etherscan, Solscan, Solana Explorer, Basescan all use exactly this), so that's the guess
@@ -510,6 +584,9 @@ export function explorerAddressUrl(address) {
  * Reconstructs the same [feePayer, program, ...readWriteAccounts, ...readOnlyAccounts]
  * ordering used when the transaction was built (see the faucet/transfer functions above) to
  * resolve the account indices baked into known instruction data back into real addresses.
+ * `canDecode` gates the Transfer-family labels; account registration is claimed by its
+ * program id before that gate, and anything else stays an honest kind 'other' ("Unknown
+ * transaction" in the UI).
  */
 export function decodeHistoryEntry(tx, viewerAddress) {
   const signature = tx.getSignature()?.toThruFmt();
@@ -532,6 +609,7 @@ export function decodeHistoryEntry(tx, viewerAddress) {
   const faucetProgram = activeNetwork.faucetProgramId;
   const transferProgram = activeNetwork.transferProgramId;
   const tokenProgram = activeNetwork.tokenProgramId;
+  const accountCreateProgram = activeNetwork.accountCreateProgramId;
 
   // Token program entries have their own wire format: a ONE-byte instruction tag (the ABI's
   // TokenInstruction discriminant), unlike the 4-byte tags of the faucet/transfer programs.
@@ -566,6 +644,16 @@ export function decodeHistoryEntry(tx, viewerAddress) {
       entry.counterparty = addrAt(view.getUint16(4, true)); // its owner
       entry.amount = null;
     }
+    return entry;
+  }
+
+  if (programAddress && programAddress === accountCreateProgram) {
+    // The account-registration pre-image (derive_account + create_account) is NOT the
+    // transfer shape — no 16-byte Transfer data — so it must be claimed BEFORE canDecode
+    // or it lands on kind 'other'. It is the caller's own account being registered on
+    // chain: no amount and no counterparty to show. Unknown programs stay 'other' below;
+    // only this program id gets this label.
+    entry.kind = 'registration';
     return entry;
   }
 
@@ -712,9 +800,21 @@ export async function getBlockTimeMs(slot, expectedNetworkId = activeNetwork.id)
   return request;
 }
 
+/**
+ * Current height snapshot ({ finalized, locallyExecuted, clusterExecuted } bigints).
+ *
+ * History caching uses the finalized height as chain-reality evidence: a cached row
+ * stamped above what this chain has produced cannot belong to it. The betanet reset
+ * reuses the same managed program addresses, so offline fingerprints alone cannot see a
+ * genesis swap — a height comparison can. Read-only; never mutates.
+ */
+export async function getBlockHeight() {
+  return getClient().blocks.getBlockHeight();
+}
+
 // ---- Native Token Launchpad (v1.2) -----------------------------------------
-// Native built-in Token Program address on ThruVM (similar to SPL Token Program)
-export const TOKEN_PROGRAM_ID = 'taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKqq';
+// Native built-in Token Program address on ThruVM (similar to SPL Token Program):
+// package-sourced at the top of this file.
 export const DEPLOYED_TOKENS_KEY = 'thru_deployed_tokens';
 
 /**
@@ -973,7 +1073,7 @@ export async function initializeTokenAccount(feePayer, ownerAddress, mintAddress
  *
  * @returns {Promise<{ signature: string|null, recipientTokenAccountCreated: boolean, initSignature: string|null }>}
  */
-export async function sendTokenTransfer({ feePayer, mintAddress, recipientAddress, amountUnits }) {
+export async function sendTokenTransfer({ feePayer, mintAddress, recipientAddress, amountUnits, onSubmitted = null }) {
   const amount = BigInt(amountUnits);
   if (amount <= 0n) {
     throw new Error('Amount must be a positive whole number of base units.');
@@ -1038,7 +1138,7 @@ export async function sendTokenTransfer({ feePayer, mintAddress, recipientAddres
     }),
   });
 
-  for await (const update of getClient().transactions.sendAndTrack(rawTransaction)) {
+  for await (const update of withSubmittedNotice(getClient().transactions.sendAndTrack(rawTransaction), onSubmitted)) {
     if (update.executionResult) {
       if (update.executionResult.vmError === 0) {
         return {
@@ -1066,6 +1166,57 @@ export async function sendTokenTransfer({ feePayer, mintAddress, recipientAddres
  *
  * @param {string} networkId
  */
+
+/**
+ * Mint units of a mint into one owner's token account. Only the mint authority (the wallet
+ * that deployed the mint) can do this. The destination token account is initialized first
+ * when missing — the creator's own account almost always needs it.
+ *
+ * This is the step that gives a mint its supply. InitializeMint alone leaves supply at 0;
+ * deployTokenMint now calls this when initialSupply > 0 so its registry record cannot
+ * claim supply that was never minted.
+ */
+export async function mintToToken({ feePayer, mintAddress, destinationOwner, amountUnits }) {
+  const amount = BigInt(amountUnits);
+  if (amount <= 0n) {
+    throw new Error('Amount must be a positive whole number of base units.');
+  }
+
+  const ownerAddress = destinationOwner || Pubkey.from(feePayer.publicKey).toThruFmt();
+  const init = await initializeTokenAccount(feePayer, ownerAddress, mintAddress);
+  const dest = await sdkDeriveTokenAccountAddress(getClient(), ownerAddress, mintAddress, activeNetwork.tokenProgramId);
+
+  const { rawTransaction } = await getClient().transactions.buildAndSign({
+    feePayer: { publicKey: feePayer.publicKey, privateKey: feePayer.privateKey },
+    program: activeNetwork.tokenProgramId,
+    // Mint authority is the feePayer at index 0; both the mint (supply) and the destination
+    // token account (balance) change, so both go in readWrite.
+    accounts: { readWrite: [mintAddress, dest.address] },
+    instructionData: sdkCreateMintToInstruction({
+      mintAccountBytes: Pubkey.from(mintAddress).toBytes(),
+      destinationAccountBytes: Pubkey.from(dest.address).toBytes(),
+      authorityAccountBytes: Pubkey.from(feePayer.publicKey).toBytes(),
+      amount,
+    }),
+  });
+
+  for await (const update of getClient().transactions.sendAndTrack(rawTransaction)) {
+    if (update.executionResult) {
+      if (update.executionResult.vmError === 0) {
+        return {
+          signature: update.signature?.value ? Signature.from(update.signature.value).toThruFmt() : null,
+          tokenAccount: dest.address,
+          tokenAccountInitSignature: init.signature,
+        };
+      }
+      const err = new Error(`Token mint reverted on-chain (vmError=${update.executionResult.vmError}).`);
+      err.code = 'TOKEN_MINT_FAILED';
+      throw err;
+    }
+  }
+  throw new Error('Token mint never returned an execution result (timed out?).');
+}
+
 export async function getDeployedTokens(networkId) {
   const key = networkId ? scopedKey(DEPLOYED_TOKENS_KEY, networkId) : DEPLOYED_TOKENS_KEY;
   const stored = await chrome.storage.local.get(key);
@@ -1175,5 +1326,21 @@ export async function deployTokenMint({
 
   await saveDeployedToken(tokenRecord, networkId);
   onProgress({ step: 'success', message: 'Token deployed successfully!', token: tokenRecord });
+
+  // Mint the recorded initial supply to the creator. InitializeMint creates supply 0, so
+  // without this step the registry record would claim units that do not exist on-chain.
+  if (BigInt(initialSupply) > 0n) {
+    onProgress({ step: 'minting_supply', message: 'Minting initial supply…' });
+    const minted = await mintToToken({
+      feePayer,
+      mintAddress,
+      destinationOwner: address,
+      amountUnits: initialSupply,
+    });
+    onProgress({ step: 'minted_supply', message: 'Initial supply minted.', signature: minted.signature });
+    tokenRecord.initialSupplyTx = minted.signature;
+    await saveDeployedToken(tokenRecord, networkId);
+  }
+
   return tokenRecord;
 }

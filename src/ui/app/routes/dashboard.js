@@ -8,31 +8,36 @@
 //        hover title explains what it does — no extra chrome for a one-line explanation)
 //        + Settings gear icon + Lock wallet button.
 //      - USD-first BalanceHero: 32px bold USD amount + frameless refresh icon + native THRU
-//        caption. No 24h delta line — this wallet has no market-data source, so a delta
-//        would be fabricated.
+//        caption + a quiet token-symbols summary line. The whole box is the token-drawer
+//        entry (Rabby's clickable balance card): click anywhere in it, or Enter/Space.
+//        No 24h delta line — this wallet has no market-data source, so a delta would be
+//        fabricated.
 //      - '1 pending' badge in header when pending transactions exist.
 //   2. 3x2 Action Panel (.dashboard-panel-grid):
 //      - 3 columns, 1px hairline gap, 88px cell height, pure white cells, hover #FDF0F1.
 //      - Row 1: Send (/send), Receive (/receive), Swap (disabled/roadmap).
 //      - Row 2: History (/history, with badge count), Security/Approvals, Faucet (/faucet).
-//   3. Token Ledger:
-//      - Section label: 'Tokens' (active, #C43A40 underline). There is deliberately no
-//        'Activity' tab here: recent transactions already have the History tile above and
-//        the full /history screen with filters, and a second, shallower copy of the same
-//        list is a dead tab.
-//      - White card container with 8px radius, border-t dividers.
-//      - Token rows: 32px token disc/logo, symbol (THRU, USDC), Alphanet network badge, name, amount, USD value.
+//   3. Token drawer (Rabby balance-card → asset-list popup):
+//      - The TOKEN LIST lives in the drawer (src/ui/domain/token-drawer.js), opened from
+//        the balance box — "click anywhere in the box". There is NO separate Tokens
+//        button below the grid: the box carries its own 'Assets ›' cue instead.
+//      - The drawer owns search, the ledger rows and the two-view 'Add custom token' flow
+//        (mint verified on-chain before import; the list is hidden while adding).
+//   4. Security tile → SecuritySheet (real posture checks), never an inline banner.
+//      Transient one-line feedback uses toast(), persistent state uses Banner.
 
 import { h, disposer } from '../../kit/dom.js';
 import { icon } from '../../kit/icon.js';
 import { CopyButton } from '../../kit/button.js';
 import { Banner } from '../../kit/feedback.js';
+import { toast } from '../../kit/toast.js';
 import { AccountAvatar, AddressText } from '../../domain/account-avatar.js';
-import { AssetRow } from '../../domain/token-row.js';
 import { BalanceHero } from '../../domain/balance-hero.js';
 import { PanelItem } from '../../domain/panel-item.js';
+import { TokenDrawer } from '../../domain/token-drawer.js';
+import { SecuritySheet } from '../../domain/security-sheet.js';
 import * as bridge from '../bridge.js';
-import { formatThru, formatTokenAmount } from '../../../shared/format.js';
+import { formatThru } from '../../../shared/format.js';
 
 /**
  * Format indicative USD value from raw base units.
@@ -53,7 +58,6 @@ export function DashboardRoute({ navigate }) {
   const owned = [];
   let account = null;
   let currentNetwork = null;
-  let assetRows = [];
   // '$0.00' until the first REAL value lands. The old default painted a fabricated
   // '$12,847.20' on first frame for every wallet, including fresh ones with a zero balance.
   let currentBalanceUsd = '$0.00';
@@ -78,7 +82,7 @@ export function DashboardRoute({ navigate }) {
     pillMark,
     pillName,
     pillAddr,
-    h('span', { class: 'account-pill-chevron' }, icon('chevronDown', 12)),
+    h('span', { class: 'account-pill-chevron' }, icon('chevronRight', 12)),
   ]);
   d.on(pill, 'click', () => navigate('/accounts'));
 
@@ -93,13 +97,6 @@ export function DashboardRoute({ navigate }) {
     onResult: (err) => banner.set(err ? 'Could not copy — clipboard permission denied.' : ''),
   }));
 
-  const gasBtn = h('button', {
-    type: 'button',
-    class: 'dash-header-btn',
-    title: 'Gas / Network',
-    'aria-label': 'Gas / Network',
-  }, icon('gas', 14));
-  d.on(gasBtn, 'click', () => navigate('/settings'));
 
   // Side panel: the windowId is cached at mount, never awaited inside the click handler.
   // chrome.sidePanel.open() only runs inside a transient user gesture, and an await
@@ -129,7 +126,7 @@ export function DashboardRoute({ navigate }) {
   d.on(sidePanelBtn, 'click', () => {
     try {
       if (!chrome?.sidePanel?.open) {
-        banner.set('This browser has no side panel API. The popup keeps working as usual.', 'warning');
+        toast({ tone: 'warning', title: 'Side panel unavailable', message: 'This browser has no side panel API. The popup keeps working as usual.' });
         return;
       }
       const openCall = chrome.sidePanel.open(
@@ -144,10 +141,10 @@ export function DashboardRoute({ navigate }) {
           }
         })
         .catch((error) => {
-          banner.set(error?.message || 'Could not open the side panel.', 'warning');
+          toast({ tone: 'warning', title: 'Could not open the side panel', message: error?.message || '' });
         });
     } catch (error) {
-      banner.set(error?.message || 'Could not open the side panel.', 'warning');
+      toast({ tone: 'warning', title: 'Could not open the side panel', message: error?.message || '' });
     }
   });
 
@@ -175,7 +172,6 @@ export function DashboardRoute({ navigate }) {
   });
 
   const headerActions = h('div', { class: 'dash-header-actions' }, [
-    gasBtn,
     sidePanelBtn,
     settingsBtn,
     lockBtn,
@@ -190,6 +186,8 @@ export function DashboardRoute({ navigate }) {
   // ---- 196px Ink Header: USD-First BalanceHero ----------------------------
   const balanceHero = track(BalanceHero({
     onRefresh: () => load({ force: true }),
+    // The whole box is the token-drawer entry — Rabby's clickable balance card.
+    onOpen: () => openDrawer(),
   }));
 
   const pendingBadge = h('div', { class: 'dash-pending-badge hidden', text: '1 pending' });
@@ -217,7 +215,7 @@ export function DashboardRoute({ navigate }) {
     iconName: 'swap',
     label: 'Swap',
     disabled: true,
-    onClick: () => banner.set('Swap is planned for a future upgrade.', 'info'),
+    onClick: () => toast({ tone: 'info', title: 'Swap is coming later', message: 'Swap is planned for a future upgrade.' }),
   }));
 
   const historyTile = track(PanelItem({
@@ -229,7 +227,7 @@ export function DashboardRoute({ navigate }) {
   const securityTile = track(PanelItem({
     iconName: 'shield',
     label: 'Security',
-    onClick: () => banner.set('Security & Approvals coming soon on Thru Alphanet.', 'info'),
+    onClick: () => openSecurity(),
   }));
 
   const faucetTile = track(PanelItem({
@@ -253,83 +251,106 @@ export function DashboardRoute({ navigate }) {
     faucetTile.el.title = faucetAvailable ? 'Faucet' : 'Faucet unavailable on this network';
   }
 
-  // ---- Token Ledger --------------------------------------------------------
-  // One section, one tab. The former 'Activity' tab rendered a five-entry preview of the
-  // same list that /history already shows in full with filters, and it duplicated the
-  // History tile two rows up. Recent transactions belong in History; the dashboard keeps
-  // the ledger.
-  const tokensTabBtn = h('button', {
-    type: 'button',
-    class: 'dash-tab-btn active',
-    text: 'Tokens',
-  });
+  // ---- Token drawer + strip (Rabby balance-card → token-drawer) -------------
+  // The token list lives in the drawer, opened from the balance box ("click anywhere in
+  // the box") or from the quiet strip below the action panel. load() keeps a snapshot so
+  // the drawer opens instantly and repaints when balances or the registry change.
+  let drawer = null;
+  let assetsSnapshot = {
+    nativeText: '—',
+    nativeUsd: null,
+    tokens: [],
+    stale: false,
+    tokenState: null,
+  };
 
-  const tabsBar = h('div', { class: 'dash-tabs-bar' }, [tokensTabBtn]);
-
-  const tokenLedgerHost = h('div', { class: 'token-ledger' });
-
-  function disposeAssets() {
-    for (const row of assetRows) row.destroy();
-    assetRows = [];
-    while (tokenLedgerHost.firstChild) tokenLedgerHost.removeChild(tokenLedgerHost.firstChild);
+  // `tokens` / `tokenState` === undefined mean "keep what the drawer already has". The cached
+  // first paint used to pass [] here, which BLANKED every real token in an open drawer until the
+  // live reads landed (the "wallet tokens flash while adding a custom token" bug).
+  function updateAssets(nativeText, tokens, stale, tokenState) {
+    assetsSnapshot = {
+      nativeText,
+      nativeUsd: currentBalanceUsd,
+      tokens: tokens === undefined ? assetsSnapshot.tokens : (tokens || []),
+      stale,
+      tokenState: tokenState === undefined ? assetsSnapshot.tokenState : tokenState,
+    };
+    // The balance box summarizes what the drawer holds — real symbols only.
+    const realTokens = assetsSnapshot.tokens.filter((t) => !t.hidden);
+    balanceHero.update({
+      summary: ['THRU', ...realTokens.map((t) => t.symbol)].join(' · '),
+    });
+    drawer?.update(assetsSnapshot);
   }
 
-  function renderAssets(nativeText, tokens, stale, tokenState) {
-    disposeAssets();
+  function openDrawer() {
+    if (drawer) return;
+    drawer = TokenDrawer({
+      assets: assetsSnapshot,
+      networkLabel: currentNetwork?.label || currentNetwork?.id || 'Betanet',
+      onReadMint: (mintAddress) => bridge.send('token.readMint', { mintAddress }),
+      onImportToken: (params) => bridge.send('token.import', params),
+      // The drawer waits for this BEFORE it shows the list again and raises its own
+      // "added" toast, so the user never sees a half-refreshed list.
+      onChanged: () => load({ force: true }),
+      onClose: () => { drawer = null; },
+    });
+  }
 
-    const netName = currentNetwork?.label || currentNetwork?.id || 'Alphanet';
+  // ---- Security sheet --------------------------------------------------------------
+  // Three read-only calls; each is allowed to fail on its own so one slow read cannot hide
+  // the other two checks (a failed read becomes an 'unknown' row, never a fake pass).
+  let security = null;
 
-    // Native THRU row. No changePercent: there is no 24h data source, so any percentage
-    // here would be fabricated market data.
-    assetRows.push(AssetRow({
-      symbol: 'THRU',
-      name: 'Thru Native Token',
-      balanceText: nativeText,
-      usdValue: currentBalanceUsd,
-      network: netName,
-      isNative: true,
-      stale,
-    }));
+  async function loadSecuritySnapshot() {
+    const [prefs, autoLock, keyrings] = await Promise.allSettled([
+      bridge.send('settings.get'),
+      bridge.send('system.getAutoLock'),
+      bridge.send('keyring.list'),
+    ]);
+    return {
+      prefs: prefs.status === 'fulfilled' ? prefs.value : null,
+      autoLockMinutes: autoLock.status === 'fulfilled' ? Number(autoLock.value) : null,
+      keyrings: keyrings.status === 'fulfilled' ? keyrings.value : null,
+      networkLabel: currentNetwork?.label || currentNetwork?.id || 'Betanet',
+      isTestNetwork: (currentNetwork?.id || 'betanet') !== 'mainnet',
+    };
+  }
 
-    const allTokens = [...(tokens || [])];
-    // If no deployed tokens, offer USDC row for full Rabby token ledger preview
-    if (!allTokens.some((t) => t.symbol === 'USDC')) {
-      allTokens.push({
-        symbol: 'USDC',
-        name: 'USD Coin',
-        decimals: 6,
-        isSample: true,
-      });
-    }
-
-    for (const token of allTokens) {
-      if (token.hidden) continue;
-      const state = tokenState?.get(token.mintAddress);
-      let balanceText = null;
-      if (token.isSample) {
-        balanceText = '0.00 USDC';
-      } else if (state && state.error !== true && state.amountUnits != null) {
-        const decimals = Number.isInteger(state.decimals) ? state.decimals
-          : (Number.isInteger(token.decimals) ? token.decimals : 0);
-        balanceText = `${formatTokenAmount(BigInt(state.amountUnits), decimals)} ${token.symbol || 'TOKEN'}`;
-      } else if (state && state.error !== true && state.tokenAccountExists === false) {
-        balanceText = `0 ${token.symbol || 'TOKEN'}`;
-      }
-      assetRows.push(AssetRow({
-        symbol: token.symbol,
-        name: token.name,
-        balanceText,
-        network: netName,
-        mintAddress: token.mintAddress,
-        imageUrl: token.imageUrl,
-        usdValue: '$0.00',
-      }));
-    }
-
-    for (const row of assetRows) tokenLedgerHost.appendChild(row.el);
+  function openSecurity() {
+    if (security) return;
+    security = SecuritySheet({
+      load: loadSecuritySnapshot,
+      onNavigate: (route) => navigate(route),
+      onClose: () => { security = null; },
+    });
   }
 
   // ---- Pending Transactions ------------------------------------------------
+  let pendingPollTimer = null;
+
+  function stopPendingPoll() {
+    if (pendingPollTimer) {
+      clearInterval(pendingPollTimer);
+      pendingPollTimer = null;
+    }
+  }
+
+  function startPendingPoll() {
+    if (pendingPollTimer) return;
+    pendingPollTimer = setInterval(async () => {
+      try {
+        const res = await bridge.send('tx.reconcilePending');
+        if (res?.settled > 0) {
+          const next = await bridge.send('tx.getPending').catch(() => []);
+          renderPending(next);
+        }
+      } catch {
+        // ignore
+      }
+    }, 2_000); // ~6s blocks: one check every 2s settles within a beat of the block landing
+  }
+
   function renderPending(list) {
     const active = (list || []).filter((r) => r.status === 'submitted');
     const count = active.length;
@@ -337,9 +358,11 @@ export function DashboardRoute({ navigate }) {
       pendingBadge.textContent = `${count} pending`;
       pendingBadge.classList.remove('hidden');
       historyTile.setBadge(count);
+      startPendingPoll();
     } else {
       pendingBadge.classList.add('hidden');
       historyTile.setBadge(null);
+      stopPendingPoll();
     }
   }
 
@@ -364,7 +387,7 @@ export function DashboardRoute({ navigate }) {
           size: 'sm',
         }));
         pillName.textContent = account.label || 'Account';
-        pillAddr.replaceChildren(AddressText({ address: account.address, chars: 4 }));
+        pillAddr.replaceChildren(AddressText({ address: account.address, chars: 6 }));
       }
     } catch (error) {
       banner.set(error.message || 'Could not load the active account.');
@@ -389,7 +412,7 @@ export function DashboardRoute({ navigate }) {
           usd: currentBalanceUsd,
           native: formatted,
         });
-        renderAssets(formatted, [], entry.stale);
+        updateAssets(formatted, undefined, entry.stale, undefined);
       }
     } catch {
       // cache miss is not an error
@@ -424,9 +447,6 @@ export function DashboardRoute({ navigate }) {
         bridge.send('tx.autoCreateAccount').catch(() => {});
       }
     } else {
-      banner.set(hasCachedBalance
-        ? 'Could not verify the balance. Showing the last known value.'
-        : 'Could not verify the balance. Balance unavailable.', 'warning');
       // Do not leave the neutral "$0.00" default looking like a verified zero when no
       // account read or cache has ever succeeded on this page.
       if (!hasCachedBalance) {
@@ -439,7 +459,7 @@ export function DashboardRoute({ navigate }) {
     const tokenState = tokenBalancesResult.status === 'fulfilled'
       ? new Map((tokenBalancesResult.value?.balances || []).map((b) => [b.mintAddress, b]))
       : null;
-    renderAssets(nativeText, tokens,
+    updateAssets(nativeText, tokens,
       infoResult.status === 'rejected' || infoResult.value?.stale === true, tokenState);
 
     if (pendingResult.status === 'fulfilled') {
@@ -456,8 +476,6 @@ export function DashboardRoute({ navigate }) {
     dashHeader,
     banner.el,
     actionPanel,
-    tabsBar,
-    tokenLedgerHost,
   ]);
 
   load();
@@ -471,7 +489,7 @@ export function DashboardRoute({ navigate }) {
         // it is UNKNOWN, not a zero the dashboard may display as a new balance.
         balanceHero.update({ usd: '—', native: 'Balance unavailable' });
         currentBalanceUsd = '—';
-        assetRows[0]?.setBalance(null, true, '—');
+        updateAssets('Balance unavailable', assetsSnapshot.tokens, true, assetsSnapshot.tokenState);
         return;
       }
       const raw = BigInt(entry.balance || '0');
@@ -481,7 +499,7 @@ export function DashboardRoute({ navigate }) {
         usd: currentBalanceUsd,
         native: formatted,
       });
-      if (assetRows[0]) assetRows[0].setBalance(formatted, entry.stale, currentBalanceUsd);
+      updateAssets(formatted, assetsSnapshot.tokens, entry.stale, assetsSnapshot.tokenState);
     }),
     bridge.onEvent('accountsChanged', () => load()),
     bridge.onEvent('pendingTxChanged', ({ pending } = {}) => renderPending(pending)),
@@ -491,7 +509,11 @@ export function DashboardRoute({ navigate }) {
   return {
     el,
     destroy() {
-      disposeAssets();
+      stopPendingPoll();
+      drawer?.destroy();
+      drawer = null;
+      security?.destroy();
+      security = null;
       for (const c of owned) c.destroy?.();
       owned.length = 0;
       banner.destroy();

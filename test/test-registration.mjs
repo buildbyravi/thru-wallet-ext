@@ -5,6 +5,11 @@ import { keys, Pubkey } from '@thru/sdk';
 import { handleApiRequest } from '../src/background/api-router.js';
 import * as vault from '../src/lib/vault.js';
 import * as thruClient from '../src/lib/thru-client.js';
+import { getNetworkConfig, NETWORKS } from '../src/lib/networks.js';
+
+// The shipped wallet disables Localnet (custom chains come later); this suite needs a second
+// selectable network to prove per-network isolation, so re-enable it in-process only.
+NETWORKS.localnet.enabled = true;
 import { registerCreatedAccount } from '../src/background/services/registration-service.js';
 
 function store() {
@@ -84,8 +89,8 @@ function fakeClient(id) {
   return client;
 }
 
-await call('network.setActive', { networkId: 'alphanet' });
-let alphaClient = fakeClient('alphanet');
+await call('network.setActive', { networkId: 'betanet' });
+let alphaClient = fakeClient('betanet');
 const foreign = (await keys.generateKeyPair()).address;
 for (const address of ['bad-address', foreign]) {
   const refused = await handleApiRequest({ method: 'tx.registerAccount', params: { address } });
@@ -116,17 +121,23 @@ assert.equal(broadcasts.length, 0);
 console.log('  ok - a different account\'s private key cannot sign the target\'s registration');
 
 const own = await call('tx.registerAccount', { address: third.address });
-assert.deepEqual(own, { address: third.address, networkId: 'alphanet',
+assert.deepEqual(own, { address: third.address, networkId: 'betanet',
   exists: true, created: true, signature: null });
 assert.equal(broadcasts[0].address, third.address, 'the non-active destination was registered');
 assert.equal((await call('account.getActive')).address, first.address, 'registration does not switch the sender');
 assert.deepEqual(signed[0].feePayer.privateKey, third.privateKey, 'SDK signed with the recipient\'s OWN key');
 assert.deepEqual(signed[0].feePayer.publicKey, third.publicKey, 'the fee payer is the TARGET, not Account 1');
 assert.deepEqual(signed[0].feePayerStateProof, { address: third.address });
-assert.equal(signed[0].program, 'taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMD',
-  'registration uses only the native account-creation program, not faucet or transfer');
-assert.deepEqual(signed[0].header, { fee: 0n, nonce: 0n },
-  'the native self-registration header is exactly zero fee and zero nonce');
+const betaNet = getNetworkConfig('betanet');
+assert.equal(signed[0].program, betaNet.accountCreateProgramId,
+  'registration uses the configured account-creation program, not faucet or transfer');
+assert.notEqual(signed[0].program, betaNet.faucetProgramId);
+assert.notEqual(signed[0].program, betaNet.transferProgramId);
+assert.deepEqual(signed[0].header, { fee: 0n, nonce: 0n, stateUnits: 1 },
+  'the native self-registration header is exactly zero fee, zero nonce, and one state unit');
+// chainId is deliberately NOT in the pinned header: buildAndSign fetches it from the node at
+// build time (it reports 1 on the current chain — live-verified 2026-09-26), so the wallet
+// cannot sign against a stale pinned chain id after a future reset.
 assert.ok(!JSON.stringify(own).includes('privateKey'), 'the result contains no key material');
 const already = await call('tx.registerAccount', { address: third.address });
 assert.equal(already.created, false);
@@ -161,7 +172,7 @@ await call('wallet.unlock', { password: 'Registration123!' });
 finishProof = null;
 const pendingSwitch = handleApiRequest({ method: 'tx.registerAccount', params: { address: second.address } });
 await waitUntil(() => typeof finishProof === 'function', 'the proof before network switch');
-await call('network.setActive', { networkId: 'alphanet' });
+await call('network.setActive', { networkId: 'betanet' });
 finishProof();
 const switched = await pendingSwitch;
 assert.equal(switched.error.code, 'NETWORK_CHANGED');
@@ -173,7 +184,7 @@ console.log('  ok - lock and network changes cancel a pending registration befor
 // Use a real vault, SDK-bound RPC fakes and the actual router; no dashboard visit is involved.
 chrome.runtime.getManifest = () => ({ version: 'test' });
 chrome.runtime.onMessage = { addListener() {} };
-alphaClient = fakeClient('alphanet');
+alphaClient = fakeClient('betanet');
 const priorCount = broadcasts.length;
 const batch2 = await call('account.addHdBatch', { keyringId: first.ref.keyringId, indices: [3, 4] });
 assert.deepEqual(batch2.added, [3, 4]);
@@ -212,11 +223,11 @@ await pendingMutable;
 assert.deepEqual(signed.at(-1).feePayer.privateKey, second.privateKey);
 assert.equal(signed.at(-1).feePayerStateProof.address, second.address);
 alphaClient.proofs.generate = originalMutableProof;
-chainFor('alphanet').delete(second.address); // node reset; creation-retry/JIT tests below need it absent
+chainFor('betanet').delete(second.address); // node reset; creation-retry/JIT tests below need it absent
 console.log('  ok - a pending proof cannot swap Account 2\'s signer to Account 1');
 
 const wrongChainCount = broadcasts.length;
-await registerCreatedAccount(second.address, 'localnet'); // created on localnet, now switched to Alphanet
+await registerCreatedAccount(second.address, 'localnet'); // created on localnet, now switched to Betanet
 assert.equal(broadcasts.length, wrongChainCount,
   'a delayed creation continuation cannot register on a network the user did not select then');
 
@@ -253,7 +264,7 @@ assert.equal(broadcasts.filter((b) => b.address === second.address).length, seco
 console.log('  ok - offline creation retries are bounded; just-in-time activation remains available');
 
 // In-memory "registered" status may not mask a later chain reset.
-chainFor('alphanet').delete(second.address);
+chainFor('betanet').delete(second.address);
 await call('tx.registerAccount', { address: second.address });
 assert.equal(broadcasts.filter((b) => b.address === second.address).length, secondPriorBroadcasts + 2);
 console.log('  ok - node reset is checked against the chain, never worker memory');
@@ -261,7 +272,7 @@ console.log('  ok - node reset is checked against the chain, never worker memory
 // Two JIT calls for the same owned address share the SDK's in-flight transaction, and a
 // removed account cannot finish signing after an earlier proof has already been requested.
 const fourth = newAccounts[4];
-chainFor('alphanet').delete(fourth.address);
+chainFor('betanet').delete(fourth.address);
 const originalAlphaProof = alphaClient.proofs.generate;
 let finishFourth;
 alphaClient.proofs.generate = ({ address }) => address === fourth.address
@@ -279,7 +290,7 @@ assert.equal(two.ok, true);
 assert.equal(broadcasts.length, sendsBefore + 1, 'two JIT calls cannot broadcast twice');
 console.log('  ok - concurrent activation of one owned account is deduplicated');
 
-chainFor('alphanet').delete(fourth.address); // simulate a node reset before the next proof
+chainFor('betanet').delete(fourth.address); // simulate a node reset before the next proof
 finishFourth = null;
 sendsBefore = broadcasts.length;
 const pendingRemoval = handleApiRequest({ method: 'tx.registerAccount', params: { address: fourth.address } });
@@ -295,9 +306,9 @@ console.log('  ok - removing an account while its proof is pending cancels signi
 
 for (const tx of signed) {
   const target = tx.feePayerStateProof.address;
-  assert.equal(tx.program, 'taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMD',
-    'every registration uses the native account-creation program (no faucet/dummy transfer)');
-  assert.deepEqual(tx.header, { fee: 0n, nonce: 0n });
+  assert.equal(tx.program, getNetworkConfig('betanet').accountCreateProgramId,
+    'every registration uses the configured account-creation program (no faucet/dummy transfer)');
+  assert.deepEqual(tx.header, { fee: 0n, nonce: 0n, stateUnits: 1 });
   assert.equal(Pubkey.from(tx.feePayer.publicKey).toThruFmt(), target,
     'every fee payer public key matches the target proof address');
   assert.equal(Pubkey.from(await keys.fromPrivateKey(tx.feePayer.privateKey)).toThruFmt(), target,

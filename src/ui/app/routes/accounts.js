@@ -66,8 +66,10 @@ export function AccountsRoute({ navigate, back }) {
 
     // Group by keyring so provenance is visible. An account from a second recovery phrase
     // must not look identical to one from the first.
+    // 1. Group by seed keyrings so provenance across recovery phrases is visible.
     let shown = 0;
-    for (const keyring of data.keyrings) {
+    const seedKeyrings = data.keyrings.filter((k) => k.type === 'seed');
+    for (const keyring of seedKeyrings) {
       const inGroup = data.accounts.filter(
         (account) => account.keyring?.id === keyring.id && matches(account),
       );
@@ -92,11 +94,40 @@ export function AccountsRoute({ navigate, back }) {
       listHost.appendChild(group.el);
     }
 
-    // Accounts whose keyring is missing from keyring.list would otherwise vanish from the
-    // UI while still existing in the vault — a silent disappearance is worse than an
-    // ugly group.
+    // 2. All imported private keys grouped together under one Private Key section (Rabby pattern).
+    const pkAccounts = data.accounts.filter(
+      (account) => account.keyring?.type === 'privateKey' && matches(account),
+    );
+    if (pkAccounts.length) {
+      const rows = pkAccounts.map((account) => AccountRow({
+        account,
+        active: refsEqual(account.ref, data.activeRef),
+        balance: account.balance ?? null,
+        stale: account.balanceStale ?? true,
+        onSelect: (picked) => switchTo(picked),
+        onDetail: (picked) => navigate(`/account?ref=${encodeRef(picked.ref)}`),
+      }));
+      shown += rows.length;
+
+      const group = KeyringGroup({
+        keyring: {
+          id: '__private_keys',
+          label: pkAccounts.length > 1 ? 'Private Keys' : 'Private Key',
+          accountCount: pkAccounts.length,
+          type: 'privateKey',
+        },
+        rows,
+      });
+      groups.push(group);
+      listHost.appendChild(group.el);
+    }
+
+    // 3. Accounts whose keyring is missing from keyring.list
+    const knownIds = new Set(data.keyrings.map((k) => k.id));
     const orphans = data.accounts.filter(
-      (account) => matches(account) && !data.keyrings.some((k) => k.id === account.keyring?.id),
+      (account) => matches(account)
+        && account.keyring?.type !== 'privateKey'
+        && !knownIds.has(account.keyring?.id),
     );
     if (orphans.length) {
       const rows = orphans.map((account) => AccountRow({

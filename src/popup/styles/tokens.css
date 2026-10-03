@@ -57,8 +57,9 @@
   --surface-inset: #f7f9fa;
 
   /* Rabby structure tokens */
-  --header: #1a1214;
-  --header-2: #2a1618;
+  --header: #241014;
+  --header-2: #42161d;
+  --header-gradient: radial-gradient(135% 125% at 50% 90%, #4a1820 0%, #2e1116 55%, #1d0a0d 100%);
   --line: #e0e5ec;
   --blue-hover: #fdf0f1;
   --title: #151b1e;
@@ -167,8 +168,9 @@
   --surface-2: #232c31;
   --surface-3: #2c373d;
   --surface-inset: #141a1d;
-  --header: #101517;
-  --header-2: #1a1214;
+  --header: #200d11;
+  --header-2: #3c141a;
+  --header-gradient: radial-gradient(135% 125% at 50% 90%, #44161c 0%, #280e13 55%, #18090c 100%);
   --line: #242e33;
   --border-hairline: #242e33;
 

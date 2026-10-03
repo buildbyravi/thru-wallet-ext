@@ -3,7 +3,7 @@
 **Last Updated:** August 2026  
 **Repository:** [github.com/buildbyravi/thru-wallet-ext](https://github.com/buildbyravi/thru-wallet-ext)
 
-Thru Wallet is a self-custody Chrome extension for Thru's alphanet (a non-EVM RISC-V Layer-1 blockchain). It is designed from the ground up to respect user privacy and operate under strict zero-telemetry principles.
+Thru Wallet is a self-custody Chrome extension for Thru's betanet (a non-EVM RISC-V Layer-1 blockchain). It is designed from the ground up to respect user privacy and operate under strict zero-telemetry principles.
 
 ---
 
@@ -20,7 +20,7 @@ All sensitive cryptographic material and application settings remain exclusively
 
 ## 2. What Data Leaves Your Device
 
-The extension only communicates with the specified Thru alphanet RPC endpoint to perform essential blockchain operations. The following data is transmitted:
+The extension only communicates with the specified Thru betanet RPC endpoint to perform essential blockchain operations. The following data is transmitted:
 
 *   **Public Addresses:** Your account public address is sent to the RPC node via HTTP JSON-RPC to query account state, balance, and transaction nonces.
 *   **Signed Transactions:** Fully pre-signed transaction payloads (such as native transfers or faucet claims) are broadcast to the RPC node for network inclusion.
@@ -28,7 +28,7 @@ The extension only communicates with the specified Thru alphanet RPC endpoint to
 ### Official RPC Endpoint
 All RPC communication is conducted directly with:
 ```text
-https://rpc.alphanet.thru.org
+https://rpc.betanet.thru.org
 ```
 
 > [!NOTE]

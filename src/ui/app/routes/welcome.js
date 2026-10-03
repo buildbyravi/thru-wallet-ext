@@ -16,6 +16,7 @@ import { Button } from '../../kit/button.js';
 import { Field } from '../../kit/field.js';
 import { PageHeader, Banner } from '../../kit/feedback.js';
 import * as bridge from '../bridge.js';
+import { offerFreshPhrase } from '../../domain/fresh-phrase.js';
 import { invalidate } from '../guards.js';
 import { encodeRef } from '../../../shared/refs.js';
 
@@ -64,16 +65,6 @@ export function WelcomeRoute({ navigate }) {
   function renderMenu() {
     clearBody();
     banner.clear();
-
-    body.appendChild(h('div', { class: 'notice warning' }, [
-      h('div', { class: 'row-flex' }, [
-        icon('warning', 15),
-        h('strong', { text: 'Experimental wallet' }),
-      ]),
-      h('p', { class: 'hint', text:
-        'Community-built and not audited. Use test-network funds only, and never a phrase that '
-        + 'holds anything you care about.' }),
-    ]));
 
     body.appendChild(track(OptionCard({
       iconName: 'plus',
@@ -137,37 +128,58 @@ export function WelcomeRoute({ navigate }) {
     header.setTitle('Create a wallet');
 
     const { pw, confirm } = passwordFields();
-    body.appendChild(pw.el);
-    body.appendChild(confirm.el);
+    let submitting = false;
+    const submit = async () => {
+      if (submitting) return;
+      submitting = true;
+      try {
+        const password = readPassword(pw, confirm);
+        if (!password) return;
+        try {
+          // wallet.create returns the mnemonic so the backup step can show the words
+          // immediately. Re-reading them through the password-gated export path (the old
+          // behavior) made people re-enter the password they had just set — a gate meant
+          // for in-wallet reveals leaking into onboarding.
+          const created = await bridge.send('wallet.create', { password });
+          pw.clearSecret();
+          confirm.clearSecret();
+          invalidate();
 
-    body.appendChild(h('div', { class: 'screen-actions' }, [
-      track(Button({
-        label: 'Create wallet',
-        variant: 'primary',
-        busyLabel: 'Creating…',
-        onClick: async () => {
-          const password = readPassword(pw, confirm);
-          if (!password) return;
-          try {
-            // wallet.create returns the mnemonic. It is deliberately NOT kept: the backup step
-            // re-reads it through the password-gated export path, so no secret is held in UI
-            // state across a navigation.
-            await bridge.send('wallet.create', { password });
-            pw.clearSecret();
-            confirm.clearSecret();
-            invalidate();
-
-            const ref = await bridge.send('account.getActiveRef');
-            // Straight into backup. An unbacked-up generated phrase is the most dangerous state
-            // this wallet can be in, so it is not an optional follow-up step.
-            navigate(`/export?ref=${encodeRef(ref)}&mode=backup`, { replace: true });
-          } catch (error) {
-            banner.set(error.message || 'Could not create the wallet.');
-          }
-        },
-      })).el,
-      track(Button({ label: 'Back', variant: 'text', onClick: () => goMenu() })).el,
-    ]));
+          const ref = await bridge.send('account.getActiveRef');
+          const refToken = encodeRef(ref);
+          offerFreshPhrase(refToken, created?.mnemonic);
+          // Straight into backup. An unbacked-up generated phrase is the most dangerous state
+          // this wallet can be in, so it is not an optional follow-up step.
+          navigate(`/export?ref=${refToken}&mode=backup`, { replace: true });
+        } catch (error) {
+          banner.set(error.message || 'Could not create the wallet.');
+        }
+      } finally {
+        submitting = false;
+      }
+    };
+    const createBtn = track(Button({
+      label: 'Create wallet',
+      variant: 'primary',
+      busyLabel: 'Creating…',
+      type: 'submit',
+      onClick: submit,
+    }));
+    // A real <form> so Enter submits — with more than one field on screen the button alone
+    // never received Enter. Same treatment on every multi-field form in this route.
+    const form = h('form', { novalidate: true }, [
+      pw.el,
+      confirm.el,
+      h('div', { class: 'screen-actions' }, [
+        createBtn.el,
+        track(Button({ label: 'Back', variant: 'text', onClick: () => goMenu() })).el,
+      ]),
+    ]);
+    d.on(form, 'submit', (event) => {
+      event.preventDefault();
+      void submit();
+    });
+    body.appendChild(form);
   }
 
   // ---- Import a phrase ----------------------------------------------------
@@ -186,45 +198,60 @@ export function WelcomeRoute({ navigate }) {
       onInput: () => phrase.setError(''),
     }));
     const { pw, confirm } = passwordFields();
-
-    body.appendChild(phrase.el);
-    body.appendChild(pw.el);
-    body.appendChild(confirm.el);
-
-    body.appendChild(h('div', { class: 'screen-actions' }, [
-      track(Button({
-        label: 'Import wallet',
-        variant: 'primary',
-        busyLabel: 'Importing…',
-        onClick: async () => {
-          const words = phrase.value.trim().replace(/\s+/g, ' ');
-          if (!words) {
-            phrase.setError('Enter your recovery phrase.');
-            return;
-          }
-          const count = words.split(' ').length;
-          if (count !== 12 && count !== 24) {
-            phrase.setError(`Expected 12 or 24 words, got ${count}.`);
-            return;
-          }
-          const password = readPassword(pw, confirm);
-          if (!password) return;
-          try {
-            await bridge.send('wallet.importMnemonic', { mnemonic: words, password });
-            phrase.clearSecret();
-            pw.clearSecret();
-            confirm.clearSecret();
-            invalidate();
-            // No backup step: an imported phrase is already written down somewhere.
-            navigate('/dashboard', { replace: true });
-          } catch (error) {
-            phrase.clearSecret();
-            banner.set(error.message || 'Could not import that phrase.');
-          }
-        },
-      })).el,
-      track(Button({ label: 'Back', variant: 'text', onClick: () => goMenu() })).el,
-    ]));
+    let submitting = false;
+    const submit = async () => {
+      if (submitting) return;
+      submitting = true;
+      try {
+        const words = phrase.value.trim().replace(/\s+/g, ' ');
+        if (!words) {
+          phrase.setError('Enter your recovery phrase.');
+          return;
+        }
+        const count = words.split(' ').length;
+        if (count !== 12 && count !== 24) {
+          phrase.setError(`Expected 12 or 24 words, got ${count}.`);
+          return;
+        }
+        const password = readPassword(pw, confirm);
+        if (!password) return;
+        try {
+          await bridge.send('wallet.importMnemonic', { mnemonic: words, password });
+          phrase.clearSecret();
+          pw.clearSecret();
+          confirm.clearSecret();
+          invalidate();
+          // No backup step: an imported phrase is already written down somewhere.
+          navigate('/dashboard', { replace: true });
+        } catch (error) {
+          phrase.clearSecret();
+          banner.set(error.message || 'Could not import that phrase.');
+        }
+      } finally {
+        submitting = false;
+      }
+    };
+    const importBtn = track(Button({
+      label: 'Import wallet',
+      variant: 'primary',
+      busyLabel: 'Importing…',
+      type: 'submit',
+      onClick: submit,
+    }));
+    const form = h('form', { novalidate: true }, [
+      phrase.el,
+      pw.el,
+      confirm.el,
+      h('div', { class: 'screen-actions' }, [
+        importBtn.el,
+        track(Button({ label: 'Back', variant: 'text', onClick: () => goMenu() })).el,
+      ]),
+    ]);
+    d.on(form, 'submit', (event) => {
+      event.preventDefault();
+      void submit();
+    });
+    body.appendChild(form);
   }
 
   // ---- Import a private key ----------------------------------------------
@@ -243,39 +270,54 @@ export function WelcomeRoute({ navigate }) {
       onInput: () => key.setError(''),
     }));
     const { pw, confirm } = passwordFields();
-
-    body.appendChild(key.el);
-    body.appendChild(pw.el);
-    body.appendChild(confirm.el);
-
-    body.appendChild(h('div', { class: 'screen-actions' }, [
-      track(Button({
-        label: 'Import key',
-        variant: 'primary',
-        busyLabel: 'Importing…',
-        onClick: async () => {
-          const hex = key.value.trim().replace(/^0x/i, '');
-          if (!/^[0-9a-fA-F]{64}$/.test(hex)) {
-            key.setError('A private key is exactly 64 hex characters.');
-            return;
-          }
-          const password = readPassword(pw, confirm);
-          if (!password) return;
-          try {
-            await bridge.send('wallet.importPrivateKey', { privateKeyHex: hex, password });
-            key.clearSecret();
-            pw.clearSecret();
-            confirm.clearSecret();
-            invalidate();
-            navigate('/dashboard', { replace: true });
-          } catch (error) {
-            key.clearSecret();
-            banner.set(error.message || 'Could not import that key.');
-          }
-        },
-      })).el,
-      track(Button({ label: 'Back', variant: 'text', onClick: () => goMenu() })).el,
-    ]));
+    let submitting = false;
+    const submit = async () => {
+      if (submitting) return;
+      submitting = true;
+      try {
+        const hex = key.value.trim().replace(/^0x/i, '');
+        if (!/^[0-9a-fA-F]{64}$/.test(hex)) {
+          key.setError('A private key is exactly 64 hex characters.');
+          return;
+        }
+        const password = readPassword(pw, confirm);
+        if (!password) return;
+        try {
+          await bridge.send('wallet.importPrivateKey', { privateKeyHex: hex, password });
+          key.clearSecret();
+          pw.clearSecret();
+          confirm.clearSecret();
+          invalidate();
+          navigate('/dashboard', { replace: true });
+        } catch (error) {
+          key.clearSecret();
+          banner.set(error.message || 'Could not import that key.');
+        }
+      } finally {
+        submitting = false;
+      }
+    };
+    const importKeyBtn = track(Button({
+      label: 'Import key',
+      variant: 'primary',
+      busyLabel: 'Importing…',
+      type: 'submit',
+      onClick: submit,
+    }));
+    const form = h('form', { novalidate: true }, [
+      key.el,
+      pw.el,
+      confirm.el,
+      h('div', { class: 'screen-actions' }, [
+        importKeyBtn.el,
+        track(Button({ label: 'Back', variant: 'text', onClick: () => goMenu() })).el,
+      ]),
+    ]);
+    d.on(form, 'submit', (event) => {
+      event.preventDefault();
+      void submit();
+    });
+    body.appendChild(form);
   }
 
   renderMenu();

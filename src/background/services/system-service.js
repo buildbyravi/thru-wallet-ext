@@ -129,7 +129,10 @@ export async function shouldAutoLock() {
 }
 
 /**
- * Liveness probe. Also stamps activity, so a UI heartbeat keeps the session alive.
+ * Liveness probe. The API router stamps activity after every successful call, so the UI's
+ * presence ping (shell.js listens for real user input and calls system.ping) counts an
+ * open, in-use popup as active without any timer of its own.
+ * @returns {Promise<{ ok: true, contractVersion: number }>}
  */
 export async function ping() {
   return { ok: true, contractVersion: CONTRACT_VERSION };

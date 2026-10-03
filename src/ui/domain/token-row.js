@@ -6,9 +6,9 @@
 //
 // Uses safe node construction via h() and textContent, completely preventing injection.
 
-import { h, disposer, isSafeUrl } from '../kit/dom.js';
-import { icon } from '../kit/icon.js';
+import { h, disposer } from '../kit/dom.js';
 import { AddressText } from './account-avatar.js';
+import { TokenAvatar } from './token-avatar.js';
 
 /** Class list for a supplied change value; a leading minus marks a loss. */
 function changePercentClasses(changePercent) {
@@ -37,7 +37,7 @@ function extractAmount(text) {
  *   changePercent  24h change string. Only pass it from a REAL source — the default is null
  *                  (no cell at all). This wallet has no price feed, so a default value here
  *                  would be fabricated market data.
- *   network        network label (default 'Alphanet')
+ *   network        network label (default 'Betanet')
  *   mintAddress    optional mint address
  *   imageUrl       optional remote logo URL
  *   isNative       renders the Native bolt glyph
@@ -50,7 +50,7 @@ export function AssetRow({
   balanceText = null,
   usdValue = null,
   changePercent = null,
-  network = 'Alphanet',
+  network = 'Betanet',
   mintAddress = null,
   imageUrl = null,
   isNative = false,
@@ -60,19 +60,9 @@ export function AssetRow({
   const d = disposer();
   const ticker = String(symbol || (isNative ? 'THRU' : 'TOKEN'));
   const initials = ticker.slice(0, 3).toUpperCase();
-  const networkName = String(network || 'Alphanet');
+  const networkName = String(network || 'Betanet');
 
-  const safeLogo = imageUrl && isSafeUrl(imageUrl) && /^(https?:|data:image\/)/i.test(imageUrl)
-    ? imageUrl
-    : null;
-
-  const avatar = safeLogo
-    ? h('div', { class: 'token-row-avatar' }, [
-      h('img', { class: 'token-row-logo', src: safeLogo, alt: '' }),
-    ])
-    : h('div', { class: ['token-row-avatar', isNative ? 'native' : null].filter(Boolean) }, isNative
-      ? icon('bolt', 16)
-      : h('span', { text: initials }));
+  const avatar = TokenAvatar({ symbol: ticker, imageUrl, isNative });
 
   const symbolEl = h('span', { class: 'token-row-symbol', text: ticker });
   const netBadge = h('span', { class: 'token-net-badge', text: networkName });

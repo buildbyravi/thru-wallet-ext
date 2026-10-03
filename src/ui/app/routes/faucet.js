@@ -4,7 +4,7 @@
 // against a live network:
 //
 //   - The amount field is BASE UNITS, and says so. That is now CONFIRMED rather than assumed:
-//     claiming 10000 credited exactly 10000 base units on alphanet. The legacy label said "raw
+//     claiming 10000 credited exactly 10000 base units on betanet. The legacy label said "raw
 //     units" without explaining what that meant next to a Send screen that takes whole THRU.
 //   - The cap comes from the ACTIVE NETWORK's faucetMaxPerClaim, not a hardcoded 10_000n copied
 //     into three files.
@@ -20,7 +20,6 @@ import { icon } from '../../kit/icon.js';
 import { Button } from '../../kit/button.js';
 import { Field } from '../../kit/field.js';
 import { PageHeader, Banner, Spinner } from '../../kit/feedback.js';
-import { requirePassword } from '../../domain/password-prompt.js';
 import * as bridge from '../bridge.js';
 import { formatThru } from '../../../shared/format.js';
 
@@ -85,7 +84,7 @@ export function FaucetRoute({ navigate, back }) {
       variant: 'primary',
       iconName: 'faucet',
       busyLabel: 'Claiming…',
-      onClick: () => claim(amount),
+      onClick: () => claim(amount, claimBtn),
     }));
 
     body.appendChild(amount.el);
@@ -94,7 +93,11 @@ export function FaucetRoute({ navigate, back }) {
     body.appendChild(h('div', { class: 'screen-actions' }, claimBtn.el));
   }
 
-  async function claim(amountField) {
+  let claiming = false;
+  async function claim(amountField, claimBtn) {
+    if (claiming) return;
+    claiming = true;
+    claimBtn?.update({ disabled: true });
     banner.clear();
     const raw = amountField.value.trim();
 
@@ -102,6 +105,8 @@ export function FaucetRoute({ navigate, back }) {
     // with Number(cap) comparisons.
     if (!/^\d+$/.test(raw)) {
       amountField.setError('Enter a whole number of base units.');
+      claiming = false;
+      claimBtn?.update({ disabled: false });
       return;
     }
     let units;
@@ -109,14 +114,20 @@ export function FaucetRoute({ navigate, back }) {
       units = BigInt(raw);
     } catch {
       amountField.setError('Enter a whole number of base units.');
+      claiming = false;
+      claimBtn?.update({ disabled: false });
       return;
     }
     if (units <= 0n) {
       amountField.setError('Enter an amount greater than zero.');
+      claiming = false;
+      claimBtn?.update({ disabled: false });
       return;
     }
     if (units > capUnits) {
       amountField.setError(`The most this faucet gives per claim is ${capUnits} base units.`);
+      claiming = false;
+      claimBtn?.update({ disabled: false });
       return;
     }
 
@@ -126,20 +137,14 @@ export function FaucetRoute({ navigate, back }) {
       .catch(() => null);
 
     try {
-      const params = { amountUnits: units.toString() };
-      const prefs = await bridge.send('settings.get').catch(() => null);
-      const result = prefs?.requirePasswordForSigning === false
-        ? await bridge.send('tx.claimFaucet', params)
-        : await requirePassword({
-          title: 'Confirm faucet claim',
-          body: 'Re-enter your password to sign and submit this faucet transaction.',
-          confirmLabel: 'Sign claim',
-          verify: (password) => bridge.send('tx.claimFaucet', { ...params, password }),
-        });
+      const result = await bridge.send('tx.claimFaucet', { amountUnits: units.toString() });
       if (!result) return;
       await renderSuccess(result, before, units);
     } catch (error) {
       banner.set(error.message || 'The faucet claim failed.');
+    } finally {
+      claiming = false;
+      claimBtn?.update({ disabled: false });
     }
   }
 

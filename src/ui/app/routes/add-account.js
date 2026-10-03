@@ -224,39 +224,51 @@ export function AddAccountRoute({ navigate, back }) {
       maxLength: 32,
     }));
 
-    body.appendChild(h('div', { class: 'notice warning' }, [
-      h('strong', { text: 'You must write the new phrase down' }),
-      h('p', { class: 'hint', text:
-        'A new phrase is a new set of funds to lose. You will be shown it once and asked to '
-        + 'confirm it before it is used.' }),
-    ]));
-    body.appendChild(nameField.el);
-    body.appendChild(h('div', { class: 'screen-actions' }, [
-      track(Button({
-        label: 'Create phrase',
-        variant: 'primary',
-        onClick: async () => {
-          // The phrase is generated INSIDE the background and persisted before this
-          // returns. The UI never holds fresh entropy; the words are shown afterwards via
-          // the backup flow, which re-verifies the password.
-          const created = await requirePassword({
-            title: 'Confirm your password',
-            body: 'Adding key material re-checks your password against the encrypted vault.',
-            confirmLabel: 'Create phrase',
-            verify: (password) => bridge.send('keyring.createSeed', {
-              password,
-              label: nameField.value.trim(),
-            }),
-          });
-          if (!created) return;
-          // Straight into the backup flow: an unbacked-up generated phrase is the single
-          // most dangerous state this wallet can be in.
-          const activeRef = await bridge.send('account.getActiveRef');
-          navigate(`/export?ref=${encodeRef(activeRef)}&mode=backup`, { replace: true });
-        },
-      })).el,
-      track(Button({ label: 'Back', variant: 'text', onClick: () => renderMenu() })).el,
-    ]));
+    let submitting = false;
+    const submit = async () => {
+      if (submitting) return;
+      submitting = true;
+      try {
+        // The phrase is generated INSIDE the background and persisted before this
+        // returns. The UI never holds fresh entropy; the words are shown afterwards via
+        // the backup flow, which re-verifies the password.
+        const created = await requirePassword({
+          title: 'Confirm your password',
+          body: 'Adding key material re-checks your password against the encrypted vault.',
+          confirmLabel: 'Create phrase',
+          verify: (password) => bridge.send('keyring.createSeed', {
+            password,
+            label: nameField.value.trim(),
+          }),
+        });
+        if (!created) return;
+        // Straight into the backup flow: an unbacked-up generated phrase is the single
+        // most dangerous state this wallet can be in.
+        const activeRef = await bridge.send('account.getActiveRef');
+        navigate(`/export?ref=${encodeRef(activeRef)}&mode=backup`, { replace: true });
+      } finally {
+        submitting = false;
+      }
+    };
+    const createBtn = track(Button({
+      label: 'Create phrase',
+      variant: 'primary',
+      type: 'submit',
+      onClick: submit,
+    }));
+    // A real <form> so Enter submits — every multi-field form in this route gets one.
+    const form = h('form', { novalidate: true }, [
+      nameField.el,
+      h('div', { class: 'screen-actions' }, [
+        createBtn.el,
+        track(Button({ label: 'Back', variant: 'text', onClick: () => renderMenu() })).el,
+      ]),
+    ]);
+    d.on(form, 'submit', (event) => {
+      event.preventDefault();
+      void submit();
+    });
+    body.appendChild(form);
   }
 
   // ---- Import an existing phrase -----------------------------------------
@@ -278,41 +290,58 @@ export function AddAccountRoute({ navigate, back }) {
       placeholder: `Seed wallet ${seedKeyrings.length + 1}`,
     }));
 
-    body.appendChild(phraseField.el);
-    body.appendChild(nameField.el);
-    body.appendChild(h('div', { class: 'screen-actions' }, [
-      track(Button({
-        label: 'Import phrase',
-        variant: 'primary',
-        onClick: async () => {
-          const phrase = phraseField.value.trim().replace(/\s+/g, ' ');
-          if (!phrase) {
-            phraseField.setError('Enter your recovery phrase.');
-            return;
-          }
-          const wordCount = phrase.split(' ').length;
-          if (wordCount !== 12 && wordCount !== 24) {
-            phraseField.setError(`Expected 12 or 24 words, got ${wordCount}.`);
-            return;
-          }
-          const added = await requirePassword({
-            title: 'Confirm your password',
-            body: 'Adding key material re-checks your password against the encrypted vault.',
-            confirmLabel: 'Import phrase',
-            verify: (password) => bridge.send('keyring.addSeed', {
-              mnemonic: phrase,
-              password,
-              label: nameField.value.trim(),
-            }),
-          });
-          // Clear the phrase from the field regardless of outcome.
-          phraseField.clearSecret();
-          if (!added) return;
-          navigate('/accounts', { replace: true });
-        },
-      })).el,
-      track(Button({ label: 'Back', variant: 'text', onClick: () => renderMenu() })).el,
-    ]));
+    let submitting = false;
+    const submit = async () => {
+      if (submitting) return;
+      submitting = true;
+      try {
+        const phrase = phraseField.value.trim().replace(/\s+/g, ' ');
+        if (!phrase) {
+          phraseField.setError('Enter your recovery phrase.');
+          return;
+        }
+        const wordCount = phrase.split(' ').length;
+        if (wordCount !== 12 && wordCount !== 24) {
+          phraseField.setError(`Expected 12 or 24 words, got ${wordCount}.`);
+          return;
+        }
+        const added = await requirePassword({
+          title: 'Confirm your password',
+          body: 'Adding key material re-checks your password against the encrypted vault.',
+          confirmLabel: 'Import phrase',
+          verify: (password) => bridge.send('keyring.addSeed', {
+            mnemonic: phrase,
+            password,
+            label: nameField.value.trim(),
+          }),
+        });
+        // Clear the phrase from the field regardless of outcome.
+        phraseField.clearSecret();
+        if (!added) return;
+        navigate('/accounts', { replace: true });
+      } finally {
+        submitting = false;
+      }
+    };
+    const importBtn = track(Button({
+      label: 'Import phrase',
+      variant: 'primary',
+      type: 'submit',
+      onClick: submit,
+    }));
+    const form = h('form', { novalidate: true }, [
+      phraseField.el,
+      nameField.el,
+      h('div', { class: 'screen-actions' }, [
+        importBtn.el,
+        track(Button({ label: 'Back', variant: 'text', onClick: () => renderMenu() })).el,
+      ]),
+    ]);
+    d.on(form, 'submit', (event) => {
+      event.preventDefault();
+      void submit();
+    });
+    body.appendChild(form);
   }
 
   // ---- Import a private key ----------------------------------------------
@@ -334,39 +363,56 @@ export function AddAccountRoute({ navigate, back }) {
       placeholder: 'Imported key',
     }));
 
-    body.appendChild(keyField.el);
-    body.appendChild(nameField.el);
-    body.appendChild(h('div', { class: 'screen-actions' }, [
-      track(Button({
-        label: 'Import key',
-        variant: 'primary',
-        onClick: async () => {
-          const hex = keyField.value.trim().replace(/^0x/i, '');
-          if (!hex) {
-            keyField.setError('Enter a private key.');
-            return;
-          }
-          if (!/^[0-9a-fA-F]{64}$/.test(hex)) {
-            keyField.setError('A private key is exactly 64 hex characters.');
-            return;
-          }
-          const added = await requirePassword({
-            title: 'Confirm your password',
-            body: 'Adding key material re-checks your password against the encrypted vault.',
-            confirmLabel: 'Import key',
-            verify: (password) => bridge.send('keyring.addPrivateKey', {
-              privateKeyHex: hex,
-              password,
-              label: nameField.value.trim(),
-            }),
-          });
-          keyField.clearSecret();
-          if (!added) return;
-          navigate('/accounts', { replace: true });
-        },
-      })).el,
-      track(Button({ label: 'Back', variant: 'text', onClick: () => renderMenu() })).el,
-    ]));
+    let submitting = false;
+    const submit = async () => {
+      if (submitting) return;
+      submitting = true;
+      try {
+        const hex = keyField.value.trim().replace(/^0x/i, '');
+        if (!hex) {
+          keyField.setError('Enter a private key.');
+          return;
+        }
+        if (!/^[0-9a-fA-F]{64}$/.test(hex)) {
+          keyField.setError('A private key is exactly 64 hex characters.');
+          return;
+        }
+        const added = await requirePassword({
+          title: 'Confirm your password',
+          body: 'Adding key material re-checks your password against the encrypted vault.',
+          confirmLabel: 'Import key',
+          verify: (password) => bridge.send('keyring.addPrivateKey', {
+            privateKeyHex: hex,
+            password,
+            label: nameField.value.trim(),
+          }),
+        });
+        keyField.clearSecret();
+        if (!added) return;
+        navigate('/accounts', { replace: true });
+      } finally {
+        submitting = false;
+      }
+    };
+    const importKeyBtn = track(Button({
+      label: 'Import key',
+      variant: 'primary',
+      type: 'submit',
+      onClick: submit,
+    }));
+    const form = h('form', { novalidate: true }, [
+      keyField.el,
+      nameField.el,
+      h('div', { class: 'screen-actions' }, [
+        importKeyBtn.el,
+        track(Button({ label: 'Back', variant: 'text', onClick: () => renderMenu() })).el,
+      ]),
+    ]);
+    d.on(form, 'submit', (event) => {
+      event.preventDefault();
+      void submit();
+    });
+    body.appendChild(form);
   }
 
   (async () => {

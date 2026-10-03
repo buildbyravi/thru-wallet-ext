@@ -1,7 +1,11 @@
 // Read-path network binding and cache isolation, using a fake SDK account reader.
 // No real RPC, wallet keys or Chrome browser are required.
 import assert from 'node:assert/strict';
-import { getNetworkConfig } from '../src/lib/networks.js';
+import { getNetworkConfig, NETWORKS } from '../src/lib/networks.js';
+
+// The shipped wallet disables Localnet (custom chains come later); this suite needs a second
+// selectable network to prove per-network isolation, so re-enable it in-process only.
+NETWORKS.localnet.enabled = true;
 import * as thruClient from '../src/lib/thru-client.js';
 import * as networks from '../src/background/services/network-service.js';
 import * as balances from '../src/background/services/balance-service.js';
@@ -26,7 +30,7 @@ globalThis.chrome = {
 
 const address = 'taEREREREREREREREREREREREREREREREREREREREREREg';
 console.log('[network reads] no chain change may write an answer into the wrong cache');
-await networks.setActiveNetwork('alphanet');
+await networks.setActiveNetwork('betanet');
 const alphaClient = thruClient.getClient();
 const originalAlphaGet = alphaClient.accounts.get;
 let finishRead;
@@ -37,20 +41,20 @@ const pending = balances.getBalances([address]);
 for (let i = 0; i < 25 && !finishRead; i += 1) {
   await new Promise((resolve) => setImmediate(resolve));
 }
-assert.equal(typeof finishRead, 'function', 'Alphanet account RPC started');
+assert.equal(typeof finishRead, 'function', 'Betanet account RPC started');
 await networks.setActiveNetwork('localnet');
 finishRead();
 await assert.rejects(pending, (error) => error.code === 'NETWORK_CHANGED');
 alphaClient.accounts.get = originalAlphaGet;
-assert.equal(data.has('thru_balance_cache::alphanet'), false);
+assert.equal(data.has('thru_balance_cache::betanet'), false);
 assert.equal(data.has('thru_balance_cache::localnet'), false);
 assert.equal(events.filter((event) => event.event === 'balanceChanged').length, 0);
 console.log('  ok - switching while an RPC is pending neither writes nor emits its old-chain result');
 
 console.log('[network reads] a cold worker binds the active chain for token reads');
-// Force the SDK to point at Alphanet while local storage selects localnet. A token read
+// Force the SDK to point at Betanet while local storage selects localnet. A token read
 // with an empty registry uses no network, but MUST rebind before its first possible RPC.
-thruClient.configureNetwork(getNetworkConfig('alphanet'));
+thruClient.configureNetwork(getNetworkConfig('betanet'));
 const noTokens = await tokens.getTokenBalances({ address });
 assert.equal(noTokens.networkId, 'localnet');
 assert.deepEqual(noTokens.balances, []);
@@ -110,7 +114,7 @@ for (let i = 0; i < 25 && !finishAccountRead; i += 1) {
   await new Promise((resolve) => setImmediate(resolve));
 }
 assert.equal(typeof finishAccountRead, 'function');
-await networks.setActiveNetwork('alphanet');
+await networks.setActiveNetwork('betanet');
 finishAccountRead();
 await assert.rejects(oldAccountInfo, (error) => error.code === 'NETWORK_CHANGED');
 localBeforeSwitch.accounts.get = localRead;
@@ -124,11 +128,31 @@ const beforePendingEvents = events.filter((message) => message.event === 'pendin
 const recorded = await pendingTx.track({ signature: 'ts_fixture', kind: 'transfer',
   from: address, to: 'recipient', amountUnits: '1', networkId: 'localnet' });
 assert.equal(recorded.networkId, 'localnet');
-assert.equal(data.has('thru_pending_txs::alphanet'), false);
+assert.equal(data.has('thru_pending_txs::betanet'), false);
 assert.equal(data.get('thru_pending_txs::localnet')?.[0].signature, 'ts_fixture');
 assert.equal(events.filter((message) => message.event === 'pendingTxChanged').length,
-  beforePendingEvents, 'do not announce a localnet send on the Alphanet UI');
+  beforePendingEvents, 'do not announce a localnet send on the Betanet UI');
 assert.deepEqual(await pendingTx.list(), []);
 await networks.setActiveNetwork('localnet');
 assert.equal((await pendingTx.list())[0].signature, 'ts_fixture');
 console.log('  ok - a late send tracks/badges only the original network');
+
+console.log('[tx sync] reconcile settles confirmed tx and triggers balance refresh');
+const client = thruClient.getClient();
+const origList = client.transactions?.listForAccount;
+if (!client.transactions) client.transactions = {};
+client.transactions.listForAccount = async () => ({
+  transactions: [{
+    getSignature: () => ({ toThruFmt: () => 'ts_fixture' }),
+    program: { toThruFmt: () => 'taPROGRAM' },
+    executionResult: { vmError: 0 },
+    slot: 12345n,
+  }],
+});
+const reconcileResult = await pendingTx.reconcile();
+assert.equal(reconcileResult.settled, 1);
+const pendingAfter = await pendingTx.listPending();
+assert.equal(pendingAfter.length, 0);
+client.transactions.listForAccount = origList;
+console.log('  ok - reconcile settles confirmed tx in the sync passes and refreshes balances');
+

@@ -63,17 +63,26 @@ function normalizeTxResult(result) {
 export async function claimFaucet(amountUnits) {
   const feePayer = await vault.getActiveAccount();
   const rawUnits = BigInt(amountUnits);
-  const result = normalizeTxResult(await thruClient.claimFaucet(feePayer, rawUnits));
+  // Bind the network BEFORE the claim so a submission-time tracking hook records the chain
+  // the claim was built for (same reason sendTransfer binds early).
   const network = await getActiveNetworkConfig();
-
-  await pending.track({
-    signature: result.signature,
-    kind: 'faucet',
-    from: feePayer.address,
-    to: feePayer.address,
-    amountUnits: rawUnits.toString(),
-    networkId: network.id,
-  });
+  let trackedSignature = null;
+  const trackSubmitted = (signature) => {
+    if (!signature || trackedSignature === signature) return null;
+    trackedSignature = signature;
+    return pending.track({
+      signature,
+      kind: 'faucet',
+      from: feePayer.address,
+      to: feePayer.address,
+      amountUnits: rawUnits.toString(),
+      networkId: network.id,
+    });
+  };
+  const result = normalizeTxResult(await thruClient.claimFaucet(feePayer, rawUnits, {
+    onSubmitted: trackSubmitted,
+  }));
+  if (!trackedSignature) await trackSubmitted(result.signature);
   await balances.getBalances([feePayer.address]);
 
   return result;
@@ -92,7 +101,7 @@ export async function claimFaucet(amountUnits) {
  * @param {string} toAddress
  * @param {string|number|bigint} amountUnits
  */
-export async function sendTransfer(toAddress, amountUnits, expected = null) {
+export async function sendTransfer(toAddress, amountUnits, expected = null, { allowDuplicate = false } = {}) {
   const target = String(toAddress || '').trim();
   if (!thruClient.isValidThruAddress(target)) {
     throw new Error('That does not look like a valid Thru address.');
@@ -110,7 +119,7 @@ export async function sendTransfer(toAddress, amountUnits, expected = null) {
 
   const feePayer = await vault.getActiveAccount();
   // Bind the client BEFORE querying/signing. A direct checked request after a worker restart
-  // must not silently use the thru-client module's default Alphanet binding on localnet.
+  // must not silently use the thru-client module's default Betanet binding on another network.
   const network = await getActiveNetworkConfig();
   await assertSendContext(expected, feePayer);
   if (feePayer.address === target) {
@@ -122,17 +131,20 @@ export async function sendTransfer(toAddress, amountUnits, expected = null) {
   try {
     await assertWhitelisted(target);
 
-    if (await pending.isProbableDuplicate({
+    if (!allowDuplicate && await pending.isProbableDuplicate({
       from: feePayer.address,
       to: target,
       amountUnits: rawUnits.toString(),
     })) {
-      const err = new Error('An identical transfer was just submitted. Check Activity before sending again.');
+      const err = new Error(
+        'A transfer with the same amount and recipient is still pending or was submitted within the last 30 seconds. '
+        + 'Confirm if you intend to repeat this transfer.',
+      );
       err.code = 'DUPLICATE_SUBMISSION';
       throw err;
     }
 
-    // VERIFIED ON ALPHANET 2026-08-18: the transfer program requires the RECIPIENT account to
+    // VERIFIED ON BETANET 2026-08-18: the transfer program requires the RECIPIENT account to
     // already exist on-chain. Sending to a never-registered address reverts with vmError=-765,
     // which five different instruction layouts all produced identically — the byte layout was
     // never the problem. The sender cannot register someone else's account (createOnChainAccount
@@ -151,16 +163,28 @@ export async function sendTransfer(toAddress, amountUnits, expected = null) {
     // Recipient lookup can take seconds. Refuse a stale review if another extension page
     // changed the source or chain while this RPC was in flight.
     await assertSendContext(expected, await vault.getActiveAccount());
-    const result = normalizeTxResult(await thruClient.sendTransfer(feePayer, target, rawUnits));
-
-    await pending.track({
-      signature: result.signature,
-      kind: 'transfer',
-      from: feePayer.address,
-      to: target,
-      amountUnits: rawUnits.toString(),
-      networkId: network.id,
-    });
+    // Track at SUBMISSION — onSubmitted fires when the sendAndTrack stream carries the
+    // signature, before executionResult. The pending window is exactly when the duplicate
+    // warning must work (reported 2026-10-03: "send, then try resend — no warning until tx
+    // is confirmed"). The post-return call is a fallback for streams that never fired the
+    // hook; track() dedupes by signature.
+    let trackedSignature = null;
+    const trackSubmitted = (signature) => {
+      if (!signature || trackedSignature === signature) return null;
+      trackedSignature = signature;
+      return pending.track({
+        signature,
+        kind: 'transfer',
+        from: feePayer.address,
+        to: target,
+        amountUnits: rawUnits.toString(),
+        networkId: network.id,
+      });
+    };
+    const result = normalizeTxResult(await thruClient.sendTransfer(feePayer, target, rawUnits, {
+      onSubmitted: trackSubmitted,
+    }));
+    if (!trackedSignature) await trackSubmitted(result.signature);
     // The chain has already returned a signature. Do not hold the signing response behind
     // another RPC just to repaint a balance: an offline balance node could otherwise make a
     // completed send hit the bridge timeout and look like an unknown submission.
@@ -175,8 +199,27 @@ export async function sendTransfer(toAddress, amountUnits, expected = null) {
 }
 
 /** Contract v11: same transfer, but bound to the account and network the user reviewed. */
-export function sendTransferChecked({ toAddress, amountUnits, fromAddress, networkId } = {}) {
-  return sendTransfer(toAddress, amountUnits, { fromAddress, networkId });
+export function sendTransferChecked({ toAddress, amountUnits, fromAddress, networkId, allowDuplicate = false } = {}) {
+  return sendTransfer(toAddress, amountUnits, { fromAddress, networkId }, { allowDuplicate: Boolean(allowDuplicate) });
+}
+
+/**
+ * Query whether an identical transfer is currently pending or was recently submitted.
+ *
+ * @param {{ toAddress: string, amountUnits: string, mintAddress?: string, fromAddress?: string }} params
+ */
+export async function checkDuplicate({ toAddress, amountUnits, mintAddress = null, fromAddress = null } = {}) {
+  const target = String(toAddress || '').trim();
+  const feePayer = fromAddress ? { address: fromAddress } : await vault.getActiveAccount().catch(() => null);
+  if (!feePayer?.address || !target || !amountUnits) {
+    return { isDuplicate: false, isPending: false, elapsedMs: null, signature: null };
+  }
+  return pending.getDuplicateInfo({
+    from: feePayer.address,
+    to: target,
+    amountUnits: String(amountUnits),
+    mint: mintAddress || null,
+  });
 }
 
 /**
@@ -469,9 +512,10 @@ export async function autoCreateAccount() {
 /**
  * Estimate the network fee for a transfer, from the ACTIVE network's config.
  *
- * The fee is a per-network value, not a constant. It was measured on alphanet devnet, and the
- * transfer program and its fee schedule may both change at testnet — so a network whose fee has
- * not been measured reports `supported: false` rather than quoting a devnet number as if it
+ * The fee is a per-network value, not a constant. It was measured on the managed-genesis
+ * testnet chain (2026-09-26, the same program deployment betanet runs), and the transfer
+ * program and its fee schedule may both change between deployments — so a network whose fee
+ * has not been measured reports `supported: false` rather than quoting an old number as if it
  * applied. A guessed fee on a live network is the most expensive kind of guess.
  *
  * `reserveUnits` is what MAX should hold back. It sits well above the observed fee because only

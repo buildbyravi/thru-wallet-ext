@@ -28,6 +28,11 @@ import * as pendingTxService from './services/pending-tx-service.js';
 import * as historyService from './services/history-service.js';
 import { isKnownMethod, getMethodSpec, CONTRACT_VERSION } from '../shared/contract/manifest.js';
 
+// Methods the UI polls on its own schedule (background sync of pending tx state). A call to
+// one of these is NOT user activity and must not refresh the auto-lock idle stamp — see the
+// stamp comment in handleApiRequest.
+const SYNC_READ_METHODS = new Set(['tx.getPending', 'tx.reconcilePending']);
+
 const handlers = Object.assign(Object.create(null), {
   // ---- System ------------------------------------------------------------
   //
@@ -130,7 +135,11 @@ const handlers = Object.assign(Object.create(null), {
   // ---- Transactions and RPC --------------------------------------------
   'tx.getAccountInfo': ({ address }) => txService.getAccountInfo(address),
   'tx.claimFaucet': ({ amountUnits }) => txService.claimFaucet(amountUnits),
-  'tx.send': ({ toAddress, amountUnits }) => txService.sendTransfer(toAddress, amountUnits),
+  // `allowDuplicate` must be threaded through: the handler destructures its params, and the
+  // T17 audit found this line silently dropping the flag the contract declares (a confirmed
+  // repeat transfer could never proceed on this path). Keep in sync with tx.sendChecked.
+  'tx.send': ({ toAddress, amountUnits, allowDuplicate }) =>
+    txService.sendTransfer(toAddress, amountUnits, null, { allowDuplicate: Boolean(allowDuplicate) }),
   'tx.sendChecked': (params) => txService.sendTransferChecked(params),
   'tx.listHistory': ({ address, pageSize, limit, cursor } = {}) => (
     limit !== undefined || cursor !== undefined
@@ -152,6 +161,7 @@ const handlers = Object.assign(Object.create(null), {
   'tx.clearSettled': () => pendingTxService.clearSettled(),
   'tx.estimateFee': ({ toAddress, amountUnits }) => txService.estimateFee({ toAddress, amountUnits }),
   'tx.simulate': ({ toAddress, amountUnits }) => txService.simulate({ toAddress, amountUnits }),
+  'tx.checkDuplicate': (params) => txService.checkDuplicate(params),
 
   // ---- Tokens and launchpad --------------------------------------------
   'token.deploy': (params) => tokenService.deployToken(params),
@@ -160,6 +170,7 @@ const handlers = Object.assign(Object.create(null), {
   'token.deriveTokenAccount': ({ ownerAddress, mintAddress }) => tokenService.deriveTokenAccount(ownerAddress, mintAddress),
   'token.generateSeed': () => tokenService.generateMintSeed(),
   'token.import': ({ mintAddress, symbol, name, decimals }) => tokenService.importToken({ mintAddress, symbol, name, decimals }),
+  'token.readMint': ({ mintAddress }) => tokenService.readMint({ mintAddress }),
   'token.setVisibility': ({ mintAddress, hidden }) => tokenService.setVisibility(mintAddress, hidden),
   'token.getBalances': ({ address }) => tokenService.getTokenBalances({ address }),
   'token.transfer': (params) => tokenService.transferToken(params),
@@ -298,8 +309,12 @@ export async function handleApiRequest(request) {
   try {
     const data = await handlers[method](params);
     // Stamp only after a successful call so a locked-out unlock attempt cannot be used to
-    // keep a session alive indefinitely.
-    await systemService.touchActivity();
+    // keep a session alive indefinitely. Background SYNC reads are exempt: the dashboard and
+    // history screens poll these every second while a pending tx is on screen, and stamping
+    // them would defeat auto-lock for as long as the wallet is merely open.
+    if (!SYNC_READ_METHODS.has(method)) {
+      await systemService.touchActivity();
+    }
 
     const payload = data === undefined ? null : data;
 

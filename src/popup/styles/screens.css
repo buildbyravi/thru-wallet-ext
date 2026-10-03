@@ -104,6 +104,13 @@
   gap: var(--sp-2);
   margin-top: auto;
   padding-top: var(--sp-4);
+  /* Keep the action row reachable on screens whose copy outgrows the popup (the reset
+     screen's "Erase this wallet" used to hide below the fold): the row pins to the
+     bottom of the viewport while its screen scrolls. Short screens are unaffected. */
+  position: sticky;
+  bottom: 0;
+  background: var(--surface-1);
+  z-index: 1;
 }
 
 /* Every form in this app is a vertical field stack. Declaring that once here
@@ -195,7 +202,7 @@ form > .btn.text {
 .dash-header {
   position: relative;
   height: 196px;
-  background: var(--header, #1a1214);
+  background: var(--header-gradient, radial-gradient(135% 125% at 50% 90%, #4a1820 0%, #2e1116 55%, #1d0a0d 100%));
   color: #ffffff;
   padding: 12px 16px 14px;
   overflow: hidden;
@@ -222,19 +229,21 @@ form > .btn.text {
 
 .dash-header-btn {
   background: rgba(255, 255, 255, 0.08);
-  border: 0;
-  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 7px;
   color: #ffffff;
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   padding: 0;
+  transition: background 0.15s ease, border-color 0.15s ease;
 }
 .dash-header-btn:hover {
   background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.25);
 }
 
 /* CopyButton's "copied" confirmation, dark-header edition. components.css's
@@ -243,53 +252,96 @@ form > .btn.text {
 .dash-header .dash-header-btn.copied {
   background: rgba(63, 191, 174, 0.14);
   color: #3fbfae;
-  border: 0;
+  border-color: rgba(63, 191, 174, 0.3);
   animation: none;
 }
 
 /* Account chip inside header */
 .dash-header .account-pill {
   background: rgba(255, 255, 255, 0.08);
-  border: 0;
-  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 7px;
   padding: 5px 8px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
   cursor: pointer;
   color: #ffffff;
-  max-width: 200px;
+  width: 220px;
+  max-width: calc(100% - 138px);
+  box-sizing: border-box;
+  transition: background 0.15s ease, border-color 0.15s ease;
 }
 .dash-header .account-pill:hover {
   background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.22);
 }
 .dash-header .account-pill-name {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   color: #ffffff;
-  max-width: 80px;
+  flex: 1 1 0;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .dash-header .account-pill-address {
   font-size: 11px;
-  color: rgba(255, 255, 255, 0.6);
+  color: rgba(255, 255, 255, 0.65);
   font-family: var(--font-mono);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .dash-header .account-pill .byte-mark {
-  width: 20px;
-  height: 20px;
-  padding: 1px;
+  width: 18px;
+  height: 18px;
+  padding: 0;
   border: 0;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.15);
+  border-radius: 0;
+  background: transparent;
+  color: #ffffff;
+  flex-shrink: 0;
+}
+.dash-header .account-pill-chevron {
+  display: inline-flex;
+  align-items: center;
+  color: rgba(255, 255, 255, 0.55);
+  flex-shrink: 0;
 }
 
 /* ---- Balance Hero inside header ---------------------------------------- */
 .dash-balance-hero {
   position: relative;
   z-index: 2;
+}
+
+/* The box is the token-drawer entry (Rabby's clickable balance card): the whole hero is
+   a control when the dashboard passes onOpen. Negative margin + padding keep the visual
+   position identical while the hit area grows to the full box. */
+.dash-balance-hero.clickable {
+  cursor: pointer;
+  padding: 8px;
+  margin: -8px;
+  border-radius: 10px;
+}
+.dash-balance-hero.clickable:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+.dash-balance-hero.clickable:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.6);
+  outline-offset: 2px;
+}
+
+/* Quiet token-symbols line inside the box — the Rabby chain-chips analog. REAL symbols
+   only; the sample preview row never appears here. */
+.dash-balance-summary {
+  margin-top: 4px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.55);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .dash-balance-row {
   display: flex;
@@ -314,16 +366,17 @@ form > .btn.text {
   width: 22px;
   height: 22px;
   padding: 0;
-  color: rgba(255, 255, 255, 0.45);
-  border-radius: 4px;
+  color: rgba(255, 255, 255, 0.5);
+  border-radius: 50%;
   align-self: center;
   margin-bottom: 2px;
   cursor: pointer;
-  transition: color 0.15s ease, background 0.15s ease;
+  transition: color 0.15s ease, opacity 0.15s ease;
 }
 
 .dash-balance-hero .dash-header-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: transparent;
+  border: 0;
   color: #ffffff;
 }
 .dash-balance-native {
@@ -374,7 +427,9 @@ form > .btn.text {
   position: relative;
   height: 88px;
   width: 100%;
-  background: #ffffff;
+  /* var(--surface-1), not a hard-coded white: in dark theme the cells must follow the
+     theme or the --title label/icon (near-white in dark) paints onto a white cell. */
+  background: var(--surface-1);
   border: 0;
   display: flex;
   flex-direction: column;
@@ -416,30 +471,35 @@ form > .btn.text {
   line-height: 12px;
 }
 
-/* ---- Tabbed Token Ledger ----------------------------------------------- */
-.dash-tabs-bar {
-  display: flex;
-  gap: 8px;
-  padding: 12px 16px 6px;
-  background: var(--bg, #f2f4f7);
+/* ---- Token strip + drawer ----------------------------------------------- */
+/* The token list lives in the Rabby-style drawer (src/ui/domain/token-drawer.js, opened
+   from the balance box). There is no standalone Tokens strip any more; the in-box
+   'Assets ›' cue and the two-view drawer styles live in overlays.css. */
+/* The drawer card itself reuses .tx-sheet (bottom anchoring, slide-up, shrink guard). */
+.token-drawer {
+  gap: 12px;
 }
-.dash-tab-btn {
-  background: transparent;
-  border: 0;
-  border-bottom: 2px solid transparent;
-  padding: 2px 4px 6px;
-  font-size: 13px;
-  font-weight: 600;
+.token-drawer-head h2 {
+  flex: 1;
+  margin: 0;
+}
+.token-drawer .token-ledger {
+  margin: 0;
+  border: 1px solid #f0f2f5;
+}
+.token-drawer-empty {
+  margin: 0;
+  padding: 18px 8px;
+  text-align: center;
+  font-size: 12px;
   color: var(--foot, #6a7580);
-  cursor: pointer;
 }
-.dash-tab-btn.active {
-  border-bottom-color: var(--accent, #c43a40);
-  color: var(--title, #151b1e);
+.token-drawer .token-drawer-add {
+  width: 100%;
 }
 
 .token-ledger {
-  background: #ffffff;
+  background: var(--surface-1);
   border-radius: 8px;
   margin: 0 12px 12px;
   overflow: hidden;
@@ -450,8 +510,8 @@ form > .btn.text {
   align-items: center;
   justify-content: space-between;
   padding: 12px 14px;
-  border-top: 1px solid #f0f2f5;
-  background: #ffffff;
+  border-top: 1px solid var(--border-hairline);
+  background: var(--surface-1);
 }
 .token-ledger-row:first-child {
   border-top: 0;
@@ -570,7 +630,7 @@ form > .btn.text {
 .current-connection {
   height: 40px;
   border-top: 1px solid var(--border-hairline, #e0e5ec);
-  background: #ffffff;
+  background: var(--surface-1);
   padding: 0 16px;
   display: flex;
   align-items: center;
@@ -981,6 +1041,10 @@ form > .btn.text {
   align-items: center;
   text-align: center;
   padding: var(--sp-6) var(--sp-4) var(--sp-4);
+  /* Fill the screen column and center the brand + form as ONE group in the middle of
+     the viewport (not brand at the top with the form stranded at the bottom). */
+  flex: 1;
+  justify-content: center;
 }
 
 .unlock-brand {
@@ -988,6 +1052,14 @@ form > .btn.text {
   flex-direction: column;
   align-items: center;
   gap: var(--sp-3);
+}
+
+.unlock-logo {
+  display: block;
+  width: 64px;
+  height: 64px;
+  border-radius: var(--radius-lg);
+  object-fit: contain;
 }
 
 .unlock-icon-wrap {
@@ -1405,6 +1477,79 @@ form > .btn.text {
   pointer-events: none;
 }
 
+/* Option C: Rabby-style security card for repeated send confirmation */
+.security-repeat-card {
+  background: var(--surface-inset);
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: var(--sp-3);
+}
 
+[data-theme="dark"] .security-repeat-card {
+  background: #241417;
+  border-color: rgba(230, 91, 98, 0.28);
+}
 
+.security-repeat-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
 
+.security-repeat-badge {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  background: var(--accent-tint);
+  border: 1px solid var(--accent-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+[data-theme="dark"] .security-repeat-badge {
+  background: rgba(230, 91, 98, 0.18);
+  border-color: rgba(230, 91, 98, 0.35);
+  color: #ed3845;
+}
+
+.security-repeat-titles {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.security-repeat-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+[data-theme="dark"] .security-repeat-title {
+  color: #f3a8ae;
+}
+
+.security-repeat-desc {
+  font-size: 11px;
+  color: var(--text-3);
+  line-height: 1.4;
+}
+
+[data-theme="dark"] .security-repeat-desc {
+  color: #c98e94;
+}
+
+.security-repeat-confirm {
+  padding-top: 8px;
+  border-top: 1px solid var(--border-hairline);
+}
+
+[data-theme="dark"] .security-repeat-confirm {
+  border-top-color: rgba(255, 255, 255, 0.08);
+}

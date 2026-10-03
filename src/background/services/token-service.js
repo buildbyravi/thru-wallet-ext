@@ -82,7 +82,7 @@ export async function listDeployedTokens() {
   const deployed = (Array.isArray(raw) ? raw : []).map((t) => normalizeToken(t, hidden));
   // Imported mints were stored in global preferences without a network before this audit.
   // Do not copy ambiguous legacy records to every chain: they default to the original
-  // Alphanet only; importing the same mint on another network creates a separate record.
+  // Betanet only; importing the same mint on another network creates a separate record.
   const imported = prefs.customTokens
     .filter((t) => (t.networkId || DEFAULT_NETWORK) === networkId)
     .map((t) => ({ ...normalizeToken(t, hidden), source: 'imported' }));
@@ -251,7 +251,7 @@ export async function readRegisteredTokenBalances(owner, registry, {
  * @param {string} params.toAddress
  * @param {string|number|bigint} params.amountUnits raw units of the mint
  */
-export async function transferToken({ mintAddress, toAddress, amountUnits }, expected = null) {
+export async function transferToken({ mintAddress, toAddress, amountUnits, allowDuplicate = false }, expected = null) {
   const mint = String(mintAddress || '').trim();
   if (!thruClient.isValidThruAddress(mint)) {
     throw new Error('That does not look like a valid token mint address.');
@@ -283,13 +283,16 @@ export async function transferToken({ mintAddress, toAddress, amountUnits }, exp
   try {
     await assertWhitelisted(target);
 
-    if (await pending.isProbableDuplicate({
+    if (!allowDuplicate && await pending.isProbableDuplicate({
       from: feePayer.address,
       to: target,
       amountUnits: rawUnits.toString(),
       mint,
     })) {
-      const err = new Error('An identical transfer was just submitted. Check Activity before sending again.');
+      const err = new Error(
+        'A token transfer with the same amount and recipient is still pending or was submitted within the last 30 seconds. '
+        + 'Confirm if you intend to repeat this transfer.',
+      );
       err.code = 'DUPLICATE_SUBMISSION';
       throw err;
     }
@@ -307,23 +310,31 @@ export async function transferToken({ mintAddress, toAddress, amountUnits }, exp
     // Mint reads are live RPCs. A different extension context may switch source or chain
     // while they are pending; checked sends must refuse that old review before signing.
     await assertSendContext(expected, await vault.getActiveAccount());
+    // Track at SUBMISSION (see tx-service.sendTransfer): the pending record must exist
+    // before executionResult so the duplicate warning covers the whole pending window.
+    let trackedSignature = null;
+    const trackSubmitted = (signature) => {
+      if (!signature || trackedSignature === signature) return null;
+      trackedSignature = signature;
+      return pending.track({
+        signature,
+        kind: 'token',
+        from: feePayer.address,
+        to: target,
+        amountUnits: rawUnits.toString(),
+        mint,
+        displayAmount: `${formatTokenAmount(rawUnits, mintInfo.decimals)} ${symbol}`,
+        networkId: network.id,
+      });
+    };
     const result = await thruClient.sendTokenTransfer({
       feePayer,
       mintAddress: mint,
       recipientAddress: target,
       amountUnits: rawUnits,
+      onSubmitted: trackSubmitted,
     });
-
-    await pending.track({
-      signature: result.signature,
-      kind: 'token',
-      from: feePayer.address,
-      to: target,
-      amountUnits: rawUnits.toString(),
-      mint,
-      displayAmount: `${formatTokenAmount(rawUnits, mintInfo.decimals)} ${symbol}`,
-      networkId: network.id,
-    });
+    if (!trackedSignature) await trackSubmitted(result.signature);
     // The THRU balance paid the fee (twice, if the recipient token account was created).
     // The signature is already known. A fresh THRU balance is an advisory UI update,
     // never a prerequisite to returning the submission result to the caller.
@@ -343,8 +354,8 @@ export async function transferToken({ mintAddress, toAddress, amountUnits }, exp
 }
 
 /** Contract v11: bind a token transfer to the source account and chain on Review. */
-export function transferTokenChecked({ fromAddress, networkId, ...params } = {}) {
-  return transferToken(params, { fromAddress, networkId });
+export function transferTokenChecked({ fromAddress, networkId, allowDuplicate = false, ...params } = {}) {
+  return transferToken({ ...params, allowDuplicate: Boolean(allowDuplicate) }, { fromAddress, networkId });
 }
 
 /**
@@ -361,6 +372,27 @@ export function transferTokenChecked({ fromAddress, networkId, ...params } = {})
  * @param {string} mintSeed 64 hex characters
  * @param {string} [mintAuthorityAddress] defaults to the active account
  */
+/**
+ * Read a mint account straight from the chain. Powers "Add custom token": the pasted
+ * contract address is verified against the ledger and the symbol/decimals come from the
+ * chain itself, so a typo fails here instead of producing a token whose amounts are wrong.
+ */
+export async function readMint({ mintAddress }) {
+  const mint = String(mintAddress || '').trim();
+  if (!mint) {
+    throw new Error('A mint address is required.');
+  }
+  const info = await thruClient.readMintAccount(mint);
+  if (!info || info.exists === false) {
+    return { exists: false };
+  }
+  return {
+    ...info,
+    // BigInt is internal-only: message ports carry strings (see token.getBalances amountUnits).
+    supply: info.supply == null ? null : String(info.supply),
+  };
+}
+
 export async function deriveMintAddress(mintSeed, mintAuthorityAddress) {
   const authority = mintAuthorityAddress || (await vault.getActiveAccount())?.address;
   return thruClient.deriveTokenMintAddress(mintSeed, authority);

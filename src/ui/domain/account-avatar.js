@@ -1,22 +1,25 @@
 // Account identity visuals.
 //
-// The byte-mark is a deterministic 4x4 grid derived from the address — a visual checksum,
-// so a user notices when the active account is not the one they expected. Square = derived
-// from a recovery phrase, round = imported private key.
+// The avatar is a TYPE glyph, not per-account identity: the seed box for accounts derived
+// from a recovery phrase, the key for imported private keys. (The old deterministic 4x4
+// address byte-mark was deleted 2026-10-02 in favour of the Rabby-style glyphs — note the
+// trade-off in plain terms: two accounts of the same type now look identical here, so the
+// NAME is what distinguishes them. If per-account distinction is wanted back, tint the
+// glyph background from the address rather than restoring the nibble grid.)
 //
 // The deleted popup/icons.js byteMarkHtml() returned a markup string, which forced callers
-// into innerHTML. This builds nodes instead, and fixes a real defect in the original: for an
-// empty address `src.charCodeAt((i * 7 + 3) % src.length || 0)` evaluates `% 0` -> NaN -> 0
-// for every cell, so every unknown account rendered the SAME flat block. A checksum that
-// collides for all placeholder states is worse than none, because it looks like identity.
+// into innerHTML. This builds nodes instead, and keeps the empty-address guard: fewer than
+// 2 characters cannot produce a meaningful mark, so "no account yet" renders as an
+// explicitly empty slot rather than as a real identity.
 
 import { h } from '../kit/dom.js';
+import { icon } from '../kit/icon.js';
 
 /**
  * @param {Object} props
  *   address   string
- *   imported  true for a private-key keyring (renders round)
- *   size      'sm' | 'md' (default 'md')
+ *   imported  true for a private-key keyring (renders key icon)
+ *   size      'sm' | 'md' | 'lg' (default 'md')
  */
 export function AccountAvatar({ address, imported = false, size = 'md' } = {}) {
   const src = String(address || '');
@@ -31,13 +34,10 @@ export function AccountAvatar({ address, imported = false, size = 'md' } = {}) {
     return h('span', { class: [...classes, 'empty'], 'aria-hidden': 'true' });
   }
 
-  const cells = [];
-  for (let i = 0; i < 16; i += 1) {
-    const code = src.charCodeAt((i * 7 + 3) % src.length) || 0;
-    cells.push(h('i', { class: `m${code % 4}` }));
-  }
-
-  return h('span', { class: classes, 'aria-hidden': 'true' }, cells);
+  const iconSize = size === 'sm' ? 14 : size === 'lg' ? 24 : 18;
+  return h('span', { class: classes, 'aria-hidden': 'true' }, [
+    icon(imported ? 'key' : 'seed', iconSize),
+  ]);
 }
 
 /**

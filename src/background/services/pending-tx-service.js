@@ -15,9 +15,11 @@
 // users money that never moved.
 
 import * as thruClient from '../../lib/thru-client.js';
+import { getBalances } from './balance-service.js';
 import { emit } from './event-service.js';
 import { getActiveNetworkId } from './network-service.js';
 import { scopedKey } from '../../shared/network-scope.js';
+import { recordSubmittedTransaction, settleTransaction } from './history-service.js';
 
 // Per-network. A transaction signature exists on exactly one chain, so a shared store would
 // show devnet's pending transfers after switching to mainnet — and would badge the extension
@@ -104,6 +106,11 @@ export async function track(tx) {
   };
   await writeAll([record, ...list.filter((r) => r.signature !== record.signature)], networkId);
   try {
+    await recordSubmittedTransaction(record);
+  } catch {
+    // History cache is best-effort after storing the signature; never change the send result.
+  }
+  try {
     if (await getActiveNetworkId() === networkId) {
       const updated = await readAll(networkId);
       await updateBadge(updated);
@@ -115,13 +122,11 @@ export async function track(tx) {
     // Badge/events are best-effort after storing the signature; never change the send result.
   }
 
-  // The only reconcile triggers were bootstrap and unlock, so a send whose sendAndTrack
-  // ALREADY returned confirmed stayed "pending" for the entire popup session — the
-  // stuck-pending defect the manual smoke run hit. Active self-service: one pass shortly
-  // after submit (covers the common already-confirmed case), one later pass (covers history
-  // lag). Both no-op once the record settled and swallow every error — a timer must never
-  // surface an offline failure. unref keeps Node-based tests from being held open.
-  for (const ms of [2_000, 10_000]) {
+  // Active self-service: betanet blocks land every ~6 seconds (verified on the explorer
+  // 2026-09-29 — consecutive blocks 5-6s apart), so a transfer settles in about one block.
+  // The passes cover the first two block times plus history-lag slack. The pass list
+  // no-ops once settled and swallows errors. unref keeps Node-based tests from hanging.
+  for (const ms of [2_000, 5_000, 8_000, 12_000]) {
     const timer = setTimeout(() => { reconcile().catch(() => {}); }, ms);
     timer.unref?.();
   }
@@ -154,7 +159,14 @@ const inFlightTransfers = new Set();
 export function beginTransfer({ networkId, from, to, amountUnits, mint = null }) {
   const key = JSON.stringify([networkId, from, to, String(amountUnits), mint]);
   if (inFlightTransfers.has(key)) {
-    const error = new Error('An identical transfer is already being sent. Check Activity before retrying.');
+    // Name the collision precisely: this guard only fires for the same network, same
+    // amount, same recipient still in flight. The old "identical transfer / check Activity"
+    // wording pointed people at unrelated rows (the in-flight send's own row does not
+    // exist until the SDK returns) and read like a phantom-duplicate bug.
+    const error = new Error(
+      'That exact transfer — same amount and same recipient — is still being sent. '
+        + 'Wait for it to finish before sending again.',
+    );
     error.code = 'DUPLICATE_SUBMISSION';
     error.retryable = false;
     throw error;
@@ -164,28 +176,60 @@ export function beginTransfer({ networkId, from, to, amountUnits, mint = null })
 }
 
 /**
- * Whether an identical transfer was submitted within the last few seconds.
- * Used to block a double-click from broadcasting twice.
+ * Whether an identical transfer is currently pending on-chain or was submitted
+ * within the last 30 seconds.
  *
- * `mint` is part of identity: a native send and a token send with the same from/to/amount
- * are NOT duplicates of each other. Legacy records carry no mint (null) and only ever match
- * native (mintless) candidates.
+ * Used to prevent accidental repeat sends, double-clicks, and duplicate submissions.
+ * On Betanet with ~6-second blocks, any identical unconfirmed transfer (status: SUBMITTED)
+ * is treated as an active in-flight duplicate regardless of age. Any identical transfer
+ * submitted within the 30-second window is also flagged as a repeat transfer.
  *
  * @param {{ from: string, to: string, amountUnits: string, mint?: string }} candidate
- * @param {number} [windowMs=15000]
+ * @param {number} [windowMs=30000]
  */
-export async function isProbableDuplicate(candidate, windowMs = 15_000) {
+export async function isProbableDuplicate(candidate, windowMs = 30_000) {
   const all = await readAll();
   const cutoff = Date.now() - windowMs;
   const mint = candidate.mint || null;
   return all.some((r) => (
-    r.submittedAt >= cutoff
-    && r.status === TX_STATUS.SUBMITTED
-    && r.from === candidate.from
+    r.from === candidate.from
     && r.to === candidate.to
     && r.amountUnits === String(candidate.amountUnits)
     && (r.mint || null) === mint
+    && (r.status === TX_STATUS.SUBMITTED || r.submittedAt >= cutoff)
   ));
+}
+
+/**
+ * Detailed duplicate check for the UI to display repeated-transaction warnings
+ * and prompt for a 2nd confirmation.
+ *
+ * @param {{ from: string, to: string, amountUnits: string, mint?: string }} candidate
+ * @param {number} [windowMs=30000]
+ * @returns {Promise<{ isDuplicate: boolean, isPending: boolean, elapsedMs: number | null, signature: string | null }>}
+ */
+export async function getDuplicateInfo(candidate, windowMs = 30_000) {
+  const all = await readAll();
+  const cutoff = Date.now() - windowMs;
+  const mint = candidate.mint || null;
+  const match = all.find((r) => (
+    r.from === candidate.from
+    && r.to === candidate.to
+    && r.amountUnits === String(candidate.amountUnits)
+    && (r.mint || null) === mint
+    && (r.status === TX_STATUS.SUBMITTED || r.submittedAt >= cutoff)
+  ));
+  if (!match) {
+    return { isDuplicate: false, isPending: false, elapsedMs: null, signature: null };
+  }
+  const isPending = match.status === TX_STATUS.SUBMITTED;
+  const elapsedMs = match.submittedAt ? Math.max(0, Date.now() - match.submittedAt) : null;
+  return {
+    isDuplicate: true,
+    isPending,
+    elapsedMs,
+    signature: match.signature,
+  };
 }
 
 async function settle(signature, status, error = null) {
@@ -200,8 +244,22 @@ async function settle(signature, status, error = null) {
   await writeAll(next);
   await updateBadge(next);
   emit('pendingTxChanged', { pending: next.filter((r) => r.status === TX_STATUS.SUBMITTED) });
-  return next.find((r) => r.signature === signature) || null;
+  const settledRecord = next.find((r) => r.signature === signature) || null;
+  try {
+    await settleTransaction(signature, status, error, settledRecord?.networkId || null);
+  } catch {
+    // History cache update is best-effort
+  }
+  if (status === TX_STATUS.CONFIRMED && settledRecord) {
+    const addrs = [settledRecord.from, settledRecord.to].filter((a) => typeof a === 'string' && a);
+    if (addrs.length) {
+      getBalances(addrs).catch(() => {});
+    }
+  }
+  return settledRecord;
 }
+
+let reconciling = false;
 
 /**
  * Check every submitted record against the chain and settle whatever has resolved.
@@ -213,48 +271,54 @@ async function settle(signature, status, error = null) {
  * @returns {Promise<{ checked: number, settled: number }>}
  */
 export async function reconcile() {
-  const pending = await listPending();
-  if (!pending.length) return { checked: 0, settled: 0 };
+  if (reconciling) return { checked: 0, settled: 0 };
+  reconciling = true;
+  try {
+    const pending = await listPending();
+    if (!pending.length) return { checked: 0, settled: 0 };
 
-  let settledCount = 0;
-  const byAddress = new Map();
-  for (const record of pending) {
-    if (!record.from) continue;
-    if (!byAddress.has(record.from)) byAddress.set(record.from, []);
-    byAddress.get(record.from).push(record);
-  }
-
-  for (const [address, records] of byAddress) {
-    let history = [];
-    try {
-      history = await thruClient.listAccountHistory(address, 25);
-    } catch {
-      continue; // network down: leave records pending, do not guess
+    let settledCount = 0;
+    const byAddress = new Map();
+    for (const record of pending) {
+      if (!record.from) continue;
+      if (!byAddress.has(record.from)) byAddress.set(record.from, []);
+      byAddress.get(record.from).push(record);
     }
-    const seen = new Map(
-      history
-        .filter((entry) => entry?.signature)
-        .map((entry) => [String(entry.signature), entry]),
-    );
 
-    for (const record of records) {
-      const match = seen.get(record.signature);
-      if (match) {
-        const status = match.success === false ? TX_STATUS.FAILED : TX_STATUS.CONFIRMED;
-        await settle(record.signature, status, match.success === false ? 'Transaction failed on-chain.' : null);
-        settledCount += 1;
-      } else if (Date.now() - record.submittedAt > WATCH_TIMEOUT_MS) {
-        await settle(
-          record.signature,
-          TX_STATUS.UNKNOWN,
-          'Could not confirm this transaction. Check the explorer.',
-        );
-        settledCount += 1;
+    for (const [address, records] of byAddress) {
+      let history = [];
+      try {
+        history = await thruClient.listAccountHistory(address, 25);
+      } catch {
+        continue; // network down: leave records pending, do not guess
+      }
+      const seen = new Map(
+        history
+          .filter((entry) => entry?.signature)
+          .map((entry) => [String(entry.signature), entry]),
+      );
+
+      for (const record of records) {
+        const match = seen.get(record.signature);
+        if (match) {
+          const status = match.success === false ? TX_STATUS.FAILED : TX_STATUS.CONFIRMED;
+          await settle(record.signature, status, match.success === false ? 'Transaction failed on-chain.' : null);
+          settledCount += 1;
+        } else if (Date.now() - record.submittedAt > WATCH_TIMEOUT_MS) {
+          await settle(
+            record.signature,
+            TX_STATUS.UNKNOWN,
+            'Could not confirm this transaction. Check the explorer.',
+          );
+          settledCount += 1;
+        }
       }
     }
-  }
 
-  return { checked: pending.length, settled: settledCount };
+    return { checked: pending.length, settled: settledCount };
+  } finally {
+    reconciling = false;
+  }
 }
 
 /** Remove settled records, keeping anything still in flight. */
