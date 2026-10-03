@@ -39,7 +39,7 @@ export function AccountPicker({
   const d = disposer();
   const el = h('div', { class: 'stack stack-4' });
 
-  function row({ label, address, balance, ref, source, active, badge }) {
+  function row({ label, address, balance, stale = true, ref, source, active, badge }) {
     const btn = h('button', {
       type: 'button',
       class: ['row', 'clickable', active ? 'active' : null].filter(Boolean),
@@ -47,14 +47,22 @@ export function AccountPicker({
     }, [
       AccountAvatar({ address, imported: source === 'privateKey' }),
       h('span', { class: 'row-body' }, [
-        h('span', { class: 'row-flex', style: { gap: '6px' } }, [
+        h('span', { class: 'row-flex' }, [
           h('span', { class: 'row-title', text: label || 'Account' }),
           badge ? h('span', { class: 'badge', text: badge }) : null,
         ]),
         AddressText({ address, chars: 6 }),
       ]),
+      // Same balance treatment as Manage Accounts' AccountRow: a dash only when nothing
+      // was fetched, the muted .stale class + tooltip when the number is cached. The old
+      // "· last known" suffix claimed staleness unconditionally and read differently from
+      // the key-manage list it is supposed to match.
       balance != null
-        ? h('span', { class: 'row-value', text: `${formatThru(BigInt(balance))} THRU · last known` })
+        ? h('span', {
+          class: ['row-value', stale ? 'stale' : null].filter(Boolean),
+          text: `${formatThru(BigInt(balance))} THRU`,
+          title: stale ? 'Last known balance — refreshing' : undefined,
+        })
         : null,
       active ? h('span', { class: 'row-value' }, icon('check', 14)) : null,
     ]);
