@@ -29,7 +29,7 @@ import { icon } from '../../kit/icon.js';
 import { Button } from '../../kit/button.js';
 import { Field } from '../../kit/field.js';
 import { PageHeader, Banner, Spinner } from '../../kit/feedback.js';
-import { AccountAvatar } from '../../domain/account-avatar.js';
+import { AccountAvatar, AddressText } from '../../domain/account-avatar.js';
 import { AccountPicker } from '../../domain/account-picker.js';
 import { AssetSelector } from '../../domain/asset-selector.js';
 import { TokenAvatar } from '../../domain/token-avatar.js';
@@ -252,9 +252,9 @@ export function SendRoute({ params, navigate, back }) {
       }),
       h('span', { class: 'row-body' }, [
         h('span', { class: 'row-title', text: account.label || 'Account' }),
-        // Which SOURCE this account came from, so "send from" is unambiguous when several
-        // accounts share a similar name.
-        h('span', { class: 'row-sub', text: account.keyring?.label || 'Unknown source' }),
+        // Same second line as Manage Accounts (AddressText, 6…6 truncation): the account
+        // identity shown here must read exactly like the key-manage list it points into.
+        AddressText({ address: account.address }),
       ]),
       fromBalance,
       h('span', { class: 'account-pill-chevron' }, icon('chevronRight', 13)),
@@ -275,7 +275,7 @@ export function SendRoute({ params, navigate, back }) {
     const assetCard = h('button', { type: 'button', class: 'row clickable' }, [
       TokenAvatar({ symbol: asset.symbol, imageUrl: asset.imageUrl, isNative: asset.isNative }),
       h('span', { class: 'row-body' }, [
-        h('span', { class: 'row-flex', style: { gap: '6px' } }, assetTitleChildren),
+        h('span', { class: 'row-flex' }, assetTitleChildren),
         h('span', { class: 'row-sub', text: asset.isNative ? 'Thru Native Token' : (asset.name || 'Token') }),
       ]),
       assetBalance,

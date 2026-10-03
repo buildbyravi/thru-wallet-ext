@@ -404,7 +404,7 @@
   cursor: pointer;
 }
 .security-row-action:hover {
-  background: #ffffff;
+  background: var(--surface-1);
 }
 .security-row-action:focus-visible {
   outline: 2px solid var(--accent, #c43a40);

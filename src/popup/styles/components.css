@@ -442,10 +442,11 @@ textarea[aria-invalid="true"] {
 
 .tab-btn:not(.active):hover { color: var(--text-2); }
 
-/* ---- Byte-mark: address-derived identicon ------------------
-   4×4 grid, each cell colored by a nibble of the address hash.
-   Square container = seed-derived, round = imported key.
-   Rendered by renderByteMark() in popup.js. ------------------ */
+/* ---- Byte-mark: account identity glyph --------------------
+   The seed box (recovery phrase) or key (imported private key) icon,
+   from src/ui/domain/account-avatar.js. Deliberately a TYPE mark, not
+   per-account identicon art: the name is what distinguishes accounts.
+   Same muted text color in both themes, wherever it sits. ----------- */
 
 .byte-mark {
   display: inline-flex;
@@ -454,11 +455,11 @@ textarea[aria-invalid="true"] {
   width: 24px;
   height: 24px;
   flex-shrink: 0;
-  color: var(--color-fg-muted);
+  color: var(--text-3, #6a7580);
 }
 
 .byte-mark.imported {
-  color: var(--color-fg-muted);
+  color: var(--text-3, #6a7580);
 }
 
 /* No address yet. Reads as a blank slot rather than a real identity. */
