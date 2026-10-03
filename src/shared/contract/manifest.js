@@ -70,7 +70,11 @@
 //
 // v15 appends tx.checkDuplicate to detect repeat transfers within 30s or while in flight,
 // and supports optional allowDuplicate on send methods for user-confirmed repeat transfers.
-export const CONTRACT_VERSION = 15;
+//
+// v16 retires the legacy tx.send and token.transfer mutation endpoints after every shipped UI
+// caller migrated to their checked counterparts. Keeping callable methods that omit the reviewed
+// source account/network created a weaker alternate signing path.
+export const CONTRACT_VERSION = 16;
 
 export const METHODS = {
   // ---- System ------------------------------------------------------------
@@ -341,13 +345,6 @@ export const METHODS = {
     auth: 'unlocked',
     since: 1,
   },
-  'tx.send': {
-    params: ['toAddress', 'amountUnits', 'password', 'allowDuplicate'],
-    returns: '{ signature, blockHeight }',
-    auth: 'signing',
-    since: 1,
-    authSince: 5,
-  },
   'tx.listHistory': {
     params: ['address', 'pageSize', 'limit', 'cursor'],
     returns: 'array (positional form) or { entries, nextCursor, hasMore } (options form)',
@@ -524,17 +521,6 @@ export const METHODS = {
       + 'See docs/BACKEND_GAPS.md C1.',
     auth: 'none',
     since: 4,
-  },
-  'token.transfer': {
-    params: ['mintAddress', 'toAddress', 'amountUnits', 'password', 'allowDuplicate'],
-    returns: '{ signature, blockHeight, recipientTokenAccountCreated, initSignature } — sends raw '
-      + 'units of the MINT (never THRU) from the active account\'s token account, initializing '
-      + 'the recipient\'s token account first when missing. Errors carry stable codes: '
-      + 'MINT_NOT_FOUND, TOKEN_ACCOUNT_MISSING, TOKEN_FROZEN, TOKEN_BALANCE_TOO_LOW, '
-      + 'TOKEN_INIT_FAILED, DUPLICATE_SUBMISSION.',
-    auth: 'signing',
-    since: 8,
-    authSince: 8,
   },
 
   // ---- Preferences -----------------------------------------------------

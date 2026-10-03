@@ -83,33 +83,17 @@ ok('contract v15 documents the tx.checkDuplicate addition', CONTRACT_VERSION >= 
     detail.returns);
 }
 
-// Contract v8 invariants: the new signing surface exists with the right gate, and the
-// capability stub it replaces did not silently change shape into something else.
-{
-  const transfer = METHODS['token.transfer'];
-  ok('token.transfer exists since v8 with signing auth',
-    Boolean(transfer) && transfer.since === 8 && transfer.auth === 'signing' && transfer.authSince === 8,
-    JSON.stringify(transfer));
-  ok('token.transfer declares mintAddress, toAddress, amountUnits and password',
-    ['mintAddress', 'toAddress', 'amountUnits', 'password'].every((p) => transfer.params.includes(p)),
-    (transfer?.params || []).join(','));
-}
-
 section('Contract v11 checked signing context');
-for (const [method, legacy] of [
-  ['tx.sendChecked', 'tx.send'],
-  ['token.transferChecked', 'token.transfer'],
-]) {
+for (const method of ['tx.sendChecked', 'token.transferChecked']) {
   const spec = METHODS[method];
-  ok(`${method} is additive and remains signing-gated`,
-    spec?.since === 11 && spec?.auth === 'signing' && METHODS[legacy]?.auth === 'signing');
-  ok(`${method} requires the reviewed account, network and all legacy send params`,
-    ['fromAddress', 'networkId', ...METHODS[legacy].params]
+  ok(`${method} remains signing-gated`, spec?.since === 11 && spec?.auth === 'signing');
+  ok(`${method} requires reviewed account, network, destination, amount and password`,
+    ['fromAddress', 'networkId', 'toAddress', 'amountUnits', 'password']
       .every((param) => spec?.params.includes(param)), JSON.stringify(spec?.params));
 }
 
 section('Contract v12 creation-bound registration and cache-first history');
-ok('the contract advances to v15 without reusing earlier numbers', CONTRACT_VERSION === 15);
+ok('the contract advances to v16 without reusing earlier numbers', CONTRACT_VERSION === 16);
 const register = METHODS['tx.registerAccount'];
 ok('tx.registerAccount is unlocked-only, explicitly targets an address, and has no password field',
   register?.since === 12 && register?.auth === 'unlocked'
@@ -137,11 +121,14 @@ const checkDup = METHODS['tx.checkDuplicate'];
 ok('tx.checkDuplicate is a read-only, no-auth duplicate lookup',
   checkDup?.since === 15 && checkDup?.auth === 'none'
     && JSON.stringify(checkDup?.params) === JSON.stringify(['toAddress', 'amountUnits', 'mintAddress', 'fromAddress']));
-ok('send methods declare optional allowDuplicate param',
-  METHODS['tx.send']?.params.includes('allowDuplicate')
-    && METHODS['tx.sendChecked']?.params.includes('allowDuplicate')
-    && METHODS['token.transfer']?.params.includes('allowDuplicate')
+ok('checked send methods declare optional allowDuplicate param',
+  METHODS['tx.sendChecked']?.params.includes('allowDuplicate')
     && METHODS['token.transferChecked']?.params.includes('allowDuplicate'));
+
+section('Contract v16 legacy signing-path retirement');
+ok('unbound legacy mutation methods are no longer callable',
+  !METHODS['tx.send'] && !METHODS['token.transfer']
+    && !wired.has('tx.send') && !wired.has('token.transfer'));
 
 section('Contract and router agree in both directions');
 
@@ -223,18 +210,17 @@ ok(
 ok('wallet.reset requires explicit confirmation param', METHODS['wallet.reset']?.params.includes('confirmation'));
 ok('wallet.reset can carry a password when unlocked', METHODS['wallet.reset']?.params.includes('password'));
 
-// Signing has its own auth mode because the user may explicitly opt out of re-authentication in
-// Settings. The secure default is still password-required, enforced inside api-router before a
-// signing handler runs.
+// Signing has its own auth mode because the user may explicitly opt into password
+// re-authentication in Settings. Session-only signing is the documented default.
 const MUST_USE_SIGNING_AUTH = [
-  'tx.send',
+  'tx.sendChecked',
   'tx.autoCreateAccount',
   'token.deploy',
+  'token.transferChecked',
 ];
 for (const name of MUST_USE_SIGNING_AUTH) {
   ok(`${name} uses signing auth`, METHODS[name]?.auth === 'signing', `auth is '${METHODS[name]?.auth}'`);
   ok(`${name} can carry a signing password`, METHODS[name]?.params.includes('password'));
-  ok(`${name} records authSince v5`, METHODS[name]?.authSince === 5, `authSince is '${METHODS[name]?.authSince}'`);
 }
 ok('tx.claimFaucet uses unlocked auth', METHODS['tx.claimFaucet']?.auth === 'unlocked');
 

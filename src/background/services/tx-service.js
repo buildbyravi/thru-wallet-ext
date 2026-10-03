@@ -101,7 +101,7 @@ export async function claimFaucet(amountUnits) {
  * @param {string} toAddress
  * @param {string|number|bigint} amountUnits
  */
-export async function sendTransfer(toAddress, amountUnits, expected = null, { allowDuplicate = false } = {}) {
+async function sendTransfer(toAddress, amountUnits, expected, { allowDuplicate = false } = {}) {
   const target = String(toAddress || '').trim();
   if (!thruClient.isValidThruAddress(target)) {
     throw new Error('That does not look like a valid Thru address.');
