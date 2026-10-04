@@ -3,7 +3,7 @@
 Date: 2026-10-04
 Purpose: concise source-backed record of the current implementation, contract identifiers, completed milestones, and checks that remain open. `src/`, tests, and scripts are authoritative; this ledger is a summary.
 
-The identifier refresh is based on the audited source at `7883219` plus the 2026-10-04 conformance audit (`docs/AUDIT_REPORT.md`). The documentation does not claim new runtime behavior beyond what `src/` ships.
+The identifier refresh is based on the audited source at `7883219` plus the 2026-10-04 conformance audit (`docs/audits/2026-10-04-conformance.md`; index and open gates in `docs/AUDIT_REPORT.md`). The documentation does not claim new runtime behavior beyond what `src/` ships.
 
 ---
 

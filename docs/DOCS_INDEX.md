@@ -86,7 +86,8 @@ Start from the pinned dependencies and current `src/` implementation, then cross
 | `docs/HISTORY_REDESIGN_PLAN.md` | current implementation record | shipped flat History stream/cache/detail behavior and open validation |
 | `docs/SEND_PATH_AUDIT.md` | current focused audit | Send path, registration, tests, and residual risks |
 | `docs/REDESIGN_TRIAGE.md` | findings record | triage of external UX suggestions; re-check claims before implementation |
-| `docs/AUDIT_REPORT.md` | current audit record (2026-10-04 conformance audit at top) plus historical audits below | findings, remediation status, and recorded baselines; each dated section describes only its own baseline |
+| `docs/AUDIT_REPORT.md` | current audit index | current audit conclusion, open mainnet-readiness gates, and the index of dated audit records |
+| `docs/audits/` | append-only audit records | dated findings/evidence/remediation files (2026-09-18, 2026-10-03, 2026-10-04); a new audit appends a file and refreshes `docs/AUDIT_REPORT.md`; records are never edited |
 
 ---
 
