@@ -55,7 +55,7 @@ chrome.storage.local  chrome.storage.session
 
 To prevent unauthorized access when a device is left unattended:
 
-*   **15-Minute Timeout:** An auto-lock timer managed via `chrome.alarms` automatically fires after 15 minutes of inactivity.
+*   **15-Minute Default Timeout:** An inactivity auto-lock managed via `chrome.alarms` fires after 15 minutes of inactivity **by default**. The window is user-configurable from 1 to 240 minutes, and the "Never" option (which requires the master password to set) disables it.
 *   **Memory Wipe:** Upon lock, `chrome.storage.session` is completely cleared, instantly purging all decrypted seed phrases, derived keys, and private key representations from runtime memory.
 *   **Browser Termination:** Closing the browser window or terminating the extension background worker immediately destroys the session memory.
 

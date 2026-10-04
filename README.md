@@ -122,10 +122,10 @@ src/lib/thru/*-adapter.js
 Highest priority:
 
 1. Run the browser-only smoke checklist for popup/side-panel layout, focus, canvas, and worker eviction.
-2. Token transfer and token balances remain blocked on live Thru Token Program verification.
+2. Token transfer is implemented on the official Token Program bindings, but two live-chain questions remain open: whether a never-registered recipient owner can receive a sender-initialized token account, and the actual token-program fee (`scripts/verify-token-transfer.mjs`).
 3. Custom networks remain quarantined until HTTPS/host-permission, verified chain-program capability, and re-authentication requirements are implemented together.
 4. Any future launchpad/DEX/prediction work must be built as isolated feature modules. The legacy surface is deleted and nothing of the kind ships today.
-5. `@thru/programs` and `@thru/sdk` are exact-pinned; derivation comes from `@thru/sdk/crypto` so the deprecated standalone crypto package is not installed.
+5. An external wallet security audit has not been performed; no mainnet-readiness claim is valid without it.
 
 See [`docs/STATUS_AND_ROADMAP.md`](docs/STATUS_AND_ROADMAP.md) for the live ordered list.
 

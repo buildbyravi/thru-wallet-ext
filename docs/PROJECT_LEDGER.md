@@ -22,7 +22,7 @@ The identifier refresh is based on the audited source at `7883219` plus the 2026
 | Thru package versions | `@thru/sdk` and `@thru/programs` exact-pinned at `0.4.1` |
 | Build output | Generated under `dist/`; do not edit by hand |
 
-The contract remains an append-only API in ordinary feature work, with documented security-policy exceptions in v5–v7 and the v13 faucet-auth change. Later additions v8–v16 are recorded in §3. Treat the manifest and `test/test-contract.mjs` as the exact contract authority.
+The contract remains an append-only API in ordinary feature work, with documented security-policy exceptions in v5–v7, the v13 faucet-auth change, and the v16 retirement of the unbound send methods (a removal after zero shipped callers, not an addition). Version history v8–v16 is recorded in §3. Treat the manifest and `test/test-contract.mjs` as the exact contract authority.
 
 Run from the repository root:
 

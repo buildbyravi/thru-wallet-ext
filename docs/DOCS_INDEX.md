@@ -74,6 +74,8 @@ Start from the pinned dependencies and current `src/` implementation, then cross
 | File | Status | Owns |
 | --- | --- | --- |
 | `docs/DOCS_INDEX.md` | current | this map and source-of-truth split |
+| `docs/ARCHITECTURE.md` | current | implemented dependency, signing, storage, and verification boundaries |
+| `docs/DECISIONS.md` | current | durable decisions D-001…D-011 with context, options, trade-offs, and consequences |
 | `docs/STATUS_AND_ROADMAP.md` | current | shipped state, verification, and open work |
 | `docs/PROJECT_LEDGER.md` | current | contract identifiers, milestones, known unresolved work |
 | `docs/BUILD_SPEC.md` | current policy/spec | shipped wallet behavior, security policy, and test expectations |

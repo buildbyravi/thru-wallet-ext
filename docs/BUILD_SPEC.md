@@ -36,7 +36,7 @@ For exact current state, route/method counts, and next tasks, read:
 - `CONTEXT.md` — current file map;
 - `docs/MODULE_BOUNDARIES.md` — future feature separation and SDK-adapter boundaries.
 
-Current shipped facts, cross-checked against `src/` on 2026-09-26:
+Current shipped facts, cross-checked against `src/` on 2026-10-04 (see `docs/PROJECT_LEDGER.md` §1 for the identifier authority):
 
 | Area | Shipped state |
 | --- | --- |
@@ -168,7 +168,8 @@ Keep exactly that seam. Harden it per the four rules below.
 Only `src/ui/app/bridge.js` may call `chrome.runtime.sendMessage`.
 
 **R2 — The contract is append-only.** Adding a method is always safe. Changing or removing one
-requires a new name (`tx.send` → `tx.sendV2`), keeping the old until no route references it. A
+requires a new name and the old name stays only until no route references it — then it is
+removed, exactly as v16 did to the unbound send methods once zero shipped callers remained. A
 method's shape is never edited in place.
 
 **Contract v5 exception:** the signing re-authentication fix intentionally changed existing
@@ -185,10 +186,15 @@ callers from weakening auto-lock or resetting an unlocked wallet through stale U
 accepts saved custom ids. It returns permanent `CUSTOM_NETWORK_DISABLED`; stored custom, disabled,
 or unknown active ids heal to the default before RPC binding.
 
-**Contract v8–v12 additions:** token transfer/balances, History feed/detail, checked Send context,
-owned-account registration, and storage-only cached History were added without removing methods.
-The v12 registration method is an intentionally narrow unlocked-only exception; it is not a value-
-moving send and cannot sign for an address outside the vault.
+**Contract v8–v16 additions and the v16 removal exception:** token transfer/balances (v8, v14),
+History feed/detail and cached reads (v9, v10, v12), checked Send context (v11), owned-account
+registration (v12), and duplicate-send detection (v15) were added without changing existing
+methods, except: v13 deliberately changed `tx.claimFaucet` auth from `signing` to `unlocked`
+(testnet faucet claims are an incoming-credit action), and v16 deliberately **removed** the
+retired unbound `tx.send` / `token.transfer` mutation methods after every shipped UI caller had
+migrated to the checked counterparts — the same documented-security-break precedent as v5–v7.
+The v12 registration method is an intentionally narrow unlocked-only exception; it is not a
+value-moving send and cannot sign for an address outside the vault.
 
 **R3 — Layering is enforced by a script, not by discipline.** `scripts/check-layering.mjs` scans
 static imports against the shipped background/UI/kit/shared boundaries and fails on a prohibited
