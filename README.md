@@ -176,11 +176,12 @@ Historical testnet results are tracked in `docs/STATUS_AND_ROADMAP.md` and `docs
 - Never share a real seed phrase or private key.
 - Never paste secrets into issues, chat, MCP tools, or logs.
 - Secret export requires password re-authentication.
-- Signing requires password re-authentication by default.
-- Session-only signing is an explicit user setting and is less secure.
+- Signing requires an unlocked wallet. Password re-authentication per signature is **off by
+  default** (`docs/DECISIONS.md` D-003): while unlocked, the session can sign, and the
+  password-per-signature policy is an explicit, password-gated Settings opt-in.
 - Do not implement unverified protocol behavior.
 - Thru's current official wallet docs describe `@thru/wallet` connecting to the hosted
-  `wallet.thru.org/embedded` iframe; they do not establish an extension provider contract.
+  `app.tid.sh/embedded` iframe; they do not establish an extension provider contract.
 - Do not invent a fake `window.thru` provider or infer extension compatibility from the hosted
   `connect()`, `getSigningContext()`, and `signTransaction()` methods. Wait for a verified
   extension/BYO-signer contract.

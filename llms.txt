@@ -9,7 +9,7 @@ Chrome MV3 self-custody wallet extension for the Thru native Layer 1. Thru is no
 ## Current state
 
 - Single popup route stack with 14 routes.
-- Contract version: 8.
+- Contract version: 16 (81 methods).
 - Contract source: `src/shared/contract/manifest.js`.
 - API seam: UI calls `bridge.send(method, params)` only.
 - Background owns auth, signing, services, and RPC coordination.
@@ -17,9 +17,11 @@ Chrome MV3 self-custody wallet extension for the Thru native Layer 1. Thru is no
 - The legacy launchpad/DEX/prediction surface is quarantined: `src/launchpad/**` is deleted, no launchpad page is built, and `popup.html?launchpad=1` no longer does anything. `test-launchpad-quarantine.mjs` enforces this. Do not revive it; a future launchpad is a new `src/features/launchpad/**` module with `launchpad.*` backend namespaces.
 - All 14 routes are mounted by `test-route-lifecycle.mjs` (real Router/guards/bridge, only `chrome.runtime.sendMessage` mocked) in no-vault, locked and unlocked states: no throw, correct guard landing, no secret in text/attributes/dataset/input values/URLs, no listener left on a detached node. There is no jsdom dependency and there must not be one.
 - What a shim cannot prove (layout at narrow/wide widths, real focus, canvas QR, the side panel, service-worker eviction) is `docs/MANUAL_SMOKE_CHECKLIST.md`. Run it before merging UI changes.
-- Contract v8 adds `token.transfer` (signing auth) and a real `token.getBalances` on the official `@thru/programs/token` bindings; token unit math is BigInt with mint-scaled decimals (`parseTokenAmount`/`formatTokenAmount` in `src/shared/format.js`); recipient token-account initialization rides as a preceding sender-signed transaction; `docs/BACKEND_GAPS.md` C1 is closed, and `scripts/verify-token-transfer.mjs` is the pending live probe for the two open chain questions it documents.
-- Contract v7 quarantines custom networks in the background, not just Settings. `network.setActive` accepts enabled built-ins only; a saved custom id returns permanent `CUSTOM_NETWORK_DISABLED`, and a stale custom/disabled active id self-heals to Alphanet before `configureNetwork()`. Legacy records remain listable/removable and render as inert rows. `network.upsertCustom` stays in the contract with no UI caller. Do not re-enable custom endpoints without all four preconditions in `docs/STATUS_AND_ROADMAP.md` Step 2b.
-- The side panel is opened by an explicit Settings control that calls `chrome.sidePanel.open({ windowId })`. Nothing may call `chrome.sidePanel.setPanelBehavior`: that would replace the toolbar popup for every user.
+- Checked sends: the UI calls only `tx.sendChecked` and `token.transferChecked`; contract v16 removed the retired unbound send methods. Value-moving methods bind the reviewed source account and network at the background boundary, and a signing-operation guard blocks network switching from operation entry through submission.
+- Token transfer and real registry-mint balances are implemented on the official `@thru/programs/token` bindings; token unit math is BigInt with mint-scaled decimals (`parseTokenAmount`/`formatTokenAmount` in `src/shared/format.js`); recipient token-account initialization rides as a preceding sender-signed transaction; the remaining live-chain questions (recipient-owner acceptance, token-program fee) are in `docs/BACKEND_GAPS.md` C1, with `scripts/verify-token-transfer.mjs` as the pending live probe.
+- Contract v7 quarantines custom networks in the background, not just Settings. `network.setActive` accepts enabled built-ins only; a saved custom id returns permanent `CUSTOM_NETWORK_DISABLED`, and a stale custom/disabled active id self-heals to Betanet before `configureNetwork()`. Legacy records remain listable/removable and render as inert rows. `network.upsertCustom` stays in the contract with no UI caller. Do not re-enable custom endpoints without all four preconditions in `docs/STATUS_AND_ROADMAP.md` Step 2b.
+- Betanet is the enabled network (Localnet, Testnet and Mainnet are declared but disabled). Thru packages are exact-pinned (`@thru/sdk`/`@thru/programs` 0.4.1) and derivation vectors are verified against that pin.
+- The side panel is opened by an explicit Dashboard control that calls `chrome.sidePanel.open({ windowId })`; Settings carries a separate explicit Side Panel Mode opt-in. Nothing else may call `chrome.sidePanel.setPanelBehavior`.
 
 ## Read first
 
@@ -38,7 +40,7 @@ Chrome MV3 self-custody wallet extension for the Thru native Layer 1. Thru is no
 - Never log decrypted vault data.
 - Never put secrets in URLs, `data-*`, localStorage/sessionStorage, console logs, analytics, or MCP output.
 - Do not invent a `window.thru` provider standard. Thru's current official wallet docs describe
-  `@thru/wallet` and `@thru/wallet/react` for the hosted `wallet.thru.org/embedded` iframe, not
+  `@thru/wallet` and `@thru/wallet/react` for the hosted `app.tid.sh/embedded` iframe, not
   an extension provider; the existence of `connect()`, `getSigningContext()`, and
   `signTransaction()` does not establish extension/BYO-signer compatibility. Wait for a verified
   contract before implementing a dApp connector.
@@ -48,7 +50,7 @@ Chrome MV3 self-custody wallet extension for the Thru native Layer 1. Thru is no
 
 ## Signing
 
-Signing methods use `auth: 'signing'`. Password re-authentication is required by default. A user may explicitly opt into session-only signing from Settings, but that opt-out is itself password-gated.
+Signing methods use `auth: 'signing'`: the wallet must be unlocked. Password re-authentication per signature is **off by default** (`requirePasswordForSigning: false`, decision D-003 in `docs/DECISIONS.md`); a user may explicitly enable it in Settings, and changing that security setting is itself password-gated. The v12 `tx.registerAccount` exception is unlocked-only and restricted to an exact vault-owned address.
 
 MCP/AI agents must not sign directly. Prefer the official read-only Thru Explorer MCP for live chain queries. A local wallet MCP may handle permissioned wallet reads and intent preparation only. Account addresses, balances, activity, labels, refs, and keyring metadata are non-secret but privacy-sensitive and require explicit per-session companion permission. The human reviews in the extension UI; the background signs/submits after auth policy passes.
 
@@ -69,9 +71,9 @@ Features must not import sibling features or vault internals.
 
 ## Current P0 work
 
-Done: signing re-authentication (contract v5), reset/auto-lock background hardening (contract v6), custom-network background quarantine (contract v7), token transfer (contract v8, pending one live-network verification run), passkey feasibility spike (`docs/archive/PASSKEY_SPIKE.md`), legacy launchpad quarantine, route lifecycle tests for all 14 routes with secret-hygiene and teardown assertions, modal focus trapping, and an explicit side-panel action.
+Done: signing-auth centralization (contract v5), reset/auto-lock background hardening (v6), custom-network background quarantine (v7), token transfer and real token balances (v8, live-chain verification still open), History feed/detail/cached reads (v9–v12), checked sends (v11), owned-account activation (v12), duplicate-send detection (v15), retirement of the unbound send paths (v16), passkey feasibility spike (`docs/archive/PASSKEY_SPIKE.md`), legacy launchpad quarantine, route lifecycle tests for all 14 routes with secret-hygiene and teardown assertions, modal focus trapping, and an explicit side-panel action.
 
-1. Run `docs/MANUAL_SMOKE_CHECKLIST.md` in Chrome (popup and side panel, narrow and wide). Decide whether a panel wider than 408px should be fluid; `body { max-width: 100% }` already handles the narrow case.
-2. Custom-network re-enablement: HTTPS-only policy with an explicit localhost exception, narrow user-granted host permission, a verified per-network capability record instead of default program ids, and password re-auth before the wallet talks to a user-supplied endpoint.
-3. Token portfolio and token transfer only after live Thru Token Program validation (account enumeration, decimals, mint metadata, balances, transfer, history decoding).
-4. Contacts CRUD UI and account pin/hide/order UI on top of the existing backend support (`contacts.*`, `account.setOrder` / `setPinned` / `setHidden`, `settings.set`). These are new screens, so they belong in their own PR.
+1. Run `docs/MANUAL_SMOKE_CHECKLIST.md` in Chrome (popup and side panel, narrow and wide): layout, focus rings, QR canvas, mutual exclusion, clipboard prompt, MV3 worker eviction/restart.
+2. Live v12 activation and live token-transfer verification (recipient-owner acceptance, actual token-program fee) on a safe throwaway wallet; see `scripts/verify-token-transfer.mjs` and `scripts/verify-live-e2e.mjs`.
+3. Custom-network re-enablement: HTTPS-only policy with an explicit localhost exception, narrow user-granted host permission, a verified per-network capability record instead of default program ids, and password re-auth before the wallet talks to a user-supplied endpoint. Blocked until all four exist.
+4. External security audit before any Mainnet-readiness claim; none has been performed.
