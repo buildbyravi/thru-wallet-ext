@@ -59,6 +59,11 @@ npm run build  PASS — generated dist/ from the current source.
 
 These results are deterministic/local. They do not close the browser or live-chain checks below.
 
+Re-verified on the 2026-10-04 production-rules conformance audit (branch
+`arena/01a10602-thru-wallet-ext`): same suites green with the current counts — contract 80/80,
+route lifecycle 1017/1017, security-checks 20, DOM/refs 130/130 — plus the new fee-provenance
+regression (`test-api-router.mjs [13]`). See `docs/AUDIT_REPORT.md`.
+
 ### Recent security hardening
 
 - `tx.send`, `tx.sendChecked`, faucet signing, token transfer, and related signing methods use the background `auth: 'signing'` policy. The wallet must be unlocked; password re-auth is required only when the user enables it in Settings.

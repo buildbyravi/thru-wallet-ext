@@ -191,6 +191,37 @@ did not and cannot close those.
 Each unit: `npm run build && npm test` before and after, one logical commit, no mixing.
 Rules that are already satisfied are deliberately left untouched.
 
+### Remediation update — 2026-10-04
+
+All five units were completed on branch `arena/01a10602-thru-wallet-ext`, one commit each:
+
+- **U1 (F-01/F-02):** README Security basics now states the session-only default with the
+  password-gated opt-in (D-003) and the current hosted-wallet URL; llms.txt rewritten to
+  current truth (v16/81 methods, Betanet, checked sends, 0.4.1 pins, actual open P0 work).
+- **U2 (F-03/F-04):** PROJECT_LEDGER refreshed (v16, 81 methods, 0.4.1, Betanet enabled,
+  baseline `7883219`, milestones v13–v16, current test counts); SECURITY.md permission audit
+  now justifies all five manifest permissions including `notifications`.
+- **U3 (F-05):** fee provenance is an explicit per-network `feeSource` field in
+  `src/lib/networks.js` (`'measured'` Betanet, `'assumed'` Localnet, null where unmeasured);
+  `estimateFee` reads it instead of the dead `environment === 'devnet'` branch; the stale
+  pre-measurement JSDoc block is gone; the manifest `returns` prose and BACKEND_GAPS C2 match
+  the shipped response. Regression test `test-api-router.mjs [13]` asserts measured/assumed/
+  unsupported per network and restores shipped network state; verified to fail against the old
+  expression.
+- **U4 (F-06):** AGENTS.md rule 3 and the check-layering comment name only the real
+  sendMessage owners; STATUS Step 5 records 0.3.16 as history with the current 0.4.1 pin;
+  DOCS_INDEX date and AUDIT_REPORT row refreshed.
+- **U5 (F-07/F-08):** dead duplicate `isValidThruAddress` deleted from networks.js (importer/
+  build/manifest/test sweep first; unused `Pubkey` import removed with it); boot.js's
+  zero-caller `legacyFallback`/`onMigratedRoute` migration surface removed with unknown-path
+  redirect and chrome-visibility behavior preserved; check-routes' never-used
+  `legacyFallbackPaths` scan deleted; CONTEXT.md updated.
+
+**Residual verification:** remediation is IMPLEMENTED and TESTED locally (`npm run build` and
+`npm test` green after every unit and on the final tree). Nothing here closes the open
+real-browser or live-chain checks in `docs/MANUAL_SMOKE_CHECKLIST.md` and
+`docs/STATUS_AND_ROADMAP.md`, and an external audit remains **EXTERNAL AUDIT REQUIRED**.
+
 ---
 
 ## Mainnet-readiness audit — 2026-10-03
