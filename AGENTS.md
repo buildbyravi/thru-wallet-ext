@@ -31,6 +31,14 @@ implementation. Reuse established security-sensitive wallet primitives; UI compo
 reimplement them. Modularity means stable responsibilities and limited dependencies, not one file
 per function.
 
+**Architecture freeze (2026-10-04):** the wallet core has converged — exact SDK pins with golden
+vectors, one UI/backend seam, network-scoped state, checked signing with the network-mutation
+lock, versioned storage, secret hygiene, strict CSP, launchpad quarantine, one UI stack, and
+route/lifecycle coverage. Do not accept an architectural refactor without a measurable security,
+correctness, performance, or maintainability benefit that names the failure it prevents, the
+duplication it removes, or the boundary it improves — and the test that proves it. The current
+priority is verification (real browser, live chain, races, external audit), not restructuring.
+
 Use these status terms precisely: **IMPLEMENTED, TESTED, VERIFIED AGAINST LIVE NETWORK,
 UNVERIFIED, PARTIALLY IMPLEMENTED, BLOCKED, PLANNED, DEPRECATED, SECURITY REVIEW REQUIRED,
 EXTERNAL AUDIT REQUIRED**. Never claim verification that did not occur or describe plans as shipped.
@@ -116,17 +124,31 @@ could be affected.
 | stable dependency/storage/signing architecture | `docs/ARCHITECTURE.md` |
 | durable choices and trade-offs | `docs/DECISIONS.md` |
 | future feature separation / SDK-adapter boundaries | `docs/MODULE_BOUNDARIES.md` |
-| AI-agent/MCP safety | `llms.txt`, then `docs/MCP_AGENT_INTEGRATION.md` |
+| AI-agent/MCP safety | `llms.txt`; archived planning record: `docs/archive/MCP_AGENT_INTEGRATION.md` |
 | "has this broken before?" | `docs/DEFECT_LOG.md` — every defect, root cause and lesson |
 | product intent, security policy, QA matrix | `docs/BUILD_SPEC.md` |
 | backend capability tiers | `docs/BACKEND_GAPS.md` |
-| historical rebuild plan only | `docs/UI_REBUILD_PLAN.md`, `docs/UI_REBUILD_AGENT_PROMPT.md` |
+| historical rebuild plan only | `docs/archive/UI_REBUILD_PLAN.md`, `docs/archive/UI_REBUILD_AGENT_PROMPT.md` |
 | archived, do not follow for current state | `docs/archive/` |
+| audit history + open readiness gates | `docs/AUDIT_REPORT.md` (index/current gates); dated records in `docs/audits/` |
 
 Conflict resolution: `STATUS_AND_ROADMAP.md` wins on **current engineering state**;
 `PROJECT_LEDGER.md` wins on **phase/build tracking**; `MODULE_BOUNDARIES.md` wins on
 **future feature separation**; `BUILD_SPEC.md` wins on **product/security behaviour**;
 `CONTEXT.md` wins on **file facts**; `DOCS_INDEX.md` wins on **which doc to trust**.
+
+Documentation anti-sprawl rules (see `docs/DOCS_INDEX.md` §4 for the three classes — Authority,
+Operational verification, Historical/reference):
+
+1. Do not create a new top-level markdown document unless no existing authoritative document can
+   reasonably own the information. Update the owning document instead.
+2. When work is completed, update the authoritative document and freeze/archive the temporary
+   plan under `docs/archive/` — never write a new status document (`PLAN_V2`/`FINAL` variants
+   are the failure mode).
+3. A new audit appends a dated record under `docs/audits/` and refreshes the compact
+   `docs/AUDIT_REPORT.md` index; a dated record is never edited.
+4. Historical/reference documents explain why the system was designed this way — never how it
+   currently works. Verify current behavior against `src/` and the authority documents.
 
 ## Commands
 
@@ -152,8 +174,8 @@ is red. Never weaken or skip a test to make it pass.
 2. **`src/lib/vault.js` and `src/lib/thru-client.js` are sacred.** Crypto, keyrings, RPC shapes,
    instruction layouts. Change only for a verified bug or a tested additive primitive, and only
    with `test-vault.mjs` / `test-thru-client.mjs` passing.
-3. **One seam between UI and backend:** `bridge.send(method, params)`. Only `src/ui/bridge.js`
-   (legacy) and `src/ui/app/bridge.js` (new) may call `chrome.runtime.sendMessage`; only
+3. **One seam between UI and backend:** `bridge.send(method, params)`. Only `src/ui/app/bridge.js`
+   may call `chrome.runtime.sendMessage` (the legacy `src/ui/bridge.js` is deleted); only
    `src/background/services/event-service.js` may push events back. UI never imports
    `src/background/**` or `src/lib/vault.js`.
 4. **Backend API is append-only.** Add the method to `src/shared/contract/manifest.js` *and*

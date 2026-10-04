@@ -55,7 +55,7 @@ chrome.storage.local  chrome.storage.session
 
 To prevent unauthorized access when a device is left unattended:
 
-*   **15-Minute Timeout:** An auto-lock timer managed via `chrome.alarms` automatically fires after 15 minutes of inactivity.
+*   **15-Minute Default Timeout:** An inactivity auto-lock managed via `chrome.alarms` fires after 15 minutes of inactivity **by default**. The window is user-configurable from 1 to 240 minutes, and the "Never" option (which requires the master password to set) disables it.
 *   **Memory Wipe:** Upon lock, `chrome.storage.session` is completely cleared, instantly purging all decrypted seed phrases, derived keys, and private key representations from runtime memory.
 *   **Browser Termination:** Closing the browser window or terminating the extension background worker immediately destroys the session memory.
 
@@ -64,10 +64,10 @@ To prevent unauthorized access when a device is left unattended:
 ## 4. Minimal Extension Permissions
 
 Thru Wallet adheres to the **Principle of Least Privilege**. The extension requests only the
-four permissions needed by the shipped flows:
+five permissions needed by the shipped flows:
 
 ```json
-"permissions": ["storage", "alarms", "sidePanel", "clipboardRead"]
+"permissions": ["storage", "alarms", "sidePanel", "clipboardRead", "notifications"]
 ```
 
 ### Permission Audit
@@ -77,6 +77,7 @@ four permissions needed by the shipped flows:
 | `alarms` | Required for the inactivity auto-lock heartbeat in the background worker. |
 | `sidePanel` | Required for the explicit user action that opens the wallet in Chrome's side panel. |
 | `clipboardRead` | Used only by the recipient-field Paste button; Ctrl+V remains available without it. |
+| `notifications` | Used only for optional desktop notifications of confirmed/failed own transfers (`history-service.js`); it is a user preference (on by default, changeable in Settings) and never carries secret material. |
 
 ### Explicitly Excluded Permissions
 *   `tabs` / `activeTab`: **Not requested.** The extension cannot inspect browser tabs or web page contents.

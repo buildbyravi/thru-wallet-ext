@@ -46,7 +46,7 @@ Start with the docs index:
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Implemented dependency, signing, storage, and verification boundaries. |
 | [`docs/DECISIONS.md`](docs/DECISIONS.md) | Durable decisions with alternatives, trade-offs, and consequences. |
 | [`docs/MODULE_BOUNDARIES.md`](docs/MODULE_BOUNDARIES.md) | Target feature separation for launchpad, DEX, prediction, portfolio, and SDK adapters. |
-| [`docs/MCP_AGENT_INTEGRATION.md`](docs/MCP_AGENT_INTEGRATION.md) | Safe AI-agent/MCP companion plan. |
+| [`docs/archive/MCP_AGENT_INTEGRATION.md`](docs/archive/MCP_AGENT_INTEGRATION.md) | Archived AI-agent/MCP companion planning record. |
 | [`llms.txt`](llms.txt) | Short read-only repo LLM context; pair with official Thru protocol docs at `https://thru.org/docs/llm.txt`. |
 | [`docs/AUDIT_REPORT.md`](docs/AUDIT_REPORT.md) | Security audit findings and remediation status. |
 | [`docs/DEFECT_LOG.md`](docs/DEFECT_LOG.md) | Historical defects, root causes, and lessons. |
@@ -55,7 +55,7 @@ Start with the docs index:
 | [`docs/archive/WALLET_FEATURES_PERFORMANCE_STUDY.md`](docs/archive/WALLET_FEATURES_PERFORMANCE_STUDY.md) | Popular wallet feature study and no-lag popup/full-tab performance model. |
 | [`docs/archive/THRU_NATIVE_DEFI_TAB_UX.md`](docs/archive/THRU_NATIVE_DEFI_TAB_UX.md) | Thru-native launchpad/DEX/full-tab architecture direction. Research only; no shipped code corresponds to it. |
 | [`docs/archive/LAUNCHPAD_UX_STUDY.md`](docs/archive/LAUNCHPAD_UX_STUDY.md) | Launchpad UX study. Retained research only. |
-| [`docs/LAUNCHPAD_DEX_MIGRATION_UX.md`](docs/LAUNCHPAD_DEX_MIGRATION_UX.md) | Launchpad-to-DEX migration and charting study. Retained research only. |
+| [`docs/archive/LAUNCHPAD_DEX_MIGRATION_UX.md`](docs/archive/LAUNCHPAD_DEX_MIGRATION_UX.md) | Launchpad-to-DEX migration and charting study. Archived research only. |
 | [`docs/archive/`](docs/archive/) | Historical plans only; do not use as current state. |
 
 ---
@@ -122,10 +122,10 @@ src/lib/thru/*-adapter.js
 Highest priority:
 
 1. Run the browser-only smoke checklist for popup/side-panel layout, focus, canvas, and worker eviction.
-2. Token transfer and token balances remain blocked on live Thru Token Program verification.
+2. Token transfer is implemented on the official Token Program bindings, but two live-chain questions remain open: whether a never-registered recipient owner can receive a sender-initialized token account, and the actual token-program fee (`scripts/verify-token-transfer.mjs`).
 3. Custom networks remain quarantined until HTTPS/host-permission, verified chain-program capability, and re-authentication requirements are implemented together.
 4. Any future launchpad/DEX/prediction work must be built as isolated feature modules. The legacy surface is deleted and nothing of the kind ships today.
-5. `@thru/programs` and `@thru/sdk` are exact-pinned; derivation comes from `@thru/sdk/crypto` so the deprecated standalone crypto package is not installed.
+5. An external wallet security audit has not been performed; no mainnet-readiness claim is valid without it.
 
 See [`docs/STATUS_AND_ROADMAP.md`](docs/STATUS_AND_ROADMAP.md) for the live ordered list.
 
@@ -176,11 +176,12 @@ Historical testnet results are tracked in `docs/STATUS_AND_ROADMAP.md` and `docs
 - Never share a real seed phrase or private key.
 - Never paste secrets into issues, chat, MCP tools, or logs.
 - Secret export requires password re-authentication.
-- Signing requires password re-authentication by default.
-- Session-only signing is an explicit user setting and is less secure.
+- Signing requires an unlocked wallet. Password re-authentication per signature is **off by
+  default** (`docs/DECISIONS.md` D-003): while unlocked, the session can sign, and the
+  password-per-signature policy is an explicit, password-gated Settings opt-in.
 - Do not implement unverified protocol behavior.
 - Thru's current official wallet docs describe `@thru/wallet` connecting to the hosted
-  `wallet.thru.org/embedded` iframe; they do not establish an extension provider contract.
+  `app.tid.sh/embedded` iframe; they do not establish an extension provider contract.
 - Do not invent a fake `window.thru` provider or infer extension compatibility from the hosted
   `connect()`, `getSigningContext()`, and `signTransaction()` methods. Wait for a verified
   extension/BYO-signer contract.

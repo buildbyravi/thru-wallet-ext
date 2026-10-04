@@ -14,7 +14,7 @@ included) so diffs here are real listing diffs.
 | Support | Telegram channel <https://t.me/walletext> (store listing + `SUPPORT.md`) · Telegram group <https://t.me/+dA8TwsOECcIxZWZl> (shown in Settings → About) |
 | Privacy policy URL (as submitted) | <https://github.com/buildbyravi/thru-wallet-ext/blob/main/PRIVACY.md> |
 | Package version at last sync | `1.4.1` (`src/manifest.json`) |
-| Last synced with the live listing | 2026-09-30 |
+| Last synced with the live listing | 2026-10-04 |
 
 ---
 
@@ -132,7 +132,7 @@ True in code: `script-src 'self'`, `default-src 'none'` (see `src/manifest.json`
 `PRIVACY.md` in this repository. If `PRIVACY.md` moves or changes scope, update the URL or
 content in the dashboard in the same release.
 
-## 6. Copy accuracy notes (verified against the code 2026-09-26)
+## 6. Copy accuracy notes (verified against the code 2026-10-04)
 
 Documentation summarizes the code; it does not override it. When refreshing the listing,
 re-check these claims against `src/` and fix the copy if the code moved.
@@ -141,7 +141,7 @@ re-check these claims against `src/` and fix the copy if the code moved.
 | --- | --- | --- |
 | PBKDF2 (600k iterations) | `src/lib/vault.js` — `PBKDF2_ITERATIONS = 600_000`, PBKDF2-SHA-256 | ✅ exact |
 | AES-256-GCM at rest | `src/lib/vault.js` — 256-bit non-extractable AES-GCM key | ✅ exact |
-| Auto-lock after 15 minutes | `src/shared/autolock.js` — `DEFAULT_AUTOLOCK_MINUTES = 15` | ✅ default is 15 min; user-configurable 0–240 min. The listing says "after 15 minutes" — consider "by default after 15 minutes" at the next copy refresh |
+| Auto-lock after 15 minutes | `src/shared/autolock.js` — `DEFAULT_AUTOLOCK_MINUTES = 15` | ✅ default is 15 min; user-configurable 0–240 min. The live listing still says "after 15 minutes" (verified 2026-10-04) — consider "by default after 15 minutes" at the next copy refresh |
 | Five permissions, one purpose each | `src/manifest.json` — exactly `storage`, `alarms`, `sidePanel`, `clipboardRead`, `notifications` | ✅ exact |
 | Zero telemetry / no remote code | no analytics, no remote scripts; CSP `script-src 'self'` | ✅ exact |
 | Features: HD/import, send + review, receive QR, faucet | routes in `src/ui/app/routes/` (dashboard, send, receive, add-account, settings/faucet) | ✅ shipped |
@@ -178,6 +178,7 @@ review status.
 
 | Date | What changed | Notes |
 | --- | --- | --- |
+| 2026-10-04 | **Store sync — package `1.4.1` is live.** The listing now carries this file's §1 copy (betanet description: token drawer, verified custom tokens, desktop notifications, Ctrl+L, the unaudited/community-built notice), five screenshots, and the linked developer website. Verified on the live page 2026-10-04: version `1.4.1`, updated October 4 2026, `272KiB`, five screenshots; the Details block lists Website (`thruwallet.vercel.app`) + Email and a non-trader declaration, and no longer displays an "Offered by" publisher row. | Resolves the 2026-10-03 "store upload of 1.4.1 pending" note. §1/§2/§3 copy verified identical to the live listing. **No browser verification of the shipped package is recorded** — `docs/MANUAL_SMOKE_CHECKLIST.md` has zero ticked boxes; the runbook is the top open item in `docs/STATUS_AND_ROADMAP.md` §2. |
 | 2026-10-03 | Package `1.4.1` — **@thru 0.4.1 sync + pre-merge hardening**: `@thru/sdk` & `@thru/programs` 0.4.1 (addresses/PDA vectors verified unchanged); duplicate-send guard now tracks transfers at **submission** so the "Repeated Transaction" security card covers the whole pending window (was: warning only after confirmation); `tx.send` honors `allowDuplicate`; dark-mode readability (action grid, drawer ledger, connection footer); imported-key names persist and all private keys group under one "Private Key" section; Send account rows match Manage Accounts | 20 suites / 1,641 assertions green; store upload of 1.4.1 pending |
 | 2026-09-30 | Package `1.4.0` — **Rabby Architecture & Asset Polish**: Centralized token architecture (`NATIVE_TOKEN`, `TokenAvatar`), brand logo on lock screen, desktop notifications for tx confirmation/failure (`chrome.notifications`), Rabby refresh icon with spinning sync indicator, 30s auto-refresh on History, lock wallet button & Ctrl+L shortcut | All 20 test suites green |
 | 2026-09-29 | (unreleased, package still `1.4.0`) **Token drawer**: the balance box is now the token entry — click anywhere in it (or Enter/Space, or the Tokens strip) and the Rabby-style drawer slides up with the full token list, live search, and Add custom token; the inline dashboard ledger is gone | TOKEN2049 store copy: mention "tap your balance for the token list" alongside "Add custom tokens by contract address" |

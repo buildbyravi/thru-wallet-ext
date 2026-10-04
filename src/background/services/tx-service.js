@@ -503,20 +503,17 @@ export async function autoCreateAccount() {
 // Each has a matching entry in docs/BACKEND_GAPS.md (Tier C) and docs/BUILD_SPEC.md Part X.
 
 /**
- * Estimate the network fee for a transfer.
- *
- * Blocked on: whether Thru transfers carry a non-zero fee at all, and how it is computed. The
- * faucet instruction is known to be zero-fee; transfers are assumed not to be, but the amount
- * is unverified. The MAX button currently reserves a hardcoded 10_000 base units as a guess.
- */
-/**
  * Estimate the network fee for a transfer, from the ACTIVE network's config.
  *
- * The fee is a per-network value, not a constant. It was measured on the managed-genesis
- * testnet chain (2026-09-26, the same program deployment betanet runs), and the transfer
- * program and its fee schedule may both change between deployments — so a network whose fee
- * has not been measured reports `supported: false` rather than quoting an old number as if it
+ * The fee is a per-network value, not a constant. Betanet's was measured on the
+ * managed-genesis testnet chain (2026-09-26, the same program deployment betanet runs), and the
+ * transfer program and its fee schedule may both change between deployments — so a network whose
+ * fee has not been measured reports `supported: false` rather than quoting an old number as if it
  * applied. A guessed fee on a live network is the most expensive kind of guess.
+ *
+ * `source` is the network config's explicit `feeSource` provenance ('measured' vs 'assumed'),
+ * never derived from the environment enum — the previous `environment === 'devnet'` check was a
+ * dead branch after the betanet migration and mislabeled a measured fee as assumed.
  *
  * `reserveUnits` is what MAX should hold back. It sits well above the observed fee because only
  * one amount and one transaction size were sampled, so whether the fee scales with either is
@@ -540,7 +537,7 @@ export async function estimateFee(/* { toAddress, amountUnits } */) {
   return {
     supported: true,
     networkId: network.id,
-    source: network.environment === 'devnet' ? 'measured' : 'assumed',
+    source: network.feeSource === 'measured' ? 'measured' : 'assumed',
     feeUnits: network.baseFeeUnits.toString(),
     reserveUnits: (network.feeReserveUnits ?? network.baseFeeUnits).toString(),
     reason: 'Observed on a live transfer between two registered accounts. Not a published spec, '

@@ -66,7 +66,7 @@ const RULES = [
 
 // chrome.runtime.sendMessage is a two-way street and each direction gets exactly ONE owner:
 //
-//   UI -> background : src/ui/bridge.js only. Keeps the callable API surface in one auditable
+//   UI -> background : src/ui/app/bridge.js only. Keeps the callable API surface in one auditable
 //                      place instead of scattered across screens.
 //   background -> UI : src/background/services/event-service.js only. Keeps every push event
 //                      declared in the contract's EVENTS map and swallows "no receiver"

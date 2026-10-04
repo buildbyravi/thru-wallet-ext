@@ -112,16 +112,10 @@ for (const file of uiFiles) {
   });
 }
 
-// The legacy bridge intentionally routes some paths back to the old stack while the migration
-// is in progress. Those are declared in popup.js and are NOT expected to be registered routes.
-const legacySource = stripComments(readFileSync('src/popup/popup.js', 'utf8'));
-const legacyFallbackPaths = new Set();
-for (const m of legacySource.matchAll(/'go-[a-z-]+':\s*'(\/[a-z0-9-]*)'/g)) {
-  legacyFallbackPaths.add(m[1]);
-}
-// Paths that deliberately fall through to the legacy stack until they migrate.
-// EMPTY as of the full migration — every route now exists on the new stack. Anything added here
-// again is a temporary state that must be justified, not a place to park a broken link.
+// Paths that would have been allowed to fall through to the deleted legacy stack during the
+// migration. EMPTY as of the completed migration — every route now exists on the new stack.
+// Anything added here again is a temporary state that must be justified, not a place to park a
+// broken link.
 const UNMIGRATED_OK = new Set([]);
 
 for (const [path, sites] of navigated) {
@@ -134,7 +128,7 @@ for (const [path, sites] of navigated) {
     `NAVIGATES TO AN UNREGISTERED ROUTE: '${path}'\n`
     + `      used at: ${sites.join(', ')}\n`
     + `      Either register it in src/ui/app/boot.js or add it to UNMIGRATED_OK here.\n`
-    + '      A control pointing at a non-existent route falls through to the legacy fallback and errors.',
+    + '      A control pointing at a non-existent route redirects to the fallback — a shipped control with no destination.',
   );
 }
 

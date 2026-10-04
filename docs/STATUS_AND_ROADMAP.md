@@ -59,6 +59,11 @@ npm run build  PASS — generated dist/ from the current source.
 
 These results are deterministic/local. They do not close the browser or live-chain checks below.
 
+Re-verified on the 2026-10-04 production-rules conformance audit (branch
+`arena/01a10602-thru-wallet-ext`): same suites green with the current counts — contract 80/80,
+route lifecycle 1017/1017, security-checks 20, DOM/refs 130/130 — plus the new fee-provenance
+regression (`test-api-router.mjs [13]`). See `docs/AUDIT_REPORT.md`.
+
 ### Recent security hardening
 
 - `tx.send`, `tx.sendChecked`, faucet signing, token transfer, and related signing methods use the background `auth: 'signing'` policy. The wallet must be unlocked; password re-auth is required only when the user enables it in Settings.
@@ -84,7 +89,7 @@ Passing `npm test` or `npm run build` does not close any of these:
 
 | Boundary | Still open |
 | --- | --- |
-| Real Chrome | Popup/side-panel layout and focus at narrow/wide sizes; QR canvas; actual popup/panel mutual exclusion; Settings' toolbar mode; clipboard prompt; MV3 worker eviction/restart and timeouts. Run `docs/MANUAL_SMOKE_CHECKLIST.md`. |
+| Real Chrome | Popup/side-panel layout and focus at narrow/wide sizes; QR canvas; actual popup/panel mutual exclusion; Settings' toolbar mode; clipboard prompt; MV3 worker eviction/restart and timeouts. Run `docs/MANUAL_SMOKE_CHECKLIST.md`. **The store package (`1.4.1`) went live 2026-10-04 on automated evidence alone — zero checklist boxes are ticked, which makes this the top open item.** |
 | Live v12 activation | Create several HD accounts on the selected chain and exercise Send JIT for an owned absent recipient. Verify target signer, per-network existence, offline-vs-absent handling, and behavior if MV3 suspends during bounded retries. |
 | Live token transfer | Whether a never-registered recipient owner can receive a sender-initialized token account and the actual token-program fee remain unmeasured. Use `scripts/verify-token-transfer.mjs` only with a safe throwaway wallet and network access. |
 | History RPC/explorer | Current block-time availability and first-load latency per enabled network; whether an authoritative charged-fee value exists outside the current RPC detail response; and confirmation of the explorer transaction route. |
@@ -92,6 +97,24 @@ Passing `npm test` or `npm run build` does not close any of these:
 | Session behavior | The reported lock-on-refresh/session-storage behavior still needs checking in the actual target browser. A Node harness cannot distinguish a browser persistence difference from an auto-lock timer issue. |
 
 ## 2. What to do next, in order
+
+**Current ordered next work (2026-10-04, confirmed by the owner after the conformance audit and
+documentation remediation — wallet core first; no DEX/launchpad/prediction work):**
+
+1. ~~Keep D-003~~ — **DONE**: session-only signing default confirmed as a deliberate product/security decision; invariants and framing recorded in `docs/DECISIONS.md` D-003.
+2. ~~Make documentation exact~~ — **DONE**: cross-document truth sweep complete on the 11 shared facts.
+3. **Real Chrome manual smoke** — `docs/MANUAL_SMOKE_CHECKLIST.md`, popup and side panel, narrow and wide.
+4. **Betanet live E2E** — run the current code against Betanet with `scripts/verify-live-e2e.mjs` on a throwaway wallet; this also covers "verify every enabled network" (Betanet is the only enabled network today).
+5. **Transaction/signing race testing + MV3 suspension/restart** — network switch during SDK signing, concurrent pending-record writes, worker suspension mid-registration/Send, bridge-timeout unknown-outcome messaging; deterministic interleaving tests exist, real MV3 scheduling does not.
+6. **Token transfer live verification** — `scripts/verify-token-transfer.mjs`: recipient-owner acceptance and the actual token-program fee.
+7. **Explorer/block-time verification** — current feed availability/latency, the `/tx/` explorer route, and whether any authoritative charged-fee source exists.
+8. **Final dependency/security review** — re-run `npm audit --omit=dev`, review advisories for `@thru/*` and `esbuild`, re-verify the 0.4.1 pins before any store release. **Architecture is frozen here** (standing rule in `AGENTS.md`): no refactor without a measurable security, correctness, performance, or maintainability benefit and a proving test.
+9. **External security review/audit** — required before any mainnet-readiness claim; none has been performed.
+10. **Mainnet-specific configuration + verification** — re-measure the fee on mainnet (its `baseFeeUnits` is deliberately null), verify program deployments and explorer routing, add the RPC origin to `connect-src`, and enable deliberately; a Betanet observation cannot prove mainnet behavior.
+
+The readiness classification behind this order (automated / browser / Betanet-live /
+mainnet-specific / external audit — never merged) is in `docs/AUDIT_REPORT.md` §"Mainnet-readiness
+gates".
 
 Steps 1, 2, 2b and 4 are complete and kept here as the security/reliability record. Remaining
 steps are independent follow-ups; custom-network re-enablement stays blocked on all four
@@ -182,7 +205,8 @@ Before adding real launchpad, DEX, prediction, chart, or portfolio behavior, fol
 2. keep feature UI separate from feature backend;
 3. introduce thin `src/lib/thru/*-adapter.js` wrappers around official Thru SDK/program surfaces;
 4. use transaction intents for any mutating feature so the shared signing gate remains central;
-5. treat `docs/MCP_AGENT_INTEGRATION.md` as intent/read-only planning, not permission for agents
+5. treat the archived `docs/archive/MCP_AGENT_INTEGRATION.md` planning record as intent/read-only
+   thinking, not permission for agents
    to sign or export secrets.
 
 ### Step 4 — token transfer — SHIPPED in code (v8); live-chain verification OPEN
@@ -250,10 +274,12 @@ the probe.
 
 ### Step 5 — dependency pin cleanup — DONE
 
-Completed in the 2026-09-18 audit pass: `@thru/programs` and `@thru/sdk` are exact-pinned at
+Completed in the 2026-09-18 audit pass: `@thru/programs` and `@thru/sdk` were exact-pinned at
 `0.3.16`, and derivation imports from the SDK's public `@thru/sdk/crypto` subpath rather than
-the deprecated standalone crypto package. Golden vectors remain unchanged; `npm ci` is the CI
-install gate.
+the deprecated standalone crypto package. Both pins have since advanced deliberately and remain
+exact: `0.4.1` today, with derivation vectors verified unchanged against that pin
+(`test/test-derivation.mjs`). Golden addresses have never changed; `npm ci` is the CI install
+gate.
 
 ### Step 6 — spacing and the tab-width question
 
@@ -268,7 +294,7 @@ Step 1 for the record and `test/test-launchpad-quarantine.mjs` for the enforceme
 A launchpad returns only as a new `src/features/launchpad/**` module with `launchpad.*` backend
 namespaces, guarded DOM, real quotes from a verified AMM/indexer, and its own tests — the shape
 in `docs/MODULE_BOUNDARIES.md`, informed by the retained research in `docs/archive/LAUNCHPAD_UX_STUDY.md`,
-`docs/LAUNCHPAD_DEX_MIGRATION_UX.md` and `docs/archive/THRU_NATIVE_DEFI_TAB_UX.md`.
+`docs/archive/LAUNCHPAD_DEX_MIGRATION_UX.md` and `docs/archive/THRU_NATIVE_DEFI_TAB_UX.md`.
 
 Note `token.deriveAddress` needs a mint authority and a 64-hex-character seed; the deleted
 deploy form predated both, and its `mintSeed` was `Math.random().toString(36)` — one of the

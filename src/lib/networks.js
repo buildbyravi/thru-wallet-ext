@@ -12,7 +12,7 @@
 // Rule 2 is the one that is easy to get wrong, and getting it wrong means switching to mainnet
 // shows you devnet's pending transactions and a token list of mints that do not exist there.
 
-import { Pubkey, EOA_PROGRAM_ID, TOKEN_PROGRAM_ADDRESS, NOOP_PROGRAM_ADDRESS } from '@thru/sdk';
+import { EOA_PROGRAM_ID, TOKEN_PROGRAM_ADDRESS, NOOP_PROGRAM_ADDRESS } from '@thru/sdk';
 import { BOOTSTRAP_PROGRAM_ADDRESSES, BOOTSTRAP_FAUCET_VAULT_ADDRESS } from '@thru/programs/bootstrap-addresses';
 
 /**
@@ -32,6 +32,9 @@ import { BOOTSTRAP_PROGRAM_ADDRESSES, BOOTSTRAP_FAUCET_VAULT_ADDRESS } from '@th
  * @property {'devnet'|'testnet'|'mainnet'|'local'} environment
  * @property {bigint|null} baseFeeUnits    - Observed transfer fee, or null when UNKNOWN
  * @property {bigint|null} feeReserveUnits - What MAX should hold back, or null when unknown
+ * @property {'measured'|'assumed'|null} feeSource - Provenance of baseFeeUnits: 'measured' when
+ *   observed on this chain's program deployment, 'assumed' when reasoned rather than observed,
+ *   null when baseFeeUnits is null. tx.estimateFee reports it verbatim.
  */
 
 // Program addresses come from the official 0.4.x packages — the managed-genesis registry that
@@ -81,6 +84,10 @@ export const NETWORKS = {
     // rather than at it. Re-verify on betanet with scripts/measure-fee.mjs.
     baseFeeUnits: 1n,
     feeReserveUnits: 1000n,
+    // Provenance of the fee above: measured on this chain's program deployment (see the
+    // measurement comment). The Send review quotes this label, so a fee that was measured must
+    // never be presented to the user as "not measured on this network".
+    feeSource: 'measured',
   },
 
   // Local node support is NOT offered in the shipped wallet — selecting it bound the
@@ -110,6 +117,7 @@ export const NETWORKS = {
     // deployment, so this is an assumption rather than a measurement.
     baseFeeUnits: 1n,
     feeReserveUnits: 1000n,
+    feeSource: 'assumed',
   },
 
   // Declared but NOT enabled. This is the reserved slot for a future Thru-declared 'testnet'
@@ -140,6 +148,7 @@ export const NETWORKS = {
     // devnet number as if it applied here.
     baseFeeUnits: null,
     feeReserveUnits: null,
+    feeSource: null,
   },
 
   mainnet: {
@@ -159,6 +168,7 @@ export const NETWORKS = {
     // UNKNOWN, and on a live network a guessed fee is the most expensive kind of guess.
     baseFeeUnits: null,
     feeReserveUnits: null,
+    feeSource: null,
   },
 };
 
@@ -204,14 +214,4 @@ export function explorerAddressUrl(networkConfig, address) {
   // scan.thru.org routes addresses under /address/ (not /account/) and scopes pages by an
   // explicit ?network= id — verified against the live explorer 2026-09-27.
   return `${networkConfig.explorerUrl}/address/${address}?network=${networkConfig.id}`;
-}
-
-/** Validate a Thru address using the SDK's checksum logic. */
-export function isValidThruAddress(address) {
-  try {
-    Pubkey.from(address);
-    return true;
-  } catch {
-    return false;
-  }
 }

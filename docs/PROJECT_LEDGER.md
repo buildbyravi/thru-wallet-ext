@@ -1,9 +1,9 @@
 # Project ledger — shipped baseline and open verification
 
-Date: 2026-09-26
+Date: 2026-10-04
 Purpose: concise source-backed record of the current implementation, contract identifiers, completed milestones, and checks that remain open. `src/`, tests, and scripts are authoritative; this ledger is a summary.
 
-The documentation update is based on the shipped source at `main` commit `4aa55ba`. The documentation-only changes do not claim new runtime behavior.
+The identifier refresh is based on the audited source at `7883219` plus the 2026-10-04 conformance audit (`docs/audits/2026-10-04-conformance.md`; index and open gates in `docs/AUDIT_REPORT.md`). The documentation does not claim new runtime behavior beyond what `src/` ships.
 
 ---
 
@@ -12,17 +12,18 @@ The documentation update is based on the shipped source at `main` commit `4aa55b
 | Item | Shipped value |
 | --- | --- |
 | Repository | `buildbyravi/thru-wallet-ext` |
-| Audited implementation baseline | `4aa55ba` (`main`) |
-| Contract version | v12 |
+| Audited implementation baseline | `7883219` (`arena/01a10602-thru-wallet-ext`, 2026-10-04 audit) |
+| Contract version | v16 |
 | Contract methods | 81, counted from `Object.keys(METHODS)` in `src/shared/contract/manifest.js` |
 | Route count | 14 popup/side-panel routes |
 | Signing preference default | Session-only while unlocked (`requirePasswordForSigning: false`); password re-auth is an explicit, password-gated Settings opt-in |
 | Built extension page | `popup.html`, shared by toolbar popup and side panel |
-| Network availability | Alphanet and Localnet enabled; Testnet and Mainnet declared but disabled |
-| Thru package versions | `@thru/sdk` and `@thru/programs` exact-pinned at `0.3.16` |
+| Network availability | Betanet enabled; Localnet, Testnet and Mainnet declared but disabled (tests re-enable Localnet in-process) |
+| Thru package versions | `@thru/sdk` and `@thru/programs` exact-pinned at `0.4.1` |
 | Build output | Generated under `dist/`; do not edit by hand |
+| Store package | `1.4.1` live in the Chrome Web Store since 2026-10-04 (live page verified; record in `extension.md` §9); no browser verification of the store package is recorded |
 
-The contract remains an append-only API in ordinary feature work, with documented security-policy exceptions in v5–v7. Later additions v8–v12 did not remove existing methods. Treat the manifest and `test/test-contract.mjs` as the exact contract authority.
+The contract remains an append-only API in ordinary feature work, with documented security-policy exceptions in v5–v7, the v13 faucet-auth change, and the v16 retirement of the unbound send methods (a removal after zero shipped callers, not an addition). Version history v8–v16 is recorded in §3. Treat the manifest and `test/test-contract.mjs` as the exact contract authority.
 
 Run from the repository root:
 
@@ -71,6 +72,10 @@ No launchpad, DEX, swap, or prediction UI is shipped. The old `src/launchpad/` t
 | v10 | Lazy per-signature transaction detail; declared fee and unavailable/optional fields are distinguished rather than guessed. |
 | v11 | `tx.sendChecked` and `token.transferChecked` pin the reviewed source account and network at the backend boundary. |
 | v12 | `tx.registerAccount` is unlocked-only and limited to an exact vault-owned address; `tx.getCachedHistory` adds a storage-only, per-network/address History read. |
+| v13 | `tx.claimFaucet` auth drops from `signing` to `unlocked` (first modified method since the v5 security break, same precedent: behavior changes get a version); the vestigial password param leaves the declaration. |
+| v14 | `token.readMint` reads a mint account straight from the chain so "Add custom token" verifies the pasted address and uses the chain's own symbol/decimals. |
+| v15 | `tx.checkDuplicate` detects repeat transfers within 30s or while in flight; send methods accept an explicit `allowDuplicate` for user-confirmed repeats. |
+| v16 | Retires the unbound `tx.send` / `token.transfer` mutation endpoints after every shipped UI caller migrated to the checked counterparts; the weaker alternate signing path is gone. |
 
 ### v12 registration and History behavior
 
@@ -86,15 +91,15 @@ No launchpad, DEX, swap, or prediction UI is shipped. The old `src/launchpad/` t
 
 | Area | Current state and evidence |
 | --- | --- |
-| `npm test` | PASS on the 2026-09-26 documentation-only change: derivation 16, QR 15, layering 70 files/0 sinks, CSP, routes 14/14, CSS nesting, quarantine 47, contract 77, DOM/refs 130, route lifecycle 904, plus vault, Thru client, token/balance, History, registration, and API-router suites. |
-| `npm run build` | PASS on the final documentation-only change; `build.mjs` regenerated `dist/` from current source. |
+| `npm test` | PASS on the 2026-10-04 audited tree: derivation 16/16, QR 15/15, layering 80 files/0 sinks, CSP, routes 14/14, CSS nesting, quarantine 47/47, contract 80/80, security-checks 20, DOM/refs 130/130, route lifecycle 1017/1017, plus storage-migrations, vault, Thru client, token/balance, History, registration, and API-router suites. Counts are the audited run's; use the final test output for any subsequent refresh. |
+| `npm run build` | PASS on the 2026-10-04 audited tree; `build.mjs` regenerated `dist/` from current source with no warnings. |
 | Contract | v16, 81 methods. v16 deliberately retires unbound legacy send methods after zero shipped callers; registration/history APIs remain. |
 | Signing | Signing methods use `auth: 'signing'`. The wallet must be unlocked; password re-authentication is required only when the user enables it in Settings. That opt-in is itself password-gated. |
 | Registration | Exact ownership is checked in the background, the target account is the signer, Send JIT does not touch external recipients, and retry behavior is covered by deterministic registration/API tests. |
 | History | Flat card stream, storage-only cache-first paint, per-network/address cache, network-scoped block-time lookup, and provenance/fallback behavior are covered by deterministic tests. |
 | Popup/side panel | Mutual-exclusion and side-panel mode paths have deterministic route/service tests. No real-Chrome certification is claimed. |
 | DOM safety | `scripts/check-layering.mjs` checks the shipped `src/` tree (vendored QR code excluded); current sink count is zero. |
-| Dependency pin | `@thru/sdk` and `@thru/programs` are exact-pinned at `0.3.16`; this is complete, not open work. |
+| Dependency pin | `@thru/sdk` and `@thru/programs` are exact-pinned at `0.4.1`; derivation vectors record verification against 0.4.1 with unchanged golden addresses. This is complete, not open work. |
 
 ---
 
@@ -156,13 +161,14 @@ When these change, update this ledger, `CONTEXT.md`, `docs/STATUS_AND_ROADMAP.md
 
 | Identifier | Current value |
 | --- | --- |
-| contract version | 12 |
+| contract version | 16 |
 | method count | 81 |
 | route count | 14 |
 | guarded DOM sink count | 0 across shipped `src/` (vendored QR excluded) |
-| enabled networks | Alphanet, Localnet |
-| disabled declared networks | Testnet, Mainnet |
+| store package | `1.4.1`, listed 2026-10-04; browser verification of the store package: not recorded |
+| enabled networks | Betanet |
+| disabled declared networks | Localnet, Testnet, Mainnet |
 | built extension pages | one shared `popup.html` for popup + side panel |
 | launchpad/DEX/prediction UI | not shipped; launchpad tree is quarantined by source/build tests |
 | signing re-auth default | off; unlocked session only, with password-gated opt-in |
-| `@thru/sdk` / `@thru/programs` | exact-pinned `0.3.16` |
+| `@thru/sdk` / `@thru/programs` | exact-pinned `0.4.1` |

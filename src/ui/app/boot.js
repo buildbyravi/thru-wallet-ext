@@ -27,11 +27,11 @@ import { HistoryRoute } from './routes/history.js';
 import { WelcomeRoute } from './routes/welcome.js';
 
 /**
- * Routes migrated to the new stack.
+ * The wallet's complete route table.
  *
- * A hash this table does not contain falls through to `legacyFallback`, so an unmigrated
- * screen is never a dead end during the migration. Each entry is deleted from the legacy
- * monolith in the same commit that adds it here.
+ * A hash this table does not contain is redirected to the router's fallback ('/unlock'), so an
+ * unknown or stale URL is never a dead end. The legacy tree this table replaced is deleted;
+ * its history lives in Git, not in a compatibility layer.
  */
 export const POPUP_ROUTES = [
   {
@@ -135,19 +135,15 @@ export const POPUP_ROUTES = [
 ];
 
 /**
- * Start the new UI.
+ * Start the UI.
  *
- * @param {{
- *   root?: HTMLElement,
- *   legacyFallback?: (path: string) => void,
- *   onMigratedRoute?: (path: string) => void
- * }} options
+ * @param {{ root?: HTMLElement }} options
  * @returns {Promise<Router|null>}
  */
-export async function boot({ root, legacyFallback, onMigratedRoute } = {}) {
+export async function boot({ root } = {}) {
   const mount = root || document.getElementById('app');
   if (!mount) {
-    console.error('[boot] no #app mount point; leaving the legacy UI in place.');
+    console.error('[boot] no #app mount point.');
     return null;
   }
 
@@ -194,36 +190,25 @@ export async function boot({ root, legacyFallback, onMigratedRoute } = {}) {
     shell.setChromeVisible(!FULLSCREEN_ROUTES.has(path), path);
   }
 
-  // Hand unmigrated hashes back to the legacy stack rather than bouncing to the fallback,
-  // which would make half the app unreachable while the migration is in progress.
-  //
-  // Both directions matter: entering a legacy screen must reveal the legacy tree, and
-  // returning to a migrated route must hide it again. Without the second half, a single
-  // excursion into an unmigrated screen would leave both trees stacked in the document.
+  // Keep an unknown hash from ever entering the URL: redirect to the fallback before the
+  // router resolves it. (The Router would recover through its own fallback anyway, but the
+  // stale hash would briefly land in history first.)
   const originalNavigate = router.navigate.bind(router);
   router.navigate = (path, options) => {
     const cleanPath = String(path).split('?')[0];
     if (!known.has(cleanPath)) {
-      if (typeof legacyFallback === 'function') {
-        legacyFallback(cleanPath);
-        return;
-      }
       originalNavigate('/unlock', { replace: true });
       return;
     }
-    onMigratedRoute?.(cleanPath);
     applyChrome(cleanPath);
     originalNavigate(path, options);
   };
 
-  // A hashchange straight to a migrated route (Back, or an edited URL) bypasses
-  // router.navigate, so the tree swap has to happen on resolve as well.
+  // A hashchange straight to a known route (Back, or an edited URL) bypasses router.navigate,
+  // so chrome visibility has to be applied on resolve as well.
   window.addEventListener('hashchange', () => {
     const { path } = Router.parseHash();
-    if (known.has(path)) {
-      onMigratedRoute?.(path);
-      applyChrome(path);
-    }
+    if (known.has(path)) applyChrome(path);
   });
 
   // Push events replace polling. The old bridge exposed onEvent() with zero subscribers,
@@ -253,7 +238,7 @@ export async function boot({ root, legacyFallback, onMigratedRoute } = {}) {
   shell.refreshNetwork();
 
   if (FLAGS.DEBUG_ROUTING) {
-    console.info('[boot] new UI active. Migrated routes:', [...known].join(', '));
+    console.info('[boot] UI active. Routes:', [...known].join(', '));
   }
 
   return router;

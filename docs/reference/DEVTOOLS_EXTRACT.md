@@ -1,5 +1,9 @@
 # DevTools extraction commands
 
+> [!NOTE]
+> Reference tool notebook. Use `docs/DOCS_INDEX.md` for the documentation map and
+> `docs/STATUS_AND_ROADMAP.md` for current state.
+
 Console one-liners for pulling structure, styles, and copy out of any extension or web UI
 (the Rabby-element workflow: inspect → run → paste into chat or a spec). Open the target
 UI first (`chrome://extensions` → your extension → Inspect views: popup), press F12, select
