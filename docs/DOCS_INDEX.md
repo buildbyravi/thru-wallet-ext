@@ -1,6 +1,6 @@
 # Documentation index
 
-Date: 2026-09-26
+Date: 2026-10-04
 Purpose: map the maintained documentation and point readers to the implementation and verification sources of truth. Documentation summarizes the code; it does not override it.
 
 ---
@@ -87,7 +87,7 @@ Start from the pinned dependencies and current `src/` implementation, then cross
 | `docs/MIGRATION_MAP.md` | strategy/reference | Rabby-class migration ideas; verify every claim against `src/` before treating it as implemented |
 | `docs/LAUNCHPAD_DEX_MIGRATION_UX.md` | research only | design study; no launchpad, DEX, or prediction UI ships |
 | `docs/REDESIGN_TRIAGE.md` | findings record | triage of external UX suggestions; re-check claims before implementation |
-| `docs/AUDIT_REPORT.md` | historical audit with a newer audit link | older findings and remediation history; its counts/defaults are not current-state authority |
+| `docs/AUDIT_REPORT.md` | current audit record (2026-10-04 conformance audit at top) plus historical audits below | findings, remediation status, and recorded baselines; each dated section describes only its own baseline |
 | `docs/UI_REBUILD_PLAN.md` | historical plan/reference | original rebuild rationale; not current structure or task status |
 | `docs/UI_REBUILD_AGENT_PROMPT.md` | historical prompt/reference | original prompt; do not execute as the current plan |
 

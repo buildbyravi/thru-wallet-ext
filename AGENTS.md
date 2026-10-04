@@ -152,8 +152,8 @@ is red. Never weaken or skip a test to make it pass.
 2. **`src/lib/vault.js` and `src/lib/thru-client.js` are sacred.** Crypto, keyrings, RPC shapes,
    instruction layouts. Change only for a verified bug or a tested additive primitive, and only
    with `test-vault.mjs` / `test-thru-client.mjs` passing.
-3. **One seam between UI and backend:** `bridge.send(method, params)`. Only `src/ui/bridge.js`
-   (legacy) and `src/ui/app/bridge.js` (new) may call `chrome.runtime.sendMessage`; only
+3. **One seam between UI and backend:** `bridge.send(method, params)`. Only `src/ui/app/bridge.js`
+   may call `chrome.runtime.sendMessage` (the legacy `src/ui/bridge.js` is deleted); only
    `src/background/services/event-service.js` may push events back. UI never imports
    `src/background/**` or `src/lib/vault.js`.
 4. **Backend API is append-only.** Add the method to `src/shared/contract/manifest.js` *and*

@@ -250,10 +250,12 @@ the probe.
 
 ### Step 5 — dependency pin cleanup — DONE
 
-Completed in the 2026-09-18 audit pass: `@thru/programs` and `@thru/sdk` are exact-pinned at
+Completed in the 2026-09-18 audit pass: `@thru/programs` and `@thru/sdk` were exact-pinned at
 `0.3.16`, and derivation imports from the SDK's public `@thru/sdk/crypto` subpath rather than
-the deprecated standalone crypto package. Golden vectors remain unchanged; `npm ci` is the CI
-install gate.
+the deprecated standalone crypto package. Both pins have since advanced deliberately and remain
+exact: `0.4.1` today, with derivation vectors verified unchanged against that pin
+(`test/test-derivation.mjs`). Golden addresses have never changed; `npm ci` is the CI install
+gate.
 
 ### Step 6 — spacing and the tab-width question
 
