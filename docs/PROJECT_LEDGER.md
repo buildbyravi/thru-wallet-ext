@@ -21,6 +21,7 @@ The identifier refresh is based on the audited source at `7883219` plus the 2026
 | Network availability | Betanet enabled; Localnet, Testnet and Mainnet declared but disabled (tests re-enable Localnet in-process) |
 | Thru package versions | `@thru/sdk` and `@thru/programs` exact-pinned at `0.4.1` |
 | Build output | Generated under `dist/`; do not edit by hand |
+| Store package | `1.4.1` live in the Chrome Web Store since 2026-10-04 (live page verified; record in `extension.md` §9); no browser verification of the store package is recorded |
 
 The contract remains an append-only API in ordinary feature work, with documented security-policy exceptions in v5–v7, the v13 faucet-auth change, and the v16 retirement of the unbound send methods (a removal after zero shipped callers, not an addition). Version history v8–v16 is recorded in §3. Treat the manifest and `test/test-contract.mjs` as the exact contract authority.
 
@@ -164,6 +165,7 @@ When these change, update this ledger, `CONTEXT.md`, `docs/STATUS_AND_ROADMAP.md
 | method count | 81 |
 | route count | 14 |
 | guarded DOM sink count | 0 across shipped `src/` (vendored QR excluded) |
+| store package | `1.4.1`, listed 2026-10-04; browser verification of the store package: not recorded |
 | enabled networks | Betanet |
 | disabled declared networks | Localnet, Testnet, Mainnet |
 | built extension pages | one shared `popup.html` for popup + side panel |

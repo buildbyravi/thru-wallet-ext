@@ -42,7 +42,7 @@ records below.
 - `npm audit --omit=dev` — 0 vulnerabilities.
 - Contract v16, 81 methods: manifest ↔ router ↔ shipped-callers agreement enforced.
 
-**B. Browser verified: NONE — OPEN.** No real-Chrome check has been run for the current build:
+**B. Browser verified: NONE — OPEN.** No real-Chrome check has been run for the current build (the `1.4.1` store package went live 2026-10-04 on automated evidence alone; no browser verification of the shipped package exists — `extension.md` §9):
 popup/side-panel layout at narrow/wide widths, real focus rings, QR canvas, popup/panel mutual
 exclusion, clipboard permission prompt, and MV3 worker eviction/restart all remain open in
 `docs/MANUAL_SMOKE_CHECKLIST.md`. A green DOM-shim suite is not evidence here.

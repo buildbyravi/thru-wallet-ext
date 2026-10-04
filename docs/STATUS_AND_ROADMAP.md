@@ -89,7 +89,7 @@ Passing `npm test` or `npm run build` does not close any of these:
 
 | Boundary | Still open |
 | --- | --- |
-| Real Chrome | Popup/side-panel layout and focus at narrow/wide sizes; QR canvas; actual popup/panel mutual exclusion; Settings' toolbar mode; clipboard prompt; MV3 worker eviction/restart and timeouts. Run `docs/MANUAL_SMOKE_CHECKLIST.md`. |
+| Real Chrome | Popup/side-panel layout and focus at narrow/wide sizes; QR canvas; actual popup/panel mutual exclusion; Settings' toolbar mode; clipboard prompt; MV3 worker eviction/restart and timeouts. Run `docs/MANUAL_SMOKE_CHECKLIST.md`. **The store package (`1.4.1`) went live 2026-10-04 on automated evidence alone — zero checklist boxes are ticked, which makes this the top open item.** |
 | Live v12 activation | Create several HD accounts on the selected chain and exercise Send JIT for an owned absent recipient. Verify target signer, per-network existence, offline-vs-absent handling, and behavior if MV3 suspends during bounded retries. |
 | Live token transfer | Whether a never-registered recipient owner can receive a sender-initialized token account and the actual token-program fee remain unmeasured. Use `scripts/verify-token-transfer.mjs` only with a safe throwaway wallet and network access. |
 | History RPC/explorer | Current block-time availability and first-load latency per enabled network; whether an authoritative charged-fee value exists outside the current RPC detail response; and confirmation of the explorer transaction route. |
