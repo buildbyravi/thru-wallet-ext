@@ -12,7 +12,7 @@
 // Rule 2 is the one that is easy to get wrong, and getting it wrong means switching to mainnet
 // shows you devnet's pending transactions and a token list of mints that do not exist there.
 
-import { Pubkey, EOA_PROGRAM_ID, TOKEN_PROGRAM_ADDRESS, NOOP_PROGRAM_ADDRESS } from '@thru/sdk';
+import { EOA_PROGRAM_ID, TOKEN_PROGRAM_ADDRESS, NOOP_PROGRAM_ADDRESS } from '@thru/sdk';
 import { BOOTSTRAP_PROGRAM_ADDRESSES, BOOTSTRAP_FAUCET_VAULT_ADDRESS } from '@thru/programs/bootstrap-addresses';
 
 /**
@@ -214,14 +214,4 @@ export function explorerAddressUrl(networkConfig, address) {
   // scan.thru.org routes addresses under /address/ (not /account/) and scopes pages by an
   // explicit ?network= id — verified against the live explorer 2026-09-27.
   return `${networkConfig.explorerUrl}/address/${address}?network=${networkConfig.id}`;
-}
-
-/** Validate a Thru address using the SDK's checksum logic. */
-export function isValidThruAddress(address) {
-  try {
-    Pubkey.from(address);
-    return true;
-  } catch {
-    return false;
-  }
 }

@@ -47,7 +47,7 @@ src/ui/app/routes
 
 `src/ui/app/bridge.js` is the outbound message seam; `src/background/services/event-service.js` is the inbound push-event source. `scripts/check-layering.mjs` enforces import boundaries and zero prohibited DOM-injection sinks across shipped `src/` (vendored QR code excluded). `scripts/check-routes.mjs` guards route reachability and CSS classes; `scripts/check-css-nesting.mjs` enforces flat CSS.
 
-The popup entry `src/popup/popup.js` is a boot stub. The removed legacy screens are only recoverable from Git history. Although `boot.js` accepts an optional fallback callback, the shipped popup does not supply one.
+The popup entry `src/popup/popup.js` is a boot stub. The removed legacy screens are only recoverable from Git history; `boot()` takes only a mount root — the migration-era fallback callback is deleted, and an unknown hash redirects to the router's fallback.
 
 ## 3. Build and automated verification
 
