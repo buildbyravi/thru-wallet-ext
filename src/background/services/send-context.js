@@ -6,8 +6,7 @@
 import { getActiveNetworkId } from './network-service.js';
 
 export async function assertSendContext(expected, payer) {
-  if (!expected) return; // legacy methods have no reviewed-context parameter
-  const { fromAddress, networkId } = expected;
+  const { fromAddress, networkId } = expected || {};
   if (typeof fromAddress !== 'string' || !fromAddress
     || typeof networkId !== 'string' || !networkId) {
     const error = new Error('A reviewed source account and network are required to send.');

@@ -129,7 +129,7 @@ const recorded = await pendingTx.track({ signature: 'ts_fixture', kind: 'transfe
   from: address, to: 'recipient', amountUnits: '1', networkId: 'localnet' });
 assert.equal(recorded.networkId, 'localnet');
 assert.equal(data.has('thru_pending_txs::betanet'), false);
-assert.equal(data.get('thru_pending_txs::localnet')?.[0].signature, 'ts_fixture');
+assert.equal(data.get('thru_pending_txs::localnet')?.records?.[0].signature, 'ts_fixture');
 assert.equal(events.filter((message) => message.event === 'pendingTxChanged').length,
   beforePendingEvents, 'do not announce a localnet send on the Betanet UI');
 assert.deepEqual(await pendingTx.list(), []);
@@ -155,4 +155,20 @@ const pendingAfter = await pendingTx.listPending();
 assert.equal(pendingAfter.length, 0);
 client.transactions.listForAccount = origList;
 console.log('  ok - reconcile settles confirmed tx in the sync passes and refreshes balances');
+
+console.log('[pending storage] concurrent mutations are serialized and migrate the v0 array');
+// Seed the old bare-array format, then race two distinct submissions. The first mutation migrates
+// to the versioned envelope and the per-network queue must preserve both signatures.
+data.set('thru_pending_txs::localnet', []);
+await Promise.all([
+  pendingTx.track({ signature: 'ts_concurrent_a', kind: 'transfer', from: address,
+    to: 'recipient-a', amountUnits: '2', networkId: 'localnet' }),
+  pendingTx.track({ signature: 'ts_concurrent_b', kind: 'transfer', from: address,
+    to: 'recipient-b', amountUnits: '3', networkId: 'localnet' }),
+]);
+const pendingEnvelope = data.get('thru_pending_txs::localnet');
+assert.equal(pendingEnvelope.version, 1);
+assert.deepEqual(new Set(pendingEnvelope.records.map((row) => row.signature)),
+  new Set(['ts_concurrent_a', 'ts_concurrent_b']));
+console.log('  ok - v0 migrates to v1 and simultaneous tracks cannot overwrite each other');
 

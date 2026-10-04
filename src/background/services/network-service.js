@@ -30,6 +30,7 @@
 import { DEFAULT_NETWORK, getNetworkConfig, listNetworks } from '../../lib/networks.js';
 import { emitNetworkChanged } from './event-service.js';
 import { configureNetwork } from '../../lib/thru-client.js';
+import { assertNetworkSwitchAllowed } from './signing-guard.js';
 
 const ACTIVE_NETWORK_KEY = 'thru_active_network';
 const CUSTOM_NETWORKS_KEY = 'thru_custom_networks';
@@ -176,6 +177,9 @@ export async function getActiveNetworkConfig() {
  * @param {string} networkId
  */
 export async function setActiveNetwork(networkId) {
+  // The Thru adapter is process-global today. Never mutate its binding while another extension
+  // context is building, signing, or submitting against the current network.
+  assertNetworkSwitchAllowed();
   const id = String(networkId ?? '').trim();
 
   if (!builtInIds().has(id)) {

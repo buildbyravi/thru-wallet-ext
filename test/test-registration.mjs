@@ -172,13 +172,15 @@ await call('wallet.unlock', { password: 'Registration123!' });
 finishProof = null;
 const pendingSwitch = handleApiRequest({ method: 'tx.registerAccount', params: { address: second.address } });
 await waitUntil(() => typeof finishProof === 'function', 'the proof before network switch');
-await call('network.setActive', { networkId: 'betanet' });
+const blockedSwitch = await handleApiRequest({ method: 'network.setActive', params: { networkId: 'betanet' } });
+assert.equal(blockedSwitch.error?.code, 'SIGNING_IN_PROGRESS');
 finishProof();
-const switched = await pendingSwitch;
-assert.equal(switched.error.code, 'NETWORK_CHANGED');
-assert.equal(broadcasts.length, beforeLock, 'a late proof cannot sign on the wrong chain');
+const completed = await pendingSwitch;
+assert.equal(completed.ok, true, completed.error?.message);
+assert.equal(broadcasts.length, beforeLock + 1, 'registration completes only on its reviewed chain');
+await call('network.setActive', { networkId: 'betanet' });
 localClient.proofs.generate = originalProof;
-console.log('  ok - lock and network changes cancel a pending registration before signing');
+console.log('  ok - lock cancels signing and network changes are blocked until registration settles');
 
 // The first HD account is active after a batch add, but EVERY newly added index must register.
 // Use a real vault, SDK-bound RPC fakes and the actual router; no dashboard visit is involved.

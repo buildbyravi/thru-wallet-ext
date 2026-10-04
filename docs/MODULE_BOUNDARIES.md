@@ -289,7 +289,7 @@ node test/test-feature-prediction.mjs
 - All 14 routes mount through the real Router/guards/bridge under the deterministic DOM shim (`test/test-route-lifecycle.mjs`).
 - Signing methods use the background `auth: 'signing'` policy (v5); its password re-auth preference defaults off and can be enabled only through the password-gated security-settings API.
 - Custom-network activation is rejected and stale active IDs are healed before RPC binding (v7).
-- v8–v12 additions include token balances/transfers, History feed/detail, checked Send context, owned-account registration, and storage-only cached History. Current source authority is `src/shared/contract/manifest.js` (v12, 81 methods).
+- v8–v15 additions include token balances/transfers, History feed/detail, checked Send context, owned-account registration, storage-only cached History, chain mint reads, and duplicate checks. Contract v16 retires unbound legacy send methods after zero shipped callers. Current source authority is `src/shared/contract/manifest.js` (v16, 81 methods).
 
 ### Phase B — quarantine legacy launchpad — DONE
 

@@ -1,11 +1,9 @@
-// Theme preference — pure popup-local UI state ('light' | 'dark' | 'system').
-// The background and the vault know nothing about it: it is a rendering choice,
-// not a network or security decision, so no bridge method carries it. The chosen
-// value persists in chrome.storage.local under 'thru_theme'; the active theme is
-// applied as [data-theme] on <html>, and all colours resolve through the token
-// blocks in styles/tokens.css (light = :root, dark = [data-theme="dark"]).
+// Theme preference ('light' | 'dark' | 'system'). Persistence belongs to the versioned
+// preferences service; the popup reaches it through the same bridge as every other setting.
+// The active theme is applied as [data-theme] on <html>.
 
-const KEY = 'thru_theme';
+import { send } from '../ui/app/bridge.js';
+
 const VALID = new Set(['light', 'dark', 'system']);
 
 function mediaQuery() {
@@ -15,9 +13,8 @@ function mediaQuery() {
 }
 
 export async function getTheme() {
-  const res = await chrome.storage.local.get(KEY).catch(() => ({}));
-  const value = res?.[KEY];
-  return VALID.has(value) ? value : 'system';
+  const prefs = await send('settings.get').catch(() => null);
+  return VALID.has(prefs?.theme) ? prefs.theme : 'system';
 }
 
 function resolve(value) {
@@ -43,6 +40,6 @@ export async function initTheme() {
 /** Persist and apply a new preference. The Settings surface calls this. */
 export async function setTheme(value) {
   const next = VALID.has(value) ? value : 'system';
-  await chrome.storage.local.set({ [KEY]: next });
+  await send('settings.set', { patch: { theme: next } });
   applyTheme(next);
 }

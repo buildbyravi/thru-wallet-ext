@@ -4,8 +4,10 @@ Chrome MV3 self-custody wallet extension for the **Thru native Layer 1**. Built 
 
 **Betanet is Thru's final testnet before mainnet** (official launch at the TOKEN2049 Singapore event, early October 2026 — the chain is already live). It replaces the single-node alphanet (which processed over 10 million blocks) with a 10-node network and ~6-second blocks — a transfer settles in about one block. Network id: `betanet` (`https://rpc.betanet.thru.org`, explorer `https://scan.thru.org` with `?network=betanet`).
 
-> [!WARNING]
-> Not production-ready. Use only with betanet/devnet funds until security review and mainnet readiness are complete.
+> [!IMPORTANT]
+> **Betanet deployment. Mainnet engineering standard.** Source remediations are implemented and
+> tested locally; real-browser checks, specified live-network verification, security review, and an
+> external audit remain required. See `docs/STATUS_AND_ROADMAP.md` and `docs/AUDIT_REPORT.md`.
 
 ---
 
@@ -13,14 +15,17 @@ Chrome MV3 self-custody wallet extension for the **Thru native Layer 1**. Built 
 
 - Single popup UI stack; no legacy popup fallback.
 - 14 popup routes: welcome, unlock, dashboard, accounts, account detail, add account, keyring, export, send, receive, faucet, history, settings, reset.
-- Contract version: **7**.
-- Contract method count: **74**.
-- Signing methods use `auth: 'signing'`: password re-authentication is required by default, with a password-gated user opt-out for session-only signing.
+- Contract version: **16**; **81** methods.
+- Value-moving methods use centralized `auth: 'signing'`, checked account/network context, and a
+  network-mutation lock through submission. Session-only signing is the explicit default; users may
+  enable per-sign password re-authentication, and changing that security setting is password-gated.
 - Reset and auto-lock changes are background-hardened in contract v6.
 - Contract v7 quarantines legacy custom networks at the background boundary: saved records stay listable/removable, but direct activation is permanently refused and a stale active selection self-heals to Betanet before RPC binding.
 - Every route is mounted by a test: `test-route-lifecycle.mjs` drives all 14 routes through the real Router, guards and bridge in no-vault / locked / unlocked states, and asserts teardown, secret hygiene, modal focus trapping and the Settings guarantees. Layout, real focus and the side panel itself are a browser runbook: [`docs/MANUAL_SMOKE_CHECKLIST.md`](docs/MANUAL_SMOKE_CHECKLIST.md).
 - Settings no longer offers "Add custom network". `network.upsertCustom` remains for contract compatibility but has no UI caller. A legacy saved record is shown as **not selectable**, with Remove as its only action; `network.setActive` enforces the same quarantine in the background.
-- The manifest's side panel is reachable from the wallet: Settings > Window > **Open side panel**. It calls `chrome.sidePanel.open()` from a user gesture and never calls `setPanelBehavior`, so the toolbar icon still opens the popup.
+- Side Panel Mode is an explicit Settings preference. It is persisted through the versioned backend
+  preference service and re-applied after worker restart; popup/panel mutual exclusion is covered by
+  deterministic tests and remains subject to the real-Chrome runbook.
 - Password dialogs trap keyboard focus (`src/ui/kit/focus-trap.js`): Tab wraps inside the dialog, Escape cancels, and focus returns to the control that opened it.
 - The legacy launchpad/DEX/prediction surface is **quarantined**: `src/launchpad/**` is deleted, no launchpad page is built into `dist/`, and the `?launchpad=1` override is gone. `test-launchpad-quarantine.mjs` keeps it out. Research docs are retained; backend `token.*` methods are unchanged.
 - Thru is **not EVM**. Rabby/MetaMask/Phantom/Keplr/etc. are UX references only.
@@ -38,6 +43,8 @@ Start with the docs index:
 | [`docs/PROJECT_LEDGER.md`](docs/PROJECT_LEDGER.md) | Past/present/future build ledger and current identifiers. |
 | [`docs/STATUS_AND_ROADMAP.md`](docs/STATUS_AND_ROADMAP.md) | Current state, verified/not verified items, and next tasks. |
 | [`CONTEXT.md`](CONTEXT.md) | Current file-by-file repository map. |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Implemented dependency, signing, storage, and verification boundaries. |
+| [`docs/DECISIONS.md`](docs/DECISIONS.md) | Durable decisions with alternatives, trade-offs, and consequences. |
 | [`docs/MODULE_BOUNDARIES.md`](docs/MODULE_BOUNDARIES.md) | Target feature separation for launchpad, DEX, prediction, portfolio, and SDK adapters. |
 | [`docs/MCP_AGENT_INTEGRATION.md`](docs/MCP_AGENT_INTEGRATION.md) | Safe AI-agent/MCP companion plan. |
 | [`llms.txt`](llms.txt) | Short read-only repo LLM context; pair with official Thru protocol docs at `https://thru.org/docs/llm.txt`. |
@@ -104,8 +111,9 @@ src/lib/thru/*-adapter.js
 - Pending transaction tracking.
 - Selection between enabled built-in networks; legacy custom-network records can be reviewed and removed but not activated.
 - Password-gated secret export.
-- Password-gated signing by default.
-- Token mint derivation/deploy helpers where verified, but token transfer/balances are still incomplete.
+- Centralized checked signing with an optional password-per-sign policy.
+- Token balances and checked token transfer are implemented with official Token Program bindings;
+  the remaining live-chain questions are explicitly listed in `docs/STATUS_AND_ROADMAP.md`.
 
 ---
 

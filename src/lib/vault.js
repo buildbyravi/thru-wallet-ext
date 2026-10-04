@@ -17,6 +17,7 @@ const LEGACY_BACKUP_KEY = 'vault_legacy_backup_v1';
 const SESSION_KEY = 'unlocked_session';
 const ACTIVE_REF_KEY = 'active_account_ref';
 const LABELS_KEY = 'thru_account_labels';
+const LABELS_SCHEMA_VERSION = 1;
 const VAULT_VERSION = 2;
 
 function toB64(bytes) {
@@ -282,8 +283,15 @@ async function verifyPassword(password) {
 // ---- Labels ---------------------------------------------------------------
 
 export async function getAccountLabels() {
-  const { [LABELS_KEY]: labels } = await chrome.storage.local.get(LABELS_KEY);
-  return labels ?? {};
+  const { [LABELS_KEY]: stored } = await chrome.storage.local.get(LABELS_KEY);
+  if (!stored || typeof stored !== 'object' || Array.isArray(stored)) return {};
+  if (Object.prototype.hasOwnProperty.call(stored, 'version')) {
+    if (stored.version > LABELS_SCHEMA_VERSION) {
+      throw new Error(`Account-label schema ${stored.version} is newer than this wallet.`);
+    }
+    return stored.labels && typeof stored.labels === 'object' ? stored.labels : {};
+  }
+  return stored; // schema v0; migrated on next mutation
 }
 
 export const MAX_LABEL_LENGTH = 32;
@@ -306,7 +314,9 @@ export async function setAccountLabel(address, label) {
   const trimmed = sanitizeLabel(label);
   if (trimmed) labels[address] = trimmed;
   else delete labels[address];
-  await chrome.storage.local.set({ [LABELS_KEY]: labels });
+  await chrome.storage.local.set({
+    [LABELS_KEY]: { version: LABELS_SCHEMA_VERSION, labels },
+  });
   return trimmed;
 }
 

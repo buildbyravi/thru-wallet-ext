@@ -79,6 +79,7 @@ const SEND_MESSAGE_ALLOWLIST = new Set([
   'src/background/services/event-service.js',
 ]);
 const SEND_MESSAGE_RE = /chrome\s*\??\.\s*runtime\s*\??\.\s*sendMessage/;
+const STORAGE_RE = /chrome\s*\??\.\s*storage\s*\??\./;
 
 const violations = [];
 const files = walk(SRC);
@@ -150,7 +151,16 @@ for (const file of files) {
   const source = stripped.get(f);
 
   for (const { path: spec } of importInputs[f]?.imports || []) {
-    if (!spec.startsWith('.') && !spec.startsWith('src/')) continue; // package import
+    if (spec === '@thru/sdk' || spec.startsWith('@thru/sdk/') || spec === '@thru/programs' || spec.startsWith('@thru/programs/')) {
+      if (!f.startsWith('src/lib/')) {
+        violations.push({
+          rule: 'thru-sdk-adapter-boundary', file: f, detail: `imports '${spec}'`,
+          why: 'First-party protocol packages are contained in src/lib adapters; UI and services use stable application interfaces.',
+        });
+      }
+      continue;
+    }
+    if (!spec.startsWith('.') && !spec.startsWith('src/')) continue; // other package import
     for (const rule of RULES) {
       if (rule.when(f) && rule.forbid(spec)) {
         violations.push({ rule: rule.id, file: f, detail: `imports '${spec}'`, why: rule.why });
@@ -164,6 +174,13 @@ for (const file of files) {
       file: f,
       detail: 'calls chrome.runtime.sendMessage directly',
       why: 'Only the bridge may talk to the service worker, so the API surface stays auditable in one place.',
+    });
+  }
+  if ((f.startsWith('src/ui/') || f.startsWith('src/popup/') || f.startsWith('src/features/'))
+      && STORAGE_RE.test(source)) {
+    violations.push({
+      rule: 'ui-storage-boundary', file: f, detail: 'accesses chrome.storage directly',
+      why: 'Persistent state is versioned and migrated by backend services; UI reaches it through the contract.',
     });
   }
 }

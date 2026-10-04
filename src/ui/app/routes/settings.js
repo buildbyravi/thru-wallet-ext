@@ -272,17 +272,16 @@ export function SettingsRoute({ navigate, back }) {
   async function load() {
     banner.clear();
     try {
-      const [netList, active, autoLock, prefs, panelStored] = await Promise.all([
+      const [netList, active, autoLock, prefs] = await Promise.all([
         bridge.send('network.list'),
         bridge.send('network.getActive'),
         bridge.send('system.getAutoLock'),
         bridge.send('settings.get'),
-        chrome.storage?.local?.get ? chrome.storage.local.get('thru_side_panel_mode').catch(() => null) : null,
       ]);
       networks = netList || [];
       activeNetworkId = active?.id || null;
       preferences = prefs || {};
-      sidePanelMode = Boolean(panelStored?.thru_side_panel_mode);
+      sidePanelMode = preferences.sidePanelMode === true;
       theme = await getTheme().catch(() => 'system');
       render(autoLock);
     } catch (error) {
@@ -370,10 +369,8 @@ export function SettingsRoute({ navigate, back }) {
         // panel; OFF restores the popup, so a user who turned it off is never left
         // with a stale behaviour.
         await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: next });
-        if (chrome.storage?.local?.set) {
-          await chrome.storage.local.set({ thru_side_panel_mode: next });
-        }
-        sidePanelMode = next;
+        preferences = await bridge.send('settings.set', { patch: { sidePanelMode: next } });
+        sidePanelMode = preferences.sidePanelMode === true;
         sidePanelSwitch.classList.toggle('active', next);
         sidePanelSwitch.setAttribute('aria-checked', String(next));
       } catch (err) {

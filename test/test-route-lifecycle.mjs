@@ -979,6 +979,8 @@ const PREFERENCES = {
   fiatCurrency: 'USD',
   hideSmallBalances: false,
   smallBalanceThreshold: '0',
+  theme: 'system',
+  sidePanelMode: false,
   accountOrder: [],
   pinnedAccounts: [ADDRESS_A],
   hiddenAccounts: [],
@@ -2074,8 +2076,8 @@ async function settingsTest() {
     chromeLog.setPanelBehavior.length === 1
       && chromeLog.setPanelBehavior[0]?.openPanelOnActionClick === true,
     JSON.stringify(chromeLog.setPanelBehavior));
-  ok('the ON choice persists to chrome.storage.local',
-    (await chrome.storage.local.get('thru_side_panel_mode'))?.thru_side_panel_mode === true);
+  ok('the ON choice persists through the versioned preferences service',
+    backend.preferences.sidePanelMode === true);
   ok('the switch reflects the new state',
     modeSwitch.getAttribute('aria-checked') === 'true' && modeSwitch.classList.contains('active'));
 
@@ -2085,8 +2087,8 @@ async function settingsTest() {
     chromeLog.setPanelBehavior.length === 2
       && chromeLog.setPanelBehavior[1]?.openPanelOnActionClick === false,
     JSON.stringify(chromeLog.setPanelBehavior));
-  ok('the OFF choice persists to chrome.storage.local',
-    (await chrome.storage.local.get('thru_side_panel_mode'))?.thru_side_panel_mode === false);
+  ok('the OFF choice persists through the versioned preferences service',
+    backend.preferences.sidePanelMode === false);
   ok('the switch reflects the off state again',
     modeSwitch.getAttribute('aria-checked') === 'false'
       && !modeSwitch.classList.contains('active'));
@@ -2161,7 +2163,7 @@ async function themeTest() {
   guards.invalidate();
 
   // A stored preference is honoured at boot, before any routed content paints.
-  await chrome.storage.local.set({ thru_theme: 'dark' });
+  backend.preferences.theme = 'dark';
   const app = DOC.getElementById('app');
   const router = await boot({ root: app });
   await settle();
@@ -2185,9 +2187,8 @@ async function themeTest() {
   await settle();
   ok('switching to Light applies immediately', DOC.documentElement.dataset.theme === 'light',
     `data-theme=${DOC.documentElement.dataset.theme}`);
-  ok('the choice persists in popup-local storage',
-    (await chrome.storage.local.get('thru_theme'))?.thru_theme === 'light',
-    JSON.stringify(await chrome.storage.local.get('thru_theme')));
+  ok('the choice persists through the versioned preferences service',
+    backend.preferences.theme === 'light', JSON.stringify(backend.preferences));
   ok('the selection moves to the newly chosen chip',
     buttons(tree, /^light$/i)[0]?.classList.contains('selected')
       && !buttons(tree, /^dark$/i)[0]?.classList.contains('selected'));
@@ -2198,10 +2199,10 @@ async function themeTest() {
     DOC.documentElement.dataset.theme === 'light',
     `data-theme=${DOC.documentElement.dataset.theme}`);
   ok('the persisted value is the word “system”, not the resolved theme',
-    (await chrome.storage.local.get('thru_theme'))?.thru_theme === 'system');
+    backend.preferences.theme === 'system');
 
   // An unrecognised stored value never reaches the DOM.
-  await chrome.storage.local.set({ thru_theme: 'midnight-blue' });
+  backend.preferences.theme = 'midnight-blue';
   guards.invalidate();
   const app2 = DOC.getElementById('app');
   await boot({ root: app2 });
@@ -2211,7 +2212,7 @@ async function themeTest() {
     `data-theme=${DOC.documentElement.dataset.theme}`);
 
   // Leave the shared fixture storage at the default for the scenarios that follow.
-  await chrome.storage.local.set({ thru_theme: 'system' });
+  backend.preferences.theme = 'system';
   applyTheme('system');
 }
 
@@ -3140,21 +3141,22 @@ async function panelExclusionTest() {
   ok('dispose removes the same listener references', chromeLog.listeners.size === beforeDispose - 2,
     `${beforeDispose} -> ${chromeLog.listeners.size}`);
 
-  // Interleave a broadcast WHILE the panel boot is suspended on theme storage,
-  // as happens during a service worker wake-up. The listener must be live now,
-  // not after theme or bridge.bootstrap resolves. This fails on the old boot.
+  // Interleave a broadcast WHILE panel boot is suspended on the versioned theme preference
+  // read, as happens during a service-worker wake-up. The listener must already be live.
   resetDom();
   guards.invalidate();
   WIN.location.search = SIDE_PANEL_SEARCH;
   WIN.innerHeight = 480;
-  const originalGet = chrome.storage.local.get;
+  const originalSettingsGet = FIXTURES['settings.get'];
   let resumeTheme;
-  chrome.storage.local.get = (key) => key === 'thru_theme'
-    ? new Promise((resolve) => { resumeTheme = () => resolve({}); })
-    : originalGet(key);
+  FIXTURES['settings.get'] = () => new Promise((resolve) => {
+    resumeTheme = () => resolve({ ...backend.preferences });
+  });
   const pendingBoot = boot({ root: DOC.getElementById('app') });
-  ok('the panel listener is installed synchronously, before theme storage returns',
-    chromeLog.listeners.size === 1 && typeof resumeTheme === 'function');
+  ok('the panel listener is installed synchronously, before theme preferences return',
+    chromeLog.listeners.size === 1);
+  await settle();
+  ok('theme loading is blocked at the backend preference boundary', typeof resumeTheme === 'function');
   ok('booting the panel does not broadcast or call sidePanel.close',
     chromeLog.broadcasts.length === 0 && chromeLog.sidePanelClose.length === 0);
   bridge.broadcastCloseSidePanel();
@@ -3162,6 +3164,7 @@ async function panelExclusionTest() {
   ok('a close broadcast reaches a panel blocked inside boot', WIN.closed === true);
   resumeTheme();
   await pendingBoot;
+  FIXTURES['settings.get'] = originalSettingsGet;
 
   // On Chrome 116-140 (no native close API), the correctly marked panel still
   // closes on the original bridge broadcast when both pages have started.

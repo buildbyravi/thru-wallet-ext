@@ -6,7 +6,7 @@ Read `AGENTS.md` first for repository rules, then `docs/STATUS_AND_ROADMAP.md` f
 
 ## Shipped baseline at a glance
 
-- Contract v12: **81 methods** in `src/shared/contract/manifest.js`; 14 registered wallet routes.
+- Contract v16: **81 methods** in `src/shared/contract/manifest.js`; 14 registered wallet routes.
 - Signing requires an unlocked wallet. Password re-authentication defaults off and is an explicit, password-gated Settings opt-in.
 - `tx.registerAccount` self-signs only for an exact vault-owned address. Account/keyring creation paths make bounded, best-effort registration attempts for new addresses. Send JIT-activates only a selected/typed owned recipient after an on-chain absence check; it never registers an external contact. Review waits for activation and shows the matched label above the full address.
 - History is a flat stream without day headers. It paints storage-only cached entries scoped by network and address before fresh feed/pending reads. Block-time provenance is retained; an actual local submission time is only an own-send fallback; otherwise display `Block <slot>`. No per-card fee line is shipped.
@@ -115,7 +115,7 @@ Registration is not a background sweep: creation/addition makes a bounded best-e
 
 ## 6. `src/shared/` — both sides
 
-No DOM or `chrome.*` access. Contract v12 has **81 methods**. Security-policy exceptions are documented: v5 signing auth, v6 reset/auto-lock hardening, and v7 custom-network quarantine. v8–v11 add token, History/detail, and checked-send capabilities; v12 adds `tx.registerAccount` and `tx.getCachedHistory`.
+No DOM or `chrome.*` access. Contract v16 has **81 methods**. Security-policy exceptions are documented: v5 signing auth, v6 reset/auto-lock hardening, and v7 custom-network quarantine. v8–v15 add token, History/detail, checked-send, registration, cached-History, mint-read, and duplicate-check capabilities; v16 retires the unbound legacy send methods after zero shipped callers were confirmed.
 
 | File | Lines | Purpose |
 | --- | ---: | --- |

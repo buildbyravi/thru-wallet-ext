@@ -1,10 +1,10 @@
 # Status and roadmap
 
-Single source of truth for the **shipped baseline**, what automated evidence proves, and the remaining work. Source baseline audited: `main` at `4aa55ba` (2026-09-26). `src/`, `test/`, and `scripts/` remain authoritative.
+Single source of truth for the **shipped baseline**, what automated evidence proves, and the remaining work. Source baseline reviewed on branch `arena/01a10231-thru-wallet-ext` (2026-10-03). `src/`, `test/`, and `scripts/` remain authoritative.
 
 ## Shipped baseline
 
-- **Contract v12, 81 methods.** v12 adds unlocked-only `tx.registerAccount` for an exact vault-owned address and storage-only `tx.getCachedHistory` for cache-first History paint.
+- **Contract v16, 81 methods.** v16 removes the retired unbound `tx.send` / `token.transfer` mutation paths after all shipped callers migrated to checked methods. v12's owned-account registration and cache-first History methods remain.
 - **Account activation.** Account/keyring creation paths make bounded, best-effort self-registration attempts for newly added accounts on the selected network. There is no periodic signer. Send checks an unregistered recipient and calls `tx.registerAccount` just in time only when that destination is an owned account. The target account signs for itself; arbitrary contacts are never registered.
 - **Send review.** The JIT activation must complete before Review enables. Review shows the matched recipient label above the full destination address; the label is display-only. Checked native/token methods bind the reviewed account and network at the background boundary.
 - **Signing preference.** Signing requires an unlocked wallet. Password re-authentication is **off by default** (`requirePasswordForSigning: false`); a user can explicitly enable it through the password-gated Settings path. The v12 registration exception remains narrowly unlocked-only.
@@ -20,8 +20,8 @@ Companion docs: `docs/DOCS_INDEX.md` · `docs/PROJECT_LEDGER.md` · `CONTEXT.md`
 
 ### The frontend rebuild is DONE
 
-One stack. `FLAGS.NEXT_UI` is `true`, the legacy tree is deleted, and there is no fallback path
-left. All 14 routes are real:
+One stack. The migration flag and legacy tree are deleted, and there is no fallback path left.
+All 14 routes are real:
 
 ```
 /welcome  /unlock  /dashboard  /accounts  /account  /add-account  /keyring
@@ -46,14 +46,14 @@ Structural properties now enforced by CI rather than by discipline:
 
 ### Verified green
 
-Final verification on the documentation-only change (2026-09-26):
+Final deterministic verification on the Mainnet-readiness remediation (2026-10-03):
 
 ```text
-npm test       PASS — derivation 16; QR 15; layering 70 files / 0 sinks; CSP pass;
+npm test       PASS — derivation 16; QR 15; layering 80 files / 0 sinks; CSP pass;
                routes 14/14; CSS nesting pass; launchpad quarantine 47;
-               contract 77; DOM/refs 130; route lifecycle 904;
-               vault, Thru client, token/balance, History cache/block-time,
-               registration, and API-router suites pass.
+               contract v16 checks, storage migrations, DOM/lifecycle, vault,
+               Thru client, token/balance, History, registration, API-router,
+               pending concurrency, signing/network lock, and auto-lock suites pass.
 npm run build  PASS — generated dist/ from the current source.
 ```
 
@@ -69,12 +69,12 @@ These results are deterministic/local. They do not close the browser or live-cha
 - Launchpad/DEX/prediction UI was deleted, not merely hidden. The source/build guard keeps it out; backend token methods remain distinct.
 - Popup and side panel share one page. The side-panel close listener registers before asynchronous boot; popup open broadcasts to a ready panel and calls Chrome's close API where available. Settings' Side Panel Mode toggle is an explicit user choice and is restored after worker restart only when enabled.
 
-### Historical live-chain observations — native Alphanet scope only
+### Historical live-chain observations — network provenance retained
 
 These are prior observations, not certification of the newer v12 registration path or token transfer:
 
-- Faucet amount units were observed as raw base units (a claim of 10000 credited 10000 base units).
-- The native THRU transfer path/program and a 1-base-unit Betanet fee were previously exercised. This does **not** measure the token-program fee.
+- **Alphanet:** faucet amount units were observed as raw base units (a claim of 10000 credited 10000 base units).
+- **Betanet/managed-genesis deployment:** the native THRU transfer path/program and a 1-base-unit fee were previously exercised. This does **not** measure the token-program fee.
 - Basic native History decoding and an earlier account-creation registration path were exercised. The earlier `scripts/verify-autoregister.mjs` result is not a substitute for a fresh multi-account v12 activation pass.
 - An earlier live API-router run completed; it does not certify current browser layout, worker suspension, or the new v12 flows.
 
@@ -88,7 +88,7 @@ Passing `npm test` or `npm run build` does not close any of these:
 | Live v12 activation | Create several HD accounts on the selected chain and exercise Send JIT for an owned absent recipient. Verify target signer, per-network existence, offline-vs-absent handling, and behavior if MV3 suspends during bounded retries. |
 | Live token transfer | Whether a never-registered recipient owner can receive a sender-initialized token account and the actual token-program fee remain unmeasured. Use `scripts/verify-token-transfer.mjs` only with a safe throwaway wallet and network access. |
 | History RPC/explorer | Current block-time availability and first-load latency per enabled network; whether an authoritative charged-fee value exists outside the current RPC detail response; and confirmation of the explorer transaction route. |
-| Send/pending concurrency | A network switch after the final preflight check but during the mutable SDK signing sequence, and concurrent pending-record read/modify/write races remain open (`docs/SEND_PATH_AUDIT.md`). |
+| Send/pending concurrency | Source/tests now block network switching across build/sign/submit and serialize versioned pending-record mutations. Real-Chrome MV3 scheduling and safe live-chain interleavings remain UNVERIFIED. |
 | Session behavior | The reported lock-on-refresh/session-storage behavior still needs checking in the actual target browser. A Node harness cannot distinguish a browser persistence difference from an auto-lock timer issue. |
 
 ## 2. What to do next, in order

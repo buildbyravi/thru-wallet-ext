@@ -7,6 +7,7 @@ import { ensureAutoLockAlarm, shouldAutoLock } from './services/system-service.j
 import { syncActionIcon } from './services/icon-service.js';
 import { emitLockStateChanged } from './services/event-service.js';
 import { CLOSE_SIDE_PANEL_ACTION } from '../shared/side-panel.js';
+import { getPreferences } from './services/preferences-service.js';
 
 const AUTO_LOCK_ALARM = 'thru-auto-lock';
 
@@ -39,8 +40,8 @@ async function syncSidePanelBehavior() {
   try {
     const setBehavior = chrome?.sidePanel?.['setPanelBehavior'];
     if (typeof setBehavior !== 'function') return;
-    const res = await chrome.storage?.local?.get('thru_side_panel_mode');
-    if (res?.thru_side_panel_mode) {
+    const preferences = await getPreferences();
+    if (preferences.sidePanelMode === true) {
       await setBehavior.call(chrome.sidePanel, { openPanelOnActionClick: true });
     }
   } catch {
