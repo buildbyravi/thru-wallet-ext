@@ -17,8 +17,8 @@ under `docs/archive/` for provenance.
 | `CONTEXT.md` | file-by-file map. "Where do I look for X?" |
 | `docs/MODULE_BOUNDARIES.md` | target feature/module/adapter separation. |
 | this file | product spec, wallet model, feature requirements, security policy, QA matrix. |
-| `docs/UI_REBUILD_PLAN.md` | historical rebuild plan and rationale; not current file facts. |
-| `docs/UI_REBUILD_AGENT_PROMPT.md` | historical prompt derived from older plan; do not execute as current state. |
+| `docs/archive/UI_REBUILD_PLAN.md` | historical rebuild plan and rationale; not current file facts. |
+| `docs/archive/UI_REBUILD_AGENT_PROMPT.md` | historical prompt derived from older plan; do not execute as current state. |
 
 Where this file and newer docs disagree on **current structure**, `CONTEXT.md` and
 `MODULE_BOUNDARIES.md` win. Where they disagree on **product/security behaviour**, this file wins.

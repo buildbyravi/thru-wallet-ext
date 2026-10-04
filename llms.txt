@@ -31,7 +31,7 @@ Chrome MV3 self-custody wallet extension for the Thru native Layer 1. Thru is no
 4. `docs/STATUS_AND_ROADMAP.md` — current state and next tasks.
 5. `CONTEXT.md` — file map.
 6. `docs/MODULE_BOUNDARIES.md` — target feature separation.
-7. `docs/MCP_AGENT_INTEGRATION.md` — safe MCP plan.
+7. `docs/DECISIONS.md` — durable decisions and why they exist.
 8. `https://thru.org/docs/llm.txt` — official Thru protocol-doc entry point for agents.
 
 ## Hard safety rules

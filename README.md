@@ -46,7 +46,7 @@ Start with the docs index:
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Implemented dependency, signing, storage, and verification boundaries. |
 | [`docs/DECISIONS.md`](docs/DECISIONS.md) | Durable decisions with alternatives, trade-offs, and consequences. |
 | [`docs/MODULE_BOUNDARIES.md`](docs/MODULE_BOUNDARIES.md) | Target feature separation for launchpad, DEX, prediction, portfolio, and SDK adapters. |
-| [`docs/MCP_AGENT_INTEGRATION.md`](docs/MCP_AGENT_INTEGRATION.md) | Safe AI-agent/MCP companion plan. |
+| [`docs/archive/MCP_AGENT_INTEGRATION.md`](docs/archive/MCP_AGENT_INTEGRATION.md) | Archived AI-agent/MCP companion planning record. |
 | [`llms.txt`](llms.txt) | Short read-only repo LLM context; pair with official Thru protocol docs at `https://thru.org/docs/llm.txt`. |
 | [`docs/AUDIT_REPORT.md`](docs/AUDIT_REPORT.md) | Security audit findings and remediation status. |
 | [`docs/DEFECT_LOG.md`](docs/DEFECT_LOG.md) | Historical defects, root causes, and lessons. |
@@ -55,7 +55,7 @@ Start with the docs index:
 | [`docs/archive/WALLET_FEATURES_PERFORMANCE_STUDY.md`](docs/archive/WALLET_FEATURES_PERFORMANCE_STUDY.md) | Popular wallet feature study and no-lag popup/full-tab performance model. |
 | [`docs/archive/THRU_NATIVE_DEFI_TAB_UX.md`](docs/archive/THRU_NATIVE_DEFI_TAB_UX.md) | Thru-native launchpad/DEX/full-tab architecture direction. Research only; no shipped code corresponds to it. |
 | [`docs/archive/LAUNCHPAD_UX_STUDY.md`](docs/archive/LAUNCHPAD_UX_STUDY.md) | Launchpad UX study. Retained research only. |
-| [`docs/LAUNCHPAD_DEX_MIGRATION_UX.md`](docs/LAUNCHPAD_DEX_MIGRATION_UX.md) | Launchpad-to-DEX migration and charting study. Retained research only. |
+| [`docs/archive/LAUNCHPAD_DEX_MIGRATION_UX.md`](docs/archive/LAUNCHPAD_DEX_MIGRATION_UX.md) | Launchpad-to-DEX migration and charting study. Archived research only. |
 | [`docs/archive/`](docs/archive/) | Historical plans only; do not use as current state. |
 
 ---

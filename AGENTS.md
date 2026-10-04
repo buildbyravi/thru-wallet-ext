@@ -124,12 +124,13 @@ could be affected.
 | stable dependency/storage/signing architecture | `docs/ARCHITECTURE.md` |
 | durable choices and trade-offs | `docs/DECISIONS.md` |
 | future feature separation / SDK-adapter boundaries | `docs/MODULE_BOUNDARIES.md` |
-| AI-agent/MCP safety | `llms.txt`, then `docs/MCP_AGENT_INTEGRATION.md` |
+| AI-agent/MCP safety | `llms.txt`; archived planning record: `docs/archive/MCP_AGENT_INTEGRATION.md` |
 | "has this broken before?" | `docs/DEFECT_LOG.md` — every defect, root cause and lesson |
 | product intent, security policy, QA matrix | `docs/BUILD_SPEC.md` |
 | backend capability tiers | `docs/BACKEND_GAPS.md` |
-| historical rebuild plan only | `docs/UI_REBUILD_PLAN.md`, `docs/UI_REBUILD_AGENT_PROMPT.md` |
+| historical rebuild plan only | `docs/archive/UI_REBUILD_PLAN.md`, `docs/archive/UI_REBUILD_AGENT_PROMPT.md` |
 | archived, do not follow for current state | `docs/archive/` |
+| audit history + open readiness gates | `docs/AUDIT_REPORT.md` (index/current gates); dated records in `docs/audits/` |
 
 Conflict resolution: `STATUS_AND_ROADMAP.md` wins on **current engineering state**;
 `PROJECT_LEDGER.md` wins on **phase/build tracking**; `MODULE_BOUNDARIES.md` wins on

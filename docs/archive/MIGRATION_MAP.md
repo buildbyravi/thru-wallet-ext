@@ -1,5 +1,11 @@
 # Rabby-class migration map
 
+> [!WARNING]
+> Archived historical document. The UI migration it maps is complete (one route stack) and its
+> launchpad observations predate the deletion of that tree. It is kept as strategy history — it
+> explains why the system was designed this way, never how the code currently works. Start with
+> `docs/DOCS_INDEX.md`, `docs/STATUS_AND_ROADMAP.md`, and `CONTEXT.md`; verify anything against `src/`.
+
 Date: 2026-09-18  
 Branch: `arena/01a06be7-thru-wallet-ext`  
 Status: planning / architecture map only. No destructive source changes in this step.

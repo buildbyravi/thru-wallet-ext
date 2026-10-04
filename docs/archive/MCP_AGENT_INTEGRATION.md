@@ -1,5 +1,10 @@
 # AI-agent and MCP companion integration plan
 
+> [!WARNING]
+> Archived planning document (2026-10-04). No MCP companion work is scheduled in the confirmed
+> wallet-first sequence; nothing here is shipped or imminent. Retained as design reasoning for
+> whenever companion-agent work is genuinely planned. Current state: `docs/STATUS_AND_ROADMAP.md`.
+
 Date: 2026-09-18  
 Purpose: define a safe path for AI agents to use wallet features without giving agents access to secrets or direct signing capability.
 

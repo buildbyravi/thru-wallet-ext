@@ -85,19 +85,29 @@ Start from the pinned dependencies and current `src/` implementation, then cross
 | `docs/MODULE_BOUNDARIES.md` | current core boundaries + unshipped target | wallet-core layering; future feature modules are proposals, not shipped code |
 | `docs/HISTORY_REDESIGN_PLAN.md` | current implementation record | shipped flat History stream/cache/detail behavior and open validation |
 | `docs/SEND_PATH_AUDIT.md` | current focused audit | Send path, registration, tests, and residual risks |
-| `docs/MCP_AGENT_INTEGRATION.md` | planning/reference | safe local MCP model; no extension MCP feature is claimed shipped |
-| `docs/MIGRATION_MAP.md` | strategy/reference | Rabby-class migration ideas; verify every claim against `src/` before treating it as implemented |
-| `docs/LAUNCHPAD_DEX_MIGRATION_UX.md` | research only | design study; no launchpad, DEX, or prediction UI ships |
 | `docs/REDESIGN_TRIAGE.md` | findings record | triage of external UX suggestions; re-check claims before implementation |
 | `docs/AUDIT_REPORT.md` | current audit record (2026-10-04 conformance audit at top) plus historical audits below | findings, remediation status, and recorded baselines; each dated section describes only its own baseline |
-| `docs/UI_REBUILD_PLAN.md` | historical plan/reference | original rebuild rationale; not current structure or task status |
-| `docs/UI_REBUILD_AGENT_PROMPT.md` | historical prompt/reference | original prompt; do not execute as the current plan |
 
 ---
 
 ## 5. Frozen directories — excluded from this audit
 
-`docs/archive/`, `docs/handoff/`, and `docs/reference/` are frozen/static. They were not inspected or edited for this documentation update and must not be treated as the current implementation specification. Follow current maintained documents and verify claims against `src/` instead.
+`docs/archive/`, `docs/handoff/`, and `docs/reference/` are frozen/static. They must not be
+treated as the current implementation specification. Follow current maintained documents and
+verify claims against `src/` instead. Frozen material explains **why** the system was designed
+this way — never how it currently works.
+
+Frozen contents (2026-10-04 reclassification — completed/historical documents moved out of the
+maintained set; no content was rewritten, only archived):
+
+- `docs/archive/` — `guide.md`, `task.md`, `thru-implementation_plan.md` (original build specs);
+  the research/spike records (`WALLET_FEATURES_PERFORMANCE_STUDY`, `LAUNCHPAD_UX_STUDY`,
+  `THRU_NATIVE_DEFI_TAB_UX`, `PASSKEY_SPIKE`, `EXPLORER_SPIKE`, `TX_DETAIL_SPIKE`);
+  `MIGRATION_MAP.md` (UI migration complete — strategy history); `MCP_AGENT_INTEGRATION.md`
+  (no companion-agent work scheduled in the wallet-first sequence); `LAUNCHPAD_DEX_MIGRATION_UX.md`
+  (research study); `UI_REBUILD_PLAN.md` and `UI_REBUILD_AGENT_PROMPT.md` (completed rebuild).
+- `docs/handoff/` — `P2_TX_DETAIL_HANDOFF.md`, `P25_EXPLORER_SPIKE_PROMPT.md` (session hand-offs).
+- `docs/reference/` — `modular-ux-architecture-research.md`, `DEVTOOLS_EXTRACT.md` (tool notebook).
 
 ---
 

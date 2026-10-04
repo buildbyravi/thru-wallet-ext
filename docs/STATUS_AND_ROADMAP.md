@@ -205,7 +205,8 @@ Before adding real launchpad, DEX, prediction, chart, or portfolio behavior, fol
 2. keep feature UI separate from feature backend;
 3. introduce thin `src/lib/thru/*-adapter.js` wrappers around official Thru SDK/program surfaces;
 4. use transaction intents for any mutating feature so the shared signing gate remains central;
-5. treat `docs/MCP_AGENT_INTEGRATION.md` as intent/read-only planning, not permission for agents
+5. treat the archived `docs/archive/MCP_AGENT_INTEGRATION.md` planning record as intent/read-only
+   thinking, not permission for agents
    to sign or export secrets.
 
 ### Step 4 — token transfer — SHIPPED in code (v8); live-chain verification OPEN
@@ -293,7 +294,7 @@ Step 1 for the record and `test/test-launchpad-quarantine.mjs` for the enforceme
 A launchpad returns only as a new `src/features/launchpad/**` module with `launchpad.*` backend
 namespaces, guarded DOM, real quotes from a verified AMM/indexer, and its own tests — the shape
 in `docs/MODULE_BOUNDARIES.md`, informed by the retained research in `docs/archive/LAUNCHPAD_UX_STUDY.md`,
-`docs/LAUNCHPAD_DEX_MIGRATION_UX.md` and `docs/archive/THRU_NATIVE_DEFI_TAB_UX.md`.
+`docs/archive/LAUNCHPAD_DEX_MIGRATION_UX.md` and `docs/archive/THRU_NATIVE_DEFI_TAB_UX.md`.
 
 Note `token.deriveAddress` needs a mint authority and a 64-hex-character seed; the deleted
 deploy form predated both, and its `mintSeed` was `Math.random().toString(36)` — one of the
