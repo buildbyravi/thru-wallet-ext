@@ -98,6 +98,21 @@ Passing `npm test` or `npm run build` does not close any of these:
 
 ## 2. What to do next, in order
 
+**Current ordered next work (2026-10-04, after the accepted conformance audit and documentation
+remediation — wallet core first; no DEX/launchpad/prediction work):**
+
+1. **Real Chrome manual smoke** — `docs/MANUAL_SMOKE_CHECKLIST.md`, popup and side panel, narrow and wide.
+2. **Betanet live E2E** — `scripts/verify-live-e2e.mjs` on a throwaway wallet.
+3. **Transaction/signing race testing** — network switch during SDK signing and concurrent pending-record writes; deterministic interleaving tests exist, real MV3 scheduling does not.
+4. **Token transfer live verification** — `scripts/verify-token-transfer.mjs`: recipient-owner acceptance and the actual token-program fee.
+5. **MV3 worker suspension/restart testing** — registration and Send mid-flight, bridge-timeout unknown-outcome messaging.
+6. **Explorer/block-time verification** — current feed availability/latency, the `/tx/` explorer route, and whether any authoritative charged-fee source exists.
+7. **Final dependency/security review** — re-run `npm audit --omit=dev`, review advisories for `@thru/*` and `esbuild`, and re-verify the 0.4.1 pins before any store release.
+
+The readiness classification behind this order (automated / browser / Betanet-live /
+mainnet-specific / external audit — never merged) is in `docs/AUDIT_REPORT.md` §"Mainnet-readiness
+gates".
+
 Steps 1, 2, 2b and 4 are complete and kept here as the security/reliability record. Remaining
 steps are independent follow-ups; custom-network re-enablement stays blocked on all four
 preconditions.

@@ -222,6 +222,59 @@ All five units were completed on branch `arena/01a10602-thru-wallet-ext`, one co
 real-browser or live-chain checks in `docs/MANUAL_SMOKE_CHECKLIST.md` and
 `docs/STATUS_AND_ROADMAP.md`, and an external audit remains **EXTERNAL AUDIT REQUIRED**.
 
+### Mainnet-readiness gates — 2026-10-04
+
+The audit baseline above was accepted, and a follow-up hardening pass the same day completed the
+documentation-truth sweep, reorganized `docs/DECISIONS.md` to the canonical D-001…D-009 list
+(no decision changed; the former D-004/D-005 continue as D-010/D-011), and re-verified every
+finding fix. Readiness is classified below in five categories that must never be merged: a
+passing Node test cannot close a browser item, a Betanet observation cannot prove Mainnet
+behavior, and a source audit is not an external audit.
+
+**A. Automated verified (deterministic, local — re-run green on 2026-10-04):**
+
+- `npm run build` — PASS, no warnings; `dist/` regenerated from current source.
+- `npm test` — PASS: derivation goldens 16/16 (pinned 0.4.1), QR 15/15, layering 80 files /
+  0 violations / 0 DOM sinks, CSP↔enabled-networks two-way, routes 14/14 both directions,
+  CSS nesting, launchpad quarantine 47/47, contract both directions 80/80, security-checks 20,
+  DOM/refs 130/130, route lifecycle 1017/1017, storage migrations (v0→v1 + future-version
+  fail-closed), vault, Thru client wire goldens, token balances, network-scoped balances,
+  History cache/block-time, registration policy, API-router (auth, serialization, quarantine,
+  checked sends, fee provenance), auto-lock.
+- `npm audit --omit=dev` — 0 vulnerabilities.
+- Contract v16, 81 methods: manifest ↔ router ↔ shipped-callers agreement enforced.
+
+**B. Browser verified: NONE — OPEN.** No real-Chrome check has been run for the current build:
+popup/side-panel layout at narrow/wide widths, real focus rings, QR canvas, popup/panel mutual
+exclusion, clipboard permission prompt, and MV3 worker eviction/restart all remain open in
+`docs/MANUAL_SMOKE_CHECKLIST.md`. A green DOM-shim suite is not evidence here.
+
+**C. Betanet live verified (historical observations, provenance retained — they do NOT certify
+the current v12/v16 code paths):**
+
+- Native transfer program behavior and the 1-base-unit fee, measured on the managed-genesis
+  chain 2026-09-26 (the same program deployment Betanet runs); recorded per-network with
+  `feeSource: 'measured'`.
+- Faucet instruction layout credited 10,000 units from the bootstrap vault PDA (2026-09-26).
+- Explorer `/address/` route with `?network=` scoping verified 2026-09-27; ~6-second block
+  cadence verified 2026-09-29.
+
+Still open on Betanet: live v12 account activation and Send JIT, token-transfer
+recipient-owner acceptance and the actual token-program fee, current block-time
+availability/latency, confirmation of the explorer `/tx/` route, and any authoritative
+charged-fee source. Use only throwaway wallets for these.
+
+**D. Mainnet-specific verification: NONE.** Mainnet is declared but disabled; its fee is
+explicitly unknown (`baseFeeUnits: null`, estimate returns `supported: false`), its RPC origin
+is not in `connect-src`, and no mainnet-specific testing exists. A Betanet observation cannot
+prove Mainnet behavior — fee schedule, program deployment, and explorer routing may all differ.
+Before mainnet enablement: re-measure fees on mainnet, verify program ids, and re-run the
+live-chain items against it.
+
+**E. External security audit: NOT PERFORMED — EXTERNAL AUDIT REQUIRED.** The 2026-10-03 and
+2026-10-04 source audits and remediations are internal work and are not a substitute. No
+external audit of this wallet exists; no claim of one may be made.
+
 ---
 
 ## Mainnet-readiness audit — 2026-10-03
