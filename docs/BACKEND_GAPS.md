@@ -48,7 +48,7 @@ This does **not** establish the end-to-end behavior of `token.transferChecked` o
 
 ### C2. Pre-send fee estimate — native and token cases are different
 
-The native transfer fee has a historical Alphanet observation (2026-09-26) of 1 base unit and is kept in per-network configuration with provenance. That observation does not establish the token-program fee. The Send UI does not substitute the native amount for an unmeasured token fee; it identifies that token fee as unmeasured. Reconfirm fee behavior for the current network before treating an estimate as a live-chain guarantee.
+The native transfer fee has a historical Alphanet observation (2026-09-26) of 1 base unit and is kept in per-network configuration with explicit provenance (`feeSource: 'measured'` on Betanet, whose programs are that same deployment; `'assumed'` on Localnet; unmeasured networks report `supported: false` with null values). That observation does not establish the token-program fee. The Send UI does not substitute the native amount for an unmeasured token fee; it identifies that token fee as unmeasured, and labels a native fee as "assumed, not measured on this network" only when the network entry actually says `assumed`. Reconfirm fee behavior for the current network before treating an estimate as a live-chain guarantee.
 
 ### C2b. Charged fee in transaction history — not reported by the current detail response
 

@@ -32,6 +32,9 @@ import { BOOTSTRAP_PROGRAM_ADDRESSES, BOOTSTRAP_FAUCET_VAULT_ADDRESS } from '@th
  * @property {'devnet'|'testnet'|'mainnet'|'local'} environment
  * @property {bigint|null} baseFeeUnits    - Observed transfer fee, or null when UNKNOWN
  * @property {bigint|null} feeReserveUnits - What MAX should hold back, or null when unknown
+ * @property {'measured'|'assumed'|null} feeSource - Provenance of baseFeeUnits: 'measured' when
+ *   observed on this chain's program deployment, 'assumed' when reasoned rather than observed,
+ *   null when baseFeeUnits is null. tx.estimateFee reports it verbatim.
  */
 
 // Program addresses come from the official 0.4.x packages — the managed-genesis registry that
@@ -81,6 +84,10 @@ export const NETWORKS = {
     // rather than at it. Re-verify on betanet with scripts/measure-fee.mjs.
     baseFeeUnits: 1n,
     feeReserveUnits: 1000n,
+    // Provenance of the fee above: measured on this chain's program deployment (see the
+    // measurement comment). The Send review quotes this label, so a fee that was measured must
+    // never be presented to the user as "not measured on this network".
+    feeSource: 'measured',
   },
 
   // Local node support is NOT offered in the shipped wallet — selecting it bound the
@@ -110,6 +117,7 @@ export const NETWORKS = {
     // deployment, so this is an assumption rather than a measurement.
     baseFeeUnits: 1n,
     feeReserveUnits: 1000n,
+    feeSource: 'assumed',
   },
 
   // Declared but NOT enabled. This is the reserved slot for a future Thru-declared 'testnet'
@@ -140,6 +148,7 @@ export const NETWORKS = {
     // devnet number as if it applied here.
     baseFeeUnits: null,
     feeReserveUnits: null,
+    feeSource: null,
   },
 
   mainnet: {
@@ -159,6 +168,7 @@ export const NETWORKS = {
     // UNKNOWN, and on a live network a guessed fee is the most expensive kind of guess.
     baseFeeUnits: null,
     feeReserveUnits: null,
+    feeSource: null,
   },
 };
 

@@ -972,5 +972,44 @@ assert.equal(unlockedReset.ok, true);
 assert.equal((await handleApiRequest({ method: 'wallet.hasVault' })).data, false);
 console.log('  ok - unlocked reset succeeds only with confirmation and password');
 
+console.log('[13] Fee estimate provenance comes from the network config, not a dead environment branch');
+// Regression: estimateFee used `environment === 'devnet' ? 'measured' : 'assumed'`, and no
+// declared network has environment 'devnet' — so every network, including one whose fee is
+// recorded as MEASURED, reported 'assumed' and the Send review told the user "not measured on
+// this network" about a measured fee. Provenance must come from the network entry's explicit
+// feeSource field.
+const { NETWORKS } = await import('../src/lib/networks.js');
+const betanetFee = (await handleApiRequest({ method: 'tx.estimateFee' })).data;
+assert.equal(betanetFee.supported, true);
+assert.equal(betanetFee.networkId, 'betanet');
+assert.equal(betanetFee.source, 'measured', 'a fee measured on this chain\'s program deployment must be labeled measured');
+assert.equal(betanetFee.feeUnits, '1');
+console.log('  ok - betanet reports source measured (managed-genesis 2026-09-26 observation)');
+
+// Re-enable localnet in-process (the documented test pattern) to check the assumed label.
+NETWORKS.localnet.enabled = true;
+const localnetSwitch = await handleApiRequest({ method: 'network.setActive', params: { networkId: 'localnet' } });
+assert.equal(localnetSwitch.ok, true);
+const localnetFee = (await handleApiRequest({ method: 'tx.estimateFee' })).data;
+assert.equal(localnetFee.supported, true);
+assert.equal(localnetFee.source, 'assumed', 'localnet\'s fee is an assumption, not a measurement');
+console.log('  ok - localnet reports source assumed');
+
+// A network with no measured fee stays unsupported rather than quoting an inherited number.
+NETWORKS.testnet.enabled = true;
+const testnetSwitch = await handleApiRequest({ method: 'network.setActive', params: { networkId: 'testnet' } });
+assert.equal(testnetSwitch.ok, true);
+const testnetFee = (await handleApiRequest({ method: 'tx.estimateFee' })).data;
+assert.equal(testnetFee.supported, false);
+assert.equal(testnetFee.feeUnits, null);
+console.log('  ok - testnet reports unsupported instead of quoting an inherited fee');
+
+// Restore the shipped network state for anything that runs after this section.
+NETWORKS.testnet.enabled = false;
+NETWORKS.localnet.enabled = false;
+const restoreSwitch = await handleApiRequest({ method: 'network.setActive', params: { networkId: 'betanet' } });
+assert.equal(restoreSwitch.ok, true);
+console.log('  ok - shipped network state restored (betanet active, others disabled)');
+
 console.log('\nAll background API router integration tests passed.');
 

@@ -436,7 +436,7 @@ export const METHODS = {
   },
   'tx.estimateFee': {
     params: ['toAddress', 'amountUnits'],
-    returns: '{ supported: false, feeUnits: null, reason } — UNVERIFIED on Thru, see docs/BACKEND_GAPS.md C2',
+    returns: '{ supported, networkId, source, feeUnits, reserveUnits, reason } — per-network config; unsupported (null fee) where unmeasured, see docs/BACKEND_GAPS.md C2',
     auth: 'none',
     since: 4,
   },
