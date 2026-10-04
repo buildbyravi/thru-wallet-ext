@@ -31,6 +31,14 @@ implementation. Reuse established security-sensitive wallet primitives; UI compo
 reimplement them. Modularity means stable responsibilities and limited dependencies, not one file
 per function.
 
+**Architecture freeze (2026-10-04):** the wallet core has converged — exact SDK pins with golden
+vectors, one UI/backend seam, network-scoped state, checked signing with the network-mutation
+lock, versioned storage, secret hygiene, strict CSP, launchpad quarantine, one UI stack, and
+route/lifecycle coverage. Do not accept an architectural refactor without a measurable security,
+correctness, performance, or maintainability benefit that names the failure it prevents, the
+duplication it removes, or the boundary it improves — and the test that proves it. The current
+priority is verification (real browser, live chain, races, external audit), not restructuring.
+
 Use these status terms precisely: **IMPLEMENTED, TESTED, VERIFIED AGAINST LIVE NETWORK,
 UNVERIFIED, PARTIALLY IMPLEMENTED, BLOCKED, PLANNED, DEPRECATED, SECURITY REVIEW REQUIRED,
 EXTERNAL AUDIT REQUIRED**. Never claim verification that did not occur or describe plans as shipped.

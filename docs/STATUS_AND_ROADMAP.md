@@ -98,16 +98,19 @@ Passing `npm test` or `npm run build` does not close any of these:
 
 ## 2. What to do next, in order
 
-**Current ordered next work (2026-10-04, after the accepted conformance audit and documentation
-remediation — wallet core first; no DEX/launchpad/prediction work):**
+**Current ordered next work (2026-10-04, confirmed by the owner after the conformance audit and
+documentation remediation — wallet core first; no DEX/launchpad/prediction work):**
 
-1. **Real Chrome manual smoke** — `docs/MANUAL_SMOKE_CHECKLIST.md`, popup and side panel, narrow and wide.
-2. **Betanet live E2E** — `scripts/verify-live-e2e.mjs` on a throwaway wallet.
-3. **Transaction/signing race testing** — network switch during SDK signing and concurrent pending-record writes; deterministic interleaving tests exist, real MV3 scheduling does not.
-4. **Token transfer live verification** — `scripts/verify-token-transfer.mjs`: recipient-owner acceptance and the actual token-program fee.
-5. **MV3 worker suspension/restart testing** — registration and Send mid-flight, bridge-timeout unknown-outcome messaging.
-6. **Explorer/block-time verification** — current feed availability/latency, the `/tx/` explorer route, and whether any authoritative charged-fee source exists.
-7. **Final dependency/security review** — re-run `npm audit --omit=dev`, review advisories for `@thru/*` and `esbuild`, and re-verify the 0.4.1 pins before any store release.
+1. ~~Keep D-003~~ — **DONE**: session-only signing default confirmed as a deliberate product/security decision; invariants and framing recorded in `docs/DECISIONS.md` D-003.
+2. ~~Make documentation exact~~ — **DONE**: cross-document truth sweep complete on the 11 shared facts.
+3. **Real Chrome manual smoke** — `docs/MANUAL_SMOKE_CHECKLIST.md`, popup and side panel, narrow and wide.
+4. **Betanet live E2E** — run the current code against Betanet with `scripts/verify-live-e2e.mjs` on a throwaway wallet; this also covers "verify every enabled network" (Betanet is the only enabled network today).
+5. **Transaction/signing race testing + MV3 suspension/restart** — network switch during SDK signing, concurrent pending-record writes, worker suspension mid-registration/Send, bridge-timeout unknown-outcome messaging; deterministic interleaving tests exist, real MV3 scheduling does not.
+6. **Token transfer live verification** — `scripts/verify-token-transfer.mjs`: recipient-owner acceptance and the actual token-program fee.
+7. **Explorer/block-time verification** — current feed availability/latency, the `/tx/` explorer route, and whether any authoritative charged-fee source exists.
+8. **Final dependency/security review** — re-run `npm audit --omit=dev`, review advisories for `@thru/*` and `esbuild`, re-verify the 0.4.1 pins before any store release. **Architecture is frozen here** (standing rule in `AGENTS.md`): no refactor without a measurable security, correctness, performance, or maintainability benefit and a proving test.
+9. **External security review/audit** — required before any mainnet-readiness claim; none has been performed.
+10. **Mainnet-specific configuration + verification** — re-measure the fee on mainnet (its `baseFeeUnits` is deliberately null), verify program deployments and explorer routing, add the RPC origin to `connect-src`, and enable deliberately; a Betanet observation cannot prove mainnet behavior.
 
 The readiness classification behind this order (automated / browser / Betanet-live /
 mainnet-specific / external audit — never merged) is in `docs/AUDIT_REPORT.md` §"Mainnet-readiness
