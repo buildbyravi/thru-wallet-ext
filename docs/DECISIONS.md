@@ -40,17 +40,27 @@ lived only in `AGENTS.md` and audit history.
 
 ## D-003 — Session-only signing default
 
-**Context.** Every value-moving operation needs an authorization policy. Requiring the master password for every signature is the most conservative option; requiring only an unlocked session is more usable on a wallet that auto-locks.
+**Context.** Every value-moving operation needs an authorization policy. Requiring the master password for every signature is the most conservative option; requiring only an authenticated session is more usable on a wallet that auto-locks. Major self-custody wallets follow the same shape: an authenticated unlock session with configurable auto-lock (e.g. Phantom, Keplr), not a mandatory password before every transaction.
 
-**Options considered.** (a) Password required for every signature by default; (b) unlocked session may sign by default, with an opt-in per-signature password policy; (c) per-operation prompting.
+**Options considered.** (a) Password required for every signature by default; (b) an authenticated session may sign by default, with an opt-in per-signature password policy; (c) per-operation prompting.
 
-**Chosen.** An unlocked session may sign by default (`requirePasswordForSigning: false`). Users may enable password re-authentication for every signature; changing the setting **in either direction** requires the master password.
+**Chosen.** **Session authentication is sufficient for signing unless the user enables stronger signing authentication.** An unlocked session may sign by default (`requirePasswordForSigning: false`); users may enable password re-authentication for every signature; changing the setting **in either direction** requires the master password. The default chain is: encrypted vault → password unlock → authenticated session → auto-lock → signing authorization → transaction review → signature. The stronger policy inserts password re-auth between review and signature.
 
-**Why.** This is the explicit product decision selected during the 2026-10-03 audit remediation, weighing auto-lock and the centralized controls below against per-action friction.
+**Why.** Deliberate product/security decision — selected during the 2026-10-03 audit remediation and confirmed by the owner 2026-10-04. It is a legitimate wallet UX model, not a weakened security posture.
 
-**Trade-offs.** An unattended unlocked wallet can sign until auto-lock fires. Centralized `auth: 'signing'` policy, checked reviewed account/network context, the signing-operation network lock, duplicate-submission protection, inactivity auto-lock, and the one signing path remain mandatory regardless of this setting.
+**Invariants — all eight verified against source and tests on 2026-10-04; the decision stands only while they hold:**
+1. the wallet is locked unless authenticated (router `WALLET_LOCKED` gate on every auth-gated method);
+2. session authentication is secure (PBKDF2-SHA-256 600k + AES-256-GCM vault with per-record KDF envelope, unlock throttling/backoff, trusted-context session storage);
+3. auto-lock works correctly (inactivity-based with activity stamping; `test/test-autolock.mjs`);
+4. signing is authorized by the unlocked session (`auth: 'signing'` requires unlocked);
+5. users may optionally require password re-authentication before signing (`requirePasswordForSigning`);
+6. changing that preference is itself password-gated (`settings.setSecurity` is `auth: 'password'`; generic `settings.set` rejects security fields);
+7. documentation accurately describes the default;
+8. tests cover both default and opt-in modes (`test/test-api-router.mjs` [8]).
 
-**Consequences.** Documentation must never claim password-per-sign is the default. Changing this policy requires a preference migration decision and regression fixtures.
+**Trade-offs.** An unattended unlocked wallet can sign until auto-lock fires. Centralized `auth: 'signing'` policy, checked reviewed account/network context, the signing-operation network lock, duplicate-submission protection, inactivity auto-lock, and the one signing path remain mandatory regardless of this setting. The Settings dialog's "This is less secure" line appears only when a user switches **from** per-sign re-auth **to** session-only — a directional risk disclosure at that moment, not a description of the default state.
+
+**Consequences.** Documentation must never describe the default as "password protection off"; the accurate model is the Chosen sentence above, and it must never be claimed that password-per-sign is the default. Do not change this decision merely because a reviewer prefers password-per-transaction; changing it requires a preference migration decision and regression fixtures covering both modes.
 
 ## D-004 — Network-scoped chain state
 
