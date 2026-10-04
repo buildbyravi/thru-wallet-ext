@@ -137,6 +137,19 @@ Conflict resolution: `STATUS_AND_ROADMAP.md` wins on **current engineering state
 **future feature separation**; `BUILD_SPEC.md` wins on **product/security behaviour**;
 `CONTEXT.md` wins on **file facts**; `DOCS_INDEX.md` wins on **which doc to trust**.
 
+Documentation anti-sprawl rules (see `docs/DOCS_INDEX.md` §4 for the three classes — Authority,
+Operational verification, Historical/reference):
+
+1. Do not create a new top-level markdown document unless no existing authoritative document can
+   reasonably own the information. Update the owning document instead.
+2. When work is completed, update the authoritative document and freeze/archive the temporary
+   plan under `docs/archive/` — never write a new status document (`PLAN_V2`/`FINAL` variants
+   are the failure mode).
+3. A new audit appends a dated record under `docs/audits/` and refreshes the compact
+   `docs/AUDIT_REPORT.md` index; a dated record is never edited.
+4. Historical/reference documents explain why the system was designed this way — never how it
+   currently works. Verify current behavior against `src/` and the authority documents.
+
 ## Commands
 
 ```

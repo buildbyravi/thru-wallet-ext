@@ -69,25 +69,39 @@ Start from the pinned dependencies and current `src/` implementation, then cross
 
 ---
 
-## 4. Maintained documents under `docs/`
+## 4. Maintained documents under `docs/` — three classes
 
-| File | Status | Owns |
-| --- | --- | --- |
-| `docs/DOCS_INDEX.md` | current | this map and source-of-truth split |
-| `docs/ARCHITECTURE.md` | current | implemented dependency, signing, storage, and verification boundaries |
-| `docs/DECISIONS.md` | current | durable decisions D-001…D-011 with context, options, trade-offs, and consequences |
-| `docs/STATUS_AND_ROADMAP.md` | current | shipped state, verification, and open work |
-| `docs/PROJECT_LEDGER.md` | current | contract identifiers, milestones, known unresolved work |
-| `docs/BUILD_SPEC.md` | current policy/spec | shipped wallet behavior, security policy, and test expectations |
-| `docs/BACKEND_GAPS.md` | current capability inventory | implemented backend capabilities and genuinely open/unsupported behavior |
-| `docs/MANUAL_SMOKE_CHECKLIST.md` | current runbook | real-browser and live-chain checks; not a test result |
-| `docs/DEFECT_LOG.md` | historical lessons + current status | defect causes, fixes, guardrails, and residual verification gaps |
-| `docs/MODULE_BOUNDARIES.md` | current core boundaries + unshipped target | wallet-core layering; future feature modules are proposals, not shipped code |
-| `docs/HISTORY_REDESIGN_PLAN.md` | current implementation record | shipped flat History stream/cache/detail behavior and open validation |
-| `docs/SEND_PATH_AUDIT.md` | current focused audit | Send path, registration, tests, and residual risks |
-| `docs/REDESIGN_TRIAGE.md` | findings record | triage of external UX suggestions; re-check claims before implementation |
-| `docs/AUDIT_REPORT.md` | current audit index | current audit conclusion, open mainnet-readiness gates, and the index of dated audit records |
-| `docs/audits/` | append-only audit records | dated findings/evidence/remediation files (2026-09-18, 2026-10-03, 2026-10-04); a new audit appends a file and refreshes `docs/AUDIT_REPORT.md`; records are never edited |
+Every maintained document is exactly one of: **Authority** (current truth — a claim in it is a
+claim about the shipped system), **Operational verification** (runbooks and records — they state
+what was and was not verified, and never close another class's item), or **Historical/reference**
+(frozen, §5 — explains *why* the system was designed this way; never how it currently works).
+An agent reading a historical/reference document must conclude "verify against `src/` and the
+authority documents", never "this is how the code works".
+
+### Authority — current truth
+
+| File | Owns |
+| --- | --- |
+| `docs/DOCS_INDEX.md` | this map, the class split, and which document to trust |
+| `docs/STATUS_AND_ROADMAP.md` | shipped state, verification status, and open work — start here |
+| `docs/PROJECT_LEDGER.md` | contract identifiers, milestones, known unresolved work |
+| `docs/BUILD_SPEC.md` | product/security behavior, security policy, and test expectations |
+| `docs/ARCHITECTURE.md` | implemented dependency, signing, storage, and verification boundaries |
+| `docs/DECISIONS.md` | durable decisions D-001…D-011 with context, options, trade-offs, and consequences |
+| `docs/BACKEND_GAPS.md` | implemented backend capabilities and genuinely open/unsupported behavior |
+| `docs/MODULE_BOUNDARIES.md` | wallet-core layering; authority on future feature separation (its feature modules are proposals, not shipped code) |
+
+### Operational verification — runbooks and records
+
+| File | Owns |
+| --- | --- |
+| `docs/MANUAL_SMOKE_CHECKLIST.md` | real-browser and live-chain runbook; not a test result |
+| `docs/AUDIT_REPORT.md` | current audit conclusion, open mainnet-readiness gates, and the index of dated audit records |
+| `docs/audits/` | append-only dated audit records (2026-09-18, 2026-10-03, 2026-10-04); a new audit appends a file and refreshes `docs/AUDIT_REPORT.md`; records are never edited |
+| `docs/SEND_PATH_AUDIT.md` | Send path, registration, tests, residual risks — kept while Send race/live items are open |
+| `docs/HISTORY_REDESIGN_PLAN.md` | shipped flat History behavior and its open live checks |
+| `docs/DEFECT_LOG.md` | defect causes, fixes, guardrails, and residual verification gaps |
+| `docs/REDESIGN_TRIAGE.md` | triage of external UX suggestions — kept while the review is unresolved (3 of 4 suggestion sets pending) |
 
 ---
 
@@ -145,5 +159,8 @@ These links inform presentation and wallet-history patterns; they are not author
 - Label every unshipped idea as a proposal/open item. Do not describe it as a capability.
 - If a document is historical, label it as historical rather than silently rewriting the past.
 - Do not duplicate the same roadmap or source tree; link to `STATUS_AND_ROADMAP.md` and `CONTEXT.md`.
-- Do not edit `docs/archive/`, `docs/handoff/`, or `docs/reference/` as part of maintained-doc updates.
+- Do not edit `docs/archive/`, `docs/handoff/`, or `docs/reference/` as part of maintained-doc updates, and never edit a dated record under `docs/audits/`.
+- **Do not create a new top-level markdown document** unless no existing authoritative document can reasonably own the information. Update the owning document instead.
+- **When work is completed**, update the authoritative document and freeze/archive the temporary plan under `docs/archive/` — do not write a new status document. (No `PLAN_V2`, `FINAL`, or `STATUS_UPDATE` files.)
+- A new audit appends a dated record under `docs/audits/` and refreshes `docs/AUDIT_REPORT.md`; the audit index stays compact.
 - For Thru behavior, cite official Thru docs or say “unverified”. For UX research, clearly label external wallets as references only.
