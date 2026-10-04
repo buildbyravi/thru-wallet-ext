@@ -117,7 +117,7 @@ hash directly (`#/send`) where the UI has no link, so unmigrated or unreachable 
 | `/add-account` | HD preview renders; adding an account returns to `/accounts` | [ ] | [ ] |
 | `/keyring` | Source list, rename, backed-up state; `#/keyring?id=<id>` from Accounts | [ ] | [ ] |
 | `/export` | Password prompt before any secret; reveal shows the phrase; navigating away removes it (see §5) | [ ] | [ ] |
-| `/send` | Form appears after account/network metadata, without waiting for live balances or token reads; unknown/last-known balance is labelled and cannot unlock Max/Review; recipient validation, amount parsing, fee, confirmation and receipt work after verification | [ ] | [ ] |
+| `/send` | Form appears after account/network metadata, without waiting for live balances or token reads; unknown/last-known balance is labelled and cannot unlock Max/Review; recipient validation, amount parsing, fee, confirmation and receipt work after verification | [x] | [ ] |
 | `/send` (token) | Pending reads say checking, failures say unknown (not zero); only a token with a verified positive balance and on-chain mint decimals is selectable; amount re-denominates correctly; review discloses recipient token-account init fee; MAX excludes broken values | [ ] | [ ] |
 | `/receive` | Address, QR renders in the raised Thru palette (gradient red tiles, slate finder eyes, ice paper) and scans from a phone; clicking the address box copies it, the box says \"Copied\", then returns to the address after ~1s | [ ] | [ ] |
 | `/faucet` | Claim state, disabled when already claimed, error when the network has no faucet | [ ] | [ ] |
@@ -309,3 +309,17 @@ Manual smoke: <date>, Chrome <version>, build <git short sha>
   live chain: v12 activation [ ]   token owner/fee [ ]   block time/latency [ ]   explorer route [ ]
   failures found: <none | list, each with the route and the context>
 ```
+
+### Recorded runs
+
+- **2026-10-04 — partial run, popup context only.** Real Chrome (version not recorded); a
+  local build of the current source tree (post-`14e16b1`) loaded unpacked. One native
+  Betanet send to the tester's own account, exercised in the toolbar popup: the recipient
+  was accepted, the amount parsed, Review showed the fee, the send confirmed, and the
+  transaction appeared in History. No failures observed. **Boundary:** the charged-fee
+  figure was not captured; the send was self-directed, so v12 recipient activation was not
+  exercised; and the tester used other flows informally without itemizing them against
+  checklist items, so **no other box is ticked on their behalf**. The side panel, both
+  widths, and every other section remain OPEN. This run says nothing about the `1.4.1`
+  store package, which was built before the 2026-10-04 fee-provenance/dead-code fixes and
+  has never been opened in a browser.

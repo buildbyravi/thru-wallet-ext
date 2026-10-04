@@ -109,7 +109,7 @@ Passing Node tests/builds do not close these items.
 
 | Priority | Open item | Boundary / owner |
 | ---: | --- | --- |
-| P1 | Real popup + side-panel smoke: layout at narrow/wide widths, focus rings, QR canvas, opening/closing each context, mutual exclusion, and Settings mode behavior | `docs/MANUAL_SMOKE_CHECKLIST.md` |
+| P1 | Real popup + side-panel smoke: layout at narrow/wide widths, focus rings, QR canvas, opening/closing each context, mutual exclusion, and Settings mode behavior. **Partial run recorded 2026-10-04** — popup only, local build of current source: native Betanet self-send verified recipient/amount/Review fee/confirmation/History entry, so the `/send` popup cell is ticked (run record in checklist §7); every other cell remains open | `docs/MANUAL_SMOKE_CHECKLIST.md` |
 | P1 | MV3 suspension/restart or bridge timeout during account registration and Send; verify retry/unknown-outcome behavior in real Chrome | `docs/MANUAL_SMOKE_CHECKLIST.md`; `docs/SEND_PATH_AUDIT.md` |
 | P1 | Live v12 activation: create multiple HD accounts, then activate an absent owned Send recipient; verify exact target signer, selected-network behavior, and offline/absence distinction | `docs/STATUS_AND_ROADMAP.md`; `scripts/verify-autoregister.mjs` is historical pre-v12 evidence, not a substitute |
 | P1 | Live token transfer: whether a never-registered recipient owner can receive an initialized token account and what fee the token program actually charges | `scripts/verify-token-transfer.mjs`; `docs/BACKEND_GAPS.md` |
