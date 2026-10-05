@@ -53,18 +53,21 @@ the package-surface entry (`--check` fails on pin drift or missing shared-contra
 
 ## Gate plan (S12, backend side)
 
-G0 recon/dossier/seeds (this folder) → **M0 contract drop — DELIVERED 2026-10-05** (manifest
-v17/v18 entries, `src/shared/contract/defi-schema.js`, honest gated handlers, fixtures/presets/
-intent scripts under `test/fixtures/defi/`, integrity gate `test/test-defi-m0.mjs`; code
-inventory in `M0_INVENTORY.md`) → G1 read-only + registry/feeds/market layer → G2 intent
+G0 recon/dossier/seeds (this folder) → **M0 contract drop — CLOSED 2026-10-05 by owner
+sign-off** (manifest v17/v18 entries, `src/shared/contract/defi-schema.js`, honest gated
+handlers, fixtures/presets/intent scripts under `test/fixtures/defi/`, integrity gate
+`test/test-defi-m0.mjs`; code inventory in `M0_INVENTORY.md`) → **G1 read-only +
+registry/feeds/market layer — IN PROGRESS** (G1-A delivered: registry service owns records +
+derivation with stateless B3 genesis binding, `docs/defi/G1_REGISTRY.md`; feed verification +
+market layer + live rows pending) → G2 intent
 pipeline proven on send, then mint-only launch → G3 swap (exit first) → G4 pools and
 direct-pool launch → G5 curve (only if Q20/Q21 allow) → G6 scale. Sequence per the owner:
 G0 → M0 → verified capability matrix → real fixtures → mint-only launch pipeline. Each gate
 closes only on human sign-off.
 
-M0 boundary: the contract drop is the *contract*, not the feature. No DeFi flag is on, no chain
-read/write DeFi path exists, the intent store is unbuilt, and the only two "real" derivations
-(`risk.assetAssess`, `launchpad.validateDraft`) are deterministic offline functions of the
-evidence snapshot — proven on the flag-on rung by the M0 test, unreachable with flags off.
-M0 closes with owner sign-off after the frontend-team contract review (they build against
-`test/fixtures/defi/` + `defi-schema.js` first).
+M0 boundary (still standing): the contract drop is the *contract*, not the feature. No DeFi flag
+is on, no chain read/write DeFi path exists, the intent store is unbuilt, and the only two
+"real" derivations (`risk.assetAssess`, `launchpad.validateDraft`) are deterministic offline
+functions of the evidence layer — proven on the flag-on rung, unreachable with flags off.
+G1 keeps the boundary: the registry reads evidence; it does not create it. Live rows land only
+via the evidence session (`scripts/verify-token-transfer.mjs` and successors).

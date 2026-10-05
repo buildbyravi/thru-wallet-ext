@@ -114,3 +114,14 @@ pinned package ships bindings (`./perp`, `./clob`).
   allowing only the allowlisted backend surface. Stream/API errors in their agent log were the
   agent tool's own connectivity; every repo command succeeded. Audit verdict: no repo defects
   found; "formal M0 sign-off" listed as the owner's pending decision.
+- **M0: CLOSED 2026-10-05 by owner sign-off.** The owner answered the sign-off question in the
+  review channel: "Sign off M0 — start G1." The forensic audit of `bddfef6` is the verification
+  of record; the audit record itself shipped in `2718b70`.
+- **G1 in progress (same day): G1-A delivered** — the DeFi registry service
+  (`src/background/services/registry-service.js`) now owns program/feed/feature records and
+  capability derivation; program/feed/risk/gating read through it. B3 genesis binding is wired
+  STATELESS: the seed pins the chain fingerprint it was evidence-verified against, the runtime
+  re-derives the fingerprint via `history-service.chainFingerprint`, and a managed genesis swap
+  downgrades every seed-derived capability to NETWORK_RESET with exactly one
+  `capabilitiesChanged` event per transition — no storage on the read path. Record:
+  `docs/defi/G1_REGISTRY.md`. Gate: `test/test-defi-registry.mjs` (27/27).

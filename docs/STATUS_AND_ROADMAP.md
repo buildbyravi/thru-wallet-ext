@@ -122,12 +122,14 @@ evidence session on a network-reachable machine advances both tracks. Every DeFi
 seeded `unsupported` today; no write path may exist before the dossier and pipeline gates close,
 and every D-005 re-entry condition applies.
 
-**DeFi gate state (2026-10-05):** G0 closed by owner direction (their review agent green). The
-**M0 contract drop is delivered**: contract v18 with the full 43-method DeFi surface declared,
-schema-validated, fixture-backed (`test/fixtures/defi/` + `src/shared/contract/defi-schema.js`)
-and provably refused behind build-time flags — inventory in `docs/defi/M0_INVENTORY.md`. Next:
-owner sign-off on M0 + the frontend team building against the fixtures, and the live evidence
-session (`scripts/verify-token-transfer.mjs`) that closes P3 and seeds G1 registry facts.
+**DeFi gate state (2026-10-05):** G0 closed by owner direction; **M0 closed by owner sign-off**
+the same day after their forensic audit of `bddfef6` re-verified the drop green. The registry
+is in (G1-A): `registry-service.js` owns DeFi records + capability derivation with the B3
+stateless genesis binding (seed-pinned fingerprint; drift → NETWORK_RESET + one
+`capabilitiesChanged`), recorded in `docs/defi/G1_REGISTRY.md` and gated by
+`test/test-defi-registry.mjs`. Next: G1-B feed verification plumbing, G1-C market layer, and
+the live evidence session (`scripts/verify-token-transfer.mjs`) that closes P3 and starts
+flipping the capability matrix to verified.
 
 The readiness classification behind this order (automated / browser / Betanet-live /
 mainnet-specific / external audit — never merged) is in `docs/AUDIT_REPORT.md` §"Mainnet-readiness

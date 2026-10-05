@@ -22,6 +22,7 @@ Read `AGENTS.md` first for repository rules, then `docs/STATUS_AND_ROADMAP.md` f
 | Add/change a UI/background API method | `src/shared/contract/manifest.js`, then `src/background/api-router.js` and its service |
 | Add/change a DeFi contract method | `src/shared/contract/manifest.js` + `src/shared/contract/defi-schema.js`, handler (service or `src/background/features/<feature>/`), fixtures in `test/fixtures/defi/`, then `test/test-defi-m0.mjs` |
 | Change DeFi capability facts | `scripts/defi-evidence/` seeds (evidence protocol) → mirror into `src/background/services/defi/capability-snapshot.js`; `test/test-defi-m0.mjs` pins the two |
+| Change registry records/derivation or genesis binding | `src/background/services/registry-service.js` (+ `SEED_FINGERPRINT` in the snapshot; `test/test-defi-registry.mjs` proves B3) |
 | Change a DeFi feature flag | `src/shared/flags.js` (build-time only, no URL/storage override; reviewed ship decision) |
 | Change encryption, keyrings, or account derivation | `src/lib/vault.js` |
 | Change RPC, transaction construction, or wire decoding | `src/lib/thru-client.js` |
