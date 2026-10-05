@@ -122,14 +122,15 @@ evidence session on a network-reachable machine advances both tracks. Every DeFi
 seeded `unsupported` today; no write path may exist before the dossier and pipeline gates close,
 and every D-005 re-entry condition applies.
 
-**DeFi gate state (2026-10-05):** G0 closed by owner direction; **M0 closed by owner sign-off**
-the same day after their forensic audit of `bddfef6` re-verified the drop green. The registry
-is in (G1-A): `registry-service.js` owns DeFi records + capability derivation with the B3
-stateless genesis binding (seed-pinned fingerprint; drift → NETWORK_RESET + one
-`capabilitiesChanged`), recorded in `docs/defi/G1_REGISTRY.md` and gated by
-`test/test-defi-registry.mjs`. Next: G1-B feed verification plumbing, G1-C market layer, and
-the live evidence session (`scripts/verify-token-transfer.mjs`) that closes P3 and starts
-flipping the capability matrix to verified.
+**DeFi gate state (2026-10-06):** G0 closed by owner direction; **M0 closed by owner
+sign-off**; G1-A (registry + stateless B3 genesis binding) delivered and **verified green by
+the owner's forensic audit** of `1997838`. G1-B is in: SignedFeedRecord verification +
+narrowing — domain-separated Ed25519 records, evidence-only publisher pinning (empty policy
+today), quorum aggregation, KILL_SWITCH/FEED_MISSING narrowing on enabled rows only, genesis
+and flags dominate, `feedChanged` once per transition; record `docs/defi/G1_FEED.md`, gate
+`test/test-defi-feed.mjs` (35/35). Next: G1-C market layer and the live evidence session
+(`scripts/verify-token-transfer.mjs` + `scripts/probe-oracle-feed.mjs` on a networked host)
+that closes P3/Q22 and starts flipping the capability matrix to verified.
 
 The readiness classification behind this order (automated / browser / Betanet-live /
 mainnet-specific / external audit — never merged) is in `docs/AUDIT_REPORT.md` §"Mainnet-readiness

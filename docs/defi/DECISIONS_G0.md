@@ -125,3 +125,14 @@ pinned package ships bindings (`./perp`, `./clob`).
   downgrades every seed-derived capability to NETWORK_RESET with exactly one
   `capabilitiesChanged` event per transition — no storage on the read path. Record:
   `docs/defi/G1_REGISTRY.md`. Gate: `test/test-defi-registry.mjs` (27/27).
+- **G1-A verified by owner-side audit (2026-10-05, ff-only `1997838`):** their agent re-ran
+  fetch/build/`npm test`/layering/registry gate — all green (23 suites, registry 27/27,
+  contract 130/130, quarantine 66/66, M0 98/98, lifecycle 1017/1017, build clean). Owner
+  directed: proceed straight to G1-B.
+- **G1-B delivered 2026-10-06:** SignedFeedRecord verification + narrowing
+  (`src/background/services/defi/feed-record.js`, empty-by-evidence `FEED_POLICY`, registry
+  verify-at-intake + sync narrowing, `feedChanged` events). Ladder order locked:
+  FLAG_OFF → KILL_SWITCH/FEED_MISSING → dossier(+B3 reset); feeds narrow, never widen; records
+  bind networkId + genesis fingerprint. No transport and no publisher yet — both arrive only
+  through the evidence chain. Record: `docs/defi/G1_FEED.md`. Gate: `test/test-defi-feed.mjs`
+  (35/35).
