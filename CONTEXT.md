@@ -24,6 +24,7 @@ Read `AGENTS.md` first for repository rules, then `docs/STATUS_AND_ROADMAP.md` f
 | Change DeFi capability facts | `scripts/defi-evidence/` seeds (evidence protocol) → mirror into `src/background/services/defi/capability-snapshot.js`; `test/test-defi-m0.mjs` pins the two |
 | Change registry records/derivation or genesis binding | `src/background/services/registry-service.js` (+ `SEED_FINGERPRINT` in the snapshot; `test/test-defi-registry.mjs` proves B3) |
 | Change feed records, publishers, or kill-switch policy | `src/background/services/defi/feed-record.js` + `FEED_POLICY` in the capability snapshot (evidence-pinned only; `test/test-defi-feed.mjs` proves narrowing) |
+| Change market read caching or slice assembly | `src/background/services/defi/read-cache.js` + `market-reads.js` (chain-before-index; `test/test-defi-market.mjs` proves cache + ladders) |
 | Change a DeFi feature flag | `src/shared/flags.js` (build-time only, no URL/storage override; reviewed ship decision) |
 | Change encryption, keyrings, or account derivation | `src/lib/vault.js` |
 | Change RPC, transaction construction, or wire decoding | `src/lib/thru-client.js` |

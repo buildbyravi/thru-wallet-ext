@@ -136,3 +136,17 @@ pinned package ships bindings (`./perp`, `./clob`).
   bind networkId + genesis fingerprint. No transport and no publisher yet — both arrive only
   through the evidence chain. Record: `docs/defi/G1_FEED.md`. Gate: `test/test-defi-feed.mjs`
   (35/35).
+- **G1-B verified by owner-side audit (2026-10-06, ff-only `c246b67`):** their agent re-ran
+  build/`npm test`/feed gate/layering — all green (24 suites, feed 35/35, layering 96 files/0
+  violations, 0 DOM sinks). Crypto containment (feed-crypto adapter), pinning-before-signature
+  order, one-publisher-one-vote, and narrow-never-widen all confirmed. Owner directed: proceed
+  to G1-C.
+- **G1-C delivered 2026-10-06:** market read layer — coalescing read cache (one in-flight per
+  key, TTL honesty, errors uncached, B3 binding by key, bounded, in-memory only) + per-slice
+  assembly with chain-before-index ladders and honest S10 fallbacks
+  (`services/defi/read-cache.js`, `services/defi/market-reads.js`), wired into market-service
+  past-gate. Wire byte-identical to M0 (gate ladder still resolves first); search/candles/
+  trades/holders keep the loud NOT_READY branch until a reader exists. Record:
+  `docs/defi/G1_MARKET.md`. Gate: `test/test-defi-market.mjs` (25/25). The G1
+  registry/feeds/market triad is now structurally complete; closure awaits the live evidence
+  session + owner sign-off.

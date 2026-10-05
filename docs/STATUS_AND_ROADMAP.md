@@ -122,15 +122,17 @@ evidence session on a network-reachable machine advances both tracks. Every DeFi
 seeded `unsupported` today; no write path may exist before the dossier and pipeline gates close,
 and every D-005 re-entry condition applies.
 
-**DeFi gate state (2026-10-06):** G0 closed by owner direction; **M0 closed by owner
-sign-off**; G1-A (registry + stateless B3 genesis binding) delivered and **verified green by
-the owner's forensic audit** of `1997838`. G1-B is in: SignedFeedRecord verification +
-narrowing — domain-separated Ed25519 records, evidence-only publisher pinning (empty policy
-today), quorum aggregation, KILL_SWITCH/FEED_MISSING narrowing on enabled rows only, genesis
-and flags dominate, `feedChanged` once per transition; record `docs/defi/G1_FEED.md`, gate
-`test/test-defi-feed.mjs` (35/35). Next: G1-C market layer and the live evidence session
-(`scripts/verify-token-transfer.mjs` + `scripts/probe-oracle-feed.mjs` on a networked host)
-that closes P3/Q22 and starts flipping the capability matrix to verified.
+**DeFi gate state (2026-10-06, G1 update 2):** G0 closed by owner direction; **M0 closed by
+owner sign-off**; **G1-A and G1-B delivered and each verified green by the owner's forensic
+audits** (registry + stateless B3 genesis binding; SignedFeedRecord verification + narrowing,
+`docs/defi/G1_FEED.md`). G1-C is in: the market read layer — coalescing read cache (one
+in-flight per key, TTL honesty, errors uncached, genesis-bound keys, in-memory only) +
+per-slice assembly with chain-before-index ladders and honest S10 fallbacks, wire
+byte-identical to M0; record `docs/defi/G1_MARKET.md`, gate `test/test-defi-market.mjs`
+(25/25). The **G1 registry/feeds/market triad is structurally complete**. Next: the live
+evidence session (`scripts/verify-token-transfer.mjs` + `scripts/probe-oracle-feed.mjs` on a
+networked host) that closes P3/Q22 and starts flipping the capability matrix to verified —
+then the owner's G1 gate sign-off.
 
 The readiness classification behind this order (automated / browser / Betanet-live /
 mainnet-specific / external audit — never merged) is in `docs/AUDIT_REPORT.md` §"Mainnet-readiness

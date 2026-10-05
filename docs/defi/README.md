@@ -59,7 +59,7 @@ handlers, fixtures/presets/intent scripts under `test/fixtures/defi/`, integrity
 `test/test-defi-m0.mjs`; code inventory in `M0_INVENTORY.md`) → **G1 read-only +
 registry/feeds/market layer — IN PROGRESS** (G1-A delivered: registry service owns records +
 derivation with stateless B3 genesis binding, `docs/defi/G1_REGISTRY.md`; feed verification +
-market layer + live rows pending; G1-B delivered 2026-10-06: SignedFeedRecord verification + narrowing, `docs/defi/G1_FEED.md`) → G2 intent
+market layer + live rows pending; G1-B delivered: SignedFeedRecord verification + narrowing, `docs/defi/G1_FEED.md`; G1-C delivered 2026-10-06: coalescing read cache + per-slice market assembly, `docs/defi/G1_MARKET.md`; live rows pending) → G2 intent
 pipeline proven on send, then mint-only launch → G3 swap (exit first) → G4 pools and
 direct-pool launch → G5 curve (only if Q20/Q21 allow) → G6 scale. Sequence per the owner:
 G0 → M0 → verified capability matrix → real fixtures → mint-only launch pipeline. Each gate
