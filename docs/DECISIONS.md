@@ -173,3 +173,17 @@ lived only in `AGENTS.md` and audit history.
 **Trade-offs.** Every durable schema change requires migration fixtures and a version bump — more ceremony than mutating shapes in place.
 
 **Consequences.** `test/test-storage-migrations.mjs` covers v0→v1 migrations and future-version refusal; unsupported future versions fail loudly instead of masquerading as a wrong password or empty state.
+
+## D-012 — DeFi/launchpad workstream opened under owner direction, verify-first gating
+
+**Context.** The owner-confirmed order of 2026-10-04 (`docs/STATUS_AND_ROADMAP.md` §2) put wallet-core verification first with no DEX/launchpad/prediction work, and D-005 fences any launchpad re-entry. On 2026-10-05 the owner directed backend-only DeFi work (swap, pools, launchpad) under an imported two-file backend/frontend build prompt (shared-contract v1.0.0, fingerprint ca11b7bc…3147e5) with the staged sequence: Gate 0 dossier → M0 contract drop → verified capability matrix → real fixtures → mint-only launch pipeline.
+
+**Options considered.** (a) Refuse or defer until the wallet-core steps close; (b) start immediately against memory/docs assumptions; (c) start under the imported spec's verify-first regime with every live-verification dependency mapped as a dossier row.
+
+**Chosen.** (c). The owner may change the order; what may never change is *how* this surface gets built. The imported spec is adopted because it enforces D-005's re-entry conditions structurally: build only from recorded chain evidence (R1), exit paths verified before entry (R2), one signing pipeline (R12), honest unsupported states (R15), flags that cannot be URL/storage-enabled (R16), and the deliberate same-change quarantine-test rewrite (B16).
+
+**Why.** A silent deviation from the 2026-10-04 order would be the failure mode this repository repeatedly names. The order change is explicit, dated, and recorded here; the stricter spec gives the launchpad more gates, not fewer.
+
+**Trade-offs.** Gate 0's live rows need a network-reachable machine (the build sandbox cannot reach Thru endpoints — `scripts/defi-evidence/2026-10-05-environment-egress.json`), so "verified capability matrix" and any enabled write path wait on live evidence; the wallet-core sequence (steps 3–10) remains open in parallel and its chain-facing parts are now also dossier rows (step 4 ↔ Q2/Q4/Q6, step 6 ↔ Q13 = P3, step 7 ↔ Q6/Q7/Q22).
+
+**Consequences.** Contract versions assigned READ = 17, EXEC = 18 (repo is v16/81 — the prompt's "15/83" parenthetical was corrected at recon). No feature code exists at G0; the first code change is M0 plus the B16 quarantine rewrite. All records live in `docs/defi/` + `scripts/defi-evidence/`; today every DeFi capability is seeded `unsupported`. D-005 stays in force; guides 09–11 are absent from this checkout and treated as superseded.

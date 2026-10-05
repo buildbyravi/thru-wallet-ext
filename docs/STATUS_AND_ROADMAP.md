@@ -112,6 +112,16 @@ documentation remediation — wallet core first; no DEX/launchpad/prediction wor
 9. **External security review/audit** — required before any mainnet-readiness claim; none has been performed.
 10. **Mainnet-specific configuration + verification** — re-measure the fee on mainnet (its `baseFeeUnits` is deliberately null), verify program deployments and explorer routing, add the RPC origin to `connect-src`, and enable deliberately; a Betanet observation cannot prove mainnet behavior.
 
+**Amendment (2026-10-05, owner directive):** the 2026-10-04 order above is amended by the owner's
+instruction to begin backend-only DeFi work (swap, pools, launchpad) under an imported
+verify-first build prompt — recorded as decision D-012. Steps 1–10 remain the wallet-core
+sequence and are unchanged; the DeFi workstream runs its own gates in `docs/defi/` and does not
+close any item above. Its Gate 0 dossier *consumes* the same live facts (step 4 ↔ dossier
+Q2/Q4/Q6, step 6 ↔ Q13 = its hard precondition P3, step 7 ↔ Q6/Q7/Q22), so a single live
+evidence session on a network-reachable machine advances both tracks. Every DeFi capability is
+seeded `unsupported` today; no write path may exist before the dossier and pipeline gates close,
+and every D-005 re-entry condition applies.
+
 The readiness classification behind this order (automated / browser / Betanet-live /
 mainnet-specific / external audit — never merged) is in `docs/AUDIT_REPORT.md` §"Mainnet-readiness
 gates".
