@@ -7,9 +7,13 @@
 // answers FEATURE_DISABLED instead of a fake-empty report.
 
 import { gateOrThrow } from './defi/gating.js';
-import {
-  SNAPSHOT_META, FEATURES, getFeature, programFacts,
-} from './defi/capability-snapshot.js';
+// Facts derive from the registry's post-binding view (G1-A): identical under alignment,
+// NETWORK_RESET-aware when the seed chain drifts.
+import * as registry from './registry-service.js';
+import { SNAPSHOT_META } from './defi/capability-snapshot.js';
+
+const getFeature = (key) => registry.getFeature(key);
+const programFacts = () => registry.getProgramFacts();
 
 const GATE = { gate: 'DEFI_RISK', feature: null, env: 'error', label: 'Risk assessment' };
 
@@ -59,7 +63,7 @@ function deriveRiskReport(assetId) {
         + 'flows must stay gated off even if the UI is reachable.',
     );
   }
-  const feedRows = FEATURES.filter((f) => ['charts', 'discovery'].includes(f.key));
+  const feedRows = [getFeature('charts'), getFeature('discovery')].filter(Boolean);
   if (feedRows.some((f) => f.state !== 'enabled')) {
     push(
       'MARKET_DATA_ABSENT',

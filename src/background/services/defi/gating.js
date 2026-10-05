@@ -20,7 +20,9 @@
 // behavior stays uniform and provable (test/test-defi-m0.mjs probes every method).
 
 import { isDefiFeatureEnabled } from '../../../shared/flags.js';
-import { getFeature } from './capability-snapshot.js';
+// Registry owns the post-binding dossier view (G1-A): on a genesis mismatch it reports
+// NETWORK_RESET here, and every caller inherits the behavior without a code change.
+import { getFeature } from '../registry-service.js';
 
 /** Builds the wire value for a declared-unsupported result. */
 export function unsupportedResult(reason) {

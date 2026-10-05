@@ -27,6 +27,17 @@ export const SNAPSHOT_META = Object.freeze({
 });
 
 /**
+ * Chain identity these records were seeded against (B3, G1-A). Computed at seed time with
+ * history-service.chainFingerprint(getNetworkConfig('betanet')) and PINNED here as data —
+ * it must NOT silently track networks.js edits. When a managed genesis swap (or any edit to
+ * the managed program set) changes the runtime fingerprint, the registry reports every
+ * seed-derived capability as NETWORK_RESET until the evidence process re-seeds this file with
+ * fresh facts. test/test-defi-registry.mjs pins this against the live derivation, so a drift
+ * fails the build instead of silently re-trusting stale records.
+ */
+export const SEED_FINGERPRINT = 'betanet|taEOAD2uLK1SLzPgtabFLUAx22yDlBs9DE9nZFTOESIGRr|taTOKENKRgcl3vO0yVhftATDbXuhgWcfaaxv9xpEEdMdUE|taFCTxR0y2eabGGaEdtTwC9pHz7ZY4CYD7FOiBFUJeAW16|taTigKYAf5mNxUNUVXeXq1HQodKc07DBzF4Pl7tCi1iXxt|taNOOPV4A7S3WTsirr149To2GoGZ9q8zllQaBrbekHfkJT';
+
+/**
  * Program records. Addresses come from the pinned official packages exactly as
  * src/lib/networks.js sources them; verification state is layered on top (OG-G0). `null`
  * address means "no program found" — an honest absence, not a placeholder.

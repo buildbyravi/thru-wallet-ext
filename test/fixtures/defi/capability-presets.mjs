@@ -16,8 +16,9 @@
 import { listMethodNames } from '../../../src/shared/contract/manifest.js';
 import { isDefiMethod, getDefiSpec } from '../../../src/shared/contract/defi-schema.js';
 import {
-  SNAPSHOT_META, FEATURES, LIMITS, programFacts,
+  SNAPSHOT_META, FEATURES, LIMITS, programFacts, SEED_FINGERPRINT,
 } from '../../../src/background/services/defi/capability-snapshot.js';
+import { currentChainFingerprint } from '../../../src/background/services/registry-service.js';
 
 const ALL_DEFI_FLAGS = ['DEFI_READ', 'DEFI_DEX', 'DEFI_LAUNCHPAD', 'DEFI_MARKET', 'DEFI_RISK', 'DEFI_INTENT', 'DEFI_FEED', 'DEFI_DESKTOP'];
 
@@ -71,6 +72,12 @@ function buildPreset({ name, simulated, flags, note }) {
       networkId: SNAPSHOT_META.networkId,
       registryVersion: SNAPSHOT_META.registryVersion,
       matrixVersion: SNAPSHOT_META.matrixVersion,
+      // Presets simulate FLAGS, not chain state: genesis stays aligned with the live seed.
+      genesis: {
+        aligned: true,
+        seedFingerprint: SEED_FINGERPRINT,
+        currentFingerprint: currentChainFingerprint(SNAPSHOT_META.networkId),
+      },
       programFacts: programFacts(),
       methodCapabilities: buildMethodCapabilities(flags),
       featureCapabilities: buildFeatureCapabilities(),

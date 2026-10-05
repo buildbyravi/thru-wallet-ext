@@ -3,17 +3,20 @@
 // are the seam the first verified feed plugs into without changing the wire shape (FEEDS spec:
 // a signed feed supplements chain reads, never replaces them — R16).
 
-import { SNAPSHOT_META } from './defi/capability-snapshot.js';
+import * as registry from './registry-service.js';
 import { unsupportedResult } from './defi/gating.js';
 
+const REGISTRY_NETWORK = 'betanet';
+
 export async function getFeedStatus({ networkId } = {}) {
-  const target = networkId ?? SNAPSHOT_META.networkId;
-  if (target !== SNAPSHOT_META.networkId) {
+  const target = networkId ?? REGISTRY_NETWORK;
+  const feeds = registry.listFeeds(target);
+  if (!feeds) {
     return unsupportedResult('CUSTOM_NETWORK');
   }
   // { feeds: [] } is the full feed registry truth for this network: no publisher keys are
   // pinned anywhere in the repo (evidence: G0 registry seed, feedSummary { feeds: [] }).
-  return { feeds: [] };
+  return { feeds };
 }
 
 export async function lookupFeeds({ ids }) {
