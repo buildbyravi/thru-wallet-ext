@@ -4,7 +4,7 @@ Single source of truth for the **shipped baseline**, what automated evidence pro
 
 ## Shipped baseline
 
-- **Contract v16, 81 methods.** v16 removes the retired unbound `tx.send` / `token.transfer` mutation paths after all shipped callers migrated to checked methods. v12's owned-account registration and cache-first History methods remain.
+- **Contract v18, 124 methods.** 81 wallet-core methods plus the 43-method DeFi M0 contract surface (v17 READ+LOCAL, v18 PREPARE+EXECUTE) — every DeFi method is declared, schema-validated, and gated behind build-time flags that are all off; reads answer explicit unsupported states and the only signing method (`intent.submit`) refuses `FEATURE_DISABLED`. v16 removed the retired unbound `tx.send` / `token.transfer` mutation paths after all shipped callers migrated to checked methods.
 - **Account activation.** Account/keyring creation paths make bounded, best-effort self-registration attempts for newly added accounts on the selected network. There is no periodic signer. Send checks an unregistered recipient and calls `tx.registerAccount` just in time only when that destination is an owned account. The target account signs for itself; arbitrary contacts are never registered.
 - **Send review.** The JIT activation must complete before Review enables. Review shows the matched recipient label above the full destination address; the label is display-only. Checked native/token methods bind the reviewed account and network at the background boundary.
 - **Signing preference.** Signing requires an unlocked wallet. Password re-authentication is **off by default** (`requirePasswordForSigning: false`); a user can explicitly enable it through the password-gated Settings path. The v12 registration exception remains narrowly unlocked-only.
@@ -121,6 +121,13 @@ Q2/Q4/Q6, step 6 ↔ Q13 = its hard precondition P3, step 7 ↔ Q6/Q7/Q22), so a
 evidence session on a network-reachable machine advances both tracks. Every DeFi capability is
 seeded `unsupported` today; no write path may exist before the dossier and pipeline gates close,
 and every D-005 re-entry condition applies.
+
+**DeFi gate state (2026-10-05):** G0 closed by owner direction (their review agent green). The
+**M0 contract drop is delivered**: contract v18 with the full 43-method DeFi surface declared,
+schema-validated, fixture-backed (`test/fixtures/defi/` + `src/shared/contract/defi-schema.js`)
+and provably refused behind build-time flags — inventory in `docs/defi/M0_INVENTORY.md`. Next:
+owner sign-off on M0 + the frontend team building against the fixtures, and the live evidence
+session (`scripts/verify-token-transfer.mjs`) that closes P3 and seeds G1 registry facts.
 
 The readiness classification behind this order (automated / browser / Betanet-live /
 mainnet-specific / external audit — never merged) is in `docs/AUDIT_REPORT.md` §"Mainnet-readiness

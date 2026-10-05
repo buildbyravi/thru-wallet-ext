@@ -23,8 +23,9 @@ answered inputs, dossier results, gate state and CCR traffic.
 
 | File | Owns |
 | --- | --- |
-| `G0_DOSSIER.md` | Gate 0: preconditions P1–P5, the Q1–Q26 evidence table, the unsupported matrix, leads disposition. Gate state: **G0 delivered, awaiting live-chain rows + owner sign-off** |
+| `G0_DOSSIER.md` | Gate 0: preconditions P1–P5, the Q1–Q26 evidence table, the unsupported matrix, leads disposition. Gate state: **G0 delivered; owner-side review agent verified the repo state green on 2026-10-05 and the owner directed M0; P3 (live token-transfer verification) remains an open live-chain task tracked separately** |
 | `DECISIONS_G0.md` | Answered PROJECT INPUTS (all defaults), recon corrections (incl. contract-version correction to READ 17 / EXEC 18), CCR candidates |
+| `M0_INVENTORY.md` | M0 contract drop: per-method code inventory (handler/service/flag gate/env), deliverables checklist, changelog, and boundary statement |
 | `REGISTRY_AND_CAPABILITY_SEED.md` | How the registry and capability seeds work, the unsupported matrix and the reason mapping |
 | `README.md` | this index |
 
@@ -52,9 +53,18 @@ the package-surface entry (`--check` fails on pin drift or missing shared-contra
 
 ## Gate plan (S12, backend side)
 
-G0 recon/dossier/seeds (this folder) → **M0 contract drop** (manifest v17/v18 entries, schemas,
-honest stubs, fixtures, presets, intent scripts) → G1 read-only + registry/feeds/market layer →
-G2 intent pipeline proven on send, then mint-only launch → G3 swap (exit first) → G4 pools and
+G0 recon/dossier/seeds (this folder) → **M0 contract drop — DELIVERED 2026-10-05** (manifest
+v17/v18 entries, `src/shared/contract/defi-schema.js`, honest gated handlers, fixtures/presets/
+intent scripts under `test/fixtures/defi/`, integrity gate `test/test-defi-m0.mjs`; code
+inventory in `M0_INVENTORY.md`) → G1 read-only + registry/feeds/market layer → G2 intent
+pipeline proven on send, then mint-only launch → G3 swap (exit first) → G4 pools and
 direct-pool launch → G5 curve (only if Q20/Q21 allow) → G6 scale. Sequence per the owner:
 G0 → M0 → verified capability matrix → real fixtures → mint-only launch pipeline. Each gate
 closes only on human sign-off.
+
+M0 boundary: the contract drop is the *contract*, not the feature. No DeFi flag is on, no chain
+read/write DeFi path exists, the intent store is unbuilt, and the only two "real" derivations
+(`risk.assetAssess`, `launchpad.validateDraft`) are deterministic offline functions of the
+evidence snapshot — proven on the flag-on rung by the M0 test, unreachable with flags off.
+M0 closes with owner sign-off after the frontend-team contract review (they build against
+`test/fixtures/defi/` + `defi-schema.js` first).

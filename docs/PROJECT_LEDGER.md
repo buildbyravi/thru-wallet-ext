@@ -13,8 +13,8 @@ The identifier refresh is based on the audited source at `7883219` plus the 2026
 | --- | --- |
 | Repository | `buildbyravi/thru-wallet-ext` |
 | Audited implementation baseline | `7883219` (`arena/01a10602-thru-wallet-ext`, 2026-10-04 audit) |
-| Contract version | v16 |
-| Contract methods | 81, counted from `Object.keys(METHODS)` in `src/shared/contract/manifest.js` |
+| Contract version | v18 |
+| Contract methods | 124, counted from `Object.keys(METHODS)` in `src/shared/contract/manifest.js` (81 wallet-core + 43 DeFi M0 surface, all feature-flagged off) |
 | Route count | 14 popup/side-panel routes |
 | Signing preference default | Session-only while unlocked (`requirePasswordForSigning: false`); password re-auth is an explicit, password-gated Settings opt-in |
 | Built extension page | `popup.html`, shared by toolbar popup and side panel |
@@ -23,7 +23,7 @@ The identifier refresh is based on the audited source at `7883219` plus the 2026
 | Build output | Generated under `dist/`; do not edit by hand |
 | Store package | `1.4.1` live in the Chrome Web Store since 2026-10-04 (live page verified; record in `extension.md` §9); no browser verification of the store package is recorded |
 
-The contract remains an append-only API in ordinary feature work, with documented security-policy exceptions in v5–v7, the v13 faucet-auth change, and the v16 retirement of the unbound send methods (a removal after zero shipped callers, not an addition). Version history v8–v16 is recorded in §3. Treat the manifest and `test/test-contract.mjs` as the exact contract authority.
+The contract remains an append-only API in ordinary feature work, with documented security-policy exceptions in v5–v7, the v13 faucet-auth change, and the v16 retirement of the unbound send methods (a removal after zero shipped callers, not an addition). Version history v8–v18 is recorded in §3. Treat the manifest and `test/test-contract.mjs` as the exact contract authority for wallet-core, plus `src/shared/contract/defi-schema.js` and `test/test-defi-m0.mjs` for the DeFi surface (M0, all feature-gated off).
 
 Run from the repository root:
 
@@ -76,6 +76,8 @@ No launchpad, DEX, swap, or prediction UI is shipped. The old `src/launchpad/` t
 | v14 | `token.readMint` reads a mint account straight from the chain so "Add custom token" verifies the pasted address and uses the chain's own symbol/decimals. |
 | v15 | `tx.checkDuplicate` detects repeat transfers within 30s or while in flight; send methods accept an explicit `allowDuplicate` for user-confirmed repeats. |
 | v16 | Retires the unbound `tx.send` / `token.transfer` mutation endpoints after every shipped UI caller migrated to the checked counterparts; the weaker alternate signing path is gone. |
+| v17 | M0 DeFi READ+LOCAL surface (29 methods): `program.*`, `feed.*`, `market.*` reads/watchlist, `risk.assetAssess`, `launchpad.*` reads/drafts/validateDraft, `dex.*` pool reads/positions, `intent.list/get`, `desktop.open`. Discovery reads answer from the evidence-pinned capability snapshot; capability-gated reads answer `{ supported:false, reason }`. All behind build-time flags, all off. |
+| v18 | M0 DeFi PREPARE+EXECUTE surface (14 methods): `intent.prepareSend/rePrepare/resume/discard/stopWaiting`, `dex.quote/quoteLiquidity/prepareSwap/prepareLiquidity`, `launchpad.uploadImage/prepareCreate/prepareMigrate/prepareClaim`, and `intent.submit` — the only signing-gated DeFi method. All refuse honestly (unsupported/`FEATURE_DISABLED`) intent-store pending; events `intentChanged`/`capabilitiesChanged`/`feedChanged` and the S10 error-code map appended in the same drop. |
 
 ### v12 registration and History behavior
 
@@ -93,7 +95,7 @@ No launchpad, DEX, swap, or prediction UI is shipped. The old `src/launchpad/` t
 | --- | --- |
 | `npm test` | PASS on the 2026-10-04 audited tree: derivation 16/16, QR 15/15, layering 80 files/0 sinks, CSP, routes 14/14, CSS nesting, quarantine 47/47, contract 80/80, security-checks 20, DOM/refs 130/130, route lifecycle 1017/1017, plus storage-migrations, vault, Thru client, token/balance, History, registration, and API-router suites. Counts are the audited run's; use the final test output for any subsequent refresh. |
 | `npm run build` | PASS on the 2026-10-04 audited tree; `build.mjs` regenerated `dist/` from current source with no warnings. |
-| Contract | v16, 81 methods. v16 deliberately retires unbound legacy send methods after zero shipped callers; registration/history APIs remain. |
+| Contract | v18, 124 methods (81 wallet-core + 43 gated-off DeFi M0 surface). v16 deliberately retired unbound legacy send methods after zero shipped callers; registration/history APIs remain. |
 | Signing | Signing methods use `auth: 'signing'`. The wallet must be unlocked; password re-authentication is required only when the user enables it in Settings. That opt-in is itself password-gated. |
 | Registration | Exact ownership is checked in the background, the target account is the signer, Send JIT does not touch external recipients, and retry behavior is covered by deterministic registration/API tests. |
 | History | Flat card stream, storage-only cache-first paint, per-network/address cache, network-scoped block-time lookup, and provenance/fallback behavior are covered by deterministic tests. |
@@ -161,8 +163,8 @@ When these change, update this ledger, `CONTEXT.md`, `docs/STATUS_AND_ROADMAP.md
 
 | Identifier | Current value |
 | --- | --- |
-| contract version | 16 |
-| method count | 81 |
+| contract version | 18 |
+| method count | 124 |
 | route count | 14 |
 | guarded DOM sink count | 0 across shipped `src/` (vendored QR excluded) |
 | store package | `1.4.1`, listed 2026-10-04; browser verification of the store package: not recorded |

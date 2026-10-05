@@ -6,7 +6,7 @@ Read `AGENTS.md` first for repository rules, then `docs/STATUS_AND_ROADMAP.md` f
 
 ## Shipped baseline at a glance
 
-- Contract v16: **81 methods** in `src/shared/contract/manifest.js`; 14 registered wallet routes.
+- Contract v18: **124 methods** in `src/shared/contract/manifest.js` (81 wallet-core + 43 DeFi M0 contract surface, machine schema in `src/shared/contract/defi-schema.js`, all behind build-time flags that are off); 14 registered wallet routes.
 - Signing requires an unlocked wallet. Password re-authentication defaults off and is an explicit, password-gated Settings opt-in.
 - `tx.registerAccount` self-signs only for an exact vault-owned address. Account/keyring creation paths make bounded, best-effort registration attempts for new addresses. Send JIT-activates only a selected/typed owned recipient after an on-chain absence check; it never registers an external contact. Review waits for activation and shows the matched label above the full address.
 - History is a flat stream without day headers. It paints storage-only cached entries scoped by network and address before fresh feed/pending reads. Block-time provenance is retained; an actual local submission time is only an own-send fallback; otherwise display `Block <slot>`. No per-card fee line is shipped.
@@ -20,6 +20,9 @@ Read `AGENTS.md` first for repository rules, then `docs/STATUS_AND_ROADMAP.md` f
 | Change a screen | `src/ui/app/routes/` |
 | Create DOM safely | `src/ui/kit/dom.js` (`h()`); never HTML strings |
 | Add/change a UI/background API method | `src/shared/contract/manifest.js`, then `src/background/api-router.js` and its service |
+| Add/change a DeFi contract method | `src/shared/contract/manifest.js` + `src/shared/contract/defi-schema.js`, handler (service or `src/background/features/<feature>/`), fixtures in `test/fixtures/defi/`, then `test/test-defi-m0.mjs` |
+| Change DeFi capability facts | `scripts/defi-evidence/` seeds (evidence protocol) → mirror into `src/background/services/defi/capability-snapshot.js`; `test/test-defi-m0.mjs` pins the two |
+| Change a DeFi feature flag | `src/shared/flags.js` (build-time only, no URL/storage override; reviewed ship decision) |
 | Change encryption, keyrings, or account derivation | `src/lib/vault.js` |
 | Change RPC, transaction construction, or wire decoding | `src/lib/thru-client.js` |
 | Change enabled networks/program configuration | `src/lib/networks.js`, then network service/CSP together |
@@ -115,7 +118,7 @@ Registration is not a background sweep: creation/addition makes a bounded best-e
 
 ## 6. `src/shared/` — both sides
 
-No DOM or `chrome.*` access. Contract v16 has **81 methods**. Security-policy exceptions are documented: v5 signing auth, v6 reset/auto-lock hardening, and v7 custom-network quarantine. v8–v15 add token, History/detail, checked-send, registration, cached-History, mint-read, and duplicate-check capabilities; v16 retires the unbound legacy send methods after zero shipped callers were confirmed.
+No DOM or `chrome.*` access. Contract v18 has **124 methods**. Security-policy exceptions are documented: v5 signing auth, v6 reset/auto-lock hardening, and v7 custom-network quarantine. v8–v15 add token, History/detail, checked-send, registration, cached-History, mint-read, and duplicate-check capabilities; v16 retires the unbound legacy send methods after zero shipped callers were confirmed; v17/v18 append the 43-method DeFi M0 contract surface (v17 READ+LOCAL, v18 PREPARE+EXECUTE) — declared, schema-validated, fixtures/presets/scripts as the contract of record for the frontend, every feature gated behind build-time flags that are all false, with launchpad/dex vocabulary confined to the backend allowlist by the rewritten quarantine test.
 
 | File | Lines | Purpose |
 | --- | ---: | --- |

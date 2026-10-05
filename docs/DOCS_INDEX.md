@@ -102,7 +102,7 @@ authority documents", never "this is how the code works".
 | `docs/HISTORY_REDESIGN_PLAN.md` | shipped flat History behavior and its open live checks |
 | `docs/DEFECT_LOG.md` | defect causes, fixes, guardrails, and residual verification gaps |
 | `docs/REDESIGN_TRIAGE.md` | triage of external UX suggestions — kept while the review is unresolved (3 of 4 suggestion sets pending) |
-| `docs/defi/` | DeFi backend workstream records (D-012): G0 dossier, answered decisions, registry/capability seeds — current gate state, never evidence of shipped behavior. Machine-readable artefacts: `scripts/defi-evidence/` |
+| `docs/defi/` | DeFi backend workstream records (D-012): G0 dossier, answered decisions, registry/capability seeds, M0 code inventory — current gate state, never evidence of shipped behavior. Machine-readable artefacts: `scripts/defi-evidence/` (evidence) and `test/fixtures/defi/` + `src/shared/contract/defi-schema.js` (M0 contract for the frontend) |
 
 ---
 

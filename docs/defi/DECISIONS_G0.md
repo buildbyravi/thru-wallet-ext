@@ -91,3 +91,16 @@ pinned package ships bindings (`./perp`, `./clob`).
    M0 (first manifest change), not G1 — sequencing note only.
 3. **INFO:** operator identity fields (§2 names/URLs) still blank; both builders should treat
    operator-referencing copy as placeholder until supplied.
+
+## Gate status (2026-10-05, post-G0)
+
+- **G0: closed by owner direction.** The owner's review agent ran the repo path (contract
+  integrity, quarantine 47/47 at the time, layering, collector, full tests incl. lifecycle
+  1017/1017) green on their machine and the owner directed M0. The one owner-side fix
+  (`pathToFileURL` in the evidence collector, commit `ea628cb`) is incorporated.
+- **M0: delivered 2026-10-05** on schedule with this file's corrections — READ=17 / EXEC=18,
+  43 methods, `defi-schema.js` as the machine schema, fixtures under `test/fixtures/defi/`
+  (outside the shipped corpus), the B16 quarantine rewrite in the same commit as the first
+  dex/launchpad-named code, and the quarantine corpus left alone otherwise. Inventory:
+  `docs/defi/M0_INVENTORY.md`. Closes with owner sign-off after the frontend-team contract
+  review; P3 (`verify-token-transfer.mjs` on a reachable machine) is independent of M0.
