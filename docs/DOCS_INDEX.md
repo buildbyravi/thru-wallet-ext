@@ -1,6 +1,6 @@
 # Documentation index
 
-Date: 2026-10-04
+Date: 2026-10-05
 Purpose: map the maintained documentation and point readers to the implementation and verification sources of truth. Documentation summarizes the code; it does not override it.
 
 ---
@@ -102,6 +102,7 @@ authority documents", never "this is how the code works".
 | `docs/HISTORY_REDESIGN_PLAN.md` | shipped flat History behavior and its open live checks |
 | `docs/DEFECT_LOG.md` | defect causes, fixes, guardrails, and residual verification gaps |
 | `docs/REDESIGN_TRIAGE.md` | triage of external UX suggestions — kept while the review is unresolved (3 of 4 suggestion sets pending) |
+| `docs/defi/` | DeFi backend workstream records (D-012): G0 dossier, answered decisions, registry/capability seeds — current gate state, never evidence of shipped behavior. Machine-readable artefacts: `scripts/defi-evidence/` |
 
 ---
 

@@ -1,0 +1,37 @@
+{
+  "matrixVersion": 0,
+  "networkId": "betanet",
+  "updatedAt": "2026-10-05",
+  "purpose": "Gate 0 capability-matrix seed (docs/defi/REGISTRY_AND_CAPABILITY_SEED.md). State is derived as flag AND registry AND feed AND dossier (flags do not exist yet — G0 adds no code — so every DeFi-facing capability is unsupported today). 'note' fields are seed annotations, not part of the S5 wire shape.",
+  "features": [
+    { "key": "balances", "state": "enabled", "reason": null, "evidenceRef": ["repo: contract v8-v16 balance services", "docs/AUDIT_REPORT.md gate C 2026-10-04 popup send observation"], "note": "Wallet-core capability; live reads observed working in the 2026-10-04 popup smoke." },
+    { "key": "tokenTransfer", "state": "enabled", "reason": null, "evidenceRef": ["repo: contract v8 token.transferChecked shipped", "docs/BACKEND_GAPS.md C1/C2"], "note": "Ships in the wallet today, but LIVE end-to-end semantics are OPEN (recipient-owner acceptance, token-program fee). Dependent DeFi features inherit TOKEN_PATH_UNVERIFIED until dossier Q13 (= P3) closes on a reachable machine." },
+    { "key": "swap", "state": "unsupported", "reason": "PROGRAM_NOT_VERIFIED", "evidenceRef": ["betanet.registry-seed.json role=amm"], "note": "Q14-Q16 and Q19 open; R2 requires a verified sell before any buy; R6 restricts built-in flows to registry programs." },
+    { "key": "pools", "state": "unsupported", "reason": "PROGRAM_NOT_VERIFIED", "evidenceRef": ["betanet.registry-seed.json role=amm"], "note": "Q15 pool model, Q17 native-THRU pool path and Q18 discovery open; add-liquidity stays disabled until remove is verified live (R2)." },
+    { "key": "launchMint", "state": "unsupported", "reason": "TOKEN_PATH_UNVERIFIED", "evidenceRef": ["docs/BACKEND_GAPS.md C1/C2", "betanet.registry-seed.json role=token"], "note": "P3 (Q13) is a hard precondition per B1. Q11 authority-revocation model and Q12 canonical-account rule also gate the template authority policy." },
+    { "key": "launchDirectPool", "state": "unsupported", "reason": "DEPENDENCY_UNVERIFIED", "evidenceRef": ["matrix: launchMint", "matrix: pools"], "note": "B8 enables models strictly in order: mint-only, then direct AMM pool, then curve." },
+    { "key": "launchCurve", "state": "unsupported", "reason": "LAUNCH_MODEL_UNAVAILABLE", "evidenceRef": ["betanet.registry-seed.json role=curve"], "note": "No curve/launch program found package-side (Q20); live search open; D1 forbids a project-authored curve in this workstream." },
+    { "key": "migrate", "state": "unsupported", "reason": "LAUNCH_MODEL_UNAVAILABLE", "evidenceRef": ["betanet.registry-seed.json role=curve"], "note": "Q21 (graduation trigger/caller/atomicity/LP disposition) unanswered; also needs the destination-pool griefing check (DESTINATION_POOL_PRE_EXISTING)." },
+    { "key": "claim", "state": "unsupported", "reason": "LAUNCH_MODEL_UNAVAILABLE", "evidenceRef": ["betanet.registry-seed.json role=curve"], "note": "Creator-fee accrual/recipient/claim mechanics unverified (Q21)." },
+    { "key": "charts", "state": "unsupported", "reason": "NO_INDEXER", "evidenceRef": ["docs/defi/DECISIONS_G0.md D2"], "note": "No project read API provided and no official public indexer verified (Q9). Candle data must never be fabricated." },
+    { "key": "discovery", "state": "unsupported", "reason": "NO_INDEXER", "evidenceRef": ["docs/defi/DECISIONS_G0.md D2"], "note": "Same dependency as charts; by-address token pages and own-launch reads remain direct-chain once their prerequisites verify." },
+    { "key": "simulation", "state": "unsupported", "reason": "NO_SIMULATION", "evidenceRef": ["docs/BACKEND_GAPS.md C3", "2026-10-05-official-docs"], "note": "tx.simulate is a declared-unsupported stub; the fetched spec pages document no simulate endpoint (Q5 open). Until Q5: decoder-only reviews labelled unsimulated, no Max where fees unmeasured.", "wireNote": "S5 Review.simulation stays 'unavailable' by default." },
+    { "key": "usd", "state": "unsupported", "reason": "DEPENDENCY_UNVERIFIED", "evidenceRef": ["betanet.registry-seed.json role=oracle"], "note": "D8: USD for native THRU only, and only with a verified source (Q22). scripts/probe-oracle-feed.mjs is the pending probe. Until then: dash, never a guess." }
+  ],
+  "limits": {
+    "quoteTtlMs": 15000,
+    "preparedTtlMs": 120000,
+    "slippageDefaultBps": 50,
+    "slippageWarnBps": 300,
+    "slippageMaxBps": 2000,
+    "priceImpactWarnBps": 500,
+    "priceImpactBlockBps": 1500,
+    "usdLiquidityFloorThru": null,
+    "maxCandles": 1000,
+    "pollMinMs": 5000,
+    "note": "PROJECT INPUTS section 5 starting values (owner left all inputs blank = defaults). slippageDefault 50 bps applies to verified assets; 300 bps is the suggested default for unverified/curve assets; 2000 bps cap is Desktop-advanced-only with typed confirmation. These are proposals for the product owner, not facts."
+  },
+  "registryVersion": 0,
+  "contractVersion": { "current": 16, "plannedRead": 17, "plannedExec": 18, "note": "Corrected at recon: repo is contract v16 with 81 methods (the prompts assumed 15/83, i.e. 16 and 17). READ surface takes the next free version, EXEC the one after." },
+  "feedSummary": { "feeds": [], "note": "No feed publisher provided in PROJECT INPUTS section 3. Where policy requires a feed (verified list, kill switch) the applicable reason is FEED_MISSING, falling back to the stricter unverified-asset policy. Signed-feed verification must tolerate an absent publisher (R16 kill switch is a narrowing-only control when it exists)." }
+}

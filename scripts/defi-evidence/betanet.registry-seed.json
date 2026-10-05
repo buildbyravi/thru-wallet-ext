@@ -1,0 +1,76 @@
+{
+  "registryVersion": 0,
+  "networkId": "betanet",
+  "updatedAt": "2026-10-05",
+  "purpose": "Gate 0 seed for the DeFi program registry (docs/defi/REGISTRY_AND_CAPABILITY_SEED.md). Addresses come from the pinned official packages exactly as src/lib/networks.js already sources them (@thru/programs/bootstrap-addresses, @thru/sdk), never from literals; verification state is layered on top here. Package-declared addresses are NOT proof of live deployment or current management authority (Q14/Q20).",
+  "genesisBinding": {
+    "status": "pending",
+    "reason": "docs/BACKEND_GAPS.md and the 2026-09-26 managed-genesis reset show managed program addresses can be reused across a genesis swap. B3 requires every record and cache to bind to the network's genesis identity; the history service already has a chain-identity gate (offline fingerprint + live genesis check) that will be reused or lifted into a shared helper when the registry is built (build-order step 3). A changed identity must invalidate records, caches and prepared intents with reason NETWORK_RESET.",
+    "boundGenesisId": null
+  },
+  "programs": [
+    {
+      "role": "token",
+      "address": "taTOKENKRgcl3vO0yVhftATDbXuhgWcfaaxv9xpEEdMdUE",
+      "trust": "unverified",
+      "verification": "goldenTested",
+      "changeStatus": "unknown",
+      "managementState": "bootstrap-managed (package-declared; live upgrade authority unverified)",
+      "updatedAt": "2026-10-05",
+      "evidenceRef": ["2026-10-05-package-surface", "repo: test/test-thru-client.mjs + test/test-token-balances.mjs wire goldens vs @thru/programs/token 0.4.1"],
+      "note": "Instruction byte formats and derivation are golden-tested against the pinned binding locally. LIVE SEMANTICS OPEN: recipient-owner acceptance of sender-created token accounts and the token-program fee (docs/BACKEND_GAPS.md C1/C2 = dossier Q12/Q13 = precondition P3)."
+    },
+    {
+      "role": "amm",
+      "address": "taAMMx8gG44RcOyRqNYZ55pDaAJoGS0R8kPYxBN96sO8kD",
+      "trust": "unverified",
+      "verification": "unknown",
+      "changeStatus": "unknown",
+      "managementState": "bootstrap-managed (package-declared; live deployment, upgrade authority and pool-creation control unverified)",
+      "updatedAt": "2026-10-05",
+      "evidenceRef": ["2026-10-05-package-surface"],
+      "note": "Package declares init-pool / add / withdraw / exact-in swap builders, events (swap, mint, burn, pool init, sync) and fee/liquidity constants. Zero live evidence: deployment, pool model, quote parity (Q14-Q19) all open."
+    },
+    {
+      "role": "curve",
+      "address": null,
+      "trust": "unverified",
+      "verification": "unknown",
+      "changeStatus": "unknown",
+      "managementState": "none found",
+      "updatedAt": "2026-10-05",
+      "evidenceRef": ["2026-10-05-package-surface"],
+      "note": "No launch or bonding-curve program appears in the pinned package's bootstrap-addresses export or export map (Q20 package-side negative). A live program-directory search is still outstanding; until one exists and is verified, launchCurve/migrate/claim stay LAUNCH_MODEL_UNAVAILABLE (D1: no project-authored on-chain program in this workstream)."
+    },
+    {
+      "role": "multicall",
+      "address": "taMULTIrOL8WpIFr16C1ECsO60qAsuwmwJephZHDOTvSeP",
+      "trust": "unverified",
+      "verification": "unknown",
+      "changeStatus": "unknown",
+      "managementState": "bootstrap-managed (package-declared)",
+      "updatedAt": "2026-10-05",
+      "evidenceRef": ["2026-10-05-package-surface", "2026-10-05-official-docs"],
+      "note": "Needed for atomic multi-step flows (Q1): the spec shows one program call per transaction, so atomicity wants a verified multicall. Signer-privilege, failure and trust semantics need ABI read + a live multi-call transaction with a deliberate failure."
+    },
+    {
+      "role": "oracle",
+      "address": "taORCLOkTSYq5enR2XOGoSDmzMc0P5NlqjP8nKpfd3vgps",
+      "trust": "unverified",
+      "verification": "unknown",
+      "changeStatus": "unknown",
+      "managementState": "bootstrap-managed (package-declared)",
+      "updatedAt": "2026-10-05",
+      "evidenceRef": ["2026-10-05-package-surface"],
+      "note": "Only path to THRU/USD (Q22). scripts/probe-oracle-feed.mjs exists but has not run on a reachable machine; D8 keeps USD native-THRU-only and a dash until a verified source exists."
+    }
+  ],
+  "relatedDeclaredConstants": {
+    "wthru": "taWTHRUBelpONhTRjYc7n4OovodUsUtZKTIuREWAi9G9lm",
+    "wthru_mint": "taaoXQw03WlYWdo1jhfFi2Nqfqsf4RqYySn_89mchjCiLb",
+    "wthru_vault": "taEqcObTD3WldMGFOW28FBKF6_mQfSbci1TC77YyssQQhP",
+    "note": "Q17 lead: how native THRU enters a pool (wrapped or direct) is unverified live.",
+    "evidenceRef": ["2026-10-05-package-surface"]
+  },
+  "customNetworks": "DeFi disabled with reason CUSTOM_NETWORK per D14 and the shipped contract-v7 quarantine; no override path exists or may be added."
+}
