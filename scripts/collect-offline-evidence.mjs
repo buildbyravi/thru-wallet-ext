@@ -25,7 +25,7 @@ import { createRequire } from 'node:module';
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(join(ROOT, 'package.json'));
@@ -124,7 +124,7 @@ try {
   sdkSurface = { ok: false, error: String(err.message || err) };
 }
 
-const manifest = await import(join(ROOT, 'src', 'shared', 'contract', 'manifest.js')).catch(() => null);
+const manifest = await import(pathToFileURL(join(ROOT, 'src', 'shared', 'contract', 'manifest.js')).href).catch(() => null);
 let contract = null;
 if (manifest && manifest.METHODS) {
   const missing = SHARED_CONTRACT_RELIES_ON.filter((m) => !manifest.METHODS[m]);
@@ -142,7 +142,7 @@ if (manifest && manifest.METHODS) {
 
 let networks = null;
 try {
-  const nets = await import(join(ROOT, 'src', 'lib', 'networks.js'));
+  const nets = await import(pathToFileURL(join(ROOT, 'src', 'lib', 'networks.js')).href);
   const list = Object.values(nets.NETWORKS).map((n) => ({
     id: n.id,
     enabled: n.enabled === true,
