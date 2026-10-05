@@ -1,37 +1,28 @@
 // Launchpad quarantine checks — the legacy launchpad/DEX/prediction surface must stay out of
-// the shipped extension.
+// the shipped extension. REWRITTEN for the M0 DeFi contract drop (2026-10-05, docs/defi/):
 //
-// WHY THIS EXISTS
+//   BEFORE M0 this file asserted "no code with dex/launchpad vocabulary may exist anywhere in
+//   the shipped runtime". That was right when DeFi meant exactly one fake page.
 //
-// The launchpad used to be a FEATURE FLAG rather than a deletion, and a flag is a product
-// decision about what the UI advertises — it is not a security boundary. The consequences were
-// all real (docs/AUDIT_REPORT.md F-04):
+//   FROM M0 the repository intentionally contains a DeFi BACKEND surface (contract v17/v18
+//   methods, feature backends under src/background/features/**, capability snapshot, fixtures)
+//   shipping in dist/background.bundle.js — gated off by build-time flags. A file-name ban on
+//   "dex" would now forbid exactly the structure docs/MODULE_BOUNDARIES.md requires. So the
+//   invariant moved from "no dex strings" to the B16 statement:
 //
-//   - `src/launchpad/**` kept building, so `dist/launchpad.html` shipped in every release and
-//     was reachable by direct URL even with FEATURE_LAUNCHPAD false.
-//   - `popup.html?launchpad=1` turned the whole surface on for anyone who typed it.
-//   - that page interpolated token names, tickers, mint addresses and explorer URLs into
-//     `innerHTML`/`insertAdjacentHTML`, outside the src/ui DOM-sink ratchet — the strongest
-//     XSS guardrail the wallet has, bypassed by the one page nobody looked at.
-//   - its DEX tab quoted swaps from `parseFloat()` and a hard-coded 23.5294 rate, and its
-//     "Execute Swap On-Chain" button was a `setTimeout` that reported a trade that never
-//     happened. A wallet that fabricates a price or a fill is worse than one with no price.
+//     1. DeFi code exists only in designated feature/backend locations (allowlist).
+//     2. Every DeFi route is unreachable while its flag is off (flags + live probes).
+//     3. No flag has a URL or storage override.
+//     4. dist/ contains no fixture, mock, or gallery content.
 //
-// The tree is deleted. These checks are what keeps it deleted: they fail on the source, on the
-// flags, on the route/control surface, and on a real build's dist/ output.
+//   AND EVERYTHING THAT STILL PROTECTS IS KEPT:
+//     - the legacy tree (src/launchpad/**, src/popup/icons.js, src/popup/toast.js) stays deleted;
+//     - no FEATURE_LAUNCHPAD, no ?launchpad=1, no launchpad.html anywhere, including dist/;
+//     - no fabricated DeFi math (23.5294, tokenRate, float money) or fake trade copy;
+//     - zero HTML-injection sinks; the popup bundle + pages carry no DeFi surface at all.
 //
-// WHAT THIS IS NOT
-//
-// Not a statement that a launchpad can never exist. It can — as an isolated
-// `src/features/launchpad/**` module with `launchpad.*` backend namespaces, guarded DOM, and
-// real quotes from a verified AMM/indexer, per docs/MODULE_BOUNDARIES.md and the retained
-// research in docs/LAUNCHPAD_UX_STUDY.md, docs/LAUNCHPAD_DEX_MIGRATION_UX.md and
-// docs/THRU_NATIVE_DEFI_TAB_UX.md. Building that is a deliberate, reviewed change which must
-// update this file on purpose. Do not weaken an assertion here to make a regression pass.
-//
-// Backend token methods (`token.deploy`, `token.list`, `token.deriveAddress`, …) are NOT part
-// of the quarantined surface and are NOT touched by it: the contract is append-only, and the
-// RPC/instruction code behind them is sacred. Only the legacy UI is gone.
+// Restoring the legacy surface still fails this file at multiple checks. Weakening an
+// assertion here to make something pass is exactly the failure mode this file exists to catch.
 //
 // Run: node test-launchpad-quarantine.mjs
 // Set QUARANTINE_SKIP_BUILD=1 to assert against an existing dist/ instead of rebuilding it.
@@ -61,7 +52,7 @@ function section(title) {
 }
 
 // ---------------------------------------------------------------------------
-// Scanning helpers
+// Scanning helpers (unchanged semantics: comments stripped, strings kept)
 // ---------------------------------------------------------------------------
 
 function walk(dir, exts, out = []) {
@@ -85,15 +76,6 @@ function walk(dir, exts, out = []) {
 
 const rel = (f) => relative(ROOT, f).split(sep).join('/');
 
-/**
- * Blank out comments while KEEPING string literals, preserving line numbers.
- *
- * A comment that explains why the launchpad was removed must not read as a launchpad
- * reference — src/shared/flags.js documents the quarantine at length. Strings must survive,
- * because that is exactly where a URL like `getURL('launchpad.html')` lives.
- *
- * String state is tracked so a `//` inside `'https://rpc…'` is not mistaken for a comment.
- */
 function stripComments(source) {
   let out = '';
   let i = 0;
@@ -123,7 +105,6 @@ function stripComments(source) {
       out += c === '\n' ? '\n' : ' '; i += 1; continue;
     }
 
-    // Inside a string or template literal: copy verbatim so markers in strings are visible.
     if (c === '\\') { out += source[i + 1] ?? ''; i += 2; continue; }
     if ((state === 'single' && c === "'") || (state === 'double' && c === '"') || (state === 'template' && c === '`')) {
       state = 'code';
@@ -134,7 +115,6 @@ function stripComments(source) {
   return out;
 }
 
-/** Blank out comments AND string bodies — for finding code that runs, not text that mentions. */
 function stripCommentsAndStrings(source) {
   let out = '';
   let i = 0;
@@ -166,7 +146,7 @@ function stripCommentsAndStrings(source) {
 
     if (c === '\\') { out += '  '; i += 2; continue; }
     if ((state === 'single' && c === "'") || (state === 'double' && c === '"') || (state === 'template' && c === '`')) {
-      state = 'code'; out += ' '; i += 1; continue;
+      state = 'code';
     }
     out += c === '\n' ? '\n' : ' '; i += 1;
   }
@@ -174,17 +154,14 @@ function stripCommentsAndStrings(source) {
   return out;
 }
 
-/** Blank out `<!-- … -->` blocks, preserving line numbers. */
 function stripHtmlComments(source) {
   return source.replace(/<!--[\s\S]*?-->/g, (m) => m.replace(/[^\n]/g, ' '));
 }
 
-/** Blank out CSS block comments, preserving line numbers. */
 function stripCssComments(source) {
   return source.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '));
 }
 
-/** Every `file:line` where a pattern matches, across a prepared corpus. */
 function findHits(corpus, re) {
   const hits = [];
   for (const { file, text } of corpus) {
@@ -210,7 +187,7 @@ const corpus = [
 ];
 
 // ---------------------------------------------------------------------------
-// 1. The legacy tree is deleted
+// 1. The legacy tree is deleted (kept from the pre-M0 file, verbatim)
 // ---------------------------------------------------------------------------
 
 section('Legacy launchpad tree is deleted, not flagged off');
@@ -220,9 +197,6 @@ const DELETED = [
   'src/launchpad/launchpad.js',
   'src/launchpad/launchpad.html',
   'src/launchpad/launchpad.css',
-  // Both existed only to serve launchpad.js: icons.js is a markup-string factory whose output
-  // was consumed by insertAdjacentHTML, and toast.js fed the #toast-container that only that
-  // page filled. The guarded replacements are src/ui/kit/icon.js and src/ui/kit/feedback.js.
   'src/popup/icons.js',
   'src/popup/toast.js',
 ];
@@ -230,18 +204,29 @@ for (const path of DELETED) {
   ok(`${path} does not exist`, !existsSync(path));
 }
 
-const resurrected = [...SHIPPED_JS, ...SHIPPED_CSS, ...SHIPPED_HTML].filter((f) => /launchpad|\bdex\b|prediction/i.test(f));
+// M0 change: DeFi vocabulary in FILE NAMES is now allowed — but only under the designated
+// backend feature locations. Everything else named after the surface is still a violation.
+const DEFI_FILE_ALLOWLIST = /^src\/background\/(features\/|services\/(defi\/|(program|feed|market|risk|intent|desktop)-service\.js$))/;
+const resurrected = [...SHIPPED_JS, ...SHIPPED_CSS, ...SHIPPED_HTML]
+  .filter((f) => /launchpad|\bdex\b|prediction/i.test(f))
+  .filter((f) => !DEFI_FILE_ALLOWLIST.test(f));
 ok(
-  'no shipped source file is named after the quarantined surface',
+  'no shipped source file is named after the surface outside src/background/features|services/defi',
   resurrected.length === 0,
   resurrected.join(', '),
 );
 
+// DeFi names must not show up in UI-facing trees at all (screens arrive with their flags).
+const uiDefi = [...SHIPPED_JS, ...SHIPPED_CSS, ...SHIPPED_HTML]
+  .filter((f) => /^src\/(ui|popup|desktop)\//.test(f))
+  .filter((f) => /launchpad|\bdex\b|prediction/i.test(f));
+ok('no UI-tree file is named after the DeFi surface', uiDefi.length === 0, uiDefi.join(', '));
+
 // ---------------------------------------------------------------------------
-// 2. Nothing in the shipped runtime points at it
+// 2. Legacy markers stay banned; DeFi vocabulary stays in the backend allowlist
 // ---------------------------------------------------------------------------
 
-section('No shipped source references the quarantined surface');
+section('No shipped source references the legacy quarantined surface');
 
 const SURFACE_MARKERS = [
   { id: 'launchpad page/bundle reference', re: /launchpad\.(html|css|bundle\.js)|['"`]launchpad['"`]|getURL\(\s*['"]launchpad/i },
@@ -251,6 +236,14 @@ const SURFACE_MARKERS = [
   { id: 'dex/prediction hash route', re: /#\s*\/\s*(dex|swap|predictions?|launchpad|my-tokens)\b/i },
   { id: 'dex/prediction tab or action', re: /data-(?:tab|route|action)=["']?(?:dex|predictions?|launchpad|bet-market)\b/i },
 ];
+
+// The detectors must still fire, so "no hits" below is never a vacuous pass.
+ok('the legacy detectors still fire on synthetic legacy references',
+  /launchpad\.html/.test("getURL('launchpad.html')")
+    && /FEATURE_LAUNCHPAD/.test('const x = FEATURE_LAUNCHPAD;')
+    && /\?launchpad=1/.test('open popup.html?launchpad=1')
+    && /#\s*\/\s*dex\b/i.test("location.hash = '#/dex'")
+    && /data-tab=["']?dex\b/i.test('<a data-tab="dex">Trade</a>'));
 
 for (const marker of SURFACE_MARKERS) {
   const hits = findHits(corpus, marker.re);
@@ -264,17 +257,14 @@ for (const marker of SURFACE_MARKERS) {
 section('No fabricated DeFi math or copy in the shipped runtime');
 
 const FAKE_DEFI_MARKERS = [
-  // The legacy DEX tab: `const tokenRate = 23.5294;` then `payVal * tokenRate`, both floats.
-  { id: 'hard-coded bonding-curve rate', re: /23\.5294|tokenRate\b|bondingCurve/i },
-  // Rule: money is BigInt only (AGENTS.md #6). Nothing in the shipped runtime may parse a
-  // float — the only calls that ever existed were the fake quote and the fake "max" chip.
+  // Hard-coded quote rate from the fake legacy DEX tab. `bondingCurve` as an identifier is
+  // banned here; the concept is discussed in comments/docs (comments are stripped for this scan).
+  { id: 'hard-coded bond-curve rate', re: /23\.5294|tokenRate\b|bondingCurve/i },
+  // Money is BigInt only (AGENTS.md #6). Nothing in the shipped runtime may parse a float.
   { id: 'float money math', re: /parseFloat\s*\(/ },
   { id: 'simulated trade copy', re: /Execute Swap|Swap simulated|Simulated prediction|Executing on-chain/i },
-  { id: 'dex/prediction vocabulary', re: /\bDEX\b|\bdex\b|\bpredictions?\b|\bswapMode\b|\bamm\b/i },
 ];
 
-// Only our own code is scanned for these. Third-party bundles under node_modules are not part
-// of the corpus, and dist/ is checked separately below with a narrower pattern list.
 for (const marker of FAKE_DEFI_MARKERS) {
   const hits = findHits(corpus, marker.re);
   ok(
@@ -284,17 +274,57 @@ for (const marker of FAKE_DEFI_MARKERS) {
   );
 }
 
+section('DeFi vocabulary is confined to the backend contract surface');
+
+// dex/launchpad/amm/prediction words are expected in the M0 backend (method names, the
+// capability matrix, feature services). They must appear NOWHERE else in the shipped runtime:
+// not in UI code, not in build.mjs, not in src/manifest.json, not in shared UI-facing helpers.
+const DEFI_VOCAB_ALLOWLIST = /^src\/(background\/(features\/|api-router\.js$|services\/(defi\/|(program|feed|market|risk|intent|desktop)-service\.js$))|shared\/contract\/)/;
+const vocabHits = [];
+for (const { file, text } of corpus) {
+  if (DEFI_VOCAB_ALLOWLIST.test(file)) continue;
+  text.split('\n').forEach((line, i) => {
+    if (/\bdex\b|\bamm\b|\bpredictions?\b|\blaunchpad\b|\bswapMode\b/i.test(line)) {
+      vocabHits.push(`${file}:${i + 1}  ${line.trim().slice(0, 110)}`);
+    }
+  });
+}
+ok(
+  'dex/launchpad/amm/prediction vocabulary exists only under src/background/features, src/background/services/(defi|*-service) and src/shared/contract',
+  vocabHits.length === 0,
+  vocabHits.join('\n         '),
+);
+
 // ---------------------------------------------------------------------------
-// 3. Flags: the override is gone and inert
+// 3. Flags: no override path exists for any product flag
 // ---------------------------------------------------------------------------
 
 section('Feature flags cannot re-enable the surface');
 
-const { FLAGS, isEnabled, applyQueryOverrides } = await import('../src/shared/flags.js');
+const { FLAGS, isEnabled, isDefiFeatureEnabled, applyQueryOverrides } = await import('../src/shared/flags.js');
 
 ok('FLAGS has no FEATURE_LAUNCHPAD key', !('FEATURE_LAUNCHPAD' in FLAGS));
 ok('FLAGS has no FEATURE_TOKEN_DEPLOY key', !('FEATURE_TOKEN_DEPLOY' in FLAGS));
 ok('isEnabled() reports the retired flag as disabled', isEnabled('FEATURE_LAUNCHPAD') === false);
+
+const EXPECTED_FLAGS = ['DEBUG_ROUTING', 'DEFI', 'DEFI_READ', 'DEFI_DEX', 'DEFI_LAUNCHPAD', 'DEFI_MARKET', 'DEFI_RISK', 'DEFI_INTENT', 'DEFI_FEED', 'DEFI_DESKTOP'];
+ok(
+  'the flag set is exactly: routing diagnostics + the M0 DeFi gates',
+  JSON.stringify(Object.keys(FLAGS)) === JSON.stringify(EXPECTED_FLAGS),
+  JSON.stringify(Object.keys(FLAGS)),
+);
+
+const DEFI_FLAG_NAMES = EXPECTED_FLAGS.filter((f) => f.startsWith('DEFI'));
+ok(
+  'every DEFI_* flag is false in this build',
+  DEFI_FLAG_NAMES.every((f) => FLAGS[f] === false),
+  JSON.stringify(Object.fromEntries(DEFI_FLAG_NAMES.map((f) => [f, FLAGS[f]]))),
+);
+
+// The master switch must dominate: a lone sub-flag can never enable a feature.
+FLAGS.DEFI_READ = true;
+ok('a sub-flag alone enables nothing (master switch dominates)', isDefiFeatureEnabled('DEFI_READ') === false);
+FLAGS.DEFI_READ = false;
 
 const before = { ...FLAGS };
 applyQueryOverrides('?launchpad=1');
@@ -304,44 +334,118 @@ ok(
   `before ${JSON.stringify(before)} after ${JSON.stringify(FLAGS)}`,
 );
 
-applyQueryOverrides('?launchpad=1&dex=1&predictions=1&token-deploy=1');
+applyQueryOverrides('?launchpad=1&dex=1&predictions=1&token-deploy=1&defi=1&defi-read=1&defi-dex=1&defi-launchpad=1');
 ok(
-  'no retired-surface query parameter is honoured',
+  'no retired-surface or DeFi query parameter is honoured',
   JSON.stringify(FLAGS) === JSON.stringify(before),
   `flags after override: ${JSON.stringify(FLAGS)}`,
 );
 
 // The function itself must still work, or "changes nothing" would be a vacuous pass.
 applyQueryOverrides('?debug=1');
-ok('a supported override still works, so the check above is not vacuous', FLAGS.DEBUG_ROUTING === true);
+ok('the supported diagnostics override still works, so the checks above are not vacuous', FLAGS.DEBUG_ROUTING === true);
 FLAGS.DEBUG_ROUTING = before.DEBUG_ROUTING;
-ok('the only remaining flag is non-persistent routing diagnostics', JSON.stringify(Object.keys(FLAGS)) === '["DEBUG_ROUTING"]');
+
+// No persistent override path: the flags module must not read storage of any kind.
+{
+  const flagsSource = stripComments(readFileSync('src/shared/flags.js', 'utf8'));
+  const persistanceHits = flagsSource.split('\n')
+    .map((line, i) => ({ line, i }))
+    .filter(({ line }) => /chrome\s*\.\s*storage|localStorage|sessionStorage/.test(line))
+    .map(({ line, i }) => `src/shared/flags.js:${i + 1}  ${line.trim().slice(0, 110)}`);
+  ok('src/shared/flags.js contains no storage access (no persistent flag override path)',
+    persistanceHits.length === 0, persistanceHits.join('\n         '));
+}
 
 // ---------------------------------------------------------------------------
 // 4. Routes and controls
 // ---------------------------------------------------------------------------
 
-section('No route or control points at the quarantined surface');
+section('No route or control points at the DeFi surface');
 
 const bootSource = stripComments(readFileSync('src/ui/app/boot.js', 'utf8'));
 const registered = [...bootSource.matchAll(/path:\s*'(\/[a-z0-9-]*)'/g)].map((m) => m[1]);
-ok('the route table is non-empty (14 popup routes)', registered.length === 14, registered.join(', '));
+// M0 adds NO routes: DeFi screens ship with their flags in later gates, not before.
+ok('the route table is unchanged (14 popup routes, no DeFi routes)', registered.length === 14, registered.join(', '));
 const defiRoutes = registered.filter((p) => /launchpad|dex|prediction|swap|market|token/i.test(p));
 ok('no registered route is a launchpad/DEX/prediction surface', defiRoutes.length === 0, defiRoutes.join(', '));
 
-// `chrome.tabs.create({ url: chrome.runtime.getURL('launchpad.html') })` was the dashboard
-// control that opened the page. The wallet has exactly one extension page now, so nothing in
-// the shipped runtime should be opening another tab at all.
 const tabHits = findHits(corpus, /chrome\s*\.\s*(?:tabs|windows)\s*\.\s*(?:create|update|remove)\s*\(/);
 ok('the shipped runtime opens no separate extension tab/window', tabHits.length === 0, tabHits.join('\n         '));
 
-// A control pointing at a page that is not built is the same defect as a route pointing at a
-// screen that is not registered: it fails only when a user clicks it.
 const urlHits = findHits(corpus, /chrome\s*\.\s*runtime\s*\.\s*getURL\s*\(/);
-ok('no getURL() call targets a page that is no longer built', urlHits.length === 0, urlHits.join('\n         '));
+ok('no getURL() call targets a page that is not built', urlHits.length === 0, urlHits.join('\n         '));
 
 // ---------------------------------------------------------------------------
-// 5. Manifest
+// 4b. Live gating probes: gated DeFi methods refuse IN THIS BUILD
+// ---------------------------------------------------------------------------
+
+section('DeFi handlers provably refuse while every DEFI_* flag is off');
+
+// chrome stubs let the background module graph load; only handler dispatch is exercised.
+globalThis.chrome = {
+  runtime: { id: 'test', onMessage: { addListener() {} }, onInstalled: { addListener() {} }, onStartup: { addListener() {} } },
+  alarms: { create() {}, clear() {}, onAlarm: { addListener() {} } },
+  storage: {
+    local: { get: async () => ({}), set: async () => {}, remove: async () => {} },
+    session: { get: async () => ({}), set: async () => {}, remove: async () => {} },
+  },
+};
+const { handleApiRequest } = await import('../src/background/api-router.js');
+
+// env:'result' reads (auth none): the gate answer is a real wire value, not an error.
+const quote = await handleApiRequest({
+  method: 'dex.quote',
+  params: { poolId: 'taPoolFixture1', inputAssetId: 'native', outputAssetId: 'taAssetFixture1', inputAmountUnits: '1' },
+});
+ok('dex.quote answers { supported:false, reason:FLAG_OFF } in data',
+  quote.ok === true && quote.data?.supported === false && quote.data?.reason === 'FLAG_OFF',
+  JSON.stringify(quote));
+
+const candles = await handleApiRequest({
+  method: 'market.candles',
+  params: { assetId: 'native', interval: '15m' },
+});
+ok('market.candles answers { supported:false, reason:FLAG_OFF } in data',
+  candles.ok === true && candles.data?.supported === false && candles.data?.reason === 'FLAG_OFF',
+  JSON.stringify(candles));
+
+const desktop = await handleApiRequest({ method: 'desktop.open', params: { page: 'markets' } });
+ok('desktop.open answers { enabled:false, reason:FLAG_OFF } in data',
+  desktop.ok === true && desktop.data?.enabled === false && desktop.data?.reason === 'FLAG_OFF',
+  JSON.stringify(desktop));
+
+// env:'error' reads require unlock first: in this stubbed environment the wallet is locked, so
+// the honest answer is WALLET_LOCKED — proving a locked wallet cannot even reach the gate.
+const intentGet = await handleApiRequest({ method: 'intent.get', params: { intentId: 'in_fixture1' } });
+ok('intent.get is refused (WALLET_LOCKED) before any pipeline code could run',
+  intentGet.ok === false && intentGet.error?.code === 'WALLET_LOCKED', JSON.stringify(intentGet));
+
+const submit = await handleApiRequest({
+  method: 'intent.submit',
+  params: { intentId: 'in_fixture1', bindingHash: 'bh_fixture' },
+});
+ok('intent.submit is refused (WALLET_LOCKED) — the only DeFi signing path stayed closed',
+  submit.ok === false && submit.error?.code === 'WALLET_LOCKED', JSON.stringify(submit));
+
+// Schema validation runs BEFORE auth: a malformed request fails as INVALID_INPUT even from a
+// locked wallet, so no service is ever touched by garbage input.
+const badQuote = await handleApiRequest({
+  method: 'dex.quote',
+  params: { poolId: 'taPoolFixture1', inputAssetId: 'native', outputAssetId: 'taAssetFixture1', inputAmountUnits: '12.5' },
+});
+ok('dex.quote rejects a float amount with INVALID_INPUT at the seam',
+  badQuote.ok === false && badQuote.error?.code === 'INVALID_INPUT', JSON.stringify(badQuote));
+
+const badUpload = await handleApiRequest({
+  method: 'launchpad.uploadImage',
+  params: { address: 'taUserFixture1', networkId: 'betanet', payload: { bytesBase64: 'AAAA', mime: 'text/html' } },
+});
+ok('launchpad.uploadImage rejects a non-image payload with INVALID_INPUT before auth',
+  badUpload.ok === false && badUpload.error?.code === 'INVALID_INPUT', JSON.stringify(badUpload));
+
+// ---------------------------------------------------------------------------
+// 5. Extension manifest (kept unchanged)
 // ---------------------------------------------------------------------------
 
 section('Manifest ships one page and advertises no launchpad');
@@ -367,9 +471,6 @@ ok(
 section('Zero HTML-injection sinks in all of src/ (not just src/ui/)');
 
 const DOM_SINK_RE = /\.(innerHTML|outerHTML)\s*(?:[+\-*/%&|^]|\?\?|\|\||&&)?=(?!=)|insertAdjacentHTML\s*(?:\?\.)?\s*\(|document\s*\??\.\s*write(?:ln)?\s*(?:\?\.)?\s*\(/;
-// `${el.innerHTML = value}` executes even inside a nested template. Lower templates and
-// canonicalize static bracket properties before masking strings/comments; a literal string
-// containing `.innerHTML =` must still not count as code.
 async function executableSource(source) {
   const { code } = await transform(source, {
     loader: 'js', target: 'esnext', supported: { 'template-literal': false },
@@ -401,11 +502,9 @@ ok(
 // 7. dist/ proof — build for real, then inspect the artifact
 // ---------------------------------------------------------------------------
 
-section('dist/ contains no launchpad code');
+section('dist/ contains no legacy surface and no fixture content');
 
 const skipBuild = process.env.QUARANTINE_SKIP_BUILD === '1';
-// Esbuild emits warnings to stderr, not stdout. Checking stdout alone made the old
-// "no CSS/JS warnings" assertion pass even when the build warned about broken CSS.
 const hasBuildWarning = ({ stdout = '', stderr = '' }) => /\[WARNING\]/i.test(`${stdout}\n${stderr}`);
 ok('the warning detector catches stderr (esbuild) and stdout without matching clean logs',
   hasBuildWarning({ stderr: '▲ [WARNING] broken CSS' })
@@ -415,9 +514,8 @@ if (skipBuild) {
   console.log('  note - QUARANTINE_SKIP_BUILD=1: asserting against the existing dist/ instead of rebuilding.');
   ok('dist/ exists to assert against', existsSync('dist'));
 } else {
-  // Rebuild rather than trust whatever dist/ happens to hold: a stale dist/ from before the
-  // quarantine would otherwise be inspected, and the whole point is to prove what the CURRENT
-  // source produces. build.mjs wipes dist/ first, so a removed entry point cannot linger.
+  // Rebuild rather than trust whatever dist/ happens to hold: build.mjs wipes dist/ first, so a
+  // removed entry point cannot linger.
   const built = spawnSync(process.execPath, ['build.mjs'], { cwd: ROOT, encoding: 'utf8' });
   ok('npm run build succeeds', built.status === 0, `${built.stdout || ''}\n${built.stderr || ''}`.slice(-1200));
   ok('the build reports no CSS/JS warning', !hasBuildWarning(built),
@@ -440,15 +538,19 @@ if (existsSync('dist')) {
     bundles.sort().join(', '),
   );
 
-  // Content scan of the artifact itself. Patterns are limited to things OUR code would put
-  // there: a third-party SDK bundled into background.bundle.js is allowed to contain the word
-  // "index" or its own float parsing, so dist is not held to the src-wide float rule.
+  // Bans that apply to EVERY text artifact. background.bundle.js legitimately contains
+  // dex.*/launchpad.* METHOD NAMES (the gated M0 contract surface) — that is pre-approved
+  // backend vocabulary, not the page. What must never appear in any artifact:
   const DIST_MARKERS = [
-    { id: 'launchpad reference', re: /launchpad/i },
-    { id: 'fabricated bonding-curve rate', re: /23\.5294/ },
+    { id: 'legacy launchpad page reference', re: /launchpad\.html|\?launchpad=1|launchpad-banner/i },
+    { id: 'legacy launchpad flag', re: /FEATURE_LAUNCHPAD|FEATURE_TOKEN_DEPLOY/ },
+    { id: 'fabricated bond-curve rate', re: /23\.5294/ },
     { id: 'simulated trade copy', re: /Execute Swap|Swap simulated|Simulated prediction/i },
     { id: 'prediction-market surface', re: /\bpredictions?\b/i },
     { id: 'HTML-injection sink', re: /\.innerHTML\s*=|\.outerHTML\s*=|insertAdjacentHTML\s*\(|document\.write\s*\(/ },
+    // B16-4: no fixture/mock/gallery content may ship. The fixture corpus marks itself with
+    // __defiFixtureVersion; any leak into dist means the test tree escaped into the bundle.
+    { id: 'fixture, mock or gallery content', re: /__defiFixtureVersion|mock-bridge|test-fixture/i },
   ];
 
   const textFiles = distFiles.filter((f) => /\.(js|css|html|json)$/.test(f));
@@ -465,6 +567,33 @@ if (existsSync('dist')) {
     );
   }
 
+  // UI-facing artifacts must carry no DeFi SURFACE: the popup bundle legitimately embeds the
+  // shared contract manifest via src/ui/app/bridge.js (it always has — that is how the bridge
+  // validates method names), so contract method-name vocabulary is expected there; what must
+  // not appear anywhere UI-side is prediction vocabulary (never in the contract) or any
+  // launchpad/prediction word in the page/CSS/manifest artifacts themselves.
+  {
+    const popupBundle = readFileSync('dist/popup.bundle.js', 'utf8');
+    ok('dist/popup.bundle.js contains no prediction vocabulary and no legacy page artifacts',
+      !/\bpredictions?\b/i.test(popupBundle) && !/launchpad\.html|\?launchpad=1/i.test(popupBundle),
+      `${popupBundle.length} bytes scanned`);
+    // Non-vacuous guard: the bridge really does embed the contract names, so this file would
+    // catch the removal of the approval this comment records.
+    ok('dist/popup.bundle.js embeds the shared contract (bridge design, pre-approved)',
+      /launchpad\.listMine/.test(popupBundle) && /dex\.quote/.test(popupBundle),
+      'contract method names not found — bridge.js no longer embeds the manifest?');
+  }
+  const UI_ARTIFACTS = ['dist/popup.html', 'dist/popup.css', 'dist/manifest.json'];
+  for (const file of UI_ARTIFACTS) {
+    if (!existsSync(file)) continue;
+    const text = readFileSync(file, 'utf8');
+    ok(
+      `${file} contains no launchpad/prediction vocabulary`,
+      !/launchpad|\bpredictions?\b/i.test(text),
+      `${text.length} bytes scanned`,
+    );
+  }
+
   const distManifest = JSON.parse(readFileSync('dist/manifest.json', 'utf8'));
   ok('dist/manifest.json matches src/manifest.json', JSON.stringify(distManifest) === JSON.stringify(manifest));
 }
@@ -477,8 +606,11 @@ console.log(`\n${failures === 0 ? 'All' : ''} launchpad quarantine checks: ${che
 if (failures > 0) {
   console.error(`\n${failures} quarantine check(s) failed.`);
   console.error('The legacy launchpad/DEX/prediction surface must stay out of the shipped extension.');
-  console.error('A future launchpad is a new src/features/launchpad/** module, not a revival of this one.');
+  console.error('The M0 DeFi backend surface ships gated off: flags false, allowlisted locations,');
+  console.error('probed refusals, no fixtures in dist/. Weakening any of that on purpose is a');
+  console.error('reviewed, deliberate change to this file — never a silent edit.');
   process.exit(1);
 }
-console.log('The legacy launchpad is quarantined: deleted from src/, absent from dist/, unreachable by URL,');
-console.log('flag or control. Research docs are retained under docs/.');
+console.log('The legacy launchpad stays quarantined: deleted from src/, absent from dist/, unreachable by');
+console.log('URL, flag or control. The M0 DeFi contract surface ships in the background bundle with every');
+console.log('flag off, refused by live probes, and no fixture or mock content in any artifact.');

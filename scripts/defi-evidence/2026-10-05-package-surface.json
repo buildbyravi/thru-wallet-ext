@@ -340,11 +340,14 @@
     ]
   },
   "contract": {
-    "version": 16,
-    "methodCount": 81,
+    "version": 18,
+    "methodCount": 124,
     "eventsMap": [
       "accountsChanged",
       "balanceChanged",
+      "capabilitiesChanged",
+      "feedChanged",
+      "intentChanged",
       "lockStateChanged",
       "networkChanged",
       "pendingTxChanged"

@@ -37,6 +37,17 @@ const DEFAULTS = {
   // Notifications
   desktopNotifications: true,
 
+  // DeFi (M0, contract v17/v18). Inert while the DEFI_* build flags are all off
+  // (src/shared/flags.js); registered now so the frontend's settings forms land on the real
+  // storage contract instead of inventing their own keys later.
+  defiSlippageBps: 50,          // verified-asset default (capability-matrix limits); 0..2000
+  defiLoadImages: false,        // token images off by default: privacy + content pinning
+  defiShowUnverified: false,    // unverified assets hidden by default (strict allowlist DNA)
+  defiNotifications: true,      // intent lifecycle notifications (settled/failed/waiting)
+  defiTosAcceptedVersion: null, // version string when a launch ToS is accepted, else null
+  defiRiskAckVersion: null,     // version string when the launch risk text is acknowledged
+  defiAlwaysRequirePassword: false, // SECURITY FIELD: no-bypass DeFi signing re-auth
+
   // First-run / nagging state
   disclaimerAcknowledgedAt: null,
   backupReminderDismissedAt: null,
@@ -51,13 +62,18 @@ const SECURITY_FIELDS = new Set([
   'enforceWhitelist',
   'whitelist',
   'requirePasswordForSigning',
+  // DeFi signing re-auth is a security field: an unattended unlocked session must not be able
+  // to lower it before submitting an intent (same reasoning as requirePasswordForSigning).
+  'defiAlwaysRequirePassword',
 ]);
 
 const BOOLEAN_FIELDS = new Set([
   'hideSmallBalances', 'sidePanelMode', 'desktopNotifications',
   'enforceWhitelist', 'requirePasswordForSigning',
+  'defiLoadImages', 'defiShowUnverified', 'defiNotifications', 'defiAlwaysRequirePassword',
 ]);
 const THEMES = new Set(['light', 'dark', 'system']);
+const DEFI_VERSION_FIELDS = new Set(['defiTosAcceptedVersion', 'defiRiskAckVersion']);
 
 function validatePreferenceValue(key, value) {
   if (ARRAY_FIELDS.has(key)) {
@@ -70,6 +86,21 @@ function validatePreferenceValue(key, value) {
   }
   if (key === 'theme') {
     if (!THEMES.has(value)) throw new Error("'theme' must be light, dark, or system.");
+    return value;
+  }
+  if (key === 'defiSlippageBps') {
+    // 0..2000 bps, mirroring the capability-matrix slippage cap (limits.slippageMaxBps). The
+    // typed-confirmation advanced tier is a UI concern; the storage contract never stores
+    // anything outside the documented band.
+    if (!Number.isInteger(value) || value < 0 || value > 2000) {
+      throw new Error("'defiSlippageBps' must be an integer between 0 and 2000 (basis points).");
+    }
+    return value;
+  }
+  if (DEFI_VERSION_FIELDS.has(key)) {
+    if (value !== null && (typeof value !== 'string' || value.length === 0 || value.length > 64)) {
+      throw new Error(`'${key}' must be null or a version string of at most 64 chars.`);
+    }
     return value;
   }
   return value;
@@ -162,7 +193,7 @@ export async function setSecurityPreferences(patch) {
     if (ARRAY_FIELDS.has(key)) {
       if (!Array.isArray(value)) throw new Error(`'${key}' must be an array.`);
       next[key] = value;
-    } else if (key === 'requirePasswordForSigning' || key === 'enforceWhitelist') {
+    } else if (key === 'requirePasswordForSigning' || key === 'enforceWhitelist' || key === 'defiAlwaysRequirePassword') {
       next[key] = Boolean(value);
     } else {
       next[key] = value;

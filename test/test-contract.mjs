@@ -26,7 +26,7 @@ globalThis.chrome = {
   },
 };
 
-const { METHODS, CONTRACT_VERSION, isKnownMethod, ERROR_CODES } = await import('../src/shared/contract/manifest.js');
+const { METHODS, CONTRACT_VERSION, EVENTS, isKnownMethod, ERROR_CODES } = await import('../src/shared/contract/manifest.js');
 const { listHandlerNames, handleApiRequest } = await import('../src/background/api-router.js');
 
 let failures = 0;
@@ -93,7 +93,7 @@ for (const method of ['tx.sendChecked', 'token.transferChecked']) {
 }
 
 section('Contract v12 creation-bound registration and cache-first history');
-ok('the contract advances to v16 without reusing earlier numbers', CONTRACT_VERSION === 16);
+ok('contract v16 documents the legacy signing-path retirement', CONTRACT_VERSION >= 16);
 const register = METHODS['tx.registerAccount'];
 ok('tx.registerAccount is unlocked-only, explicitly targets an address, and has no password field',
   register?.since === 12 && register?.auth === 'unlocked'
@@ -129,6 +129,55 @@ section('Contract v16 legacy signing-path retirement');
 ok('unbound legacy mutation methods are no longer callable',
   !METHODS['tx.send'] && !METHODS['token.transfer']
     && !wired.has('tx.send') && !wired.has('token.transfer'));
+
+section('Contract v17/v18 DeFi contract-first drop (M0)');
+
+ok('the contract advances to v18 without reusing earlier numbers', CONTRACT_VERSION === 18);
+
+const v17 = Object.entries(METHODS).filter(([, spec]) => spec.since === 17).map(([name]) => name);
+const v18 = Object.entries(METHODS).filter(([, spec]) => spec.since === 18).map(([name]) => name);
+ok('v17 appends exactly 29 READ+LOCAL methods', v17.length === 29, `got ${v17.length}`);
+ok('v18 appends exactly 14 PREPARE+EXECUTE methods', v18.length === 14, `got ${v18.length}`);
+ok('the contract declares 124 methods in total (81 + 43)', Object.keys(METHODS).length === 124,
+  `got ${Object.keys(METHODS).length}`);
+
+// Auth discipline (DEFI-03): reads are call-time honest, prepares are unlocked-only, and
+// exactly ONE DeFi method signs.
+const defiMethods = [...v17, ...v18];
+const defiSigning = defiMethods.filter((m) => METHODS[m].auth === 'signing');
+ok('intent.submit is the ONLY DeFi method using signing auth',
+  defiSigning.length === 1 && defiSigning[0] === 'intent.submit', defiSigning.join(', '));
+ok('no DeFi method is directly password-gated (password flows only through signing auth)',
+  defiMethods.every((m) => METHODS[m].auth !== 'password'));
+
+// Discovery reads render the unsupported-state screens, so they must run while locked.
+for (const name of ['program.capabilities', 'program.list', 'feed.status', 'feed.lookup']) {
+  ok(`${name} is callable while locked`, METHODS[name]?.auth === 'none',
+    `auth is '${METHODS[name]?.auth}'`);
+}
+// Public read-mostly pool/market surfaces also render locked, matching the wallet's tx reads.
+for (const name of ['market.assetGet', 'market.snapshot', 'market.candles', 'market.trades',
+  'market.holders', 'risk.assetAssess', 'launchpad.list', 'launchpad.get', 'dex.listPools',
+  'dex.getPool', 'dex.quote', 'dex.quoteLiquidity', 'launchpad.validateDraft', 'desktop.open']) {
+  ok(`${name} is a public read (auth none)`, METHODS[name]?.auth === 'none',
+    `auth is '${METHODS[name]?.auth}'`);
+}
+// Wallet-scoped reads/writes sit behind the session, per S3 mutate-vs-read split.
+for (const name of ['intent.list', 'intent.get', 'dex.positions', 'launchpad.listMine',
+  'launchpad.draftList', 'launchpad.draftSave', 'market.watchlistGet', 'market.watchlistAdd',
+  'intent.prepareSend', 'dex.prepareSwap', 'launchpad.prepareCreate']) {
+  ok(`${name} is unlocked`, METHODS[name]?.auth === 'unlocked', `auth is '${METHODS[name]?.auth}'`);
+}
+
+// Events and error codes the DeFi lifecycle needs are declared and documented.
+for (const eventName of ['intentChanged', 'capabilitiesChanged', 'feedChanged']) {
+  ok(`${eventName} push event is declared`, typeof EVENTS[eventName] === 'string');
+}
+for (const code of ['FEATURE_DISABLED', 'UNSUPPORTED', 'INVALID_INPUT', 'ALREADY_EXISTS',
+  'BINDING_MISMATCH', 'INTENT_EXPIRED', 'QUOTE_EXPIRED', 'NOTHING_TO_CLAIM',
+  'UPLOAD_REJECTED', 'USER_REJECTED', 'VERSION_MISMATCH', 'INTERNAL']) {
+  ok(`${code} is documented`, typeof ERROR_CODES[code] === 'string');
+}
 
 section('Contract and router agree in both directions');
 
