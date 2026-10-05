@@ -144,6 +144,22 @@ export const LIMITS = Object.freeze({
 });
 
 /**
+ * Feed trust policy (G1-B). Honestly EMPTY everywhere: no publisher key is pinned, quorum is
+ * zero (no feed can be live), and no feature requires a feed. The PINNING RULE is the whole
+ * point: a publisher key enters `publishers` ONLY via the evidence chain — a live probe on a
+ * network-reachable machine (oracle/feed evidence), mirrored into this snapshot with its
+ * evidenceRef, pinned by the fixture tests. Transport, storage, and UI can never pin a key.
+ * A signed feed can only NARROW this matrix (kill vote / required-feed check), never widen it.
+ */
+export const FEED_POLICY = Object.freeze({
+  policyVersion: 1,
+  publishers: Object.freeze([]), // hex-encoded 32-byte Ed25519 keys, evidence-pinned only
+  quorum: 0,                     // distinct valid publishers required for LIVE
+  requireFeed: Object.freeze({}), // featureKey -> feedId that must be LIVE for the feature
+  clockSkewMs: 300000,           // issued-at future tolerance
+});
+
+/**
  * Aggregated program facts for the Capabilities wire shape: evidence-backed address or null,
  * keyed by role. Derived from PROGRAMS so the two cannot disagree.
  */

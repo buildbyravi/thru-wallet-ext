@@ -1,7 +1,9 @@
-// Signed-feed READ surface (M0). No feed publisher was provided in PROJECT INPUTS and none is
-// verified, so the ONLY honest answers are an empty feed list and null lookups. These handlers
-// are the seam the first verified feed plugs into without changing the wire shape (FEEDS spec:
-// a signed feed supplements chain reads, never replaces them — R16).
+// Signed-feed READ surface (M0 shape, G1-B machinery). No feed publisher is pinned and none
+// is verified, so the ONLY honest answers remain an empty feed list and null lookups. The
+// verification state machine behind these rows now lives in defi/feed-record.js and the
+// registry (verify-at-intake, sync reads); the first evidence-pinned publisher plugs in
+// without changing this wire shape (FEEDS spec: a signed feed supplements chain reads, never
+// replaces them — R16).
 
 import * as registry from './registry-service.js';
 import { unsupportedResult } from './defi/gating.js';

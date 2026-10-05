@@ -3,11 +3,14 @@
 // ONE place decides why a DeFi method cannot run, with a fixed reason priority:
 //
 //   1. FLAG_OFF     — a build-time feature flag is off (the M0 state of everything).
-//   2. KILL_SWITCH  — an R16 signed-feed kill switch narrows a capability (no feed publisher is
-//                     verified today, so this rung never fires yet; the rung exists so the first
-//                     feed does not redesign the ladder).
+//   2. KILL_SWITCH / FEED_MISSING — the R16 signed-feed narrowing. Implemented (G1-B) inside
+//                     the registry's getFeature view: a quorum-verified kill vote disables an
+//                     enabled feature, and a required feed that isn't LIVE yields FEED_MISSING.
+//                     It fires only on enabled rows, only under the current genesis binding,
+//                     and never in the shipped build (no publisher pinned, quorum 0).
 //   3. Dossier      — the capability matrix says the feature is unsupported (e.g.
-//                     PROGRAM_NOT_VERIFIED for swap). Once flags go on, reads still fail closed
+//                     PROGRAM_NOT_VERIFIED for swap), itself behind the B3 genesis binding
+//                     (NETWORK_RESET under drift). Once flags go on, reads still fail closed
 //                     until verification evidence lands.
 //
 // Two delivery modes (declared per method in src/shared/contract/defi-schema.js):
@@ -56,8 +59,10 @@ export function resolveGate({ gate, feature = null, env, label }) {
     if (env === 'result') return { mode: 'result', reason: 'FLAG_OFF' };
     return { mode: 'error', error: featureDisabledError(label) };
   }
-  // Kill-switch rung: no feed/publisher exists at M0, so no narrowing can fire. When the first
-  // verified feed lands, the check goes here — above the dossier — without touching callers.
+  // Kill-switch / required-feed rung (G1-B): folded into the registry's getFeature view so
+  // handlers, capability derivation, and risk facts all resolve the same row. A verified
+  // narrowing surfaces here as the dossier-rung reason (KILL_SWITCH / FEED_MISSING), above
+  // the dossier's own reason, without touching callers.
   if (feature) {
     const dossier = getFeature(feature);
     if (dossier && dossier.state !== 'enabled') {

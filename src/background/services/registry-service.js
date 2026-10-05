@@ -23,13 +23,14 @@
 // real state change, never on schedule). Boot does not fire: the first read establishes the
 // baseline silently.
 
-import { SNAPSHOT_META, PROGRAMS, FEATURES, LIMITS, SEED_FINGERPRINT } from './defi/capability-snapshot.js';
+import { SNAPSHOT_META, PROGRAMS, FEATURES, LIMITS, SEED_FINGERPRINT, FEED_POLICY } from './defi/capability-snapshot.js';
 import { chainFingerprint } from './history-service.js';
 import { getNetworkConfig } from '../../lib/networks.js';
-import { emitCapabilitiesChanged } from './event-service.js';
+import { emitCapabilitiesChanged, emitFeedChanged } from './event-service.js';
 import { listMethodNames } from '../../shared/contract/manifest.js';
 import { isDefiMethod, getDefiSpec } from '../../shared/contract/defi-schema.js';
 import { isDefiFeatureEnabled } from '../../shared/flags.js';
+import { aggregateFeedState, defaultAggregate, AGGREGATE_STATES } from './defi/feed-record.js';
 
 const REGISTRY_NETWORK = SNAPSHOT_META.networkId;
 
@@ -56,6 +57,88 @@ function runtimeFingerprint(networkId) {
   return fingerprintOverride ?? currentChainFingerprint(networkId);
 }
 
+// ---------------------------------------------------------------------------
+// Feed narrowing (G1-B). Verification is async; READS are sync — so records verify at intake
+// (refreshFeedVerdicts) and sync readers consume the last-verified aggregate. The shipped
+// default is the honestly-empty policy (no publishers, quorum 0): narrowing can never fire in
+// this build and the cache is the INERT aggregate without a single crypto call. Feeds narrow,
+// never widen: an overlay applies only to an 'enabled' dossier row.
+// ---------------------------------------------------------------------------
+let feedRecordsOverride = null;   // test seam only — transport arrives in a later slice
+let feedPolicyOverride = null;    // test seam only
+let cachedFeedAggregate = defaultAggregate(FEED_POLICY);
+let lastFeedSignature = null;
+
+const effectiveFeedPolicy = () => feedPolicyOverride ?? FEED_POLICY;
+const effectiveFeedRecords = () => feedRecordsOverride ?? [];
+
+function feedTransitionSignature(aggregate) {
+  return JSON.stringify([aggregate.state, aggregate.killFeatures, aggregate.liveFeedIds]);
+}
+
+/** Re-verifies the presented records against the CURRENT runtime fingerprint and policy. */
+export async function refreshFeedVerdicts(networkId = REGISTRY_NETWORK) {
+  const policy = effectiveFeedPolicy();
+  const aggregate = await aggregateFeedState(effectiveFeedRecords(), policy, {
+    networkId,
+    fingerprint: runtimeFingerprint(networkId) ?? '',
+    pinnedPublishers: policy.publishers,
+    now: Date.now(),
+    clockSkewMs: policy.clockSkewMs,
+    knownFeatures: FEATURES.map((f) => f.key),
+  });
+  cachedFeedAggregate = aggregate;
+  const sig = feedTransitionSignature(aggregate);
+  if (lastFeedSignature === null) {
+    lastFeedSignature = sig; // boot establishes the baseline silently (S7)
+    return aggregate;
+  }
+  if (lastFeedSignature !== sig) {
+    lastFeedSignature = sig;
+    emitFeedChanged({
+      networkId,
+      state: aggregate.state,
+      killFeatures: [...aggregate.killFeatures],
+      liveFeedIds: [...aggregate.liveFeedIds],
+    });
+  }
+  return aggregate;
+}
+
+/** The last-verified feed aggregate (sync). INERT under the shipped policy. */
+export function getFeedState() {
+  return cachedFeedAggregate;
+}
+
+/** KILL_SWITCH / FEED_MISSING for an ENABLED feature, or null. Genesis runs before this. */
+function feedNarrowingReason(featureKey) {
+  const aggregate = cachedFeedAggregate;
+  if (aggregate.killFeatures.includes(featureKey)) return 'KILL_SWITCH';
+  const policy = effectiveFeedPolicy();
+  const required = policy.requireFeed?.[featureKey] ?? null;
+  if (required !== null && !aggregate.liveFeedIds.includes(required)) return 'FEED_MISSING';
+  return null;
+}
+
+/**
+ * Test seam (documented like _setFingerprintForTests): injects records/policy and RE-VERIFIES
+ * so sync readers see the fresh aggregate. Production never calls this — record transport and
+ * an evidence-pinned feed config land in a later slice.
+ */
+export async function _setFeedStateForTests(value) {
+  feedRecordsOverride = value?.records ?? null;
+  feedPolicyOverride = value?.policy ?? null;
+  await refreshFeedVerdicts();
+}
+
+/** Test-only feed baseline reset (service-worker restart simulation). */
+export function _resetFeedBaselineForTests() {
+  feedRecordsOverride = null;
+  feedPolicyOverride = null;
+  cachedFeedAggregate = defaultAggregate(FEED_POLICY);
+  lastFeedSignature = null;
+}
+
 /**
  * Is the runtime chain the one the seed evidence was verified against?
  * @param {string} [networkId]
@@ -67,9 +150,15 @@ export function isGenesisAligned(networkId = REGISTRY_NETWORK) {
 }
 
 /**
- * Post-binding view of one feature row. On a genesis mismatch, EVERY seed-derived row —
- * including wallet-core 'enabled' rows — downgrades to unsupported/NETWORK_RESET: the facts
- * behind it belong to a chain that no longer exists (R12 fail-closed, B3).
+ * Post-binding, post-narrowing view of one feature row.
+ * Priority: genesis binding → feed narrowing → dossier.
+ * 1. On a genesis mismatch, EVERY seed-derived row — including wallet-core 'enabled' rows —
+ *    downgrades to unsupported/NETWORK_RESET (R12 fail-closed, B3). A kill record signed for
+ *    the old genesis dies with it: records verify against the runtime fingerprint, so the
+ *    narrowing below can only ever fire under the current binding.
+ * 2. On an aligned, ENABLED row, a last-verified feed aggregate can narrow to KILL_SWITCH
+ *    (quorum'd kill vote) or FEED_MISSING (a required live feed is absent). Narrowing never
+ *    touches an already-unsupported row — feeds narrow, never widen.
  */
 export function getFeature(key, { networkId = REGISTRY_NETWORK } = {}) {
   const row = FEATURES.find((f) => f.key === key) ?? null;
@@ -81,6 +170,17 @@ export function getFeature(key, { networkId = REGISTRY_NETWORK } = {}) {
       reason: 'NETWORK_RESET',
       evidenceRef: [...row.evidenceRef, 'genesis binding: seed fingerprint stale — re-verify before trusting'],
     };
+  }
+  if (row.state === 'enabled') {
+    const narrow = feedNarrowingReason(key);
+    if (narrow) {
+      return {
+        ...row,
+        state: 'unsupported',
+        reason: narrow,
+        evidenceRef: [...row.evidenceRef, `feed narrowing: ${narrow}`],
+      };
+    }
   }
   return row;
 }
@@ -130,14 +230,12 @@ export function getRegistry(networkId = REGISTRY_NETWORK) {
 // ---------------------------------------------------------------------------
 
 function deriveFeatureCapabilities(networkId) {
-  const aligned = isGenesisAligned(networkId);
   const caps = {};
   for (const row of FEATURES) {
-    if (!aligned) {
-      caps[row.key] = { supported: false, reason: 'NETWORK_RESET' };
-      continue;
-    }
-    caps[row.key] = row.state === 'enabled' ? true : { supported: false, reason: row.reason };
+    // getFeature carries genesis binding AND feed narrowing, so the wire view, the gate, and
+    // the risk facts can never disagree about one feature's state.
+    const view = getFeature(row.key, { networkId });
+    caps[row.key] = view.state === 'enabled' ? true : { supported: false, reason: view.reason };
   }
   return caps;
 }
