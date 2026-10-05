@@ -104,3 +104,13 @@ pinned package ships bindings (`./perp`, `./clob`).
   dex/launchpad-named code, and the quarantine corpus left alone otherwise. Inventory:
   `docs/defi/M0_INVENTORY.md`. Closes with owner sign-off after the frontend-team contract
   review; P3 (`verify-token-transfer.mjs` on a reachable machine) is independent of M0.
+- **M0 owner-side verification (2026-10-05):** the owner's local forensic audit agent fetched
+  `bddfef6` (ff-only) and re-ran the repo path on Windows: `npm run build` PASS, full `npm test`
+  PASS (22 suites incl. contract 130/130, quarantine 66/66, DeFi M0 98/98, lifecycle 1017/1017),
+  `scripts/check-layering.mjs` 93 files / 0 violations / 0 sinks, `git diff --check` clean.
+  Their report confirms append-only v17/v18 (81 -> 124), the single signing path
+  (`intent.submit` + signing guard + `defiAlwaysRequirePassword`), master-flag dominance with
+  no URL/storage override, pre-auth `INVALID_INPUT` validation, and the rewritten quarantine
+  allowing only the allowlisted backend surface. Stream/API errors in their agent log were the
+  agent tool's own connectivity; every repo command succeeded. Audit verdict: no repo defects
+  found; "formal M0 sign-off" listed as the owner's pending decision.

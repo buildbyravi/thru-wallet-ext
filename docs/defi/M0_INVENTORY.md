@@ -133,6 +133,11 @@ never ships (`__defiFixtureVersion` marker).
 - `scripts/collect-offline-evidence.mjs --check` PASS.
 - `git diff --check` clean.
 
+**Owner-side verification (2026-10-05):** the owner's forensic audit re-verified `bddfef6`
+ff-only on Windows — build, full `npm test` (22 suites), layering (93 files, 0 violations),
+diff clean — with no repo defects found and append-only evolution confirmed byte-for-byte.
+Formal human sign-off on M0 is recorded with the owner, not by the audit.
+
 ## Known gaps / explicitly not in M0
 
 - No live-chain DeFi evidence (P3 / Q1–Q26 live rows are live-session work on a reachable machine).
