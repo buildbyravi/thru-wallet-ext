@@ -68,16 +68,21 @@ console.log(`Token transfer live verification on ${networkId}\n`);
 async function main() {
 
 // ---- Actors ----------------------------------------------------------------
-// SENDER is registered and faucet-funded. RECIPIENT is deliberately NEVER registered: the
-// native-transfer path cannot send to it, so whether a token flow can is the headline probe.
+// SENDER is faucet-funded. RECIPIENT is deliberately NEVER registered: the native-transfer
+// path cannot send to it, so whether a token flow can is the headline probe.
+//
+// ORDERING (2026-10-06 live evidence): faucet-FIRST. The wallet activates accounts by
+// claiming faucet on a fresh keypair; standalone NOOP self-activation currently REVERTS on
+// Betanet for 0-balance accounts (owner's agent live trace: stateUnits 0 -> -497;
+// stateUnits 1 -> -767 VM_FAILED / -764 CU_EXHAUSTED@1000 / -765 VM_REVERT(user -26)@10000),
+// and registration-service.js survives by deferring. This script used to strictly await
+// createOnChainAccount(sender) first and aborted at step 1 — that tested the path the wallet
+// routinely avoids. The NOOP behaviour is still recorded below as its own evidence row.
 console.log('Setting up throwaway accounts (never your wallet)…');
 const sender = await keys.generateKeyPair();
 const recipient = await keys.generateKeyPair();
 console.log(`  sender    ${sender.address}`);
 console.log(`  recipient ${recipient.address}`);
-
-await thruClient.createOnChainAccount(sender);
-report('sender account registered on-chain', 'PASS');
 
 const claims = 3;
 for (let i = 0; i < claims; i += 1) {
@@ -86,6 +91,23 @@ for (let i = 0; i < claims; i += 1) {
 }
 const faucetBalance = await nativeBalance(sender.address);
 report('sender funded by faucet', 'PASS', `${config.faucetMaxPerClaim ?? 10_000n} × ${claims} = ${faucetBalance} base units`);
+
+const senderInfo = await thruClient.getAccountInfo(sender.address);
+if (senderInfo.exists) {
+  report('sender account activated ON-CHAIN by faucet-first claims (wallet pattern; no NOOP step needed)', 'PASS');
+} else {
+  // Faucet claims did not activate the account — fall back to the path that reverted on
+  // 2026-10-06 and record what it does today, then fail honestly if even activation is
+  // impossible in the current chain state (a chain finding, not a script bug).
+  report('faucet claims did not activate the sender account', '??', 'falling back to standalone self-activation');
+  try {
+    await thruClient.createOnChainAccount(sender);
+    report('sender account registered on-chain via standalone NOOP activation', 'PASS', 'chain behaviour changed since 2026-10-06 — record it');
+  } catch (err) {
+    report('standalone NOOP self-activation', 'FAIL', `${err.message} — P3 blocked by chain state, not by this script; record in docs/BACKEND_GAPS.md`);
+    throw new Error('sender activation impossible on the current chain; aborting before token steps');
+  }
+}
 
 const recipientInfo = await thruClient.getAccountInfo(recipient.address);
 report(
@@ -230,10 +252,35 @@ report(
 );
 if (outcome?.signature) console.log(`\ntransfer signature: ${outcome.signature}`);
 if (outcome?.initSignature) console.log(`init signature:     ${outcome.initSignature}`);
+
+// ---- 5. Evidence row: standalone NOOP self-activation TODAY -------------------
+// Independent of the P3 flow above (sender is already active): what does the path the wallet
+// avoids do on the current chain? 2026-10-06 baseline (owner's live trace): reverts for a
+// 0-balance fresh key (-767/-565 table in the dated live-chain evidence entry). Fresh
+// throwaway key, outcome recorded, never aborts the script.
+{
+  const lifecycleProbe = await keys.generateKeyPair();
+  try {
+    await thruClient.createOnChainAccount(lifecycleProbe);
+    report(
+      'LIFECYCLE PROBE: standalone NOOP self-activation of a fresh 0-balance key',
+      'PASS',
+      'behaviour changed since the 2026-10-06 trace (no longer reverting) — record it in the live-chain entry',
+    );
+  } catch (err) {
+    report(
+      'LIFECYCLE PROBE: standalone NOOP self-activation of a fresh 0-balance key',
+      '??',
+      `still reverting on this chain (${err.message}) — the wallet's faucet-first / deferred-registration pattern stays mandatory; recorded as chain state, not a script bug`,
+    );
+  }
+}
 }
 
+let completed = false;
 try {
   await main();
+  completed = true;
 } catch (err) {
   console.log(`\nAborted early: ${err.message}`);
   console.log('If this is a fetch/connect error, the RPC is unreachable from this environment —');
@@ -241,6 +288,8 @@ try {
   process.exitCode = 1;
 }
 
-console.log('\nDone. Paste this output into the PR that ships token transfer, and resolve the two');
-console.log('doc questions it prints: recipient-owner existence, and the token-program fee.');
-console.log(`(Signatures are on ${networkId}; no keys from this run exist anywhere else.)`);
+if (completed) {
+  console.log('\nDone. Paste this output into the PR that ships token transfer, and resolve the two');
+  console.log('doc questions it prints: recipient-owner existence, and the token-program fee.');
+  console.log(`(Signatures are on ${networkId}; no keys from this run exist anywhere else.)`);
+}

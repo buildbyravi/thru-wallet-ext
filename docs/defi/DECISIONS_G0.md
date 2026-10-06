@@ -159,3 +159,12 @@ pinned package ships bindings (`./perp`, `./clob`).
   self-funds); nothing reads the vault or any saved key. Live runs stay OUT of `npm test`:
   the offline battery is the deterministic gate; the live battery writes evidence into the
   seeds. Desktop smoke flows stay manual on the checklist (real UX can't be scripted that way).
+- **First live battery run (owner's networked host, 2026-10-06) → the first real-flow FAIL was
+  found and fixed the same day.** Chain finding: standalone NOOP self-activation reverts on
+  current Betanet for 0-balance accounts (vmError table: -497 state 0 / -767 halted / -764 CU
+  exhausted / -765 revert user -26, -506 stale slot); the wallet is unaffected because
+  registration defers (faucet-first is the working path). Root cause of the probe abort was
+  ORDERING: it tested a path the wallet avoids. `verify-token-transfer.mjs` reordered to
+  faucet-first, NOOP kept as a recorded lifecycle evidence row; the trace recorded in
+  `scripts/defi-evidence/2026-10-06-live-chain.json` (owner-agent provenance, re-confirmable
+  via `npm run test:live`). P3's token leg awaits the re-run.

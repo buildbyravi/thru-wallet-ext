@@ -1,0 +1,59 @@
+{
+  "id": "2026-10-06-live-chain",
+  "kind": "live-chain",
+  "network": "betanet",
+  "dateUtc": "2026-10-06",
+  "tool": "owner's local agent on a network-connected Windows host (PowerShell): Test-NetConnection rpc.betanet.thru.org:443 OK; live claimFaucet + createOnChainAccount probes driving src/lib/thru-client.js directly; wallet registration trace via src/background/services/registration-service.js. Results pasted into the review session verbatim. Re-confirm any row by running `npm run test:live` on a networked host (fresh throwaway keys).",
+  "refs": [
+    "scripts/verify-token-transfer.mjs",
+    "scripts/live-betanet-verify.mjs",
+    "src/background/services/registration-service.js",
+    "src/lib/thru-client.js"
+  ],
+  "checks": [
+    {
+      "id": "noop-activation-stateUnits-0",
+      "status": "NEGATIVE",
+      "summary": "standalone NOOP self-activation with stateUnits 0 rejected: vmError -497 FEE_PAYER_ACTIVATION_REQUIRES_STATE_UNIT",
+      "evidence": "vmError -497"
+    },
+    {
+      "id": "noop-activation-stateUnits-1-cu-0",
+      "status": "NEGATIVE",
+      "summary": "stateUnits 1, computeUnits 0 -> vmError -767 TRANSACTION_VM_ERROR_VM_FAILED (halted with code 16777328n)",
+      "evidence": "vmError -767"
+    },
+    {
+      "id": "noop-activation-stateUnits-1-cu-1000",
+      "status": "NEGATIVE",
+      "summary": "stateUnits 1, computeUnits 1000 -> vmError -764 TRANSACTION_VM_ERROR_CU_EXHAUSTED (all 1000 CU consumed)",
+      "evidence": "vmError -764"
+    },
+    {
+      "id": "noop-activation-stateUnits-1-cu-10000",
+      "status": "NEGATIVE",
+      "summary": "stateUnits 1, computeUnits 10000 -> vmError -765 TRANSACTION_VM_ERROR_VM_REVERT (reverted at 4701 CU, user code -26n)",
+      "evidence": "vmError -765 (-26n @ 4701 CU)"
+    },
+    {
+      "id": "noop-activation-stale-slot",
+      "status": "NEGATIVE",
+      "summary": "stale startSlot -> vmError -506 TRANSACTION_VM_ERROR_EXPIRED (slots advance rapidly on Betanet; refetch per build)",
+      "evidence": "vmError -506"
+    },
+    {
+      "id": "probe-p3-before-fix",
+      "status": "FAIL",
+      "summary": "verify-token-transfer.mjs (pre-2026-10-06 ordering) aborted at step 1: strict sequential createOnChainAccount(sender) hit the -767/-765 revert. Chain state finding, not a token-path finding: the token leg never ran.",
+      "evidence": "script abort at 'sender account registered on-chain'"
+    },
+    {
+      "id": "wallet-registration-pattern",
+      "status": "PASS",
+      "summary": "the shipped wallet registers accounts smoothly: local derivation + vault storage is instant; on-chain activation is a best-effort deferred background task (registration-service.js catches vmError and defers). Faucet-first is the working activation path.",
+      "evidence": "registration-service.js registerCreatedAccount catch path (vmError deferred), in-wallet account creation working on the same chain"
+    }
+  ],
+  "finding": "Standalone NOOP self-activation of a 0-balance account REVERTS on current Betanet (vmError -497/-767/-764/-765 depending on stateUnits/compute budget, plus -506 on a stale slot). Account activation works via the FAUCET-FIRST path (the wallet's pattern: claim faucet on the fresh keypair, defer/catch standalone activation). Consequence: verify-token-transfer.mjs was reordered to faucet-first (sender activation via claims, NOOP fallback with recorded vmError, standalone NOOP preserved as its own lifecycle evidence row at the end of the probe). P3's headline question (token transfer to a never-registered recipient) still needs one networked re-run of the fixed probe.",
+  "confidence": "high for 2026-10-06 chain state (multiple budget permutations observed directly); chain deployments change — re-run test:live after any Betanet upgrade before concluding the NOOP path is fixed"
+}
