@@ -68,46 +68,71 @@ console.log(`Token transfer live verification on ${networkId}\n`);
 async function main() {
 
 // ---- Actors ----------------------------------------------------------------
-// SENDER is faucet-funded. RECIPIENT is deliberately NEVER registered: the native-transfer
-// path cannot send to it, so whether a token flow can is the headline probe.
+// SENDER must end up ACTIVATED and FUNDED. RECIPIENT is deliberately NEVER registered: the
+// native-transfer path cannot send to it, so whether a token flow can is the headline probe.
 //
-// ORDERING (2026-10-06 live evidence): faucet-FIRST. The wallet activates accounts by
-// claiming faucet on a fresh keypair; standalone NOOP self-activation currently REVERTS on
-// Betanet for 0-balance accounts (owner's agent live trace: stateUnits 0 -> -497;
-// stateUnits 1 -> -767 VM_FAILED / -764 CU_EXHAUSTED@1000 / -765 VM_REVERT(user -26)@10000),
-// and registration-service.js survives by deferring. This script used to strictly await
-// createOnChainAccount(sender) first and aborted at step 1 — that tested the path the wallet
-// routinely avoids. The NOOP behaviour is still recorded below as its own evidence row.
+// THE 2026-10-06 LADDER (live evidence, owner's run — the honest breakdown of today's chain):
+//   * claimFaucet internally calls createOnChainAccount for a nonexistent fee payer
+//     (thru-client.js guard — sacred, unchanged), so "faucet-first" cannot dodge NOOP.
+//   * createOnChainAccount currently reports vmError -767/-765, yet per the owner's RPC
+//     trace the account STILL lands in the state trie (exists:true, nonce advanced): the
+//     state write survives the VM fault.
+//   * a DIRECT faucet claim on a pre-created account currently REVERTS: vmError -765,
+//     4701 CU, user error -26n — a REGRESSION vs the pinned live-verified claim
+//     (2026-09-26, tx tsjbbZW9sT…, thru-client header comment).
+// So each rung below is classified separately: activation is judged by EXISTENCE, not by
+// the returned error; funding is judged by the faucet claim itself.
 console.log('Setting up throwaway accounts (never your wallet)…');
 const sender = await keys.generateKeyPair();
 const recipient = await keys.generateKeyPair();
 console.log(`  sender    ${sender.address}`);
 console.log(`  recipient ${recipient.address}`);
 
+// Rung 1 — activation, existence-verified (the vmError is the chain's note, not the verdict).
+{
+  const before = await thruClient.getAccountInfo(sender.address);
+  if (!before.exists) {
+    let noopNote = 'not attempted';
+    try {
+      await thruClient.createOnChainAccount(sender);
+      noopNote = 'createOnChainAccount returned cleanly (behaviour changed since 2026-10-06 — record it)';
+    } catch (err) {
+      noopNote = `createOnChainAccount reported: ${err.message}`;
+    }
+    const after = await thruClient.getAccountInfo(sender.address);
+    report(
+      'sender ACTIVATED on-chain (existence-verified, not error-trusted)',
+      after.exists ? 'PASS' : 'FAIL',
+      after.exists
+        ? `exists after attempt — ${noopNote}`
+        : `absent after attempt — ${noopNote}; no activation path works today`,
+    );
+    if (!after.exists) {
+      throw new Error('P3 blocked by chain state at rung 1 (activation) — token steps cannot run; record in docs/BACKEND_GAPS.md');
+    }
+  } else {
+    report('sender already exists on-chain', 'PASS');
+  }
+}
+
+// Rung 2 — funding via faucet claims, each claim classified on its own.
 const claims = 3;
 for (let i = 0; i < claims; i += 1) {
-  // eslint-disable-next-line no-await-in-loop
-  await thruClient.claimFaucet(sender, config.faucetMaxPerClaim ?? 10_000n);
+  try {
+    // eslint-disable-next-line no-await-in-loop
+    await thruClient.claimFaucet(sender, config.faucetMaxPerClaim ?? 10_000n);
+    report(`faucet claim ${i + 1}/${claims}`, 'PASS');
+  } catch (err) {
+    report(
+      `faucet claim ${i + 1}/${claims}`,
+      'FAIL',
+      `${err.message} — CHAIN REGRESSION vs the pinned live-verified claim (2026-09-26, tx tsjbbZW9sT…): the faucet program currently reverts claims (2026-10-06 trace: vmError -765, user error -26n). This also breaks the shipped wallet's faucet feature until Betanet is fixed; P3 blocked at rung 2, by chain state not this script.`,
+    );
+    throw new Error('P3 blocked by chain state at rung 2 (faucet claim reverts) — record in docs/BACKEND_GAPS.md');
+  }
 }
 const faucetBalance = await nativeBalance(sender.address);
 report('sender funded by faucet', 'PASS', `${config.faucetMaxPerClaim ?? 10_000n} × ${claims} = ${faucetBalance} base units`);
-
-const senderInfo = await thruClient.getAccountInfo(sender.address);
-if (senderInfo.exists) {
-  report('sender account activated ON-CHAIN by faucet-first claims (wallet pattern; no NOOP step needed)', 'PASS');
-} else {
-  // Faucet claims did not activate the account — fall back to the path that reverted on
-  // 2026-10-06 and record what it does today, then fail honestly if even activation is
-  // impossible in the current chain state (a chain finding, not a script bug).
-  report('faucet claims did not activate the sender account', '??', 'falling back to standalone self-activation');
-  try {
-    await thruClient.createOnChainAccount(sender);
-    report('sender account registered on-chain via standalone NOOP activation', 'PASS', 'chain behaviour changed since 2026-10-06 — record it');
-  } catch (err) {
-    report('standalone NOOP self-activation', 'FAIL', `${err.message} — P3 blocked by chain state, not by this script; record in docs/BACKEND_GAPS.md`);
-    throw new Error('sender activation impossible on the current chain; aborting before token steps');
-  }
-}
 
 const recipientInfo = await thruClient.getAccountInfo(recipient.address);
 report(

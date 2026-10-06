@@ -52,8 +52,44 @@
       "status": "PASS",
       "summary": "the shipped wallet registers accounts smoothly: local derivation + vault storage is instant; on-chain activation is a best-effort deferred background task (registration-service.js catches vmError and defers). Faucet-first is the working activation path.",
       "evidence": "registration-service.js registerCreatedAccount catch path (vmError deferred), in-wallet account creation working on the same chain"
+    },
+    {
+      "id": "noop-state-write-survives",
+      "status": "PASS",
+      "summary": "createOnChainAccount with stateUnits 1 reports vmError -767/-765 yet the account lands in the state trie (exists:true, nonce advanced) \u2014 activation judged by existence, not by the returned VM error. Probe now encodes exactly this (rung 1).",
+      "evidence": "owner's direct RPC trace, pasted in-session"
+    },
+    {
+      "id": "faucet-claim-regression",
+      "status": "FAIL",
+      "summary": "DIRECT faucet claim on a pre-created account reverts: vmError -765, 4701 CU, user error -26n. REGRESSION vs the pinned live-verified claim (2026-09-26, tx tsjbbZW9sT\u2026, 10,000 units credited \u2014 thru-client header comment). Blocks P3 funding and the shipped wallet's faucet feature until Betanet is fixed chain-side.",
+      "evidence": "owner's direct RPC trace (computeUnits permutations incl. 100_000), pasted in-session"
+    },
+    {
+      "id": "q14-amm-program-presence",
+      "status": "PASS",
+      "summary": "amm program taAMMx8gG44RcOyRqNYZ55pDaAJoGS0R8kPYxBN96sO8kD is DEPLOYED on betanet (account exists) \u2014 pool discovery becomes testable. Existence is deployment, not verification (R4): record upgraded with deployment-observed note, trust stays unverified.",
+      "evidence": "live-betanet-verify.mjs inline presence read"
+    },
+    {
+      "id": "q20-program-map",
+      "status": "PASS",
+      "summary": "every registry program address matched bootstrap declarations and exists on-chain \u2014 no drift, no managed-genesis event since seeding",
+      "evidence": "live-betanet-verify.mjs inline consistency map"
+    },
+    {
+      "id": "q22-oracle-feed",
+      "status": "NEGATIVE",
+      "summary": "oracle feed account for seed thru-usd: [not_found] account not found \u2014 no USD price source on betanet (confirms the dossier's no-USD row; classification bug in probe-oracle-feed fixed: not_found is exists:false, not 'unreachable')",
+      "evidence": "probe-oracle-feed.mjs via test:live (owner host)"
+    },
+    {
+      "id": "probe-p3-run2",
+      "status": "FAIL",
+      "summary": "npm run test:live executed end-to-end on the owner host: p3-token-transfer FAIL \u2014 claimFaucet's internal createOnChainAccount threw vmError -767 (root cause trace above). Probe rewritten as rung-1 (existence-verified activation) + rung-2 (per-claim classification) so the next run reports the exact live rung.",
+      "evidence": "scripts/defi-evidence/2026-10-06-live-chain-run2.json on the owner host + pasted tail"
     }
   ],
-  "finding": "Standalone NOOP self-activation of a 0-balance account REVERTS on current Betanet (vmError -497/-767/-764/-765 depending on stateUnits/compute budget, plus -506 on a stale slot). Account activation works via the FAUCET-FIRST path (the wallet's pattern: claim faucet on the fresh keypair, defer/catch standalone activation). Consequence: verify-token-transfer.mjs was reordered to faucet-first (sender activation via claims, NOOP fallback with recorded vmError, standalone NOOP preserved as its own lifecycle evidence row at the end of the probe). P3's headline question (token transfer to a never-registered recipient) still needs one networked re-run of the fixed probe.",
-  "confidence": "high for 2026-10-06 chain state (multiple budget permutations observed directly); chain deployments change — re-run test:live after any Betanet upgrade before concluding the NOOP path is fixed"
+  "finding": "Standalone NOOP self-activation of a 0-balance account REVERTS on current Betanet (vmError -497/-767/-764/-765 depending on stateUnits/compute budget, plus -506 on a stale slot). Account activation works via the FAUCET-FIRST path (the wallet's pattern: claim faucet on the fresh keypair, defer/catch standalone activation). Consequence: verify-token-transfer.mjs was reordered to faucet-first (sender activation via claims, NOOP fallback with recorded vmError, standalone NOOP preserved as its own lifecycle evidence row at the end of the probe). P3's headline question (token transfer to a never-registered recipient) still needs one networked re-run of the fixed probe. SECOND RUN (test:live, owner host): transport preflight PASS; q14/q20 PASS (amm deployed, map consistent); q22 NEGATIVE (thru-usd feed absent); p3 FAIL with full root-cause chain \u2014 claimFaucet -> internal createOnChainAccount -> vmError -767, and a direct claim on a pre-created account reverts -765 user -26n (faucet REGRESSION; also affects shipped wallet). Probe rewritten as a classified rung ladder; P3 remains blocked at chain state until the faucet program is fixed on Betanet (or an alternative funding path is provided).",
+  "confidence": "high for 2026-10-06 chain state (multiple budget permutations observed directly); chain deployments change \u2014 re-run test:live after any Betanet upgrade before concluding the NOOP path is fixed"
 }

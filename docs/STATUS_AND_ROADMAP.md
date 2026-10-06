@@ -129,11 +129,14 @@ audits** (registry + stateless B3 genesis binding; SignedFeedRecord verification
 in-flight per key, TTL honesty, errors uncached, genesis-bound keys, in-memory only) +
 per-slice assembly with chain-before-index ladders and honest S10 fallbacks, wire
 byte-identical to M0; record `docs/defi/G1_MARKET.md`, gate `test/test-defi-market.mjs`
-(25/25). The **G1 registry/feeds/market triad is structurally complete**. The live evidence
-session is now ONE command — `npm run test:live` on a networked host
-(`scripts/live-betanet-verify.mjs`: P3 transfer + Q22 oracle + Q14/Q20 program layer, named
-PASS/NEGATIVE/FAIL classifications, dated `<date>-live-chain.json` evidence entries,
-throwaway faucet-funded keys only) — after which the owner's G1 gate sign-off closes G1.
+(25/25). The **G1 registry/feeds/market triad is structurally complete**, and the FIRST live
+battery runs (owner host, 2026-10-06 via `npm run test:live`) already moved real rows:
+**amm program DEPLOYED on betanet (q14/q20 PASS); no thru-usd oracle feed (q22
+live-negative); P3 CHAIN-BLOCKED — the faucet program reverts claims (vmError -765, user
+-26n), a regression vs the pinned 2026-09-26 verified claim that also affects the shipped
+wallet's faucet feature until Betanet is fixed chain-side.** G1 closure = amm live-evidence
+growing the verified matrix (read-side, no faucet needed) + the owner's G1 sign-off; G2
+stays gated on P3 (B17), which needs the faucet fixed or an alternative funded path.
 
 The readiness classification behind this order (automated / browser / Betanet-live /
 mainnet-specific / external audit — never merged) is in `docs/AUDIT_REPORT.md` §"Mainnet-readiness

@@ -168,3 +168,14 @@ pinned package ships bindings (`./perp`, `./clob`).
   faucet-first, NOOP kept as a recorded lifecycle evidence row; the trace recorded in
   `scripts/defi-evidence/2026-10-06-live-chain.json` (owner-agent provenance, re-confirmable
   via `npm run test:live`). P3's token leg awaits the re-run.
+- **Second live run (owner host, 2026-10-06) → rung-level findings landed.** test:live executed
+  end-to-end: preflight PASS, **q14/q20 PASS (amm program DEPLOYED on betanet; registry map
+  consistent)**, **q22 LIVE-NEGATIVE (no thru-usd oracle feed account)**, **p3 FAIL at rung 2**:
+  activation gets through existence-verified (NOOP writes the account despite vmError -767),
+  but the **faucet program itself REVERTS claims (-765, user -26n) — a chain regression vs the
+  pinned 2026-09-26 verified claim (tsjbbZW9sT…)** that also breaks the shipped wallet's
+  faucet feature until Betanet is fixed. Probe rewritten as a classified rung ladder
+  (existence-verified activation, per-claim funding), oracle probe not_found classification
+  fixed (exists:false, not 'unreachable'). amm registry record upgraded to
+  'deployment observed' — trust stays unverified (existence ≠ verification, R4). **P3 stays
+  CHAIN-BLOCKED; B17 unchanged.**

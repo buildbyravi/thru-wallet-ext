@@ -59,9 +59,11 @@ export const PROGRAMS = Object.freeze([
     trust: 'unverified',
     verification: 'unknown',
     changeStatus: 'unknown',
-    managementState: 'bootstrap-managed (package-declared; live deployment, upgrade authority and pool-creation control unverified)',
-    updatedAt: '2026-10-05',
-    evidenceRef: ['2026-10-05-package-surface'],
+    // Deployment OBSERVED on-chain 2026-10-06 (live presence read; evidence:
+    // 2026-10-06-live-chain) — existence is deployment, NOT verification (R4).
+    managementState: 'bootstrap-managed (package-declared; deployment OBSERVED on-chain 2026-10-06 via live presence probe; upgrade authority and pool-creation control still unverified)',
+    updatedAt: '2026-10-06',
+    evidenceRef: ['2026-10-05-package-surface', '2026-10-06-live-chain'],
   }),
   Object.freeze({
     role: 'curve',
