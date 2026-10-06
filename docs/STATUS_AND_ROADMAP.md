@@ -129,10 +129,11 @@ audits** (registry + stateless B3 genesis binding; SignedFeedRecord verification
 in-flight per key, TTL honesty, errors uncached, genesis-bound keys, in-memory only) +
 per-slice assembly with chain-before-index ladders and honest S10 fallbacks, wire
 byte-identical to M0; record `docs/defi/G1_MARKET.md`, gate `test/test-defi-market.mjs`
-(25/25). The **G1 registry/feeds/market triad is structurally complete**. Next: the live
-evidence session (`scripts/verify-token-transfer.mjs` + `scripts/probe-oracle-feed.mjs` on a
-networked host) that closes P3/Q22 and starts flipping the capability matrix to verified —
-then the owner's G1 gate sign-off.
+(25/25). The **G1 registry/feeds/market triad is structurally complete**. The live evidence
+session is now ONE command — `npm run test:live` on a networked host
+(`scripts/live-betanet-verify.mjs`: P3 transfer + Q22 oracle + Q14/Q20 program layer, named
+PASS/NEGATIVE/FAIL classifications, dated `<date>-live-chain.json` evidence entries,
+throwaway faucet-funded keys only) — after which the owner's G1 gate sign-off closes G1.
 
 The readiness classification behind this order (automated / browser / Betanet-live /
 mainnet-specific / external audit — never merged) is in `docs/AUDIT_REPORT.md` §"Mainnet-readiness

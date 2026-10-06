@@ -150,3 +150,12 @@ pinned package ships bindings (`./perp`, `./clob`).
   `docs/defi/G1_MARKET.md`. Gate: `test/test-defi-market.mjs` (25/25). The G1
   registry/feeds/market triad is now structurally complete; closure awaits the live evidence
   session + owner sign-off.
+- **Owner-approved live-automation (2026-10-06) → delivered same day:** `scripts/live-betanet-verify.mjs`
+  — the manual live-verify loop is now ONE command (`npm run test:live`). It orchestrates the
+  existing probes as child processes (P3 token transfer, Q22 oracle feed) plus inline program-
+  layer checks (Q14 amm presence, Q20 registry↔bootstrap↔chain consistency), classifying every
+  outcome as PASS / honest-NEGATIVE / FAIL / BLOCKED_ENV and appending a dated
+  `<date>-live-chain.json` evidence entry. Throwaway faucet-funded keys only (Betanet
+  self-funds); nothing reads the vault or any saved key. Live runs stay OUT of `npm test`:
+  the offline battery is the deterministic gate; the live battery writes evidence into the
+  seeds. Desktop smoke flows stay manual on the checklist (real UX can't be scripted that way).
