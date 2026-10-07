@@ -120,7 +120,7 @@ if (preflightError) {
     id: 'transport-preflight', status: 'BLOCKED_ENV',
     summary: `cannot reach ${NETWORK.rpcUrl ?? networkId} from this host (${preflightError}) — nothing verified, nothing fabricated`,
   });
-  for (const id of ['p3-token-transfer', 'q22-oracle-feed', 'q14-amm-program-presence', 'q20-program-map', 'q15-amm-pool-model']) {
+  for (const id of ['p3-token-transfer', 'q22-oracle-feed', 'q14-amm-program-presence', 'q20-program-map', 'q15-amm-pool-model', 'q9-query-surface']) {
     record({ id, status: 'BLOCKED_ENV', summary: 'skipped — transport preflight failed' });
   }
 } else {
@@ -218,6 +218,32 @@ if (preflightError) {
       summary = 'probe could not reach the chain from this host';
     }
     record({ id: 'q15-amm-pool-model', status, summary, evidence: { exit: r.code, tail: tail(`${r.out}\n${r.err}`) } });
+  }
+  // Q9/Q18: native query surface. The dossier predates the SDK's query primitives — the
+  // definitive live answers now come from probe-indexer.mjs: does tx-by-account serve
+  // (Q9 history substrate), does the AMM program have queryable activity and is the event
+  // surface streamable (Q18 pool discovery without an external indexer)?
+  {
+    const r = await runNode('probe-indexer.mjs', ['--network', networkId]);
+    const full = `${r.out}\n${r.err}`;
+    let status = 'FAIL';
+    let summary = `probe failed (${r.code ?? r.signal}) — see tail`;
+    if (/UNREACHABLE/.test(full)) {
+      status = 'BLOCKED_ENV';
+      summary = 'probe could not reach the chain from this host';
+    } else if (r.code === 0) {
+      const histLine = full.split('\n').find((l) => l.includes('listForAccount(fresh throwaway')) ?? '';
+      if (/SUPPORTED/.test(histLine)) {
+        status = 'PASS';
+        summary = 'native tx-by-account query serves — Q9 history substrate is ON-NODE (see tail for Q18 amm-activity + events rows)';
+      } else if (/UNSUPPORTED/.test(histLine)) {
+        status = 'NEGATIVE';
+        summary = 'native tx history UNSUPPORTED on this chain — Q9 substrate is off-node only, index/indexer story stands (see tail)';
+      } else {
+        summary = 'probe ran but history-row classification unreadable — see tail';
+      }
+    }
+    record({ id: 'q9-query-surface', status, summary, evidence: { exit: r.code, tail: tail(full) } });
   }
 }
 

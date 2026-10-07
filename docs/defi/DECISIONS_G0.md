@@ -199,3 +199,24 @@ pinned package ships bindings (`./perp`, `./clob`).
   (regression confirmed, activation existence-verified)**. The owner pushed the evidence entry
   themselves (`66f0e4f`, `scripts/defi-evidence/2026-10-07-live-chain.json` — verified in-repo
   byte-for-byte). The one-command live evidence loop is now the standing instrument.
+- **Q9-first query-surface probe delivered (2026-10-07, owner directive "both — Q9 first,
+  then Q18").** Reading the pinned SDK runtime surfaces NATIVE query primitives the dossier
+  never knew existed: `transactions.listForAccount` — the same primitive the extension's own
+  history feature already calls (thru-client:691) — plus `events.list/stream`,
+  `transactions.get/getStatus/list`, `blocks.list/stream`, `node.getStatus`. The 2026-09
+  wallet probes' TRANSACTIONS_BY_ACCOUNT_UNSUPPORTED row means the chain REJECTED this
+  primitive then — whether betanet serves it TODAY is a live question, now answerable by
+  `scripts/probe-indexer.mjs` (`q9-query-surface` battery row). Q18 is covered IN the same
+  probe: `listForAccount(amm program)` answers "program activity queryable" (pool discovery
+  substrate on-node) and `events.list` unfiltered answers the event-surface question; a
+  PoolInit-filtered iteration follows once the surface answer is known (no filter shapes are
+  fabricated — live answer first). Probe discipline identical to the oracle/amm probes:
+  UNSUPPORTED and EMPTY_RESULT are answers; only UNREACHABLE is BLOCKED_ENV (exit 1). The
+  probe even validated its own input shapes offline (Pubkey → ta-address string; SDK's
+  `page`-as-class binding) before any live run — instrumentation IS verification.
+- **Q9 dossier consequence queued for the first live run:** if tx-by-account serves natively,
+  the "NO_INDEXER" rows (history discovery contexts, deep-history honest fallbacks) move to
+  "on-node substrate, no external indexer required — but the indexer package question
+  (exploration/registry contract? @thru/indexer?) remains OPEN". If UNSUPPORTED, Q9 flips to
+  the definitive LIVE-NEGATIVE and the indexer-lack is the verified truth. Either outcome
+  closes the assumption; the evidence is the differentiator, not a guess.
