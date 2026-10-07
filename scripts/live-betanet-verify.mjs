@@ -120,7 +120,7 @@ if (preflightError) {
     id: 'transport-preflight', status: 'BLOCKED_ENV',
     summary: `cannot reach ${NETWORK.rpcUrl ?? networkId} from this host (${preflightError}) — nothing verified, nothing fabricated`,
   });
-  for (const id of ['p3-token-transfer', 'q22-oracle-feed', 'q14-amm-program-presence', 'q20-program-map', 'q15-amm-pool-model', 'q9-query-surface']) {
+  for (const id of ['p3-token-transfer', 'q22-oracle-feed', 'q14-amm-program-presence', 'q20-program-map', 'q15-amm-pool-model', 'q9-query-surface', 'q18-amm-pool-discovery']) {
     record({ id, status: 'BLOCKED_ENV', summary: 'skipped — transport preflight failed' });
   }
 } else {
@@ -244,6 +244,33 @@ if (preflightError) {
       summary = 'probe could not reach the chain from this host';
     }
     record({ id: 'q9-query-surface', status, summary, evidence: { exit: r.code, tail: tail(full) } });
+  }
+  // Q18: pool discovery over the live-verified substrate. 0 verified pools is the honest
+  // state expectation today (no mints); ≥1 flips Q15's model evidence to live directly.
+  {
+    const r = await runNode('probe-amm.mjs', ['--discover', '--network', networkId]);
+    const full = `${r.out}\n${r.err}`;
+    let status = 'FAIL';
+    let summary = `probe failed (${r.code ?? r.signal}) — see tail`;
+    if (r.code === 0) {
+      const resultLine = full.split('\n').find((l) => /RESULT amm-pool-discovery:/.test(l)) ?? '';
+      const m = resultLine.match(/(\d+) pool\(s\) verified/);
+      if (m && Number(m[1]) > 0) {
+        status = 'PASS';
+        summary = `${m[1]} pool(s) discovered and verified with the official parser on-node — Q15 model evidence live (see tail)`;
+      } else if (m) {
+        status = 'NEGATIVE';
+        summary = 'discovery substrate serves; 0 pool instances exist yet (mint-blocked) — honest absence verified';
+      } else if (/UNSUPPORTED/.test(resultLine)) {
+        summary = 'discovery UNSUPPORTED — contradicts q9 row, record drift';
+      } else {
+        summary = 'probe ran but discovery classification unreadable — see tail';
+      }
+    } else if (/UNREACHABLE|ECONNREFUSED|ENOTFOUND|ETIMEDOUT/i.test(full)) {
+      status = 'BLOCKED_ENV';
+      summary = 'probe could not reach the chain from this host';
+    }
+    record({ id: 'q18-amm-pool-discovery', status, summary, evidence: { exit: r.code, tail: tail(full) } });
   }
 }
 

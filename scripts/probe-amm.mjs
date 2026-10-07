@@ -18,10 +18,12 @@
 // honest state of pool-model evidence today (no mints exist on betanet — P3 is the blocker,
 // and the faucet program currently rejects claims: 2026-10-06-live-chain).
 
-import { Pubkey } from '@thru/sdk';
+import { Pubkey, TransactionView } from '@thru/sdk';
 import {
   AMM_PROGRAM_ADDRESS,
   AMM_DEFAULT_SWAP_FEE_BPS,
+  AMM_INSTRUCTION_INIT_POOL,
+  AMM_POOL_METADATA_SIZE,
   deriveAmmPoolAddresses,
   parseAmmPoolMetadata,
   sortAmmMints,
@@ -38,6 +40,7 @@ const flag = (name) => {
 const networkId = flag('--network') || 'betanet';
 const mintsArg = flag('--mints');
 const poolArg = flag('--pool');
+const discover = args.includes('--discover');
 const feeBps = flag('--fee-bps') ? Number(flag('--fee-bps')) : undefined;
 
 const network = getNetworkConfig(networkId);
@@ -60,6 +63,79 @@ async function readAccount(address, label) {
     console.error('Record as BLOCKED — do not fabricate pool values.');
     process.exit(1);
   }
+}
+
+// ---- 3. Pool discovery over the verified on-node substrate (Q18 + Q15) ------
+// q9-query-surface live-passed (2026-10-07): listForAccount serves natively. Enumerate
+// transactions touching the amm program, collect every referenced non-payer/non-program
+// account, and let the OFFICIAL parser be the judge of "is a pool account". Any candidate
+// that accounts.get serves parseAmmPoolMetadata cleanly is a verified pool instance — no
+// layout assumptions, no internals. Verified pools then get the derivation cross-check
+// (Q18: discovered address must equal deriveAmmPoolAddresses of the parsed mints+fee).
+if (discover) {
+  console.log(`\n--discovery over transactions touching taAMM… (FULL view, no filter fabricated)`);
+  let txs;
+  try {
+    const r = await client.transactions.listForAccount(AMM_PROGRAM_ADDRESS, {
+      transactionOptions: { view: TransactionView.FULL },
+    });
+    txs = r.transactions;
+  } catch (err) {
+    if (/unsupported|not supported|unimplemented/i.test(err?.message ?? '')) {
+      console.log('RESULT amm-pool-discovery: UNSUPPORTED — contradicts the 2026-10-07 surface row; record drift');
+      process.exit(0);
+    }
+    console.error(`\nUNREACHABLE or unreadable from this environment enumerating amm activity: ${err.message}`);
+    console.error('Record as BLOCKED — do not fabricate pool discoveries.');
+    process.exit(1);
+  }
+  console.log(`activity: ${txs.length} transaction(s)`);
+  const candidates = new Set();
+  for (const tx of txs) {
+    const p = tx.program?.toString?.() ?? String(tx.program);
+    const idxByte = tx.instructionData?.[0];
+    console.log(
+      `  tx: program=${p === AMM_PROGRAM_ADDRESS ? 'taAMM…' : p} ` +
+      `instructionIndex≟${idxByte === undefined ? '?' : idxByte}${idxByte === AMM_INSTRUCTION_INIT_POOL ? ' (INIT_POOL)' : ''} ` +
+      `rw=${tx.readWriteAccounts?.length ?? 0} ro=${tx.readOnlyAccounts?.length ?? 0}`,
+    );
+    const payer = tx.feePayer?.toString?.() ?? '';
+    for (const list of [tx.readWriteAccounts ?? [], tx.readOnlyAccounts ?? []]) {
+      for (const a of list) {
+        const s = a?.toString?.() ?? String(a);
+        if (s !== AMM_PROGRAM_ADDRESS && s !== payer) candidates.add(s);
+      }
+    }
+  }
+  const verified = [];
+  let rejected = 0;
+  for (const c of [...candidates].slice(0, 8)) { // strictly bounded probing
+    const r = await readAccount(c, `candidate ${c}`);
+    if (!r.ok) { rejected++; continue; }
+    try {
+      const meta = parseAmmPoolMetadata(r.account);
+      if (r.account?.data?.length < AMM_POOL_METADATA_SIZE) { rejected++; continue; }
+      verified.push({ address: c, meta });
+    } catch {
+      rejected++;
+    }
+  }
+  for (const v of verified) {
+    console.log(`\nVERIFIED POOL ${v.address} — Q15 model evidence (official parser):`);
+    console.log(JSON.stringify(v.meta, JSON_SAFE, 2));
+    const m = v.meta;
+    const m1 = m.get_mint_one?.().toString?.(), m2 = m.get_mint_two?.().toString?.(), fee = m.get_swap_fee_bps?.();
+    if (m1 && m2 && typeof fee === 'number') {
+      const d = deriveAmmPoolAddresses(client, { ammProgramAddress: AMM_PROGRAM_ADDRESS, mintAAddress: m1, mintBAddress: m2, swapFeeBps: fee });
+      const derivedPool = (d.pool ?? d.poolAccount ?? d.poolAddress);
+      console.log(`cross-check Q18: deriveAmmPoolAddresses(mints, fee=${fee}) ${
+        derivedPool === v.address ? 'REPRODUCES the discovered address ✓' : `DID NOT match → derived ${derivedPool}; investigation-worthy`}`);
+    } else {
+      console.log('cross-check Q18: parsed view missing mint/fee getters — deferred');
+    }
+  }
+  console.log(`\nRESULT amm-pool-discovery: ${verified.length} pool(s) verified on-node, ${rejected} candidate account(s) rejected ${verified.length ? '' : '(0 pools is a RESULT: substrate serves, no pool exists yet — honest state today)'}`);
+  process.exit(0);
 }
 
 // ---- 1. Program-level evidence ----------------------------------------------

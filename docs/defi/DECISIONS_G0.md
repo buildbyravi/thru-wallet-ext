@@ -220,3 +220,24 @@ pinned package ships bindings (`./perp`, `./clob`).
   (exploration/registry contract? @thru/indexer?) remains OPEN". If UNSUPPORTED, Q9 flips to
   the definitive LIVE-NEGATIVE and the indexer-lack is the verified truth. Either outcome
   closes the assumption; the evidence is the differentiator, not a guess.
+- **QUERY SUBSTRATE LIVE-PASS (2026-10-07, owner run of q9-query-surface, battery 5/1/1).**
+  EVERY native query primitive serves on betanet: `node.getStatus` (ready:true,
+  consensus.active, finalizedSlot 595,581+), `chain.getChainInfo` (**chainId: 2 = Betanet,
+  live-pinned**), `version.get` (thru-node a81ff4cbb, 2026-09-30), `transactions.listForAccount`
+  (fresh account → supported empty result; **amm program → 1 transaction, queryable activity**),
+  `events.list` (50 events/page, hasNext — enumerable event surface), `transactions.getStatus`
+  (live sig → CLUSTER_EXECUTED, 21,788 CU, vmError 0). The 2026-09 UNSUPPORTED row is dated;
+  the history substrate is ON-NODE — no external indexer needed for per-account history or
+  program-activity enumeration. Q9 closed for substrate (the dedicated-indexer-PACKAGE question
+  — registry/explorer contract — remains open); Q18's global-discovery substrate LIVE-PASS.
+- **Q18 discovery probe delivered over the verified substrate (same day):**
+  `scripts/probe-amm.mjs --discover` (battery row `q18-amm-pool-discovery`): enumerate amm
+  activity FULL-view → candidate account union minus payer/program → **official parser is the
+  judge** (no layout assumptions, no internals; strictly bounded ≤8 candidates) → verified
+  pools cross-checked against `deriveAmmPoolAddresses` (discovered address must reproduce
+  from parsed mints+fee). Verdict semantics: 1+ pools → PASS (Q15 model evidence live); 0 →
+  NEGATIVE (substrate green, honest absence — mint-blocked); UNSUPPORTED → drift-FAIL.
+- **Owner classification fix (2bae35c) folded:** battery rows must test exit code BEFORE
+  substring markers when a probe prints its own legend — the q9 row's footer contained the
+  word UNREACHABLE and would have false-BLOCKED a successful run. Regression noted; the
+  ordering rule now stands for all classifier code (exit first, markers second).
