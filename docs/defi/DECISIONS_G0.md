@@ -192,3 +192,10 @@ pinned package ships bindings (`./perp`, `./clob`).
   (P3-blocked). The owner raised chain-side: faucet claim revert (-765/user -26n). A
   `--funder` leg for the P3 probe stays an explicit owner option IF a pre-funded betanet
   account exists — key discipline (throwaway isolation) is preserved by design.
+- **Live battery fully operational (2026-10-07, owner host at `be92394`):** first run with the
+  AMM row: **4 PASS / 1 FAIL / 1 NEGATIVE** — preflight, q14/q20 program layer,
+  **q15-amm-pool-model PASS** (program read + official parser surface verified; pool-model
+  parse awaits mints), q22 NEGATIVE (no thru-usd feed), **p3 FAIL at the faucet rung only
+  (regression confirmed, activation existence-verified)**. The owner pushed the evidence entry
+  themselves (`66f0e4f`, `scripts/defi-evidence/2026-10-07-live-chain.json` — verified in-repo
+  byte-for-byte). The one-command live evidence loop is now the standing instrument.
