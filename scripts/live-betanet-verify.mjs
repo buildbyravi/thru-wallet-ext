@@ -120,7 +120,7 @@ if (preflightError) {
     id: 'transport-preflight', status: 'BLOCKED_ENV',
     summary: `cannot reach ${NETWORK.rpcUrl ?? networkId} from this host (${preflightError}) — nothing verified, nothing fabricated`,
   });
-  for (const id of ['p3-token-transfer', 'q22-oracle-feed', 'q14-amm-program-presence', 'q20-program-map']) {
+  for (const id of ['p3-token-transfer', 'q22-oracle-feed', 'q14-amm-program-presence', 'q20-program-map', 'q15-amm-pool-model']) {
     record({ id, status: 'BLOCKED_ENV', summary: 'skipped — transport preflight failed' });
   }
 } else {
@@ -200,6 +200,24 @@ if (preflightError) {
           : 'registry↔bootstrap consistent; some declared program addresses hold no account yet (per-row detail)',
       evidence: rows,
     });
+  }
+  // Q15: pool-model evidence. Today the honest answer is "no pool to parse" (no mints on
+  // betanet — P3 is the funding blocker), so the PASS here is the program/parser surface;
+  // the day a mint exists, probe-amm.mjs --mints carries the parsing evidence.
+  {
+    const r = await runNode('probe-amm.mjs', ['--network', networkId]);
+    let status = 'FAIL';
+    let summary = `probe failed (${r.code ?? r.signal}) — see tail`;
+    if (r.code === 0) {
+      status = /EXISTS/.test(r.out) ? 'PASS' : 'NEGATIVE';
+      summary = status === 'PASS'
+        ? 'amm program account read + official parser surface verified; pool-model parse awaits on-chain mints (P3-blocked)'
+        : 'amm program absent — contrary to the 2026-10-06 presence row, record drift';
+    } else if (/UNREACHABLE|ECONNREFUSED|ENOTFOUND|ETIMEDOUT/i.test(r.err)) {
+      status = 'BLOCKED_ENV';
+      summary = 'probe could not reach the chain from this host';
+    }
+    record({ id: 'q15-amm-pool-model', status, summary, evidence: { exit: r.code, tail: tail(`${r.out}\n${r.err}`) } });
   }
 }
 

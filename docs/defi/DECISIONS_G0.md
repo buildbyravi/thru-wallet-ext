@@ -179,3 +179,16 @@ pinned package ships bindings (`./perp`, `./clob`).
   fixed (exists:false, not 'unreachable'). amm registry record upgraded to
   'deployment observed' — trust stays unverified (existence ≠ verification, R4). **P3 stays
   CHAIN-BLOCKED; B17 unchanged.**
+- **G1: CLOSED 2026-10-06 by owner sign-off.** The owner's forensic audit of `59a47b7…b4bcb6f`
+  verified all three slices green (registry 27/27, feed 35/35, market 25/25, M0 98/98, full
+  npm test, build clean) plus the live battery against real Betanet state. Verdict: "GATE G1
+  SIGNED OFF (APPROVED)". The registry/feeds/market triad and the live evidence loop are the
+  verified G1 deliverable; P3 remains chain-blocked (faucet regression) as the only G2 gate.
+- **Owner-directed next track (same day): AMM read-side evidence.** `scripts/probe-amm.mjs`
+  delivered (read-only, no signing: program account read, pool derivation evidence via
+  `deriveAmmPoolAddresses` + `sortAmmMints` (Q18), pool parsing via the official
+  `parseAmmPoolMetadata` (Q15)). Wired into the battery as check `q15-amm-pool-model`: PASS =
+  program+parser surface verified; the pool-model parse honestly awaits on-chain mints
+  (P3-blocked). The owner raised chain-side: faucet claim revert (-765/user -26n). A
+  `--funder` leg for the P3 probe stays an explicit owner option IF a pre-funded betanet
+  account exists — key discipline (throwaway isolation) is preserved by design.

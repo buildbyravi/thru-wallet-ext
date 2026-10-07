@@ -57,13 +57,17 @@ G0 recon/dossier/seeds (this folder) → **M0 contract drop — CLOSED 2026-10-0
 sign-off** (manifest v17/v18 entries, `src/shared/contract/defi-schema.js`, honest gated
 handlers, fixtures/presets/intent scripts under `test/fixtures/defi/`, integrity gate
 `test/test-defi-m0.mjs`; code inventory in `M0_INVENTORY.md`) → **G1 read-only +
-registry/feeds/market layer — IN PROGRESS** (G1-A delivered: registry service owns records +
-derivation with stateless B3 genesis binding, `docs/defi/G1_REGISTRY.md`; feed verification +
-market layer + live rows pending; G1-B delivered: SignedFeedRecord verification + narrowing, `docs/defi/G1_FEED.md`; G1-C delivered 2026-10-06: coalescing read cache + per-slice market assembly, `docs/defi/G1_MARKET.md`; live rows pending) → G2 intent
-pipeline proven on send, then mint-only launch → G3 swap (exit first) → G4 pools and
-direct-pool launch → G5 curve (only if Q20/Q21 allow) → G6 scale. Sequence per the owner:
-G0 → M0 → verified capability matrix → real fixtures → mint-only launch pipeline. Each gate
-closes only on human sign-off.
+registry/feeds/market layer — CLOSED 2026-10-06 by owner sign-off** (triad delivered and
+forensically audited: G1-A registry + stateless B3 genesis binding `G1_REGISTRY.md`, G1-B
+SignedFeedRecord verification + narrowing `G1_FEED.md`, G1-C coalescing read cache +
+per-slice market assembly `G1_MARKET.md`; plus the live battery `npm run test:live` —
+amm deployment confirmed live, q22 live-negative, faucet regression recorded in
+`scripts/defi-evidence/2026-10-06-live-chain.json`; AMM read-side probe continues the
+verified-matrix track, `scripts/probe-amm.mjs`) → G2 intent pipeline proven on send, then
+mint-only launch (G2 is gated on P3 per B17 — currently chain-blocked by the Betanet faucet
+regression) → G3 swap (exit first) → G4 pools and direct-pool launch → G5 curve (only if
+Q20/Q21 allow) → G6 scale. Sequence per the owner: G0 → M0 → verified capability matrix →
+real fixtures → mint-only launch pipeline. Each gate closes only on human sign-off.
 
 M0 boundary (still standing): the contract drop is the *contract*, not the feature. No DeFi flag
 is on, no chain read/write DeFi path exists, the intent store is unbuilt, and the only two
