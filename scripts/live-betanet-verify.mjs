@@ -228,10 +228,7 @@ if (preflightError) {
     const full = `${r.out}\n${r.err}`;
     let status = 'FAIL';
     let summary = `probe failed (${r.code ?? r.signal}) — see tail`;
-    if (/UNREACHABLE/.test(full)) {
-      status = 'BLOCKED_ENV';
-      summary = 'probe could not reach the chain from this host';
-    } else if (r.code === 0) {
+    if (r.code === 0) {
       const histLine = full.split('\n').find((l) => l.includes('listForAccount(fresh throwaway')) ?? '';
       if (/SUPPORTED/.test(histLine)) {
         status = 'PASS';
@@ -242,6 +239,9 @@ if (preflightError) {
       } else {
         summary = 'probe ran but history-row classification unreadable — see tail';
       }
+    } else if (/RESULT.*UNREACHABLE|ECONNREFUSED|ENOTFOUND|ETIMEDOUT/i.test(full)) {
+      status = 'BLOCKED_ENV';
+      summary = 'probe could not reach the chain from this host';
     }
     record({ id: 'q9-query-surface', status, summary, evidence: { exit: r.code, tail: tail(full) } });
   }
