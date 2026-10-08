@@ -106,8 +106,20 @@ section('Registry mirrors the G0 evidence seeds');
     return live && live.address === p.address && live.trust === p.trust
       ? [] : [`${p.role}: mismatch`];
   });
-  ok('all 5 seed program records present with identical address/trust',
-    programProblems.length === 0 && record.programs.length === 5, programProblems.join(', '));
+  // 2026-10-08: the seed's program map was completed from the package's own pin — the FULL
+  // 0.4.1 bootstrap declaration set (18 system roles; see DECISIONS_G0) plus the registry-only
+  // null-address 'curve' row = 19 records. The pinned role set below is the canonical pin a
+  // review must re-confirm on any future edit, and the loop above still requires byte-identical
+  // address/trust per record vs the seed file.
+  const EXPECTED_PROGRAM_ROLES = ['token', 'amm', 'curve', 'multicall', 'oracle',
+    'abi_manager', 'block_producer', 'clob', 'compression', 'consensus_validator', 'eoa',
+    'faucet', 'name_service', 'nft', 'noop', 'passkey_manager', 'thru_registrar', 'uploader', 'wthru'];
+  ok('all seed program records present with identical address/trust (full 0.4.1 bootstrap set + curve)',
+    programProblems.length === 0
+      && record.programs.length === 19
+      && JSON.stringify(record.programs.map((r) => r.role)) === JSON.stringify(seed.programs.map((p) => p.role))
+      && EXPECTED_PROGRAM_ROLES.every((role) => record.programs.some((r) => r.role === role)),
+    `${seed.programs.length} seed records; problems: ${programProblems.join(', ')}`);
 
   ok('features are the post-binding view of all 13 seed rows',
     record.features.length === 13

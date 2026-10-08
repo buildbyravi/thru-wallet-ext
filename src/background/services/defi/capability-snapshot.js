@@ -95,6 +95,160 @@ export const PROGRAMS = Object.freeze([
     updatedAt: '2026-10-05',
     evidenceRef: ['2026-10-05-package-surface'],
   }),
+  Object.freeze({
+    role: 'abi_manager',
+    address: 'taABII8WXcPaPIt47cXjOBbyoBUGBDXznAMHorVMeok3mw',
+    trust: 'unverified',
+    verification: 'unknown',
+    changeStatus: 'unknown',
+    managementState: 'bootstrap-managed (package-declared)',
+    updatedAt: '2026-10-08',
+    evidenceRef: ['2026-10-05-package-surface', '2026-10-08-official-docs'],
+    // ABI manager program — feeds Q-series ABI reads if ever needed for program introspection.
+  }),
+  Object.freeze({
+    role: 'block_producer',
+    address: 'taBPUH9m3CXZcBQyCrTmclHtltipiPelIHzdAf8QdIDvnt',
+    trust: 'unverified',
+    verification: 'unknown',
+    changeStatus: 'unknown',
+    managementState: 'bootstrap-managed (package-declared)',
+    updatedAt: '2026-10-08',
+    evidenceRef: ['2026-10-05-package-surface', '2026-10-08-official-docs'],
+    // Block producer program per the 0.4.1 bootstrap table; fee distribution to live producers per the transaction-execution spec (2026-10-08-official-docs).
+  }),
+  Object.freeze({
+    role: 'clob',
+    address: 'taCLOBcFk1PT8JTHQM1LzsyK6HLv1YkSJKZ2ZyIxo8fiTe',
+    trust: 'unverified',
+    verification: 'unknown',
+    changeStatus: 'unknown',
+    managementState: 'bootstrap-managed (package-declared)',
+    updatedAt: '2026-10-08',
+    evidenceRef: ['2026-10-05-package-surface', '2026-10-08-official-docs'],
+    // Order-book program (Q15 model space): system-shipped counterpart to the amm; whether pools live here instead of/in addition to the amm is a G3 question. ThrureScan confirms it in the same bootstrap table (third-party corroboration of the package pin).
+  }),
+  Object.freeze({
+    role: 'compression',
+    address: 'taRB54_92jNbBdcmt2jus88F-xrOSne1GR9mmyOh4RidAK',
+    trust: 'unverified',
+    verification: 'unknown',
+    changeStatus: 'unknown',
+    managementState: 'bootstrap-managed (package-declared)',
+    updatedAt: '2026-10-08',
+    evidenceRef: ['2026-10-05-package-surface', '2026-10-08-official-docs'],
+    // Account compression program — matches the client compression* groups (getAccountStatuses/compressAccount); fee-payer compression-timeout error -498 exists per spec.
+  }),
+  Object.freeze({
+    role: 'consensus_validator',
+    address: 'taCONStGMCE1RJ9ttceyt0FZhYapGJ7zzBuCE5qqYdLhaF',
+    trust: 'unverified',
+    verification: 'unknown',
+    changeStatus: 'unknown',
+    managementState: 'bootstrap-managed (package-declared)',
+    updatedAt: '2026-10-08',
+    evidenceRef: ['2026-10-05-package-surface', '2026-10-08-official-docs'],
+    // Consensus validator program per the 0.4.1 bootstrap table.
+  }),
+  Object.freeze({
+    role: 'eoa',
+    address: 'taEOAD2uLK1SLzPgtabFLUAx22yDlBs9DE9nZFTOESIGRr',
+    trust: 'unverified',
+    verification: 'unknown',
+    changeStatus: 'unknown',
+    managementState: 'bootstrap-managed (package-declared)',
+    updatedAt: '2026-10-08',
+    evidenceRef: ['2026-10-05-package-surface', '2026-10-08-official-docs'],
+    // Externally-owned-account program: fresh-account activation path (the P3 createOnChainAccount program). Live-relevant: the current activation/claim regression is in this neighborhood.
+  }),
+  Object.freeze({
+    role: 'faucet',
+    address: 'taFCTxR0y2eabGGaEdtTwC9pHz7ZY4CYD7FOiBFUJeAW16',
+    trust: 'unverified',
+    verification: 'unknown',
+    changeStatus: 'unknown',
+    managementState: 'bootstrap-managed (package-declared)',
+    updatedAt: '2026-10-08',
+    evidenceRef: ['2026-10-05-package-surface', '2026-10-08-official-docs'],
+    // System program per @thru/programs/bootstrap-addresses 0.4.1 (canonical pin).
+  }),
+  Object.freeze({
+    role: 'name_service',
+    address: 'taNAMEqRNEDeMWp0cDYmMVdZyTZiF5NyGDR9zTwH42rWQG',
+    trust: 'unverified',
+    verification: 'unknown',
+    changeStatus: 'unknown',
+    managementState: 'bootstrap-managed (package-declared)',
+    updatedAt: '2026-10-08',
+    evidenceRef: ['2026-10-05-package-surface', '2026-10-08-official-docs'],
+    // Name service (.id names — ThruScan runs a root on it, community production).
+  }),
+  Object.freeze({
+    role: 'nft',
+    address: 'taNFTjOaeDBSPHNf0LVRWAkF4raUFQgrz0EQIgJd60ENb5',
+    trust: 'unverified',
+    verification: 'unknown',
+    changeStatus: 'unknown',
+    managementState: 'bootstrap-managed (package-declared)',
+    updatedAt: '2026-10-08',
+    evidenceRef: ['2026-10-05-package-surface', '2026-10-08-official-docs'],
+    // NFT program — ThruScan's Pixel Pals collection runs on it (community production). Wallet relevance: NFT sub-surface if ever in scope; for now completeness of the 0.4.1 map.
+  }),
+  Object.freeze({
+    role: 'noop',
+    address: 'taNOOPV4A7S3WTsirr149To2GoGZ9q8zllQaBrbekHfkJT',
+    trust: 'unverified',
+    verification: 'unknown',
+    changeStatus: 'unknown',
+    managementState: 'bootstrap-managed (package-declared)',
+    updatedAt: '2026-10-08',
+    evidenceRef: ['2026-10-05-package-surface', '2026-10-08-official-docs'],
+    // System program per @thru/programs/bootstrap-addresses 0.4.1 (canonical pin).
+  }),
+  Object.freeze({
+    role: 'passkey_manager',
+    address: 'taPASSIvjIgz2kZ1CIIhvbT00XV9Ve5kZ2I9uDLanzIgbA',
+    trust: 'unverified',
+    verification: 'unknown',
+    changeStatus: 'unknown',
+    managementState: 'bootstrap-managed (package-declared)',
+    updatedAt: '2026-10-08',
+    evidenceRef: ['2026-10-05-package-surface', '2026-10-08-official-docs'],
+    // Passkey manager program — the on-chain half of @thru/passkey-manager (package also pinned). Future wallet passkey support reads this.
+  }),
+  Object.freeze({
+    role: 'thru_registrar',
+    address: 'taREGMtyyVIMr27zDpvN0aRiSS2aOVffM9cZCsc0Xomaxw',
+    trust: 'unverified',
+    verification: 'unknown',
+    changeStatus: 'unknown',
+    managementState: 'bootstrap-managed (package-declared)',
+    updatedAt: '2026-10-08',
+    evidenceRef: ['2026-10-05-package-surface', '2026-10-08-official-docs'],
+    // Registrar program per the 0.4.1 bootstrap table; role detail unverified (package only).
+  }),
+  Object.freeze({
+    role: 'uploader',
+    address: 'taUPLMH5QYOAT4ktwQeO7DXAEKtqBhYehalNGf5BJFQDYq',
+    trust: 'unverified',
+    verification: 'unknown',
+    changeStatus: 'unknown',
+    managementState: 'bootstrap-managed (package-declared)',
+    updatedAt: '2026-10-08',
+    evidenceRef: ['2026-10-05-package-surface', '2026-10-08-official-docs'],
+    // Program uploader (deploy pipeline) per the 0.4.1 bootstrap table.
+  }),
+  Object.freeze({
+    role: 'wthru',
+    address: 'taWTHRUBelpONhTRjYc7n4OovodUsUtZKTIuREWAi9G9lm',
+    trust: 'unverified',
+    verification: 'unknown',
+    changeStatus: 'unknown',
+    managementState: 'bootstrap-managed (package-declared)',
+    updatedAt: '2026-10-08',
+    evidenceRef: ['2026-10-05-package-surface', '2026-10-08-official-docs'],
+    // System program per @thru/programs/bootstrap-addresses 0.4.1 (canonical pin).
+  }),
 ]);
 
 /**

@@ -63,6 +63,20 @@ console.log(`Query-surface probe on ${networkId} (${network.rpcUrl}) — read-on
 // 0. Liveness facts (free).
 await primitive('node.getStatus', () => client.node.getStatus(), (s) => JSON.stringify(s, JSON_SAFE));
 await primitive('chain.getChainInfo', () => client.chain.getChainInfo(), (s) => JSON.stringify(s, JSON_SAFE));
+// Chain-identity pinning (learned the hard way by the entire ecosystem, and independently
+// observed diverging 2026-10-05→10-07: third-party verification read chainId 1 + slot ~2.9M
+// on 10-05 while our battery read chainId 2 + finalized ~0.6M on 10-07 — see DECISIONS_G0):
+// every live run pins these three numbers to the dated evidence so any drift is visible at
+// the battery level instead of being discovered as an unexplained regression.
+{
+  try {
+    const info = await client.chain.getChainInfo();
+    const status = await client.node.getStatus().catch(() => null);
+    const chainId = info?.chainId ?? info?.chain_id ?? null;
+    const finalized = status?.finalizedSlot ?? status?.finalized ?? null;
+    console.log(`RESULT chain-identity: chainId=${chainId} finalizedSlot=${finalized} rpc=${network.rpcUrl}`);
+  } catch { /* the primitives above already recorded their own RESULT lines */ }
+}
 await primitive('version.get', () => client.version.get(), (s) => JSON.stringify(s, JSON_SAFE));
 
 // 1. Q9 — native transaction history. Fresh throwaway key = a real address with zero history;

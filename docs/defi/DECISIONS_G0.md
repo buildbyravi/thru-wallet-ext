@@ -276,3 +276,48 @@ pinned package ships bindings (`./perp`, `./clob`).
   revert). No wallet-code fix exists for a chain-side program fault; our placed bount: the
   -767 audit demanded here approves the code (additive-only, byte-identical claim route).
   Owner action stands (chain escalation + same-seed import test).
+- **Ecosystem learning pass: pgreyy/thruscan (2026-10-08, owner's direction).** ThruScan is a
+  community explorer+wallet+swap+launchpad+names suite on alphanet with its OWN deployed C
+  programs (programs/: thruswap.c AMM, thrupad2.c launchpad, thrucpi.c CPI example, name
+  service root …), an SDK-0.4.x base, and a year of painful-translated-to-comments production
+  lore. Incorporated learnings, each pinned by file:
+  1. **Network identity**: they verified rpc.alphanet.thru.org ≡ rpc.betanet.thru.org on
+     2026-10-05 (same block hash at slot 2,908,038; chainId 1 both names). Our battery read
+     chainId 2 + finalized ~0.6M on rpc.betanet.thru.org on 10-07 — EITHER topology evolved in
+     the window OR a value drifted; probe-indexer now pins chainId + finalizedSlot + RPC url
+     on every live run ("RESULT chain-identity:") so drift is battery-visible. Their networks.js
+     lesson applies to us: node+addresses chosen TOGETHER (our configureNetwork does).
+  2. **System-program map completed from OUR OWN pin**: the bootstrap table in the pinned
+     @thru/programs/bootstrap-addresses 0.4.1 has 18 roles — our registry had only 5.
+     Completed seed + capability snapshot (+fixtures/tests) with verbatim addresses from the
+     package itself (clob, nft, name_service, thru_registrar, passkey_manager, abi_manager,
+     block_producer, consensus_validator, eoa, faucet, noop, uploader, compression, wthru);
+     ThruScan's per-network addresses cross-confirm the overlap (token/eoa/multicall/name_service/
+     faucet/noop/amm/clob/oracle/nft/wthru). q20-program-map now verifies all 19 records live.
+  3. **max_state_units_per_block = 8192 with a SILENT-DROP failure mode** (ThruScan lost a
+     whole site to it 28 Sept): over-asking state units is not rejected — the tx is never
+     admitted, signature returns, 'not found' forever. Our sends/claims all use stateUnits 1 —
+     safe — but this caps any future batched write; live value readable via feature gates:
+     'thru feature-gates list'.
+  4. **Send-landing discipline (production-verified)**: -511 = nonce taken lands in-block and
+     FAILS (not dropped); send can answer "busy" yet execute; "a transaction the node never
+     admits looks exactly like one never sent". Their sendLanded pattern: send → wait nonce
+     movement → verify by signature lookup → rebuild with next nonce. Matches our pending-tx
+     + tracked-send philosophy — independent production corroboration of our G5/G17 design.
+  5. **One signature = fee payer alone**: a hosted sponsor account can CREATE/OPEN for users
+     but can never move their tokens (env THRU_SPONSOR_* on their serverless). Our policy
+     stands: no server, no hosted keys; documented as the ecosystem's funding-UX solution
+     during chain-regression eras.
+  6. **Multicall**: system-shipped; wire format [count u16][program_idx u16][data_size u64][data]
+     per instruction; merged account list indexing; atomicity proven running wrap-THRU since
+     September (Q1 multi-program: community production proven — dossier upgraded).
+  7. **CORS**: alphanet node sends none (their browser→serverless proxy). Ours (betanet)
+     serves CORS fine for extension pages (G1 live rows proven). Hazards pinned: never trust
+     SDK DEFAULT_HOST (theirs was a dead host hardcoded); we always configureNetwork
+     explicitly with pinned origins.
+  8. **Pool discovery design space proven**: their swap keeps an on-chain REGISTRY account —
+     validates the registry-pattern supply for our Q18 global-discovery iterator.
+  9. Their deploy pipeline (programs/build.sh + C sources) is the reference for our eventual
+     token/program deploys (G4+ build steps) — no DevKit mystery left.
+- **Dossier rows upgraded with these proofs** (Q1 multicall production-proof, Q7 transport
+  CORS contrast + DEFAULT_HOST hazard, Q18 registry-discovery proven, Q20 full 0.4.1 map).
