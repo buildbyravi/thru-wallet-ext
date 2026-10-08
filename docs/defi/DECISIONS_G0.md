@@ -321,3 +321,20 @@ pinned package ships bindings (`./perp`, `./clob`).
      token/program deploys (G4+ build steps) — no DevKit mystery left.
 - **Dossier rows upgraded with these proofs** (Q1 multicall production-proof, Q7 transport
   CORS contrast + DEFAULT_HOST hazard, Q18 registry-discovery proven, Q20 full 0.4.1 map).
+- **SDK 0.3.18→0.4.1 diff audit + address-provenance correction (owner directive, 2026-10-08).**
+  Two pinned binaries installed side-by-side and diffed: public SDK surface is ADDITIONS-ONLY
+  (12 program-address constants + CompressionError; zero removals); every type/method the
+  wallet touches is byte-identical across versions (build/query/fee-payer/proofs/crypto). The
+  one CONTENT change is the whole system-address family replaced at 0.4.0 (15 re-addressed +
+  3 added, released 2026-09-26 — both packages, same epoch; faucet taWpJIo6… → taFCTxR0y2…).
+  Wallet-side coherence confirmed: networks.js and thru-client derive addresses from the
+  packages (the wallet is 0.4.x-native — EOA_PROGRAM_ID-etc imports only exist in 0.4.x);
+  released 1.4.1 pins 0.4.1/0.4.1 and claims work today for existing accounts. The registry
+  snapshot NOW ALSO derives all 18 role addresses from the package (owner's callout: never
+  hardcode what the pin already declares — package upgrades flow through; the dated evidence
+  seed remains a B3-era pin that fails loud on any future move). VERDICT: if the chain has an
+  issue, it is the chain: every client-side seam checks out; the -767 fault is coherently
+  assigned to the running 0.4.1-epoch node's faucet program on fresh-account claim paths
+  (older accounts unaffected; chainId drifted 1→2 during 10-05..10-07 — the exact genesis
+  the claims now run on). Full audit record: scripts/defi-evidence/2026-10-08-official-docs.json
+  (sdkDiffAudit block).

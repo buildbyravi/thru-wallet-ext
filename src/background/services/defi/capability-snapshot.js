@@ -1,3 +1,10 @@
+// Program addresses are DERIVED from the pinned package at build time (2026-10-08,
+// owner directive): the registry must never hand-audit strings against a moving chain — if
+// a package upgrade moves a managed address, the snapshot follows the pin and the dated
+// evidence seed (scripts/defi-evidence/betanet.registry-seed.json, 0.4.1 era) starts
+// disagreeing with it loudly, which is exactly the B3 fail-loud design.
+import { BOOTSTRAP_PROGRAM_ADDRESSES } from '../../../lib/bootstrap-pins.js';
+
 // Runtime capability + registry snapshot (M0, 2026-10-05).
 //
 // This is the SHIPPED twin of the script-verified seeds:
@@ -45,7 +52,7 @@ export const SEED_FINGERPRINT = 'betanet|taEOAD2uLK1SLzPgtabFLUAx22yDlBs9DE9nZFT
 export const PROGRAMS = Object.freeze([
   Object.freeze({
     role: 'token',
-    address: 'taTOKENKRgcl3vO0yVhftATDbXuhgWcfaaxv9xpEEdMdUE',
+    address: BOOTSTRAP_PROGRAM_ADDRESSES.token,
     trust: 'unverified',
     verification: 'goldenTested',
     changeStatus: 'unknown',
@@ -55,7 +62,7 @@ export const PROGRAMS = Object.freeze([
   }),
   Object.freeze({
     role: 'amm',
-    address: 'taAMMx8gG44RcOyRqNYZ55pDaAJoGS0R8kPYxBN96sO8kD',
+    address: BOOTSTRAP_PROGRAM_ADDRESSES.amm,
     trust: 'unverified',
     verification: 'unknown',
     changeStatus: 'unknown',
@@ -77,7 +84,7 @@ export const PROGRAMS = Object.freeze([
   }),
   Object.freeze({
     role: 'multicall',
-    address: 'taMULTIrOL8WpIFr16C1ECsO60qAsuwmwJephZHDOTvSeP',
+    address: BOOTSTRAP_PROGRAM_ADDRESSES.multicall,
     trust: 'unverified',
     verification: 'unknown',
     changeStatus: 'unknown',
@@ -87,7 +94,7 @@ export const PROGRAMS = Object.freeze([
   }),
   Object.freeze({
     role: 'oracle',
-    address: 'taORCLOkTSYq5enR2XOGoSDmzMc0P5NlqjP8nKpfd3vgps',
+    address: BOOTSTRAP_PROGRAM_ADDRESSES.oracle,
     trust: 'unverified',
     verification: 'unknown',
     changeStatus: 'unknown',
@@ -97,7 +104,7 @@ export const PROGRAMS = Object.freeze([
   }),
   Object.freeze({
     role: 'abi_manager',
-    address: 'taABII8WXcPaPIt47cXjOBbyoBUGBDXznAMHorVMeok3mw',
+    address: BOOTSTRAP_PROGRAM_ADDRESSES.abi_manager,
     trust: 'unverified',
     verification: 'unknown',
     changeStatus: 'unknown',
@@ -108,7 +115,7 @@ export const PROGRAMS = Object.freeze([
   }),
   Object.freeze({
     role: 'block_producer',
-    address: 'taBPUH9m3CXZcBQyCrTmclHtltipiPelIHzdAf8QdIDvnt',
+    address: BOOTSTRAP_PROGRAM_ADDRESSES.block_producer,
     trust: 'unverified',
     verification: 'unknown',
     changeStatus: 'unknown',
@@ -119,7 +126,7 @@ export const PROGRAMS = Object.freeze([
   }),
   Object.freeze({
     role: 'clob',
-    address: 'taCLOBcFk1PT8JTHQM1LzsyK6HLv1YkSJKZ2ZyIxo8fiTe',
+    address: BOOTSTRAP_PROGRAM_ADDRESSES.clob,
     trust: 'unverified',
     verification: 'unknown',
     changeStatus: 'unknown',
@@ -130,7 +137,7 @@ export const PROGRAMS = Object.freeze([
   }),
   Object.freeze({
     role: 'compression',
-    address: 'taRB54_92jNbBdcmt2jus88F-xrOSne1GR9mmyOh4RidAK',
+    address: BOOTSTRAP_PROGRAM_ADDRESSES.compression,
     trust: 'unverified',
     verification: 'unknown',
     changeStatus: 'unknown',
@@ -141,7 +148,7 @@ export const PROGRAMS = Object.freeze([
   }),
   Object.freeze({
     role: 'consensus_validator',
-    address: 'taCONStGMCE1RJ9ttceyt0FZhYapGJ7zzBuCE5qqYdLhaF',
+    address: BOOTSTRAP_PROGRAM_ADDRESSES.consensus_validator,
     trust: 'unverified',
     verification: 'unknown',
     changeStatus: 'unknown',
@@ -152,7 +159,7 @@ export const PROGRAMS = Object.freeze([
   }),
   Object.freeze({
     role: 'eoa',
-    address: 'taEOAD2uLK1SLzPgtabFLUAx22yDlBs9DE9nZFTOESIGRr',
+    address: BOOTSTRAP_PROGRAM_ADDRESSES.eoa,
     trust: 'unverified',
     verification: 'unknown',
     changeStatus: 'unknown',
@@ -163,7 +170,7 @@ export const PROGRAMS = Object.freeze([
   }),
   Object.freeze({
     role: 'faucet',
-    address: 'taFCTxR0y2eabGGaEdtTwC9pHz7ZY4CYD7FOiBFUJeAW16',
+    address: BOOTSTRAP_PROGRAM_ADDRESSES.faucet,
     trust: 'unverified',
     verification: 'unknown',
     changeStatus: 'unknown',
@@ -174,7 +181,7 @@ export const PROGRAMS = Object.freeze([
   }),
   Object.freeze({
     role: 'name_service',
-    address: 'taNAMEqRNEDeMWp0cDYmMVdZyTZiF5NyGDR9zTwH42rWQG',
+    address: BOOTSTRAP_PROGRAM_ADDRESSES.name_service,
     trust: 'unverified',
     verification: 'unknown',
     changeStatus: 'unknown',
@@ -185,7 +192,7 @@ export const PROGRAMS = Object.freeze([
   }),
   Object.freeze({
     role: 'nft',
-    address: 'taNFTjOaeDBSPHNf0LVRWAkF4raUFQgrz0EQIgJd60ENb5',
+    address: BOOTSTRAP_PROGRAM_ADDRESSES.nft,
     trust: 'unverified',
     verification: 'unknown',
     changeStatus: 'unknown',
@@ -196,7 +203,7 @@ export const PROGRAMS = Object.freeze([
   }),
   Object.freeze({
     role: 'noop',
-    address: 'taNOOPV4A7S3WTsirr149To2GoGZ9q8zllQaBrbekHfkJT',
+    address: BOOTSTRAP_PROGRAM_ADDRESSES.noop,
     trust: 'unverified',
     verification: 'unknown',
     changeStatus: 'unknown',
@@ -207,7 +214,7 @@ export const PROGRAMS = Object.freeze([
   }),
   Object.freeze({
     role: 'passkey_manager',
-    address: 'taPASSIvjIgz2kZ1CIIhvbT00XV9Ve5kZ2I9uDLanzIgbA',
+    address: BOOTSTRAP_PROGRAM_ADDRESSES.passkey_manager,
     trust: 'unverified',
     verification: 'unknown',
     changeStatus: 'unknown',
@@ -218,7 +225,7 @@ export const PROGRAMS = Object.freeze([
   }),
   Object.freeze({
     role: 'thru_registrar',
-    address: 'taREGMtyyVIMr27zDpvN0aRiSS2aOVffM9cZCsc0Xomaxw',
+    address: BOOTSTRAP_PROGRAM_ADDRESSES.thru_registrar,
     trust: 'unverified',
     verification: 'unknown',
     changeStatus: 'unknown',
@@ -229,7 +236,7 @@ export const PROGRAMS = Object.freeze([
   }),
   Object.freeze({
     role: 'uploader',
-    address: 'taUPLMH5QYOAT4ktwQeO7DXAEKtqBhYehalNGf5BJFQDYq',
+    address: BOOTSTRAP_PROGRAM_ADDRESSES.uploader,
     trust: 'unverified',
     verification: 'unknown',
     changeStatus: 'unknown',
@@ -240,7 +247,7 @@ export const PROGRAMS = Object.freeze([
   }),
   Object.freeze({
     role: 'wthru',
-    address: 'taWTHRUBelpONhTRjYc7n4OovodUsUtZKTIuREWAi9G9lm',
+    address: BOOTSTRAP_PROGRAM_ADDRESSES.wthru,
     trust: 'unverified',
     verification: 'unknown',
     changeStatus: 'unknown',
