@@ -135,9 +135,7 @@ if (discover) {
     }
   }
   console.log(`\nRESULT amm-pool-discovery: ${verified.length} pool(s) verified on-node, ${rejected} candidate account(s) rejected ${verified.length ? '' : '(0 pools is a RESULT: substrate serves, no pool exists yet — honest state today)'}`);
-  process.exit(0);
-}
-
+} else {
 // ---- 1. Program-level evidence ----------------------------------------------
 console.log(`AMM evidence probe on ${networkId} (${network.rpcUrl})`);
 console.log(`amm program: ${AMM_PROGRAM_ADDRESS}\n`);
@@ -198,4 +196,5 @@ if (poolArg) {
 if (!mintsArg && !poolArg) {
   console.log('\n(program-level only. Pool derivation/parsing needs a mint pair or pool address —');
   console.log('none exists on-chain today: no mints are deployed (P3 blocked at the faucet rung).');
+}
 }
