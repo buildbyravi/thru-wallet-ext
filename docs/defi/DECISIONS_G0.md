@@ -353,3 +353,13 @@ pinned package ships bindings (`./perp`, `./clob`).
   until `scripts/probe-name-service.mjs` (read-only) verifies the recovered formats against live chain
   state. OPEN: whether user-level root init is permitted on the running chain — root-init itself stays an
   experiment for a throwaway funded account at enablement time, owner-approved first.
+
+- **Funded-sender track for P3 (owner directive, 2026-10-09).** Owner added a host-side `.env` seed
+  (gitignored) for a pre-funded, already-registered throwaway testnet account. `verify-token-transfer.mjs`
+  now accepts `THRU_SEED` (env or `.env`, `THRU_SEED_INDEX` optional, default 0): the seed becomes the
+  SENDER for the token-legs battery, activation and faucet rungs are bypassed (existence + balance gates
+  instead), and the seed VALUE is never logged or written to evidence — only the derived address. The
+  throwaway-sender behaviour without a seed is unchanged. This is the dossier-sanctioned 'alternative
+  pre-funded path': the fresh-account faucet regression stays a chain-side open item, it just stops being
+  the only route to verifying the token legs. Standing rules intact: throwaway testnet accounts only,
+  nothing roots into the repo, and the owner runs the battery on their networked host.

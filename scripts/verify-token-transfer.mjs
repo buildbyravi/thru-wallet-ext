@@ -17,7 +17,9 @@
 // REPORTED, not asserted: where the honest answer can flip with chain behaviour (the
 // unregistered-owner probe), the script records what it saw instead of forcing an outcome.
 
+import { readFileSync, existsSync } from 'node:fs';
 import { keys, Pubkey, TransactionView } from '@thru/sdk';
+import { MnemonicGenerator, ThruHDWallet } from '@thru/sdk/crypto';
 import { createMintToInstruction } from '@thru/programs/token';
 
 // ---- In-memory chrome mock (token deploy records land here, nowhere else) ---
@@ -105,16 +107,63 @@ async function main() {
 //     (2026-09-26, tx tsjbbZW9sT…, thru-client header comment).
 // So each rung below is classified separately: activation is judged by EXISTENCE, not by
 // the returned error; funding is judged by the faucet claim itself.
-console.log('Setting up throwaway accounts (never your wallet)…');
-const sender = await keys.generateKeyPair();
+// ---- Sender source (2026-10-09 G2 unblock track) ---------------------------
+// A HOST-SIDE pre-funded, already-registered test account, provided via THRU_SEED in the
+// environment or a gitignored .env file (THRU_SEED=…/SEED=…), bypasses rungs 1–2: no
+// activation attempt, no faucet claim — exactly the dossier-sanctioned 'alternative
+// pre-funded path' while the fresh-account faucet regression is open chain-side.
+// The seed VALUE is never logged or written to evidence; only the derived address is.
+// Without a seed the script keeps its throwaway-sender behaviour unchanged.
+function loadHostSeed() {
+  if (typeof process.env.THRU_SEED === 'string' && process.env.THRU_SEED.trim()) {
+    return { mnemonic: process.env.THRU_SEED.trim(), origin: 'process.env.THRU_SEED' };
+  }
+  try {
+    const dotenv = new URL('../.env', import.meta.url);
+    if (!existsSync(dotenv)) return null;
+    for (const line of readFileSync(dotenv, 'utf8').split('\n')) {
+      const m = line.match(/^\s*(?:THRU_SEED|SEED)\s*=\s*"?([^"\n]+?)"?\s*$/);
+      if (m) return { mnemonic: m[1].trim(), origin: 'repo-root .env (gitignored, host-only)' };
+    }
+  } catch { /* unreadable hosts fall through to the throwaway path */ }
+  return null;
+}
+
+const hostSeed = loadHostSeed();
+let sender; let senderSource; // eslint-disable-line
 const recipient = await keys.generateKeyPair();
-console.log(`  sender    ${sender.address}`);
+if (hostSeed) {
+  const index = Math.max(0, Math.floor(Number(process.env.THRU_SEED_INDEX ?? 0)));
+  const seedBytes = MnemonicGenerator.toSeed(hostSeed.mnemonic);
+  const account = await ThruHDWallet.getAccount(seedBytes, index);
+  const words = hostSeed.mnemonic.split(/\s+/).length;
+  if (words !== 12 && words !== 24) {
+    console.error(`  funded-sender seed looks wrong for a BIP-39 phrase (${words} words) — continuing, but double-check the host .env`);
+  }
+  sender = { address: account.address, publicKey: account.publicKey, privateKey: account.privateKey };
+  senderSource = `funded test account from ${hostSeed.origin} (HD index ${index}; seed value never logged)`;
+  console.log('Using the host-provided PRE-FUNDED sender (rung 1 activation and rung 2 faucet claim are bypassed by design).');
+} else {
+  sender = await keys.generateKeyPair();
+  senderSource = 'throwaway in-memory keys (faucet-funded path)';
+  console.log('Setting up throwaway accounts (never your wallet)…');
+}
+console.log(`  sender    ${sender.address}   (${senderSource})`);
 console.log(`  recipient ${recipient.address}`);
 
 // Rung 1 — activation, existence-verified (the vmError is the chain's note, not the verdict).
 {
   const before = await thruClient.getAccountInfo(sender.address);
-  if (!before.exists) {
+  if (hostSeed) {
+    report(
+      'pre-funded sender exists on-chain (no activation attempted)',
+      before.exists ? 'PASS' : 'FAIL',
+      before.exists ? 'registered account, as the host seed promised' : 'seed does not resolve to a registered account — fix the host .env',
+    );
+    if (!before.exists) {
+      throw new Error('funded-sender seed does not resolve to a registered account — cannot proceed');
+    }
+  } else if (!before.exists) {
     let noopNote = 'not attempted';
     try {
       await thruClient.createOnChainAccount(sender);
@@ -142,8 +191,20 @@ console.log(`  recipient ${recipient.address}`);
   }
 }
 
-// Rung 2 — funding via faucet claims, each claim classified on its own.
-const claims = 3;
+// Rung 2 — funding. Pre-funded senders bypass the faucet entirely (the chain-side
+// fresh-account regression cannot block them); throwaway senders claim as before.
+if (hostSeed) {
+  const seededBalance = await nativeBalance(sender.address);
+  report(
+    'pre-funded sender balance gate (faucet path bypassed)',
+    seededBalance > 0n ? 'PASS' : 'FAIL',
+    `balance ${seededBalance} base units ${seededBalance > 0n ? '— sufficient for the token rungs' : '— the seed account holds nothing; top it up on the host'}`,
+  );
+  if (seededBalance === 0n) {
+    throw new Error('funded-sender balance is zero — token steps cannot run; top up on the host');
+  }
+}
+const claims = hostSeed ? 0 : 3;
 for (let i = 0; i < claims; i += 1) {
   try {
     // eslint-disable-next-line no-await-in-loop
@@ -159,7 +220,9 @@ for (let i = 0; i < claims; i += 1) {
   }
 }
 const faucetBalance = await nativeBalance(sender.address);
-report('sender funded by faucet', 'PASS', `${config.faucetMaxPerClaim ?? 10_000n} × ${claims} = ${faucetBalance} base units`);
+if (!hostSeed) {
+  report('sender funded by faucet', 'PASS', `${config.faucetMaxPerClaim ?? 10_000n} × ${claims} = ${faucetBalance} base units`);
+}
 
 const recipientInfo = await thruClient.getAccountInfo(recipient.address);
 report(
