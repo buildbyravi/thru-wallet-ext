@@ -1,0 +1,30 @@
+{
+  "id": "2026-10-08-official-docs",
+  "kind": "official-docs",
+  "dateUtc": "2026-10-08",
+  "origin": "https://thru.org/docs + https://www.npmjs.com/~thru-core (fetched 2026-10-08 by agent; both live)",
+  "entry": "audit refresh: pinned deps vs npm latest; runtime spec for the -767 fault model; indexer package question; execution/persistence semantics",
+  "npm": {
+    "@thru/sdk": {
+      "pinned": "0.4.1", "latest": "0.4.1",
+      "published": { "0.4.0": "2026-09-26T00:20:09Z", "0.4.1": "2026-09-30T21:12:04Z" },
+      "note": "0.4.0 published the SAME day as the last verified faucet claim (09-26); 0.4.1 matches thru-node a81ff4cbb (2026-09-30). Wallet on latest; no API drift."
+    },
+    "@thru/programs": { "pinned": "0.4.1", "latest": "0.4.1" },
+    "@thru/indexer": { "latest": "0.4.1 (2026-09-30)", "desc": "official indexer framework: Thru chain data -> Postgres, event+account streams, auto-generated REST API. Answers the 'dedicated indexer package exists?' part of Q9: YES as framework; hosted public endpoint: still none observed." },
+    "@thru/replay": { "latest": "0.4.1 (2026-09-30)", "desc": "gap-free historical+live replay for ETL/analytics - the history/chart data substrate a backend would self-host." },
+    "thru (CLI)": { "latest": "0.4.1", "note": "0.4.x toolchain epoch aligns with node a81ff4cbb" }
+  },
+  "specPins": {
+    "errorClasses": {
+      "validation": "0xFFFFFF00 (-255..): format/signature/sorted-accounts; before state load",
+      "preExecute": "0xFFFFFE00 (-511..-498): nonce advance + fee collection AND fresh fee-payer creation happen HERE; some state persists even on failure",
+      "execute": "0xFFFFFD00 (-767..-763): VM execution failures",
+      "view": "-767 = TN_RUNTIME_TXN_ERR_VM_FAILED (fatal VM error, execute phase); -765 = VM_REVERT (program-explicit revert, rollback); -764 = CU_EXHAUSTED; -506 = EXPIRED"
+    },
+    "feePayerCreation": "pre-execution: 'Fee payer account must exist OR BE CREATED with a valid state proof' (CREATION or EXISTING type). A fresh throwaway acting as its own fee payer with a CREATION proof is materialized at pre-exec time - before program execution - and exists afterward REGARDLESS of the execute-phase result. This explains rung-1 'exists despite VM_FAILED' WITHOUT any state-corruption claim.",
+    "persistenceRule": "post-execution: 'Account state changes are committed if execution SUCCEEDED; failed executions preserve nonce advancement and fee collection ONLY.' A -767/-765 transaction therefore cannot half-write program-owned account data - per spec, reverted-create poisoning by partial writes does not exist.",
+    "correctedFaultModel": "RATIFIED correction of the 2026-10-08 'poisoned account' reading: the activation tx CREATES the account correctly at pre-exec (exists:true is legitimate). The failures (-765 revert w/ user -26n on 10-06/07 -> -767 VM_FATAL on 10-08) happen INSIDE the faucet program's execution on the claim path, drifting between runs - a program/node-side regression on the claim leg for fresh accounts, matching the owner's chain-side escalation. Long-activated accounts claim fine (owner's released 1.4.1).",
+    "feeDistribution": "per-block unified completion; producer live -> claimed_fees; else burned_fees to genesis null account (unspendable, owner all-zero, uncompressible). burned+claimed == collected. surfaced via slot metrics (GetSlotMetrics/StreamSlotMetrics) - BACKEND NOTE for future fee/revenue UI reads."
+  }
+}

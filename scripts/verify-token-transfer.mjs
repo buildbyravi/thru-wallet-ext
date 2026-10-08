@@ -17,7 +17,7 @@
 // REPORTED, not asserted: where the honest answer can flip with chain behaviour (the
 // unregistered-owner probe), the script records what it saw instead of forcing an outcome.
 
-import { keys, Pubkey } from '@thru/sdk';
+import { keys, Pubkey, TransactionView } from '@thru/sdk';
 import { createMintToInstruction } from '@thru/programs/token';
 
 // ---- In-memory chrome mock (token deploy records land here, nowhere else) ---
@@ -63,6 +63,29 @@ async function nativeBalance(address) {
   return info.exists ? info.balance : 0n;
 }
 
+// 2026-10-08 diagnostic upgrade (on-node substrate live-passed, q9 row): when a rung fails
+// with a VM-class error, attach the FULL execution record of the failing transaction —
+// vmError / userErrorCode / CU / faulting-account-index — straight from the chain's own
+// query surface. This is what makes every battery run self-explaining while the chain
+// regression drifts (error codes changed -765/-26n → -767 between 10-06 and 10-08).
+// Best-effort only: an evidence-capture failure NEVER masks the original failure.
+async function recentExecutionEvidence(address, { programId } = {}) {
+  try {
+    const r = await thruClient.getClient().transactions.listForAccount(address, {
+      transactionOptions: { view: TransactionView.FULL },
+    });
+    const txs = r.transactions ?? [];
+    const target = (programId?.toString?.()) ?? null;
+    const tx = [...txs].reverse().find((t) => !target || (t.program?.toString?.() === target));
+    if (!tx) return 'no matching transaction in recent on-node history';
+    const e = tx.executionResult;
+    if (!e) return 'latest matching transaction carries no executionResult';
+    return `execution: vmError=${e.vmError} userErrorCode=${e.userErrorCode} CU=${e.consumedComputeUnits} events=${e.eventsCount} faultAccIdx=${e.errorProgramAccIdx} slot=${tx.slot ?? '?'}`;
+  } catch (err) {
+    return `execution evidence unavailable (${err?.message ?? err})`;
+  }
+}
+
 console.log(`Token transfer live verification on ${networkId}\n`);
 
 async function main() {
@@ -100,6 +123,10 @@ console.log(`  recipient ${recipient.address}`);
       noopNote = `createOnChainAccount reported: ${err.message}`;
     }
     const after = await thruClient.getAccountInfo(sender.address);
+    // Spec reading (2026-10-08, runtime/transaction-execution): pre-execution creates a fresh
+    // fee payer with the CREATION state proof BEFORE the program executes, so exists:true is
+    // legitimate and spec-mandated even when the execute phase faults — there is no
+    // 'partial write' question (failed executions persist nonce advance + fee only).
     report(
       'sender ACTIVATED on-chain (existence-verified, not error-trusted)',
       after.exists ? 'PASS' : 'FAIL',
@@ -126,7 +153,7 @@ for (let i = 0; i < claims; i += 1) {
     report(
       `faucet claim ${i + 1}/${claims}`,
       'FAIL',
-      `${err.message} — CHAIN REGRESSION vs the pinned live-verified claim (2026-09-26, tx tsjbbZW9sT…): fresh-account funding is chain-broken. Fault model refined 2026-10-08: account creation reverts VM_FAILED (-767) yet PERSISTS the account (rung 1 "exists despite error") → such reverted-create accounts are poisoned, and every faucet claim from them reverts (error-of-the-day shifted -765/-26n → -767 between 10-06 and 10-08, i.e. the chain is moving under us). Long-activated accounts (owner's wallet, released 1.4.1) claim FINE — the regression is on the fresh-activation path, not the contract at large; receipt: owner host test:live 2026-10-08 rung tail. P3 blocked at rung 2, by chain state not this script.`,
+      `${err.message} — CHAIN REGRESSION vs the pinned live-verified claim (2026-09-26, tx tsjbbZW9sT…): fresh-account funding is chain-broken. Fault model refined 2026-10-08 per the official spec: pre-exec creation makes exists:true legitimate (no poisoning — failed executions persist nonce+fee ONLY); the failure is EXECUTE-class INSIDE the faucet program (error drifted -765/-26n → -767 VM fatal between 10-06 and 10-08, i.e. the chain is moving under us). Long-activated accounts (owner's wallet, released 1.4.1) claim FINE. P3 blocked at rung 2, by chain state not this script. ${await recentExecutionEvidence(sender.address, { programId: config.faucetProgramId })}`,
     );
     throw new Error('P3 blocked by chain state at rung 2 (faucet claim reverts) — record in docs/BACKEND_GAPS.md');
   }

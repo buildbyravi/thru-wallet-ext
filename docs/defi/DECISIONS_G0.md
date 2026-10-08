@@ -257,3 +257,22 @@ pinned package ships bindings (`./perp`, `./clob`).
 - **The verify-token-transfer rung-2 error prose** now states the refined model so the
   battery stops hard-coding the 10-06 error code; the evidence trail (error by date)
   remains the canonical record instead of a stale constant.
+- **App-wide audit vs official surfaces (2026-10-08): deps CLEAN, spec-corrected fault
+  model.** npmjs account thru-core fetched live: wallet pins match latest EXACTLY
+  (`@thru/sdk@0.4.1` = latest, published 2026-09-30 — same epoch as thru-node a81ff4cbb;
+  0.4.0 was published 2026-09-26, the day of the last verified claim). No API drift, nothing
+  to upgrade into. `@thru/indexer@0.4.1` + `@thru/replay@0.4.1` EXIST (2026-09-30): official
+  indexer framework (chain->Postgres, auto REST) + history-replay engine — the Q9
+  dedicated-package answer; a hosted public endpoint is still not observed, and our wallet
+  needs none (on-node substrate live-passed). Official runtime spec fetched (runtime/errors,
+  runtime/transaction-execution) and pinned in
+  `scripts/defi-evidence/2026-10-08-official-docs.json`, INCLUDING a correction of this
+  file's 'poisoned account' reading: pre-exec creates fresh fee-payer accounts with a valid
+  CREATION proof BEFORE program execution (rung-1 'exists despite error' is legitimate,
+  spec-mandated), and 'failed executions preserve nonce advancement and fee collection ONLY'
+  — partial state-write poisoning is impossible per spec. Remaining facts unchanged and
+  stronger: failures are EXECUTE-class inside the faucet program (-765 revert+user -26n
+  10-06/07 -> -767 VM fatal 10-08, drifting = chain being touched; -767 is worse than a
+  revert). No wallet-code fix exists for a chain-side program fault; our placed bount: the
+  -767 audit demanded here approves the code (additive-only, byte-identical claim route).
+  Owner action stands (chain escalation + same-seed import test).
