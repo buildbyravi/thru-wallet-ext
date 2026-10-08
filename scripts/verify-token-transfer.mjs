@@ -126,7 +126,7 @@ for (let i = 0; i < claims; i += 1) {
     report(
       `faucet claim ${i + 1}/${claims}`,
       'FAIL',
-      `${err.message} — CHAIN REGRESSION vs the pinned live-verified claim (2026-09-26, tx tsjbbZW9sT…): the faucet program currently reverts claims (2026-10-06 trace: vmError -765, user error -26n). This also breaks the shipped wallet's faucet feature until Betanet is fixed; P3 blocked at rung 2, by chain state not this script.`,
+      `${err.message} — CHAIN REGRESSION vs the pinned live-verified claim (2026-09-26, tx tsjbbZW9sT…): fresh-account funding is chain-broken. Fault model refined 2026-10-08: account creation reverts VM_FAILED (-767) yet PERSISTS the account (rung 1 "exists despite error") → such reverted-create accounts are poisoned, and every faucet claim from them reverts (error-of-the-day shifted -765/-26n → -767 between 10-06 and 10-08, i.e. the chain is moving under us). Long-activated accounts (owner's wallet, released 1.4.1) claim FINE — the regression is on the fresh-activation path, not the contract at large; receipt: owner host test:live 2026-10-08 rung tail. P3 blocked at rung 2, by chain state not this script.`,
     );
     throw new Error('P3 blocked by chain state at rung 2 (faucet claim reverts) — record in docs/BACKEND_GAPS.md');
   }

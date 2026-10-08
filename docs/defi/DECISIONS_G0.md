@@ -241,3 +241,19 @@ pinned package ships bindings (`./perp`, `./clob`).
   substring markers when a probe prints its own legend — the q9 row's footer contained the
   word UNREACHABLE and would have false-BLOCKED a successful run. Regression noted; the
   ordering rule now stands for all classifier code (exit first, markers second).
+- **"PR build broke the faucet" — disentangled and refuted (2026-10-08).** Forensic: every
+  src/ delta vs released v1.4.1 is additive-only (new DeFi handlers behind flags=all-off);
+  thru-client.js/vault.js untouched across the entire PR; tx.claimFaucet route unchanged.
+  The decoded evidence (same chain, same day): fresh-account createOnChainAccount reverts
+  VM_FAILED (-767) yet persists the account (battery rung 1 since 10-06) → such accounts are
+  poisoned; claims from them revert — and the error-of-the-day DRIFTED (-765/-26n on
+  10-06/07 → -767 on 10-08): the chain is being touched under investigation (through-team
+  engaged after our finding). The released 1.4.1 works for the OWNER because their wallet
+  activated in the healthy era — long-lived activated accounts claim FINE. A dev/unpacked PR
+  install yields a DIFFERENT storage area → a FRESH wallet whose activation hits the
+  fresh-path regression. Decisive confirmation test for the owner: import the same seed into
+  the PR build → claim; expectation: works (same wallet, same account). Fault model stands:
+  P3 closed-ish is blocked on fresh-activation heals; code-side: nothing to fix.
+- **The verify-token-transfer rung-2 error prose** now states the refined model so the
+  battery stops hard-coding the 10-06 error code; the evidence trail (error by date)
+  remains the canonical record instead of a stale constant.
