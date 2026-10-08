@@ -307,7 +307,7 @@ ok('FLAGS has no FEATURE_LAUNCHPAD key', !('FEATURE_LAUNCHPAD' in FLAGS));
 ok('FLAGS has no FEATURE_TOKEN_DEPLOY key', !('FEATURE_TOKEN_DEPLOY' in FLAGS));
 ok('isEnabled() reports the retired flag as disabled', isEnabled('FEATURE_LAUNCHPAD') === false);
 
-const EXPECTED_FLAGS = ['DEBUG_ROUTING', 'DEFI', 'DEFI_READ', 'DEFI_DEX', 'DEFI_LAUNCHPAD', 'DEFI_MARKET', 'DEFI_RISK', 'DEFI_INTENT', 'DEFI_FEED', 'DEFI_DESKTOP'];
+const EXPECTED_FLAGS = ['DEBUG_ROUTING', 'NAME_SERVICE', 'DEFI', 'DEFI_READ', 'DEFI_DEX', 'DEFI_LAUNCHPAD', 'DEFI_MARKET', 'DEFI_RISK', 'DEFI_INTENT', 'DEFI_FEED', 'DEFI_DESKTOP'];
 ok(
   'the flag set is exactly: routing diagnostics + the M0 DeFi gates',
   JSON.stringify(Object.keys(FLAGS)) === JSON.stringify(EXPECTED_FLAGS),
@@ -316,8 +316,8 @@ ok(
 
 const DEFI_FLAG_NAMES = EXPECTED_FLAGS.filter((f) => f.startsWith('DEFI'));
 ok(
-  'every DEFI_* flag is false in this build',
-  DEFI_FLAG_NAMES.every((f) => FLAGS[f] === false),
+  'every DEFI_*/NAME_SERVICE gate flag is false in this build',
+  [...DEFI_FLAG_NAMES, 'NAME_SERVICE'].every((f) => FLAGS[f] === false),
   JSON.stringify(Object.fromEntries(DEFI_FLAG_NAMES.map((f) => [f, FLAGS[f]]))),
 );
 

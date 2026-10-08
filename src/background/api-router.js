@@ -31,6 +31,7 @@ import * as feedService from './services/feed-service.js';
 import * as marketService from './services/market-service.js';
 import * as riskService from './services/risk-service.js';
 import * as intentService from './services/intent-service.js';
+import * as nameService from './services/name-service.js';
 import * as desktopService from './services/desktop-service.js';
 import { dexHandlers } from './features/dex/dex-handlers.js';
 import { launchpadHandlers } from './features/launchpad/launchpad-handlers.js';
@@ -63,6 +64,7 @@ const SYNC_READ_METHODS = new Set([
   'launchpad.list', 'launchpad.get', 'launchpad.templates', 'launchpad.listMine',
   'dex.listPools', 'dex.getPool', 'dex.positions',
   'intent.list', 'intent.get',
+  'name.lookup', 'name.checkAvailability',
 ]);
 
 const handlers = Object.assign(Object.create(null), {
@@ -167,6 +169,14 @@ const handlers = Object.assign(Object.create(null), {
   // ---- Transactions and RPC --------------------------------------------
   'tx.getAccountInfo': ({ address }) => txService.getAccountInfo(address),
   'tx.claimFaucet': ({ amountUnits }) => txService.claimFaucet(amountUnits),
+  // ---- Name service (v19). Reads are always-on; writes are gated in the service layer
+  // (FLAGS.NAME_SERVICE + live-probe verification) and can only ever act under a parent the
+  // signer owns — the self-signing invariant rules out sponsored/foreign-authority flows.
+  'name.lookup': (params) => nameService.lookupName(params),
+  'name.checkAvailability': (params) => nameService.checkAvailability(params),
+  'name.initRoot': (params) => nameService.initRoot(params),
+  'name.register': (params) => nameService.registerName(params),
+  'name.setRecord': (params) => nameService.setRecord(params),
   'tx.sendChecked': (params) => txService.sendTransferChecked(params),
   'tx.listHistory': ({ address, pageSize, limit, cursor } = {}) => (
     limit !== undefined || cursor !== undefined

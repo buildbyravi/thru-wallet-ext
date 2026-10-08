@@ -14,6 +14,12 @@ export const FLAGS = {
   /** Log route transitions and bridge method names. Never logs params; they can hold secrets. */
   DEBUG_ROUTING: false,
 
+  // Name service (system name program) WRITE paths. Read paths (name.lookup,
+  // name.checkAvailability) are always-on truth asks; register/setRecord/initRoot stay off
+  // until the live probe verifies the recovered wire formats on the running chain. Build-time
+  // constant with NO query/storage override, like the DEFI_* family.
+  NAME_SERVICE: false,
+
   // Master switch for the DeFi backend surface. Product logic must use isDefiFeatureEnabled(),
   // which treats every feature as off while this is false, regardless of any other value.
   DEFI: false,

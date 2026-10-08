@@ -338,3 +338,18 @@ pinned package ships bindings (`./perp`, `./clob`).
   (older accounts unaffected; chainId drifted 1→2 during 10-05..10-07 — the exact genesis
   the claims now run on). Full audit record: scripts/defi-evidence/2026-10-08-official-docs.json
   (sdkDiffAudit block).
+
+- **Name service (contract v19; reads live, writes gated, self-signed only) — 2026-10-08.** The chain's
+  system name program (`BOOTSTRAP_PROGRAM_ADDRESSES.name_service`, address from the pinned package — the
+  package deliberately exports NO name-service bindings, so the wire layouts are recovered: official `thru`
+  CLI binary formats, community-verified live since 2026-07-31; provenance is pinned in
+  `src/lib/name-service.js`. Address derivation = `sha256(parent || raw name bytes)` under the program via
+  the official SDK helper `deriveProgramAddress`. Accounts: root registrar (109 B) and domain
+  (145 + 296n B). The security model is inherited from the program's own semantics: REGISTER_SUBDOMAIN's
+  authority is the fee payer = the PARENT's authority, so a wallet can register **only under a parent it
+  owns** (its own root or its own domain); sponsored / foreign-authority registration is rejected by
+  design, never circumvention-shaped. Reads (`name.lookup`, `name.checkAvailability`) are on in every
+  build; writes (`name.initRoot`, `name.register`, `name.setRecord`) sit behind `FLAGS.NAME_SERVICE=false`
+  until `scripts/probe-name-service.mjs` (read-only) verifies the recovered formats against live chain
+  state. OPEN: whether user-level root init is permitted on the running chain — root-init itself stays an
+  experiment for a throwaway funded account at enablement time, owner-approved first.

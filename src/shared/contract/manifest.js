@@ -86,7 +86,7 @@
 // gate-off outcomes are first-class wire values ({ supported:false, reason } or the declared
 // FEATURE_DISABLED envelope) — never fake data. The machine-readable sibling schema lives in
 // ./defi-schema.js and is kept coherent with this file by test/test-defi-m0.mjs.
-export const CONTRACT_VERSION = 18;
+export const CONTRACT_VERSION = 19;
 
 export const METHODS = {
   // ---- System ------------------------------------------------------------
@@ -350,6 +350,41 @@ export const METHODS = {
     returns: '{ exists, balance } — balance is a base-unit string, never a BigInt',
     auth: 'none',
     since: 1,
+  },
+  // ---- Name service (contract v19, 2026-10-08). Reads are always-on truth asks against
+  // the system name program (self-derived accounts, official CLI-recovered layouts — provenance
+  // in src/lib/name-service.js); writes are gated behind FLAGS.NAME_SERVICE (build-time false)
+  // until the live probe verifies the recovered formats on the running chain, and can only
+  // ever act under a parent the signer OWNS (self-signing invariant: no sponsors, ever).
+  'name.lookup': {
+    params: ['name', 'rootAddress', 'networkId'],
+    returns: '{ chain: string[], leaf: { address, exists, domain? }, parsed reads live from the chain }',
+    auth: 'none',
+    since: 19,
+  },
+  'name.checkAvailability': {
+    params: ['name', 'parentAddress', 'networkId'],
+    returns: '{ address, exists } — derived domain address and whether it is taken',
+    auth: 'none',
+    since: 19,
+  },
+  'name.initRoot': {
+    params: ['name', 'networkId'],
+    returns: '{ signature, rootAddress } — new root owned by the signer (gate: NAME_SERVICE)',
+    auth: 'unlocked',
+    since: 19,
+  },
+  'name.register': {
+    params: ['name', 'parentAddress', 'networkId'],
+    returns: '{ signature, domainAddress } — register a name under a parent root/domain the signer OWNS (gate: NAME_SERVICE)',
+    auth: 'unlocked',
+    since: 19,
+  },
+  'name.setRecord': {
+    params: ['name', 'rootAddress', 'key', 'value', 'networkId'],
+    returns: '{ signature } — append a key/value record to a domain the signer owns (gate: NAME_SERVICE)',
+    auth: 'unlocked',
+    since: 19,
   },
   'tx.claimFaucet': {
     params: ['amountUnits'],

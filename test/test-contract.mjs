@@ -132,13 +132,20 @@ ok('unbound legacy mutation methods are no longer callable',
 
 section('Contract v17/v18 DeFi contract-first drop (M0)');
 
-ok('the contract advances to v18 without reusing earlier numbers', CONTRACT_VERSION === 18);
+ok('the contract advances to v19 without reusing earlier numbers', CONTRACT_VERSION === 19);
 
 const v17 = Object.entries(METHODS).filter(([, spec]) => spec.since === 17).map(([name]) => name);
 const v18 = Object.entries(METHODS).filter(([, spec]) => spec.since === 18).map(([name]) => name);
 ok('v17 appends exactly 29 READ+LOCAL methods', v17.length === 29, `got ${v17.length}`);
 ok('v18 appends exactly 14 PREPARE+EXECUTE methods', v18.length === 14, `got ${v18.length}`);
-ok('the contract declares 124 methods in total (81 + 43)', Object.keys(METHODS).length === 124,
+
+// Name-service additions (v19, 2026-10-08): two always-honest reads and three gated writes.
+const v19 = Object.entries(METHODS).filter(([, spec]) => spec.since === 19).map(([name]) => name);
+ok('v19 appends exactly 5 name.* methods', v19.length === 5, `got ${v19.join(', ')}`);
+ok('v19 reads are open while v19 writes require an unlocked wallet',
+  ['name.lookup', 'name.checkAvailability'].every((m) => METHODS[m].auth === 'none')
+  && ['name.initRoot', 'name.register', 'name.setRecord'].every((m) => METHODS[m].auth === 'unlocked'));
+ok('the contract declares 129 methods in total (81 + 43 + 5 name.*)', Object.keys(METHODS).length === 129,
   `got ${Object.keys(METHODS).length}`);
 
 // Auth discipline (DEFI-03): reads are call-time honest, prepares are unlocked-only, and

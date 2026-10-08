@@ -414,3 +414,12 @@ Each was earned by a defect in `docs/DEFECT_LOG.md`.
 9. Anything network-specific belongs in the network config, not a module constant.
 10. Do not ship a control before its destination exists — `check-routes.mjs` now enforces this.
 11. A test that asserts current behaviour may be asserting a bug. `generateMintSeed` had one.
+
+## Name service additions (contract v19, 2026-10-08)
+
+Backend contract methods `name.lookup` / `name.checkAvailability` / `name.initRoot` / `name.register` /
+`name.setRecord` against the system name program (package-pinned address; recovered layouts with
+provenance recorded in `src/lib/name-service.js`). Reads are always-on truth asks; writes are gated
+(`FLAGS.NAME_SERVICE=false`) until `scripts/probe-name-service.mjs` verifies formats on the live chain.
+Security model: self-signed, only under parents the signer owns — sponsorship flows are rejected by
+design.
