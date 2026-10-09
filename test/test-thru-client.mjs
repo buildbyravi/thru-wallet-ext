@@ -594,5 +594,3 @@ console.log('\n[15] formatTokenAmount / parseTokenAmount convert exactly at any 
 }
 
 console.log('\nAll thru-client.js encoding checks passed.');
-
-

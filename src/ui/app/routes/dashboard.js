@@ -235,6 +235,9 @@ export function DashboardRoute({ navigate }) {
     label: 'Faucet',
     onClick: () => navigate('/faucet'),
   }));
+  // Hidden until applyNetworkCapabilities (called from load() with the live record) proves
+  // this network actually declares a faucet — see the mainnet-readiness note there.
+  faucetTile.el.style.display = 'none';
 
   const actionPanel = h('div', { class: 'dashboard-panel-grid' }, [
     sendTile.el,
@@ -247,6 +250,11 @@ export function DashboardRoute({ navigate }) {
 
   function applyNetworkCapabilities(network) {
     const faucetAvailable = Boolean(network?.faucetProgramId && network?.faucetStateAccount);
+    // Mainnet-readiness (2026-10-09): a network without a faucet HIDES the tile entirely —
+    // no affordance, no "unavailable" explanation needed — and until the network record has
+    // loaded the tile stays hidden, so a first paint can never flash a clickable faucet at
+    // a faucet-less chain. The disabled state stays as a complement for edge races.
+    faucetTile.el.style.display = faucetAvailable ? '' : 'none';
     faucetTile.el.disabled = !faucetAvailable;
     faucetTile.el.title = faucetAvailable ? 'Faucet' : 'Faucet unavailable on this network';
   }
