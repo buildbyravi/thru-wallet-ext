@@ -1301,6 +1301,10 @@ const FIXTURES = {
   'name.getPrimary': () => null,
   'name.linkPrimary': () => { throw new Error('fixture: no on-chain name service'); },
   'name.unlinkPrimary': () => ({ unlinked: false }),
+  'name.lookup': ({ name } = {}) => ({
+    chain: [], leaf: { address: 'ta1addressaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', exists: false },
+    rootAddress: 'ta1addressaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', name: name ?? null,
+  }),
   'token.readMint': ({ mintAddress } = {}) => {
     if (mintAddress === CUSTOM_MINT_FIXTURE) {
       return {

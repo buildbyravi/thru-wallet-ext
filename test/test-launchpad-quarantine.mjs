@@ -365,8 +365,12 @@ section('No route or control points at the DeFi surface');
 
 const bootSource = stripComments(readFileSync('src/ui/app/boot.js', 'utf8'));
 const registered = [...bootSource.matchAll(/path:\s*'(\/[a-z0-9-]*)'/g)].map((m) => m[1]);
-// M0 adds NO routes: DeFi screens ship with their flags in later gates, not before.
-ok('the route table is unchanged (14 popup routes, no DeFi routes)', registered.length === 14, registered.join(', '));
+// M0 adds NO DeFi routes: DeFi screens ship with their flags in later gates, not before.
+// 2026-10-09: deliberate addition — '/name' (Domain) is a WALLET-identity screen behind the
+// always-on name.* READ surface (ownership verified on-chain, nothing signs, nothing gated),
+// not a DeFi surface. The meaningful invariant stays: no launchpad/DEX/market/swap/token
+// route may register.
+ok('the route table is unchanged (15 popup routes, no DeFi routes)', registered.length === 15, registered.join(', '));
 const defiRoutes = registered.filter((p) => /launchpad|dex|prediction|swap|market|token/i.test(p));
 ok('no registered route is a launchpad/DEX/prediction surface', defiRoutes.length === 0, defiRoutes.join(', '));
 
