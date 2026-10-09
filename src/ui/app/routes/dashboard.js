@@ -183,6 +183,90 @@ export function DashboardRoute({ navigate }) {
     headerActions,
   ]);
 
+  // ---- 196px Ink Header: Primary name (domain) row --------------------------
+  // A verified on-chain name for the active account (2026-10-09, owner-directed). The chain
+  // has no reverse index, so the user types their name and the WALLET proves ownership
+  // (domain account's owner field must equal the active address) before anything is stored
+  // or shown. Until verified this is a link affordance; once verified it is a badge.
+  let primaryName = null;
+  const nameBadge = h('span', { class: 'dash-name-badge', text: '' });
+  const nameUnlinkBtn = h('button', {
+    type: 'button', class: 'dash-name-action', title: 'Remove the linked name from this wallet', text: 'unlink',
+  });
+  const nameLinkBtn = h('button', {
+    type: 'button', class: 'dash-name-link', text: '＋ Link a name',
+  });
+  const nameRow = h('div', { class: 'dash-name-row hidden' }, [nameBadge, nameUnlinkBtn, nameLinkBtn]);
+
+  const nameError = h('div', { class: 'dash-name-error', text: '' });
+  const nameInput = h('input', {
+    class: 'dash-name-input', placeholder: 'your name (e.g. alice)',
+    spellcheck: 'false', autocomplete: 'off', autocapitalize: 'none',
+  });
+  const rootInput = h('input', {
+    class: 'dash-name-input', placeholder: 'root registrar address (ta…)',
+    spellcheck: 'false', autocomplete: 'off', autocapitalize: 'none',
+  });
+  const nameSubmit = h('button', { type: 'button', class: 'btn primary dash-name-submit', text: 'Verify on-chain' });
+  const nameCancel = h('button', { type: 'button', class: 'dash-name-action', text: 'Cancel' });
+  const nameForm = h('div', { class: 'dash-name-form hidden' }, [
+    nameInput,
+    rootInput,
+    h('div', { class: 'dash-name-form-actions' }, [nameSubmit, nameCancel]),
+    nameError,
+  ]);
+
+  function renderPrimaryName() {
+    const linked = Boolean(primaryName?.name);
+    nameBadge.textContent = linked ? `✓ ${primaryName.name}` : '';
+    nameBadge.classList.toggle('hidden', !linked);
+    nameUnlinkBtn.classList.toggle('hidden', !linked);
+    nameLinkBtn.textContent = '＋ Link a name';
+    nameLinkBtn.classList.toggle('hidden', linked);
+    nameError.textContent = '';
+  }
+
+  d.on(nameLinkBtn, 'click', () => {
+    nameError.textContent = '';
+    nameForm.classList.remove('hidden');
+    nameInput.focus();
+  });
+  function closeNameForm() {
+    nameForm.classList.add('hidden');
+    nameError.textContent = '';
+  }
+  d.on(nameCancel, 'click', closeNameForm);
+  d.on(nameSubmit, 'click', async () => {
+    const name = nameInput.value.trim();
+    const rootAddress = rootInput.value.trim();
+    if (!name || !rootAddress) {
+      nameError.textContent = 'Name and root registrar address are both required.';
+      return;
+    }
+    nameSubmit.disabled = true;
+    nameError.textContent = '';
+    try {
+      primaryName = await bridge.send('name.linkPrimary', { name, rootAddress });
+      closeNameForm();
+      nameInput.value = '';
+      rootInput.value = '';
+    } catch (err) {
+      nameError.textContent = err?.message || 'Could not verify that name on-chain.';
+    } finally {
+      nameSubmit.disabled = false;
+      renderPrimaryName();
+    }
+  });
+  d.on(nameUnlinkBtn, 'click', async () => {
+    nameUnlinkBtn.disabled = true;
+    try {
+      await bridge.send('name.unlinkPrimary');
+      primaryName = null;
+    } catch { /* an unlink failure keeps the badge; it re-verifies on next load anyway */ }
+    nameUnlinkBtn.disabled = false;
+    renderPrimaryName();
+  });
+
   // ---- 196px Ink Header: USD-First BalanceHero ----------------------------
   const balanceHero = track(BalanceHero({
     onRefresh: () => load({ force: true }),
@@ -194,6 +278,8 @@ export function DashboardRoute({ navigate }) {
 
   const dashHeader = h('header', { class: 'dash-header' }, [
     headerTop,
+    nameRow,
+    nameForm,
     balanceHero.el,
     pendingBadge,
   ]);
@@ -396,6 +482,15 @@ export function DashboardRoute({ navigate }) {
         }));
         pillName.textContent = account.label || 'Account';
         pillAddr.replaceChildren(AddressText({ address: account.address, chars: 6 }));
+        // Verified primary name: re-verified against the chain by the backend on every call
+        // (a broken ownership record silently stays honest by dropping). Non-blocking.
+        nameRow.classList.remove('hidden');
+        primaryName = null;
+        renderPrimaryName();
+        try {
+          primaryName = await bridge.send('name.getPrimary');
+        } catch { primaryName = null; }
+        renderPrimaryName();
       }
     } catch (error) {
       banner.set(error.message || 'Could not load the active account.');

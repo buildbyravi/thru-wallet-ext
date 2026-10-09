@@ -13,6 +13,7 @@
 import { FLAGS } from '../../shared/flags.js';
 import * as ns from '../../lib/name-service.js';
 import * as txService from './tx-service.js';
+import * as thruClient from '../../lib/thru-client.js';
 
 function featureDisabled() {
   const err = new Error(
@@ -49,7 +50,10 @@ export async function lookupName({ name, rootAddress } = {}) {
   const leafAddress = chain[0];
   let info = null;
   try {
-    info = await txService.getAccountInfo(leafAddress);
+    // Direct client read: tx-service's getAccountInfo drops the raw account DATA, and a
+    // domain's owner/records live in that data — a wrapper without it produced a permanent
+    // decodeError for every existing name. Reads stay truth-only either way.
+    info = await thruClient.getAccountInfo(leafAddress);
   } catch {
     info = null; // node answered nothing — same as absent for read purposes
   }
@@ -58,7 +62,9 @@ export async function lookupName({ name, rootAddress } = {}) {
   }
   let domain = null;
   try {
-    domain = ns.parseDomainAccount(new Uint8Array(info.data ?? new ArrayBuffer(0)));
+    const parsed = ns.parseDomainAccount(new Uint8Array(info.raw?.data ?? new ArrayBuffer(0)));
+    // Bridge-safe: registeredAt is a chain BigInt and cannot cross the message port as-is.
+    domain = { ...parsed, registeredAt: parsed.registeredAt.toString() };
   } catch (e) {
     return { chain, leaf: { address: leafAddress, exists: true, decodeError: e.message }, rootAddress, name };
   }

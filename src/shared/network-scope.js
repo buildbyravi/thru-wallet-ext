@@ -64,6 +64,9 @@ export const SCOPED_KEYS = Object.freeze([
   // under — surfacing devnet intents on mainnet would be exactly the cross-chain leak this
   // list exists to prevent.
   'defi_intents',
+  // Primary-name (domain) links (2026-10-09): a name record only exists on one chain's
+  // name-service deployment — a devnet-owned name says nothing about mainnet.
+  'thru_primary_names',
 ]);
 
 /**

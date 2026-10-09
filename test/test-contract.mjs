@@ -135,7 +135,7 @@ section('Contract v17/v18 DeFi contract-first drop (M0)');
 // v20 (2026-10-09, G2-S0): same method set — the v18 intent surface now has a real,
 // flag-gated native-send implementation behind it (test/test-defi-intent.mjs proves both
 // sides of the gate). A version bump, not a method change.
-ok('the contract advances to v20 without reusing earlier numbers', CONTRACT_VERSION === 20);
+ok('the contract advances to v21 without reusing earlier numbers', CONTRACT_VERSION === 21);
 
 const v17 = Object.entries(METHODS).filter(([, spec]) => spec.since === 17).map(([name]) => name);
 const v18 = Object.entries(METHODS).filter(([, spec]) => spec.since === 18).map(([name]) => name);
@@ -145,10 +145,13 @@ ok('v18 appends exactly 14 PREPARE+EXECUTE methods', v18.length === 14, `got ${v
 // Name-service additions (v19, 2026-10-08): two always-honest reads and three gated writes.
 const v19 = Object.entries(METHODS).filter(([, spec]) => spec.since === 19).map(([name]) => name);
 ok('v19 appends exactly 5 name.* methods', v19.length === 5, `got ${v19.join(', ')}`);
+ok('v21 appends exactly 3 primary-name methods, reads/lifecycle unlocked, nothing signing',
+  ['name.getPrimary', 'name.linkPrimary', 'name.unlinkPrimary'].every((m) => METHODS[m]?.since === 21 && METHODS[m]?.auth === 'unlocked'));
+
 ok('v19 reads are open while v19 writes require an unlocked wallet',
   ['name.lookup', 'name.checkAvailability'].every((m) => METHODS[m].auth === 'none')
   && ['name.initRoot', 'name.register', 'name.setRecord'].every((m) => METHODS[m].auth === 'unlocked'));
-ok('the contract declares 129 methods in total (81 + 43 + 5 name.*)', Object.keys(METHODS).length === 129,
+ok('the contract declares 132 methods in total (81 + 43 + 8 name.*)', Object.keys(METHODS).length === 132,
   `got ${Object.keys(METHODS).length}`);
 
 // Auth discipline (DEFI-03): reads are call-time honest, prepares are unlocked-only, and

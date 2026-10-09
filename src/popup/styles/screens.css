@@ -1553,3 +1553,47 @@ form > .btn.text {
 [data-theme="dark"] .security-repeat-confirm {
   border-top-color: rgba(255, 255, 255, 0.08);
 }
+
+/* Dashboard primary name (domain) row — verified on-chain ownership badge (2026-10-09) */
+.dash-name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+.dash-name-badge {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-accent, #7ea2ff);
+  letter-spacing: 0.01em;
+}
+.dash-name-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 11px;
+  color: var(--color-text-muted, #8a93a6);
+  cursor: pointer;
+  text-decoration: underline dotted;
+}
+.dash-name-link:hover { color: var(--color-accent, #7ea2ff); }
+.dash-name-action {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 11px;
+  color: var(--color-text-muted, #8a93a6);
+  cursor: pointer;
+}
+.dash-name-action:hover { color: var(--color-danger, #ff6b6b); }
+.dash-name-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+.dash-name-input { font-size: 12px; padding: 6px 8px; }
+.dash-name-form-actions { display: flex; align-items: center; gap: 10px; }
+.dash-name-submit { font-size: 12px; padding: 6px 12px; }
+.dash-name-error { font-size: 11px; color: var(--color-danger, #ff6b6b); min-height: 0; }
+.dash-name-error:empty { display: none; }

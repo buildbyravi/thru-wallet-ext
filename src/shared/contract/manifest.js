@@ -90,7 +90,10 @@
 //   native-send intent pipeline (network-scoped store, bindingHash-pinned submit, honest
 //   resume/stopWaiting NOT_READY for the later chain-wait slice). Method shapes are unchanged —
 //   the bump marks the implementation contract, still behind DEFI_INTENT (false in this build).
-export const CONTRACT_VERSION = 20;
+//   v21 appends the primary-name UX slice (3 name.* methods): a wallet-local, network-scoped
+//   "my name" record for the dashboard. Linking verifies on-chain ownership via the existing
+//   always-on name.lookup read; nothing signs, nothing gated.
+export const CONTRACT_VERSION = 21;
 
 export const METHODS = {
   // ---- System ------------------------------------------------------------
@@ -389,6 +392,26 @@ export const METHODS = {
     returns: '{ signature } — append a key/value record to a domain the signer owns (gate: NAME_SERVICE)',
     auth: 'unlocked',
     since: 19,
+  },
+  // v21: primary-name UX slice (2026-10-09). LOCAL wallet-side records plus an always-on
+  // ownership re-verification read — no signing, no gate, no new permissions.
+  'name.getPrimary': {
+    params: [],
+    returns: '{ name, rootAddress, domainAddress, verifiedAt } | null — active account, active network',
+    auth: 'unlocked',
+    since: 21,
+  },
+  'name.linkPrimary': {
+    params: ['name', 'rootAddress'],
+    returns: '{ name, rootAddress, domainAddress, verifiedAt } — stored only after on-chain owner == active account',
+    auth: 'unlocked',
+    since: 21,
+  },
+  'name.unlinkPrimary': {
+    params: [],
+    returns: '{ unlinked: boolean }',
+    auth: 'unlocked',
+    since: 21,
   },
   'tx.claimFaucet': {
     params: ['amountUnits'],

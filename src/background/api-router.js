@@ -32,6 +32,7 @@ import * as marketService from './services/market-service.js';
 import * as riskService from './services/risk-service.js';
 import * as intentService from './services/intent-service.js';
 import * as nameService from './services/name-service.js';
+import * as primaryNameService from './services/primary-name-service.js';
 import * as desktopService from './services/desktop-service.js';
 import { dexHandlers } from './features/dex/dex-handlers.js';
 import { launchpadHandlers } from './features/launchpad/launchpad-handlers.js';
@@ -177,6 +178,12 @@ const handlers = Object.assign(Object.create(null), {
   'name.initRoot': (params) => nameService.initRoot(params),
   'name.register': (params) => nameService.registerName(params),
   'name.setRecord': (params) => nameService.setRecord(params),
+  // v21 primary-name UX slice: get re-verifies the stored record against the chain (one live
+  // read per call; a broken ownership record is dropped honestly, an unreadable node keeps the
+  // last verified record rather than flapping it).
+  'name.getPrimary': () => primaryNameService.verifyPrimaryName({}),
+  'name.linkPrimary': (params) => primaryNameService.linkPrimaryName(params),
+  'name.unlinkPrimary': () => primaryNameService.unlinkPrimaryName({}),
   'tx.sendChecked': (params) => txService.sendTransferChecked(params),
   'tx.listHistory': ({ address, pageSize, limit, cursor } = {}) => (
     limit !== undefined || cursor !== undefined

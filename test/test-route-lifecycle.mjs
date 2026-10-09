@@ -1295,6 +1295,12 @@ const FIXTURES = {
     reason: null,
   }),
   'token.deriveTokenAccount': () => TOKEN_ACCOUNT_FIXTURE,
+  // v21 primary-name UX slice (2026-10-09): the dashboard asks for the verified record on
+  // every mount; the fixture has no name linked (the empty state must render the link
+  // affordance, never a fabricated name).
+  'name.getPrimary': () => null,
+  'name.linkPrimary': () => { throw new Error('fixture: no on-chain name service'); },
+  'name.unlinkPrimary': () => ({ unlinked: false }),
   'token.readMint': ({ mintAddress } = {}) => {
     if (mintAddress === CUSTOM_MINT_FIXTURE) {
       return {
