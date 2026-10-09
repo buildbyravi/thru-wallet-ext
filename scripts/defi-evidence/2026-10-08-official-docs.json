@@ -54,5 +54,21 @@
       "chainId": "fetched from the node inside buildAndSign at tx-build time \u2014 robust to the observed chainId drift (1 -> 2 between 2026-10-05 and 2026-10-07)."
     },
     "verdict": "wallet code and SDK usage check out on every measurable seam; the remaining -767/claim-failure-for-fresh-accounts variable is the RUNNING CHAIN (current 0.4.1-epoch node executing the faucet program fatally on fresh-account claim paths post the observed chainId-2-era drift). Directed at the chain escalation: faucet program taFCTxR0y2ea..., fresh-account claims only, older activated accounts unaffected."
+  },
+  "sdkRefinement_2026_10_09": {
+    "at": "2026-10-09T17:30:00+05:30",
+    "trigger": "owner observation: draft 1.4.0 works fine today (register + faucet); 1.4.1 does not; ThruScan extension 0.4.5 works too",
+    "method": "dual npm install @thru/sdk+programs 0.4.0 vs 0.4.1, normalized dist diff; ThruScan package-lock inspection",
+    "findings": {
+      "sdkSize": "0.4.0 dist JS \u2248 304 KB; 0.4.1 \u2248 1,034 KB (major rebuild: compression, passkey-manager, deploy modules)",
+      "transactionCtorDefaults": "IDENTICAL in both: computeUnits??0, memoryUnits??0, stateUnits??DEFAULT_STATE_UNITS",
+      "accountsCreateDefaults_0_4_0": "{fee:0n, nonce:0n, startSlot:proof slot, chainId, expiryAfter:100, computeUnits:10000, memoryUnits:10000, stateUnits:1}",
+      "accountsCreateDefaults_0_4_1": "{\u2026same\u2026, computeUnits:0, memoryUnits:0, stateUnits:0}  \u2190 THE regression vector",
+      "thruscanExtensionsSdk": "package-lock resolved @thru/sdk@0.4.0 exactly (extension is built by the site's vite config, site lockfile pins 0.4.0)",
+      "storeBuildMapping": "1.4.1 store sync (14e16b1) pinned 0.4.1; the working 1.4.0 draft predates the lockfile era \u2192 0.4.0-era SDK (npm dates: 0.4.0 2026-09-26, 0.4.1 2026-09-30)",
+      "headerOverrideEscape": "options.header is merged over defaults in accounts.create(); callers passing explicit units are unaffected \u2014 ThruScan's claimThru passes explicit units, ours omits them by design remark"
+    },
+    "verdict": "SDK-side-effect, not a chain regression: the 1.4.1 fresh-account create/claim failures are coherently assigned to the 0.4.1 ZERO default units in accounts.create() (and zero Transaction defaults a fresh-account claim rides on), vs 0.4.0's 10k/10k/1. Chain was unchanged: 1.4.0/0.4.0 and ThruScan/0.4.0 still register+claim fine today.",
+    "nextGate": "scripts/probe-claim-variants.mjs on the owner's networked host (A/A-control/B/C/B+C claim cells + D1/D2 create cells) must let the chain confirm the fix shape (explicit units) class-by-class BEFORE any sacred-file (thru-client.js) header change; owner sign-off gates the fix commit"
   }
 }

@@ -363,3 +363,23 @@ pinned package ships bindings (`./perp`, `./clob`).
   pre-funded path': the fresh-account faucet regression stays a chain-side open item, it just stops being
   the only route to verifying the token legs. Standing rules intact: throwaway testnet accounts only,
   nothing roots into the repo, and the owner runs the battery on their networked host.
+
+- **ROOT CAUSE REASSIGNED: 1.4.1 faults are an SDK side-effect, not a chain regression (2026-10-09).**
+  Owner observation: draft 1.4.0 registers + claims fine TODAY; released 1.4.1 faults; ThruScan's
+  extension (0.4.5) does both fine on the same chain AND same endpoint (`rpc.betanet.thru.org`; thruscan's
+  own networks.js confirms alphanet≡betanet by a 2026-10-05 block-hash comparison at slot 2,908,038).
+  Forensics: dual-install dist diff of `@thru/sdk` + `@thru/programs` 0.4.0 vs 0.4.1 —
+  `accounts.create()` baked `{computeUnits:10_000, memoryUnits:10_000, stateUnits:1}` in 0.4.0 and
+  `{0,0,0}` in 0.4.1; the base `Transaction` constructor defaults are byte-identical between versions
+  (`computeUnits??0`, `memoryUnits??0`, `stateUnits??DEFAULT_STATE_UNITS`). ThruScan's extension is
+  lockfile-pinned to `@thru/sdk@0.4.0` exactly, and their claim sends explicit units; ours omits them.
+  Model: on 0.4.0-derived builds the fresh-account create executes with a real budget and claims ride on
+  it; on our 0.4.1 build the create carries ZERO budget and faults (-7xx EXECUTE-class on fresh paths,
+  drifting with chain tuning), with the pre-exec CREATION proof still landing the account in the trie —
+  matching every observation since 2026-10-06. The fix candidate: pass explicit `computeUnits/memoryUnits/
+  stateUnits` (and fee-when-funded) in `src/lib/thru-client.js` create + claim (SACRED file: the change
+  lands ONLY after `scripts/probe-claim-variants.mjs` (claim cells A/A-control/B/C/B+C + create cells
+  D1/D2) is run on the owner's networked host and the chain names each class's working shape, and the
+  owner signs off. Records: `scripts/defi-evidence/2026-10-08-official-docs.json` (refinement_2026_10_09).
+  The earlier "chain regression" assignment was correct at the evidence level available on 0.4.1 and is
+  corrected here, with the reconciliation table on file.
