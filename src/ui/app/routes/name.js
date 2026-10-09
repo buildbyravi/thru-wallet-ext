@@ -4,19 +4,20 @@
 // Send/Receive/History. What it does:
 //   - shows the verified primary name for the active account on the active network
 //     (re-verified against the chain on every mount by the backend)
-//   - lets you LINK a name you own: you type the name + root registrar, the backend resolves
-//     the domain account and only stores the link when its owner field IS your active
-//     address — a name someone else owns is refused, never displayed
-//   - lets you unlink, and look up ANY name honestly (exists / owner / records / registered)
+//   - lets you LINK a name you own: root registrar is auto-discovered from proven
+//     on-chain candidate roots (discoverDefaultRoot in name-service), so a user only
+//     enters their name. The backend resolves the domain account and stores the link
+//     ONLY when its owner field IS your active address — a name someone else owns is
+//     refused with NOT_NAME_OWNER.
+//   - copyable addresses, re-verify, unlink, and look up ANY name honestly.
 //
 // Nothing on this screen signs or writes to the chain (name.register/setRecord stay gated
-// behind FLAGS.NAME_SERVICE until the live probe verifies the recovered wire formats). The
-// chain has no reverse index, so "your name" always begins as user input the wallet then
-// proves — that asymmetry is stated plainly on the empty state, not hidden.
+// behind FLAGS.NAME_SERVICE until the live probe verifies the recovered wire formats).
 import { h, disposer } from '../../kit/dom.js';
 import { icon } from '../../kit/icon.js';
 import { PageHeader, Banner, Spinner } from '../../kit/feedback.js';
 import { Field } from '../../kit/field.js';
+import { CopyButton } from '../../kit/button.js';
 import { toast } from '../../kit/toast.js';
 import * as bridge from '../bridge.js';
 
@@ -36,13 +37,17 @@ function formatVerifiedAt(ms) {
 
 export function NameRoute({ back }) {
   const d = disposer();
+  let bodyDisposer = disposer();
   const owned = [];
   let account = null;
   let network = null;
   let primary = null;
   let destroyed = false;
 
-  function track(c) { owned.push(c); return c; }
+  function track(c) {
+    if (c) owned.push(c);
+    return c;
+  }
 
   const banner = Banner({ tone: 'error' });
   const body = h('div', { class: 'stack stack-4' }, Spinner({ label: 'Loading' }).el);
@@ -50,6 +55,8 @@ export function NameRoute({ back }) {
   const el = h('section', { class: 'screen' }, [header.el, banner.el, body]);
 
   function clearBody() {
+    bodyDisposer.dispose();
+    bodyDisposer = disposer();
     for (const c of owned) c.destroy?.();
     owned.length = 0;
     while (body.firstChild) body.removeChild(body.firstChild);
@@ -59,11 +66,16 @@ export function NameRoute({ back }) {
     return h('div', { class: 'eyebrow', text: `Network: ${network?.label || network?.id || 'loading…'}` });
   }
 
-  function detailRow(label, value, mono = true) {
-    return h('div', { class: 'detail-row' }, [
+  function detailRow(label, value, fullValue) {
+    const children = [
       h('div', { class: 'detail-val', text: label }),
-      h('div', { class: mono ? 'detail-val mono' : 'detail-val', text: value }),
-    ]);
+      h('div', { class: 'detail-val mono', text: value }),
+    ];
+    if (fullValue) {
+      const copy = track(CopyButton({ getValue: () => fullValue, title: `Copy ${label}` }));
+      children.push(copy.el);
+    }
+    return h('div', { class: 'detail-row' }, children);
   }
 
   function renderLinked() {
@@ -75,10 +87,13 @@ export function NameRoute({ back }) {
         h('span', { class: 'tag-native', text: 'verified' }),
       ]),
       h('div', { class: 'detail-table' }, [
-        detailRow('Linked account', truncateMiddle(account?.address)),
-        detailRow('Domain address', truncateMiddle(primary.domainAddress)),
-        detailRow('Root registrar', truncateMiddle(primary.rootAddress)),
-        detailRow('Verified on-chain', formatVerifiedAt(primary.verifiedAt), false),
+        detailRow('Linked account', truncateMiddle(account?.address), account?.address),
+        detailRow('Domain address', truncateMiddle(primary.domainAddress), primary.domainAddress),
+        detailRow('Root registrar', truncateMiddle(primary.rootAddress), primary.rootAddress),
+        h('div', { class: 'detail-row' }, [
+          h('div', { class: 'detail-val', text: 'Verified on-chain' }),
+          h('div', { class: 'detail-val', text: formatVerifiedAt(primary.verifiedAt) }),
+        ]),
       ]),
       h('div', { class: 'row-flex' }, [
         h('span', { class: 'hint', text: 'Ownership is re-checked against the chain every time this screen opens. If the owner changes, this badge disappears.' }),
@@ -88,14 +103,14 @@ export function NameRoute({ back }) {
           type: 'button', class: 'btn secondary',
         }, [icon('refresh', 14), h('span', { text: ' Re-verify' })])),
         track(h('button', {
-          type: 'button', class: 'btn secondary',
+          type: 'button', class: 'btn secondary danger-hover',
         }, [icon('trash', 14), h('span', { text: ' Unlink' })])),
       ]),
     ]);
     body.appendChild(card);
     const [reverifyBtn, unlinkBtn] = owned.slice(-2);
-    d.on(reverifyBtn, 'click', () => { void load(); });
-    d.on(unlinkBtn, 'click', async () => {
+    bodyDisposer.on(reverifyBtn, 'click', () => { void load(); });
+    bodyDisposer.on(unlinkBtn, 'click', async () => {
       unlinkBtn.disabled = true;
       try {
         await bridge.send('name.unlinkPrimary');
@@ -123,10 +138,9 @@ export function NameRoute({ back }) {
       value: primary?.rootAddress ?? '',
       onEnter: () => lookupBtn.click(),
     }));
-    const resultBox = h('div', { class: 'notice', text: '' });
-    resultBox.classList.add('hidden');
+    const resultBox = h('div', { class: 'notice hidden', text: '' });
     const lookupBtn = h('button', { type: 'button', class: 'btn secondary' }, [icon('search', 14), h('span', { text: ' Look up on-chain' })]);
-    d.on(lookupBtn, 'click', async () => {
+    bodyDisposer.on(lookupBtn, 'click', async () => {
       const name = nameField.value?.trim?.() ?? '';
       const rootAddress = rootField.value?.trim?.() ?? '';
       if (!name) {
@@ -153,22 +167,27 @@ export function NameRoute({ back }) {
         lookupBtn.disabled = false;
       }
     });
-    body.appendChild(h('div', { class: 'stack stack-2' }, [
-      h('div', { class: 'eyebrow', text: 'Look up any name' }),
-      nameField.el,
-      rootField.el,
-      lookupBtn,
-      resultBox,
-    ]));
+
+    const lookupSection = h('details', { class: 'name-accordion stack stack-2' }, [
+      h('summary', { class: 'hint', text: '🔍 Look up any name on-chain' }),
+      h('div', { class: 'name-accordion-body stack stack-2' }, [
+        nameField.el,
+        rootField.el,
+        lookupBtn,
+        resultBox,
+      ]),
+    ]);
+    body.appendChild(lookupSection);
   }
 
   function renderUnlinked() {
     clearBody();
     let manualRootVisible = false;
     const nameField = track(Field({
-      label: 'Your name',
+      label: 'Your domain name',
       placeholder: 'e.g. alice',
       autocomplete: 'off',
+      hint: 'Letters, numbers, and hyphens (min 3 characters)',
       onEnter: () => linkBtn.click(),
     }));
     // Root is auto-discovered from the pinned candidates, proven on-chain (sdk pins cannot
@@ -186,21 +205,19 @@ export function NameRoute({ back }) {
       rootField.el.classList.remove('hidden');
     }
     const linkBtn = h('button', { type: 'button', class: 'btn primary' }, [icon('globe', 14), h('span', { text: ' Verify on-chain & link' })]);
-    d.on(linkBtn, 'click', async () => {
+    bodyDisposer.on(linkBtn, 'click', async () => {
       const name = nameField.value?.trim?.() ?? '';
       const rootAddress = manualRootVisible ? rootField.value?.trim?.() ?? '' : '';
       if (!name) {
-        nameField.setError('required');
+        nameField.setError('a name is required');
         return;
       }
       linkBtn.disabled = true;
       banner.set('');
       try {
         primary = await bridge.send('name.linkPrimary', { name, rootAddress });
-        toast(`'${primary.name}' verified — you own it.`);
-        clearBody();
-        renderLinked();
-        renderLookupBox();
+        toast(`'${primary.name}' verified — linked to active account.`);
+        render();
       } catch (err) {
         if (err?.code === 'NAME_ROOT_UNKNOWN' && !manualRootVisible) {
           banner.set(`${err.message || 'No canonical root was found on this network.'} Enter the root registrar your name was minted under.`);
@@ -215,7 +232,7 @@ export function NameRoute({ back }) {
     });
     body.appendChild(h('div', { class: 'stack stack-2' }, [
       networkEyebrow(),
-      h('div', { class: 'notice', text: 'Link a name you own on Thru and it shows here and on your identity. Just the name: the wallet finds the chain\u2019s canonical root by itself and proves the domain account\u2019s owner equals your active address before anything is stored.' }),
+      h('div', { class: 'notice', text: 'Link a name you own on Thru. Just the name: the wallet finds the chain\u2019s canonical root by itself and proves the domain account\u2019s owner equals your active address before anything is stored.' }),
       nameField.el,
       rootField.el,
       linkBtn,
@@ -248,7 +265,7 @@ export function NameRoute({ back }) {
     try {
       primary = await bridge.send('name.getPrimary');
     } catch {
-      primary = null; // unreadable right now — empty state with explanation, not a lie
+      primary = null;
     }
     if (!destroyed) render();
   }

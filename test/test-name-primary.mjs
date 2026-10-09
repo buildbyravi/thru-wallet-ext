@@ -216,6 +216,9 @@ leafOwner = SOMEONE_ELSE;
   assert.equal(gone.ok, true);
   assert.equal(gone.data, null);
   ok('a name the account no longer owns drops from the record honestly (no stale badge)');
+  const storedAfterGone = storage.get('thru_primary_names::betanet');
+  assert.equal(storedAfterGone[SENDER], undefined);
+  ok('broken primary-name link is purged from scoped storage on positive disproof');
 }
 leafOwner = SENDER;
 await handleApiRequest({ method: 'name.linkPrimary', params: { name: NAME } });

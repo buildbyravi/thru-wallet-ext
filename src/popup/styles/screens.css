@@ -423,6 +423,14 @@ form > .btn.text {
   box-sizing: border-box;
 }
 
+/* When a 7th utility tile exists (e.g. testnet faucet), span across the full bottom row */
+.dashboard-panel-grid .panel-item:last-child:nth-child(3n + 1) {
+  grid-column: 1 / -1;
+  height: 48px;
+  flex-direction: row;
+  gap: var(--sp-2, 8px);
+}
+
 .panel-item {
   position: relative;
   height: 88px;
@@ -1553,3 +1561,14 @@ form > .btn.text {
 [data-theme="dark"] .security-repeat-confirm {
   border-top-color: rgba(255, 255, 255, 0.08);
 }
+
+/* ---- Domain (/name) route accordion -------------------------------------- */
+.name-accordion summary {
+  cursor: pointer;
+  user-select: none;
+}
+
+.name-accordion-body {
+  margin-top: var(--sp-2, 8px);
+}
+

@@ -252,9 +252,9 @@ export function DashboardRoute({ navigate }) {
     receiveTile.el,
     swapTile.el,
     historyTile.el,
+    nameTile.el,
     securityTile.el,
     faucetTile.el,
-    nameTile.el,
   ]);
 
   function applyNetworkCapabilities(network) {

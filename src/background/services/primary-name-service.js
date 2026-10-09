@@ -110,7 +110,14 @@ export async function verifyPrimaryName({ address } = {}) {
   if (!record) return null;
   try {
     const result = await nameService.lookupName({ name: record.name, rootAddress: record.rootAddress });
-    if (result?.leaf?.domain && result.leaf.domain.owner !== target) return null; // honestly gone
+    if (result?.leaf?.domain && result.leaf.domain.owner !== target) {
+      const all = await readAll(network.id);
+      if (all[target]) {
+        delete all[target];
+        await writeAll(network.id, all);
+      }
+      return null; // honestly gone
+    }
   } catch {
     // chain unreadable: keep showing the stored record rather than flapping it away
   }
