@@ -268,7 +268,7 @@ export const DEFI_METHODS = Object.freeze({
     group: 'R', gate: 'DEFI_INTENT', env: 'error', feature: null,
     params: { intentId: 'id' },
     resultKeys: ['intentId', 'kind', 'status', 'plan', 'fee', 'preparedAt', 'expiresAt', 'unsignedTxs', 'context'],
-    errors: ['FEATURE_DISABLED', 'INVALID_INPUT'],
+    errors: ['FEATURE_DISABLED', 'INVALID_INPUT', 'INTENT_NOT_FOUND'],
   },
 
   // ---- v17: LOCAL surface --------------------------------------------------
@@ -328,7 +328,7 @@ export const DEFI_METHODS = Object.freeze({
     group: 'P', gate: 'DEFI_INTENT', env: 'error', feature: null,
     params: { address: 'id', toAddress: 'id', amountUnits: 'baseUnits', clientRequestId: 'id' },
     resultKeys: ['reviewAscii', 'facts', 'model', 'policy', 'simulation', 'assetChanges', 'feePlan', 'bindingHash', 'clientRequestId', 'acknowledgements'],
-    errors: ['FEATURE_DISABLED', 'INVALID_INPUT', 'ACCOUNT_MISSING', 'INSUFFICIENT_BALANCE', 'ALREADY_EXISTS'],
+    errors: ['FEATURE_DISABLED', 'INVALID_INPUT', 'ACCOUNT_MISSING', 'INSUFFICIENT_BALANCE', 'ALREADY_EXISTS', 'SIMULATION_FAILED'],
   },
   'dex.quote': {
     group: 'P', gate: 'DEFI_DEX', env: 'result', feature: 'swap',
@@ -384,7 +384,7 @@ export const DEFI_METHODS = Object.freeze({
     group: 'P', gate: 'DEFI_INTENT', env: 'error', feature: null,
     params: { intentId: 'id' },
     resultKeys: ['reviewAscii', 'facts', 'model', 'policy', 'simulation', 'assetChanges', 'feePlan', 'bindingHash', 'clientRequestId', 'acknowledgements'],
-    errors: ['FEATURE_DISABLED', 'INVALID_INPUT', 'INTENT_EXPIRED', 'NOT_READY'],
+    errors: ['FEATURE_DISABLED', 'INVALID_INPUT', 'INTENT_EXPIRED', 'NOT_READY', 'INTENT_NOT_FOUND'],
   },
   'intent.resume': {
     group: 'P', gate: 'DEFI_INTENT', env: 'error', feature: null,
@@ -396,7 +396,7 @@ export const DEFI_METHODS = Object.freeze({
     group: 'P', gate: 'DEFI_INTENT', env: 'error', feature: null,
     params: { intentId: 'id' },
     resultKeys: ['intentId', 'status'],
-    errors: ['FEATURE_DISABLED', 'INVALID_INPUT'],
+    errors: ['FEATURE_DISABLED', 'INVALID_INPUT', 'INTENT_NOT_FOUND', 'NOT_READY'],
   },
   'intent.stopWaiting': {
     group: 'P', gate: 'DEFI_INTENT', env: 'error', feature: null,
@@ -413,7 +413,7 @@ export const DEFI_METHODS = Object.freeze({
     // user has opted into signing re-authentication), never stored or forwarded.
     params: { intentId: 'id', bindingHash: 'id', acknowledgements: 'strings?', password: 'string?' },
     resultKeys: ['submitId', 'state', 'waitingReason', 'signature'],
-    errors: ['FEATURE_DISABLED', 'INVALID_INPUT', 'BINDING_MISMATCH', 'INTENT_EXPIRED', 'INTENT_LOCKED', 'NONCE_CONFLICT', 'USER_REJECTED', 'INSUFFICIENT_FEE_RESERVE'],
+    errors: ['FEATURE_DISABLED', 'INVALID_INPUT', 'BINDING_MISMATCH', 'INTENT_EXPIRED', 'INTENT_LOCKED', 'NONCE_CONFLICT', 'USER_REJECTED', 'INSUFFICIENT_FEE_RESERVE', 'INTENT_NOT_FOUND', 'NOT_READY', 'TX_DROPPED', 'PROGRAM_ERROR', 'DUPLICATE_SUBMISSION'],
   },
 });
 

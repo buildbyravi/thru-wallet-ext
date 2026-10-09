@@ -64,8 +64,10 @@ per-slice market assembly `G1_MARKET.md`; plus the live battery `npm run test:li
 amm deployment confirmed live, q22 live-negative, faucet regression recorded in
 `scripts/defi-evidence/2026-10-06-live-chain.json`; AMM read-side probe continues the
 verified-matrix track, `scripts/probe-amm.mjs`) → G2 intent pipeline proven on send, then
-mint-only launch (G2 is gated on P3 per B17 — currently chain-blocked by the Betanet faucet
-regression) → G3 swap (exit first) → G4 pools and direct-pool launch → G5 curve (only if
+mint-only launch (G2 is gated on P3 per B17 — P3 was owner-closed 2026-10-09
+and **G2-S0 shipped the same day**: the intent pipeline proven on native send, real behind
+the unchanged flag, contract v20 — see DECISIONS_G0.md entry G2-S0 and
+test/test-defi-intent.mjs) → G3 swap (exit first) → G4 pools and direct-pool launch → G5 curve (only if
 Q20/Q21 allow) → G6 scale. Sequence per the owner: G0 → M0 → verified capability matrix →
 real fixtures → mint-only launch pipeline. Each gate closes only on human sign-off.
 

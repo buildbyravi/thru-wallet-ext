@@ -132,7 +132,10 @@ ok('unbound legacy mutation methods are no longer callable',
 
 section('Contract v17/v18 DeFi contract-first drop (M0)');
 
-ok('the contract advances to v19 without reusing earlier numbers', CONTRACT_VERSION === 19);
+// v20 (2026-10-09, G2-S0): same method set — the v18 intent surface now has a real,
+// flag-gated native-send implementation behind it (test/test-defi-intent.mjs proves both
+// sides of the gate). A version bump, not a method change.
+ok('the contract advances to v20 without reusing earlier numbers', CONTRACT_VERSION === 20);
 
 const v17 = Object.entries(METHODS).filter(([, spec]) => spec.since === 17).map(([name]) => name);
 const v18 = Object.entries(METHODS).filter(([, spec]) => spec.since === 18).map(([name]) => name);

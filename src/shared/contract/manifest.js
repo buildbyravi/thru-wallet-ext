@@ -86,7 +86,11 @@
 // gate-off outcomes are first-class wire values ({ supported:false, reason } or the declared
 // FEATURE_DISABLED envelope) — never fake data. The machine-readable sibling schema lives in
 // ./defi-schema.js and is kept coherent with this file by test/test-defi-m0.mjs.
-export const CONTRACT_VERSION = 19;
+//   v20 (2026-10-09, G2-S0): the v18 intent methods they declared are now backed by a REAL
+//   native-send intent pipeline (network-scoped store, bindingHash-pinned submit, honest
+//   resume/stopWaiting NOT_READY for the later chain-wait slice). Method shapes are unchanged —
+//   the bump marks the implementation contract, still behind DEFI_INTENT (false in this build).
+export const CONTRACT_VERSION = 20;
 
 export const METHODS = {
   // ---- System ------------------------------------------------------------

@@ -406,3 +406,30 @@ pinned package ships bindings (`./perp`, `./clob`).
   and strictly carry `fee: 0n`, preventing any fee deduction on claims and ensuring exact requested unit delivery.
   Transfers and token operations retain 1 base unit fee when funded. Offline suites and guards 100% green.
 
+- **G2-S0: real native-send intent pipeline behind the unchanged gate — contract v20 (2026-10-09).**
+  With P3 closed and G2 unblocked by owner sign-off, the intent pipeline stops being a glass box:
+  `src/background/services/intent-service.js` is now a REAL native-send implementation
+  (`list`/`get`/`prepareSend`/`submit`/`rePrepare`/`discard`), backed by a new network-scoped store
+  `src/background/services/defi/intent-store.js` (`defi_intents::<networkId>`, added to SCOPED_KEYS in
+  `src/shared/network-scope.js`). Standing invariants kept: (1) FLAGS stay OFF in the shipped build —
+  every entry point answers the identical FEATURE_DISABLED envelope as the M0 stub did; (2) the
+  pending-tx tracker remains the single CHAIN-lifecycle store — submit executes through
+  `txService.sendTransferChecked` with the RECORDED (fromAddress, networkId) pair, so the checked-send
+  guards (account/network pin, recipient activation, duplicate window, signing guard) all apply and
+  the signature lands in the pending tracker as always; (3) self-signed only — prepare binds to the
+  active account, ACCOUNT_MISSING otherwise. Submit pins the review by a SHA-256 `bindingHash` over the
+  plan (24-hex); mismatch/tamper refuses BINDING_MISMATCH; the 120s prepared ttl is expiry-on-READ
+  (INTENT_EXPIRED), never a hidden sweep. Error vocabulary is a deliberate contract event: per-method
+  `errors` in defi-schema extended (INTENT_NOT_FOUND, SIMULATION_FAILED, TX_DROPPED, PROGRAM_ERROR,
+  DUPLICATE_SUBMISSION, NOT_READY) with fixture notes appended in `test/fixtures/defi/fixtures.mjs`;
+  the intent record now carries the declared `intent.get` result keys (`fee`, `unsignedTxs: null`,
+  `context`). State transitions emit `intentChanged` (already-declared bridge channel). Error mapping:
+  chain silence/fetch/timeout = TX_DROPPED + resumable; VM revert = PROGRAM_ERROR + terminal; the
+  duplicate guard's own stable code passes through unchanged. `intent.resume`/`intent.stopWaiting`
+  stay honestly NOT_READY flag-on (chain-wait/replace semantics belong to the next slice — not
+  inferred). Contract CONTRACT_VERSION 19→20 (method shapes unchanged; the bump marks the real
+  implementation behind the declared surface — test-contract pin moved). Proof: new offline suite
+  `test/test-defi-intent.mjs` (17 checks — both sides of the gate, signing-auth opt-in path,
+  binding-hash refusal, expiry, rePrepare rotation, TX_DROPPED/PROGRAM_ERROR mapping, terminal
+  discard, scoped-store assertion; zero network via the getClient() stub pattern from
+  test-api-router.mjs); full `npm test` (26 suites) + build + `git diff --check` green.

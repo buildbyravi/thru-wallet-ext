@@ -441,4 +441,11 @@ export const ERROR_FIXTURE_NOTES = Object.freeze({
   INTERNAL: { retryable: false, when: 'unexpected; logged; never silently mapped to success' },
   CONTEXT_CHANGED: { retryable: true, when: 'account/network changed; review current context and retry' },
   NOT_WHITELISTED: { retryable: false, when: 'policy refusal; user edits whitelist first' },
+  // v20 (G2-S0, 2026-10-09): the intent pipeline is now REAL behind the flag. These codes are
+  // raised by the shipped handlers (covered in test/test-defi-intent.mjs), not only by scripts.
+  INTENT_NOT_FOUND: { retryable: false, when: 'no intent with that id on the active network scoped store; prepare first' },
+  SIMULATION_FAILED: { retryable: false, when: 'prepare-time simulation/balance check failed; fix inputs and prepare again' },
+  TX_DROPPED: { retryable: true, when: 'submission never landed (no chain update seen); resumable via intent.resume' },
+  PROGRAM_ERROR: { retryable: false, when: 'the on-chain program rejected execution (VM revert); terminal for this intent' },
+  DUPLICATE_SUBMISSION: { retryable: false, when: 'identical transfer pending or under 30s old; wait or review an explicit repeat' },
 });
