@@ -14,6 +14,7 @@ import { FLAGS } from '../../shared/flags.js';
 import * as ns from '../../lib/name-service.js';
 import * as txService from './tx-service.js';
 import * as thruClient from '../../lib/thru-client.js';
+import { BOOTSTRAP_PROGRAM_ADDRESSES } from '../../lib/bootstrap-pins.js';
 
 function featureDisabled() {
   const err = new Error(
@@ -42,11 +43,23 @@ function requireAddress(value, field) {
   }
 }
 
-/** name.lookup: resolve a dotted name under an explicit root registrar address. */
+/** name.lookup: resolve a dotted name under an explicit root registrar address (blank root
+ *  → auto-discovered canonical root, proven on-chain; NAME_ROOT_UNKNOWN when none exists). */
 export async function lookupName({ name, rootAddress } = {}) {
   requireValidName(name);
-  requireAddress(rootAddress, 'rootAddress');
-  const chain = await ns.resolveNameChain(rootAddress, name);
+  let root = String(rootAddress ?? '').trim();
+  if (!root) {
+    const discovered = await discoverDefaultRoot();
+    if (!discovered?.supported) {
+      const err = new Error(discovered?.reason ?? 'no canonical name root on this network');
+      err.code = 'NAME_ROOT_UNKNOWN';
+      throw err;
+    }
+    root = discovered.rootAddress;
+  } else {
+    requireAddress(root, 'rootAddress');
+  }
+  const chain = await ns.resolveNameChain(root, name);
   const leafAddress = chain[0];
   let info = null;
   try {
@@ -58,7 +71,7 @@ export async function lookupName({ name, rootAddress } = {}) {
     info = null; // node answered nothing — same as absent for read purposes
   }
   if (!info || !info.exists) {
-    return { chain, leaf: { address: leafAddress, exists: false }, rootAddress, name };
+    return { chain, leaf: { address: leafAddress, exists: false }, rootAddress: root, name };
   }
   let domain = null;
   try {
@@ -66,9 +79,9 @@ export async function lookupName({ name, rootAddress } = {}) {
     // Bridge-safe: registeredAt is a chain BigInt and cannot cross the message port as-is.
     domain = { ...parsed, registeredAt: parsed.registeredAt.toString() };
   } catch (e) {
-    return { chain, leaf: { address: leafAddress, exists: true, decodeError: e.message }, rootAddress, name };
+    return { chain, leaf: { address: leafAddress, exists: true, decodeError: e.message }, rootAddress: root, name };
   }
-  return { chain, leaf: { address: leafAddress, exists: true, domain }, rootAddress, name };
+  return { chain, leaf: { address: leafAddress, exists: true, domain }, rootAddress: root, name };
 }
 
 /** name.checkAvailability: derived address + taken/available under an explicit parent. */
@@ -89,6 +102,60 @@ export async function checkAvailability({ name, parentAddress } = {}) {
     exists = false;
   }
   return { address, exists, name, parentAddress };
+}
+
+// ---- Canonical-root auto-discovery (2026-10-09, owner-directed) ------------------------
+// The chain's canonical root registrar is NOT exported by the pinned @thru packages and is
+// NOT derivable from them (proven 2026-10-09: ten parent×name seed combinations —
+// program/registrar/zero/root-manager × id/.id/thru/.thru — never reproduce the public .id
+// root; a root account's parent+authority are external). So the wallet discovers it by
+// READING: each candidate below is fetched and must PARSE as a root registrar (kind = 1)
+// before it is used for anything. A candidate that does not parse on this chain is skipped,
+// never trusted blind.
+//
+// Candidate provenance:
+//   1. BOOTSTRAP_PROGRAM_ADDRESSES.thru_registrar — first-party pinned bootstrap address;
+//      on chains where the registrar itself doubles as a root it parses cleanly.
+//   2. The public .id root registrar (third-party PUBLIC fact, corroboration-only — the
+//      same address scripts/probe-name-service.mjs uses to cross-check wire formats).
+import { parseRootRegistrar } from '../../lib/name-service.js';
+
+const CANONICAL_ROOT_CANDIDATES = Object.freeze([
+  { address: BOOTSTRAP_PROGRAM_ADDRESSES.thru_registrar, provenance: 'pinned bootstrap thru_registrar' },
+  { address: 'taLu3d1rxGdQWWHJxUOK6eT9ti4lWeTijNp0Kk_5YKHARg', provenance: 'public .id root (third-party fact, on-chain-verified)' },
+]);
+
+let discoveredCache = null; // session-scoped; one RPC on first use per worker
+
+/**
+ * The chain's canonical root registrar, auto-discovered by on-chain proof.
+ * @returns {{ supported: true, rootAddress, name, authority, provenance } | { supported: false, reason }}
+ */
+export async function discoverDefaultRoot() {
+  if (discoveredCache) return discoveredCache;
+  const tries = [];
+  for (const candidate of CANONICAL_ROOT_CANDIDATES) {
+    try {
+      const info = await thruClient.getAccountInfo(candidate.address);
+      if (!info?.exists) { tries.push(`${candidate.address.slice(0, 12)}…: absent`); continue; }
+      const root = parseRootRegistrar(new Uint8Array(info.raw?.data ?? new ArrayBuffer(0)));
+      discoveredCache = {
+        supported: true,
+        rootAddress: candidate.address,
+        name: root.name,
+        authority: root.authority,
+        provenance: candidate.provenance,
+      };
+      return discoveredCache;
+    } catch (e) {
+      tries.push(`${candidate.address.slice(0, 12)}…: ${String(e?.message ?? e).slice(0, 80)}`);
+    }
+  }
+  // No cache of the NEGATIVE: a root that deploys/migrates later should be found on retry.
+  return {
+    supported: false,
+    reason: `no canonical name root found on this network (${tries.join('; ') || 'no candidates ran'})`,
+  };
 }
 
 /** name.initRoot — gated (see header); owning the created root is what unlocks self-signed

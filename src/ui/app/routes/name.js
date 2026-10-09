@@ -117,10 +117,9 @@ export function NameRoute({ back }) {
       onEnter: () => lookupBtn.click(),
     }));
     const rootField = track(Field({
-      label: 'Root registrar address',
-      placeholder: 'ta…',
+      label: 'Root registrar (optional — canonical root is auto-discovered)',
+      placeholder: 'ta… — leave empty to use the chain\u2019s canonical root',
       autocomplete: 'off',
-      hint: primary?.rootAddress ? '' : 'ask your registrar or paste the root you registered under',
       value: primary?.rootAddress ?? '',
       onEnter: () => lookupBtn.click(),
     }));
@@ -130,9 +129,9 @@ export function NameRoute({ back }) {
     d.on(lookupBtn, 'click', async () => {
       const name = nameField.value?.trim?.() ?? '';
       const rootAddress = rootField.value?.trim?.() ?? '';
-      if (!name || !rootAddress) {
+      if (!name) {
         resultBox.classList.remove('hidden');
-        resultBox.textContent = 'Name and root registrar address are both required.';
+        resultBox.textContent = 'A name is required.';
         return;
       }
       lookupBtn.disabled = true;
@@ -140,7 +139,7 @@ export function NameRoute({ back }) {
         const res = await bridge.send('name.lookup', { name, rootAddress });
         resultBox.classList.remove('hidden');
         if (!res?.leaf?.exists) {
-          resultBox.textContent = `'${name}' does not exist under that root registrar on ${network?.label || network?.id}. It may still be claimable.`;
+          resultBox.textContent = `'${name}' does not exist under root ${truncateMiddle(res?.rootAddress)} on ${network?.label || network?.id}. It may still be claimable.`;
         } else if (res.leaf.domain) {
           const dm = res.leaf.domain;
           resultBox.textContent = `'${name}' exists — owner ${truncateMiddle(dm.owner)} · ${dm.records?.length ?? 0} record(s) · registered ${formatVerifiedAt(Number(dm.registeredAt) || null)}`;
@@ -165,25 +164,33 @@ export function NameRoute({ back }) {
 
   function renderUnlinked() {
     clearBody();
+    let manualRootVisible = false;
     const nameField = track(Field({
       label: 'Your name',
       placeholder: 'e.g. alice',
       autocomplete: 'off',
       onEnter: () => linkBtn.click(),
     }));
+    // Root is auto-discovered from the pinned candidates, proven on-chain (sdk pins cannot
+    // reconstruct it — 2026-10-09 derivation audit). Only if NO candidate parses does the
+    // chain force the user to name one — that is what the hidden field is for.
     const rootField = track(Field({
       label: 'Root registrar address',
-      placeholder: 'ta… — the registrar your name was minted under',
+      placeholder: 'ta… — only needed because no canonical root was found on this network',
       autocomplete: 'off',
       onEnter: () => linkBtn.click(),
     }));
+    rootField.el.classList.add('hidden');
+    function showManualRoot() {
+      manualRootVisible = true;
+      rootField.el.classList.remove('hidden');
+    }
     const linkBtn = h('button', { type: 'button', class: 'btn primary' }, [icon('globe', 14), h('span', { text: ' Verify on-chain & link' })]);
     d.on(linkBtn, 'click', async () => {
       const name = nameField.value?.trim?.() ?? '';
-      const rootAddress = rootField.value?.trim?.() ?? '';
-      if (!name || !rootAddress) {
-        nameField.setError(!name ? 'required' : '');
-        rootField.setError(!rootAddress ? 'required' : '');
+      const rootAddress = manualRootVisible ? rootField.value?.trim?.() ?? '' : '';
+      if (!name) {
+        nameField.setError('required');
         return;
       }
       linkBtn.disabled = true;
@@ -195,14 +202,20 @@ export function NameRoute({ back }) {
         renderLinked();
         renderLookupBox();
       } catch (err) {
-        banner.set(err?.message || 'Could not verify that name on-chain.');
+        if (err?.code === 'NAME_ROOT_UNKNOWN' && !manualRootVisible) {
+          banner.set(`${err.message || 'No canonical root was found on this network.'} Enter the root registrar your name was minted under.`);
+          showManualRoot();
+          rootField.focus();
+        } else {
+          banner.set(err?.message || 'Could not verify that name on-chain.');
+        }
       } finally {
         linkBtn.disabled = false;
       }
     });
     body.appendChild(h('div', { class: 'stack stack-2' }, [
       networkEyebrow(),
-      h('div', { class: 'notice', text: 'Link a name you own on Thru and it shows here and on your identity. The chain has no reverse index, so you name it and the wallet proves it: the domain account\u2019s owner must equal your active address before anything is stored.' }),
+      h('div', { class: 'notice', text: 'Link a name you own on Thru and it shows here and on your identity. Just the name: the wallet finds the chain\u2019s canonical root by itself and proves the domain account\u2019s owner equals your active address before anything is stored.' }),
       nameField.el,
       rootField.el,
       linkBtn,

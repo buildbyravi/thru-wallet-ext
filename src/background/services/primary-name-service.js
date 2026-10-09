@@ -47,8 +47,12 @@ export async function getPrimaryName({ address } = {}) {
 
 /**
  * Link a primary name to the ACTIVE account after on-chain ownership verification.
- * @param {{ name: string, rootAddress: string }} params
- * @returns the stored record
+ * `rootAddress` may be omitted/blank: the canonical root is then AUTO-DISCOVERED by
+ * on-chain proof (see nameService.discoverDefaultRoot) — the wallet never asks the user
+ * for an address the chain can prove by itself. When no canonical root exists on this
+ * network the call returns NAME_ROOT_UNKNOWN and the UI offers the manual root field.
+ * @param {{ name: string, rootAddress?: string }} params
+ * @returns the stored record (rootAddress = the root that actually verified)
  */
 export async function linkPrimaryName({ name, rootAddress } = {}) {
   const problem = ns.nameProblem(String(name ?? ''));
@@ -56,7 +60,16 @@ export async function linkPrimaryName({ name, rootAddress } = {}) {
   const account = await accountService.getActiveAccount();
   if (!account?.address) throw errCode('ACCOUNT_MISSING', 'no active account');
 
-  const result = await nameService.lookupName({ name, rootAddress });
+  let root = String(rootAddress ?? '').trim();
+  if (!root) {
+    const discovered = await nameService.discoverDefaultRoot();
+    if (!discovered?.supported) {
+      throw errCode('NAME_ROOT_UNKNOWN', discovered?.reason ?? 'no canonical name root on this network');
+    }
+    root = discovered.rootAddress;
+  }
+
+  const result = await nameService.lookupName({ name, rootAddress: root });
   if (!result?.leaf?.exists) {
     throw errCode('NAME_NOT_FOUND', `no on-chain domain '${name}' under that root registrar`);
   }
@@ -71,7 +84,7 @@ export async function linkPrimaryName({ name, rootAddress } = {}) {
   const network = await getActiveNetworkConfig();
   const record = {
     name: String(name),
-    rootAddress: String(rootAddress),
+    rootAddress: root,
     domainAddress: result.leaf.address,
     verifiedAt: Date.now(),
   };
