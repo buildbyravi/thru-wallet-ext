@@ -256,25 +256,13 @@ const init = await thruClient.initializeTokenAccount(sender, sender.address, dep
 report('sender token account initialized', init.created ? 'PASS' : 'FAIL', init.tokenAccount);
 
 {
-  const { rawTransaction } = await thruClient.getClient().transactions.buildAndSign({
-    feePayer: { publicKey: sender.publicKey, privateKey: sender.privateKey },
-    program: config.tokenProgramId,
-    accounts: { readWrite: [deploy.mintAddress, init.tokenAccount] },
-    instructionData: createMintToInstruction({
-      mintAccountBytes: Pubkey.from(deploy.mintAddress).toBytes(),
-      destinationAccountBytes: Pubkey.from(init.tokenAccount).toBytes(),
-      authorityAccountBytes: Pubkey.from(sender.publicKey).toBytes(),
-      amount: SUPPLY,
-    }),
+  const mintResult = await thruClient.mintToToken({
+    feePayer: sender,
+    mintAddress: deploy.mintAddress,
+    destinationOwner: sender.address,
+    amountUnits: SUPPLY,
   });
-  let minted = false;
-  for await (const update of thruClient.getClient().transactions.sendAndTrack(rawTransaction)) {
-    if (update.executionResult) {
-      minted = update.executionResult.vmError === 0;
-      break;
-    }
-  }
-  report('supply minted into the sender token account (mint_to)', minted ? 'PASS' : 'FAIL', `${SUPPLY} base units`);
+  report('supply minted into the sender token account (mint_to)', Boolean(mintResult?.signature), `${SUPPLY} base units`);
 }
 
 const senderBalance1 = await thruClient.getTokenBalance(sender.address, deploy.mintAddress);

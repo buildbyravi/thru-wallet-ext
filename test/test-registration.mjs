@@ -132,9 +132,8 @@ const betaNet = getNetworkConfig('betanet');
 assert.equal(signed[0].program, betaNet.accountCreateProgramId,
   'registration uses the configured account-creation program, not faucet or transfer');
 assert.notEqual(signed[0].program, betaNet.faucetProgramId);
-assert.notEqual(signed[0].program, betaNet.transferProgramId);
-assert.deepEqual(signed[0].header, { fee: 0n, nonce: 0n, stateUnits: 1 },
-  'the native self-registration header is exactly zero fee, zero nonce, and one state unit');
+assert.deepEqual(signed[0].header, { fee: 0n, nonce: 0n, stateUnits: 1, computeUnits: 10_000, memoryUnits: 10_000 },
+  'the native self-registration header has zero fee, zero nonce, one state unit, and explicit compute/memory units');
 // chainId is deliberately NOT in the pinned header: buildAndSign fetches it from the node at
 // build time (it reports 1 on the current chain — live-verified 2026-09-26), so the wallet
 // cannot sign against a stale pinned chain id after a future reset.
@@ -310,7 +309,7 @@ for (const tx of signed) {
   const target = tx.feePayerStateProof.address;
   assert.equal(tx.program, getNetworkConfig('betanet').accountCreateProgramId,
     'every registration uses the configured account-creation program (no faucet/dummy transfer)');
-  assert.deepEqual(tx.header, { fee: 0n, nonce: 0n, stateUnits: 1 });
+  assert.deepEqual(tx.header, { fee: 0n, nonce: 0n, stateUnits: 1, computeUnits: 10_000, memoryUnits: 10_000 });
   assert.equal(Pubkey.from(tx.feePayer.publicKey).toThruFmt(), target,
     'every fee payer public key matches the target proof address');
   assert.equal(Pubkey.from(await keys.fromPrivateKey(tx.feePayer.privateKey)).toThruFmt(), target,

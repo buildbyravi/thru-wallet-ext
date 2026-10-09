@@ -66,13 +66,14 @@ export function autoUnits({ kind, bytes = 0, accounts = 1, balanceUnits = 0n, ma
   const floor = CLASS_FLOORS[kind];
   if (!floor) throw new Error(`unknown unit class '${kind}'`);
   const sized = payloadFloor({ bytes, accounts });
+  // Account creation and faucet claims are sponsored protocol flows that MUST NOT deduct fee (0n).
+  // Transfers and token operations tip 1 base unit when funded.
+  const isSponsored = kind === UNIT_CLASS.CREATE || kind === UNIT_CLASS.CLAIM;
   return {
     computeUnits: clamp(Math.max(floor.computeUnits, 4 * bytes), 0, GLOBAL_CEILINGS.computeUnits),
     memoryUnits: floor.memoryUnits,
     stateUnits: clamp(Math.max(floor.stateUnits, sized.stateUnits), 1, maxStateUnitsPerBlock),
-    // Testnet-shaped policy: empty accounts pay nothing (their creates/claims are free),
-    // funded accounts tip the base unit — identical to both live-proven flows.
-    fee: balanceUnits > 0n ? 1n : 0n,
+    fee: isSponsored ? 0n : (balanceUnits > 0n ? 1n : 0n),
   };
 }
 

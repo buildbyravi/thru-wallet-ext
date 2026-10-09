@@ -396,3 +396,13 @@ pinned package ships bindings (`./perp`, `./clob`).
   mainnet question answered below at the same block: 0.4.1 is today's latest line; the true launch
   version is Thru's call — our posture is exact-pin + deliberate upgrades + golden-derivation/regression
   gates, plus explicit auto-units so a default drift can never again break us.
+
+- **Auto-units wired into sacred thru-client.js & sponsored faucet fee (0n) confirmed (2026-10-09).**
+  Wired `autoUnits` across all 7 transaction builder sites in `src/lib/thru-client.js` (`createOnChainAccount`,
+  `claimFaucet`, `sendTransfer`, `initializeTokenAccount`, `sendTokenTransfer`, `mintToToken`, `deployTokenMint`).
+  Owner confirmed live on Betanet with a new wallet: account registration, faucet claim, and send all PASS!
+  Owner observation: faucet claim deducted 1 base unit fee (leaving 9,999 of 10,000 units), triggering the UI amount
+  guard. Refined `autoUnits` fee policy: `UNIT_CLASS.CREATE` and `UNIT_CLASS.CLAIM` are protocol-sponsored flows
+  and strictly carry `fee: 0n`, preventing any fee deduction on claims and ensuring exact requested unit delivery.
+  Transfers and token operations retain 1 base unit fee when funded. Offline suites and guards 100% green.
+

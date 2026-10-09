@@ -16,10 +16,13 @@ const claim = autoUnits({ kind: UNIT_CLASS.CLAIM, bytes: 16, accounts: 1, balanc
 eq(claim.computeUnits, 300_000, 'claim computeUnits = thruscan-proven floor at claim payload sizes');
 eq(claim.memoryUnits, 10_000, 'claim memoryUnits = thruscan-proven floor');
 eq(claim.stateUnits, 1_024, 'claim stateUnits = thruscan-proven floor (payload formula yields far less at 16B)');
-eq(claim.fee, 1n, 'funded fee payer tips the base unit');
+eq(claim.fee, 0n, 'faucet claims are sponsored (0n fee), preventing 1-unit deduction');
 
 const claimEmpty = autoUnits({ kind: UNIT_CLASS.CLAIM, bytes: 16, accounts: 1, balanceUnits: 0n });
-eq(claimEmpty.fee, 0n, 'empty accounts pay nothing (fresh claims are free)');
+eq(claimEmpty.fee, 0n, 'empty accounts pay nothing (0n fee)');
+
+const transfer = autoUnits({ kind: UNIT_CLASS.TRANSFER, bytes: 16, accounts: 1, balanceUnits: 1000n });
+eq(transfer.fee, 1n, 'funded transfer tips the base unit');
 
 const create = autoUnits({ kind: UNIT_CLASS.CREATE, bytes: 0, accounts: 1, balanceUnits: 0n });
 eq(create.computeUnits, 10_000, 'create computeUnits = SDK-0.4.0-era proven default when payload is tiny');

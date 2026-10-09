@@ -220,9 +220,10 @@ async function createCell(name, header) {
 await createCell('D1: accounts.create w/ 0.4.1 defaults (0/0/0 units)', null);
 await createCell('D2: accounts.create w/ explicit 0.4.0-era units', { computeUnits: 10_000, memoryUnits: 10_000, stateUnits: 1 });
 
+const JSON_SAFE = (k, v) => (typeof v === 'bigint' ? v.toString() : v);
 writeFileSync(
   new URL('./defi-evidence/2026-10-09-claim-variants.json', import.meta.url),
-  `${JSON.stringify({ [observation.at]: observation }, null, 2)}\n`,
+  `${JSON.stringify({ [observation.at]: observation }, JSON_SAFE, 2)}\n`,
 );
 const pass = observation.cells.filter((c) => c.verdict === 'PASS').map((c) => c.name.split(':')[0]);
 console.log(`\nRESULT claim-variants: PASS cells = [${pass.join(', ') || 'none'}] of ${observation.cells.length}`);

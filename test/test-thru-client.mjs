@@ -565,5 +565,34 @@ console.log('\n[15] formatTokenAmount / parseTokenAmount convert exactly at any 
     'the detail reuses the existing decoder, so it cannot disagree with the list view');
 }
 
+// ---------------------------------------------------------------------------
+// Explicit Resource Units Guard (P3 / SDK 0.4.1 Zero-Default Regression Prevention)
+//
+// In @thru/sdk 0.4.1, default compute/memory units flipped to 0, which breaks any
+// transaction whose builder does not explicitly specify computeUnits and memoryUnits.
+// Every buildAndSign invocation in thru-client.js MUST provide explicit header units
+// via autoUnits to guarantee that no call site ever inherits SDK zero defaults.
+{
+  console.log('\n[12] All buildAndSign call sites in thru-client.js use explicit resource units (autoUnits)');
+
+  const { readFileSync } = await import('node:fs');
+  const clientSource = readFileSync('./src/lib/thru-client.js', 'utf8');
+
+  assert(
+    /import\s*\{[^}]*autoUnits[^}]*\}\s*from\s*['"]\.\/tx-units\.js['"]/.test(clientSource),
+    'thru-client.js imports autoUnits from ./tx-units.js'
+  );
+
+  const buildAndSignMatches = [...clientSource.matchAll(/buildAndSign\(\s*\{([\s\S]*?)\}\s*\)/g)];
+  assert(buildAndSignMatches.length === 7, `found exactly 7 buildAndSign call sites (got ${buildAndSignMatches.length})`);
+
+  for (let i = 0; i < buildAndSignMatches.length; i++) {
+    const callBody = buildAndSignMatches[i][1];
+    const hasHeader = /header:\s*(?:units|\{\s*nonce:\s*0n,\s*\.\.\.units\s*\})/.test(callBody);
+    assert(hasHeader, `buildAndSign site #${i + 1} explicitly supplies header: units or ...units`);
+  }
+}
+
 console.log('\nAll thru-client.js encoding checks passed.');
+
 

@@ -1,0 +1,135 @@
+{
+  "2026-10-09T09:33:53.705Z": {
+    "at": "2026-10-09T09:33:53.705Z",
+    "networkId": "betanet",
+    "network_rpc": "https://rpc.betanet.thru.org",
+    "cells": [
+      {
+        "name": "A-control: our shape, long-activated index 0",
+        "payerAddress": "tabDLDL9EVZYhRnbgPr0HrQuIvv01AZm9vtV8yIX26KO2J",
+        "header": {
+          "fee": "0",
+          "stateUnits": 1
+        },
+        "vmError": -767,
+        "userError": 16777360,
+        "signature": "tsbnpBT_TqCy-1BHjm6xE-UNYLGP5egPLk8_QLB98-QuW87sbJGr7zoGDWSSGXUmaJlW769e58SakL6hQNwHXZByGu",
+        "execution": {
+          "via": "get",
+          "vmError": -767,
+          "userError": 16777360,
+          "consumedComputeUnits": 0,
+          "consumedMemoryUnits": 0,
+          "consumedStateUnits": 0
+        },
+        "verdict": "FAULT"
+      },
+      {
+        "name": "A: our exact shape, epoch-fresh subject",
+        "payerAddress": "taR0i59ZbySKHas7xS2z63RC-UgCNX04sbag4s0n_OQ6lC",
+        "header": {
+          "fee": "0",
+          "stateUnits": 1
+        },
+        "vmError": -767,
+        "userError": 16777360,
+        "signature": "tsjR3poLR02TlaS9jigNaW-QoZOu6p7z-DWKm_2fkSDlSav2XtqBzQz3opjdoLCx469XzkmNKwSz9NEBszwVNCCR_l",
+        "execution": {
+          "via": "get",
+          "vmError": -767,
+          "userError": 16777360,
+          "consumedComputeUnits": 0,
+          "consumedMemoryUnits": 0,
+          "consumedStateUnits": 0
+        },
+        "verdict": "FAULT"
+      },
+      {
+        "name": "B: thruscan header + our layout, fresh subject",
+        "payerAddress": "taR0i59ZbySKHas7xS2z63RC-UgCNX04sbag4s0n_OQ6lC",
+        "header": {
+          "fee": "1",
+          "stateUnits": 1024,
+          "computeUnits": 300000,
+          "memoryUnits": 10000
+        },
+        "vmError": 0,
+        "userError": 0,
+        "signature": "tsQQerW9YwUhMqSoJcDhrcLmaQdNQS7lQD6r696sbjaNlDLXwwUBi1ZbbGIeXAM9qKNmwB02WJUfNX4FogFcz7Ch3B",
+        "execution": {
+          "via": "get",
+          "vmError": 0,
+          "userError": 0,
+          "consumedComputeUnits": 32527,
+          "consumedMemoryUnits": 1,
+          "consumedStateUnits": 0
+        },
+        "verdict": "PASS"
+      },
+      {
+        "name": "C: our header + thruscan layout (u32=2), fresh subject",
+        "payerAddress": "taR0i59ZbySKHas7xS2z63RC-UgCNX04sbag4s0n_OQ6lC",
+        "header": {
+          "fee": "0",
+          "stateUnits": 1
+        },
+        "vmError": -767,
+        "userError": 16777360,
+        "signature": "ts76nCPpUMerW9oECyEfE8I3xsWHAqRIUQ5TxBP8OjSfoM_QP1TykoXCyLTJ-cE6no2QZfy3mlvfAb8py83LF5Ax82",
+        "execution": {
+          "via": "get",
+          "vmError": -767,
+          "userError": 16777360,
+          "consumedComputeUnits": 0,
+          "consumedMemoryUnits": 0,
+          "consumedStateUnits": 0
+        },
+        "verdict": "FAULT"
+      },
+      {
+        "name": "B+C: full thruscan shape, fresh subject",
+        "payerAddress": "taR0i59ZbySKHas7xS2z63RC-UgCNX04sbag4s0n_OQ6lC",
+        "header": {
+          "fee": "1",
+          "stateUnits": 1024,
+          "computeUnits": 300000,
+          "memoryUnits": 10000
+        },
+        "vmError": 0,
+        "userError": 0,
+        "signature": "tsEUH5Q3x7kStPYPZujc5_sf3hsqNjL_ktnk0u3PE7ktRrftM00kEaV4eAotesa4JFtGQ-iqbSaAODa2LVJQ-VAh_W",
+        "execution": {
+          "via": "get",
+          "vmError": 0,
+          "userError": 0,
+          "consumedComputeUnits": 32527,
+          "consumedMemoryUnits": 1,
+          "consumedStateUnits": 0
+        },
+        "verdict": "PASS"
+      },
+      {
+        "name": "D1: accounts.create w/ 0.4.1 defaults (0/0/0 units)",
+        "address": "tapGtsmQKXLVULDq9D2W88sB4bLU9NyvjTT-deRpOHSVia",
+        "header": "sdk defaults",
+        "existsAfter": false,
+        "verdict": "NO-ACCOUNT"
+      },
+      {
+        "name": "D2: accounts.create w/ explicit 0.4.0-era units",
+        "address": "taTkcnD7g-gBQMphw0kdFLwzgMP16AFZj_w9NNDzVcizkb",
+        "header": {
+          "computeUnits": 10000,
+          "memoryUnits": 10000,
+          "stateUnits": 1
+        },
+        "existsAfter": true,
+        "verdict": "PASS"
+      }
+    ],
+    "subjectState": {
+      "exists": true,
+      "balance": "1"
+    }
+  }
+}
