@@ -96,12 +96,12 @@ async function executionEvidence(address, signatureFmt) {
     try {
       const t = await c.transactions.get(signatureFmt, { transactionOptions: { view: TransactionView.FULL } });
       const ex = t?.executionResult;
-      if (ex) return { via: 'get', vmError: ex.vmError ?? 0, userError: Number(ex.userErrorCode ?? 0n), computeUnits: ex.computeUnitsConsumed ?? null };
+      if (ex) return { via: 'get', vmError: ex.vmError ?? 0, userError: Number(ex.userErrorCode ?? 0n), consumedComputeUnits: ex.consumedComputeUnits ?? ex.computeUnitsConsumed ?? null, consumedMemoryUnits: ex.consumedMemoryUnits ?? null, consumedStateUnits: ex.consumedStateUnits ?? null };
     } catch { /* fall to history */ }
     const r = await c.transactions.listForAccount(address, { transactionOptions: { view: TransactionView.FULL } });
     const tx = [...(r.transactions ?? [])].reverse().find((t) => t.program?.toString?.() === FAUCET_PROGRAM);
     const ex = tx?.executionResult;
-    if (ex) return { via: 'history', vmError: ex.vmError ?? 0, userError: Number(ex.userErrorCode ?? 0n), computeUnits: ex.computeUnitsConsumed ?? null };
+    if (ex) return { via: 'history', vmError: ex.vmError ?? 0, userError: Number(ex.userErrorCode ?? 0n), consumedComputeUnits: ex.consumedComputeUnits ?? ex.computeUnitsConsumed ?? null, consumedMemoryUnits: ex.consumedMemoryUnits ?? null, consumedStateUnits: ex.consumedStateUnits ?? null };
     return { via: 'none' };
   } catch (e) { return { via: 'error', detail: e.message.slice(0, 160) }; }
 }

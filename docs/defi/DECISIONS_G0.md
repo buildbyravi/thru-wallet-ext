@@ -383,3 +383,16 @@ pinned package ships bindings (`./perp`, `./clob`).
   owner signs off. Records: `scripts/defi-evidence/2026-10-08-official-docs.json` (refinement_2026_10_09).
   The earlier "chain regression" assignment was correct at the evidence level available on 0.4.1 and is
   corrected here, with the reconciliation table on file.
+
+- **Auto-decided resource units ("gas"), not static hardcodes (owner directive, 2026-10-09).**
+  The 0.4.1 fix is designed as automatic budgeting, not one more set of constants: `src/lib/tx-units.js`
+  composes per-class floors from live-proven shapes (SDK-0.4.0-era create profile; ThruScan-0.4.5
+  claim/send profile), payload-scaled growth mirroring the SDK's own 0.4.1 estimator
+  (`ceil((bytes + 64·accounts)/4096) + accounts + 1` for state; `max(floor, 4·bytes)` for compute —
+  the '1e6 +' prefix is compression-prereq-specific and deliberately NOT a small-transaction minimum),
+  live chain ceilings (`max_state_units_per_block`, default 8 192 per the thruscan chain read), and the
+  free-when-empty / 1-unit-when-funded fee policy. The live probe captures `consumedCompute/Memory/State`
+  per cell so the floors calibrate from real executions before the sacred-file patch lands. Owner's
+  mainnet question answered below at the same block: 0.4.1 is today's latest line; the true launch
+  version is Thru's call — our posture is exact-pin + deliberate upgrades + golden-derivation/regression
+  gates, plus explicit auto-units so a default drift can never again break us.
