@@ -14,7 +14,6 @@ import { FLAGS } from '../../shared/flags.js';
 import * as ns from '../../lib/name-service.js';
 import * as txService from './tx-service.js';
 import * as thruClient from '../../lib/thru-client.js';
-import { BOOTSTRAP_PROGRAM_ADDRESSES } from '../../lib/bootstrap-pins.js';
 
 function featureDisabled() {
   const err = new Error(
@@ -105,24 +104,24 @@ export async function checkAvailability({ name, parentAddress } = {}) {
 }
 
 // ---- Canonical-root auto-discovery (2026-10-09, owner-directed) ------------------------
-// The chain's canonical root registrar is NOT exported by the pinned @thru packages and is
-// NOT derivable from them (proven 2026-10-09: ten parent×name seed combinations —
-// program/registrar/zero/root-manager × id/.id/thru/.thru — never reproduce the public .id
-// root; a root account's parent+authority are external). So the wallet discovers it by
-// READING: each candidate below is fetched and must PARSE as a root registrar (kind = 1)
-// before it is used for anything. A candidate that does not parse on this chain is skipped,
-// never trusted blind.
-//
-// Candidate provenance:
-//   1. BOOTSTRAP_PROGRAM_ADDRESSES.thru_registrar — first-party pinned bootstrap address;
-//      on chains where the registrar itself doubles as a root it parses cleanly.
-//   2. The public .id root registrar (third-party PUBLIC fact, corroboration-only — the
-//      same address scripts/probe-name-service.mjs uses to cross-check wire formats).
-import { parseRootRegistrar } from '../../lib/name-service.js';
+// Candidate ADDRESSES are DERIVED, never fetched from third parties: root registrar
+// addresses derive officially from the root name itself (src/lib/name-service.js —
+// recovered from the first-party thru CLI 0.4.1 + thru.org registrar docs, 2026-10-09).
+// Candidates, in priority order:
+//   1. the official `.thru` registry root — the canonical Thru namespace
+//      (thru.org/docs/cli-reference/registrar-commands: paid leases, purchase/renew). On
+//      networks where the registry is not initialized yet, it simply doesn't parse.
+//   2. the `.id` root — ThruScan's community root registrar; real on Betanet today
+//      (probe-verified) but a THIRD-PARTY namespace, so it loses to .thru whenever both
+//      exist on the running chain.
+// Even derived addresses are never trusted blind: each candidate is fetched and must PARSE
+// as a root registrar (kind = 1) before it is used for anything. A candidate that does not
+// parse on this chain is skipped, never trusted blind.
+import { parseRootRegistrar, rootRegistrarAddress } from '../../lib/name-service.js';
 
 const CANONICAL_ROOT_CANDIDATES = Object.freeze([
-  { address: BOOTSTRAP_PROGRAM_ADDRESSES.thru_registrar, provenance: 'pinned bootstrap thru_registrar' },
-  { address: 'taLu3d1rxGdQWWHJxUOK6eT9ti4lWeTijNp0Kk_5YKHARg', provenance: 'public .id root (third-party fact, on-chain-verified)' },
+  { address: rootRegistrarAddress('thru'), provenance: 'official .thru registry root (derived per thru docs, 2026-10-09)' },
+  { address: rootRegistrarAddress('id'), provenance: 'community .id root (ThruScan; official derivation formula)' },
 ]);
 
 let discoveredCache = null; // session-scoped; one RPC on first use per worker

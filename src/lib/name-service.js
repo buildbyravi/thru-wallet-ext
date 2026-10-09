@@ -9,7 +9,14 @@
 //     recovered from the official `thru` CLI binary (unstripped: thru_core::commands::
 //     name_service::parse_*), and were confirmed in community production against live chain
 //     data since 2026-07-31 (pgreyy/thruscan src/lib/names.js + nameservice.js; their .id
-//     root 'taLu3d…' + the grace.id domain). Marked third-party-recovered, NOT official.
+//     root + the grace.id domain). First-party-corroborated, not merely third-party.
+//   - OFFICIAL CORROBORATION (2026-10-09): thru.org/docs/cli-reference/name-service-commands
+//     documents the exact command family (init-root, register-subdomain, append/delete-record,
+//     unregister-subdomain, resolve, list-records, derive-*) with the self-signed semantics
+//     this module assumes (authority = fee payer). Our domain derivation was exact-matched
+//     against the CLI's `nameservice derive-domain-account` the same day (see tests). Ops
+//     delete-record / unregister-subdomain exist officially but their opcodes stay
+//     UNRECOVERED here (no read need; recovered only if writes are ever enabled).
 //   - every registration WRITE here stays gated (FLAGS.NAME_SERVICE=false, plus registry
 //     trust 'unverified' on the program record) until the live probe verifies the shapes on
 //     the running chain. Reads are non-destructive by definition.
@@ -82,6 +89,39 @@ export async function domainAccountAddress(parentAddress, name) {
   const seed = await sha256(seedInput);
   const derived = deriveProgramAddress({ programAddress: NAME_SERVICE_PROGRAM, seed });
   return String(derived.address); // the helper returns the ta-* string directly
+}
+
+// ---- Root registrar + registrar-config derivation (official, 2026-10-09) ----
+// Root registrars are the ONE exception to the domain rule above: their seed is the RAW
+// root name, not sha256(parent ‖ name) — recovered by exact-match inversion of the
+// first-party `thru` CLI 0.4.1 derive-* helpers (npm thru@0.4.1 binary, offline):
+//   rootRegistrarAddress('thru') = taNP1MFOO2shpn6ORofIGSNiQ-qJ9VE2lDkDwvUmgUmaQZ
+//     = `thru nameservice derive-registrar-account thru` (the OFFICIAL .thru registry root;
+//       thru.org/docs/cli-reference/registrar-commands, 2026-10-09)
+//   rootRegistrarAddress('id')   = taLu3d1rxGdQWWHJxUOK6eT9ti4lWeTijNp0Kk_5YKHARg
+//     = `thru nameservice derive-registrar-account id` (ThruScan's third-party .id root;
+//       the same official derivation formula, a community-run root)
+// The registrar program's config account (price_per_year, payment mint, treasurer) derives
+// from the registrar program with the literal raw seed 'config':
+//   registrarConfigAddress() = taLjMDKiBDra1EGIKoF_7B-tGFJMnf8MejLDu3VVWTRJRQ
+//     = `thru nameservice derive-config-account`.
+// Lease accounts (derive-lease-account <name>) do NOT follow any of these seed forms —
+// their formula stays UNRECOVERED (P4 evidence item); never guess it.
+export const THRU_REGISTRAR_PROGRAM = BOOTSTRAP_PROGRAM_ADDRESSES.thru_registrar;
+
+export function rootRegistrarAddress(rootName) {
+  const seed = new TextEncoder().encode(rootName);
+  if (seed.length === 0 || seed.length > NS_MAX_NAME_CHARS) {
+    throw new Error(`root name must be 1..${NS_MAX_NAME_CHARS} bytes`);
+  }
+  return String(deriveProgramAddress({ programAddress: NAME_SERVICE_PROGRAM, seed }).address);
+}
+
+export function registrarConfigAddress(registrarProgram = THRU_REGISTRAR_PROGRAM) {
+  return String(deriveProgramAddress({
+    programAddress: registrarProgram,
+    seed: new TextEncoder().encode('config'),
+  }).address);
 }
 
 // ---- Decoders (read side; input = raw account data bytes) --------------------

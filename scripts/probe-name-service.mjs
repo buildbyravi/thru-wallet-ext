@@ -16,13 +16,18 @@ import { writeFileSync } from 'node:fs';
 import {
   NAME_SERVICE_PROGRAM, parseRootRegistrar, parseDomainAccount,
   domainAccountAddress,
+  rootRegistrarAddress,
+  registrarConfigAddress,
 } from '../src/lib/name-service.js';
 
 const BASE_URL = process.argv[2] || 'https://grpc-web.throughput.foundation';
 const TIMEOUT_MS = 30_000;
-// PUBLIC, third-party-recovered fact used ONLY for corroboration (documented in
-// src/lib/name-service.js provenance): ThruScan's .id root registrar address.
-const ID_ROOT = 'taLu3d1rxGdQWWHJxUOK6eT9ti4lWeTijNp0Kk_5YKHARg';
+// Root registrar addresses are OFFICIALLY derivable from the root name (raw-name seed;
+// recovered 2026-10-09 from the first-party thru CLI 0.4.1 derive-* helpers — see
+// src/lib/name-service.js): `derive-registrar-account id` ≡ rootRegistrarAddress('id').
+const ID_ROOT = rootRegistrarAddress('id'); // ThruScan's community .id root (taLu3d1…)
+const THRU_ROOT = rootRegistrarAddress('thru'); // OFFICIAL .thru registry root (taNP1M…)
+const REG_CONFIG = registrarConfigAddress();    // registrar config account (taLjMD…)
 
 async function getAccountInfo(address) {
   const res = await fetch(BASE_URL, {
@@ -55,6 +60,7 @@ const add = (check, ok, detail) => {
 
 try {
   add('name-service-program-exists', true, `program=${NAME_SERVICE_PROGRAM} (address from the pinned @thru/programs bootstrap table)`);
+  console.log(`derived addresses: .thru root=${THRU_ROOT}  .id root=${ID_ROOT}  registrar config=${REG_CONFIG}`);
 
   // 2. The .id root registrar (corroboration-only third-party fact).
   let rootOk = false;

@@ -187,3 +187,17 @@ lived only in `AGENTS.md` and audit history.
 **Trade-offs.** Gate 0's live rows need a network-reachable machine (the build sandbox cannot reach Thru endpoints — `scripts/defi-evidence/2026-10-05-environment-egress.json`), so "verified capability matrix" and any enabled write path wait on live evidence; the wallet-core sequence (steps 3–10) remains open in parallel and its chain-facing parts are now also dossier rows (step 4 ↔ Q2/Q4/Q6, step 6 ↔ Q13 = P3, step 7 ↔ Q6/Q7/Q22).
 
 **Consequences.** Contract versions assigned READ = 17, EXEC = 18 (repo is v16/81 — the prompt's "15/83" parenthetical was corrected at recon). No feature code exists at G0; the first code change is M0 plus the B16 quarantine rewrite. All records live in `docs/defi/` + `scripts/defi-evidence/`; today every DeFi capability is seeded `unsupported`. D-005 stays in force; guides 09–11 are absent from this checkout and treated as superseded.
+
+## D-013 — Canonical name root derived from official source; .thru preferred over .id
+
+**Context.** The canonical-root candidates shipped at `2fdfe11` mixed a first-party pin (`BOOTSTRAP_PROGRAM_ADDRESSES.thru_registrar`, which is the executable program account and never parses as a root registrar) with a hardcoded third-party fact (ThruScan's `.id` root). On 2026-10-09 the official docs (`thru.org/docs/cli-reference/{registrar,name-service}-commands/`) plus the first-party `thru` CLI 0.4.1 derive-* helpers yielded the official derivation: root registrar = `deriveProgramAddress({ programAddress: NAME_SERVICE_PROGRAM, seed: raw root-name bytes })`, and documented that `.thru` is the OFFICIAL namespace (paid leases) while `.id` is a community root.
+
+**Options considered.** (a) Keep the hardcoded candidate list as shipped; (b) hardcode the two newly-derived addresses with dated evidence; (c) derive candidate addresses in code from the official formula and order them official-first, keeping the parse-before-use proof.
+
+**Chosen.** (c): `src/lib/name-service.js` exports `rootRegistrarAddress(rootName)` / `registrarConfigAddress()` (pins proven in tests against the CLI outputs), and discovery walks `[.thru, .id]` — derived in code, never pasted. The parse-before-use behavior is unchanged: an initialized `.thru` registry wins on any chain where it exists, `.id` remains the fallback on Betanet today, and a chain with neither still answers NAME_ROOT_UNKNOWN with the manual-root UI path.
+
+**Why.** Deriving from the official formula removes the last third-party-sourced address from the read path, and the priority order reflects the documented namespace ownership (official registry leases vs a community root) without asking the user to choose.
+
+**Trade-offs.** A user holding only a `.id` name on a future chain where the `.thru` registry initializes would see lookups resolve under `.thru` first; explicit-root lookups (the UI's manual field) remain available, and links persist the resolved root.
+
+**Consequences.** `test-name-primary` 16 checks pin the derivations and the priority. Lease-account derivation, the registrar config byte layout (price per year, mint, treasurer) and the purchase/renew instruction layouts stay UNRECOVERED (evidence `scripts/defi-evidence/2026-10-09-registrar-nameservice-official.json`) — the P4 mint flow requires them before any write UX.

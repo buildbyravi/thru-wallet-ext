@@ -6,8 +6,12 @@
 //   [0] canonical-root discovery NEVER trusts a candidate blind: an address that does not
 //       parse as a root registrar is skipped, and with no parseable candidate every read
 //       answers NAME_ROOT_UNKNOWN (the UI's manual-root fallback trigger)
-//   [1] a parseable candidate wins — pinned thru_registrar first, the corroborated public
-//       .id root second — and blank rootAddress on lookup/link uses the discovered root
+//   [*] the candidate roots are OFFICIALLY DERIVED from their root names (raw-name seed
+//       derivation inverted from the first-party thru CLI 0.4.1, 2026-10-09), never pasted
+//       from third parties — 'thru' and 'id' pins hold byte-exact
+//   [1] a parseable candidate wins — official .thru root first, community .id root second —
+//       and blank rootAddress on lookup/link uses the discovered root; .thru BEATS .id
+//       when both parse (canonical namespace preference)
 //   [2] name.linkPrimary refuses a name owned by ANOTHER address (NOT_NAME_OWNER)
 //   [3] refuses a name absent under the canonical root (NAME_NOT_FOUND)
 //   [4] a correctly-owned name links with no root input and persists network-scoped
@@ -46,7 +50,6 @@ const { handleApiRequest } = await import('../src/background/api-router.js');
 const { SCOPED_KEYS } = await import('../src/shared/network-scope.js');
 const { Pubkey } = await import('@thru/sdk');
 const ns = await import('../src/lib/name-service.js');
-const pins = await import('../src/lib/bootstrap-pins.js');
 const historyService = await import('../src/background/services/history-service.js');
 
 let checks = 0;
@@ -62,16 +65,19 @@ const SENDER = walletRes.data.address;
 console.log('harness: wallet created (offline), sender', SENDER.slice(0, 12) + '…');
 
 // ---- synthetic on-chain world -------------------------------------------------
-const ID_ROOT = 'taLu3d1rxGdQWWHJxUOK6eT9ti4lWeTijNp0Kk_5YKHARg'; // corroborated public .id root
-const THRU_REGISTRAR = pins.BOOTSTRAP_PROGRAM_ADDRESSES.thru_registrar;
+// Pins recovered from the first-party thru CLI 0.4.1 derive-* helpers (offline, 2026-10-09):
+const THRU_ROOT = 'taNP1MFOO2shpn6ORofIGSNiQ-qJ9VE2lDkDwvUmgUmaQZ'; // derive-registrar-account thru
+const ID_ROOT = 'taLu3d1rxGdQWWHJxUOK6eT9ti4lWeTijNp0Kk_5YKHARg';   // derive-registrar-account id
+const REG_CONFIG = 'taLjMDKiBDra1EGIKoF_7B-tGFJMnf8MejLDu3VVWTRJRQ'; // derive-config-account
 const NAME = 'alice';
-const LEAF = await ns.domainAccountAddress(ID_ROOT, NAME);
+const LEAF_THRU = await ns.domainAccountAddress(THRU_ROOT, NAME); // leaf under the official .thru root
+const LEAF_ID = await ns.domainAccountAddress(ID_ROOT, NAME);     // leaf under the community .id root
 const SOMEONE_ELSE = Pubkey.from(new Uint8Array(32).fill(7)).toThruFmt();
 
-function buildDomainBytes(ownerAddress, name = NAME) {
+function buildDomainBytes(ownerAddress, name = NAME, parent = THRU_ROOT) {
   const out = new Uint8Array(ns.NS_DOMAIN_HEADER); // record_count = 0
   out[0] = ns.NS_KIND_DOMAIN;
-  out.set(Pubkey.from(ID_ROOT).toBytes(), 0x01);
+  out.set(Pubkey.from(parent).toBytes(), 0x01);
   out.set(Pubkey.from(ownerAddress).toBytes(), 0x21);
   const nb = new TextEncoder().encode(name);
   out.set(nb, 0x41);
@@ -97,21 +103,30 @@ function buildRootBytes(name, authorityRandom) {
 let leafOwner = SOMEONE_ELSE;
 let leafExists = true;
 let nodeDown = false;
-let rootParses = false;         // candidate #2 (.id public root)
-let registrarParses = false;    // candidate #1 (pinned thru_registrar)
+let thruParses = false;         // candidate #1 (official .thru registry root)
+let rootParses = false;         // candidate #2 (community .id root)
 const rootAuthority = Pubkey.from(new Uint8Array(32).fill(9));
+
+// [*] the candidates come from the OFFICIAL raw-name derivation, not pasted constants
+assert.equal(ns.rootRegistrarAddress('thru'), THRU_ROOT);
+assert.equal(ns.rootRegistrarAddress('id'), ID_ROOT);
+assert.equal(ns.registrarConfigAddress(), REG_CONFIG);
+ok('root/config derivation pins hold: thru→taNP1M…, id→taLu3d…, config→taLjMD… (first-party CLI-derived)');
 
 const thru = await import('../src/lib/thru-client.js');
 const client = thru.getClient();
 client.accounts.get = async (address) => {
   if (nodeDown) throw new Error('fetch failed');
-  if (address === THRU_REGISTRAR) {
-    return { meta: { balance: 1n }, data: registrarParses ? buildRootBytes('reg', rootAuthority) : new Uint8Array([9, 9, 9, 9]) };
+  if (address === THRU_ROOT) {
+    return { meta: { balance: 1n }, data: thruParses ? buildRootBytes('thru', rootAuthority) : new Uint8Array([9, 9, 9, 9]) };
   }
   if (address === ID_ROOT) {
     return { meta: { balance: 1n }, data: rootParses ? buildRootBytes('id', rootAuthority) : new Uint8Array([8, 8, 8, 8]) };
   }
-  if (address !== LEAF || !leafExists) return { meta: { balance: null } }; // unparseable → treated absent
+  if (address === LEAF_ID) { // explicit-root .id read: a foreign-owned domain, always present
+    return { meta: { balance: 1n }, data: buildDomainBytes(SOMEONE_ELSE, NAME, ID_ROOT) };
+  }
+  if (address !== LEAF_THRU || !leafExists) return { meta: { balance: null } }; // unparseable → treated absent
   return { meta: { balance: 1n }, data: buildDomainBytes(leafOwner) };
 };
 
@@ -132,16 +147,18 @@ ok('name.getPrimary returns null before any link');
   ok('no parseable root candidate → NAME_ROOT_UNKNOWN on both lookup and link (manual-root fallback)');
 }
 
-// [1] the .id candidate parses → discovery uses it; the pinned registrar garbage is skipped
+// [1] BOTH candidates parse → the official .thru root WINS over the community .id root;
+//     blank root on lookup resolves through it end-to-end
 rootParses = true;
+thruParses = true;
 {
   const res = await handleApiRequest({ method: 'name.lookup', params: { name: NAME, rootAddress: '' } });
   assert.equal(res.ok, true, JSON.stringify(res.error));
-  assert.equal(res.data.rootAddress, ID_ROOT);
+  assert.equal(res.data.rootAddress, THRU_ROOT);
   const chain = res.data.chain;
-  assert.equal(chain[chain.length - 1], ID_ROOT);
-  assert.equal(chain[0], LEAF);
-  ok('blank root → auto-discovered canonical root (.id public root, registrar candidate honestly skipped)');
+  assert.equal(chain[chain.length - 1], THRU_ROOT);
+  assert.equal(chain[0], LEAF_THRU);
+  ok('blank root → auto-discovered canonical root; official .thru beats community .id when both parse');
 }
 
 // [7] the read path really carries domain bytes
@@ -178,11 +195,11 @@ leafOwner = SENDER;
   const linked = await handleApiRequest({ method: 'name.linkPrimary', params: { name: NAME } });
   assert.equal(linked.ok, true, JSON.stringify(linked.error));
   assert.equal(linked.data.name, NAME);
-  assert.equal(linked.data.rootAddress, ID_ROOT);
-  assert.equal(linked.data.domainAddress, LEAF);
+  assert.equal(linked.data.rootAddress, THRU_ROOT);
+  assert.equal(linked.data.domainAddress, LEAF_THRU);
   const stored = storage.get('thru_primary_names::betanet');
   assert.equal(stored[SENDER].name, NAME);
-  assert.equal(stored[SENDER].rootAddress, ID_ROOT);
+  assert.equal(stored[SENDER].rootAddress, THRU_ROOT);
   ok('linkPrimary with no root input verifies ownership via the discovered root and stores it');
 }
 {

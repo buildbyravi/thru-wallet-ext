@@ -1,0 +1,55 @@
+{
+  "id": "2026-10-09-registrar-nameservice-official",
+  "capturedAt": "2026-10-09",
+  "capturedBy": "arena-agent",
+  "scope": "Officiating the name-service + thru_registrar surface: official docs plus the first-party thru CLI 0.4.1 (npm `thru@0.4.1`, linux-x64 binary), replacing earlier third-party-only provenance where possible.",
+  "sources": [
+    "https://thru.org/docs/llms.txt (index of first-party docs; Explorer MCP announced for live chain context)",
+    "https://thru.org/docs/cli-reference/registrar-commands/ (initialize-registry, purchase-domain, renew-lease, claim-expired-domain)",
+    "https://thru.org/docs/cli-reference/name-service-commands/ (init-root, register-subdomain, append/delete-record, unregister-subdomain, resolve, list-records, derive-*)",
+    "https://thru.org/docs/alphanet-changelog/ (planned Alphanet reset, canonical program address table)",
+    "https://thru.org/docs/wallet/overview/ (hosted embedded wallet at https://app.tid.sh; THRUSD test dollars)",
+    "https://thru.org/.well-known/agent-skills/index.json (only thru-best-practices today)",
+    "npm thru@0.4.1 + thru-linux-x64@0.4.1 (first-party CLI binary; derive-* helpers executed offline)"
+  ],
+  "recoveredFacts": {
+    "rootRegistrarDerivation": {
+      "formula": "deriveProgramAddress({ programAddress: NAME_SERVICE_PROGRAM, seed: raw root-name bytes }) — NO sha256 and NO parent in the seed (the ONE exception to the domain rule sha256(parent‖name))",
+      "method": "offline exact-match inversion against the CLI's derive outputs (through-cli binary executed locally; SDK deriveProgramAddress verified against prior live-recovered domain derivations)",
+      "pins": {
+        "thru": "taNP1MFOO2shpn6ORofIGSNiQ-qJ9VE2lDkDwvUmgUmaQZ",
+        "id": "taLu3d1rxGdQWWHJxUOK6eT9ti4lWeTijNp0Kk_5YKHARg"
+      },
+      "domainCrossCheck": "CLI `nameservice derive-domain-account <id-root> alice` = ta43m6gvFeVOZUGUeVliKI-zTmvCawMbE4tCYgDoKd1TGY = our domainAccountAddress() byte-exact"
+    },
+    "registrarConfigDerivation": {
+      "formula": "deriveProgramAddress({ programAddress: THRU_REGISTRAR_PROGRAM, seed: 'config' })",
+      "pin": "taLjMDKiBDra1EGIKoF_7B-tGFJMnf8MejLDu3VVWTRJRQ"
+    },
+    "officialNamespace": ".thru is the official registry root (initialize-registry default root name 'thru'); .id is a community root registrar (ThruScan) sharing the same official derivation formula",
+    "registrarSemantics": {
+      "model": "paid leases, not permanent ownership: initialize-registry(config seed 'config', treasurer token account, payment token mint, price_per_year u64); purchase-domain(name 1-64 chars, years u8 1-255, config, payer token account of registry mint; auto-generates lease+domain state proofs); renew-lease; claim-expired-domain",
+      "selfSigned": "docs + CLI confirm authority = fee payer everywhere (matches AGENTS.md invariant)",
+      "docsCommandsConfirmed": ["initialize-registry", "purchase-domain", "renew-lease", "claim-expired-domain"],
+      "cliFlagsConfirmed": ["--lease-proof", "--domain-proof", "--thru-registrar-program", "--fee-payer"]
+    },
+    "nameServiceCorroboration": "official docs confirm the command family and self-signed semantics our recovered formats assumed; ops delete-record / unregister-subdomain exist but their OPCODES stay unrecovered (no read need)",
+    "alphanetPlan": {
+      "status": "UNRELEASED (release date + CLI/SDK versions not announced; Betanet explicitly unchanged by the announcement)",
+      "programAddressTable": "matches BOOTSTRAP_PROGRAM_ADDRESSES byte-for-byte for all 20 executables (name service taNAME…, thru registrar taREGM…, faucet, token, wthru mint taaoXQ…, eoa, uploader, compression, multicall, oracle, abi manager, amm, clob, noop, passkey, block producer, consensus validator, root/main manager)",
+      "guidance": "use new EOA program as wallet account owner post-reset; address zero remains unowned; recalculate program-derived accounts when the owning program changes"
+    },
+    "ecosystemNotes": "official web wallet = hosted embedded wallet at https://app.tid.sh (@thru/wallet, signing sessions); THRUSD = test dollars for deposits/funding (likely registrar payment mint on Betanet — UNVERIFIED here)"
+  },
+  "openItems": [
+    "lease-account derivation formula (derive-lease-account <name>) did NOT match raw, hashed, padded or prefixed seed forms — unrecovered; recover from the CLI binary (strings/symbols) before P4 implementation",
+    "registrar config account byte layout (price_per_year offset, mint, treasurer) — needed to price a purchase honestly; recover via binary + live parse",
+    "registrar instruction byte layouts (purchase-domain/renew-lease/claim-expired-domain) — needed for the mint UX; recover via binary, then verify live",
+    "THRUSD mint address on Betanet + whether the .thru registry is initialized there at all (live evidence only, npm run test:live)",
+    "Explorer MCP (https://thru.org/docs/api-ref/explorer-mcp/) unprobed — candidate evidence source for live chain facts"
+  ],
+  "verification": {
+    "offline": "npm test green incl. test-name-primary 16 checks (derivation pins + candidate priority .thru > .id)",
+    "live": "pending owner npm run test:live — probe-name-service.mjs now prints the three derived addresses (.thru root, .id root, registrar config)"
+  }
+}
