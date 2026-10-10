@@ -200,4 +200,22 @@ lived only in `AGENTS.md` and audit history.
 
 **Trade-offs.** A user holding only a `.id` name on a future chain where the `.thru` registry initializes would see lookups resolve under `.thru` first; explicit-root lookups (the UI's manual field) remain available, and links persist the resolved root.
 
-**Consequences.** `test-name-primary` 16 checks pin the derivations and the priority. Lease-account derivation, the registrar config byte layout (price per year, mint, treasurer) and the purchase/renew instruction layouts stay UNRECOVERED (evidence `scripts/defi-evidence/2026-10-09-registrar-nameservice-official.json`) — the P4 mint flow requires them before any write UX.
+**Consequences.** `test-name-primary` pins the derivations and the priority. The remaining unknowns it called out (lease derivation, config layout, purchase/renew/claim instruction layouts) were recovered first-party the next day — see D-014 and evidence `scripts/defi-evidence/2026-10-09-claim-variants.json` (follow-up entry 2026-10-10).
+
+## D-014 — Registrar lease writes: first-party formats, self-signed fee 0n, honest unsupported states
+
+**Context.** Owner directive 2026-10-10: complete the extension name system — name registration (`.thru` paid-lease purchase) + renew + claim-expired, with the /name tab rebuilt around it and the faucet tile square like Send. Previously the register/setRecord formats were recovered from third-party sources and stayed gated behind `FLAGS.NAME_SERVICE`; the registrar (paid-lease) formats were not recovered at all.
+
+**Options considered.** (a) Reuse the recovered onewire `name.register` path for .thru; (b) gate the new registrar writes behind the flag too; (c) implement against the first-party official ABIs + `name_service.rs`/`txn_tools.rs` builders from `github.com/Unto-Labs/thru` (2026-10-09), un-gated, with honest unsupported states when the registry is absent on the active network.
+
+**Chosen.** (c). Contract v22 adds six `name.*` methods to the 0.4.x core (never flag-gated): `name.getRegistry`, `name.checkLease`, `name.getPaymentBalance` (auth `none`, sync-safe reads) and `name.purchase`, `name.renewLease`, `name.claimExpired` (auth `signing`). `src/lib/registrar.js` encodes the official byte layouts; `src/background/services/registrar-service.js` composes sacred `thru-client` surfaces (accounts/proofs/buildAndSign/sendAndTrack) — no new dependency on those internals elsewhere.
+
+**Key invariants.**
+- Self-signed only: authority = fee payer = active account, proven first-party in `resolve_signing_account` (CLI); headers pass fee `0n` explicitly (`THRU_REGISTRAR_PROGRAM_FEE = 0` in the CLI source), never autoUnits.
+- Nothing hard-coded: root/config/lease/domain addresses derived via CLI-proven formulas (root seed >32B → sha256 first, so `rootRegistrarAddress` is async everywhere); price/mint/treasurer parsed from the 244-byte config account at the exact CLI offsets.
+- Honest states: registry absent → reads answer `{ supported: false, reason }` and signing refuses with `REGISTRY_ABSENT`; unreadable config → `REGISTRY_UNREADABLE`; the UI never fabricates a price (decimals come from `token.readMint`; unparseable amounts render as "base units").
+- UI action is derived ONLY from a fresh `name.checkLease` read: mine → renew; expired-someone-else → claim; taken-active → refuse; free → purchase. Purchase/claim success auto-`name.linkPrimary` best-effort; a failed link never masquerades as a failed registration.
+
+**Trade-offs.** The purchase flow takes on-chain creation proofs for the new lease/domain accounts (CLI `make_state_proof` semantics); if Betanet ever charges registrar fees the 0n header fails loudly rather than silently scaling — a re-evidence pass under `test:live` would precede any change.
+
+**Consequences.** Chain total is 138 methods (81 + 43 + 14 `name.*`). `test/test-name-registrar.mjs` (9 checks) pins the byte goldens, the parser round-trips, and the service branch matrix offline. Live verification of the three writes on Betanet remains an owner-directed `test:live` run. The old onewire `name.register`/`setRecord` formats recovered at G2 stay gated behind `FLAGS.NAME_SERVICE` — they were superseded, not fixed, by the first-party ABI (which differs: u32 name length, PROOF_INLINE marker, authority index).

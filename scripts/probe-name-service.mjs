@@ -25,9 +25,9 @@ const TIMEOUT_MS = 30_000;
 // Root registrar addresses are OFFICIALLY derivable from the root name (raw-name seed;
 // recovered 2026-10-09 from the first-party thru CLI 0.4.1 derive-* helpers — see
 // src/lib/name-service.js): `derive-registrar-account id` ≡ rootRegistrarAddress('id').
-const ID_ROOT = rootRegistrarAddress('id'); // ThruScan's community .id root (taLu3d1…)
-const THRU_ROOT = rootRegistrarAddress('thru'); // OFFICIAL .thru registry root (taNP1M…)
-const REG_CONFIG = registrarConfigAddress();    // registrar config account (taLjMD…)
+const ID_ROOT = await rootRegistrarAddress('id'); // ThruScan's community .id root (taLu3d1…)
+const THRU_ROOT = await rootRegistrarAddress('thru'); // OFFICIAL .thru registry root (taNP1M…)
+const REG_CONFIG = registrarConfigAddress();           // registrar config account (taLjMD…)
 
 async function getAccountInfo(address) {
   const res = await fetch(BASE_URL, {
@@ -87,6 +87,27 @@ try {
     } catch (e) {
       degrade('PARTIAL', { check: 'grace.id-derivation-and-decode', ok: false, detail: `derivation target did not decode: ${e.message} (domain content may not have migrated; formats otherwise confirmed by root row)` });
     }
+  }
+
+  // 4. The OFFICIAL `.thru` root registrar + the registrar registry config (v22 writes
+  //    depend on both being present and layout-conformant; first-party formats dated
+  //    2026-10-09, provenance in src/lib/registrar.js).
+  try {
+    const info = await getAccountInfo(THRU_ROOT);
+    const parsed = parseRootRegistrar(new Uint8Array(info.data));
+    add('thru-root-registrar-decodes', true,
+      `official .thru root live: name='${parsed.name}' authority=${parsed.authority} totalSubdomains=${parsed.totalSubdomains}`);
+  } catch (e) {
+    degrade('PARTIAL', { check: 'thru-root-registrar-decodes', ok: false, detail: `official .thru root not present/decodable on this chain: ${e.message} (the wallet's register writes answer REGISTRY_ABSENT there)` });
+  }
+  try {
+    const { parseRegistrarConfig } = await import('../src/lib/registrar.js');
+    const info = await getAccountInfo(REG_CONFIG);
+    const parsed = parseRegistrarConfig(new Uint8Array(info.data));
+    add('registrar-config-decodes', true,
+      `registry live: rootName='${parsed.rootName}' pricePerYear=${parsed.pricePerYear} mint=${parsed.tokenMint} treasurer=${parsed.treasurer}`);
+  } catch (e) {
+    degrade('PARTIAL', { check: 'registrar-config-decodes', ok: false, detail: `registrar config not present/decodable on this chain: ${e.message} (purchase/renew/claim stay REGISTRY_ABSENT there)` });
   }
 } catch (e) {
   degrade('FAILED', { check: 'probe-run', ok: false, detail: e.message });

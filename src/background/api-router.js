@@ -33,6 +33,7 @@ import * as riskService from './services/risk-service.js';
 import * as intentService from './services/intent-service.js';
 import * as nameService from './services/name-service.js';
 import * as primaryNameService from './services/primary-name-service.js';
+import * as registrarService from './services/registrar-service.js';
 import * as desktopService from './services/desktop-service.js';
 import { dexHandlers } from './features/dex/dex-handlers.js';
 import { launchpadHandlers } from './features/launchpad/launchpad-handlers.js';
@@ -66,6 +67,7 @@ const SYNC_READ_METHODS = new Set([
   'dex.listPools', 'dex.getPool', 'dex.positions',
   'intent.list', 'intent.get',
   'name.lookup', 'name.checkAvailability',
+  'name.getRegistry', 'name.checkLease', 'name.getPaymentBalance',
 ]);
 
 const handlers = Object.assign(Object.create(null), {
@@ -184,6 +186,14 @@ const handlers = Object.assign(Object.create(null), {
   'name.getPrimary': () => primaryNameService.verifyPrimaryName({}),
   'name.linkPrimary': (params) => primaryNameService.linkPrimaryName(params),
   'name.unlinkPrimary': () => primaryNameService.unlinkPrimaryName({}),
+  // v22 official `.thru` registrar (first-party formats): reads are parse-proofed honesty,
+  // writes are self-signed (signer = fee payer) registrar program calls at fee 0n.
+  'name.getRegistry': () => registrarService.getRegistry(),
+  'name.checkLease': (params) => registrarService.checkLease(params),
+  'name.getPaymentBalance': () => registrarService.getPaymentBalance(),
+  'name.purchase': (params) => registrarService.purchaseDomain(params),
+  'name.renewLease': (params) => registrarService.renewLease(params),
+  'name.claimExpired': (params) => registrarService.claimExpiredDomain(params),
   'tx.sendChecked': (params) => txService.sendTransferChecked(params),
   'tx.listHistory': ({ address, pageSize, limit, cursor } = {}) => (
     limit !== undefined || cursor !== undefined

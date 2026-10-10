@@ -108,10 +108,16 @@ let rootParses = false;         // candidate #2 (community .id root)
 const rootAuthority = Pubkey.from(new Uint8Array(32).fill(9));
 
 // [*] the candidates come from the OFFICIAL raw-name derivation, not pasted constants
-assert.equal(ns.rootRegistrarAddress('thru'), THRU_ROOT);
-assert.equal(ns.rootRegistrarAddress('id'), ID_ROOT);
+assert.equal(await ns.rootRegistrarAddress('thru'), THRU_ROOT);
+assert.equal(await ns.rootRegistrarAddress('id'), ID_ROOT);
 assert.equal(ns.registrarConfigAddress(), REG_CONFIG);
 ok('root/config derivation pins hold: thru→taNP1M…, id→taLu3d…, config→taLjMD… (first-party CLI-derived)');
+// >32-byte root names hash per the official derive_root_registrar_seed edge (name_service.rs)
+{
+  const longRoot = await ns.rootRegistrarAddress('x'.repeat(33));
+  assert.match(longRoot, /^ta/);
+  assert.notEqual(longRoot, THRU_ROOT);
+}
 
 const thru = await import('../src/lib/thru-client.js');
 const client = thru.getClient();

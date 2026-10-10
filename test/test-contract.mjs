@@ -135,7 +135,7 @@ section('Contract v17/v18 DeFi contract-first drop (M0)');
 // v20 (2026-10-09, G2-S0): same method set — the v18 intent surface now has a real,
 // flag-gated native-send implementation behind it (test/test-defi-intent.mjs proves both
 // sides of the gate). A version bump, not a method change.
-ok('the contract advances to v21 without reusing earlier numbers', CONTRACT_VERSION === 21);
+ok('the contract advances to v22 without reusing earlier numbers', CONTRACT_VERSION === 22);
 
 const v17 = Object.entries(METHODS).filter(([, spec]) => spec.since === 17).map(([name]) => name);
 const v18 = Object.entries(METHODS).filter(([, spec]) => spec.since === 18).map(([name]) => name);
@@ -151,7 +151,16 @@ ok('v21 appends exactly 3 primary-name methods, reads/lifecycle unlocked, nothin
 ok('v19 reads are open while v19 writes require an unlocked wallet',
   ['name.lookup', 'name.checkAvailability'].every((m) => METHODS[m].auth === 'none')
   && ['name.initRoot', 'name.register', 'name.setRecord'].every((m) => METHODS[m].auth === 'unlocked'));
-ok('the contract declares 132 methods in total (81 + 43 + 8 name.*)', Object.keys(METHODS).length === 132,
+
+// Registrar slice (v22, 2026-10-09): the official `.thru` paid-lease registry — two
+// parse-proofed reads and three self-signed registrar writes (signer = fee payer, fee 0n).
+const v22 = Object.entries(METHODS).filter(([, spec]) => spec.since === 22).map(([name]) => name);
+ok('v22 appends exactly 6 name.* registrar methods', v22.length === 6, `got ${v22.join(', ')}`);
+ok('v22 registrar reads are open auth:none',
+  ['name.getRegistry', 'name.checkLease', 'name.getPaymentBalance'].every((m) => METHODS[m]?.auth === 'none'));
+ok('v22 registrar writes sign (purchase/renew/claim)',
+  ['name.purchase', 'name.renewLease', 'name.claimExpired'].every((m) => METHODS[m]?.auth === 'signing'));
+ok('the contract declares 138 methods in total (81 + 43 + 14 name.*)', Object.keys(METHODS).length === 138,
   `got ${Object.keys(METHODS).length}`);
 
 // Auth discipline (DEFI-03): reads are call-time honest, prepares are unlocked-only, and

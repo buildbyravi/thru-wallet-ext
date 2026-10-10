@@ -11,14 +11,19 @@
 //     refused with NOT_NAME_OWNER.
 //   - copyable addresses, re-verify, unlink, and look up ANY name honestly.
 //
-// Nothing on this screen signs or writes to the chain (name.register/setRecord stay gated
-// behind FLAGS.NAME_SERVICE until the live probe verifies the recovered wire formats).
+// Extensions 2026-10-10 (owner-directed): registrar leases — REGISTER (paid purchase),
+// RENEW, and CLAIM-expired — against the chain's .thru registry. Registry state is read
+// live (name.getRegistry) and every price/owner/expiry line is parsed from chain bytes;
+// when the registry is absent or unreadable the section says so instead of quoting.
+// Writes are self-signed for the active account only and go through the same password
+// re-auth gate as Send. The gated onewire name.register/setRecord formats stay off.
 import { h, disposer } from '../../kit/dom.js';
 import { icon } from '../../kit/icon.js';
 import { PageHeader, Banner, Spinner } from '../../kit/feedback.js';
 import { Field } from '../../kit/field.js';
 import { CopyButton } from '../../kit/button.js';
 import { toast } from '../../kit/toast.js';
+import { requirePassword } from '../../domain/password-prompt.js';
 import * as bridge from '../bridge.js';
 
 function truncateMiddle(value, chars = 10) {
@@ -32,6 +37,34 @@ function formatVerifiedAt(ms) {
     return new Date(ms).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
   } catch {
     return 'unknown';
+  }
+}
+
+// A raw token amount string → "12.5" form using the mint's on-chain decimals.
+// Never coerced silently: out-of-range or unreadable input returns the raw string.
+function formatUnits(rawString, decimals) {
+  try {
+    const value = BigInt(rawString);
+    const scale = BigInt(10) ** BigInt(decimals);
+    const whole = value / scale;
+    const frac = (value % scale).toString().padStart(Number(decimals), '0').replace(/0+$/, '');
+    return frac ? `${whole}.${frac}` : `${whole}`;
+  } catch {
+    return String(rawString);
+  }
+}
+
+// Lease times are u64 "chain time". Localize only when they plausibly read as unix
+// seconds, and label the unit either way — never silently reinterpret an unknown clock.
+function formatChainTime(u64String) {
+  try {
+    const seconds = BigInt(u64String);
+    if (seconds >= 1_500_000_000n && seconds < 10_000_000_000n) {
+      return `${new Date(Number(seconds) * 1000).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })} (chain time, seconds)`;
+    }
+    return `${seconds} (chain time, seconds)`;
+  } catch {
+    return String(u64String);
   }
 }
 
@@ -180,6 +213,155 @@ export function NameRoute({ back }) {
     body.appendChild(lookupSection);
   }
 
+  // ---- Registrar leases: register (paid purchase) / renew / claim-expired ----------
+  // The section is only as good as the chain says: name.getRegistry decides whether a
+  // quoting UI may exist at all on this network, and name.checkLease decides WHICH of
+  // the three writes the button may arm. All price/owner/expiry figures below come from
+  // parsed chain bytes (registry config + lease account + mint account) — nothing is
+  // hard-coded, and a read that cannot be parsed collapses to an honest notice.
+  async function renderRegisterSection() {
+    const section = h('details', { class: 'name-accordion stack stack-2' }, [
+      h('summary', { class: 'hint', text: '📋 Register or renew a .thru lease' }),
+    ]);
+    const accBody = h('div', { class: 'name-accordion-body stack stack-2' },
+      h('div', { class: 'hint', text: 'Reading the chain registry…' }));
+    section.appendChild(accBody);
+    body.appendChild(section);
+
+    let registry;
+    try {
+      registry = await bridge.send('name.getRegistry');
+    } catch (err) {
+      registry = { supported: false, reason: err?.message || 'registry read failed' };
+    }
+    if (destroyed || !accBody.isConnected) return;
+    while (accBody.firstChild) accBody.removeChild(accBody.firstChild);
+
+    if (!registry?.supported || !registry?.registry) {
+      accBody.appendChild(h('div', { class: 'notice', text: `Registration is unavailable on this network: ${registry?.reason || 'registry state unreadable'}.` }));
+      return;
+    }
+
+    // Formatting depth comes from the payment mint's own account (token.readMint). If the
+    // mint cannot be read, amounts render as base units and SAY so — decimals are never
+    // guessed into a price line.
+    const mintInfo = await bridge.send('token.readMint', { mint: registry.registry.tokenMint }).catch(() => null);
+    const payment = await bridge.send('name.getPaymentBalance').catch(() => null);
+    if (destroyed || !accBody.isConnected) return;
+
+    const decimals = Number(mintInfo?.decimals);
+    const canFormat = Number.isInteger(decimals) && decimals >= 0 && decimals <= 30;
+    const symbol = mintInfo?.symbol?.trim?.() || 'payment-mint base units';
+    const fmt = (raw) => (canFormat ? `${formatUnits(raw, decimals)} ${symbol}` : `${raw} base units of the payment mint`);
+    const pricePerYear = BigInt(registry.registry.pricePerYear);
+
+    const nameField = track(Field({ label: 'Name (no dots)', placeholder: 'alice', autocomplete: 'off', onInput: () => resetCheck() }));
+    const yearsField = track(Field({ label: 'Years', placeholder: '1', autocomplete: 'off', onInput: () => resetCheck() }));
+    const checkLine = h('div', { class: 'hint' });
+    const actionBtn = h('button', { type: 'button', class: 'btn primary' }, [icon('globe', 14), h('span')]);
+    const actionLabel = () => actionBtn.querySelector('span');
+
+    let pending = null; // { method, label } — armed ONLY by a fresh checkLease read
+    function resetCheck() {
+      pending = null;
+      actionLabel().textContent = ' Check availability';
+      checkLine.textContent = 'Enter a name and check it on-chain before anything is signed.';
+    }
+    function costLine(nameOrMine, years) {
+      const cost = pricePerYear * BigInt(years);
+      const balance = payment?.exists && payment.amount != null ? BigInt(payment.amount) : null;
+      let line = `${nameOrMine} ${years}y → ${fmt(String(cost))}.`;
+      if (balance != null) {
+        line += ` Balance: ${fmt(String(balance))}${balance < cost ? ' — not enough for this price' : ''}.`;
+      } else if (payment?.exists === false) {
+        line += ' No payment-token account found for this mint (payments use the registry mint from the chain config).';
+      }
+      return { line, affordable: balance == null || balance >= cost };
+    }
+    function yearsValue() {
+      const n = Number(String(yearsField.value ?? '').trim());
+      return Number.isInteger(n) && n >= 1 && n <= 100 ? n : null;
+    }
+    async function writeWithPassword(method, name, years) {
+      const sendChecked = (extra = {}) => bridge.send(method, { name, years, ...extra });
+      const prefs = await bridge.send('settings.get').catch(() => null);
+      if (prefs?.requirePasswordForSigning === false) return sendChecked();
+      const verb = method === 'name.purchase' ? 'lease purchase' : method === 'name.renewLease' ? 'lease renewal' : 'expired-lease claim';
+      return requirePassword({
+        title: method === 'name.purchase' ? 'Confirm registration' : method === 'name.renewLease' ? 'Confirm renewal' : 'Confirm claim',
+        body: `Re-enter your password to sign and broadcast this ${verb}.`,
+        confirmLabel: 'Sign & broadcast',
+        verify: (password) => sendChecked({ password }),
+      });
+    }
+
+    bodyDisposer.on(actionBtn, 'click', async () => {
+      banner.set('');
+      const name = nameField.value?.trim?.() ?? '';
+      if (!name) { nameField.setError('a name is required'); return; }
+      const years = yearsValue();
+      if (years == null) { yearsField.setError('whole years, 1–100'); return; }
+      actionBtn.disabled = true;
+
+      if (!pending) {
+        // Phase 1 — fresh on-chain truth decides what the button MAY arm.
+        checkLine.textContent = 'Checking the lease account on-chain…';
+        try {
+          const res = await bridge.send('name.checkLease', { name });
+          if (!res?.supported) throw new Error(res?.reason || 'registry reads unsupported on this network');
+          const mine = Boolean(res.lease && account?.address && res.lease.owner === account.address);
+          if (mine) {
+            const { line, affordable } = costLine(`'${name}' is yours — lease ends ${formatChainTime(res.lease.endTime)}. Renewal:`, years);
+            checkLine.textContent = line;
+            if (affordable) { pending = { method: 'name.renewLease' }; actionLabel().textContent = ' Renew lease'; }
+          } else if (res.lease && res.lease.expiredHint === false) {
+            checkLine.textContent = `'${name}' is leased by ${truncateMiddle(res.lease.owner)} until ${formatChainTime(res.lease.endTime)} — it is not available.`;
+          } else {
+            const isClaim = Boolean(res.lease); // expired for someone else
+            const { line, affordable } = costLine(`'${name}' is ${isClaim ? 'claimable (previous lease expired)' : 'unregistered'}. ${isClaim ? 'Claim' : 'Registration'}:`, years);
+            checkLine.textContent = line;
+            if (affordable) {
+              pending = { method: isClaim ? 'name.claimExpired' : 'name.purchase' };
+              actionLabel().textContent = isClaim ? ' Claim & register' : ' Register';
+            }
+          }
+        } catch (err) {
+          checkLine.textContent = err?.message || 'Lease check failed.';
+        } finally {
+          actionBtn.disabled = false;
+        }
+        return;
+      }
+
+      // Phase 2 — the armed write. Cancel in the password sheet returns null: nothing signed.
+      try {
+        const result = await writeWithPassword(pending.method, name, years);
+        if (!result) { actionBtn.disabled = false; return; }
+        toast(`Submitted: ${truncateMiddle(result.signature, 8)}`);
+        if (pending.method !== 'name.renewLease') {
+          // Best-effort primary-name link; a failed link must not masquerade as a failed registration.
+          try {
+            primary = await bridge.send('name.linkPrimary', { name, rootAddress: registry.registry.rootRegistrar });
+            toast(`'${name}' linked as your primary name.`);
+          } catch { /* registration itself is done; the link card above stays available */ }
+        }
+        await load();
+      } catch (err) {
+        banner.set(err?.message || 'The write did not go through.');
+        actionBtn.disabled = false;
+      }
+    });
+
+    resetCheck();
+    accBody.appendChild(h('div', { class: 'stack stack-2' }, [
+      h('div', { class: 'hint', text: `Registry price (from chain config): ${fmt(registry.registry.pricePerYear)} per year · mint ${truncateMiddle(registry.registry.tokenMint)}.` }),
+      nameField.el,
+      yearsField.el,
+      checkLine,
+      actionBtn,
+    ]));
+  }
+
   function renderUnlinked() {
     clearBody();
     let manualRootVisible = false;
@@ -248,6 +430,9 @@ export function NameRoute({ back }) {
     } else {
       renderUnlinked();
     }
+    // Available on both linked/unlinked bodies: the lease marketplace is network reality,
+    // independent of whether a primary name is already recorded locally.
+    void renderRegisterSection();
   }
 
   async function load() {

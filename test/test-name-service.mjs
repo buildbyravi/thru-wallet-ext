@@ -139,10 +139,12 @@ const proof = new Uint8Array([9, 9, 9, 9, 9]);
 const init = buildInitRootInstructionData({ name: '.mine', registrarAccountIndex: 3, stateProof: proof });
 eq(new DataView(init.buffer).getUint32(0, true), 0, 'init-root opcode at 0');
 eq(new DataView(init.buffer).getUint16(4, true), 3, 'registrar index slot');
+eq(new DataView(init.buffer).getUint16(6, true), 0, 'authority defaults to fee payer (slot 0)');
 eq(init[8], '.mine'.charCodeAt(0), 'name written into 64-byte field');
 eq(init.slice(-5).join(','), '9,9,9,9,9', 'proof appended at the tail');
-eq(init.length, 4 + 2 + 2 + 64 + 8 + 5, 'init-root size resistant');
-eq(new DataView(init.buffer).getBigUint64(72, true), 5n, 'name byte length (of ".mine") at the pinned land');
+eq(init.length, 4 + 2 + 2 + 64 + 4 + 4 + 5, 'init-root size resistant (official u32 len + inline-proof marker)');
+eq(new DataView(init.buffer).getUint32(72, true), 5, 'name byte length u32 (official ABI field width)');
+eq(new DataView(init.buffer).getUint32(76, true), 0, 'NS_PROOF_INLINE marker before the proof');
 
 const reg = buildRegisterSubdomainInstructionData({
   name: 'bobby', indexOf: (a) => ({ D: 2, P: 4, O: 6 }[a]),
@@ -155,7 +157,9 @@ eq(rdv.getUint16(6, true), 4, 'parent index slot');
 eq(rdv.getUint16(8, true), 6, 'owner index slot');
 eq(rdv.getUint16(10, true), 0, 'authority = fee payer (slot 0)');
 eq(dec.decode(reg.slice(12, 17)), 'bobby', 'name in the 64-byte field');
-eq(rdv.getBigUint64(76, true), 5n, 'byte length slot');
+eq(rdv.getUint32(76, true), 5, 'byte length u32 slot (official ABI field width)');
+eq(rdv.getUint32(80, true), 0, 'NS_PROOF_INLINE marker before the proof');
+eq(reg.length, 4 + 8 + 64 + 4 + 4 + 5, 'register size resistant (official u32 len + inline-proof marker)');
 const regNoOwner = buildRegisterSubdomainInstructionData({
   name: 'bobby', indexOf: (a) => ({ D: 1, P: 2 }[a]),
   domainAddress: 'D', parentAddress: 'P', stateProof: proof,

@@ -32,10 +32,13 @@ import { BOOTSTRAP_PROGRAM_ADDRESSES } from './bootstrap-pins.js';
 
 export const NAME_SERVICE_PROGRAM = BOOTSTRAP_PROGRAM_ADDRESSES.name_service;
 
-// ---- Format pins (recovered; see provenance) --------------------------------
+// ---- Format pins (first-party: tn_name_service_program.abi.yaml + txn_tools.rs) ------
 export const NS_OP_INIT_ROOT = 0;
 export const NS_OP_REGISTER_SUBDOMAIN = 1;
 export const NS_OP_APPEND_RECORD = 2;
+export const NS_OP_DELETE_RECORD = 3;   // officially exists (ABI); no builder here yet
+export const NS_OP_UNREGISTER = 4;      // officially exists (ABI); no builder here yet
+export const NS_PROOF_INLINE = 0;       // u32 LE marker written before an inline state proof
 
 export const NS_KIND_ROOT_REGISTRAR = 1;
 export const NS_KIND_DOMAIN = 2;
@@ -109,11 +112,15 @@ export async function domainAccountAddress(parentAddress, name) {
 // their formula stays UNRECOVERED (P4 evidence item); never guess it.
 export const THRU_REGISTRAR_PROGRAM = BOOTSTRAP_PROGRAM_ADDRESSES.thru_registrar;
 
-export function rootRegistrarAddress(rootName) {
-  const seed = new TextEncoder().encode(rootName);
-  if (seed.length === 0 || seed.length > NS_MAX_NAME_CHARS) {
+// Officially (name_service.rs derive_root_registrar_seed): the 32-byte seed is the raw
+// name when ≤ 32 bytes, and sha256(name) for longer names — the root derivation is the
+// ONE place the seed is not sha256(parent ‖ name). (Async: the >32 edge needs webcrypto.)
+export async function rootRegistrarAddress(rootName) {
+  const nameBytes = new TextEncoder().encode(rootName);
+  if (nameBytes.length === 0 || nameBytes.length > NS_MAX_NAME_CHARS) {
     throw new Error(`root name must be 1..${NS_MAX_NAME_CHARS} bytes`);
   }
+  const seed = nameBytes.length <= 32 ? nameBytes : await sha256(nameBytes);
   return String(deriveProgramAddress({ programAddress: NAME_SERVICE_PROGRAM, seed }).address);
 }
 
@@ -210,27 +217,31 @@ function concatBytes(...parts) {
 }
 
 /**
- * INIT_ROOT: [u32 0][u16 registrarIdx][u16 pad][64 name][u64 nameByteLen][stateProof…].
- * The fee payer at account index 0 becomes the root's authority — owning this root is what
- * allows self-signed registration of subdomains underneath it. Whether the running chain
- * currently permits user-level root init is UNVERIFIED (gate notes carry the reason).
+ * INIT_ROOT (official, ABI + txn_tools.rs build_name_service_initialize_root_instruction):
+ *   [u32 0][u16 registrarIdx][u16 authorityIdx][64 name][u32 nameByteLen]
+ *   [u32 NS_PROOF_INLINE][stateProof…]
+ * Authority is a REAL args field: the self-signing invariant makes it the fee payer, whose
+ * account dedups to index 0 in the transaction's account table (first-party sorting).
+ * Writes stay gated (see header); the shape is pinned from first-party source, not guessed.
  */
-export function buildInitRootInstructionData({ name, registrarAccountIndex, stateProof }) {
-  const head = new Uint8Array(4 + 2 + 2 + NS_NAME_FIELD + 8);
+export function buildInitRootInstructionData({ name, registrarAccountIndex, authorityAccountIndex = 0, stateProof }) {
+  const head = new Uint8Array(4 + 2 + 2 + NS_NAME_FIELD + 4 + 4);
   const dv = new DataView(head.buffer);
   dv.setUint32(0, NS_OP_INIT_ROOT, true);
   dv.setUint16(4, registrarAccountIndex, true);
-  dv.setUint16(6, 0, true); // pad
+  dv.setUint16(6, authorityAccountIndex, true);
   head.set(nameFieldBytes(name), 8);
   const byteLen = new TextEncoder().encode(name).length;
-  dv.setBigUint64(4 + 2 + 2 + NS_NAME_FIELD, BigInt(byteLen), true);
+  dv.setUint32(4 + 2 + 2 + NS_NAME_FIELD, byteLen, true);
+  dv.setUint32(4 + 2 + 2 + NS_NAME_FIELD + 4, NS_PROOF_INLINE, true);
   if (!(stateProof instanceof Uint8Array) || stateProof.length === 0) throw new Error('stateProof is required');
   return concatBytes(head, stateProof);
 }
 
 /**
- * REGISTER_SUBDOMAIN:
- *   [u32 1][u16 domainIdx][u16 parentIdx][u16 ownerIdx][u16 authorityIdx=0][64 name][u64 nameByteLen][stateProof…]
+ * REGISTER_SUBDOMAIN (official, ABI + txn_tools.rs build_name_service_register_subdomain_instruction):
+ *   [u32 1][u16 domainIdx][u16 parentIdx][u16 ownerIdx][u16 authorityIdx=0][64 name]
+ *   [u32 nameByteLen][u32 NS_PROOF_INLINE][stateProof…]
  * indexOf maps an address to its index in the transaction's account lists. authority = 0 =
  * the fee payer — per the self-signing invariant, the fee payer must BE the parent's
  * authority (own root / own domain). owner can be any account in `ownerIdx` — the own flow
@@ -238,7 +249,7 @@ export function buildInitRootInstructionData({ name, registrarAccountIndex, stat
  */
 export function buildRegisterSubdomainInstructionData({ name, indexOf, domainAddress, parentAddress, ownerAddress, stateProof }) {
   if (typeof indexOf !== 'function') throw new Error('indexOf resolver is required');
-  const head = new Uint8Array(4 + 2 * 4 + NS_NAME_FIELD + 8);
+  const head = new Uint8Array(4 + 2 * 4 + NS_NAME_FIELD + 4 + 4);
   const dv = new DataView(head.buffer);
   dv.setUint32(0, NS_OP_REGISTER_SUBDOMAIN, true);
   dv.setUint16(4, indexOf(domainAddress), true);
@@ -247,7 +258,8 @@ export function buildRegisterSubdomainInstructionData({ name, indexOf, domainAdd
   dv.setUint16(10, 0, true); // authority: the fee payer (must be the parent's authority)
   head.set(nameFieldBytes(name), 12);
   const byteLen = new TextEncoder().encode(name).length;
-  dv.setBigUint64(4 + 2 * 4 + NS_NAME_FIELD, BigInt(byteLen), true);
+  dv.setUint32(4 + 2 * 4 + NS_NAME_FIELD, byteLen, true);
+  dv.setUint32(4 + 2 * 4 + NS_NAME_FIELD + 4, NS_PROOF_INLINE, true);
   if (!(stateProof instanceof Uint8Array) || stateProof.length === 0) throw new Error('stateProof is required');
   return concatBytes(head, stateProof);
 }

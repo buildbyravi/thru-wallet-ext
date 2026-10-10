@@ -119,10 +119,14 @@ export async function checkAvailability({ name, parentAddress } = {}) {
 // parse on this chain is skipped, never trusted blind.
 import { parseRootRegistrar, rootRegistrarAddress } from '../../lib/name-service.js';
 
-const CANONICAL_ROOT_CANDIDATES = Object.freeze([
-  { address: rootRegistrarAddress('thru'), provenance: 'official .thru registry root (derived per thru docs, 2026-10-09)' },
-  { address: rootRegistrarAddress('id'), provenance: 'community .id root (ThruScan; official derivation formula)' },
-]);
+// Candidates are derived lazily inside discoverDefaultRoot (the derivation is async for
+// the >32-byte hash edge case); order: official `.thru` first, community `.id` fallback.
+async function canonicalRootCandidates() {
+  return [
+    { address: await rootRegistrarAddress('thru'), provenance: 'official .thru registry root (derived per thru docs, 2026-10-09)' },
+    { address: await rootRegistrarAddress('id'), provenance: 'community .id root (ThruScan; official derivation formula)' },
+  ];
+}
 
 let discoveredCache = null; // session-scoped; one RPC on first use per worker
 
@@ -133,7 +137,7 @@ let discoveredCache = null; // session-scoped; one RPC on first use per worker
 export async function discoverDefaultRoot() {
   if (discoveredCache) return discoveredCache;
   const tries = [];
-  for (const candidate of CANONICAL_ROOT_CANDIDATES) {
+  for (const candidate of await canonicalRootCandidates()) {
     try {
       const info = await thruClient.getAccountInfo(candidate.address);
       if (!info?.exists) { tries.push(`${candidate.address.slice(0, 12)}…: absent`); continue; }

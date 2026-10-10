@@ -1301,6 +1301,11 @@ const FIXTURES = {
   'name.getPrimary': () => null,
   'name.linkPrimary': () => { throw new Error('fixture: no on-chain name service'); },
   'name.unlinkPrimary': () => ({ unlinked: false }),
+  // v22 registrar slice: the mount reads must render the honest unsupported state (the
+  // fixture chain has no `.thru` registry) — never a fabricated price on mount.
+  'name.getRegistry': () => ({ supported: false, reason: 'fixture: no .thru registry initialized' }),
+  'name.checkLease': () => ({ supported: false, reason: 'fixture: no .thru registry initialized' }),
+  'name.getPaymentBalance': () => ({ supported: false, reason: 'fixture: no .thru registry initialized' }),
   'name.lookup': ({ name } = {}) => ({
     chain: [], leaf: { address: 'ta1addressaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', exists: false },
     rootAddress: 'ta1addressaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', name: name ?? null,

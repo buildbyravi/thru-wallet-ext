@@ -423,17 +423,14 @@ form > .btn.text {
   box-sizing: border-box;
 }
 
-/* When a 7th utility tile exists (e.g. testnet faucet), span across the full bottom row */
-.dashboard-panel-grid .panel-item:last-child:nth-child(3n + 1) {
-  grid-column: 1 / -1;
-  height: 48px;
-  flex-direction: row;
-  gap: var(--sp-2, 8px);
-}
-
+/* True square tiles (owner-directed 2026-10-10): every panel item — including the
+   faucet utility tile — matches the Send tile; aspect-ratio enforces squareness
+   across content variations instead of the earlier fixed-height estimate. An
+   orphan last tile (7th) just sits in the next grid cell like the others. */
 .panel-item {
   position: relative;
-  height: 88px;
+  height: auto;
+  aspect-ratio: 1 / 1;
   width: 100%;
   /* var(--surface-1), not a hard-coded white: in dark theme the cells must follow the
      theme or the --title label/icon (near-white in dark) paints onto a white cell. */

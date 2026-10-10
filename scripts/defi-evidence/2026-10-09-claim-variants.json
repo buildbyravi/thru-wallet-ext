@@ -131,5 +131,28 @@
       "exists": true,
       "balance": "1"
     }
+  },
+  "follow-up 2026-10-10": {
+    "name": "Registrar + name-service formats fully recovered first-party; writes implemented",
+    "date": "2026-10-10",
+    "sources": [
+      "github.com/Unto-Labs/thru rpc/abi/type-library/tn_thru_registrar_program.abi.yaml",
+      "rpc/abi/type-library/tn_name_service_program.abi.yaml",
+      "rpc/cli/crates/thru-core/src/commands/name_service.rs",
+      "rpc/thru-base/src/txn_tools.rs (byte-level builders, 7364 lines)"
+    ],
+    "resolved": [
+      "config layout parsed CLI-side at fixed offsets (ns_prog 0, root 32, treasurer 64, mint 96, token_prog 128, price_per_year u64@228; 244B)",
+      "lease account 148B; lease('alice')=ta06ZB32a0KLpwVNHR2yfoMxqjgGt3SIYb43cufpZbaP18 pinned from first-party CLI output",
+      "purchase instr = tag(1)+9 u16 indices+64B name+u32 len+u8 years+raw lease+domain creation proofs (no marker)",
+      "renew(tag2)/claim(tag3)=17B struct; name-service register args+PROOF_INLINE marker",
+      "root registrar derivation: raw seed<=32B else sha256(name) then PDA (name_service.rs derive_root_registrar_seed) - async in src/lib/name-service.js",
+      "registrar fee 0n self-signed (authority==fee payer proven in resolve_signing_account)"
+    ],
+    "openItems": [
+      "live betanet verification of name.purchase/renewLease/claimExpired (npm run test:live, owner-directed only)",
+      "payment mint symbol/decimals read live per write via token.readMint (THRUSD-class, per-network)",
+      "alphanet reset addresses when released (through.org table matched current pins 2026-10-09)"
+    ]
   }
 }

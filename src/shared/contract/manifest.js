@@ -93,7 +93,14 @@
 //   v21 appends the primary-name UX slice (3 name.* methods): a wallet-local, network-scoped
 //   "my name" record for the dashboard. Linking verifies on-chain ownership via the existing
 //   always-on name.lookup read; nothing signs, nothing gated.
-export const CONTRACT_VERSION = 21;
+//
+//   v22 appends the registrar slice (5 name.* methods, 2026-10-09): the official `.thru`
+//   paid-lease registry read surface (config + lease, derivation-official, parse-proofed)
+//   and its three self-signed writes (purchase / renew / claim-expired) built from
+//   first-party formats (Unto-Labs/thru ABIs + CLI + txn_tools.rs — provenance in
+//   src/lib/registrar.js). Fee policy follows the first-party builder exactly: 0n — the
+//   registrar prices in its own payment token; nothing else is deducted.
+export const CONTRACT_VERSION = 22;
 
 export const METHODS = {
   // ---- System ------------------------------------------------------------
@@ -412,6 +419,46 @@ export const METHODS = {
     returns: '{ unlinked: boolean }',
     auth: 'unlocked',
     since: 21,
+  },
+  // v22: official `.thru` registrar slice (2026-10-09, first-party formats). Reads answer
+  // supported:false when the registry is uninitialized on the running network — never a
+  // fabricated price. Writes are self-signed (signer = fee payer), pay from the signer's
+  // own token account of the registry mint, fee 0n per the first-party builder.
+  'name.getRegistry': {
+    params: [],
+    returns: '{ supported, configAddress?, registry?: { rootRegistrar, treasurer, tokenMint, tokenProgram, rootName, pricePerYear, totalDomainsSold }, reason? }',
+    auth: 'none',
+    since: 22,
+  },
+  'name.checkLease': {
+    params: ['name'],
+    returns: '{ supported, name?, leaseAddress?, domainAddress?, leaseExists?, domainExists?, lease?: { owner, startTime, endTime, expiredHint }, reason? }',
+    auth: 'none',
+    since: 22,
+  },
+  'name.getPaymentBalance': {
+    params: [],
+    returns: '{ supported, exists?, amount?, tokenAccount?, reason? } — active account’s balance of the registry payment token (unreadable/missing answered honestly)',
+    auth: 'none',
+    since: 22,
+  },
+  'name.purchase': {
+    params: ['name', 'years', 'password'],
+    returns: '{ signature } — buys a .thru lease; price = config.pricePerYear × years in registry token',
+    auth: 'signing',
+    since: 22,
+  },
+  'name.renewLease': {
+    params: ['name', 'years', 'password'],
+    returns: '{ signature } — extends the signer-owned lease',
+    auth: 'signing',
+    since: 22,
+  },
+  'name.claimExpired': {
+    params: ['name', 'years', 'password'],
+    returns: '{ signature } — takes over an expired lease (owner ≠ signer, chain enforces expiry)',
+    auth: 'signing',
+    since: 22,
   },
   'tx.claimFaucet': {
     params: ['amountUnits'],
