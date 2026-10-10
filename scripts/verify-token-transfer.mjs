@@ -17,7 +17,9 @@
 // REPORTED, not asserted: where the honest answer can flip with chain behaviour (the
 // unregistered-owner probe), the script records what it saw instead of forcing an outcome.
 
-import { keys, Pubkey } from '@thru/sdk';
+import { readFileSync, existsSync } from 'node:fs';
+import { keys, Pubkey, TransactionView } from '@thru/sdk';
+import { MnemonicGenerator, ThruHDWallet } from '@thru/sdk/crypto';
 import { createMintToInstruction } from '@thru/programs/token';
 
 // ---- In-memory chrome mock (token deploy records land here, nowhere else) ---
@@ -63,29 +65,164 @@ async function nativeBalance(address) {
   return info.exists ? info.balance : 0n;
 }
 
+// 2026-10-08 diagnostic upgrade (on-node substrate live-passed, q9 row): when a rung fails
+// with a VM-class error, attach the FULL execution record of the failing transaction —
+// vmError / userErrorCode / CU / faulting-account-index — straight from the chain's own
+// query surface. This is what makes every battery run self-explaining while the chain
+// regression drifts (error codes changed -765/-26n → -767 between 10-06 and 10-08).
+// Best-effort only: an evidence-capture failure NEVER masks the original failure.
+async function recentExecutionEvidence(address, { programId } = {}) {
+  try {
+    const r = await thruClient.getClient().transactions.listForAccount(address, {
+      transactionOptions: { view: TransactionView.FULL },
+    });
+    const txs = r.transactions ?? [];
+    const target = (programId?.toString?.()) ?? null;
+    const tx = [...txs].reverse().find((t) => !target || (t.program?.toString?.() === target));
+    if (!tx) return 'no matching transaction in recent on-node history';
+    const e = tx.executionResult;
+    if (!e) return 'latest matching transaction carries no executionResult';
+    return `execution: vmError=${e.vmError} userErrorCode=${e.userErrorCode} CU=${e.consumedComputeUnits} events=${e.eventsCount} faultAccIdx=${e.errorProgramAccIdx} slot=${tx.slot ?? '?'}`;
+  } catch (err) {
+    return `execution evidence unavailable (${err?.message ?? err})`;
+  }
+}
+
 console.log(`Token transfer live verification on ${networkId}\n`);
 
 async function main() {
 
 // ---- Actors ----------------------------------------------------------------
-// SENDER is registered and faucet-funded. RECIPIENT is deliberately NEVER registered: the
+// SENDER must end up ACTIVATED and FUNDED. RECIPIENT is deliberately NEVER registered: the
 // native-transfer path cannot send to it, so whether a token flow can is the headline probe.
-console.log('Setting up throwaway accounts (never your wallet)…');
-const sender = await keys.generateKeyPair();
+//
+// THE 2026-10-06 LADDER (live evidence, owner's run — the honest breakdown of today's chain):
+//   * claimFaucet internally calls createOnChainAccount for a nonexistent fee payer
+//     (thru-client.js guard — sacred, unchanged), so "faucet-first" cannot dodge NOOP.
+//   * createOnChainAccount currently reports vmError -767/-765, yet per the owner's RPC
+//     trace the account STILL lands in the state trie (exists:true, nonce advanced): the
+//     state write survives the VM fault.
+//   * a DIRECT faucet claim on a pre-created account currently REVERTS: vmError -765,
+//     4701 CU, user error -26n — a REGRESSION vs the pinned live-verified claim
+//     (2026-09-26, tx tsjbbZW9sT…, thru-client header comment).
+// So each rung below is classified separately: activation is judged by EXISTENCE, not by
+// the returned error; funding is judged by the faucet claim itself.
+// ---- Sender source (2026-10-09 G2 unblock track) ---------------------------
+// A HOST-SIDE pre-funded, already-registered test account, provided via THRU_SEED in the
+// environment or a gitignored .env file (THRU_SEED=…/SEED=…), bypasses rungs 1–2: no
+// activation attempt, no faucet claim — exactly the dossier-sanctioned 'alternative
+// pre-funded path' while the fresh-account faucet regression is open chain-side.
+// The seed VALUE is never logged or written to evidence; only the derived address is.
+// Without a seed the script keeps its throwaway-sender behaviour unchanged.
+function loadHostSeed() {
+  if (typeof process.env.THRU_SEED === 'string' && process.env.THRU_SEED.trim()) {
+    return { mnemonic: process.env.THRU_SEED.trim(), origin: 'process.env.THRU_SEED' };
+  }
+  try {
+    const dotenv = new URL('../.env', import.meta.url);
+    if (!existsSync(dotenv)) return null;
+    for (const line of readFileSync(dotenv, 'utf8').split('\n')) {
+      const m = line.match(/^\s*(?:THRU_SEED|SEED)\s*=\s*"?([^"\n]+?)"?\s*$/);
+      if (m) return { mnemonic: m[1].trim(), origin: 'repo-root .env (gitignored, host-only)' };
+    }
+  } catch { /* unreadable hosts fall through to the throwaway path */ }
+  return null;
+}
+
+const hostSeed = loadHostSeed();
+let sender; let senderSource; // eslint-disable-line
 const recipient = await keys.generateKeyPair();
-console.log(`  sender    ${sender.address}`);
+if (hostSeed) {
+  const index = Math.max(0, Math.floor(Number(process.env.THRU_SEED_INDEX ?? 0)));
+  const seedBytes = MnemonicGenerator.toSeed(hostSeed.mnemonic);
+  const account = await ThruHDWallet.getAccount(seedBytes, index);
+  const words = hostSeed.mnemonic.split(/\s+/).length;
+  if (words !== 12 && words !== 24) {
+    console.error(`  funded-sender seed looks wrong for a BIP-39 phrase (${words} words) — continuing, but double-check the host .env`);
+  }
+  sender = { address: account.address, publicKey: account.publicKey, privateKey: account.privateKey };
+  senderSource = `funded test account from ${hostSeed.origin} (HD index ${index}; seed value never logged)`;
+  console.log('Using the host-provided PRE-FUNDED sender (rung 1 activation and rung 2 faucet claim are bypassed by design).');
+} else {
+  sender = await keys.generateKeyPair();
+  senderSource = 'throwaway in-memory keys (faucet-funded path)';
+  console.log('Setting up throwaway accounts (never your wallet)…');
+}
+console.log(`  sender    ${sender.address}   (${senderSource})`);
 console.log(`  recipient ${recipient.address}`);
 
-await thruClient.createOnChainAccount(sender);
-report('sender account registered on-chain', 'PASS');
+// Rung 1 — activation, existence-verified (the vmError is the chain's note, not the verdict).
+{
+  const before = await thruClient.getAccountInfo(sender.address);
+  if (hostSeed) {
+    report(
+      'pre-funded sender exists on-chain (no activation attempted)',
+      before.exists ? 'PASS' : 'FAIL',
+      before.exists ? 'registered account, as the host seed promised' : 'seed does not resolve to a registered account — fix the host .env',
+    );
+    if (!before.exists) {
+      throw new Error('funded-sender seed does not resolve to a registered account — cannot proceed');
+    }
+  } else if (!before.exists) {
+    let noopNote = 'not attempted';
+    try {
+      await thruClient.createOnChainAccount(sender);
+      noopNote = 'createOnChainAccount returned cleanly (behaviour changed since 2026-10-06 — record it)';
+    } catch (err) {
+      noopNote = `createOnChainAccount reported: ${err.message}`;
+    }
+    const after = await thruClient.getAccountInfo(sender.address);
+    // Spec reading (2026-10-08, runtime/transaction-execution): pre-execution creates a fresh
+    // fee payer with the CREATION state proof BEFORE the program executes, so exists:true is
+    // legitimate and spec-mandated even when the execute phase faults — there is no
+    // 'partial write' question (failed executions persist nonce advance + fee only).
+    report(
+      'sender ACTIVATED on-chain (existence-verified, not error-trusted)',
+      after.exists ? 'PASS' : 'FAIL',
+      after.exists
+        ? `exists after attempt — ${noopNote}`
+        : `absent after attempt — ${noopNote}; no activation path works today`,
+    );
+    if (!after.exists) {
+      throw new Error('P3 blocked by chain state at rung 1 (activation) — token steps cannot run; record in docs/BACKEND_GAPS.md');
+    }
+  } else {
+    report('sender already exists on-chain', 'PASS');
+  }
+}
 
-const claims = 3;
+// Rung 2 — funding. Pre-funded senders bypass the faucet entirely (the chain-side
+// fresh-account regression cannot block them); throwaway senders claim as before.
+if (hostSeed) {
+  const seededBalance = await nativeBalance(sender.address);
+  report(
+    'pre-funded sender balance gate (faucet path bypassed)',
+    seededBalance > 0n ? 'PASS' : 'FAIL',
+    `balance ${seededBalance} base units ${seededBalance > 0n ? '— sufficient for the token rungs' : '— the seed account holds nothing; top it up on the host'}`,
+  );
+  if (seededBalance === 0n) {
+    throw new Error('funded-sender balance is zero — token steps cannot run; top up on the host');
+  }
+}
+const claims = hostSeed ? 0 : 3;
 for (let i = 0; i < claims; i += 1) {
-  // eslint-disable-next-line no-await-in-loop
-  await thruClient.claimFaucet(sender, config.faucetMaxPerClaim ?? 10_000n);
+  try {
+    // eslint-disable-next-line no-await-in-loop
+    await thruClient.claimFaucet(sender, config.faucetMaxPerClaim ?? 10_000n);
+    report(`faucet claim ${i + 1}/${claims}`, 'PASS');
+  } catch (err) {
+    report(
+      `faucet claim ${i + 1}/${claims}`,
+      'FAIL',
+      `${err.message} — CHAIN REGRESSION vs the pinned live-verified claim (2026-09-26, tx tsjbbZW9sT…): fresh-account funding is chain-broken. Fault model refined 2026-10-08 per the official spec: pre-exec creation makes exists:true legitimate (no poisoning — failed executions persist nonce+fee ONLY); the failure is EXECUTE-class INSIDE the faucet program (error drifted -765/-26n → -767 VM fatal between 10-06 and 10-08, i.e. the chain is moving under us). Long-activated accounts (owner's wallet, released 1.4.1) claim FINE. P3 blocked at rung 2, by chain state not this script. ${await recentExecutionEvidence(sender.address, { programId: config.faucetProgramId })}`,
+    );
+    throw new Error('P3 blocked by chain state at rung 2 (faucet claim reverts) — record in docs/BACKEND_GAPS.md');
+  }
 }
 const faucetBalance = await nativeBalance(sender.address);
-report('sender funded by faucet', 'PASS', `${config.faucetMaxPerClaim ?? 10_000n} × ${claims} = ${faucetBalance} base units`);
+if (!hostSeed) {
+  report('sender funded by faucet', 'PASS', `${config.faucetMaxPerClaim ?? 10_000n} × ${claims} = ${faucetBalance} base units`);
+}
 
 const recipientInfo = await thruClient.getAccountInfo(recipient.address);
 report(
@@ -119,25 +256,13 @@ const init = await thruClient.initializeTokenAccount(sender, sender.address, dep
 report('sender token account initialized', init.created ? 'PASS' : 'FAIL', init.tokenAccount);
 
 {
-  const { rawTransaction } = await thruClient.getClient().transactions.buildAndSign({
-    feePayer: { publicKey: sender.publicKey, privateKey: sender.privateKey },
-    program: config.tokenProgramId,
-    accounts: { readWrite: [deploy.mintAddress, init.tokenAccount] },
-    instructionData: createMintToInstruction({
-      mintAccountBytes: Pubkey.from(deploy.mintAddress).toBytes(),
-      destinationAccountBytes: Pubkey.from(init.tokenAccount).toBytes(),
-      authorityAccountBytes: Pubkey.from(sender.publicKey).toBytes(),
-      amount: SUPPLY,
-    }),
+  const mintResult = await thruClient.mintToToken({
+    feePayer: sender,
+    mintAddress: deploy.mintAddress,
+    destinationOwner: sender.address,
+    amountUnits: SUPPLY,
   });
-  let minted = false;
-  for await (const update of thruClient.getClient().transactions.sendAndTrack(rawTransaction)) {
-    if (update.executionResult) {
-      minted = update.executionResult.vmError === 0;
-      break;
-    }
-  }
-  report('supply minted into the sender token account (mint_to)', minted ? 'PASS' : 'FAIL', `${SUPPLY} base units`);
+  report('supply minted into the sender token account (mint_to)', Boolean(mintResult?.signature), `${SUPPLY} base units`);
 }
 
 const senderBalance1 = await thruClient.getTokenBalance(sender.address, deploy.mintAddress);
@@ -230,10 +355,35 @@ report(
 );
 if (outcome?.signature) console.log(`\ntransfer signature: ${outcome.signature}`);
 if (outcome?.initSignature) console.log(`init signature:     ${outcome.initSignature}`);
+
+// ---- 5. Evidence row: standalone NOOP self-activation TODAY -------------------
+// Independent of the P3 flow above (sender is already active): what does the path the wallet
+// avoids do on the current chain? 2026-10-06 baseline (owner's live trace): reverts for a
+// 0-balance fresh key (-767/-565 table in the dated live-chain evidence entry). Fresh
+// throwaway key, outcome recorded, never aborts the script.
+{
+  const lifecycleProbe = await keys.generateKeyPair();
+  try {
+    await thruClient.createOnChainAccount(lifecycleProbe);
+    report(
+      'LIFECYCLE PROBE: standalone NOOP self-activation of a fresh 0-balance key',
+      'PASS',
+      'behaviour changed since the 2026-10-06 trace (no longer reverting) — record it in the live-chain entry',
+    );
+  } catch (err) {
+    report(
+      'LIFECYCLE PROBE: standalone NOOP self-activation of a fresh 0-balance key',
+      '??',
+      `still reverting on this chain (${err.message}) — the wallet's faucet-first / deferred-registration pattern stays mandatory; recorded as chain state, not a script bug`,
+    );
+  }
+}
 }
 
+let completed = false;
 try {
   await main();
+  completed = true;
 } catch (err) {
   console.log(`\nAborted early: ${err.message}`);
   console.log('If this is a fetch/connect error, the RPC is unreachable from this environment —');
@@ -241,6 +391,8 @@ try {
   process.exitCode = 1;
 }
 
-console.log('\nDone. Paste this output into the PR that ships token transfer, and resolve the two');
-console.log('doc questions it prints: recipient-owner existence, and the token-program fee.');
-console.log(`(Signatures are on ${networkId}; no keys from this run exist anywhere else.)`);
+if (completed) {
+  console.log('\nDone. Paste this output into the PR that ships token transfer, and resolve the two');
+  console.log('doc questions it prints: recipient-owner existence, and the token-program fee.');
+  console.log(`(Signatures are on ${networkId}; no keys from this run exist anywhere else.)`);
+}

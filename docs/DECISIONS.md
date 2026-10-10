@@ -173,3 +173,49 @@ lived only in `AGENTS.md` and audit history.
 **Trade-offs.** Every durable schema change requires migration fixtures and a version bump — more ceremony than mutating shapes in place.
 
 **Consequences.** `test/test-storage-migrations.mjs` covers v0→v1 migrations and future-version refusal; unsupported future versions fail loudly instead of masquerading as a wrong password or empty state.
+
+## D-012 — DeFi/launchpad workstream opened under owner direction, verify-first gating
+
+**Context.** The owner-confirmed order of 2026-10-04 (`docs/STATUS_AND_ROADMAP.md` §2) put wallet-core verification first with no DEX/launchpad/prediction work, and D-005 fences any launchpad re-entry. On 2026-10-05 the owner directed backend-only DeFi work (swap, pools, launchpad) under an imported two-file backend/frontend build prompt (shared-contract v1.0.0, fingerprint ca11b7bc…3147e5) with the staged sequence: Gate 0 dossier → M0 contract drop → verified capability matrix → real fixtures → mint-only launch pipeline.
+
+**Options considered.** (a) Refuse or defer until the wallet-core steps close; (b) start immediately against memory/docs assumptions; (c) start under the imported spec's verify-first regime with every live-verification dependency mapped as a dossier row.
+
+**Chosen.** (c). The owner may change the order; what may never change is *how* this surface gets built. The imported spec is adopted because it enforces D-005's re-entry conditions structurally: build only from recorded chain evidence (R1), exit paths verified before entry (R2), one signing pipeline (R12), honest unsupported states (R15), flags that cannot be URL/storage-enabled (R16), and the deliberate same-change quarantine-test rewrite (B16).
+
+**Why.** A silent deviation from the 2026-10-04 order would be the failure mode this repository repeatedly names. The order change is explicit, dated, and recorded here; the stricter spec gives the launchpad more gates, not fewer.
+
+**Trade-offs.** Gate 0's live rows need a network-reachable machine (the build sandbox cannot reach Thru endpoints — `scripts/defi-evidence/2026-10-05-environment-egress.json`), so "verified capability matrix" and any enabled write path wait on live evidence; the wallet-core sequence (steps 3–10) remains open in parallel and its chain-facing parts are now also dossier rows (step 4 ↔ Q2/Q4/Q6, step 6 ↔ Q13 = P3, step 7 ↔ Q6/Q7/Q22).
+
+**Consequences.** Contract versions assigned READ = 17, EXEC = 18 (repo is v16/81 — the prompt's "15/83" parenthetical was corrected at recon). No feature code exists at G0; the first code change is M0 plus the B16 quarantine rewrite. All records live in `docs/defi/` + `scripts/defi-evidence/`; today every DeFi capability is seeded `unsupported`. D-005 stays in force; guides 09–11 are absent from this checkout and treated as superseded.
+
+## D-013 — Canonical name root derived from official source; .thru preferred over .id
+
+**Context.** The canonical-root candidates shipped at `2fdfe11` mixed a first-party pin (`BOOTSTRAP_PROGRAM_ADDRESSES.thru_registrar`, which is the executable program account and never parses as a root registrar) with a hardcoded third-party fact (ThruScan's `.id` root). On 2026-10-09 the official docs (`thru.org/docs/cli-reference/{registrar,name-service}-commands/`) plus the first-party `thru` CLI 0.4.1 derive-* helpers yielded the official derivation: root registrar = `deriveProgramAddress({ programAddress: NAME_SERVICE_PROGRAM, seed: raw root-name bytes })`, and documented that `.thru` is the OFFICIAL namespace (paid leases) while `.id` is a community root.
+
+**Options considered.** (a) Keep the hardcoded candidate list as shipped; (b) hardcode the two newly-derived addresses with dated evidence; (c) derive candidate addresses in code from the official formula and order them official-first, keeping the parse-before-use proof.
+
+**Chosen.** (c): `src/lib/name-service.js` exports `rootRegistrarAddress(rootName)` / `registrarConfigAddress()` (pins proven in tests against the CLI outputs), and discovery walks `[.thru, .id]` — derived in code, never pasted. The parse-before-use behavior is unchanged: an initialized `.thru` registry wins on any chain where it exists, `.id` remains the fallback on Betanet today, and a chain with neither still answers NAME_ROOT_UNKNOWN with the manual-root UI path.
+
+**Why.** Deriving from the official formula removes the last third-party-sourced address from the read path, and the priority order reflects the documented namespace ownership (official registry leases vs a community root) without asking the user to choose.
+
+**Trade-offs.** A user holding only a `.id` name on a future chain where the `.thru` registry initializes would see lookups resolve under `.thru` first; explicit-root lookups (the UI's manual field) remain available, and links persist the resolved root.
+
+**Consequences.** `test-name-primary` pins the derivations and the priority. The remaining unknowns it called out (lease derivation, config layout, purchase/renew/claim instruction layouts) were recovered first-party the next day — see D-014 and evidence `scripts/defi-evidence/2026-10-09-claim-variants.json` (follow-up entry 2026-10-10).
+
+## D-014 — Registrar lease writes: first-party formats, self-signed fee 0n, honest unsupported states
+
+**Context.** Owner directive 2026-10-10: complete the extension name system — name registration (`.thru` paid-lease purchase) + renew + claim-expired, with the /name tab rebuilt around it and the faucet tile square like Send. Previously the register/setRecord formats were recovered from third-party sources and stayed gated behind `FLAGS.NAME_SERVICE`; the registrar (paid-lease) formats were not recovered at all.
+
+**Options considered.** (a) Reuse the recovered onewire `name.register` path for .thru; (b) gate the new registrar writes behind the flag too; (c) implement against the first-party official ABIs + `name_service.rs`/`txn_tools.rs` builders from `github.com/Unto-Labs/thru` (2026-10-09), un-gated, with honest unsupported states when the registry is absent on the active network.
+
+**Chosen.** (c). Contract v22 adds six `name.*` methods to the 0.4.x core (never flag-gated): `name.getRegistry`, `name.checkLease`, `name.getPaymentBalance` (auth `none`, sync-safe reads) and `name.purchase`, `name.renewLease`, `name.claimExpired` (auth `signing`). `src/lib/registrar.js` encodes the official byte layouts; `src/background/services/registrar-service.js` composes sacred `thru-client` surfaces (accounts/proofs/buildAndSign/sendAndTrack) — no new dependency on those internals elsewhere.
+
+**Key invariants.**
+- Self-signed only: authority = fee payer = active account, proven first-party in `resolve_signing_account` (CLI); headers pass fee `0n` explicitly (`THRU_REGISTRAR_PROGRAM_FEE = 0` in the CLI source), never autoUnits.
+- Nothing hard-coded: root/config/lease/domain addresses derived via CLI-proven formulas (root seed >32B → sha256 first, so `rootRegistrarAddress` is async everywhere); price/mint/treasurer parsed from the 244-byte config account at the exact CLI offsets.
+- Honest states: registry absent → reads answer `{ supported: false, reason }` and signing refuses with `REGISTRY_ABSENT`; unreadable config → `REGISTRY_UNREADABLE`; the UI never fabricates a price (decimals come from `token.readMint`; unparseable amounts render as "base units").
+- UI action is derived ONLY from a fresh `name.checkLease` read: mine → renew; expired-someone-else → claim; taken-active → refuse; free → purchase. Purchase/claim success auto-`name.linkPrimary` best-effort; a failed link never masquerades as a failed registration.
+
+**Trade-offs.** The purchase flow takes on-chain creation proofs for the new lease/domain accounts (CLI `make_state_proof` semantics); if Betanet ever charges registrar fees the 0n header fails loudly rather than silently scaling — a re-evidence pass under `test:live` would precede any change.
+
+**Consequences.** Chain total is 138 methods (81 + 43 + 14 `name.*`). `test/test-name-registrar.mjs` (9 checks) pins the byte goldens, the parser round-trips, and the service branch matrix offline. Live verification of the three writes on Betanet remains an owner-directed `test:live` run. The old onewire `name.register`/`setRecord` formats recovered at G2 stay gated behind `FLAGS.NAME_SERVICE` — they were superseded, not fixed, by the first-party ABI (which differs: u32 name length, PROOF_INLINE marker, authority index).

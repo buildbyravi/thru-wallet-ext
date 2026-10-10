@@ -4,7 +4,7 @@ Single source of truth for the **shipped baseline**, what automated evidence pro
 
 ## Shipped baseline
 
-- **Contract v16, 81 methods.** v16 removes the retired unbound `tx.send` / `token.transfer` mutation paths after all shipped callers migrated to checked methods. v12's owned-account registration and cache-first History methods remain.
+- **Contract v18, 124 methods.** 81 wallet-core methods plus the 43-method DeFi M0 contract surface (v17 READ+LOCAL, v18 PREPARE+EXECUTE) — every DeFi method is declared, schema-validated, and gated behind build-time flags that are all off; reads answer explicit unsupported states and the only signing method (`intent.submit`) refuses `FEATURE_DISABLED`. v16 removed the retired unbound `tx.send` / `token.transfer` mutation paths after all shipped callers migrated to checked methods.
 - **Account activation.** Account/keyring creation paths make bounded, best-effort self-registration attempts for newly added accounts on the selected network. There is no periodic signer. Send checks an unregistered recipient and calls `tx.registerAccount` just in time only when that destination is an owned account. The target account signs for itself; arbitrary contacts are never registered.
 - **Send review.** The JIT activation must complete before Review enables. Review shows the matched recipient label above the full destination address; the label is display-only. Checked native/token methods bind the reviewed account and network at the background boundary.
 - **Signing preference.** Signing requires an unlocked wallet. Password re-authentication is **off by default** (`requirePasswordForSigning: false`); a user can explicitly enable it through the password-gated Settings path. The v12 registration exception remains narrowly unlocked-only.
@@ -89,7 +89,7 @@ Passing `npm test` or `npm run build` does not close any of these:
 
 | Boundary | Still open |
 | --- | --- |
-| Real Chrome | Popup/side-panel layout and focus at narrow/wide sizes; QR canvas; actual popup/panel mutual exclusion; Settings' toolbar mode; clipboard prompt; MV3 worker eviction/restart and timeouts. Run `docs/MANUAL_SMOKE_CHECKLIST.md`. **The store package (`1.4.1`) went live 2026-10-04 on automated evidence alone — zero checklist boxes are ticked, which makes this the top open item.** |
+| Real Chrome | Popup/side-panel layout and focus at narrow/wide sizes; QR canvas; actual popup/panel mutual exclusion; Settings' toolbar mode; clipboard prompt; MV3 worker eviction/restart and timeouts. Run `docs/MANUAL_SMOKE_CHECKLIST.md`. **First partial run recorded 2026-10-04** (popup only, local build of current source, native Betanet send to the tester's own account: recipient, amount parsing, Review fee, confirmation and the History entry verified — the `/send` popup cell is ticked and §7 has the run record; the charged fee was not captured). Every other box remains open. The store package (`1.4.1`) went live 2026-10-04 on automated evidence alone, predates the same-day source fixes, and has never been opened in a browser — this stays the top open item. |
 | Live v12 activation | Create several HD accounts on the selected chain and exercise Send JIT for an owned absent recipient. Verify target signer, per-network existence, offline-vs-absent handling, and behavior if MV3 suspends during bounded retries. |
 | Live token transfer | Whether a never-registered recipient owner can receive a sender-initialized token account and the actual token-program fee remain unmeasured. Use `scripts/verify-token-transfer.mjs` only with a safe throwaway wallet and network access. |
 | History RPC/explorer | Current block-time availability and first-load latency per enabled network; whether an authoritative charged-fee value exists outside the current RPC detail response; and confirmation of the explorer transaction route. |
@@ -103,7 +103,7 @@ documentation remediation — wallet core first; no DEX/launchpad/prediction wor
 
 1. ~~Keep D-003~~ — **DONE**: session-only signing default confirmed as a deliberate product/security decision; invariants and framing recorded in `docs/DECISIONS.md` D-003.
 2. ~~Make documentation exact~~ — **DONE**: cross-document truth sweep complete on the 11 shared facts.
-3. **Real Chrome manual smoke** — `docs/MANUAL_SMOKE_CHECKLIST.md`, popup and side panel, narrow and wide.
+3. **Real Chrome manual smoke** — **IN PROGRESS (2026-10-04):** first partial run recorded — popup only, local build of current source; a native Betanet send to the tester's own account verified recipient acceptance, amount parsing, the Review fee, confirmation, and the History entry (`/send` popup cell ticked in `docs/MANUAL_SMOKE_CHECKLIST.md` §3, run record in §7; charged fee not captured). The side panel, both widths, and all other sections remain open.
 4. **Betanet live E2E** — run the current code against Betanet with `scripts/verify-live-e2e.mjs` on a throwaway wallet; this also covers "verify every enabled network" (Betanet is the only enabled network today).
 5. **Transaction/signing race testing + MV3 suspension/restart** — network switch during SDK signing, concurrent pending-record writes, worker suspension mid-registration/Send, bridge-timeout unknown-outcome messaging; deterministic interleaving tests exist, real MV3 scheduling does not.
 6. **Token transfer live verification** — `scripts/verify-token-transfer.mjs`: recipient-owner acceptance and the actual token-program fee.
@@ -111,6 +111,28 @@ documentation remediation — wallet core first; no DEX/launchpad/prediction wor
 8. **Final dependency/security review** — re-run `npm audit --omit=dev`, review advisories for `@thru/*` and `esbuild`, re-verify the 0.4.1 pins before any store release. **Architecture is frozen here** (standing rule in `AGENTS.md`): no refactor without a measurable security, correctness, performance, or maintainability benefit and a proving test.
 9. **External security review/audit** — required before any mainnet-readiness claim; none has been performed.
 10. **Mainnet-specific configuration + verification** — re-measure the fee on mainnet (its `baseFeeUnits` is deliberately null), verify program deployments and explorer routing, add the RPC origin to `connect-src`, and enable deliberately; a Betanet observation cannot prove mainnet behavior.
+
+**Amendment (2026-10-05, owner directive):** the 2026-10-04 order above is amended by the owner's
+instruction to begin backend-only DeFi work (swap, pools, launchpad) under an imported
+verify-first build prompt — recorded as decision D-012. Steps 1–10 remain the wallet-core
+sequence and are unchanged; the DeFi workstream runs its own gates in `docs/defi/` and does not
+close any item above. Its Gate 0 dossier *consumes* the same live facts (step 4 ↔ dossier
+Q2/Q4/Q6, step 6 ↔ Q13 = its hard precondition P3, step 7 ↔ Q6/Q7/Q22), so a single live
+evidence session on a network-reachable machine advances both tracks. Every DeFi capability is
+seeded `unsupported` today; no write path may exist before the dossier and pipeline gates close,
+and every D-005 re-entry condition applies.
+
+**DeFi gate state (2026-10-06, final):** G0 closed by owner direction; **M0 closed by owner
+sign-off (10-05)**; **G1 CLOSED by owner sign-off (10-06)** — the registry/feeds/market triad
+is delivered and forensically green (registry 27/27, feed 35/35, market 25/25, M0 98/98), and
+the live battery (`npm run test:live`) already pins real Betanet rows: **amm program DEPLOYED
+(q14), no thru-usd oracle feed (q22 live-negative), P3 CHAIN-BLOCKED at the faucet rung
+(-765, user -26n — chain regression vs the pinned 2026-09-26 claim; shipped-wallet faucet
+feature affected until fixed chain-side)**. The verified-matrix track continues read-side via
+`scripts/probe-amm.mjs` (Q15 pool-model parse awaits on-chain mints). **G2 remains gated on
+P3 (B17)**; owner option on the table: a `--funder` leg with a pre-funded betanet account,
+throwaway isolation preserved.
+
 
 The readiness classification behind this order (automated / browser / Betanet-live /
 mainnet-specific / external audit — never merged) is in `docs/AUDIT_REPORT.md` §"Mainnet-readiness
@@ -392,3 +414,12 @@ Each was earned by a defect in `docs/DEFECT_LOG.md`.
 9. Anything network-specific belongs in the network config, not a module constant.
 10. Do not ship a control before its destination exists — `check-routes.mjs` now enforces this.
 11. A test that asserts current behaviour may be asserting a bug. `generateMintSeed` had one.
+
+## Name service additions (contract v19, 2026-10-08)
+
+Backend contract methods `name.lookup` / `name.checkAvailability` / `name.initRoot` / `name.register` /
+`name.setRecord` against the system name program (package-pinned address; recovered layouts with
+provenance recorded in `src/lib/name-service.js`). Reads are always-on truth asks; writes are gated
+(`FLAGS.NAME_SERVICE=false`) until `scripts/probe-name-service.mjs` verifies formats on the live chain.
+Security model: self-signed, only under parents the signer owns — sponsorship flows are rejected by
+design.

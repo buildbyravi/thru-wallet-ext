@@ -74,7 +74,33 @@
 // v16 retires the legacy tx.send and token.transfer mutation endpoints after every shipped UI
 // caller migrated to their checked counterparts. Keeping callable methods that omit the reviewed
 // source account/network created a weaker alternate signing path.
-export const CONTRACT_VERSION = 16;
+//
+// v17 and v18 are the M0 contract-first DeFi drop (docs/defi/, docs/DECISIONS.md D-012).
+// Nothing existing changed: both versions are pure appends behind build-time feature flags
+// that are false in this build (src/shared/flags.js, DEFI-02: no URL or storage override).
+//   v17 appends the READ + LOCAL surface (21 R + 8 L = 29 methods).
+//   v18 appends the PREPARE + EXECUTE surface (13 P + 1 X = 14 methods).
+// Of all DeFi methods, ONLY intent.submit carries auth:'signing' (DEFI-03); every other
+// prepare is at most 'unlocked', and public discovery/quote reads are callable while locked so
+// a locked wallet can render capability-honest DeFi screens. Unsupported capability states and
+// gate-off outcomes are first-class wire values ({ supported:false, reason } or the declared
+// FEATURE_DISABLED envelope) — never fake data. The machine-readable sibling schema lives in
+// ./defi-schema.js and is kept coherent with this file by test/test-defi-m0.mjs.
+//   v20 (2026-10-09, G2-S0): the v18 intent methods they declared are now backed by a REAL
+//   native-send intent pipeline (network-scoped store, bindingHash-pinned submit, honest
+//   resume/stopWaiting NOT_READY for the later chain-wait slice). Method shapes are unchanged —
+//   the bump marks the implementation contract, still behind DEFI_INTENT (false in this build).
+//   v21 appends the primary-name UX slice (3 name.* methods): a wallet-local, network-scoped
+//   "my name" record for the dashboard. Linking verifies on-chain ownership via the existing
+//   always-on name.lookup read; nothing signs, nothing gated.
+//
+//   v22 appends the registrar slice (5 name.* methods, 2026-10-09): the official `.thru`
+//   paid-lease registry read surface (config + lease, derivation-official, parse-proofed)
+//   and its three self-signed writes (purchase / renew / claim-expired) built from
+//   first-party formats (Unto-Labs/thru ABIs + CLI + txn_tools.rs — provenance in
+//   src/lib/registrar.js). Fee policy follows the first-party builder exactly: 0n — the
+//   registrar prices in its own payment token; nothing else is deducted.
+export const CONTRACT_VERSION = 22;
 
 export const METHODS = {
   // ---- System ------------------------------------------------------------
@@ -338,6 +364,101 @@ export const METHODS = {
     returns: '{ exists, balance } — balance is a base-unit string, never a BigInt',
     auth: 'none',
     since: 1,
+  },
+  // ---- Name service (contract v19, 2026-10-08). Reads are always-on truth asks against
+  // the system name program (self-derived accounts, official CLI-recovered layouts — provenance
+  // in src/lib/name-service.js); writes are gated behind FLAGS.NAME_SERVICE (build-time false)
+  // until the live probe verifies the recovered formats on the running chain, and can only
+  // ever act under a parent the signer OWNS (self-signing invariant: no sponsors, ever).
+  'name.lookup': {
+    params: ['name', 'rootAddress', 'networkId'],
+    returns: '{ chain: string[], leaf: { address, exists, domain? }, parsed reads live from the chain }',
+    auth: 'none',
+    since: 19,
+  },
+  'name.checkAvailability': {
+    params: ['name', 'parentAddress', 'networkId'],
+    returns: '{ address, exists } — derived domain address and whether it is taken',
+    auth: 'none',
+    since: 19,
+  },
+  'name.initRoot': {
+    params: ['name', 'networkId'],
+    returns: '{ signature, rootAddress } — new root owned by the signer (gate: NAME_SERVICE)',
+    auth: 'unlocked',
+    since: 19,
+  },
+  'name.register': {
+    params: ['name', 'parentAddress', 'networkId'],
+    returns: '{ signature, domainAddress } — register a name under a parent root/domain the signer OWNS (gate: NAME_SERVICE)',
+    auth: 'unlocked',
+    since: 19,
+  },
+  'name.setRecord': {
+    params: ['name', 'rootAddress', 'key', 'value', 'networkId'],
+    returns: '{ signature } — append a key/value record to a domain the signer owns (gate: NAME_SERVICE)',
+    auth: 'unlocked',
+    since: 19,
+  },
+  // v21: primary-name UX slice (2026-10-09). LOCAL wallet-side records plus an always-on
+  // ownership re-verification read — no signing, no gate, no new permissions.
+  'name.getPrimary': {
+    params: [],
+    returns: '{ name, rootAddress, domainAddress, verifiedAt } | null — active account, active network',
+    auth: 'unlocked',
+    since: 21,
+  },
+  'name.linkPrimary': {
+    params: ['name', 'rootAddress'],
+    returns: '{ name, rootAddress, domainAddress, verifiedAt } — stored only after on-chain owner == active account',
+    auth: 'unlocked',
+    since: 21,
+  },
+  'name.unlinkPrimary': {
+    params: [],
+    returns: '{ unlinked: boolean }',
+    auth: 'unlocked',
+    since: 21,
+  },
+  // v22: official `.thru` registrar slice (2026-10-09, first-party formats). Reads answer
+  // supported:false when the registry is uninitialized on the running network — never a
+  // fabricated price. Writes are self-signed (signer = fee payer), pay from the signer's
+  // own token account of the registry mint, fee 0n per the first-party builder.
+  'name.getRegistry': {
+    params: [],
+    returns: '{ supported, configAddress?, registry?: { rootRegistrar, treasurer, tokenMint, tokenProgram, rootName, pricePerYear, totalDomainsSold }, reason? }',
+    auth: 'none',
+    since: 22,
+  },
+  'name.checkLease': {
+    params: ['name'],
+    returns: '{ supported, name?, leaseAddress?, domainAddress?, leaseExists?, domainExists?, lease?: { owner, startTime, endTime, expiredHint }, reason? }',
+    auth: 'none',
+    since: 22,
+  },
+  'name.getPaymentBalance': {
+    params: [],
+    returns: '{ supported, exists?, amount?, tokenAccount?, reason? } — active account’s balance of the registry payment token (unreadable/missing answered honestly)',
+    auth: 'none',
+    since: 22,
+  },
+  'name.purchase': {
+    params: ['name', 'years', 'password'],
+    returns: '{ signature } — buys a .thru lease; price = config.pricePerYear × years in registry token',
+    auth: 'signing',
+    since: 22,
+  },
+  'name.renewLease': {
+    params: ['name', 'years', 'password'],
+    returns: '{ signature } — extends the signer-owned lease',
+    auth: 'signing',
+    since: 22,
+  },
+  'name.claimExpired': {
+    params: ['name', 'years', 'password'],
+    returns: '{ signature } — takes over an expired lease (owner ≠ signer, chain enforces expiry)',
+    auth: 'signing',
+    since: 22,
   },
   'tx.claimFaucet': {
     params: ['amountUnits'],
@@ -613,6 +734,298 @@ export const METHODS = {
     auth: 'signing',
     since: 11,
   },
+
+  // ---- Contract v17: DeFi READ surface (M0) — callable while locked -------
+  // Every READ returns current truth or an explicit unsupported state, never fabricated data.
+  // Discovery methods (program.*/feed.*) work in EVERY build so the frontend can render
+  // capability-honest screens; capability-gated reads answer { supported:false, reason }.
+  'program.capabilities': {
+    params: ['networkId'],
+    returns: '{ networkId, programFacts, methodCapabilities, featureCapabilities, limits } — '
+      + 'program/capability facts (evidence-backed values or explicit nulls), never guesses',
+    auth: 'none',
+    since: 17,
+  },
+  'program.list': {
+    params: ['networkId'],
+    returns: '{ programs: [ProgramRecord] } — known programs incl. unverified registrations',
+    auth: 'none',
+    since: 17,
+  },
+  'feed.status': {
+    params: ['networkId'],
+    returns: '{ feeds: [FeedStatus] } — empty when no feed publisher is verified (never a fake feed)',
+    auth: 'none',
+    since: 17,
+  },
+  'feed.lookup': {
+    params: ['ids'],
+    returns: '{ feeds: { [feedId]: SignedFeedInfo|null } } — null means unknown, never guessed',
+    auth: 'none',
+    since: 17,
+  },
+  'market.assetGet': {
+    params: ['assetId'],
+    returns: 'AssetDetail for a stored asset id, or { supported:false, reason }',
+    auth: 'none',
+    since: 17,
+  },
+  'market.assetSearch': {
+    params: ['query', 'limit'],
+    returns: '{ hits: [MarketListRow] } — an empty hit list is honest, never padded with junk',
+    auth: 'none',
+    since: 17,
+  },
+  'market.snapshot': {
+    params: ['assetIds'],
+    returns: '{ snapshots: { [assetId]: Snapshot|null } } — best-available values or null, never fabricated',
+    auth: 'none',
+    since: 17,
+  },
+  'market.candles': {
+    params: ['assetId', 'poolId', 'interval', 'range'],
+    returns: 'CandleSet { interval, range, candles } or { supported:false, reason: NO_INDEXER… }',
+    auth: 'none',
+    since: 17,
+  },
+  'market.trades': {
+    params: ['assetId', 'poolId', 'cursor', 'limit'],
+    returns: 'Page<TradeEvent> or { supported:false, reason }',
+    auth: 'none',
+    since: 17,
+  },
+  'market.holders': {
+    params: ['assetId', 'cursor', 'limit'],
+    returns: 'Page<HolderRow> or { supported:false, reason }',
+    auth: 'none',
+    since: 17,
+  },
+  'risk.assetAssess': {
+    params: ['assetId'],
+    returns: 'RiskReport { facts, warnings, maxSeverity, listStatus, freshness } — facts only, '
+      + 'warnings derived, no advice, no scores',
+    auth: 'none',
+    since: 17,
+  },
+  'launchpad.list': {
+    params: ['networkId', 'sort', 'cursor', 'limit'],
+    returns: 'Page<LaunchCard> { items, nextCursor, updatedAt, source } or { supported:false, reason }',
+    auth: 'none',
+    since: 17,
+  },
+  'launchpad.get': {
+    params: ['launchId'],
+    returns: 'LaunchDetail { header, assets, curve, pool, trades, distribution, links, yourActions, '
+      + 'feedState } or { supported:false, reason }',
+    auth: 'none',
+    since: 17,
+  },
+  'launchpad.templates': {
+    params: [],
+    returns: '{ templates: [LaunchTemplate] } — the available launch models; empty until the mint '
+      + 'path is verified (TOKEN_PATH_UNVERIFIED)',
+    auth: 'none',
+    since: 17,
+  },
+  'launchpad.listMine': {
+    params: ['address'],
+    returns: '{ launches: [LaunchCard] } — own launches discovered from chain, once verified',
+    auth: 'unlocked',
+    since: 17,
+  },
+  'launchpad.validateDraft': {
+    params: ['networkId', 'draft'],
+    returns: 'DraftValidation { identity, curve, strands, errors, warnings } — offline rules plus '
+      + 'blocking capability strands (TOKEN_PATH_UNVERIFIED, …)',
+    auth: 'none',
+    since: 17,
+  },
+  'dex.listPools': {
+    params: ['networkId', 'assetId', 'cursor', 'limit'],
+    returns: 'Page<PoolSummary> or { supported:false, reason: PROGRAM_NOT_VERIFIED… }',
+    auth: 'none',
+    since: 17,
+  },
+  'dex.getPool': {
+    params: ['poolId'],
+    returns: 'PoolDetail { header, assets, reserves, fee, volume, apxe, positions, charts, risk, '
+      + 'oracle, feedState } or { supported:false, reason }',
+    auth: 'none',
+    since: 17,
+  },
+  'dex.positions': {
+    params: ['address', 'networkId'],
+    returns: '{ positions: [DexPosition] } — own liquidity positions once pool reads are verified',
+    auth: 'unlocked',
+    since: 17,
+  },
+  'intent.list': {
+    params: ['status'],
+    returns: '{ intents: [Intent] } — lifecycle state from the single intent store',
+    auth: 'unlocked',
+    since: 17,
+  },
+  'intent.get': {
+    params: ['intentId'],
+    returns: 'Intent { intentId, kind, status, plan, fee, preparedAt, updatedAt, expiresAt, '
+      + 'unsignedTxs, context, … }',
+    auth: 'unlocked',
+    since: 17,
+  },
+
+  // ---- Contract v17: DeFi LOCAL surface (M0) — non-secret, network-scoped -
+  'launchpad.draftList': {
+    params: [],
+    returns: '{ drafts: [LaunchDraft] } — saved launch drafts',
+    auth: 'unlocked',
+    since: 17,
+  },
+  'launchpad.draftGet': {
+    params: ['draftId'],
+    returns: '{ draft: LaunchDraft } — one saved draft and its last validation state',
+    auth: 'unlocked',
+    since: 17,
+  },
+  'launchpad.draftSave': {
+    params: ['draftId', 'draft'],
+    returns: '{ draftId } — create or overwrite a saved draft',
+    auth: 'unlocked',
+    since: 17,
+  },
+  'launchpad.draftDelete': {
+    params: ['draftId'],
+    returns: '{ deleted } — permanently delete a draft',
+    auth: 'unlocked',
+    since: 17,
+  },
+  'market.watchlistGet': {
+    params: [],
+    returns: '{ items: [assetId] } — the watched-assets list',
+    auth: 'unlocked',
+    since: 17,
+  },
+  'market.watchlistAdd': {
+    params: ['assetId'],
+    returns: '{ items } — updated list; ALREADY_EXISTS on a duplicate add',
+    auth: 'unlocked',
+    since: 17,
+  },
+  'market.watchlistRemove': {
+    params: ['assetId'],
+    returns: '{ items } — updated list; a missing id is a no-op success, not an error',
+    auth: 'unlocked',
+    since: 17,
+  },
+  'desktop.open': {
+    params: ['page', 'args'],
+    returns: '{ enabled, reason?, page? } — open or answer whether a Desktop lane exists; '
+      + '{ enabled:false, reason } while the Desktop surface is not part of this build',
+    auth: 'none',
+    since: 17,
+  },
+
+  // ---- Contract v18: DeFi PREPARE surface (M0) ----------------------------
+  // PREPARE builds a Quote, a Review, or a prepared Intent. NOTHING in the P group signs or
+  // submits. Gate-off/capability-off answers are { supported:false, reason } for quote-shaped
+  // reads and the FEATURE_DISABLED envelope for everything else.
+  'intent.prepareSend': {
+    params: ['address', 'toAddress', 'amountUnits', 'clientRequestId'],
+    returns: 'Review { reviewAscii, facts, model, policy, simulation, assetChanges, feePlan, '
+      + 'bindingHash, clientRequestId, acknowledgements } — render-ready, no signing',
+    auth: 'unlocked',
+    since: 18,
+  },
+  'dex.quote': {
+    params: ['address', 'poolId', 'inputAssetId', 'outputAssetId', 'inputAmountUnits', 'slippageBps'],
+    returns: 'Quote { poolId, input, output, rate, priceImpactBps, feeTotal, quoteId, expiresAt } '
+      + 'or { supported:false, reason: PROGRAM_NOT_VERIFIED… } — public read, callable while locked',
+    auth: 'none',
+    since: 18,
+  },
+  'dex.prepareSwap': {
+    params: ['quoteId', 'clientRequestId'],
+    returns: 'Prepared Intent { intentId, kind, status, plan, fee, preparedAt, expiresAt, '
+      + 'unsignedTxs, context } — atomic-build requirement per Q1; QUOTE_EXPIRED past quote ttl',
+    auth: 'unlocked',
+    since: 18,
+  },
+  'dex.quoteLiquidity': {
+    params: ['address', 'poolId', 'mode', 'amounts', 'slippageBps'],
+    returns: 'PoolQuote { poolId, mode, sharesEst, minShares, details, quoteId, expiresAt } or '
+      + '{ supported:false, reason } — exit-before-entry (DEFI R2) means remove quotes verify first',
+    auth: 'none',
+    since: 18,
+  },
+  'dex.prepareLiquidity': {
+    params: ['quoteId', 'clientRequestId'],
+    returns: 'Prepared Intent for add/remove liquidity; add-liquidity stays disabled until '
+      + 'remove-liquidity is verified live (DEFI R2)',
+    auth: 'unlocked',
+    since: 18,
+  },
+  'launchpad.uploadImage': {
+    params: ['address', 'networkId', 'payload'],
+    returns: '{ status, url, sha256 } — status: ok|failed|pending; only a returned, pinned '
+      + 'image is valid (UPLOAD_REJECTED on bad type/size)',
+    auth: 'unlocked',
+    since: 18,
+  },
+  'launchpad.prepareCreate': {
+    params: ['address', 'networkId', 'draft', 'clientRequestId'],
+    returns: 'Prepared Intent for a launch creation; launchModel drives atomicity '
+      + '(none|pool|curve); mint-only is the first model built (DEFI B8)',
+    auth: 'unlocked',
+    since: 18,
+  },
+  'launchpad.prepareMigrate': {
+    params: ['address', 'launchId', 'clientRequestId'],
+    returns: 'Prepared Intent for a curve->pool migration, DESTINATION_POOL_PRE_EXISTING-aware',
+    auth: 'unlocked',
+    since: 18,
+  },
+  'launchpad.prepareClaim': {
+    params: ['address', 'launchId', 'clientRequestId'],
+    returns: 'Prepared Intent for claiming creator fees; NOTHING_TO_CLAIM when there is nothing',
+    auth: 'unlocked',
+    since: 18,
+  },
+  'intent.rePrepare': {
+    params: ['intentId'],
+    returns: 'Review — a fresh preparation of the same intent (new bindingHash and clientRequestId)',
+    auth: 'unlocked',
+    since: 18,
+  },
+  'intent.resume': {
+    params: ['intentId'],
+    returns: '{ intentId, status } — resume a prepared intent that still matches the current '
+      + 'context; CONTEXT_CHANGED otherwise',
+    auth: 'unlocked',
+    since: 18,
+  },
+  'intent.discard': {
+    params: ['intentId'],
+    returns: '{ intentId, status } — discard a prepared or failed intent',
+    auth: 'unlocked',
+    since: 18,
+  },
+  'intent.stopWaiting': {
+    params: ['intentId'],
+    returns: '{ intentId, status } — stop waiting on a stuck intent; fails while tx are in flight '
+      + '(NOT_READY)',
+    auth: 'unlocked',
+    since: 18,
+  },
+
+  // ---- Contract v18: DeFi EXECUTE surface (M0) -----------------------------
+  // The ONLY DeFi signing method. Signing re-authentication follows the same policy as the
+  // wallet-core signing methods (session-only default, password-gated opt-in).
+  'intent.submit': {
+    params: ['intentId', 'bindingHash', 'acknowledgements', 'password'],
+    returns: 'SubmissionResult { submitId, state, waitingReason, signature } — bindingHash mismatch '
+      + 'refuses with BINDING_MISMATCH; USER_REJECTED never resets state by mistake',
+    auth: 'signing',
+    since: 18,
+  },
 };
 
 /** Push events the background may send to UI pages. */
@@ -622,6 +1035,10 @@ export const EVENTS = {
   networkChanged: 'Active network changed',
   balanceChanged: 'A tracked balance was refreshed in the background',
   pendingTxChanged: 'A submitted transaction was tracked or settled',
+  // DeFi surface (v17/v18). Emitted only when the respective feature exists; none fire at M0.
+  intentChanged: 'An intent changed lifecycle state (prepared, waiting, settled, failed, expired, rejected)',
+  capabilitiesChanged: 'The capability matrix changed (network switch, chain reset, registry or feed update)',
+  feedChanged: 'A subscribed signed feed updated, went stale, or failed quorum',
 };
 
 /** Stable error codes. The UI may branch on these; messages are for humans only. */
@@ -636,6 +1053,38 @@ export const ERROR_CODES = {
   // Contract v7. Permanent policy refusal from network.setActive for a saved custom id.
   CUSTOM_NETWORK_DISABLED: 'Custom networks cannot be activated; choose a built-in network.',
   SEND_CONTEXT_CHANGED: 'Sending account or network no longer matches the reviewed transfer.',
+
+  // ---- Contract v17/v18: DeFi surface (M0) ----------------------------------
+  // Stable codes for the DeFi lifecycle. Every one is a first-class state the UI may branch
+  // on; none silently maps to success.
+  FEATURE_DISABLED: 'Feature is not part of this build (flag-gated off at build time).',
+  UNSUPPORTED: 'Capability is unavailable; carries a structured reason on the entity.',
+  INVALID_INPUT: 'Request parameters failed schema validation before any service ran.',
+  ALREADY_EXISTS: 'A create would collide; idempotent retry returns the existing entity.',
+  ACCOUNT_MISSING: 'Required account does not exist on-chain yet.',
+  INSUFFICIENT_BALANCE: 'Available balance is below the required amount plus fees.',
+  INSUFFICIENT_FEE_RESERVE: 'Fee reserve (rent/fees) is below protocol requirements.',
+  USER_REJECTED: 'User rejected a review or stopped a flow. Never resets state by mistake.',
+  CONTEXT_CHANGED: 'Active account/network/context changed since preparation.',
+  QUOTE_EXPIRED: 'Quote TTL elapsed; re-quote before preparing or submitting.',
+  BINDING_MISMATCH: 'Review bindingHash no longer matches current preparation.',
+  INTENT_EXPIRED: 'Prepared intent expired; prepare fresh before resigning.',
+  INTENT_LOCKED: 'A signer or cancellation is already in progress for this intent.',
+  NONCE_CONFLICT: 'Nonce consumed by another in-flight transaction.',
+  SIMULATION_FAILED: 'Simulation failed; submission is blocked by policy.',
+  PROGRAM_ERROR: 'On-chain program returned a protocol error.',
+  SLIPPAGE_EXCEEDED: 'Final bounds exceeded minReceived/slippage policy.',
+  TX_DROPPED: 'Transaction never landed; safe to resume or reprepare with a fresh nonce.',
+  TX_REPLACED: 'Transaction replaced by policy or another fee. Never abandoned silently.',
+  NOT_READY: 'Requested action is invalid while the entity is in its current state.',
+  NOT_AUTHORIZED: 'Signer is not authorized for this action (policy).',
+  NOTHING_TO_CLAIM: 'Nothing is available to claim; never reports claimable garbage.',
+  UPLOAD_REJECTED: 'Binary upload rejected: wrong type, oversize, or mismatched reference.',
+  RATE_LIMITED: 'Caller exceeded a local rate or quota.',
+  RPC_UNAVAILABLE: 'RPC is unreachable; the app remains offline-honest.',
+  UPSTREAM_UNAVAILABLE: 'Required upstream (indexer/feed/oracle) is unavailable.',
+  VERSION_MISMATCH: 'Capability matrix or registry is older than required (fail closed).',
+  INTERNAL: 'Unexpected internal error; logged, never silently mapped to success.',
 };
 
 /** @param {string} method */

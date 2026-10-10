@@ -16,7 +16,7 @@
 import * as txService from './tx-service.js';
 import * as thruClient from '../../lib/thru-client.js';
 import { getActiveNetworkConfig, getActiveNetworkId } from './network-service.js';
-import { getNetworkConfig } from '../../lib/networks.js';
+import { getNetworkConfig, explorerTxUrl } from '../../lib/networks.js';
 import { scopedKey } from '../../shared/network-scope.js';
 import { getPreferences } from './preferences-service.js';
 
@@ -354,10 +354,13 @@ export async function settleTransaction(signature, status, error = null, network
       const prefs = await getPreferences().catch(() => null);
       if (prefs?.desktopNotifications !== false) {
         const title = status === 'confirmed' ? 'Transaction Confirmed' : 'Transaction Failed';
+        const explorerAvailable = Boolean(explorerTxUrl(getNetworkConfig(netId), signature));
         const msg = status === 'confirmed'
-          ? `Transfer confirmed on Thru (${netId}).`
-          : `Transfer failed on Thru: ${error || 'Unknown error'}`;
-        chrome.notifications.create(`thru-tx-${signature}`, {
+          ? `Transfer confirmed on Thru (${netId}).${explorerAvailable ? ' Click to view in explorer.' : ''}`
+          : `Transfer failed on Thru: ${error || 'Unknown error'}${explorerAvailable ? ' Click to view in explorer.' : ''}`;
+        // The id embeds the network: clicking must open the RIGHT chain's explorer — the
+        // active network at click time may have changed since this transaction settled.
+        chrome.notifications.create(`thru-tx-${netId}-${signature}`, {
           type: 'basic',
           iconUrl: 'icons/icon128.png',
           title,
@@ -369,6 +372,34 @@ export async function settleTransaction(signature, status, error = null, network
   } catch {
     // Non-blocking notification
   }
+}
+
+/**
+ * Handle a desktop-notification click: open the settled transaction in the explorer of the
+ * network it settled on (encoded in our notification id). Legacy ids without a network
+ * segment are ignored rather than guessed. Wired to chrome.notifications.onClicked in
+ * background/index.js; returns true when a tab was opened (unit-testable without chrome).
+ */
+export async function openNotificationTx(notificationId, { openTab } = {}) {
+  const match = /^thru-tx-([a-zA-Z0-9_.-]+)-(.+)$/.exec(String(notificationId || ''));
+  if (!match) return false;
+  const [, networkId, signature] = match;
+  let url = '';
+  try {
+    url = explorerTxUrl(getNetworkConfig(networkId), signature);
+  } catch {
+    return false; // unknown/removed network: refuse rather than fabricate a URL
+  }
+  if (!url) return false;
+  const open = openTab ?? ((u) => chrome?.tabs?.create({ url: u }));
+  if (!open) return false;
+  try {
+    await open(url);
+  } catch {
+    return false; // an explorer tab failing to open must never error the service worker
+  }
+  try { chrome?.notifications?.clear?.(String(notificationId)); } catch { /* non-blocking */ }
+  return true;
 }
 
 /**

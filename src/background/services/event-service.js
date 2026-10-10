@@ -47,6 +47,21 @@ export function emitNetworkChanged(network) {
   emit('networkChanged', network);
 }
 
+// DeFi surface (v17/v18). Emitted on REAL state changes only: an intent lifecycle transition,
+// a capability-matrix change (network switch, genesis/chain reset, registry or feed update),
+// or a subscribed feed update/stale/quorum failure. Never on a schedule.
+export function emitIntentChanged(data) {
+  emit('intentChanged', data);
+}
+
+export function emitCapabilitiesChanged(data) {
+  emit('capabilitiesChanged', data);
+}
+
+export function emitFeedChanged(data) {
+  emit('feedChanged', data);
+}
+
 export function emitBalanceChanged(balances) {
   emit('balanceChanged', balances);
 }

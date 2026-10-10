@@ -1,0 +1,124 @@
+{
+  "id": "2026-10-08-live-chain-run2",
+  "kind": "live-chain",
+  "network": "betanet",
+  "dateUtc": "2026-10-08",
+  "tool": "node scripts/live-betanet-verify.mjs (node v24.18.0; @thru/sdk 0.4.1); rpc https://rpc.betanet.thru.org",
+  "refs": [
+    "scripts/verify-token-transfer.mjs",
+    "scripts/probe-oracle-feed.mjs",
+    "src/background/services/defi/capability-snapshot.js",
+    "@thru/programs/bootstrap-addresses"
+  ],
+  "checks": [
+    {
+      "id": "transport-preflight",
+      "status": "PASS",
+      "summary": "https://rpc.betanet.thru.org reachable"
+    },
+    {
+      "id": "p3-token-transfer",
+      "status": "FAIL",
+      "summary": "probe exited 1 — first real-flow error to fix (see tail)",
+      "evidence": {
+        "exit": 1,
+        "tail": "Token transfer live verification on betanet\nSetting up throwaway accounts (never your wallet)…\n  sender    taEL5fihF2BmqIHKuGz8HjhZ3ScxZzkHYL0s03UQwYa-iV\n  recipient ta9NQuvDcePI8JNoRUXQO7SnIK3brvEOb-Av9nNTn07gkF\n  [PASS] 1. sender ACTIVATED on-chain (existence-verified, not error-trusted)\n         exists after attempt — createOnChainAccount reported: Account creation reverted on-chain (vmError=-767).\n  [FAIL] 2. faucet claim 1/3\n         Faucet claim reverted on-chain (vmError=-767). — CHAIN REGRESSION vs the pinned live-verified claim (2026-09-26, tx tsjbbZW9sT…): the faucet program currently reverts claims (2026-10-06 trace: vmError -765, user error -26n). This also breaks the shipped wallet's faucet feature until Betanet is fixed; P3 blocked at rung 2, by chain state not this script.\nAborted early: P3 blocked by chain state at rung 2 (faucet claim reverts) — record in docs/BACKEND_GAPS.md\nIf this is a fetch/connect error, the RPC is unreachable from this environment —\nrun the script where the network is reachable. Nothing here requires a real vault."
+      }
+    },
+    {
+      "id": "q22-oracle-feed",
+      "status": "NEGATIVE",
+      "summary": "no thru-usd oracle feed account on this chain (honest absence, recorded)",
+      "evidence": {
+        "exit": 0,
+        "tail": "seed (32 bytes): 746872752d757364000000000000000000000000000000000000000000000000\noracle program:  taORCLOkTSYq5enR2XOGoSDmzMc0P5NlqjP8nKpfd3vgps\nderived feed:    taUeMX-t8duA8B7F_D2Hc3u6j_El0uKgLDR-5JQyJI2S--\nno feed account at this address (exists:false) — a result, not an error."
+      }
+    },
+    {
+      "id": "q14-amm-program-presence",
+      "status": "PASS",
+      "summary": "amm program taAMMx8gG44RcOyRq is deployed (account exists) — pool discovery becomes testable",
+      "evidence": [
+        {
+          "role": "amm",
+          "registryAddress": "taAMMx8gG44RcOyRqNYZ55pDaAJoGS0R8kPYxBN96sO8kD",
+          "bootstrapAddress": "taAMMx8gG44RcOyRqNYZ55pDaAJoGS0R8kPYxBN96sO8kD",
+          "addressesMatch": true,
+          "deployedOnChain": true
+        }
+      ]
+    },
+    {
+      "id": "q20-program-map",
+      "status": "PASS",
+      "summary": "every registry program address matched bootstrap and exists on-chain",
+      "evidence": [
+        {
+          "role": "token",
+          "registryAddress": "taTOKENKRgcl3vO0yVhftATDbXuhgWcfaaxv9xpEEdMdUE",
+          "bootstrapAddress": "taTOKENKRgcl3vO0yVhftATDbXuhgWcfaaxv9xpEEdMdUE",
+          "addressesMatch": true,
+          "deployedOnChain": true
+        },
+        {
+          "role": "amm",
+          "registryAddress": "taAMMx8gG44RcOyRqNYZ55pDaAJoGS0R8kPYxBN96sO8kD",
+          "bootstrapAddress": "taAMMx8gG44RcOyRqNYZ55pDaAJoGS0R8kPYxBN96sO8kD",
+          "addressesMatch": true,
+          "deployedOnChain": true
+        },
+        {
+          "role": "curve",
+          "registryAddress": null,
+          "bootstrapAddress": null,
+          "addressesMatch": true,
+          "deployedOnChain": null,
+          "expectedNote": "expected absent (package-negative)"
+        },
+        {
+          "role": "multicall",
+          "registryAddress": "taMULTIrOL8WpIFr16C1ECsO60qAsuwmwJephZHDOTvSeP",
+          "bootstrapAddress": "taMULTIrOL8WpIFr16C1ECsO60qAsuwmwJephZHDOTvSeP",
+          "addressesMatch": true,
+          "deployedOnChain": true
+        },
+        {
+          "role": "oracle",
+          "registryAddress": "taORCLOkTSYq5enR2XOGoSDmzMc0P5NlqjP8nKpfd3vgps",
+          "bootstrapAddress": "taORCLOkTSYq5enR2XOGoSDmzMc0P5NlqjP8nKpfd3vgps",
+          "addressesMatch": true,
+          "deployedOnChain": true
+        }
+      ]
+    },
+    {
+      "id": "q15-amm-pool-model",
+      "status": "PASS",
+      "summary": "amm program account read + official parser surface verified; pool-model parse awaits on-chain mints (P3-blocked)",
+      "evidence": {
+        "exit": 0,
+        "tail": "AMM evidence probe on betanet (https://rpc.betanet.thru.org)\namm program: taAMMx8gG44RcOyRqNYZ55pDaAJoGS0R8kPYxBN96sO8kD\namm program account: EXISTS (data 0 bytes)\n(program-level only. Pool derivation/parsing needs a mint pair or pool address —\nnone exists on-chain today: no mints are deployed (P3 blocked at the faucet rung)."
+      }
+    },
+    {
+      "id": "q9-query-surface",
+      "status": "PASS",
+      "summary": "native tx-by-account query serves — Q9 history substrate is ON-NODE (see tail for Q18 amm-activity + events rows)",
+      "evidence": {
+        "exit": 0,
+        "tail": "Query-surface probe on betanet (https://rpc.betanet.thru.org) — read-only, no signing\nRESULT node.getStatus: SUPPORTED — {\"$typeName\":\"thru.services.v1.GetNodeStatusResponse\",\"ready\":true,\"finalizedSlot\":\"626231\",\"locallyExecutedSlot\":\"626231\",\"consensus\":{\"$typeName\":\"thru.services.v1.NodeConsensusStatus\",\"active\":true,\"mode\":1,\"frontier\":\"626232\"},\"repair\":{\"$typeName\":\"thru.services.v1.NodeRepairStatus\",\"active\":false}}\nRESULT chain.getChainInfo: SUPPORTED — {\"$typeName\":\"thru.services.v1.GetChainInfoResponse\",\"chainId\":2,\"minLockTime\":\"1791455224710327388\"}\nRESULT version.get: SUPPORTED — {\"components\":{\"thru-node-commit-date\":\"2026-09-30T14:45:31Z\",\"thru-node-commit\":\"a81ff4cbbce1a3fc1a80e01a3579a1cf21256522\",\"thru-node\":\"0.0.0-local+a81ff4cb.dirty\",\"thru-rpc\":\"sha-a81ff4c\"}}\nRESULT transactions.listForAccount(fresh throwaway — no history): SUPPORTED — 0 txns — EMPTY_RESULT (the query path serves; fresh account correctly has none)\nRESULT transactions.listForAccount(amm program) [Q18]: SUPPORTED — 1 txns touching taAMM…, hasNext=false\nRESULT events.list unfiltered page(5) [Q18]: SUPPORTED — 50 events, hasNext=true — first event types: {\"id\":\"ts2jLEjqNRpqXmqtVqkpT5VBaZFKUAvUHQ00_drKvI0PpwT_Rbgq5CCZgJa2QUCNSj04NZbt_ | {\"id\":\"ts2jLEjqNRpqXmqtVqkpT5VBaZFKUAvUHQ00_drKvI0PpwT_Rbgq5CCZgJa2QUCNSj04NZbt_ | {\"id\":\"tsTmDi9JWhAJ7GDFLoaTtcQlNV55ChFlOZBf7g4tqIJIuHl6UxUQZOyoy40-3Hee6GJaIzFbi | {\"id\":\"tsTmDi9JWhAJ7GDFLoaTtcQlNV55ChFlOZBf7g4tqIJIuHl6UxUQZOyoy40-3Hee6GJaIzFbi | {\"id\":\"tsZy9lOmYr8cYSBYC9dq51Qkt_ZrWFVya8DkR39Qu9LS53vhleTCsN2VQw6zO-E21O_6ogD2q\nRESULT transactions.getStatus: SKIPPED — pass --tx-sig <signature> for the definitive lookup test\nSemantics: SUPPORTED = the chain SERVES this query (empty result still counts where\nnoted); UNSUPPORTED = node rejects the primitive native-unsupported; ERROR = answered\nunreadably; only UNREACHABLE is a BLOCKED_ENV (exit 1)."
+      }
+    },
+    {
+      "id": "q18-amm-pool-discovery",
+      "status": "NEGATIVE",
+      "summary": "discovery substrate serves; 0 pool instances exist yet (mint-blocked) — honest absence verified",
+      "evidence": {
+        "exit": 0,
+        "tail": "--discovery over transactions touching taAMM… (FULL view, no filter fabricated)\nactivity: 1 transaction(s)\n  tx: program=[object Object] instructionIndex≟3 rw=4 ro=4\nRESULT amm-pool-discovery: 0 pool(s) verified on-node, 0 candidate account(s) rejected (0 pools is a RESULT: substrate serves, no pool exists yet — honest state today)"
+      }
+    }
+  ],
+  "finding": "transport-preflight: PASS — https://rpc.betanet.thru.org reachable p3-token-transfer: FAIL — probe exited 1 — first real-flow error to fix (see tail) q22-oracle-feed: NEGATIVE — no thru-usd oracle feed account on this chain (honest absence, recorded) q14-amm-program-presence: PASS — amm program taAMMx8gG44RcOyRq is deployed (account exists) — pool discovery becomes testable q20-program-map: PASS — every registry program address matched bootstrap and exists on-chain q15-amm-pool-model: PASS — amm program account read + official parser surface verified; pool-model parse awaits on-chain mints (P3-blocked) q9-query-surface: PASS — native tx-by-account query serves — Q9 history substrate is ON-NODE (see tail for Q18 amm-activity + events rows) q18-amm-pool-discovery: NEGATIVE — discovery substrate serves; 0 pool instances exist yet (mint-blocked) — honest absence verified",
+  "confidence": "per-check: PASS = observed on the live chain at dateUtc; NEGATIVE = verified absence at dateUtc (absence is not permanence — re-run after chain upgrades); BLOCKED_ENV records the host environment, not the chain"
+}

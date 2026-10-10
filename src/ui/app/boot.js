@@ -23,6 +23,7 @@ import { ResetRoute } from './routes/reset.js';
 import { SendRoute } from './routes/send.js';
 import { ReceiveRoute } from './routes/receive.js';
 import { FaucetRoute } from './routes/faucet.js';
+import { NameRoute } from './routes/name.js';
 import { HistoryRoute } from './routes/history.js';
 import { WelcomeRoute } from './routes/welcome.js';
 
@@ -107,6 +108,12 @@ export const POPUP_ROUTES = [
     view: HistoryRoute,
     guard: guards.requireUnlocked,
     title: 'History',
+  },
+  {
+    path: '/name',
+    view: NameRoute,
+    guard: guards.requireUnlocked,
+    title: 'Domain',
   },
   {
     // requireNoWallet: onboarding must bounce to the dashboard if a wallet already exists,

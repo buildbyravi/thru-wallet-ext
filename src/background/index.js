@@ -8,6 +8,7 @@ import { syncActionIcon } from './services/icon-service.js';
 import { emitLockStateChanged } from './services/event-service.js';
 import { CLOSE_SIDE_PANEL_ACTION } from '../shared/side-panel.js';
 import { getPreferences } from './services/preferences-service.js';
+import { openNotificationTx } from './services/history-service.js';
 
 const AUTO_LOCK_ALARM = 'thru-auto-lock';
 
@@ -117,3 +118,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 // protects sessions that predate activity tracking.
 syncActionIcon();
 ensureAutoLockAlarm();
+
+// Desktop notifications: clicking a settled-transaction notification opens the transaction
+// in the explorer of the network it settled on (history-service owns the parsing + honesty
+// about legacy ids and missing explorers). Best-effort by design.
+try {
+  chrome?.notifications?.onClicked?.addListener((notificationId) => {
+    void openNotificationTx(notificationId);
+  });
+} catch { /* notifications may be unavailable; never take down the worker */ }

@@ -9,7 +9,7 @@ Chrome MV3 self-custody wallet extension for the Thru native Layer 1. Thru is no
 ## Current state
 
 - Single popup route stack with 14 routes.
-- Contract version: 16 (81 methods).
+- Contract version: 18 (124 methods = 81 wallet-core + 43 DeFi M0 surface, all feature-gated off; machine schema in `src/shared/contract/defi-schema.js`, fixtures in `test/fixtures/defi/`).
 - Contract source: `src/shared/contract/manifest.js`.
 - API seam: UI calls `bridge.send(method, params)` only.
 - Background owns auth, signing, services, and RPC coordination.
@@ -21,7 +21,7 @@ Chrome MV3 self-custody wallet extension for the Thru native Layer 1. Thru is no
 - Token transfer and real registry-mint balances are implemented on the official `@thru/programs/token` bindings; token unit math is BigInt with mint-scaled decimals (`parseTokenAmount`/`formatTokenAmount` in `src/shared/format.js`); recipient token-account initialization rides as a preceding sender-signed transaction; the remaining live-chain questions (recipient-owner acceptance, token-program fee) are in `docs/BACKEND_GAPS.md` C1, with `scripts/verify-token-transfer.mjs` as the pending live probe.
 - Contract v7 quarantines custom networks in the background, not just Settings. `network.setActive` accepts enabled built-ins only; a saved custom id returns permanent `CUSTOM_NETWORK_DISABLED`, and a stale custom/disabled active id self-heals to Betanet before `configureNetwork()`. Legacy records remain listable/removable and render as inert rows. `network.upsertCustom` stays in the contract with no UI caller. Do not re-enable custom endpoints without all four preconditions in `docs/STATUS_AND_ROADMAP.md` Step 2b.
 - Betanet is the enabled network (Localnet, Testnet and Mainnet are declared but disabled). Thru packages are exact-pinned (`@thru/sdk`/`@thru/programs` 0.4.1) and derivation vectors are verified against that pin.
-- Package `1.4.1` is live in the Chrome Web Store (listed 2026-10-04, verified on the live page) on automated evidence alone; no real-browser verification of the store package is recorded. `docs/MANUAL_SMOKE_CHECKLIST.md` is the top open item.
+- Package `1.4.1` is live in the Chrome Web Store (listed 2026-10-04, verified on the live page) on automated evidence alone; no real-browser verification of the store package is recorded, and the package predates the same-day fee-provenance/dead-code source fixes. A first partial real-Chrome run on current source is recorded (2026-10-04, popup-only native Betanet send to the tester's own account — the `/send` popup cell is ticked; charged fee not captured; run record in `docs/MANUAL_SMOKE_CHECKLIST.md` §7). The rest of `docs/MANUAL_SMOKE_CHECKLIST.md` remains the top open item.
 - The side panel is opened by an explicit Dashboard control that calls `chrome.sidePanel.open({ windowId })`; Settings carries a separate explicit Side Panel Mode opt-in. Nothing else may call `chrome.sidePanel.setPanelBehavior`.
 
 ## Read first

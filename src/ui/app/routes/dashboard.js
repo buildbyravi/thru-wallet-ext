@@ -235,18 +235,35 @@ export function DashboardRoute({ navigate }) {
     label: 'Faucet',
     onClick: () => navigate('/faucet'),
   }));
+  // Hidden until applyNetworkCapabilities (called from load() with the live record) proves
+  // this network actually declares a faucet — see the mainnet-readiness note there.
+  faucetTile.el.style.display = 'none';
+
+  // Domain (primary-name UX slice, 2026-10-09): a first-class tile like Send/Receive/History
+  // — the screen proves name ownership on-chain and pins it wallet-side; nothing signs.
+  const nameTile = track(PanelItem({
+    iconName: 'globe',
+    label: 'Domain',
+    onClick: () => navigate('/name'),
+  }));
 
   const actionPanel = h('div', { class: 'dashboard-panel-grid' }, [
     sendTile.el,
     receiveTile.el,
     swapTile.el,
     historyTile.el,
+    nameTile.el,
     securityTile.el,
     faucetTile.el,
   ]);
 
   function applyNetworkCapabilities(network) {
     const faucetAvailable = Boolean(network?.faucetProgramId && network?.faucetStateAccount);
+    // Mainnet-readiness (2026-10-09): a network without a faucet HIDES the tile entirely —
+    // no affordance, no "unavailable" explanation needed — and until the network record has
+    // loaded the tile stays hidden, so a first paint can never flash a clickable faucet at
+    // a faucet-less chain. The disabled state stays as a complement for edge races.
+    faucetTile.el.style.display = faucetAvailable ? '' : 'none';
     faucetTile.el.disabled = !faucetAvailable;
     faucetTile.el.title = faucetAvailable ? 'Faucet' : 'Faucet unavailable on this network';
   }

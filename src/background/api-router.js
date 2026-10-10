@@ -26,21 +26,49 @@ import * as preferencesService from './services/preferences-service.js';
 import * as balanceService from './services/balance-service.js';
 import * as pendingTxService from './services/pending-tx-service.js';
 import * as historyService from './services/history-service.js';
+import * as programService from './services/program-service.js';
+import * as feedService from './services/feed-service.js';
+import * as marketService from './services/market-service.js';
+import * as riskService from './services/risk-service.js';
+import * as intentService from './services/intent-service.js';
+import * as nameService from './services/name-service.js';
+import * as primaryNameService from './services/primary-name-service.js';
+import * as registrarService from './services/registrar-service.js';
+import * as desktopService from './services/desktop-service.js';
+import { dexHandlers } from './features/dex/dex-handlers.js';
+import { launchpadHandlers } from './features/launchpad/launchpad-handlers.js';
 import { isKnownMethod, getMethodSpec, CONTRACT_VERSION } from '../shared/contract/manifest.js';
+import { isDefiMethod, validateDefiParams } from '../shared/contract/defi-schema.js';
 import { beginSigningOperation } from './services/signing-guard.js';
 
 // Every operation in this set can build/sign/submit a transaction. The guard starts at the
 // application boundary, before a handler reads the active account/network, and prevents a second
 // extension page from rebinding the singleton Thru adapter until the operation settles.
+// intent.submit is the ONLY DeFi method in this class (DEFI-03): prepares build transactions
+// but never sign, so they stay ordinary unlocked calls.
 const TRANSACTION_METHODS = new Set([
   'tx.claimFaucet', 'tx.sendChecked', 'tx.autoCreateAccount', 'tx.registerAccount',
   'token.deploy', 'token.transferChecked',
+  'intent.submit',
 ]);
 
 // Methods the UI polls on its own schedule (background sync of pending tx state). A call to
 // one of these is NOT user activity and must not refresh the auto-lock idle stamp — see the
-// stamp comment in handleApiRequest.
-const SYNC_READ_METHODS = new Set(['tx.getPending', 'tx.reconcilePending']);
+// stamp comment in handleApiRequest. The DeFi READ group is registered here too (S13): every
+// read a DeFi screen would poll is a sync read, and none of them may keep a session alive.
+const SYNC_READ_METHODS = new Set([
+  'tx.getPending', 'tx.reconcilePending',
+  'program.capabilities', 'program.list',
+  'feed.status', 'feed.lookup',
+  'market.assetGet', 'market.assetSearch', 'market.snapshot',
+  'market.candles', 'market.trades', 'market.holders',
+  'risk.assetAssess',
+  'launchpad.list', 'launchpad.get', 'launchpad.templates', 'launchpad.listMine',
+  'dex.listPools', 'dex.getPool', 'dex.positions',
+  'intent.list', 'intent.get',
+  'name.lookup', 'name.checkAvailability',
+  'name.getRegistry', 'name.checkLease', 'name.getPaymentBalance',
+]);
 
 const handlers = Object.assign(Object.create(null), {
   // ---- System ------------------------------------------------------------
@@ -144,6 +172,28 @@ const handlers = Object.assign(Object.create(null), {
   // ---- Transactions and RPC --------------------------------------------
   'tx.getAccountInfo': ({ address }) => txService.getAccountInfo(address),
   'tx.claimFaucet': ({ amountUnits }) => txService.claimFaucet(amountUnits),
+  // ---- Name service (v19). Reads are always-on; writes are gated in the service layer
+  // (FLAGS.NAME_SERVICE + live-probe verification) and can only ever act under a parent the
+  // signer owns — the self-signing invariant rules out sponsored/foreign-authority flows.
+  'name.lookup': (params) => nameService.lookupName(params),
+  'name.checkAvailability': (params) => nameService.checkAvailability(params),
+  'name.initRoot': (params) => nameService.initRoot(params),
+  'name.register': (params) => nameService.registerName(params),
+  'name.setRecord': (params) => nameService.setRecord(params),
+  // v21 primary-name UX slice: get re-verifies the stored record against the chain (one live
+  // read per call; a broken ownership record is dropped honestly, an unreadable node keeps the
+  // last verified record rather than flapping it).
+  'name.getPrimary': () => primaryNameService.verifyPrimaryName({}),
+  'name.linkPrimary': (params) => primaryNameService.linkPrimaryName(params),
+  'name.unlinkPrimary': () => primaryNameService.unlinkPrimaryName({}),
+  // v22 official `.thru` registrar (first-party formats): reads are parse-proofed honesty,
+  // writes are self-signed (signer = fee payer) registrar program calls at fee 0n.
+  'name.getRegistry': () => registrarService.getRegistry(),
+  'name.checkLease': (params) => registrarService.checkLease(params),
+  'name.getPaymentBalance': () => registrarService.getPaymentBalance(),
+  'name.purchase': (params) => registrarService.purchaseDomain(params),
+  'name.renewLease': (params) => registrarService.renewLease(params),
+  'name.claimExpired': (params) => registrarService.claimExpiredDomain(params),
   'tx.sendChecked': (params) => txService.sendTransferChecked(params),
   'tx.listHistory': ({ address, pageSize, limit, cursor } = {}) => (
     limit !== undefined || cursor !== undefined
@@ -197,11 +247,65 @@ const handlers = Object.assign(Object.create(null), {
   'network.list': async () => (await networkService.getAvailableNetworks()).map(networkService.toPublicNetwork),
   'network.upsertCustom': (params) => networkService.upsertCustomNetwork(params),
   'network.removeCustom': ({ networkId }) => networkService.removeCustomNetwork(networkId),
+
+  // ---- DeFi surface (contract v17/v18, M0 contract-first drop) ------------
+  // Everything here answers from the evidence-pinned capability snapshot or refuses honestly:
+  // { supported:false, reason } for capability-shaped reads, FEATURE_DISABLED for everything
+  // else. There is no chain math, no cache, and no store behind this surface yet — that is
+  // the point of M0. See src/shared/contract/defi-schema.js for gates and test/test-defi-m0.mjs
+  // for the proof that every one of these refuses when it must.
+  //
+  // program.* / feed.* are the always-on discovery reads (callable while locked): the frontend
+  // builds its unsupported-state screens from them.
+  'program.capabilities': ({ networkId } = {}) => programService.getCapabilities({ networkId }),
+  'program.list': ({ networkId } = {}) => programService.listPrograms({ networkId }),
+  'feed.status': ({ networkId } = {}) => feedService.getFeedStatus({ networkId }),
+  'feed.lookup': ({ ids } = {}) => feedService.lookupFeeds({ ids }),
+
+  // Market + risk reads (capability-gated).
+  'market.assetGet': ({ assetId } = {}) => marketService.getAsset({ assetId }),
+  'market.assetSearch': ({ query, limit } = {}) => marketService.searchAssets({ query, limit }),
+  'market.snapshot': ({ assetIds } = {}) => marketService.getSnapshots({ assetIds }),
+  'market.candles': ({ assetId, poolId, interval, range } = {}) => marketService.getCandles({ assetId, poolId, interval, range }),
+  'market.trades': ({ assetId, poolId, cursor, limit } = {}) => marketService.getTrades({ assetId, poolId, cursor, limit }),
+  'market.holders': ({ assetId, cursor, limit } = {}) => marketService.getHolders({ assetId, cursor, limit }),
+  'market.watchlistGet': () => marketService.watchlistGet(),
+  'market.watchlistAdd': ({ assetId } = {}) => marketService.watchlistAdd({ assetId }),
+  'market.watchlistRemove': ({ assetId } = {}) => marketService.watchlistRemove({ assetId }),
+  'risk.assetAssess': ({ assetId } = {}) => riskService.assessAsset({ assetId }),
+
+  // Intent pipeline (R reads / P lifecycle / X submit — submit is auth:'signing' above).
+  'intent.list': ({ status } = {}) => intentService.listIntents({ status }),
+  'intent.get': ({ intentId } = {}) => intentService.getIntent({ intentId }),
+  'intent.prepareSend': (params = {}) => intentService.prepareSend(params),
+  'intent.rePrepare': ({ intentId } = {}) => intentService.rePrepareIntent({ intentId }),
+  'intent.resume': ({ intentId } = {}) => intentService.resumeIntent({ intentId }),
+  'intent.discard': ({ intentId } = {}) => intentService.discardIntent({ intentId }),
+  'intent.stopWaiting': ({ intentId } = {}) => intentService.stopWaitingIntent({ intentId }),
+  'intent.submit': (params = {}) => intentService.submitIntent(params),
+
+  // Desktop routing (local; no Desktop page exists in this build).
+  'desktop.open': ({ page, args } = {}) => desktopService.openDesktop({ page, args }),
+
+  // Feature modules keep their own handler maps (docs/MODULE_BOUNDARIES.md): this file stays
+  // the one integration point and the feature directories never import each other.
+  ...dexHandlers,
+  ...launchpadHandlers,
 });
 
 /** Method names the router actually implements. Used by test-contract.mjs. */
 export function listHandlerNames() {
   return Object.keys(handlers);
+}
+
+/** @param {string} method — true when the method is a signing-guard lifecycle transaction. */
+export function isTransactionMethod(method) {
+  return TRANSACTION_METHODS.has(method);
+}
+
+/** @param {string} method — true when the method is a registered sync/poll read (no activity stamp). */
+export function isSyncReadMethod(method) {
+  return SYNC_READ_METHODS.has(method);
 }
 
 /**
@@ -263,7 +367,7 @@ async function verifyPasswordParam(params, message = 'This action needs your pas
   return null;
 }
 
-async function checkAuth(spec, params) {
+async function checkAuth(spec, params, method) {
   if (spec.auth === 'unlocked' || spec.auth === 'password' || spec.auth === 'signing') {
     const unlocked = await walletService.isUnlocked();
     if (!unlocked) {
@@ -275,7 +379,11 @@ async function checkAuth(spec, params) {
   }
   if (spec.auth === 'signing') {
     const prefs = await preferencesService.getPreferences();
-    if (prefs.requirePasswordForSigning !== false) {
+    // defiAlwaysRequirePassword is the no-bypass DeFi re-auth switch: it can force password
+    // verification for DeFi signing methods even when the wallet-wide signing opt-in is off.
+    const defiForced = typeof method === 'string' && isDefiMethod(method)
+      && prefs.defiAlwaysRequirePassword === true;
+    if (prefs.requirePasswordForSigning !== false || defiForced) {
       return verifyPasswordParam(params, 'Signing needs your password.');
     }
   }
@@ -300,13 +408,21 @@ export async function handleApiRequest(request) {
   if (params === null || typeof params !== 'object' || Array.isArray(params)) {
     return fail('INVALID_REQUEST', 'Params must be an object.');
   }
+  if (isDefiMethod(method)) {
+    // DeFi params are schema-validated at the seam, before auth runs and before any service is
+    // touched (S3/B12): a malformed or mistyped request can never reach a service.
+    const issues = validateDefiParams(method, params);
+    if (issues.length) {
+      return fail('INVALID_INPUT', issues.join(' '));
+    }
+  }
   if (!Object.prototype.hasOwnProperty.call(handlers, method)) {
     // In the contract but not wired up. test-contract.mjs makes this unreachable in CI.
     return fail('UNKNOWN_METHOD', `Method '${method}' is declared but not implemented.`);
   }
 
   const spec = getMethodSpec(method);
-  const authError = await checkAuth(spec, params);
+  const authError = await checkAuth(spec, params, method);
   if (authError) return authError;
 
   const releaseSigningOperation = TRANSACTION_METHODS.has(method) ? beginSigningOperation() : null;
