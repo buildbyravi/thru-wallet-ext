@@ -1604,8 +1604,8 @@ form > .btn.text {
 
 /* ---- Dashboard ecosystem services grid (2026-10-24 owner directive) --------- */
 /* Same classes (.dashboard-panel-grid + .panel-item) => tiles are the EXACT same size
-   as Send/Receive; only the spacing between the two grids is new. Entries planned here:
-   Domain (live), later liquidity, launchpad, DEX — each rows up in this grid. */
+   as Send/Receive. Owner review: NO gap between the grids — tiles must look like one
+   continuous panel; the 1px hairline matches the grid's own `gap: 1px` seam. */
 .dashboard-services-grid {
-  margin-top: var(--sp-3, 12px);
+  margin-top: 1px;
 }
