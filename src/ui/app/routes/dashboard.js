@@ -254,13 +254,20 @@ export function DashboardRoute({ navigate }) {
     faucetTile.el,
   ]);
 
-  // Owner directive 2026-10-24: register entry point as a BUTTON below the grid (not a
-  // 7th tile — the grid stays exactly like main). Opens /name: ENS-style search +
-  // background availability check + years stepper + register/renew/claim.
-  const nameEntryBtn = track(h('button', {
-    type: 'button', class: 'btn secondary dashboard-name-entry',
-  }, [icon('globe', 14), h('span', { text: ' Register a .thru name' })]));
-  d.on(nameEntryBtn, 'click', () => navigate('/name'));
+  // Owner directive 2026-10-24: a SECOND grid below the main panel for ecosystem
+  // entries — tiles identical in size to Send/Receive (same .panel-item class, same
+  // 3-column grid). First entry: Domain (/name — ENS-style search/register). More are
+  // planned here (liquidity, launchpad, DEX…). The main 6-tile grid above stays
+  // byte-identical to main 14e16b1.
+  const nameTile = track(PanelItem({
+    iconName: 'globe',
+    label: 'Domain',
+    onClick: () => navigate('/name'),
+  }));
+
+  const servicesPanel = h('div', { class: 'dashboard-panel-grid dashboard-services-grid' }, [
+    nameTile.el,
+  ]);
 
   function applyNetworkCapabilities(network) {
     const faucetAvailable = Boolean(network?.faucetProgramId && network?.faucetStateAccount);
@@ -498,7 +505,7 @@ export function DashboardRoute({ navigate }) {
     dashHeader,
     banner.el,
     actionPanel,
-    nameEntryBtn,
+    servicesPanel,
   ]);
 
   load();

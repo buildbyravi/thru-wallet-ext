@@ -1,8 +1,8 @@
 // Domain route — the wallet's primary-name screen (2026-10-09, owner-directed UX slice).
 //
-// A first-class screen on the /name route — opened from the dashboard's
-// "Register a .thru name" button below the tile grid (added 2026-10-24 by owner directive;
-// the grid itself stays 6-tile main-identical — the earlier 7th tile was removed 10-23).
+// A first-class screen on the /name route — opened from the dashboard's Domain tile in
+// the ecosystem services grid BELOW the main 6-tile grid (2026-10-24 owner directive;
+// same tile size as Send/Receive; main grid stays byte-identical to main 14e16b1).
 // In the same family as Send/Receive/History screens. What it does:
 //   - shows the verified primary name for the active account on the active network
 //     (re-verified against the chain on every mount by the backend)

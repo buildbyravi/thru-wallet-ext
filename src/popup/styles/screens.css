@@ -1602,11 +1602,10 @@ form > .btn.text {
   gap: 8px;
 }
 
-/* ---- Dashboard name-register entry (2026-10-24 owner directive) ------------ */
-/* A BUTTON under the tile grid — the grid itself stays main-identical (6 tiles). */
-.dashboard-name-entry {
-  width: 100%;
-  min-height: 44px;
-  gap: 8px;
-  justify-content: center;
+/* ---- Dashboard ecosystem services grid (2026-10-24 owner directive) --------- */
+/* Same classes (.dashboard-panel-grid + .panel-item) => tiles are the EXACT same size
+   as Send/Receive; only the spacing between the two grids is new. Entries planned here:
+   Domain (live), later liquidity, launchpad, DEX — each rows up in this grid. */
+.dashboard-services-grid {
+  margin-top: var(--sp-3, 12px);
 }

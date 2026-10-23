@@ -58,10 +58,16 @@ for (const name of ['sendTile', 'receiveTile', 'swapTile', 'historyTile', 'secur
   if (!dashboard.includes(`const ${name} = track(PanelItem({`)) fail(`dashboard.js: ${name} is not a PanelItem — tile parity lost`);
 }
 if (!errors) ok('all six dashboard tiles (incl. Faucet) are the same PanelItem component');
-const gridMatch = dashboard.match(/dashboard-panel-grid'\s*\}\s*,\s*\[([^\]]*)\]/s);
-const gridTiles = gridMatch ? (gridMatch[1].match(/\w+Tile\.el/g) || []) : [];
-if (gridTiles.length !== 6) fail(`dashboard grid must hold main's exactly 6 tiles — found ${gridTiles.length} (${gridTiles.join(', ')})`);
-else ok(`grid composition is main's exact 6 tiles: ${gridTiles.join(', ')}`);
+const grids = [...dashboard.matchAll(/dashboard-panel-grid([\w\s-]*)'\s*\}\s*,\s*\[([^\]]*)\]/gs)];
+if (grids.length !== 2) fail(`expected exactly 2 dashboard grids (main + services) — found ${grids.length}`);
+const gridTiles = grids[0] ? (grids[0][2].match(/\w+Tile\.el/g) || []) : [];
+if (gridTiles.length !== 6) fail(`main grid must hold main's exactly 6 tiles — found ${gridTiles.length} (${gridTiles.join(', ')})`);
+else ok(`main grid composition is main's exact 6 tiles: ${gridTiles.join(', ')}`);
+const svcCls = grids[1]?.[1] ?? '';
+const svcTiles = grids[1] ? (grids[1][2].match(/\w+Tile\.el/g) || []) : [];
+if (!svcCls.includes('dashboard-services-grid')) fail('second grid must carry `.dashboard-services-grid` (documented ecosystem rows)');
+if (svcTiles.length < 1) fail('services grid has no tiles — at least Domain must be present (owner directive 2026-10-24)');
+if (grids.length === 2 && svcCls.includes('dashboard-services-grid') && svcTiles.length > 0) ok(`services grid reuse: ${svcTiles.join(', ')} — same PanelItem/size class as Send`);
 const tileStyles = [...dashboard.matchAll(/\w+Tile\.el\.style\.(\w+)/g)].map((m) => m[1]);
 const badStyles = tileStyles.filter((prop) => prop !== 'display');
 if (badStyles.length) fail(`inline style on a tile element that is not display: ${badStyles.join(', ')}`);
