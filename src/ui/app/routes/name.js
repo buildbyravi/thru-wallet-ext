@@ -1,7 +1,8 @@
 // Domain route — the wallet's primary-name screen (2026-10-09, owner-directed UX slice).
 //
-// A first-class screen behind the dashboard's Domain tile, in the same family as
-// Send/Receive/History. What it does:
+// A first-class screen on the /name route (route registered in boot.js; deep-link only —
+// the dashboard tile was removed 2026-10-23 by owner directive, grid must look like main).
+// In the same family as Send/Receive/History screens. What it does:
 //   - shows the verified primary name for the active account on the active network
 //     (re-verified against the chain on every mount by the backend)
 //   - lets you LINK a name you own: root registrar is auto-discovered from proven

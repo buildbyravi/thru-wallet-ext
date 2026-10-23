@@ -17,9 +17,8 @@
 //      (88px cells, 1px hairline gap; every tile identical, faucet included;
 //      enforced by scripts/check-panel-tiles.mjs), hover blue.
 //      - Row 1: Send (/send), Receive (/receive), Swap (disabled/roadmap).
-//      - Row 2: History (/history, with badge count), Domain (/name), Security.
-//      - Row 3: Faucet (/faucet) — only on networks that actually declare a faucet
-//        (hidden otherwise); when shown it is a normal square tile like the rest.
+//      - Row 2: History (/history, with badge count), Security/Approvals, Faucet (/faucet)
+//        — faucet hidden entirely on networks that declare no faucet.
 //   3. Token drawer (Rabby balance-card → asset-list popup):
 //      - The TOKEN LIST lives in the drawer (src/ui/domain/token-drawer.js), opened from
 //        the balance box — "click anywhere in the box". There is NO separate Tokens
@@ -242,20 +241,15 @@ export function DashboardRoute({ navigate }) {
   // this network actually declares a faucet — see the mainnet-readiness note there.
   faucetTile.el.style.display = 'none';
 
-  // Domain (primary-name UX slice, 2026-10-09): a first-class tile like Send/Receive/History
-  // — the screen proves name ownership on-chain and pins it wallet-side; nothing signs.
-  const nameTile = track(PanelItem({
-    iconName: 'globe',
-    label: 'Domain',
-    onClick: () => navigate('/name'),
-  }));
-
+  // Owner directive 2026-10-23: the dashboard grid must render EXACTLY like main's
+  // 14e16b1 — 2 rows x 3 tiles, Faucet in row 2. The Domain screen stays fully built
+  // at /name (route registered in boot.js) but has NO dashboard tile: a 7th tile left a
+  // 1-item orphan row above and was judged bad-looking.
   const actionPanel = h('div', { class: 'dashboard-panel-grid' }, [
     sendTile.el,
     receiveTile.el,
     swapTile.el,
     historyTile.el,
-    nameTile.el,
     securityTile.el,
     faucetTile.el,
   ]);

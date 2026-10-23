@@ -1,7 +1,10 @@
 #!/usr/bin/env node
-// Guard: dashboard panel tiles are one uniform geometry — Send, Receive, and the Faucet
-// tile are the SAME component with the SAME class and the SAME size: main's exact 88px
-// cell (14e16b1), no per-tile divergence.
+// Guard: dashboard panel tiles are one uniform geometry — main's exact composition
+// (6 tiles / 2 rows / 3 columns, Faucet in row 2 col 3 as on 14e16b1) with each tile the
+// SAME component, SAME class, SAME size (88px cell). Owner directive 2026-10-23: the
+// dashboard must render exactly like main; the 7th "Domain" tile was removed because it
+// left a 1-item orphan row (owner: looks bad). The /name route remains registered —
+// the screen works via deep link — but has no tile.
 //
 // Why: 2026-10-09→23 the faucet tile visually diverged three times while everything still
 // shipped green — once as a full-width 48px bar (last-child nth-child 3n+1 rule), then as
@@ -41,8 +44,8 @@ if (!panelBlock) {
 }
 
 // 2. No descendant override may re-shape individual tiles (the retired
-//    "7th tile spans the full row as a 48px bar" treatment is the exact pattern being
-//    guarded against: per-tile geometry belongs to .panel-item alone).
+//    "7th tile spans the full row as a 48px bar" or the 7-tile orphan-row layout are the
+//    exact patterns guarded against: per-tile geometry and the 6-tile grid are fixed).
 if (/\.dashboard-panel-grid\s+\.panel-item/.test(css)) {
   fail('a `.dashboard-panel-grid .panel-item …` override exists — per-tile sizing divergence made possible again');
 } else {
@@ -51,10 +54,14 @@ if (/\.dashboard-panel-grid\s+\.panel-item/.test(css)) {
 
 // 3. Every grid tile (incl. Faucet) is the same component, and only `display` may be
 //    touched inline on a tile element — width/height/font-size overrides would break parity.
-for (const name of ['sendTile', 'receiveTile', 'swapTile', 'historyTile', 'nameTile', 'securityTile', 'faucetTile']) {
+for (const name of ['sendTile', 'receiveTile', 'swapTile', 'historyTile', 'securityTile', 'faucetTile']) {
   if (!dashboard.includes(`const ${name} = track(PanelItem({`)) fail(`dashboard.js: ${name} is not a PanelItem — tile parity lost`);
 }
-if (!errors) ok('all seven dashboard tiles (incl. Faucet) are the same PanelItem component');
+if (!errors) ok('all six dashboard tiles (incl. Faucet) are the same PanelItem component');
+const gridMatch = dashboard.match(/dashboard-panel-grid'\s*\}\s*,\s*\[([^\]]*)\]/s);
+const gridTiles = gridMatch ? (gridMatch[1].match(/\w+Tile\.el/g) || []) : [];
+if (gridTiles.length !== 6) fail(`dashboard grid must hold main's exactly 6 tiles — found ${gridTiles.length} (${gridTiles.join(', ')})`);
+else ok(`grid composition is main's exact 6 tiles: ${gridTiles.join(', ')}`);
 const tileStyles = [...dashboard.matchAll(/\w+Tile\.el\.style\.(\w+)/g)].map((m) => m[1]);
 const badStyles = tileStyles.filter((prop) => prop !== 'display');
 if (badStyles.length) fail(`inline style on a tile element that is not display: ${badStyles.join(', ')}`);
