@@ -1,0 +1,57 @@
+{
+  "id": "2026-10-23-live-chain",
+  "kind": "live-chain",
+  "network": "betanet",
+  "dateUtc": "2026-10-23",
+  "tool": "node scripts/live-betanet-verify.mjs (node v22.22.3; @thru/sdk 0.4.2); rpc https://rpc.betanet.thru.org",
+  "refs": [
+    "scripts/verify-token-transfer.mjs",
+    "scripts/probe-oracle-feed.mjs",
+    "src/background/services/defi/capability-snapshot.js",
+    "@thru/programs/bootstrap-addresses"
+  ],
+  "checks": [
+    {
+      "id": "transport-preflight",
+      "status": "BLOCKED_ENV",
+      "summary": "cannot reach https://rpc.betanet.thru.org from this host (ConnectError: [unknown] fetch failed) — nothing verified, nothing fabricated"
+    },
+    {
+      "id": "p3-token-transfer",
+      "status": "BLOCKED_ENV",
+      "summary": "skipped — transport preflight failed"
+    },
+    {
+      "id": "q22-oracle-feed",
+      "status": "BLOCKED_ENV",
+      "summary": "skipped — transport preflight failed"
+    },
+    {
+      "id": "q14-amm-program-presence",
+      "status": "BLOCKED_ENV",
+      "summary": "skipped — transport preflight failed"
+    },
+    {
+      "id": "q20-program-map",
+      "status": "BLOCKED_ENV",
+      "summary": "skipped — transport preflight failed"
+    },
+    {
+      "id": "q15-amm-pool-model",
+      "status": "BLOCKED_ENV",
+      "summary": "skipped — transport preflight failed"
+    },
+    {
+      "id": "q9-query-surface",
+      "status": "BLOCKED_ENV",
+      "summary": "skipped — transport preflight failed"
+    },
+    {
+      "id": "q18-amm-pool-discovery",
+      "status": "BLOCKED_ENV",
+      "summary": "skipped — transport preflight failed"
+    }
+  ],
+  "finding": "transport-preflight: BLOCKED_ENV — cannot reach https://rpc.betanet.thru.org from this host (ConnectError: [unknown] fetch failed) — nothing verified, nothing fabricated p3-token-transfer: BLOCKED_ENV — skipped — transport preflight failed q22-oracle-feed: BLOCKED_ENV — skipped — transport preflight failed q14-amm-program-presence: BLOCKED_ENV — skipped — transport preflight failed q20-program-map: BLOCKED_ENV — skipped — transport preflight failed q15-amm-pool-model: BLOCKED_ENV — skipped — transport preflight failed q9-query-surface: BLOCKED_ENV — skipped — transport preflight failed q18-amm-pool-discovery: BLOCKED_ENV — skipped — transport preflight failed",
+  "confidence": "per-check: PASS = observed on the live chain at dateUtc; NEGATIVE = verified absence at dateUtc (absence is not permanence — re-run after chain upgrades); BLOCKED_ENV records the host environment, not the chain"
+}

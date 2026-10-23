@@ -29,8 +29,8 @@
   },
   "homepage": "https://thruwallet.vercel.app",
   "dependencies": {
-    "@thru/programs": "0.4.1",
-    "@thru/sdk": "0.4.1"
+    "@thru/programs": "0.4.2",
+    "@thru/sdk": "0.4.2"
   },
   "devDependencies": {
     "esbuild": "0.28.1"
