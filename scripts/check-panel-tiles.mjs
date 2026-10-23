@@ -1,14 +1,17 @@
 #!/usr/bin/env node
 // Guard: dashboard panel tiles are one uniform geometry — Send, Receive, and the Faucet
-// tile are the SAME component with the SAME class and the SAME square size.
+// tile are the SAME component with the SAME class and the SAME size: main's exact 88px
+// cell (14e16b1), no per-tile divergence.
 //
-// Why: 2026-10-09→10 the faucet tile visually diverged twice while everything still
-// shipped green — once as a full-width 48px bar (last-child nth-child 3n+1 rule) and once
-// from the fixed 88px cell-era sizing. Owner directive 2026-10-10: faucet must match the
-// Send/Receive tiles exactly. A browser screenshot is the real proof (manual smoke
-// checklist, /dashboard row); this static guard makes the regression structurally loud in
-// CI: the square rule cannot be deleted without a failing test, and no code path may
-// re-introduce a tile-by-tile size override.
+// Why: 2026-10-09→23 the faucet tile visually diverged three times while everything still
+// shipped green — once as a full-width 48px bar (last-child nth-child 3n+1 rule), then as
+// an aspect-ratio square that grew every tile ~119px tall at popup width (a big visual
+// change from main the owner flagged as bad), then it was restored to 88px. Owner
+// directive 2026-10-23: faucet matches Send/Receive exactly, dashboard stays faithful to
+// main. A browser screenshot is the real proof (manual smoke checklist, /dashboard row);
+// this static guard makes the regression structurally loud in CI: the 88px parity rule
+// cannot be deleted without a failing test, and no code path may re-introduce a
+// tile-by-tile size override.
 //
 // Usage: node scripts/check-panel-tiles.mjs
 
@@ -24,16 +27,17 @@ let errors = 0;
 const fail = (msg) => { console.error(`FAIL: ${msg}`); errors += 1; };
 const ok = (msg) => console.log(`  ok - ${msg}`);
 
-// 1. The square rule itself: .panel-item must be width/aspect-ratio sized, not a fixed
-//    pixel height (the 88px rectangle era) — and squareness must be declared on it.
+// 1. The parity rule itself: .panel-item must be main's exact geometry — fixed 88px
+//    height, width 100%, and NO aspect-ratio (the square experiment stretched every tile
+//    to ~119px at popup width — exactly the dashboard bloat the owner flagged).
 const panelBlock = css.match(/^\.panel-item\s*\{([^}]*)\}/m);
 if (!panelBlock) {
   fail('screens.css: no `.panel-item { … }` rule found — tiles would render unstyled');
 } else {
-  if (!panelBlock[1].includes('aspect-ratio: 1 / 1')) fail('.panel-item does not declare `aspect-ratio: 1 / 1` — tiles are not guaranteed square');
-  if (/height:\s*\d/.test(panelBlock[1])) fail('.panel-item declares a fixed pixel height again — squareness breaks the moment content or column width changes');
-  if (!/width:\s*100%/.test(panelBlock[1])) fail('.panel-item no longer fills its grid column (width: 100%) — square base is unstable');
-  if (!errors) ok('.panel-item is square by aspect-ratio with no fixed pixel height');
+  if (!panelBlock[1].includes('height: 88px')) fail('.panel-item lost main\'s `height: 88px` — tile geometry diverged from main');
+  if (/aspect-ratio\s*:/.test(panelBlock[1])) fail('.panel-item declares aspect-ratio again — that was the 2026-10-23 regression (tiles balloon to ~119px at popup width)');
+  if (!/width:\s*100%/.test(panelBlock[1])) fail('.panel-item no longer fills its grid column (width: 100%)');
+  if (!errors) ok('.panel-item keeps main\'s exact 88px geometry (no aspect-ratio)');
 }
 
 // 2. No descendant override may re-shape individual tiles (the retired
@@ -65,4 +69,4 @@ if (errors) {
   console.error(`\npanel-tile geometry parity: ${errors} violation(s)`);
   process.exit(1);
 }
-console.log('\nPanel-tile geometry parity checks passed: Faucet === Send === Receive (same class, same square rule).');
+console.log('\nPanel-tile geometry parity checks passed: Faucet === Send === Receive (same class, main\'s exact 88px geometry).');

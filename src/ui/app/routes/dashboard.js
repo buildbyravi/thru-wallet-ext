@@ -13,9 +13,9 @@
 //        No 24h delta line — this wallet has no market-data source, so a delta would be
 //        fabricated.
 //      - '1 pending' badge in header when pending transactions exist.
-//   2. 3-column Action Panel (.dashboard-panel-grid) of true square tiles
-//      (aspect-ratio 1/1 — every tile identical geometry, faucet included;
-//      enforced by scripts/check-panel-tiles.mjs), 1px hairline gap, hover blue.
+//   2. 3-column Action Panel (.dashboard-panel-grid) — main's exact geometry
+//      (88px cells, 1px hairline gap; every tile identical, faucet included;
+//      enforced by scripts/check-panel-tiles.mjs), hover blue.
 //      - Row 1: Send (/send), Receive (/receive), Swap (disabled/roadmap).
 //      - Row 2: History (/history, with badge count), Domain (/name), Security.
 //      - Row 3: Faucet (/faucet) — only on networks that actually declare a faucet

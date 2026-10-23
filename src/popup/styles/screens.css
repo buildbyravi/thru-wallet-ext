@@ -423,14 +423,14 @@ form > .btn.text {
   box-sizing: border-box;
 }
 
-/* True square tiles (owner-directed 2026-10-10): every panel item — including the
-   faucet utility tile — matches the Send tile; aspect-ratio enforces squareness
-   across content variations instead of the earlier fixed-height estimate. An
-   orphan last tile (7th) just sits in the next grid cell like the others. */
+/* Tile parity (owner-directed 2026-10-23): every panel item — including the faucet
+   utility tile — uses main's exact 88px geometry, period. No aspect-ratio squares
+   (those grew each tile to ~119px tall at popup width: a big visual change from
+   main), and no per-tile overrides (the 2026-10-10 full-width faucet bar is gone);
+   scripts/check-panel-tiles.mjs fails the suite if parity or this geometry breaks. */
 .panel-item {
   position: relative;
-  height: auto;
-  aspect-ratio: 1 / 1;
+  height: 88px;
   width: 100%;
   /* var(--surface-1), not a hard-coded white: in dark theme the cells must follow the
      theme or the --title label/icon (near-white in dark) paints onto a white cell. */
