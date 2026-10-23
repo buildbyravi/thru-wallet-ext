@@ -13,10 +13,13 @@
 //        No 24h delta line — this wallet has no market-data source, so a delta would be
 //        fabricated.
 //      - '1 pending' badge in header when pending transactions exist.
-//   2. 3x2 Action Panel (.dashboard-panel-grid):
-//      - 3 columns, 1px hairline gap, 88px cell height, pure white cells, hover #FDF0F1.
+//   2. 3-column Action Panel (.dashboard-panel-grid) of true square tiles
+//      (aspect-ratio 1/1 — every tile identical geometry, faucet included;
+//      enforced by scripts/check-panel-tiles.mjs), 1px hairline gap, hover blue.
 //      - Row 1: Send (/send), Receive (/receive), Swap (disabled/roadmap).
-//      - Row 2: History (/history, with badge count), Security/Approvals, Faucet (/faucet).
+//      - Row 2: History (/history, with badge count), Domain (/name), Security.
+//      - Row 3: Faucet (/faucet) — only on networks that actually declare a faucet
+//        (hidden otherwise); when shown it is a normal square tile like the rest.
 //   3. Token drawer (Rabby balance-card → asset-list popup):
 //      - The TOKEN LIST lives in the drawer (src/ui/domain/token-drawer.js), opened from
 //        the balance box — "click anywhere in the box". There is NO separate Tokens

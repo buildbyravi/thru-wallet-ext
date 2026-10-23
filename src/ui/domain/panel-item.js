@@ -2,7 +2,9 @@ import { h, disposer } from '../kit/dom.js';
 import { icon } from '../kit/icon.js';
 
 /**
- * Rabby-style 88px cell in the 3x2 action panel.
+ * Rabby-style square cell in the 3-column action panel (aspect-ratio 1/1 via the shared
+ * `.panel-item` class — every tile, Send/Receive/Domain/Faucet alike, is one geometry;
+ * scripts/check-panel-tiles.mjs pins that parity).
  *
  * @param {Object} props
  *   iconName  string kit icon name
