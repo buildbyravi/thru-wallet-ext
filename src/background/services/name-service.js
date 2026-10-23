@@ -92,7 +92,7 @@ export async function lookupName({ name, rootAddress } = {}) {
   }
   let domain = null;
   try {
-    const parsed = ns.parseDomainAccount(new Uint8Array(info.raw?.data ?? new ArrayBuffer(0)));
+    const parsed = ns.parseDomainAccount(info.raw);
     // Bridge-safe: registeredAt is a chain BigInt and cannot cross the message port as-is.
     domain = { ...parsed, registeredAt: parsed.registeredAt.toString() };
   } catch (e) {
@@ -159,7 +159,7 @@ export async function discoverDefaultRoot() {
     try {
       const info = await thruClient.getAccountInfo(candidate.address);
       if (!info?.exists) { tries.push(`${candidate.address.slice(0, 12)}…: absent`); continue; }
-      const root = parseRootRegistrar(new Uint8Array(info.raw?.data ?? new ArrayBuffer(0)));
+      const root = parseRootRegistrar(info.raw);
       discoveredCache = {
         supported: true,
         rootAddress: candidate.address,
@@ -239,7 +239,7 @@ export async function registerName({ name, parentAddress } = {}) {
     throw coded('PARENT_UNKNOWN', `the parent name account ${parent.slice(0, 12)}… does not exist on this network`);
   }
   try {
-    const raw = new Uint8Array(parentInfo.raw?.data ?? new ArrayBuffer(0));
+    const raw = ns.extractAccountData(parentInfo.raw);
     try {
       ns.parseRootRegistrar(raw);
     } catch {
@@ -271,7 +271,7 @@ export async function registerName({ name, parentAddress } = {}) {
     header: { computeUnits: 500_000, memoryUnits: 10_000, stateUnits: 1, fee: 0n },
     accounts: {
       readWrite: [domainAddress, parent],
-      readOnly: [feePayer.address], // owner; authority is the fee payer (account index 0)
+      // feePayer is implicit index 0; adding it to readOnly creates duplicate accounts
     },
     instructionData: ({ getAccountIndex }) => ns.buildRegisterSubdomainInstructionData({
       name: n,

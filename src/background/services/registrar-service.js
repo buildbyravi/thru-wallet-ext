@@ -37,7 +37,7 @@ async function fetchAccountData(address) {
   const info = await thruClient.getAccountInfo(address);
   if (!info?.exists) return { exists: false, data: null, raw: null };
   const raw = info.raw ?? null;
-  const data = raw?.data instanceof Uint8Array ? raw.data : null;
+  const data = raw?.data?.data instanceof Uint8Array ? raw.data.data : (raw?.data instanceof Uint8Array ? raw.data : null);
   return { exists: true, data, raw };
 }
 

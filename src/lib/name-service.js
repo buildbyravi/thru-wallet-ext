@@ -147,11 +147,22 @@ function zeroTrim(bytes) {
   return new TextDecoder('utf-8', { fatal: true }).decode(bytes.slice(0, end));
 }
 
+export function extractAccountData(raw) {
+  if (!raw) return new Uint8Array(0);
+  if (raw instanceof Uint8Array) return raw;
+  if (raw.data instanceof Uint8Array) return raw.data;
+  if (raw.data?.data instanceof Uint8Array) return raw.data.data;
+  if (Array.isArray(raw.data?.data)) return new Uint8Array(raw.data.data);
+  if (Array.isArray(raw.data)) return new Uint8Array(raw.data);
+  return new Uint8Array(0);
+}
+
 // Mirrors the first-party CLI exactly (commands/name_service.rs parse_root_registrar_account_data,
 // re-checked 2026-10-24): MINIMUM-size + kind+nameLen bounds — trailing bytes are tolerated,
 // so a longer live account (older .id root) parses instead of being refused.
-export function parseRootRegistrar(data) {
-  if (!(data instanceof Uint8Array) || data.length < NS_ROOT_SIZE) {
+export function parseRootRegistrar(input) {
+  const data = extractAccountData(input);
+  if (data.length < NS_ROOT_SIZE) {
     throw new NameServiceDecodeError(`root registrar account must be at least ${NS_ROOT_SIZE} bytes`);
   }
   if (data[0] !== NS_KIND_ROOT_REGISTRAR) {
@@ -171,8 +182,9 @@ export function parseRootRegistrar(data) {
   };
 }
 
-export function parseDomainAccount(data) {
-  if (!(data instanceof Uint8Array) || data.length < NS_DOMAIN_HEADER
+export function parseDomainAccount(input) {
+  const data = extractAccountData(input);
+  if (data.length < NS_DOMAIN_HEADER
     || (data.length - NS_DOMAIN_HEADER) % NS_RECORD_SIZE !== 0) {
     throw new NameServiceDecodeError(`domain account must be ${NS_DOMAIN_HEADER} + ${NS_RECORD_SIZE}n bytes`);
   }
