@@ -134,12 +134,11 @@ for (const [path, sites] of navigated) {
 
 // A registered route nobody can reach is the other half of the same bug.
 const ENTRY_ROUTES = new Set(['/unlock', '/dashboard', '/welcome']);
-// Owner-directed (2026-10-23): routes that deliberately have NO in-app click path —
-// reachable by deep link (#/name) only. /name's dashboard tile was removed because the
-// 7th tile left a 1-item orphan row (owner: looks bad vs main); the screen itself is
-// fully built (link/re-verify + register/renew/claim) and stays available by URL until
-// the owner picks a final entry point. Each entry here MUST carry its directive date.
-const DEEP_LINK_ONLY = new Set(['/name']);
+// Owner-directed (2026-10-23/24): routes that deliberately have NO in-app click path.
+// Empty since 2026-10-24: /name got a dashboard button below the grid (that date's
+// directive), so every registered route is reachable. Keep this set EMPTY — adding a
+// route here requires an explicit dated owner directive.
+const DEEP_LINK_ONLY = new Set();
 for (const path of registered) {
   if (ENTRY_ROUTES.has(path) || DEEP_LINK_ONLY.has(path)) continue;
   if (!navigated.has(path)) {

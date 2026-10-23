@@ -1601,3 +1601,12 @@ form > .btn.text {
 .name-search-title {
   gap: 8px;
 }
+
+/* ---- Dashboard name-register entry (2026-10-24 owner directive) ------------ */
+/* A BUTTON under the tile grid — the grid itself stays main-identical (6 tiles). */
+.dashboard-name-entry {
+  width: 100%;
+  min-height: 44px;
+  gap: 8px;
+  justify-content: center;
+}

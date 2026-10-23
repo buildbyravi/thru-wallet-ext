@@ -254,6 +254,14 @@ export function DashboardRoute({ navigate }) {
     faucetTile.el,
   ]);
 
+  // Owner directive 2026-10-24: register entry point as a BUTTON below the grid (not a
+  // 7th tile — the grid stays exactly like main). Opens /name: ENS-style search +
+  // background availability check + years stepper + register/renew/claim.
+  const nameEntryBtn = track(h('button', {
+    type: 'button', class: 'btn secondary dashboard-name-entry',
+  }, [icon('globe', 14), h('span', { text: ' Register a .thru name' })]));
+  d.on(nameEntryBtn, 'click', () => navigate('/name'));
+
   function applyNetworkCapabilities(network) {
     const faucetAvailable = Boolean(network?.faucetProgramId && network?.faucetStateAccount);
     // Mainnet-readiness (2026-10-09): a network without a faucet HIDES the tile entirely —
@@ -490,6 +498,7 @@ export function DashboardRoute({ navigate }) {
     dashHeader,
     banner.el,
     actionPanel,
+    nameEntryBtn,
   ]);
 
   load();
