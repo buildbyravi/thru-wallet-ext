@@ -3,18 +3,17 @@
 // ONE search field is the entire product, like app.ens.domains: you type a name, the
 // extension checks the chain in the BACKGROUND (debounced — typing never blocks), and
 // the result drives the card:
-//   available  → years stepper (1–10) + chain-quoted price + a REGISTER button
-//   taken      → the owner + lease end are shown; nothing actionable (ENS shows it grey)
-//   yours      → renew years at chain price; "Link as my name" when not linked
-//   claimable  → previous lease expired; you may claim & register
-// Networks without an initialized .thru registry say so plainly — nothing is quoted
-// from memory, nothing clickable is fabricated. Prices come from the live registry
-// config (price_per_year × years) formatted with the payment mint's own decimals.
+//   .thru registry present → paid flow: years stepper (1–10) + chain price + Register/Renew/Claim
+//   registry absent, root present → FREE flow (owner-directed, 2026-10-24): the name-service
+//     program registers a label under the canonical root with fee 0n and NO payment token —
+//     first-party: txn_tools.rs build_name_service_register_subdomain carries no token
+//     accounts and NAME_SERVICE_PROGRAM_FEE = 0. Register CTA = name.register (self-signed).
+//   neither present → the card says so plainly — nothing clickable is fabricated.
+// Network suffix (.thru from the registry config / .id or other from the parsed root) comes
+// from the chain, never hardcoded.
 //
 // Writes are self-signed for the active account only (authority = fee payer, proven in
-// the first-party CLI) and are password-gated like Send. Official rules (thru.org
-// registrar docs, re-read 2026-10-24): name = 1–64 chars segment without ".thru";
-// years u8; price_per_year applies to purchases AND renewals/claims.
+// the first-party CLI) and are password-gated like Send; not signing = nothing broadcast.
 import { h, disposer } from '../../kit/dom.js';
 import { icon } from '../../kit/icon.js';
 import { PageHeader, Banner, Spinner } from '../../kit/feedback.js';
@@ -141,13 +140,14 @@ export function NameRoute({ back }) {
     const card = h('div', { class: 'stack stack-2' }, [
       h('div', { class: 'name-search-title row-flex' }, [
         icon('search', 16),
-        h('span', { class: 'row-title', text: 'Find your .thru name' }),
+        h('span', { class: 'row-title', text: 'Find your name' }),
       ]),
     ]);
     body.appendChild(card);
 
-    // The registry decides whether purchase-style actions can exist at all on this
-    // network. Read it once up-front; its absence is reported honestly, never hidden.
+    // Read the chain's offering up-front: first the official paid .thru registry, then the
+    // canonical name-service root (which enables FREE registration on networks without the
+    // paid registry). Absence in either step is reported honestly, never hidden.
     let registry = null;
     try {
       registry = await bridge.send('name.getRegistry');
@@ -156,6 +156,25 @@ export function NameRoute({ back }) {
     }
     if (destroyed || !card.isConnected) return;
     const registryUp = Boolean(registry?.supported && registry?.registry);
+
+    let canonRoot = null;
+    if (!registryUp) {
+      try {
+        canonRoot = await bridge.send('name.getCanonicalRoot');
+      } catch (err) {
+        canonRoot = { supported: false, reason: err?.message || 'root discovery failed' };
+      }
+      if (destroyed || !card.isConnected) return;
+    }
+    const freeRootUp = Boolean(canonRoot?.supported);
+
+    // Chain-derived TLD label: the registry config's root name wins; else the parsed root's.
+    const tld = registryUp
+      ? (registry.registry.rootName || 'thru')
+      : freeRootUp
+        ? (canonRoot.rootName || '…')
+        : null;
+    card.querySelector('.row-title').textContent = tld ? `Find your .${tld} name` : 'Find your name';
 
     let decimals = null;
     let symbol = 'payment-mint base units';
@@ -187,7 +206,7 @@ export function NameRoute({ back }) {
 
     const searchField = track(Field({
       label: 'Name',
-      placeholder: 'Search .thru — e.g. alice',
+      placeholder: tld ? `Search .${tld} — e.g. alice` : 'Search a name — e.g. alice',
       autocomplete: 'off',
       maxLength: 64,
       hint: '1–64 characters, letters/numbers/hyphens — official registrar rules',
@@ -199,7 +218,9 @@ export function NameRoute({ back }) {
     }
 
     let years = 1;
-    let leaseState = null;  // { kind: 'available'|'taken'|'mine'|'claimable', name, lease }
+    // kind: 'available'|'taken'|'mine'|'claimable' (registry mode) — plus
+    // 'free-available'|'free-taken'|'free-mine' in free-root mode (no lease, no price).
+    let leaseState = null;
     let payment = null;     // name.getPaymentBalance read (refreshing with each check)
     let checkSeq = 0;
     let checkTimer = null;
@@ -232,6 +253,19 @@ export function NameRoute({ back }) {
     function armForState(state) {
       if (!state) return;
       hideActions();
+      // Free-root mode: no lease duration, no price — the name-service program's register
+      // write carries fee 0n and no payment accounts (first-party txn_tools.rs, 2026-10-24).
+      if (state.kind === 'free-available') {
+        priceLine.classList.remove('hidden');
+        priceLine.textContent = `Free on ${network?.label || 'this network'}: 0 payment, 0n protocol fee — the name-service program carries no paid steps for registration.`;
+        ctaBtn.classList.remove('hidden');
+        ctaLabel().textContent = ' Register — free (0n)';
+        return;
+      }
+      if (state.kind === 'free-mine') {
+        if (!(primary?.name === state.name)) linkBtn.classList.remove('hidden');
+        return;
+      }
       const purchasable = state.kind === 'available' || state.kind === 'claimable';
       const renewable = state.kind === 'mine';
       if (!purchasable && !renewable) return;
@@ -257,9 +291,41 @@ export function NameRoute({ back }) {
       }
     }
 
-    async function backgroundCheck(name) {
+    // Free-root mode (registry absent, canonical root present): resolve the name straight
+    // from the name-service chain — owner truth comes from the parsed domain account.
+    async function freeCheck(name) {
       const mySeq = ++checkSeq;
-      setStatus(`Checking the chain for ${name}.thru…`, '');
+      setStatus(`Checking the chain for ${name}.${tld}…`, '');
+      try {
+        const res = await bridge.send('name.lookup', { name, rootAddress: '' });
+        if (destroyed || !statusLine.isConnected || mySeq !== checkSeq) return; // stale
+        const owner = res?.leaf?.exists ? res.leaf.domain?.owner ?? null : null;
+        if (!res?.leaf?.exists) {
+          leaseState = { kind: 'free-available', name, rootAddress: res.rootAddress };
+          setStatus(`✓ ${name}.${tld} is available — free to register on ${network?.label || 'this network'} (0n protocol fee, no payment token).`, 'ok');
+        } else if (res.leaf.decodeError) {
+          leaseState = null;
+          setStatus(`? ${name}.${tld} exists but its account could not be decoded: ${res.leaf.decodeError}. Registration refused — the chain, not this screen, owns the name.`, 'warn');
+        } else if (owner && account?.address && owner === account.address) {
+          leaseState = { kind: 'free-mine', name, rootAddress: res.rootAddress };
+          setStatus(`✓ ${name}.${tld} is yours — registered on-chain to your active account.`, 'ok');
+        } else {
+          leaseState = { kind: 'free-taken', name, rootAddress: res.rootAddress };
+          setStatus(`✕ ${name}.${tld} is taken — owned by ${truncateMiddle(owner || 'unknown')}.`, 'bad');
+        }
+        armForState(leaseState);
+      } catch (err) {
+        if (destroyed || !statusLine.isConnected || mySeq !== checkSeq) return;
+        leaseState = null;
+        hideActions();
+        setStatus(`? Could not check '${name}' on-chain: ${err?.message || err}. Type again to retry.`, 'warn');
+      }
+    }
+
+    async function backgroundCheck(name) {
+      if (!registryUp && freeRootUp) return freeCheck(name);
+      const mySeq = ++checkSeq;
+      setStatus(`Checking the chain for ${name}.${tld}…`, '');
       try {
         const res = await bridge.send('name.checkLease', { name });
         if (destroyed || !statusLine.isConnected || mySeq !== checkSeq) return; // stale
@@ -272,19 +338,19 @@ export function NameRoute({ back }) {
         const mine = Boolean(res.lease && account?.address && res.lease.owner === account.address);
         if (mine) {
           leaseState = { kind: 'mine', name, lease: res.lease };
-          setStatus(`✓ ${name}.thru is yours — lease ends ${formatChainTime(res.lease.endTime)}.`, 'ok');
+          setStatus(`✓ ${name}.${tld} is yours — lease ends ${formatChainTime(res.lease.endTime)}.`, 'ok');
         } else if (res.lease && res.lease.expiredHint === false) {
           leaseState = { kind: 'taken', name, lease: res.lease };
-          setStatus(`✕ ${name}.thru is taken — leased by ${truncateMiddle(res.lease.owner)} until ${formatChainTime(res.lease.endTime)}.`, 'bad');
+          setStatus(`✕ ${name}.${tld} is taken — leased by ${truncateMiddle(res.lease.owner)} until ${formatChainTime(res.lease.endTime)}.`, 'bad');
         } else if (res.lease) {
           leaseState = { kind: 'claimable', name, lease: res.lease };
-          setStatus(`✓ ${name}.thru is claimable — the previous lease expired.`, 'ok');
+          setStatus(`✓ ${name}.${tld} is claimable — the previous lease expired.`, 'ok');
         } else if (!registryUp) {
           leaseState = { kind: 'available-unpriced', name };
-          setStatus(`? ${name}.thru is unregistered on ${network?.label || network?.id}, but no .thru registry is initialized here — registration is unavailable on this network: ${registry?.reason}.`, 'warn');
+          setStatus(`? ${name}.${tld} is unregistered on ${network?.label || network?.id}, but no name root is available here — registration is unavailable on this network: ${registry?.reason}; ${canonRoot?.reason || 'no canonical root'}.`, 'warn');
         } else {
           leaseState = { kind: 'available', name };
-          setStatus(`✓ ${name}.thru is available.`, 'ok');
+          setStatus(`✓ ${name}.${tld} is available.`, 'ok');
         }
         armForState(leaseState);
       } catch (err) {
@@ -305,7 +371,7 @@ export function NameRoute({ back }) {
         setStatus(name.length > 64 ? 'Names are 1–64 characters (chain rule).' : 'A single name — no dots.', 'bad');
         return;
       }
-      setStatus(`Waiting to check ${name}.thru…`, '');
+      setStatus(tld ? `Waiting to check ${name}.${tld}…` : `Waiting to check ${name}…`, '');
       checkTimer = setTimeout(() => { void backgroundCheck(name); }, 450);
     };
     bodyDisposer.on(searchField.control, 'input', queueCheck);
@@ -314,12 +380,15 @@ export function NameRoute({ back }) {
     });
 
     async function writeWithPassword(method, name, yrs) {
-      const sendChecked = (extra = {}) => bridge.send(method, { name, years: yrs, ...extra });
+      const isFreeRegister = method === 'name.register';
+      const sendChecked = (extra = {}) => bridge.send(method, isFreeRegister
+        ? { name, parentAddress: canonRoot.rootAddress, ...extra }
+        : { name, years: yrs, ...extra });
       const prefs = await bridge.send('settings.get').catch(() => null);
       if (prefs?.requirePasswordForSigning === false) return sendChecked();
-      const noun = method === 'name.purchase' ? 'registration' : method === 'name.renewLease' ? 'lease renewal' : 'expired-lease claim';
+      const noun = method === 'name.purchase' || isFreeRegister ? 'registration' : method === 'name.renewLease' ? 'lease renewal' : 'expired-lease claim';
       return requirePassword({
-        title: method === 'name.purchase' ? 'Confirm registration' : method === 'name.renewLease' ? 'Confirm renewal' : 'Confirm claim',
+        title: isFreeRegister ? 'Confirm registration' : method === 'name.purchase' ? 'Confirm registration' : method === 'name.renewLease' ? 'Confirm renewal' : 'Confirm claim',
         body: `Re-enter your password to sign and broadcast this ${noun}.`,
         confirmLabel: 'Sign & broadcast',
         verify: (password) => sendChecked({ password }),
@@ -328,9 +397,13 @@ export function NameRoute({ back }) {
 
     bodyDisposer.on(ctaBtn, 'click', async () => {
       banner.set('');
-      if (!leaseState || !registryUp) return;
+      if (!leaseState) return;
       const state = leaseState;
-      const method = state.kind === 'mine' ? 'name.renewLease' : state.kind === 'claimable' ? 'name.claimExpired' : 'name.purchase';
+      const freeRegister = state.kind === 'free-available';
+      if (!freeRegister && !registryUp) return;
+      const method = freeRegister
+        ? 'name.register'
+        : state.kind === 'mine' ? 'name.renewLease' : state.kind === 'claimable' ? 'name.claimExpired' : 'name.purchase';
       ctaBtn.disabled = true;
       try {
         const result = await writeWithPassword(method, state.name, years);
@@ -340,7 +413,8 @@ export function NameRoute({ back }) {
           // Best-effort primary-name link; a failed link must not masquerade as a failed
           // registration — the search card remains the single source of truth afterwards.
           try {
-            primary = await bridge.send('name.linkPrimary', { name: state.name, rootAddress: registry.registry.rootRegistrar });
+            const rootForLink = freeRegister ? state.rootAddress : registry.registry.rootRegistrar;
+            primary = await bridge.send('name.linkPrimary', { name: state.name, rootAddress: rootForLink });
             toast(`'${state.name}' linked as your primary name.`);
           } catch { /* registration itself is done */ }
         }
@@ -353,10 +427,14 @@ export function NameRoute({ back }) {
 
     bodyDisposer.on(linkBtn, 'click', async () => {
       banner.set('');
-      if (leaseState?.kind !== 'mine') return;
+      const linkable = leaseState?.kind === 'mine' || leaseState?.kind === 'free-mine';
+      if (!linkable) return;
       linkBtn.disabled = true;
       try {
-        primary = await bridge.send('name.linkPrimary', { name: leaseState.name, rootAddress: registryUp ? registry.registry.rootRegistrar : '' });
+        const rootForLink = registryUp
+          ? registry.registry.rootRegistrar
+          : leaseState.rootAddress || '';
+        primary = await bridge.send('name.linkPrimary', { name: leaseState.name, rootAddress: rootForLink });
         toast(`'${leaseState.name}' verified — linked to active account.`);
         await load();
       } catch (err) {
@@ -377,7 +455,9 @@ export function NameRoute({ back }) {
         class: 'hint',
         text: registryUp
           ? `Price from this network's on-chain registry: ${fmt(registry.registry.pricePerYear)} / year · no protocol fee (0n).`
-          : `Registration is unavailable on this network: ${registry?.reason || 'registry state unreadable'}.`,
+          : freeRootUp
+            ? `No paid .thru registry on this network — .${canonRoot.rootName} names register directly with the name-service program: free (0n protocol fee, no payment token). Confirmed against the first-party CLI (NAME_SERVICE_PROGRAM_FEE = 0, 2026-10-24).`
+            : `Registration is unavailable on this network: ${registry?.reason || 'registry state unreadable'}; ${canonRoot?.reason || 'no canonical name root found'}.`,
       }),
     ]));
 

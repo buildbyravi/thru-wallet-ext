@@ -100,7 +100,18 @@
 //   first-party formats (Unto-Labs/thru ABIs + CLI + txn_tools.rs — provenance in
 //   src/lib/registrar.js). Fee policy follows the first-party builder exactly: 0n — the
 //   registrar prices in its own payment token; nothing else is deducted.
-export const CONTRACT_VERSION = 22;
+//   v23 (2026-10-24, owner-directed): name.register leaves the NAME_SERVICE gate and becomes
+//   a REAL self-signed write. Its format is first-party — txn_tools.rs
+//   build_name_service_register_subdomain + the tn_name_service ABI — and the first-party
+//   CLI names exactly zero payment accounts: NAME_SERVICE_PROGRAM_FEE = 0, so the write is
+//   free of registry pricing (chain-enforced if the parent authority differs — the revert is
+//   surfaced honestly). Auth tightens unlocked → signing, following the v5/v22 signing-auth
+//   precedent: it is a broadcast, on-chain, irreversible write. name.initRoot and
+//   name.setRecord stay gated (FLAGS.NAME_SERVICE remains false in this build). Also pure
+//   append: name.getCanonicalRoot (auth none) exposes the on-chain-proof canonical-root
+//   discovery that name.lookup already performs internally, so the UI can offer free
+//   registration beneath a root that actually exists on the running network.
+export const CONTRACT_VERSION = 23;
 
 export const METHODS = {
   // ---- System ------------------------------------------------------------
@@ -389,10 +400,22 @@ export const METHODS = {
     since: 19,
   },
   'name.register': {
-    params: ['name', 'parentAddress', 'networkId'],
-    returns: '{ signature, domainAddress } — register a name under a parent root/domain the signer OWNS (gate: NAME_SERVICE)',
-    auth: 'unlocked',
+    params: ['name', 'parentAddress', 'networkId', 'password'],
+    returns: '{ signature, domainAddress } — register a label under a parent root/domain; self-signed (authority = fee payer, the ONLY key). ' +
+      'Protocol fee 0n — NAME_SERVICE_PROGRAM_FEE = 0 in the first-party CLI (txn_tools.rs, 2026-10-24); no payment token involved. ' +
+      'parentAddress may be blank: the canonical root is then auto-discovered on-chain. ' +
+      'The CHAIN decides registration rights under a foreign root — a non-owned parent reverts on-chain and the outcome is surfaced honestly.',
+    auth: 'signing',
     since: 19,
+  },
+  // v23 (2026-10-24): expose the on-chain-proof canonical-root discovery used internally by
+  // name.lookup. Read-only; lets the UI offer free name-service registration beneath a root
+  // that provably exists on the running network when the `.thru` paid registry is absent.
+  'name.getCanonicalRoot': {
+    params: ['networkId'],
+    returns: '{ supported, rootAddress, rootName, authority, provenance, reason? } — same discovery as name.lookup',
+    auth: 'none',
+    since: 23,
   },
   'name.setRecord': {
     params: ['name', 'rootAddress', 'key', 'value', 'networkId'],

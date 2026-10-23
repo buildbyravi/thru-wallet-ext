@@ -67,6 +67,7 @@ const SYNC_READ_METHODS = new Set([
   'dex.listPools', 'dex.getPool', 'dex.positions',
   'intent.list', 'intent.get',
   'name.lookup', 'name.checkAvailability',
+  'name.getCanonicalRoot',
   'name.getRegistry', 'name.checkLease', 'name.getPaymentBalance',
 ]);
 
@@ -172,11 +173,14 @@ const handlers = Object.assign(Object.create(null), {
   // ---- Transactions and RPC --------------------------------------------
   'tx.getAccountInfo': ({ address }) => txService.getAccountInfo(address),
   'tx.claimFaucet': ({ amountUnits }) => txService.claimFaucet(amountUnits),
-  // ---- Name service (v19). Reads are always-on; writes are gated in the service layer
-  // (FLAGS.NAME_SERVICE + live-probe verification) and can only ever act under a parent the
-  // signer owns — the self-signing invariant rules out sponsored/foreign-authority flows.
+  // ---- Name service (v19 reads / v23 register). Reads are always-on. name.register is a
+  // live, self-signed, fee-0n write (first-party txn_tools.rs format: no payment accounts,
+  // NAME_SERVICE_PROGRAM_FEE = 0); initRoot/setRecord stay gated behind FLAGS.NAME_SERVICE.
+  // The self-signing invariant rules out sponsored/foreign-authority flows — the chain's
+  // own authority check is the arbiter, and its revert is surfaced honestly.
   'name.lookup': (params) => nameService.lookupName(params),
   'name.checkAvailability': (params) => nameService.checkAvailability(params),
+  'name.getCanonicalRoot': () => nameService.getCanonicalRoot(),
   'name.initRoot': (params) => nameService.initRoot(params),
   'name.register': (params) => nameService.registerName(params),
   'name.setRecord': (params) => nameService.setRecord(params),

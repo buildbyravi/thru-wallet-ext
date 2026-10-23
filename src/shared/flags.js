@@ -14,10 +14,12 @@ export const FLAGS = {
   /** Log route transitions and bridge method names. Never logs params; they can hold secrets. */
   DEBUG_ROUTING: false,
 
-  // Name service (system name program) WRITE paths. Read paths (name.lookup,
-  // name.checkAvailability) are always-on truth asks; register/setRecord/initRoot stay off
-  // until the live probe verifies the recovered wire formats on the running chain. Build-time
-  // constant with NO query/storage override, like the DEFI_* family.
+  // Name service (system name program) GATED write paths. Read paths (name.lookup,
+  // name.checkAvailability, name.getCanonicalRoot) are always-on truth asks; name.register is
+  // LIVE since contract v23 (2026-10-24) — its wire format is first-party (txn_tools.rs) and
+  // its fee is 0n by construction (no payment accounts in the official builder). initRoot and
+  // setRecord stay off below this flag. Build-time constant with NO query/storage override,
+  // like the DEFI_* family.
   NAME_SERVICE: false,
 
   // Master switch for the DeFi backend surface. Product logic must use isDefiFeatureEnabled(),
