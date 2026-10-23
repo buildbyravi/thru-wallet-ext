@@ -48,7 +48,7 @@ export const NS_KIND_DOMAIN = 2;
 export const NS_NAME_FIELD = 64;      // zero-padded name buffer (a 32-byte guess reverts)
 export const NS_KEY_FIELD = 32;
 export const NS_VALUE_FIELD = 256;
-export const NS_ROOT_SIZE = 109;      // 1 + 32 + 64 + 4 + 8
+export const NS_ROOT_SIZE = 109;      // MINIMUM size: 1 + 32 + 64 + 4 + 8 (kind+authority+name64+len+count)
 export const NS_DOMAIN_HEADER = 145;  // 1 + 32 + 32 + 64 + 4 + 8 + 4 (record_count)
 export const NS_RECORD_SIZE = 296;    // 4 + 32 + 4 + 256
 export const NS_MAX_NAME_CHARS = 64;
@@ -147,15 +147,21 @@ function zeroTrim(bytes) {
   return new TextDecoder('utf-8', { fatal: true }).decode(bytes.slice(0, end));
 }
 
+// Mirrors the first-party CLI exactly (commands/name_service.rs parse_root_registrar_account_data,
+// re-checked 2026-10-24): MINIMUM-size + kind+nameLen bounds — trailing bytes are tolerated,
+// so a longer live account (older .id root) parses instead of being refused.
 export function parseRootRegistrar(data) {
-  if (!(data instanceof Uint8Array) || data.length !== NS_ROOT_SIZE) {
-    throw new NameServiceDecodeError(`root registrar account must be exactly ${NS_ROOT_SIZE} bytes`);
+  if (!(data instanceof Uint8Array) || data.length < NS_ROOT_SIZE) {
+    throw new NameServiceDecodeError(`root registrar account must be at least ${NS_ROOT_SIZE} bytes`);
   }
   if (data[0] !== NS_KIND_ROOT_REGISTRAR) {
     throw new NameServiceDecodeError(`kind ${data[0]} is not a root registrar (expect 1)`);
   }
   const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
   const nameLen = Number(dv.getUint32(0x61, true));
+  if (nameLen > NS_NAME_FIELD) {
+    throw new NameServiceDecodeError('root name length exceeds maximum');
+  }
   return {
     kind: NS_KIND_ROOT_REGISTRAR,
     authority: Pubkey.from(data.slice(0x01, 0x21)).toThruFmt(),

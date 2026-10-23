@@ -94,7 +94,19 @@ eq(root.totalSubdomains, 7n, 'total_subdomains parsed');
 let decThrow = 0;
 try { parseRootRegistrar(new Uint8Array(64)); } catch (e) { if (e instanceof NameServiceDecodeError) decThrow += 1; }
 try { const bad = buildRootBytes('.id', auth); bad[0] = 2; parseRootRegistrar(bad); } catch { decThrow += 1; }
-eq(decThrow, 2, 'decoder rejects wrong size and kind');
+// Live-Betanet lesson (2026-10-24): the on-chain .id root is LONGER than the 109-byte
+// minimum — parse must tolerate trailing bytes like the first-party CLI does.
+const long = buildRootBytes('.id', auth);
+const extended = new Uint8Array(long.length + 64);
+extended.set(long); // trailing bytes zero
+const okLong = parseRootRegistrar(extended);
+if (okLong.name !== '.id') throw new Error('min-size parse changed fields');
+// the CLI guard: root_name_length above 64 must be rejected even when trailing data fits
+const badLen = new Uint8Array(long);
+const bld = new DataView(badLen.buffer);
+bld.setUint32(0x61, 65, true);
+try { parseRootRegistrar(badLen); } catch (e) { if (e instanceof NameServiceDecodeError) decThrow += 1; }
+eq(decThrow, 3, 'decoder rejects under-size, wrong kind, and nameLen over maximum');
 
 function buildDomainBytes({ parent, owner, name, key, value }) {
   const nb = enc.encode(name);
