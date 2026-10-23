@@ -1569,3 +1569,35 @@ form > .btn.text {
   margin-top: var(--sp-2, 8px);
 }
 
+
+/* ---- /name register card -------------------------------------------------- */
+.name-status {
+  min-height: 1.2em;
+}
+.name-status-ok {
+  color: #1a7f37;
+}
+.name-status-bad {
+  color: var(--danger, #c2240b);
+}
+.name-status-warn {
+  color: var(--warning, #9a6700);
+}
+.name-stepper .name-step-btn {
+  min-width: 32px;
+  height: 32px;
+  padding: 0 8px;
+}
+.name-stepper .name-years {
+  min-width: 5ch;
+  text-align: center;
+}
+.name-price,
+.name-balance {
+  /* spacing comes from the surrounding stack; the class exists for the register card's
+     price/balance truth-lines so they can be targeted (e.g. balance warning) later. */
+  color: var(--text-secondary, #475569);
+}
+.name-search-title {
+  gap: 8px;
+}

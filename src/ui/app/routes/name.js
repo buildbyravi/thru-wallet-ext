@@ -214,20 +214,23 @@ export function NameRoute({ back }) {
     body.appendChild(lookupSection);
   }
 
-  // ---- Registrar leases: register (paid purchase) / renew / claim-expired ----------
-  // The section is only as good as the chain says: name.getRegistry decides whether a
-  // quoting UI may exist at all on this network, and name.checkLease decides WHICH of
-  // the three writes the button may arm. All price/owner/expiry figures below come from
-  // parsed chain bytes (registry config + lease account + mint account) — nothing is
-  // hard-coded, and a read that cannot be parsed collapses to an honest notice.
+  // ---- .thru name search + registration (ENS-style, rebuilt 2026-10-23) -------------
+  // Shape: ONE search field — type a name and the extension checks in the BACKGROUND
+  // (debounced) whether the chain has already minted it, ENS-style. The answer drives
+  // the whole card: available → register, mine/expired-mine → renew, expired-other →
+  // claim, leased-by-other → honest refusal with owner + expiry. Years 1–10 stepper;
+  // price = on-chain registry price_per_year × years (doc: registrar-commands —
+  // price_per_year applies to purchases AND renewals; name 1–64 chars, years u8).
+  // Every figure is parsed from chain bytes (config/lease/mint accounts); nothing is
+  // hard-coded, and a network without the registry collapses to an honest notice.
   async function renderRegisterSection() {
-    const section = h('details', { class: 'name-accordion stack stack-2' }, [
-      h('summary', { class: 'hint', text: '📋 Register or renew a .thru lease' }),
+    const card = h('div', { class: 'stack stack-2' }, [
+      h('div', { class: 'name-search-title row-flex' }, [
+        icon('search', 16),
+        h('span', { class: 'row-title', text: 'Register a .thru name' }),
+      ]),
     ]);
-    const accBody = h('div', { class: 'name-accordion-body stack stack-2' },
-      h('div', { class: 'hint', text: 'Reading the chain registry…' }));
-    section.appendChild(accBody);
-    body.appendChild(section);
+    body.appendChild(card);
 
     let registry;
     try {
@@ -235,11 +238,10 @@ export function NameRoute({ back }) {
     } catch (err) {
       registry = { supported: false, reason: err?.message || 'registry read failed' };
     }
-    if (destroyed || !accBody.isConnected) return;
-    while (accBody.firstChild) accBody.removeChild(accBody.firstChild);
+    if (destroyed || !card.isConnected) return;
 
     if (!registry?.supported || !registry?.registry) {
-      accBody.appendChild(h('div', { class: 'notice', text: `Registration is unavailable on this network: ${registry?.reason || 'registry state unreadable'}.` }));
+      card.appendChild(h('div', { class: 'notice', text: `Name registration is unavailable on this network: ${registry?.reason || 'registry state unreadable'}.` }));
       return;
     }
 
@@ -247,8 +249,7 @@ export function NameRoute({ back }) {
     // mint cannot be read, amounts render as base units and SAY so — decimals are never
     // guessed into a price line.
     const mintInfo = await bridge.send('token.readMint', { mint: registry.registry.tokenMint }).catch(() => null);
-    const payment = await bridge.send('name.getPaymentBalance').catch(() => null);
-    if (destroyed || !accBody.isConnected) return;
+    if (destroyed || !card.isConnected) return;
 
     const decimals = Number(mintInfo?.decimals);
     const canFormat = Number.isInteger(decimals) && decimals >= 0 && decimals <= 30;
@@ -256,35 +257,133 @@ export function NameRoute({ back }) {
     const fmt = (raw) => (canFormat ? `${formatUnits(raw, decimals)} ${symbol}` : `${raw} base units of the payment mint`);
     const pricePerYear = BigInt(registry.registry.pricePerYear);
 
-    const nameField = track(Field({ label: 'Name (no dots)', placeholder: 'alice', autocomplete: 'off', onInput: () => resetCheck() }));
-    const yearsField = track(Field({ label: 'Years', placeholder: '1', autocomplete: 'off', onInput: () => resetCheck() }));
-    const checkLine = h('div', { class: 'hint' });
-    const actionBtn = h('button', { type: 'button', class: 'btn primary' }, [icon('globe', 14), h('span')]);
+    // -- ENS-style search field: typing schedules a background lease check. ----------
+    const statusLine = h('div', { class: 'name-status hint', text: 'Type a name to check it on-chain.' });
+    const priceLine = h('div', { class: 'name-price hint hidden' });
+    const balanceLine = h('div', { class: 'name-balance hint hidden' });
+
+    const minusBtn = h('button', { type: 'button', class: 'btn secondary name-step-btn', text: '–' });
+    const yearsLabel = h('span', { class: 'name-years mono', text: '1 year' });
+    const plusBtn = h('button', { type: 'button', class: 'btn secondary name-step-btn', text: '+' });
+    const yearsStepper = h('div', { class: 'name-stepper row-flex hidden' }, [
+      h('span', { class: 'hint', text: 'Years' }),
+      h('div', { class: 'row-flex', gap: '8px' }, [minusBtn, yearsLabel, plusBtn]),
+    ]);
+
+    const actionBtn = h('button', { type: 'button', class: 'btn primary hidden' }, [h('span', { text: 'Register' })]);
     const actionLabel = () => actionBtn.querySelector('span');
 
-    let pending = null; // { method, label } — armed ONLY by a fresh checkLease read
-    function resetCheck() {
-      pending = null;
-      actionLabel().textContent = ' Check availability';
-      checkLine.textContent = 'Enter a name and check it on-chain before anything is signed.';
-    }
-    function costLine(nameOrMine, years) {
-      const cost = pricePerYear * BigInt(years);
-      const balance = payment?.exists && payment.amount != null ? BigInt(payment.amount) : null;
-      let line = `${nameOrMine} ${years}y → ${fmt(String(cost))}.`;
-      if (balance != null) {
-        line += ` Balance: ${fmt(String(balance))}${balance < cost ? ' — not enough for this price' : ''}.`;
-      } else if (payment?.exists === false) {
-        line += ' No payment-token account found for this mint (payments use the registry mint from the chain config).';
+    const runQueuedCheck = () => {
+      const raw = searchField.value?.trim?.() ?? '';
+      const name = raw.toLowerCase();
+      clearTimeout(checkTimer);
+      if (name !== raw && /\s/.test(raw.slice(raw.length - 1))) return; // lone trailing space: keep typing
+      if (name.length === 0) { leaseState = null; showIdle('Type a name to check it on-chain.'); return; }
+      if (name.length > 64 || name.includes('.')) {
+        leaseState = null;
+        showIdle(name.length > 64 ? 'Names are 1–64 characters (chain rule).' : 'A single name — no dots.');
+        return;
       }
-      return { line, affordable: balance == null || balance >= cost };
+      statusLine.textContent = 'Waiting to check…';
+      checkTimer = setTimeout(() => { void backgroundCheck(name); }, 450);
+    };
+
+    const searchField = track(Field({
+      label: 'Name',
+      placeholder: 'Search .thru — e.g. alice',
+      autocomplete: 'off',
+      inputMode: 'text',
+      maxLength: 64,
+      hint: '1–64 characters, letters/numbers/hyphens (official registrar docs)',
+      onInput: () => runQueuedCheck(),
+      onEnter: () => { if (leaseState && leaseState.kind !== 'taken') actionBtn.click(); },
+    }));
+
+    let checkSeq = 0;         // guards against out-of-order background responses
+    let checkTimer = null;    // debounce
+    let years = 1;            // stepper state (UI range 1–10 per owner directive)
+    let leaseState = null;    // { kind: 'available'|'mine'|'claimable'|'taken', name, lease? }
+    let payment = null;       // latest name.getPaymentBalance read (after each check)
+
+    function setYears(delta) {
+      years = Math.min(10, Math.max(1, years + delta));
+      yearsLabel.textContent = years === 1 ? '1 year' : `${years} years`;
+      refreshPrice();
     }
-    function yearsValue() {
-      const n = Number(String(yearsField.value ?? '').trim());
-      return Number.isInteger(n) && n >= 1 && n <= 100 ? n : null;
+    bodyDisposer.on(minusBtn, 'click', () => setYears(-1));
+    bodyDisposer.on(plusBtn, 'click', () => setYears(+1));
+
+    function baseCost() { return pricePerYear * BigInt(years); }
+
+    function refreshPrice() {
+      // Only meaningful once a status decided the name is actionable.
+      if (!leaseState || leaseState.kind === 'taken') return;
+      priceLine.classList.remove('hidden');
+      priceLine.textContent = `${years === 1 ? '1 year' : `${years} years`} × ${fmt(registry.registry.pricePerYear)} = ${fmt(String(baseCost()))} — price parsed from the on-chain registry config.`;
+      if (payment?.exists && payment.amount != null) {
+        balanceLine.classList.remove('hidden');
+        const bal = BigInt(payment.amount);
+        balanceLine.textContent = `Your balance: ${fmt(String(bal))}${bal < baseCost() ? ' — not enough for this price' : ''}`;
+      }
     }
-    async function writeWithPassword(method, name, years) {
-      const sendChecked = (extra = {}) => bridge.send(method, { name, years, ...extra });
+
+    function showIdle(hint) {
+      yearsStepper.classList.add('hidden');
+      actionBtn.classList.add('hidden');
+      priceLine.classList.add('hidden');
+      balanceLine.classList.add('hidden');
+      statusLine.textContent = hint;
+      statusLine.className = 'name-status hint';
+    }
+
+    function arm(state) {
+      leaseState = state;
+      if (!state || state.kind === 'taken') { return; }
+      yearsStepper.classList.remove('hidden');
+      actionBtn.classList.remove('hidden');
+      refreshPrice();
+      const verb = state.kind === 'mine' ? ' Renew lease' : state.kind === 'claimable' ? ' Claim & register' : ' Register';
+      actionLabel().textContent = `${verb} — ${fmt(String(baseCost()))}`;
+    }
+
+    async function backgroundCheck(name) {
+      const mySeq = ++checkSeq;
+      statusLine.textContent = 'Checking the chain…';
+      statusLine.className = 'name-status hint';
+      try {
+        const res = await bridge.send('name.checkLease', { name });
+        if (destroyed || !statusLine.isConnected || mySeq !== checkSeq) return; // stale
+        if (!res?.supported) throw new Error(res?.reason || 'registry reads unsupported on this network');
+        payment = await bridge.send('name.getPaymentBalance').catch(() => null);
+        if (destroyed || !statusLine.isConnected || mySeq !== checkSeq) return;
+
+        const mine = Boolean(res.lease && account?.address && res.lease.owner === account.address);
+        if (mine) {
+          statusLine.textContent = `✓ ${name}.thru is yours — lease ends ${formatChainTime(res.lease.endTime)}.`;
+          statusLine.className = 'name-status name-status-ok';
+          arm({ kind: 'mine', name, lease: res.lease });
+        } else if (res.lease && res.lease.expiredHint === false) {
+          showIdle(`✕ ${name}.thru is taken — leased by ${truncateMiddle(res.lease.owner)} until ${formatChainTime(res.lease.endTime)}.`);
+          statusLine.className = 'name-status name-status-bad';
+        } else {
+          const claimable = Boolean(res.lease); // lease exists but expired (someone else's)
+          statusLine.textContent = claimable
+            ? `✓ ${name}.thru is claimable — the previous lease expired and can be reclaimed.`
+            : `✓ ${name}.thru is available.`;
+          statusLine.className = 'name-status name-status-ok';
+          arm({ kind: claimable ? 'claimable' : 'available', name, lease: res.lease ?? null });
+        }
+      } catch (err) {
+        if (destroyed || !statusLine.isConnected || mySeq !== checkSeq) return;
+        statusLine.textContent = `? Could not check '${name}' on-chain: ${err?.message || err}. Type again to retry.`;
+        statusLine.className = 'name-status name-status-warn';
+        yearsStepper.classList.add('hidden');
+        actionBtn.classList.add('hidden');
+      }
+    }
+
+    async function writeWithPassword(method, name, yrs) {
+      const sendChecked = (extra = {}) => bridge.send(method, { name, years: yrs, ...extra });
       const prefs = await bridge.send('settings.get').catch(() => null);
       if (prefs?.requirePasswordForSigning === false) return sendChecked();
       const verb = method === 'name.purchase' ? 'lease purchase' : method === 'name.renewLease' ? 'lease renewal' : 'expired-lease claim';
@@ -298,53 +397,20 @@ export function NameRoute({ back }) {
 
     bodyDisposer.on(actionBtn, 'click', async () => {
       banner.set('');
-      const name = nameField.value?.trim?.() ?? '';
-      if (!name) { nameField.setError('a name is required'); return; }
-      const years = yearsValue();
-      if (years == null) { yearsField.setError('whole years, 1–100'); return; }
+      if (!leaseState || leaseState.kind === 'taken') return;
+      const { name } = leaseState;
       actionBtn.disabled = true;
-
-      if (!pending) {
-        // Phase 1 — fresh on-chain truth decides what the button MAY arm.
-        checkLine.textContent = 'Checking the lease account on-chain…';
-        try {
-          const res = await bridge.send('name.checkLease', { name });
-          if (!res?.supported) throw new Error(res?.reason || 'registry reads unsupported on this network');
-          const mine = Boolean(res.lease && account?.address && res.lease.owner === account.address);
-          if (mine) {
-            const { line, affordable } = costLine(`'${name}' is yours — lease ends ${formatChainTime(res.lease.endTime)}. Renewal:`, years);
-            checkLine.textContent = line;
-            if (affordable) { pending = { method: 'name.renewLease' }; actionLabel().textContent = ' Renew lease'; }
-          } else if (res.lease && res.lease.expiredHint === false) {
-            checkLine.textContent = `'${name}' is leased by ${truncateMiddle(res.lease.owner)} until ${formatChainTime(res.lease.endTime)} — it is not available.`;
-          } else {
-            const isClaim = Boolean(res.lease); // expired for someone else
-            const { line, affordable } = costLine(`'${name}' is ${isClaim ? 'claimable (previous lease expired)' : 'unregistered'}. ${isClaim ? 'Claim' : 'Registration'}:`, years);
-            checkLine.textContent = line;
-            if (affordable) {
-              pending = { method: isClaim ? 'name.claimExpired' : 'name.purchase' };
-              actionLabel().textContent = isClaim ? ' Claim & register' : ' Register';
-            }
-          }
-        } catch (err) {
-          checkLine.textContent = err?.message || 'Lease check failed.';
-        } finally {
-          actionBtn.disabled = false;
-        }
-        return;
-      }
-
-      // Phase 2 — the armed write. Cancel in the password sheet returns null: nothing signed.
       try {
-        const result = await writeWithPassword(pending.method, name, years);
-        if (!result) { actionBtn.disabled = false; return; }
+        const method = leaseState.kind === 'mine' ? 'name.renewLease' : leaseState.kind === 'claimable' ? 'name.claimExpired' : 'name.purchase';
+        const result = await writeWithPassword(method, name, years);
+        if (!result) { actionBtn.disabled = false; return; } // cancelled — nothing signed
         toast(`Submitted: ${truncateMiddle(result.signature, 8)}`);
-        if (pending.method !== 'name.renewLease') {
+        if (method !== 'name.renewLease') {
           // Best-effort primary-name link; a failed link must not masquerade as a failed registration.
           try {
             primary = await bridge.send('name.linkPrimary', { name, rootAddress: registry.registry.rootRegistrar });
             toast(`'${name}' linked as your primary name.`);
-          } catch { /* registration itself is done; the link card above stays available */ }
+          } catch { /* registration itself is done; link UI above stays available */ }
         }
         await load();
       } catch (err) {
@@ -353,12 +419,13 @@ export function NameRoute({ back }) {
       }
     });
 
-    resetCheck();
-    accBody.appendChild(h('div', { class: 'stack stack-2' }, [
-      h('div', { class: 'hint', text: `Registry price (from chain config): ${fmt(registry.registry.pricePerYear)} per year · mint ${truncateMiddle(registry.registry.tokenMint)}.` }),
-      nameField.el,
-      yearsField.el,
-      checkLine,
+    card.appendChild(h('div', { class: 'stack stack-2' }, [
+      h('div', { class: 'hint', text: `Registry price (from chain config): ${fmt(registry.registry.pricePerYear)} / year · mint ${truncateMiddle(registry.registry.tokenMint)} · no protocol fee (0n).` }),
+      searchField.el,
+      statusLine,
+      yearsStepper,
+      priceLine,
+      balanceLine,
       actionBtn,
     ]));
   }
