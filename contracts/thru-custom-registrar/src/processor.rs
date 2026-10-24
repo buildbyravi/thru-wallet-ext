@@ -3,21 +3,21 @@
 //! Convention shared with the client ABI (`src/lib/custom-registrar.js` in
 //! thru-wallet-ext — cross-pin the constants if you change either side).
 //!
-//! The first-party SDK transaction builder lays out the account table as
-//! `[feePayer, program, ...readWrite (caller order), ...readOnly (caller order)]`
-//! (web/packages/sdk/thru-ts-client-sdk/domain/transactions/utils.ts
-//! createInstructionContext, verified against monorepo a058dd8 + our pinned @thru/sdk
-//! 0.4.2 package, 2026-10-24): caller order, NOT sorted; index 0 is always the fee
-//! payer/signer. All indices below follow that layout: THIS program is index 1 in
-//! every flow because the program account always follows the fee payer.
+//! ACCOUNT ADDRESsING (ABI v2, 2026-10-24): every instruction carries u16 indices into
+//! the SHARED transaction account table, resolved client-side by the SDK's
+//! `getAccountIndex` at build time. @thru/sdk 0.4.2 (published npm dist, chunk
+//! normalizeAccountList) byte-sorts the readWrite/readOnly segments before
+//! serializing — `[feePayer, program, sorted RW, sorted RO]` — so positional
+//! constants would silently address wrong accounts whenever two pubkeys sort out of
+//! story order. First-party programs use the same index-in-data convention
+//! (txn_tools.rs: `[u32 tag][u16 …idxs][…args]`). Reserved indices 0/1 are the fee
+//! payer (always the signer) and this program.
 //!
-//!   Initialize:    0 admin(signer)  1 THIS program  2 config(rw, new)
-//!                  3 root(rw, new)  4 name-service program(ro)
-//!   Register:      0 user(signer)   1 THIS program  2 treasury(rw)   3 root(rw)
-//!                  4 domain(rw, new) 5 lease(rw, new) 6 config(ro)  7 name-service(ro)
-//!   Renew:         0 user(signer)   1 THIS program  2 treasury(rw)  3 lease(rw, exists)
-//!                  4 config(ro)
-//!   UpdateConfig:  0 admin(signer)  1 THIS program  2 config(rw)
+//! Semantic checks (never trust the index alone):
+//!   Register/Renew: accounts[treasury_idx].pubkey == config.treasury.
+//!   Register:       accounts[root_idx].pubkey == config.root_address,
+//!                   accounts[target_idx].pubkey == instruction.target_pubkey,
+//!                   config/lease program-owned, domain+lease virgin.
 //!
 //! The registrar's name-service authority is its OWN config account (program-owned),
 //! not a private key: InvokeAuth marks program-owned accounts authorized for the
@@ -38,24 +38,6 @@ use crate::cpi;
 use crate::errors as E;
 use crate::instruction as ix;
 use crate::state::{self, DomainLease, RegistrarConfig};
-
-// ---- shared account indices (per the table above; program == 1 always) ------------
-const IDX_INIT_CONFIG: u16 = 2;
-const IDX_INIT_ROOT: u16 = 3;
-const IDX_INIT_NS: u16 = 4;
-
-const IDX_REG_TREASURY: u16 = 2;
-const IDX_REG_ROOT: u16 = 3;
-const IDX_REG_DOMAIN: u16 = 4;
-const IDX_REG_LEASE: u16 = 5;
-const IDX_REG_CONFIG: u16 = 6;
-const IDX_REG_NS: u16 = 7;
-
-const IDX_RNW_TREASURY: u16 = 2;
-const IDX_RNW_LEASE: u16 = 3;
-const IDX_RNW_CONFIG: u16 = 4;
-
-const IDX_UCFG_CONFIG: u16 = 2;
 
 /// One authorized account (the config) in InvokeAuth wire order.
 /// Layout == shadow_stack.rs InvokeAuth{magic, auth_cnt, deauth_cnt} + [u16].
@@ -80,27 +62,18 @@ impl InvokeAuthOne {
     }
 }
 
-/// Locate an account by pubkey within the shared transaction account table.
-/// Returns None when the client forgot to include the account at all.
-fn find_account_idx(pubkey: &[u8; 32]) -> Option<u16> {
-    let txn = get_txn();
-    let n = txn.accounts_cnt();
-    for i in 0..n {
-        if let Ok(pk) = txn.account_pubkey(i) {
-            if &pk.0 == pubkey {
-                return Some(i);
-            }
-        }
-    }
-    None
-}
-
 #[inline]
 fn map_sys(code: SyscallCode, err: u64) -> Result<(), u64> {
     match code {
         SyscallCode::Success | SyscallCode::SuccessExit => Ok(()),
         _ => Err(err),
     }
+}
+
+/// Table pubkey at `idx` (bounds-checked by the VM view).
+#[inline]
+fn pubkey_at(idx: u16) -> Result<[u8; 32], u64> {
+    Ok(get_txn().account_pubkey(idx).map_err(|_| E::ERR_MISSING_ACCOUNTS)?.0)
 }
 
 /// Verify an account slot currently has no program-state data ("not registered").
@@ -124,27 +97,22 @@ fn now_epoch_seconds() -> u64 {
 }
 
 // ----------------------------------------------------------------------------------
-// Initialize { fee_per_year, treasury, root_name, config_seed, config_proof, root_proof }
+// Initialize — admin == fee payer (idx 0).
 // ----------------------------------------------------------------------------------
 pub fn initialize<const N: usize>(
     mgr: &AccountManager<N>,
     ix: &ix::InitializeIx<'_>,
 ) -> Result<u64, u64> {
     // CHECKS
+    ix::initialize_idxs_ok(ix)?;
     if ix.root_name.is_empty() || ix.root_name.len() > ix::ROOT_NAME_BUF {
         return Err(ix::ERR_NAME_TOO_LONG);
     }
-    let txn = get_txn();
-    let admin_pk = txn.account_pubkey(0).map_err(|_| E::ERR_MISSING_ACCOUNTS)?.0;
-    let root_pk = txn.account_pubkey(IDX_INIT_ROOT).map_err(|_| E::ERR_MISSING_ACCOUNTS)?.0;
+    let admin_pk = pubkey_at(0)?;
+    let root_pk = pubkey_at(ix.root_idx)?;
 
     // Config must be virgin — double-Initialize would silently swap authority.
-    {
-        let cfg = mgr.get_readonly(IDX_INIT_CONFIG).map_err(|_| E::ERR_MISSING_ACCOUNTS)?;
-        if cfg.data_size() > 0 {
-            return Err(E::ERR_ALREADY_INITIALIZED);
-        }
-    }
+    assert_empty(mgr, ix.config_idx, E::ERR_ALREADY_INITIALIZED)?;
 
     let cfg_proof = StateProof::parse_proof(ix.config_proof).map_err(|_| E::ERR_PROOF_PARSE)?;
 
@@ -154,7 +122,7 @@ pub fn initialize<const N: usize>(
     // borrows — account_safe.rs).
     {
         let mut config_ref = mgr
-            .create_and_init(IDX_INIT_CONFIG, &ix.config_seed, &cfg_proof, state::CONFIG_SIZE as u64)
+            .create_and_init(ix.config_idx, &ix.config_seed, &cfg_proof, state::CONFIG_SIZE as u64)
             .map_err(|_| E::ERR_CREATE_CONFIG)?;
         let data = config_ref.data_mut().ok_or(E::ERR_CONFIG_PARSE)?;
         let mut root_name = [0u8; ix::ROOT_NAME_BUF];
@@ -172,19 +140,18 @@ pub fn initialize<const N: usize>(
     }
 
     // INTERACTIONS — CPI the native name-service to create the root with the config
-    // account as its authority: authority_account_idx = IDX_INIT_CONFIG, InvokeAuth
+    // account as its authority: authority_account_idx = config_idx, InvokeAuth
     // marks it (program-owned by construction above).
     let mut cpi_buf = [0u8; cpi::NS_IX_MAX];
     let cpi_len = cpi::encode_init_root(
         &mut cpi_buf,
-        IDX_INIT_ROOT,
-        IDX_INIT_CONFIG,
+        ix.root_idx,
+        ix.config_idx,
         ix.root_name,
         ix.root_proof,
     )?;
-    let auth = InvokeAuthOne::one(IDX_INIT_CONFIG);
-    let (res_code, callee_exit) =
-        mgr.invoke(IDX_INIT_NS, &cpi_buf[..cpi_len], Some(auth.as_ref()));
+    let auth = InvokeAuthOne::one(ix.config_idx);
+    let (res_code, callee_exit) = mgr.invoke(ix.ns_idx, &cpi_buf[..cpi_len], Some(auth.as_ref()));
     map_sys(res_code, E::ERR_CPI_INIT_ROOT)?;
     map_sys(callee_exit, E::ERR_CPI_INIT_ROOT)?;
 
@@ -197,41 +164,42 @@ pub fn initialize<const N: usize>(
 }
 
 // ----------------------------------------------------------------------------------
-// Register { label, duration_years, target, domain_proof, lease_proof }
+// Register — user == fee payer (idx 0) pays the fee; `target` owns the name.
 // ----------------------------------------------------------------------------------
 pub fn register<const N: usize>(
     mgr: &AccountManager<N>,
     ix: &ix::RegisterIx<'_>,
 ) -> Result<u64, u64> {
     // CHECKS
+    ix::register_idxs_ok(ix)?;
     ix::validate_label(ix.label)?;
     ix::validate_duration(ix.duration_years)?;
 
     let cfg = {
-        let acc = mgr.get_readonly(IDX_REG_CONFIG).map_err(|_| E::ERR_MISSING_ACCOUNTS)?;
+        let acc = mgr.get_readonly(ix.config_idx).map_err(|_| E::ERR_MISSING_ACCOUNTS)?;
+        if !acc.is_owned_by_current_program() {
+            return Err(E::ERR_NOT_OWNED_BY_PROGRAM);
+        }
         RegistrarConfig::parse(acc.data())?
     }; // borrow ends
 
-    let txn = get_txn();
     // Account-table identity checks — a spoofed treasury/root must fail CHECKS, not CPI.
-    let treasury_pk =
-        txn.account_pubkey(IDX_REG_TREASURY).map_err(|_| E::ERR_MISSING_ACCOUNTS)?.0;
-    if treasury_pk != cfg.treasury {
+    if pubkey_at(ix.treasury_idx)? != cfg.treasury {
         return Err(E::ERR_WRONG_TREASURY);
     }
-    let root_pk = txn.account_pubkey(IDX_REG_ROOT).map_err(|_| E::ERR_MISSING_ACCOUNTS)?.0;
-    if root_pk != cfg.root_address {
+    if pubkey_at(ix.root_idx)? != cfg.root_address {
         return Err(E::ERR_WRONG_ROOT);
     }
+    // The target index must actually hold the promised target pubkey.
+    if pubkey_at(ix.target_idx)? != ix.target {
+        return Err(E::ERR_TARGET_NOT_IN_TX);
+    }
     // Domain + lease must be virgin slots (the "checks" half of double-registration).
-    assert_empty(mgr, IDX_REG_DOMAIN, E::ERR_NAME_TAKEN)?;
-    assert_empty(mgr, IDX_REG_LEASE, E::ERR_NAME_TAKEN)?;
-    // The domain owner must be present in the table (the native program keys owners
-    // by account index).
-    let owner_idx = find_account_idx(&ix.target).ok_or(E::ERR_TARGET_NOT_IN_TX)?;
+    assert_empty(mgr, ix.domain_idx, E::ERR_NAME_TAKEN)?;
+    assert_empty(mgr, ix.lease_idx, E::ERR_NAME_TAKEN)?;
 
-    // Overflow-checked fee (zero-float; if fee×years can't fit u64 we refuse silently
-    // NOTHING — we revert with a named code).
+    // Overflow-checked fee (zero-float; if fee×years can't fit u64 we revert with a
+    // named code, never a silent wrap).
     let total_fee = cfg
         .fee_per_year
         .checked_mul(ix.duration_years as u64)
@@ -247,7 +215,7 @@ pub fn register<const N: usize>(
     // EFFECTS — create + fill the lease BEFORE any external interaction (strict CEI).
     {
         let mut lease_acc = mgr
-            .create_and_init(IDX_REG_LEASE, &lease_seed, &lease_proof, state::LEASE_SIZE as u64)
+            .create_and_init(ix.lease_idx, &lease_seed, &lease_proof, state::LEASE_SIZE as u64)
             .map_err(|_| E::ERR_CREATE_LEASE)?;
         let data = lease_acc.data_mut().ok_or(E::ERR_LEASE_PARSE)?;
         let mut label_buf = [0u8; ix::LABEL_BUF];
@@ -264,21 +232,22 @@ pub fn register<const N: usize>(
     }
 
     // INTERACTIONS 1/2 — collect the fee: user (idx 0, signer) → treasury.
-    map_sys(mgr.account_transfer(0, IDX_REG_TREASURY, total_fee), E::ERR_TRANSFER)?;
+    map_sys(mgr.account_transfer(0, ix.treasury_idx, total_fee), E::ERR_TRANSFER)?;
 
-    // INTERACTIONS 2/2 — CPI into native name-service; authority = our config account.
+    // INTERACTIONS 2/2 — CPI into native name-service; authority = our config account,
+    // owner = target (the shared table — CPI indices address the outer transaction).
     let mut cpi_buf = [0u8; cpi::NS_IX_MAX];
     let cpi_len = cpi::encode_register_subdomain(
         &mut cpi_buf,
-        IDX_REG_DOMAIN,
-        IDX_REG_ROOT,
-        owner_idx,
-        IDX_REG_CONFIG,
+        ix.domain_idx,
+        ix.root_idx,
+        ix.target_idx,
+        ix.config_idx,
         ix.label,
         ix.domain_proof,
     )?;
-    let auth = InvokeAuthOne::one(IDX_REG_CONFIG);
-    let (res_code, callee_exit) = mgr.invoke(IDX_REG_NS, &cpi_buf[..cpi_len], Some(auth.as_ref()));
+    let auth = InvokeAuthOne::one(ix.config_idx);
+    let (res_code, callee_exit) = mgr.invoke(ix.ns_idx, &cpi_buf[..cpi_len], Some(auth.as_ref()));
     map_sys(res_code, E::ERR_CPI_REGISTER)?;
     map_sys(callee_exit, E::ERR_CPI_REGISTER)?;
 
@@ -291,27 +260,29 @@ pub fn register<const N: usize>(
 }
 
 // ----------------------------------------------------------------------------------
-// Renew { label, duration_years }
+// Renew — user == fee payer (idx 0).
 // ----------------------------------------------------------------------------------
 pub fn renew<const N: usize>(
     mgr: &AccountManager<N>,
     ix: &ix::RenewIx<'_>,
 ) -> Result<u64, u64> {
+    ix::renew_idxs_ok(ix)?;
     ix::validate_label(ix.label)?;
     ix::validate_duration(ix.duration_years)?;
 
     let cfg = {
-        let acc = mgr.get_readonly(IDX_RNW_CONFIG).map_err(|_| E::ERR_MISSING_ACCOUNTS)?;
+        let acc = mgr.get_readonly(ix.config_idx).map_err(|_| E::ERR_MISSING_ACCOUNTS)?;
+        if !acc.is_owned_by_current_program() {
+            return Err(E::ERR_NOT_OWNED_BY_PROGRAM);
+        }
         RegistrarConfig::parse(acc.data())?
     };
-    let txn = get_txn();
-    if txn.account_pubkey(IDX_RNW_TREASURY).map_err(|_| E::ERR_MISSING_ACCOUNTS)?.0 != cfg.treasury
-    {
+    if pubkey_at(ix.treasury_idx)? != cfg.treasury {
         return Err(E::ERR_WRONG_TREASURY);
     }
     // Lease must exist, be program-owned, and carry the same label.
     let mut lease = {
-        let acc = mgr.get_readonly(IDX_RNW_LEASE).map_err(|_| E::ERR_NO_LEASE)?;
+        let acc = mgr.get_readonly(ix.lease_idx).map_err(|_| E::ERR_NO_LEASE)?;
         if !acc.is_owned_by_current_program() {
             return Err(E::ERR_NOT_OWNED_BY_PROGRAM);
         }
@@ -333,11 +304,11 @@ pub fn renew<const N: usize>(
         .ok_or(E::ERR_FEE_OVERFLOW)?;
 
     // EFFECTS
-    if mgr.set_account_data_writable(IDX_RNW_LEASE) != SyscallCode::Success {
+    if mgr.set_account_data_writable(ix.lease_idx) != SyscallCode::Success {
         return Err(E::ERR_LEASE_PARSE);
     }
     {
-        let mut acc = mgr.get(IDX_RNW_LEASE).map_err(|_| E::ERR_LEASE_PARSE)?;
+        let mut acc = mgr.get(ix.lease_idx).map_err(|_| E::ERR_LEASE_PARSE)?;
         let data = acc.data_mut().ok_or(E::ERR_LEASE_PARSE)?;
         data[..state::LEASE_SIZE].copy_from_slice(&lease.serialize());
     }
@@ -348,7 +319,7 @@ pub fn renew<const N: usize>(
         .fee_per_year
         .checked_mul(ix.duration_years as u64)
         .ok_or(E::ERR_FEE_OVERFLOW)?;
-    map_sys(mgr.account_transfer(0, IDX_RNW_TREASURY, total_fee), E::ERR_TRANSFER)?;
+    map_sys(mgr.account_transfer(0, ix.treasury_idx, total_fee), E::ERR_TRANSFER)?;
 
     let mut ev = [0u8; 8 + ix::LABEL_BUF];
     ev[..6].copy_from_slice(b"TCR:N:");
@@ -358,18 +329,21 @@ pub fn renew<const N: usize>(
 }
 
 // ----------------------------------------------------------------------------------
-// UpdateConfig { new_fee?, new_treasury? } — admin keyed; config.admin == acct 0.
+// UpdateConfig — admin keyed; config.admin == fee payer (idx 0).
 // ----------------------------------------------------------------------------------
 pub fn update_config<const N: usize>(
     mgr: &AccountManager<N>,
     ix: &ix::UpdateConfigIx,
 ) -> Result<u64, u64> {
-    let txn = get_txn();
-    let caller = txn.account_pubkey(0).map_err(|_| E::ERR_MISSING_ACCOUNTS)?.0;
+    ix::update_config_idxs_ok(ix)?;
+    let caller = pubkey_at(0)?;
 
     // CHECKS (incl. admin) BEFORE any writability flip.
     let mut cfg = {
-        let acc = mgr.get_readonly(IDX_UCFG_CONFIG).map_err(|_| E::ERR_MISSING_ACCOUNTS)?;
+        let acc = mgr.get_readonly(ix.config_idx).map_err(|_| E::ERR_MISSING_ACCOUNTS)?;
+        if !acc.is_owned_by_current_program() {
+            return Err(E::ERR_NOT_OWNED_BY_PROGRAM);
+        }
         RegistrarConfig::parse(acc.data())?
     };
     if caller != cfg.admin {
@@ -383,11 +357,11 @@ pub fn update_config<const N: usize>(
     }
 
     // EFFECTS
-    if mgr.set_account_data_writable(IDX_UCFG_CONFIG) != SyscallCode::Success {
+    if mgr.set_account_data_writable(ix.config_idx) != SyscallCode::Success {
         return Err(E::ERR_CONFIG_PARSE);
     }
     {
-        let mut acc = mgr.get(IDX_UCFG_CONFIG).map_err(|_| E::ERR_CONFIG_PARSE)?;
+        let mut acc = mgr.get(ix.config_idx).map_err(|_| E::ERR_CONFIG_PARSE)?;
         let data = acc.data_mut().ok_or(E::ERR_CONFIG_PARSE)?;
         data[..state::CONFIG_SIZE].copy_from_slice(&cfg.serialize());
     }

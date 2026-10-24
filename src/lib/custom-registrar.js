@@ -13,8 +13,15 @@
 //   - CPI payload re-encoding (init-root tag 0 / register-subdomain tag 1, packed args,
 //     inline proofs): first-party txn_tools.rs @ a058dd8 — same source our live-proven
 //     name-service register path used on Betanet 2026-10-24.
-//   - Account-table convention [feePayer, program, ...readWrite, ...readOnly] in
-//     CALLER ORDER: @thru/sdk 0.4.2 TransactionBuilder utils.ts createInstructionContext.
+//   - Account-table ABI: v2 index-carrying formats. @thru/sdk 0.4.2 (the PUBLISHED npm
+//     dist — normalizeAccountList in chunk sorting with compareAccounts, verified
+//     2026-10-24 live in the sandbox) byte-sorts each readWrite/readOnly segment;
+//     the VM-visible table is [feePayer, program, sorted RW, sorted RO]. Positional
+//     account constants are therefore INVALID — indices must be resolved at build time
+//     through the SDK's own InstructionContext (this module takes an indexOf resolver
+//     exactly like buildRegisterSubdomainInstructionData does in name-service.js).
+//     Registry scripts pass `instructionData: ({ getAccountIndex }) => buildTcr…(…)`
+//     so the SDK itself decides the final indices.
 //   - Authority-under-CPI: InvokeAuth (magic 0xC3F7A1D9E5B20846, sys INVOKE 0x0A) —
 //     only program-OWNED accounts may be marked authorized (account_safe.rs).
 //
@@ -62,10 +69,11 @@ export class CustomRegistrarDecodeError extends Error {
   constructor(message) { super(message); this.name = 'CustomRegistrarDecodeError'; }
 }
 
-/** Program-side revert codes (errors.rs) → human text. */
+/** Program-side revert codes (errors.rs + instruction.rs) → human text. */
 export const TCR_ERRORS = Object.freeze({
   0xd001: 'truncated instruction data', 0xd002: 'unknown instruction',
   0xd003: 'name too long', 0xd004: 'proof too long',
+  0xd005: 'bad account index (reserved slot or role collision)',
   0xd100: 'bad label (need 3–32 of [a-z0-9-], no edge hyphens)',
   0xd101: 'bad duration (1–10 years)', 0xd102: 'missing accounts',
   0xd103: 'not admin', 0xd104: 'already initialized',
@@ -74,6 +82,7 @@ export const TCR_ERRORS = Object.freeze({
   0xd109: 'lease parse failed', 0xd10a: 'name already taken',
   0xd10b: 'no lease found', 0xd10c: 'lease label mismatch',
   0xd10d: 'target account missing from transaction', 0xd10e: 'fee math overflow',
+  0xd10f: 'treasury index/pubkey mismatch',
   0xd200: 'config creation failed', 0xd201: 'lease creation failed',
   0xd202: 'fee transfer failed', 0xd203: 'root init CPI failed',
   0xd204: 'register CPI failed', 0xd205: 'state proof parse failed',
@@ -114,8 +123,8 @@ export function tcrLeaseAddress(registrarProgram, label) {
 
 /**
  * Config = deriveProgramAddress(registrar_program, configSeed32) — the seed is chosen
- * at Initialize time; the deploy script fixes it to ASCII "config" zero-padded so this
- * helper can always re-derive it. Never hardcode the resulting address.
+ * at Initialize time; the deploy script fixes it to TCR_CONFIG_SEED_LABEL zero-padded
+ * so this helper can always re-derive it. Never hardcode the resulting address.
  */
 // NB: the label deliberately CANNOT be a valid registerable name — the seed space the
 // config account and lease accounts share would then let a user register a label whose
@@ -158,7 +167,6 @@ export function parseTcrConfig(input) {
     feePerYear: dv.getBigUint64(TCR_CFG.feePerYear, true),
     rootAddress: addr(data, TCR_CFG.rootAddress),
     rootName: String.fromCharCode(...data.slice(TCR_CFG.rootName, TCR_CFG.rootName + rootNameLen)),
-    // Honest label: program time source is block_time (ns) → stored epoch seconds.
     bump: data[TCR_CFG.bump],
   };
 }
@@ -202,26 +210,43 @@ function padded32(text, what) {
   return { bytes, buf: out };
 }
 
+function resolvedIndex(indexOf, address, role, { allowZero = false } = {}) {
+  if (typeof indexOf !== 'function') throw new Error('indexOf resolver is required (SDK getAccountIndex context)');
+  const idx = indexOf(address);
+  if (!Number.isInteger(idx) || idx < 0) throw new Error(`${role} address is not in the transaction account table`);
+  if (!allowZero && idx <= 1) throw new Error(`${role} resolved to reserved index ${idx} (0=feePayer, 1=program)`);
+  return idx;
+}
+
 /**
- * INITIALIZE: [u32 0][u64 fee_per_year][32 treasury][u32 root_name_len][root_name 32]
+ * INITIALIZE: [u32 0][u16 config_idx][u16 root_idx][u16 ns_idx]
+ * [u64 fee_per_year][32 treasury][u32 root_name_len][root_name 32p]
  * [32 config_seed][u32 config_proof_len][proof][u32 root_proof_len][proof]
  */
 export function buildTcrInitializeInstructionData({
   feePerYear, treasury, rootName, configSeed, configProof, rootProof,
+  indexOf, configAddress, rootAddress,
+  nameServiceProgram = NAME_SERVICE_PROGRAM,
 }) {
   if (typeof feePerYear !== 'bigint' || feePerYear < 0n) throw new Error('feePerYear must be a non-negative bigint of base units');
   assertProof(configProof, 'configProof');
   assertProof(rootProof, 'rootProof');
+  const idxConfig = resolvedIndex(indexOf, configAddress, 'config');
+  const idxRoot = resolvedIndex(indexOf, rootAddress, 'root');
+  const idxNs = resolvedIndex(indexOf, nameServiceProgram, 'nameServiceProgram');
   const treasuryBytes = Pubkey.from(treasury).toBytes();
   const { bytes: nameBytes, buf: nameBuf } = padded32(rootName, 'root name');
   const seed = configSeed instanceof Uint8Array && configSeed.length === 32
     ? configSeed
     : padded32(configSeed, 'config seed').buf;
-  const total = 4 + 8 + 32 + 4 + 32 + 32 + 4 + configProof.length + 4 + rootProof.length;
+  const total = 4 + 6 + 8 + 32 + 4 + 32 + 32 + 4 + configProof.length + 4 + rootProof.length;
   const out = new Uint8Array(total);
   const dv = new DataView(out.buffer);
   let w = 0;
   dv.setUint32(w, TCR_OP_INITIALIZE, true); w += 4;
+  dv.setUint16(w, idxConfig, true); w += 2;
+  dv.setUint16(w, idxRoot, true); w += 2;
+  dv.setUint16(w, idxNs, true); w += 2;
   dv.setBigUint64(w, feePerYear, true); w += 8;
   out.set(treasuryBytes, w); w += 32;
   dv.setUint32(w, nameBytes.length, true); w += 4;
@@ -235,23 +260,39 @@ export function buildTcrInitializeInstructionData({
 }
 
 /**
- * REGISTER: [u32 1][u16 duration_years][u32 label_len][label 32][32 target]
+ * REGISTER: [u32 1][u16 treasury][u16 root][u16 domain][u16 lease][u16 config][u16 ns][u16 target]
+ * [u16 duration_years][u32 label_len][label 32p][32 target_pubkey]
  * [u32 domain_proof_len][proof][u32 lease_proof_len][proof]
  */
-export function buildTcrRegisterInstructionData({ label, durationYears, target, domainProof, leaseProof }) {
+export function buildTcrRegisterInstructionData({
+  label, durationYears, targetAddress, domainProof, leaseProof, indexOf,
+  treasuryAddress, rootAddress, domainAddress, leaseAddress, configAddress,
+  nameServiceProgram = NAME_SERVICE_PROGRAM,
+}) {
   const lp = labelProblem(label);
   if (lp) throw new Error(lp);
   const yp = yearsProblem(durationYears);
   if (yp) throw new Error(yp);
   assertProof(domainProof, 'domainProof');
   assertProof(leaseProof, 'leaseProof');
+  const idxTreasury = resolvedIndex(indexOf, treasuryAddress, 'treasury');
+  const idxRoot = resolvedIndex(indexOf, rootAddress, 'root');
+  const idxDomain = resolvedIndex(indexOf, domainAddress, 'domain');
+  const idxLease = resolvedIndex(indexOf, leaseAddress, 'lease');
+  const idxConfig = resolvedIndex(indexOf, configAddress, 'config');
+  const idxNs = resolvedIndex(indexOf, nameServiceProgram, 'nameServiceProgram');
+  // target may BE the fee payer (index 0) — the common self-register case.
+  const idxTarget = resolvedIndex(indexOf, targetAddress, 'target', { allowZero: true });
   const { bytes: labelBytes, buf: labelBuf } = padded32(label, 'label');
-  const targetBytes = Pubkey.from(target).toBytes();
-  const total = 4 + 2 + 4 + 32 + 32 + 4 + domainProof.length + 4 + leaseProof.length;
+  const targetBytes = Pubkey.from(targetAddress).toBytes();
+  const total = 4 + 14 + 2 + 4 + 32 + 32 + 4 + domainProof.length + 4 + leaseProof.length;
   const out = new Uint8Array(total);
   const dv = new DataView(out.buffer);
   let w = 0;
   dv.setUint32(w, TCR_OP_REGISTER, true); w += 4;
+  for (const idx of [idxTreasury, idxRoot, idxDomain, idxLease, idxConfig, idxNs, idxTarget]) {
+    dv.setUint16(w, idx, true); w += 2;
+  }
   dv.setUint16(w, Number(durationYears), true); w += 2;
   dv.setUint32(w, labelBytes.length, true); w += 4;
   out.set(labelBuf, w); w += 32;
@@ -263,53 +304,57 @@ export function buildTcrRegisterInstructionData({ label, durationYears, target, 
   return out;
 }
 
-/** RENEW: [u32 2][u16 duration_years][u32 label_len][label 32] */
-export function buildTcrRenewInstructionData({ label, durationYears }) {
+/**
+ * RENEW: [u32 2][u16 treasury_idx][u16 lease_idx][u16 config_idx]
+ * [u16 duration_years][u32 label_len][label 32p]
+ */
+export function buildTcrRenewInstructionData({
+  label, durationYears, indexOf, treasuryAddress, leaseAddress, configAddress,
+}) {
   const lp = labelProblem(label);
   if (lp) throw new Error(lp);
   const yp = yearsProblem(durationYears);
   if (yp) throw new Error(yp);
+  const idxTreasury = resolvedIndex(indexOf, treasuryAddress, 'treasury');
+  const idxLease = resolvedIndex(indexOf, leaseAddress, 'lease');
+  const idxConfig = resolvedIndex(indexOf, configAddress, 'config');
   const { bytes: labelBytes, buf: labelBuf } = padded32(label, 'label');
-  const out = new Uint8Array(4 + 2 + 4 + 32);
+  const out = new Uint8Array(4 + 6 + 2 + 4 + 32);
   const dv = new DataView(out.buffer);
   dv.setUint32(0, TCR_OP_RENEW, true);
-  dv.setUint16(4, Number(durationYears), true);
-  dv.setUint32(6, labelBytes.length, true);
-  out.set(labelBuf, 10);
+  dv.setUint16(4, idxTreasury, true);
+  dv.setUint16(6, idxLease, true);
+  dv.setUint16(8, idxConfig, true);
+  dv.setUint16(10, Number(durationYears), true);
+  dv.setUint32(12, labelBytes.length, true);
+  out.set(labelBuf, 16);
   return out;
 }
 
-/** UPDATE_CONFIG: [u32 3][u8 mask][u64 new_fee][32 new_treasury] */
-export function buildTcrUpdateConfigInstructionData({ newFee = null, newTreasury = null }) {
+/**
+ * UPDATE_CONFIG: [u32 3][u16 config_idx][u8 mask][u64 new_fee][32 new_treasury]
+ * mask bit0 = apply new_fee, bit1 = apply new_treasury.
+ */
+export function buildTcrUpdateConfigInstructionData({ newFee = null, newTreasury = null, indexOf, configAddress }) {
   if (newFee === null && newTreasury === null) throw new Error('nothing to update');
   if (newFee !== null && (typeof newFee !== 'bigint' || newFee < 0n)) throw new Error('newFee must be a non-negative bigint');
-  const out = new Uint8Array(4 + 1 + 8 + 32);
+  const idxConfig = resolvedIndex(indexOf, configAddress, 'config');
+  const out = new Uint8Array(4 + 2 + 1 + 8 + 32);
   const dv = new DataView(out.buffer);
   dv.setUint32(0, TCR_OP_UPDATE_CONFIG, true);
-  out[4] = (newFee !== null ? 1 : 0) | (newTreasury !== null ? 2 : 0);
-  dv.setBigUint64(5, newFee ?? 0n, true);
-  out.set(newTreasury !== null ? Pubkey.from(newTreasury).toBytes() : new Uint8Array(32), 13);
+  dv.setUint16(4, idxConfig, true);
+  out[6] = (newFee !== null ? 1 : 0) | (newTreasury !== null ? 2 : 0);
+  dv.setBigUint64(7, newFee ?? 0n, true);
+  out.set(newTreasury !== null ? Pubkey.from(newTreasury).toBytes() : new Uint8Array(32), 15);
   return out;
 }
 
-// ---- Account tables (SDK order: [feePayer, program, ...readWrite, ...readOnly]) ----
-// The Rust processor's fixed index constants ARE this table: keep both in lockstep.
-// Chain reality (SDK 0.4.2 utils.ts): table = feePayer(0), program(1), readWrite in the
-// caller's order, readOnly in the caller's order; duplicates keep their FIRST index.
-// `target` — the future domain owner — is resolved in-program by a pubkey scan, so it
-// must appear somewhere here. When target == user the fee payer slot covers it; when
-// it differs, include target as the LAST readOnly entry (its index is then found by
-// the scan; the fixed indices for config/nameServiceProgram stay correct because
-// target, if absent, simply is not duplicated).
-//
-//   Initialize:    [admin, registrar, config, root, nameServiceProgram]
-//   Register:      [user, registrar, treasury, root, domain, lease, config, nameServiceProgram(, target?)]
-//   Renew:         [user, registrar, treasury, lease, config]
-//   UpdateConfig:  [admin, registrar, config]
-//
-// Register fixed indices: treasury=2, root=3, domain=4, lease=5, config=6, ns=7.
-// target is 8 ONLY when present and ≠ every earlier entry.
-export const TCR_ACCOUNT_ORDERS = Object.freeze({
+// ---- Account lists (semantic roles; ORDER IS IRRELEVANT — SDK 0.4.2 byte-sorts) ---
+// Pass these sets to buildAndSign({ accounts: { readWrite, readOnly } }) and resolve
+// indices through the SDK InstructionContext inside the instructionData callback.
+// `target` (the future domain owner) appears as an extra read-only entry only when it
+// differs from the fee payer/user; when equal, index 0 covers it (allowZero).
+export const TCR_ACCOUNT_LISTS = Object.freeze({
   initialize: { readWrite: ['config', 'root'], readOnly: ['nameServiceProgram'] },
   register: {
     readWrite: ['treasury', 'root', 'domain', 'lease'],
@@ -318,3 +363,6 @@ export const TCR_ACCOUNT_ORDERS = Object.freeze({
   renew: { readWrite: ['treasury', 'lease'], readOnly: ['config'] },
   updateConfig: { readWrite: ['config'], readOnly: [] },
 });
+
+// Back-compat export: older drafts named this TCR_ACCOUNT_ORDERS. Same data.
+export const TCR_ACCOUNT_ORDERS = TCR_ACCOUNT_LISTS;

@@ -141,19 +141,13 @@ step(configProof?.length > 0 && rootProof?.length > 0, 'creation proofs generate
 const configSeed = new Uint8Array(32);
 configSeed.set(new TextEncoder().encode(TCR_CONFIG_SEED_LABEL));
 
-const instructionData = buildTcrInitializeInstructionData({
-  feePerYear: FEE_PER_YEAR,
-  treasury: TREASURY,
-  rootName: ROOT_NAME,
-  configSeed,
-  configProof,
-  rootProof,
-});
-step(true, 'Initialize instruction data', `${instructionData.length} bytes`);
-
-// Account table (processor.rs convention):
-//   0 admin(feePayer)  1 registrar program(implicit)  2 config(rw,new)  3 root(rw,new)  4 name-service(ro)
 const NS_PROGRAM = nsLib.NAME_SERVICE_PROGRAM;
+ok('using pinned native name-service program', /^ta/.test(NS_PROGRAM), NS_PROGRAM);
+
+// Account lists per role (SDK byte-sorts them into the final table; the u16 indices
+// are resolved INSIDE the instructionData callback via the SDK's getAccountIndex —
+// Thru ABI convention, same as the first-party name-service/faucet builders).
+// Roles: admin=feePayer(0) · program(1) · config(rw,new) · root(rw,new) · name-service(ro)
 const { rawTransaction } = await client.transactions.buildAndSign({
   feePayer: { publicKey: deployer.publicKey, privateKey: deployer.privateKey },
   program: registrarProgramAddress,
@@ -162,27 +156,36 @@ const { rawTransaction } = await client.transactions.buildAndSign({
     readWrite: [configAddress, rootAddress],
     readOnly: [NS_PROGRAM],
   },
-  instructionData: () => instructionData,
+  instructionData: ({ getAccountIndex }) => buildTcrInitializeInstructionData({
+    feePerYear: FEE_PER_YEAR,
+    treasury: TREASURY,
+    rootName: ROOT_NAME,
+    configSeed,
+    configProof,
+    rootProof,
+    indexOf: getAccountIndex,
+    configAddress,
+    rootAddress,
+    nameServiceProgram: NS_PROGRAM,
+  }),
 });
 step(!!rawTransaction?.length, 'Initialize built+signed');
 
 let signature = null;
-let txErr = null;
+let streamResult = null;
+let streamError = null;
 for await (const update of client.transactions.sendAndTrack(rawTransaction)) {
   if (update?.signature?.value && !signature) {
     const { formatSignature } = await import(join(REPO_ROOT, 'src/lib/registrar.js'));
     signature = formatSignature(update.signature.value);
   }
-  if (update?.error) txErr = update.error;
+  if (update?.executionResult) streamResult = update.executionResult;
+  if (update?.error) streamError = update.error;
 }
-step(!!signature && !txErr, 'Initialize broadcast', signature ?? String(txErr ?? 'no signature'));
-
-// Poll the receipt for the honest verdict; NEVER claim success off the broadcast alone.
-const receipt = await client.transactions.getDetails
-  ? await client.transactions.getDetails({ signature, wait: { timeoutMs: 60_000 } }).catch((e) => ({ error: String(e) }))
-  : null;
-const vmError = receipt ? Number(receipt.vmError ?? receipt.vm_error ?? 0) : -1;
-step(vmError === 0, 'Initialize executed (vmError 0)', receipt ? `vmError=${vmError} userError=${receipt.userErrorCode ?? receipt.user_error_code ?? 0}` : 'no receipt API — verify via explorer');
+step(!!signature && !streamError, 'Initialize broadcast', signature ?? String(streamError ?? 'no signature'));
+const vmError = Number(streamResult?.vmError ?? -1);
+step(vmError === 0, 'Initialize executed (vmError 0)',
+  streamResult ? `vmError=${streamResult.vmError} userErrorCode=${streamResult.userErrorCode ?? 0}` : 'stream ended without an execution result (timeout) — check the explorer before re-running');
 
 const cfgInfo = await thruClient.getAccountInfo(configAddress).catch(() => null);
 const rootInfo = await thruClient.getAccountInfo(rootAddress).catch(() => null);
@@ -214,7 +217,7 @@ const evidence = {
   treasury: TREASURY,
   initializeSignature: signature,
   vmError,
-  receipt,
+  executionResult: streamResult,
 };
 const evPath = join(EVIDENCE_DIR, `registrar-deploy-${NETWORK_ID}-${ROOT_NAME}-${Date.now()}.json`);
 writeFileSync(evPath, JSON.stringify(evidence, (k, v) => (typeof v === 'bigint' ? v.toString() : v), 2));

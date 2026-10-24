@@ -106,13 +106,10 @@ const domainProof = (await client.proofs.generate({ address: domainAddress, proo
 const leaseProof = (await client.proofs.generate({ address: leaseAddress, proofType: 1 })).proof;
 step(domainProof?.length > 0 && leaseProof?.length > 0, 'creation proofs generated');
 
-const instructionData = buildTcrRegisterInstructionData({
-  label, durationYears: YEARS, target: user.address, domainProof, leaseProof,
-});
-step(true, 'Register instruction data', `${instructionData.length} bytes`);
-
-// Account table per processor.rs (register): 0 user · 1 program · 2 treasury(rw) ·
-// 3 root(rw) · 4 domain(rw,new) · 5 lease(rw,new) · 6 config(ro) · 7 name-service(ro)
+// Account roles (SDK byte-sorts them; indices resolved at build time via the SDK
+// InstructionContext — the ABI carries u16 indices, same as the native builders):
+//   user=feePayer(0) · registrar program(1) · treasury(rw) · root(rw) · domain(rw,new)
+//   · lease(rw,new) · config(ro) · name-service(ro); target == user covers idx 0.
 const { rawTransaction } = await client.transactions.buildAndSign({
   feePayer: { publicKey: user.publicKey, privateKey: user.privateKey },
   program: PROGRAM,
@@ -121,24 +118,38 @@ const { rawTransaction } = await client.transactions.buildAndSign({
     readWrite: [cfg.treasury, rootAddress, domainAddress, leaseAddress],
     readOnly: [configAddress, nsLib.NAME_SERVICE_PROGRAM],
   },
-  instructionData: () => instructionData,
+  instructionData: ({ getAccountIndex }) => buildTcrRegisterInstructionData({
+    label,
+    durationYears: YEARS,
+    targetAddress: user.address,
+    domainProof,
+    leaseProof,
+    indexOf: getAccountIndex,
+    treasuryAddress: cfg.treasury,
+    rootAddress,
+    domainAddress,
+    leaseAddress,
+    configAddress,
+    nameServiceProgram: nsLib.NAME_SERVICE_PROGRAM,
+  }),
 });
 step(!!rawTransaction?.length, 'Register built+signed');
 
 let signature = null;
-let txErr = null;
+let streamResult = null;
+let streamError = null;
 for await (const update of client.transactions.sendAndTrack(rawTransaction)) {
   if (update?.signature?.value && !signature) {
     const { formatSignature } = await import(join(REPO_ROOT, 'src/lib/registrar.js'));
     signature = formatSignature(update.signature.value);
   }
-  if (update?.error) txErr = update.error;
+  if (update?.executionResult) streamResult = update.executionResult;
+  if (update?.error) streamError = update.error;
 }
-step(!!signature && !txErr, 'Register broadcast', signature ?? String(txErr ?? 'no signature'));
-
-const receipt = await client.transactions.getDetails({ signature, wait: { timeoutMs: 60_000 } }).catch((e) => ({ error: String(e) }));
-const vmError = Number(receipt?.vmError ?? receipt?.vm_error ?? -1);
-step(vmError === 0, 'Register executed (vmError 0)', JSON.stringify(receipt));
+step(!!signature && !streamError, 'Register broadcast', signature ?? String(streamError ?? 'no signature'));
+const vmError = Number(streamResult?.vmError ?? -1);
+step(vmError === 0, 'Register executed (vmError 0)',
+  streamResult ? JSON.stringify(streamResult) : 'stream ended without an execution result — check the explorer');
 
 // --- verify the world ---------------------------------------------------------------
 const domAfter = await thruClient.getAccountInfo(domainAddress).catch(() => null);
@@ -171,7 +182,7 @@ const evPath = join(evDir, `registrar-probe-${NETWORK_ID}-${label}-${Date.now()}
 writeFileSync(evPath, JSON.stringify({
   date: new Date().toISOString(), network: NETWORK_ID, program: PROGRAM, label, years: YEARS,
   config: { rootName: cfg.rootName, feePerYear: cfg.feePerYear.toString(), treasury: cfg.treasury },
-  rootAddress, domainAddress, leaseAddress, signature, vmError, receipt,
+  rootAddress, domainAddress, leaseAddress, signature, vmError, executionResult: streamResult,
   treasuryBefore: treasuryBefore.toString(), treasuryAfter: treasuryAfter.toString(),
 }, (k, v) => (typeof v === 'bigint' ? v.toString() : v), 2));
 console.log(`\nEvidence: ${evPath}`);
