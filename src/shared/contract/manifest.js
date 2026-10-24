@@ -404,7 +404,7 @@ export const METHODS = {
     returns: '{ signature, domainAddress } — register a label under a parent root/domain; self-signed (authority = fee payer, the ONLY key). ' +
       'Protocol fee 0n — NAME_SERVICE_PROGRAM_FEE = 0 in the first-party CLI (txn_tools.rs, 2026-10-24); no payment token involved. ' +
       'parentAddress may be blank: the canonical root is then auto-discovered on-chain. ' +
-      'The CHAIN decides registration rights under a foreign root — a non-owned parent reverts on-chain and the outcome is surfaced honestly.',
+      'Authority pre-verification (2026-10-24 Betanet live probe): when the parsed parent\'s authority/owner ≠ the active account the call refuses with NAME_PARENT_AUTHORITY before any broadcast — the chain provably reverts such writes with name-service error 3. Only when the field is unreadable is the CHAIN left to decide.',
     auth: 'signing',
     since: 19,
   },

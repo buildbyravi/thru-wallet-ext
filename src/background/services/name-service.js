@@ -238,15 +238,29 @@ export async function registerName({ name, parentAddress } = {}) {
   if (!parentInfo?.exists) {
     throw coded('PARENT_UNKNOWN', `the parent name account ${parent.slice(0, 12)}… does not exist on this network`);
   }
+  let parentAuthority = null;
   try {
     const raw = ns.extractAccountData(parentInfo.raw);
     try {
-      ns.parseRootRegistrar(raw);
+      parentAuthority = ns.parseRootRegistrar(raw).authority ?? null;
     } catch {
-      ns.parseDomainAccount(raw);
+      parentAuthority = ns.parseDomainAccount(raw).owner ?? null;
     }
   } catch (e) {
     throw coded('PARENT_UNKNOWN', `the parent account at ${parent.slice(0, 12)}… does not parse as a name-service account (${e?.message ?? e})`);
+  }
+
+  const feePayer = await vault.getActiveAccount();
+
+  // Authority pre-verification. Live evidence (Betanet probe, 2026-10-24): the name-service
+  // program reverts register-subdomain with error 3 (access authority mismatch) whenever the
+  // signer is not the parent root's authority / parent domain's owner. The chain enforces
+  // this — so a wallet that self-signs MUST NOT broadcast a write it can prove will revert.
+  // When the authority field is unreadable we keep the original posture: let the chain decide
+  // and surface any revert verbatim.
+  if (parentAuthority && parentAuthority !== feePayer.address) {
+    throw coded('NAME_PARENT_AUTHORITY',
+      `only the parent's authority (${parentAuthority.slice(0, 12)}…) may register names under it — the chain reverts any other signer (name-service error 3, live-verified 2026-10-24 on Betanet). Your active account ${feePayer.address.slice(0, 12)}… is not this parent's authority; no transaction was broadcast.`);
   }
 
   const n = String(name);
@@ -255,8 +269,6 @@ export async function registerName({ name, parentAddress } = {}) {
   if (domainInfo?.exists) {
     throw coded('NAME_TAKEN', `'${n}' is already registered under this parent on-chain.`);
   }
-
-  const feePayer = await vault.getActiveAccount();
 
   // A Creation (proofType 1) state proof — the chain demand for every account-instantiating
   // instruction; the same class the token account initializer and registrar purchase carry.

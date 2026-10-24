@@ -301,8 +301,19 @@ export function NameRoute({ back }) {
         if (destroyed || !statusLine.isConnected || mySeq !== checkSeq) return; // stale
         const owner = res?.leaf?.exists ? res.leaf.domain?.owner ?? null : null;
         if (!res?.leaf?.exists) {
-          leaseState = { kind: 'free-available', name, rootAddress: res.rootAddress };
-          setStatus(`✓ ${name}.${tld} is available — free to register on ${network?.label || 'this network'} (0n protocol fee, no payment token).`, 'ok');
+          // Chain rule (live-verified 2026-10-24 on Betanet): register-subdomain reverts
+          // with name-service error 3 unless the signer IS the root's authority. A
+          // self-signed wallet can therefore register for free only under a root its own
+          // key controls — a foreign closed root is honestly reported, never armed.
+          const authority = canonRoot?.authority ?? null;
+          if (authority && account?.address && authority !== account.address) {
+            leaseState = null;
+            hideActions();
+            setStatus(`✓ ${name}.${tld} is unregistered, but the .${tld} root is closed: its authority ${truncateMiddle(authority)} ≠ your account — the chain reverts any other signer (error 3). Registration under ${tld} is unavailable to you.`, 'warn');
+          } else {
+            leaseState = { kind: 'free-available', name, rootAddress: res.rootAddress };
+            setStatus(`✓ ${name}.${tld} is available — free to register on ${network?.label || 'this network'} (0n protocol fee, no payment token).`, 'ok');
+          }
         } else if (res.leaf.decodeError) {
           leaseState = null;
           setStatus(`? ${name}.${tld} exists but its account could not be decoded: ${res.leaf.decodeError}. Registration refused — the chain, not this screen, owns the name.`, 'warn');
