@@ -3,4 +3,9 @@
 // only be imported inside src/lib; services/UI consume this stable re-export instead. The
 // authoritative values live in the pinned package itself — this file deliberately adds no
 // logic; any managed-genesis move lands via a pinned package bump, never an edit here.
-export { BOOTSTRAP_PROGRAM_ADDRESSES, BOOTSTRAP_FAUCET_VAULT_ADDRESS } from '@thru/programs/bootstrap-addresses';
+export {
+  BOOTSTRAP_PROGRAM_ADDRESSES,
+  BOOTSTRAP_FAUCET_VAULT_ADDRESS,
+  BOOTSTRAP_FAUCET_RATE_LIMIT_POLICY_ADDRESS,
+  BOOTSTRAP_FAUCET_RATE_LIMIT_POLICY_ID,
+} from '@thru/programs/bootstrap-addresses';

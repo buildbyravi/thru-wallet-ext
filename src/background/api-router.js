@@ -172,6 +172,7 @@ const handlers = Object.assign(Object.create(null), {
 
   // ---- Transactions and RPC --------------------------------------------
   'tx.getAccountInfo': ({ address }) => txService.getAccountInfo(address),
+  'tx.getFaucetLimit': () => txService.getFaucetLimit(),
   'tx.claimFaucet': ({ amountUnits }) => txService.claimFaucet(amountUnits),
   // ---- Name service (v19 reads / v23 register). Reads are always-on. name.register is a
   // live, self-signed, fee-0n write (first-party txn_tools.rs format: no payment accounts,

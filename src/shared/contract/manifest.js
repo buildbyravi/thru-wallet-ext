@@ -111,7 +111,13 @@
 //   append: name.getCanonicalRoot (auth none) exposes the on-chain-proof canonical-root
 //   discovery that name.lookup already performs internally, so the UI can offer free
 //   registration beneath a root that actually exists on the running network.
-export const CONTRACT_VERSION = 23;
+//   v24 (2026-10-24, owner audit priority 1): tx.getFaucetLimit — a pure READ of the
+//   faucet's on-chain rate-limit policy (@thru/programs/ratelimit, bootstrap-pinned address)
+//   plus the active account's per-rule bucket usage. Truth discipline: unknown states are
+//   explicit (supported:false reasons; keyReadable:false; null window fields for
+//   slot-clocked rules), never fabricated numbers. Also a behavior note on tx.claimFaucet:
+//   ratelimit-coded vmErrors are now re-labelled honestly (code 'FAUCET_RATE_LIMITED').
+export const CONTRACT_VERSION = 24;
 
 export const METHODS = {
   // ---- System ------------------------------------------------------------
@@ -482,6 +488,12 @@ export const METHODS = {
     returns: '{ signature } — takes over an expired lease (owner ≠ signer, chain enforces expiry)',
     auth: 'signing',
     since: 22,
+  },
+  'tx.getFaucetLimit': {
+    params: [],
+    returns: 'Faucet rate-limit state: { supported, reason } or { supported: true, paused, maxAmountPerCall, rules[] } with read-only facts; unknown pieces are null/false-flagged, never invented',
+    auth: 'none',
+    since: 24,
   },
   'tx.claimFaucet': {
     params: ['amountUnits'],

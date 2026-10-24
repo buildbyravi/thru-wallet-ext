@@ -2,6 +2,7 @@
 
 import * as vault from '../../lib/vault.js';
 import * as thruClient from '../../lib/thru-client.js';
+import * as ratelimit from '../../lib/ratelimit.js';
 import { getActiveNetworkConfig, getActiveNetworkId } from './network-service.js';
 import { assertWhitelisted } from './preferences-service.js';
 import * as pending from './pending-tx-service.js';
@@ -57,6 +58,102 @@ function normalizeTxResult(result) {
 }
 
 /**
+ * Read the faucet's on-chain rate-limit policy and the ACTIVE ACCOUNT's bucket usage.
+ *
+ * `tx.getFaucetLimit` (contract v24). Pure read, no signing — callable while locked like every
+ * other tx.* query. Truth discipline:
+ *   - supported:false reasons are declared states, never fabricated usage:
+ *     'no-faucet' (network has none), 'policy-not-found', 'policy-unreadable'.
+ *   - Bucket derivation follows the pinned `@thru/programs/ratelimit` package
+ *     (src/lib/ratelimit.js). Rules whose key isn't derivable locally (instruction-account,
+ *     attested) come back with keyReadable:false and NO usage numbers.
+ *   - A missing bucket account proves zero usage (buckets are created on first charge);
+ *     a slot-clocked window can't be evaluated against the wall clock, so its
+ *     current-window fields stay null.
+ */
+export async function getFaucetLimit() {
+  const network = await getActiveNetworkConfig();
+  if (!network.faucetProgramId || !network.faucetStateAccount) {
+    return { supported: false, reason: 'no-faucet', networkId: network.id };
+  }
+  const account = await vault.getActiveAccount();
+  const feePayerAddress = account?.address ?? null;
+
+  const fetchData = async (address) => {
+    const info = await thruClient.getAccountInfo(address).catch((err) => ({ readError: String(err?.message || err) }));
+    if (info?.readError) return info;
+    if (!info?.exists) return { exists: false, data: null };
+    const raw = info.raw ?? null;
+    const data = raw?.data?.data instanceof Uint8Array ? raw.data.data : (raw?.data instanceof Uint8Array ? raw.data : null);
+    return { exists: true, data };
+  };
+
+  const policyAddress = ratelimit.FAUCET_POLICY_ADDRESS;
+  const policyInfo = await fetchData(policyAddress);
+  if (policyInfo.readError) {
+    return { supported: false, reason: 'policy-read-error', networkId: network.id, policyAddress };
+  }
+  if (!policyInfo.exists || !policyInfo.data) {
+    return { supported: false, reason: 'policy-not-found', networkId: network.id, policyAddress };
+  }
+  const policy = ratelimit.parsePolicy(policyInfo.data);
+  if (!policy) {
+    return { supported: false, reason: 'policy-unreadable', networkId: network.id, policyAddress };
+  }
+
+  const nowUnixSec = BigInt(Math.floor(Date.now() / 1000));
+  const rules = await Promise.all((policy.config.rules ?? []).map(async (rule, idx) => {
+    const keyBytes = feePayerAddress
+      ? ratelimit.keyBytesForRule(rule.keyKind, { feePayerAddress })
+      : null;
+    if (keyBytes == null) {
+      // Bucket not derivable locally — summarizeRule(undefined) yields unknown usage fields.
+      return {
+        idx,
+        keyReadable: false,
+        bucketAddress: null,
+        summary: ratelimit.summarizeRule(rule, undefined, { nowUnixSec }),
+      };
+    }
+    const addr = ratelimit.bucketAddress(policyAddress, idx, keyBytes);
+    const bInfo = await fetchData(addr).catch(() => ({ readError: 'bucket-read-failed' }));
+    if (bInfo.readError) {
+      return {
+        idx,
+        keyReadable: false,
+        bucketAddress: addr,
+        bucketReadError: true,
+        summary: ratelimit.summarizeRule(rule, undefined, { nowUnixSec }),
+      };
+    }
+    const bucket = bInfo.exists ? ratelimit.parseBucket(bInfo.data) : null;
+    return {
+      idx,
+      keyReadable: true,
+      bucketAddress: addr,
+      summary: ratelimit.summarizeRule(rule, bucket, { nowUnixSec }),
+    };
+  }));
+
+  // A policy parsed for a DIFFERENT target than this network's faucet is a chain-fact surprise;
+  // report it, never silently present usage against the wrong program.
+  const targetMatchesFaucet = policy.target === network.faucetProgramId;
+
+  return {
+    supported: true,
+    networkId: network.id,
+    policyAddress,
+    policyId: String(policy.policyId),
+    target: policy.target,
+    targetMatchesFaucet,
+    paused: ratelimit.policyPaused(policy),
+    maxAmountPerCall: String(policy.config.maxAmountPerCall ?? 0n), // '0' = unlimited
+    checkedAt: Date.now(),
+    rules,
+  };
+}
+
+/**
  * Perform a faucet claim for the active account.
  * @param {string|number|bigint} amountUnits
  */
@@ -79,9 +176,38 @@ export async function claimFaucet(amountUnits) {
       networkId: network.id,
     });
   };
-  const result = normalizeTxResult(await thruClient.claimFaucet(feePayer, rawUnits, {
-    onSubmitted: trackSubmitted,
-  }));
+  let result;
+  try {
+    result = normalizeTxResult(await thruClient.claimFaucet(feePayer, rawUnits, {
+      onSubmitted: trackSubmitted,
+    }));
+  } catch (error) {
+    // Ratelimit-aware failure: thru-client throws a bare `vmError=N` chain. When N is one of
+    // the ratelimit program's published codes, replace it with the honest reason plus (when a
+    // fresh budget read proves it) the window reset time. Anything else falls through
+    // unmodified — we never relabel an error we cannot classify.
+    const rl = ratelimit.classifyFaucetError(error?.message);
+    if (!rl) throw error;
+    let resetHint = '';
+    try {
+      const { paused, rules } = await getFaucetLimit();
+      const timed = (rules ?? []).filter((r) => r?.summary?.resetAtUnixSec != null);
+      if (paused) {
+        resetHint = ' The faucet\'s policy is paused by its administrator right now.';
+      } else if (timed.length) {
+        const soonest = timed.reduce((a, b) =>
+          (BigInt(a.summary.resetAtUnixSec) < BigInt(b.summary.resetAtUnixSec) ? a : b));
+        const at = new Date(Number(soonest.summary.resetAtUnixSec) * 1000);
+        resetHint = ` This rate-limit window resets at ${at.toLocaleTimeString()} your local time.`;
+      }
+    } catch { /* the classification alone already stands; a failed re-read adds nothing */ }
+    const friendly = new Error(
+      `The faucet's ${rl.label} rejected this claim.${resetHint}`,
+    );
+    friendly.code = 'FAUCET_RATE_LIMITED';
+    friendly.retryable = true;
+    throw friendly;
+  }
   if (!trackedSignature) await trackSubmitted(result.signature);
   await balances.getBalances([feePayer.address]);
 

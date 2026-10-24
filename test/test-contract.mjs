@@ -135,7 +135,7 @@ section('Contract v17/v18 DeFi contract-first drop (M0)');
 // v20 (2026-10-09, G2-S0): same method set — the v18 intent surface now has a real,
 // flag-gated native-send implementation behind it (test/test-defi-intent.mjs proves both
 // sides of the gate). A version bump, not a method change.
-ok('the contract advances to v23 without reusing earlier numbers', CONTRACT_VERSION === 23);
+ok('the contract advances to v24 without reusing earlier numbers', CONTRACT_VERSION === 24);
 
 const v17 = Object.entries(METHODS).filter(([, spec]) => spec.since === 17).map(([name]) => name);
 const v18 = Object.entries(METHODS).filter(([, spec]) => spec.since === 18).map(([name]) => name);
@@ -169,7 +169,13 @@ const v23 = Object.entries(METHODS).filter(([, spec]) => spec.since === 23).map(
 ok('v23 appends exactly the canonical-root discovery read', v23.length === 1 && v23[0] === 'name.getCanonicalRoot', `got ${v23.join(', ')}`);
 ok('v23 canonical-root read is open auth:none and register signs',
   METHODS['name.getCanonicalRoot']?.auth === 'none' && METHODS['name.register']?.auth === 'signing');
-ok('the contract declares 139 methods in total (81 + 43 + 15 name.*)', Object.keys(METHODS).length === 139,
+
+// v24 (2026-10-24, owner audit priority 1): tx.getFaucetLimit — pure read of the faucet's
+// pinned rate-limit policy + per-rule bucket usage; open auth:none like every tx.* read.
+const v24 = Object.entries(METHODS).filter(([, spec]) => spec.since === 24).map(([name]) => name);
+ok('v24 appends exactly the faucet rate-limit read', v24.length === 1 && v24[0] === 'tx.getFaucetLimit', `got ${v24.join(', ')}`);
+ok('v24 faucet-limit read is open auth:none', METHODS['tx.getFaucetLimit']?.auth === 'none');
+ok('the contract declares 140 methods in total (81 + 43 + 15 name.* + 1 hook read)', Object.keys(METHODS).length === 140,
   `got ${Object.keys(METHODS).length}`);
 
 // Auth discipline (DEFI-03): reads are call-time honest, prepares are unlocked-only, and

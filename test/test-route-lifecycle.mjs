@@ -1362,6 +1362,31 @@ const FIXTURES = {
     networkId: activeNetwork().id,
   }),
   'tx.getAccountInfo': () => ({ exists: true, balance: activeAccount().balance }),
+  // v24 faucet rate-limit read: one fee-payer-keyed rule with a bucket still absent ⇒
+  // provably zero usage (matches ratelimit.summarizeRule's absent-bucket semantics exactly).
+  'tx.getFaucetLimit': () => ({
+    supported: true,
+    networkId: activeNetwork().id,
+    policyAddress: 'taTestFaucetPolicy',
+    policyId: '0',
+    target: activeNetwork().faucetProgramId,
+    targetMatchesFaucet: true,
+    paused: false,
+    maxAmountPerCall: '10000',
+    checkedAt: Date.now(),
+    rules: [{
+      idx: 0,
+      keyReadable: true,
+      bucketAddress: 'taTestFaucetBucket',
+      summary: {
+        keyKind: 1, keyKindLabel: 'fee-payer', clock: 1, clockLabel: 'seconds',
+        window: '600', maxCalls: '3', maxAmount: '30000',
+        inCurrentWindow: true, usedCallsInWindow: '0', usedAmountInWindow: '0',
+        remainingCalls: '3', remainingAmount: '30000',
+        exhausted: false, resetAtUnixSec: null, bucket: null,
+      },
+    }],
+  }),
   'tx.getBalances': ({ addresses } = {}) => {
     const out = {};
     for (const address of addresses || []) {
