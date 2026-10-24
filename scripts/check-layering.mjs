@@ -62,6 +62,30 @@ const RULES = [
       || /lib\/networks(\.js)?$/.test(spec),
     why: 'src/shared is imported by both sides, so it must not reach into either or drag the SDK-bearing network config across the bundle boundary.',
   },
+
+  // DeFi feature backends (M0, docs/MODULE_BOUNDARIES.md). Same shape as the future UI-side
+  // feature rules: siblings never import each other, chain/vault access goes through the
+  // service layer, and the shared DeFi machinery under services/defi stays a leaf.
+  {
+    id: 'background-features-stay-sibling-free',
+    when: (f) => /^src\/background\/features\/[^/]+\//.test(f),
+    forbid: (spec) => /(^|\/)features\//.test(spec),
+    why: 'Feature backends never import each other; shared DeFi machinery lives in src/background/services/defi and the router is the only integration point.',
+  },
+  {
+    id: 'background-features-reach-chain-through-services',
+    when: (f) => f.startsWith('src/background/features/'),
+    forbid: (spec) => /lib\/vault(\.js)?$/.test(spec)
+      || /lib\/thru-client(\.js)?$/.test(spec)
+      || (/(^|\/)services\//.test(spec) && !/services\/defi\//.test(spec)),
+    why: 'Features reach chain/vault only through adapters and services; direct imports bypass the fixture-vs-implementation boundary. At M0 the only permitted service import is services/defi.',
+  },
+  {
+    id: 'defi-shared-machinery-stays-a-leaf',
+    when: (f) => f.startsWith('src/background/services/defi/'),
+    forbid: (spec) => /(^|\/)features\//.test(spec) || /(^|\/)services\//.test(spec),
+    why: 'services/defi is importable by every feature and service; it must depend on none of them (shared/flags.js and its own files only).',
+  },
 ];
 
 // chrome.runtime.sendMessage is a two-way street and each direction gets exactly ONE owner:

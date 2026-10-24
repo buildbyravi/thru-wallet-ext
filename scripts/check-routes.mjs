@@ -134,8 +134,13 @@ for (const [path, sites] of navigated) {
 
 // A registered route nobody can reach is the other half of the same bug.
 const ENTRY_ROUTES = new Set(['/unlock', '/dashboard', '/welcome']);
+// Owner-directed (2026-10-23/24): routes that deliberately have NO in-app click path.
+// Empty since 2026-10-24: /name got a dashboard button below the grid (that date's
+// directive), so every registered route is reachable. Keep this set EMPTY — adding a
+// route here requires an explicit dated owner directive.
+const DEEP_LINK_ONLY = new Set();
 for (const path of registered) {
-  if (ENTRY_ROUTES.has(path)) continue;
+  if (ENTRY_ROUTES.has(path) || DEEP_LINK_ONLY.has(path)) continue;
   if (!navigated.has(path)) {
     errors.push(
       `UNREACHABLE ROUTE: '${path}' is registered but nothing navigates to it.\n`

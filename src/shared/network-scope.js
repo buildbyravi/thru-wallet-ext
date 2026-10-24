@@ -60,6 +60,13 @@ export const SCOPED_KEYS = Object.freeze([
   'thru_pending_txs',
   'thru_deployed_tokens',
   'thru_history_cache',
+  // Intent pipeline records (G2-S0): an intent is bound to the network it was prepared
+  // under — surfacing devnet intents on mainnet would be exactly the cross-chain leak this
+  // list exists to prevent.
+  'defi_intents',
+  // Primary-name (domain) links (2026-10-09): a name record only exists on one chain's
+  // name-service deployment — a devnet-owned name says nothing about mainnet.
+  'thru_primary_names',
 ]);
 
 /**

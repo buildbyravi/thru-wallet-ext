@@ -64,7 +64,10 @@ try {
   console.log('\n=== parsed feed (bigint-safe) ===');
   console.log(JSON.stringify(parsed, (k, v) => (typeof v === 'bigint' ? v.toString() : v), 2));
 } catch (err) {
-  if (/exists/i.test(err.message) || err.exists === false) {
+  // A missing feed/account is a RESULT (exists:false), not a transport failure. The RPC
+  // spells absence several ways — all of them mean "honestly not there" (2026-10-06 live
+  // run surfaced '[not_found] account not found' taking the wrong branch).
+  if (/exists|not[_ ]found|account not found/i.test(err.message) || err.exists === false) {
     console.log('\nno feed account at this address (exists:false) — a result, not an error.');
     process.exit(0);
   }

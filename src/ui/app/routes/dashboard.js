@@ -13,10 +13,12 @@
 //        No 24h delta line — this wallet has no market-data source, so a delta would be
 //        fabricated.
 //      - '1 pending' badge in header when pending transactions exist.
-//   2. 3x2 Action Panel (.dashboard-panel-grid):
-//      - 3 columns, 1px hairline gap, 88px cell height, pure white cells, hover #FDF0F1.
+//   2. 3-column Action Panel (.dashboard-panel-grid) — main's exact geometry
+//      (88px cells, 1px hairline gap; every tile identical, faucet included;
+//      enforced by scripts/check-panel-tiles.mjs), hover blue.
 //      - Row 1: Send (/send), Receive (/receive), Swap (disabled/roadmap).
-//      - Row 2: History (/history, with badge count), Security/Approvals, Faucet (/faucet).
+//      - Row 2: History (/history, with badge count), Security/Approvals, Faucet (/faucet)
+//        — faucet hidden entirely on networks that declare no faucet.
 //   3. Token drawer (Rabby balance-card → asset-list popup):
 //      - The TOKEN LIST lives in the drawer (src/ui/domain/token-drawer.js), opened from
 //        the balance box — "click anywhere in the box". There is NO separate Tokens
@@ -235,7 +237,14 @@ export function DashboardRoute({ navigate }) {
     label: 'Faucet',
     onClick: () => navigate('/faucet'),
   }));
+  // Hidden until applyNetworkCapabilities (called from load() with the live record) proves
+  // this network actually declares a faucet — see the mainnet-readiness note there.
+  faucetTile.el.style.display = 'none';
 
+  // Owner directive 2026-10-23: the dashboard grid must render EXACTLY like main's
+  // 14e16b1 — 2 rows x 3 tiles, Faucet in row 2. The Domain screen stays fully built
+  // at /name (route registered in boot.js) but has NO dashboard tile: a 7th tile left a
+  // 1-item orphan row above and was judged bad-looking.
   const actionPanel = h('div', { class: 'dashboard-panel-grid' }, [
     sendTile.el,
     receiveTile.el,
@@ -245,8 +254,28 @@ export function DashboardRoute({ navigate }) {
     faucetTile.el,
   ]);
 
+  // Owner directive 2026-10-24: a SECOND grid below the main panel for ecosystem
+  // entries — tiles identical in size to Send/Receive (same .panel-item class, same
+  // 3-column grid). First entry: Domain (/name — ENS-style search/register). More are
+  // planned here (liquidity, launchpad, DEX…). The main 6-tile grid above stays
+  // byte-identical to main 14e16b1.
+  const nameTile = track(PanelItem({
+    iconName: 'globe',
+    label: 'Domain',
+    onClick: () => navigate('/name'),
+  }));
+
+  const servicesPanel = h('div', { class: 'dashboard-panel-grid dashboard-services-grid' }, [
+    nameTile.el,
+  ]);
+
   function applyNetworkCapabilities(network) {
     const faucetAvailable = Boolean(network?.faucetProgramId && network?.faucetStateAccount);
+    // Mainnet-readiness (2026-10-09): a network without a faucet HIDES the tile entirely —
+    // no affordance, no "unavailable" explanation needed — and until the network record has
+    // loaded the tile stays hidden, so a first paint can never flash a clickable faucet at
+    // a faucet-less chain. The disabled state stays as a complement for edge races.
+    faucetTile.el.style.display = faucetAvailable ? '' : 'none';
     faucetTile.el.disabled = !faucetAvailable;
     faucetTile.el.title = faucetAvailable ? 'Faucet' : 'Faucet unavailable on this network';
   }
@@ -476,6 +505,7 @@ export function DashboardRoute({ navigate }) {
     dashHeader,
     banner.el,
     actionPanel,
+    servicesPanel,
   ]);
 
   load();

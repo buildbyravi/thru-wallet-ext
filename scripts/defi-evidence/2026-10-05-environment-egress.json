@@ -1,0 +1,14 @@
+{
+  "id": "2026-10-05-environment-egress",
+  "kind": "environment",
+  "network": null,
+  "dateUtc": "2026-10-05",
+  "tool": "curl from the Arena agent sandbox workspace (thru-wallet-ext)",
+  "refs": [
+    "https://rpc.betanet.thru.org/",
+    "https://scan.thru.org/",
+    "https://thru.org/docs/"
+  ],
+  "finding": "Direct egress from the build sandbox to thru.org infrastructure fails at the TLS handshake: curl exit 35 (OpenSSL SSL_ERROR_SYSCALL), HTTP 000, for rpc.betanet.thru.org, scan.thru.org and thru.org alike. Egress to github.com (git/gh) works, and the agent's page-fetch tool reaches thru.org through a separate path. CONSEQUENCE: no live-chain Gate 0 evidence can be produced from this sandbox. The repo anticipated this case (docs/MANUAL_SMOKE_CHECKLIST.md: a sandboxed environment fails every call with 'fetch failed'). Live dossier rows must be produced on a network-reachable machine with scripts/verify-*.mjs, scripts/probe-*.mjs and scripts/token-lab.mjs using throwaway accounts.",
+  "confidence": "high — reproducible in-session on 2026-10-05"
+}

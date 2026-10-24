@@ -1,0 +1,75 @@
+{
+  "timestamp": "2026-10-24T12:45:31Z",
+  "network": "betanet",
+  "rpcUrl": "https://rpc.betanet.thru.org",
+  "faucetProgramId": "taFCTxR0y2eabGGaEdtTwC9pHz7ZY4CYD7FOiBFUJeAW16",
+  "faucetStateAccount": "taTigKYAf5mNxUNUVXeXq1HQodKc07DBzF4Pl7tCi1iXxt",
+  "finding": "The on-chain faucet program enforces a strict per-transaction cap of exactly 10,000 base units. Any claim of 10,001+ reverts on-chain with vmError=-765, userErrorCode=1. However, repeated claims of 10,000 units on the same account succeed, allowing an account to accumulate 20,000+ base units across multiple transactions.",
+  "trials": [
+    {
+      "test": "baseline_10k",
+      "amount": 10000,
+      "success": true,
+      "vmError": 0,
+      "signature": "tsxAZ-pMku8X96dqs5tsReWmEhBdhrTuTEn0bs7OU8a1Bh1BimZ0SJRJirDmb9GHjOSit2uNsO7QwOpb4clnN7BB7J",
+      "executionResult": {
+        "vmError": 0,
+        "consumedComputeUnits": 32527,
+        "userErrorCode": "0"
+      },
+      "balance": "10000"
+    },
+    {
+      "test": "over_cap_10001",
+      "amount": 10001,
+      "success": false,
+      "vmError": -765,
+      "signature": "tst4QzvLz-MaxsXDMuiKKrzQoHy9AgDCpaF6hS58zhRnjXzaV4OyXAmd_RFL6IiWDDYpOgwDdYpu9aDjkCBg4IBB23",
+      "executionResult": {
+        "vmError": -765,
+        "consumedComputeUnits": 31969,
+        "userErrorCode": "1"
+      },
+      "balance": "0"
+    },
+    {
+      "test": "over_cap_20k",
+      "amount": 20000,
+      "success": false,
+      "vmError": -765,
+      "signature": "tstFBdS1fJzzgZlYGTFCTZcYPe9zohECWDYhssfzDEd-jpHi21P4lh5rsJdXCxJNErKOaKL2A8WKsj4xo_DvOPCxvP",
+      "executionResult": {
+        "vmError": -765,
+        "consumedComputeUnits": 31969,
+        "userErrorCode": "1"
+      },
+      "balance": "0"
+    },
+    {
+      "test": "over_cap_100k",
+      "amount": 100000,
+      "success": false,
+      "vmError": -765,
+      "signature": "tsmucM87UupZeQBggVLrQEPhpgn2bVubG_SGfLVPPQ6pdGn3wlzK04lLNU0asgAKGb30KbZoUpSwm0KirsqadpCR6J",
+      "executionResult": {
+        "vmError": -765,
+        "consumedComputeUnits": 31969,
+        "userErrorCode": "1"
+      },
+      "balance": "0"
+    },
+    {
+      "test": "repeat_claim_10k",
+      "amount": 10000,
+      "success": true,
+      "vmError": 0,
+      "signature": "tsVYX1APUsXtK-5jjer54w53HA4d56g_guAFoFYlHeGf-KJgR-y3VETR48RvzQc9yCs37VLhKGAPwlN6SfXtotAB9l",
+      "executionResult": {
+        "vmError": 0,
+        "consumedComputeUnits": 32527,
+        "userErrorCode": "0"
+      },
+      "balance": "20000"
+    }
+  ]
+}
