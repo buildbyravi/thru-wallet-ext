@@ -467,7 +467,7 @@ export function NameRoute({ back }) {
         text: registryUp
           ? `Price from this network's on-chain registry: ${fmt(registry.registry.pricePerYear)} / year · no protocol fee (0n).`
           : freeRootUp
-            ? `No paid .thru registry on this network — .${canonRoot.rootName} names register directly with the name-service program: free (0n protocol fee, no payment token). Confirmed against the first-party CLI (NAME_SERVICE_PROGRAM_FEE = 0, 2026-10-24).`
+            ? `No paid registrar contract on this network — .${canonRoot.rootName} names register directly via the official name-service program: free (0n protocol fee, no payment token).`
             : `Registration is unavailable on this network: ${registry?.reason || 'registry state unreadable'}; ${canonRoot?.reason || 'no canonical name root found'}.`,
       }),
     ]));
