@@ -17,6 +17,7 @@ enough to have never been checked in a browser at all.
 - **Automated/local:** Node tests and build guards cover source structure, contract agreement, route behavior, deterministic cache/registration fixtures, and DOM assertions. They do not certify rendered layout or Chrome scheduling.
 - **Real browser — OPEN:** popup and side-panel layout/focus/QR, actual mutual exclusion and toolbar-mode behavior, clipboard prompt, and MV3 worker suspension/restart. Complete the relevant boxes below in Chrome.
 - **Live chain — OPEN where marked:** v12 account activation, token-transfer recipient-owner/fee behavior, current block-time availability/latency, charged-fee source, and explorer route. A historical native-Betanet observation or a mocked test does not close these checks.
+- **Custom registrar (D-016) — OPEN, owner host only:** `contracts/thru-custom-registrar` byte-pins pass in `npm test`; its Rust host tests are authored but un-run (no cargo in the Arena sandbox — run `cargo test --lib` on the host); deploy/initialize/register are UNVERIFIED until `scripts/registrar/deploy-and-init.mjs` then `scripts/registrar/probe-live-registrar.mjs` run against Betanet and write evidence. Nothing in the wallet UI may claim registrar support before this evidence exists. (The separate faucet ceiling question is CLOSED: `scripts/defi-evidence/2026-10-24-faucet-cap.json` proves the cap is exactly 10 000 base units per transaction — 10 001+ reverts vmError −765 — while repeated claims accumulate freely.)
 
 Run it before merging any change to `src/ui/**`, `src/popup/**` or `src/manifest.json`, and after any
 change to the side panel, the popup width, or the modal/focus behaviour.
@@ -308,6 +309,7 @@ Manual smoke: <date>, Chrome <version>, build <git short sha>
   routes: 14/14 [ ]   redirects [ ]   keyboard/focus [ ]   secret hygiene [ ]
   browser: mutual exclusion [ ]   QR/layout [ ]   worker lifecycle [ ]
   live chain: v12 activation [ ]   token owner/fee [ ]   block time/latency [ ]   explorer route [ ]
+  registrar (host scripts): cargo host tests [ ]   deploy+initialize [ ]   live register probe [ ]   (faucet ceiling: CLOSED 2026-10-24 — cap is exactly 10 000)
   failures found: <none | list, each with the route and the context>
 ```
 
