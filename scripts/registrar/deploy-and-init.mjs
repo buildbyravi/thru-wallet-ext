@@ -63,7 +63,18 @@ if (FEE_PER_YEAR < 0n) die('--fee must be non-negative base units');
 if (!TREASURY) die('pass --treasury <ta…> — the fee destination; we never invent one');
 if (!BIN_PATH) die('pass --bin <compiled .bin> — see contracts/thru-custom-registrar/README.md');
 if (!existsSync(resolve(BIN_PATH))) die(`compiled artifact not found: ${resolve(BIN_PATH)}`);
-const mnemonic = (process.env.THRU_SEED ?? '').trim();
+let mnemonic = (process.env.THRU_SEED ?? '').trim();
+if (!mnemonic) {
+  try {
+    const dotenv = join(REPO_ROOT, '.env');
+    if (existsSync(dotenv)) {
+      for (const line of readFileSync(dotenv, 'utf8').split('\n')) {
+        const m = line.match(/^\s*(?:THRU_SEED|SEED)\s*=\s*"?([^"\n]+?)"?\s*$/);
+        if (m) { mnemonic = m[1].trim(); break; }
+      }
+    }
+  } catch { /* ignore */ }
+}
 if (!mnemonic) die('THRU_SEED env var with the deployer mnemonic is required (never persisted)');
 step(true, 'inputs', `network=${NETWORK_ID} root=${ROOT_NAME} fee=${FEE_PER_YEAR} treasury=${TREASURY.slice(0, 10)}… path=${BIN_PATH}`);
 

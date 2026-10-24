@@ -48,7 +48,18 @@ function step(truth, label, detail = '') {
 }
 
 if (!PROGRAM) die('pass --program <ta…> — the deployed registrar program address (never assumed); it comes from deploy-and-init evidence');
-const mnemonic = (process.env.THRU_SEED ?? '').trim();
+let mnemonic = (process.env.THRU_SEED ?? '').trim();
+if (!mnemonic) {
+  try {
+    const dotenv = join(REPO_ROOT, '.env');
+    if (existsSync(dotenv)) {
+      for (const line of readFileSync(dotenv, 'utf8').split('\n')) {
+        const m = line.match(/^\s*(?:THRU_SEED|SEED)\s*=\s*"?([^"\n]+?)"?\s*$/);
+        if (m) { mnemonic = m[1].trim(); break; }
+      }
+    }
+  } catch { /* ignore */ }
+}
 if (!mnemonic) die('THRU_SEED env var required');
 
 // Randomized default label: probes are re-runnable on a populated chain.
