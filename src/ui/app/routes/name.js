@@ -137,12 +137,7 @@ export function NameRoute({ back }) {
   // --------------------------------------------------------------------------
   // THE search card — the whole product typed into one field, ENS-style.
   async function renderSearchCard() {
-    const card = h('div', { class: 'stack stack-2' }, [
-      h('div', { class: 'name-search-title row-flex' }, [
-        icon('search', 16),
-        h('span', { class: 'row-title', text: 'Find your name' }),
-      ]),
-    ]);
+    const card = h('div', { class: 'stack stack-2' });
     body.appendChild(card);
 
     // Read the chain's offering up-front: first the official paid .thru registry, then the
@@ -196,7 +191,6 @@ export function NameRoute({ back }) {
         : provider === 'free'
           ? (canonRoot.rootName || '…')
           : null;
-    card.querySelector('.row-title').textContent = tld ? `Find your .${tld} name` : 'Find your name';
 
     let decimals = null;
     let symbol = 'payment-mint base units';
@@ -231,7 +225,7 @@ export function NameRoute({ back }) {
       placeholder: tld ? `Search .${tld} — e.g. alice` : 'Search a name — e.g. alice',
       autocomplete: 'off',
       maxLength: 64,
-      hint: 'Letters/numbers/hyphens — chain rules apply per provider (custom registrar: 3–32 chars; others: up to 64)',
+      hint: 'Lowercase letters, numbers, hyphens.',
     }));
 
     // Provider toggle: visible only when the chain actually offers more than one route
@@ -255,7 +249,6 @@ export function NameRoute({ back }) {
           providerRow.querySelectorAll('.provider-pill').forEach((x) => x.classList.toggle('selected', x === b));
           // Re-arm the whole card for the new provider's root, name rules and price quote.
           const newTld = kind === 'registry' ? registry.registry.rootName : kind === 'custom' ? custom.rootName : canonRoot.rootName;
-          card.querySelector('.row-title').textContent = `Find your .${newTld} name`;
           searchField.control.placeholder = `Search .${newTld} — e.g. alice`;
           leaseState = null;
           hideActions();
@@ -318,7 +311,7 @@ export function NameRoute({ back }) {
         yearsStepper.classList.remove('hidden');
         const cost = customBaseCost();
         priceLine.classList.remove('hidden');
-        priceLine.textContent = `${years === 1 ? '1 year' : `${years} years`} × ${custom.feePerYear} base units = ${cost} base units — registrar program fee from its on-chain config (treasury ${truncateMiddle(custom.treasury)}). Note: on Betanet the VM may skip this debit for plain accounts — the chain, not this quote, is authoritative.`;
+        priceLine.textContent = `${years === 1 ? '1 year' : `${years} years`} × ${custom.feePerYear} = ${cost} base units`;
         ctaBtn.classList.remove('hidden');
         ctaLabel().textContent = ` Register — ${cost} base units`;
         return;
@@ -331,9 +324,9 @@ export function NameRoute({ back }) {
       // write carries fee 0n and no payment accounts (first-party txn_tools.rs, 2026-10-24).
       if (state.kind === 'free-available') {
         priceLine.classList.remove('hidden');
-        priceLine.textContent = `Free on ${network?.label || 'this network'}: 0 payment, 0n protocol fee — the name-service program carries no paid steps for registration.`;
+        priceLine.textContent = 'Free — 0n protocol fee.';
         ctaBtn.classList.remove('hidden');
-        ctaLabel().textContent = ' Register — free (0n)';
+        ctaLabel().textContent = ' Register — free';
         return;
       }
       if (state.kind === 'free-mine') {
@@ -348,7 +341,7 @@ export function NameRoute({ back }) {
       yearsStepper.classList.remove('hidden');
       const cost = fmt(String(baseCost()));
       priceLine.classList.remove('hidden');
-      priceLine.textContent = `${years === 1 ? '1 year' : `${years} years`} × ${fmt(registry.registry.pricePerYear)} = ${cost} — both parsed from the on-chain registry config.`;
+      priceLine.textContent = `${years === 1 ? '1 year' : `${years} years`} × ${fmt(registry.registry.pricePerYear)} = ${cost}`;
       if (payment?.exists && payment.amount != null) {
         balanceLine.classList.remove('hidden');
         const bal = BigInt(payment.amount);
@@ -448,7 +441,7 @@ export function NameRoute({ back }) {
           setStatus(`✕ ${name}.${custom.rootName} exists as a name-service domain — registered by another authority. The custom registrar cannot register over it.`, 'bad');
         } else {
           leaseState = { kind: 'custom-available', name, rootAddress: res.root };
-          setStatus(`✓ ${name}.${custom.rootName} is available — ${custom.feePerYear} base units/year via the custom registrar.`, 'ok');
+          setStatus(`✓ ${name}.${custom.rootName} is available.`, 'ok');
         }
         armForState(leaseState);
       } catch (err) {
@@ -601,11 +594,11 @@ export function NameRoute({ back }) {
     });
 
     const footerHint = () => (provider === 'registry'
-      ? `Price from this network's on-chain registry: ${fmt(registry.registry.pricePerYear)} / year · no protocol fee (0n).`
+      ? `Price read from the on-chain registry config · tx fee 0n.`
       : provider === 'custom'
-        ? `Custom registrar (.${custom.rootName}): fee from its on-chain config — ${custom.feePerYear} base units/year, charged by the registrar program to treasury ${truncateMiddle(custom.treasury)}. Program ${truncateMiddle(custom.program)} (evidence-pinned deployment; register live-verified 2026-10-25). Tx fee 0n.`
+        ? `Fee is charged by the registrar program from its on-chain config · tx fee 0n.`
         : freeRootUp
-          ? `No paid registrar contract on this network — .${canonRoot.rootName} names register directly via the official name-service program: free (0n protocol fee, no payment token).`
+          ? `Registered by the name-service program directly · free (0n fee).`
           : `Registration is unavailable on this network: ${registry?.reason || 'registry state unreadable'}; ${canonRoot?.reason || 'no canonical name root found'}.`);
     if (providerRow) bodyDisposer.on(providerRow, 'click', () => footerEl.textContent = footerHint());
     const footerEl = h('div', { class: 'hint', text: footerHint() });
