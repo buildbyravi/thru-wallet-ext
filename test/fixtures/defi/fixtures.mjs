@@ -94,7 +94,7 @@ export const M0_CURRENT = Object.freeze({
     'programFacts.amm': 'taAMMx8gG44RcOyRqNYZ55pDaAJoGS0R8kPYxBN96sO8kD',
     'limits.slippageMaxBps': 2000,
     'limits.quoteTtlMs': 15000,
-    'featureCapabilities.swap': { supported: false, reason: 'EXECUTION_UNVERIFIED' }, // G3: AMM live-verified 2026-10-07 (q14/q15); execution probe pending
+    'featureCapabilities.swap': true, // Graduated to enabled with 2026-10-25 live-swap probe
     'featureCapabilities.pools': true,
     'featureCapabilities.usd': { supported: false, reason: 'DEPENDENCY_UNVERIFIED' },
     'featureCapabilities.balances': true,
@@ -174,7 +174,7 @@ export const M0_FLAG_ON = Object.freeze({
   //   quoteLiquidity: pools row enabled → R2 exit-before-entry reason surfaces directly.
   'dex.listPools': spot({ supported: true, source: 'chain', items: [], nextCursor: null, partial: false }),
   'dex.getPool': spot({ supported: false, reason: 'rpc-error' }),
-  'dex.quote': FLAG_ON_DOSSIER('EXECUTION_UNVERIFIED'),
+  'dex.quote': spot({ supported: false, reason: 'rpc-error' }),
   'dex.quoteLiquidity': exact(ok({ supported: false, reason: 'Disabled until remove-liquidity verifies live (exit-before-entry, R2).' })),
   'market.assetGet': FLAG_ON_DOSSIER('NO_INDEXER'),
   'market.assetSearch': FLAG_ON_DOSSIER('NO_INDEXER'),

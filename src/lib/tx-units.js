@@ -41,7 +41,7 @@ const CLASS_FLOORS = Object.freeze({
   [UNIT_CLASS.CLAIM]: { computeUnits: 300_000, memoryUnits: 10_000, stateUnits: 1_024 },
   [UNIT_CLASS.TRANSFER]: { computeUnits: 300_000, memoryUnits: 10_000, stateUnits: 1_024 },
   [UNIT_CLASS.TOKEN_OP]: { computeUnits: 300_000, memoryUnits: 60_000, stateUnits: 2_048 },
-  [UNIT_CLASS.SWAP]: { computeUnits: 1_000_000, memoryUnits: 120_000, stateUnits: 2_048 },
+  [UNIT_CLASS.SWAP]: { computeUnits: 1_000_000, memoryUnits: 60_000, stateUnits: 2_048 },
 });
 
 export const GLOBAL_CEILINGS = Object.freeze({

@@ -276,8 +276,8 @@ export const FEATURES = Object.freeze([
   //          on-chain swap has been OBSERVED yet (no pools at the 2026-10-07 rung). The row
   //          graduates to enabled with a dated live-swap probe; until then dex.quote /
   //          dex.prepareSwap honestly answer EXECUTION_UNVERIFIED.
-  Object.freeze({ key: 'swap', state: 'unsupported', reason: 'EXECUTION_UNVERIFIED',
-    evidenceRef: ['2026-10-07-live-chain q14/q15', 'pending: live swap probe once a pool exists'] }),
+  Object.freeze({ key: 'swap', state: 'enabled', reason: null,
+    evidenceRef: ['2026-10-07-live-chain q14/q15', 'scripts/defi-evidence/2026-10-25-live-swap-probe.json'] }),
   Object.freeze({ key: 'pools', state: 'enabled', reason: null,
     evidenceRef: ['2026-10-07-live-chain q14/q15', 'G3 dex-service pool reads'] }),
   Object.freeze({ key: 'launchMint', state: 'unsupported', reason: 'TOKEN_PATH_UNVERIFIED',
