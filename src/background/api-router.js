@@ -69,6 +69,7 @@ const SYNC_READ_METHODS = new Set([
   'name.lookup', 'name.checkAvailability',
   'name.getCanonicalRoot',
   'name.getRegistry', 'name.checkLease', 'name.getPaymentBalance',
+  'name.getCustomRegistrar', 'name.checkCustomLease',
 ]);
 
 const handlers = Object.assign(Object.create(null), {
@@ -183,7 +184,12 @@ const handlers = Object.assign(Object.create(null), {
   'name.checkAvailability': (params) => nameService.checkAvailability(params),
   'name.getCanonicalRoot': () => nameService.getCanonicalRoot(),
   'name.initRoot': (params) => nameService.initRoot(params),
-  'name.register': (params) => nameService.registerName(params),
+  // v25: the same method serves both registration paths. via='custom' switches to the
+  // evidence-pinned custom registrar (self-signed, target = signer); any other/absent via
+  // keeps the canonical name-service behaviour exactly as before.
+  'name.register': (params) => (
+    params?.via === 'custom' ? registrarService.registerCustom(params) : nameService.registerName(params)
+  ),
   'name.setRecord': (params) => nameService.setRecord(params),
   // v21 primary-name UX slice: get re-verifies the stored record against the chain (one live
   // read per call; a broken ownership record is dropped honestly, an unreadable node keeps the
@@ -199,6 +205,10 @@ const handlers = Object.assign(Object.create(null), {
   'name.purchase': (params) => registrarService.purchaseDomain(params),
   'name.renewLease': (params) => registrarService.renewLease(params),
   'name.claimExpired': (params) => registrarService.claimExpiredDomain(params),
+  // v25 custom registrar (contracts/thru-custom-registrar; evidence-pinned deployment):
+  // candid reads mirror the v22 honesty contract — absence/mismatch is a declared state.
+  'name.getCustomRegistrar': () => registrarService.getCustomRegistrar(),
+  'name.checkCustomLease': (params) => registrarService.checkCustomLease(params),
   'tx.sendChecked': (params) => txService.sendTransferChecked(params),
   'tx.listHistory': ({ address, pageSize, limit, cursor } = {}) => (
     limit !== undefined || cursor !== undefined

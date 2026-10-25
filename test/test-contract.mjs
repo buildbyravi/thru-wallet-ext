@@ -135,7 +135,7 @@ section('Contract v17/v18 DeFi contract-first drop (M0)');
 // v20 (2026-10-09, G2-S0): same method set — the v18 intent surface now has a real,
 // flag-gated native-send implementation behind it (test/test-defi-intent.mjs proves both
 // sides of the gate). A version bump, not a method change.
-ok('the contract advances to v24 without reusing earlier numbers', CONTRACT_VERSION === 24);
+ok('the contract advances to v25 without reusing earlier numbers', CONTRACT_VERSION === 25);
 
 const v17 = Object.entries(METHODS).filter(([, spec]) => spec.since === 17).map(([name]) => name);
 const v18 = Object.entries(METHODS).filter(([, spec]) => spec.since === 18).map(([name]) => name);
@@ -175,7 +175,20 @@ ok('v23 canonical-root read is open auth:none and register signs',
 const v24 = Object.entries(METHODS).filter(([, spec]) => spec.since === 24).map(([name]) => name);
 ok('v24 appends exactly the faucet rate-limit read', v24.length === 1 && v24[0] === 'tx.getFaucetLimit', `got ${v24.join(', ')}`);
 ok('v24 faucet-limit read is open auth:none', METHODS['tx.getFaucetLimit']?.auth === 'none');
-ok('the contract declares 140 methods in total (81 + 43 + 15 name.* + 1 hook read)', Object.keys(METHODS).length === 140,
+
+// v25 (2026-10-25, owner NEXT after the live-verified registrar deploy): the custom
+// thru-custom-registrar becomes a second /name provider — two pure reads (auth none) plus
+// two OPTIONAL name.register params (via, years) routing to the live-verified write.
+const v25 = Object.entries(METHODS).filter(([, spec]) => spec.since === 25).map(([name]) => name);
+ok('v25 appends exactly the two custom-registrar reads',
+  v25.length === 2 && v25.every((m) => ['name.getCustomRegistrar', 'name.checkCustomLease'].includes(m)),
+  `got ${v25.join(', ')}`);
+ok('v25 custom-registrar reads are open auth:none',
+  METHODS['name.getCustomRegistrar']?.auth === 'none' && METHODS['name.checkCustomLease']?.auth === 'none');
+ok('v25 name.register keeps signing auth and gains optional via/years params',
+  METHODS['name.register']?.auth === 'signing'
+  && METHODS['name.register']?.params.includes('via') && METHODS['name.register']?.params.includes('years'));
+ok('the contract declares 142 methods in total (81 + 43 + 15 name.* + 1 hook read + 2 registrar reads)', Object.keys(METHODS).length === 142,
   `got ${Object.keys(METHODS).length}`);
 
 // Auth discipline (DEFI-03): reads are call-time honest, prepares are unlocked-only, and

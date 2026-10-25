@@ -21,7 +21,8 @@
 import * as vault from '../../lib/vault.js';
 import * as thruClient from '../../lib/thru-client.js';
 import * as reg from '../../lib/registrar.js';
-import { domainAccountAddress, registrarConfigAddress } from '../../lib/name-service.js';
+import * as tcr from '../../lib/custom-registrar.js';
+import { domainAccountAddress, registrarConfigAddress, rootRegistrarAddress, NAME_SERVICE_PROGRAM } from '../../lib/name-service.js';
 import { getActiveNetworkConfig } from './network-service.js';
 import * as pending from './pending-tx-service.js';
 import * as balances from './balance-service.js';
@@ -337,7 +338,7 @@ async function renewOrClaim({ name, years, claim }) {
  * Await the execution stream, tracking the submission for history/notifications as soon
  * as a signature exists — same honesty pattern as sendTransfer/claimFaucet.
  */
-async function submitAndAwait(rawTransaction, { kind, from, displayAmount } = {}) {
+async function submitAndAwait(rawTransaction, { kind, from, displayAmount, errorNoun = 'registrar', describeError = null, result = null } = {}) {
   const network = await getActiveNetworkConfig();
   let formatted = null;
   for await (const update of thruClient.getClient().transactions.sendAndTrack(rawTransaction)) {
@@ -347,11 +348,250 @@ async function submitAndAwait(rawTransaction, { kind, from, displayAmount } = {}
     }
     if (update?.executionResult) {
       if (update.executionResult.vmError === 0) {
-        return { signature: formatted, blockHeight: null };
+        return { signature: formatted, blockHeight: null, ...(result ?? {}) };
       }
       const userCode = update.executionResult.userErrorCode ?? 0;
-      throw coded('REGISTRAR_TX_REVERTED', `Registration transaction reverted on-chain (vmError=${update.executionResult.vmError}${userCode ? `, registrar error ${userCode}` : ''}).`);
+      const decoded = userCode && describeError ? describeError(Number(userCode)) : null;
+      throw coded('REGISTRAR_TX_REVERTED', `Registration transaction reverted on-chain (vmError=${update.executionResult.vmError}${userCode ? `, ${errorNoun} error ${userCode}${decoded ? ` — ${decoded}` : ''}` : ''}).`);
     }
   }
   throw coded('TX_RESULT_MISSING', 'Registration transaction never returned an execution result (timed out?).', { retryable: true });
+}
+
+// ============================================================================
+// ---- Custom registrar (TCR, contracts/thru-custom-registrar) ----------------
+// ============================================================================
+//
+// The owner's custom `.thru` name registrar — OUR program, deployed on Betanet.
+// Live-verified 2026-10-25 (owner host, D-016): register executed vmError 0; the domain,
+// the 1-year lease and the treasury fee flow all re-read from chain. Evidence:
+//   scripts/defi-evidence/registrar-{deploy,probe}-betanet-*.json
+// The ONLY configured fact is the program address (src/lib/networks.js
+// customRegistrarProgram, evidence-pinned). Everything else — config address, root,
+// fee, treasury — is chain-derived and chain-read on every call; a chain whose config
+// is absent or unparseable is a supported:false answer, never a guess.
+//
+// Write invariants (mirroring the LIVE-VERIFIED probe script 1:1):
+//   - self-signed: feePayer (vault signer) is the ONLY authority; target = the signer.
+//   - fee 0n on the transaction header; the registrar's own price (config.feePerYear ×
+//     years) is charged by the PROGRAM to the treasury — best-effort on Betanet today:
+//     ThruVM refuses a contract debiting an unowned native EOA (AccountNotWritable), and
+//     the program deliberately treats the debit as non-fatal (processor.rs, D-016), so a
+//     registration CAN succeed without the treasury receiving the fee on native-only
+//     accounts. The UI quotes the config fee and says exactly this.
+//   - creation state proofs: domain first (extract proof slot from its u64 timestamp),
+//     lease with targetSlot aligned to that slot; tx header startSlot = same slot.
+//     misaligned proofs revert InvalidProofSlot (-33) — proven live.
+
+function tcrCoded(code, message, extra = {}) { return coded(code, message, extra); }
+
+/**
+ * name.getCustomRegistrar (v25) — chain truth for the custom registrar on THIS network:
+ * { supported:false, reason } when the network has no evidence-pinned program, or the
+ * config account is absent/unparseable; otherwise the fully parsed config plus a
+ * root-derivation cross-check (config.rootAddress == name-service derivation of rootName;
+ * a mismatch is surfaced, never silently armed).
+ */
+export async function getCustomRegistrar() {
+  const network = await getActiveNetworkConfig(); // bind SDK to the active network first
+  const program = network.customRegistrarProgram ?? null;
+  if (!program) {
+    return {
+      supported: false,
+      reason: 'no custom registrar deployment is pinned for this network (no live evidence)',
+      networkId: network.id,
+      program: null,
+    };
+  }
+  const configAddress = tcr.tcrConfigAddress(program);
+  const read = await fetchAccountData(configAddress).catch((err) => {
+    throw tcrCoded('TCR_CONFIG_UNREADABLE', `Could not read the custom registrar config: ${err?.message ?? err}`, { retryable: true });
+  });
+  if (!read.exists || !read.data) {
+    return { supported: false, reason: 'custom registrar config account is absent on this chain', networkId: network.id, program, configAddress };
+  }
+  let cfg;
+  try {
+    cfg = tcr.parseTcrConfig(read.data);
+  } catch (err) {
+    return { supported: false, reason: `custom registrar config is unparseable: ${err?.message ?? err}`, networkId: network.id, program, configAddress };
+  }
+  const derivedRoot = await rootRegistrarAddress(cfg.rootName);
+  const rootMatchesNameService = derivedRoot === cfg.rootAddress;
+  return {
+    supported: true,
+    networkId: network.id,
+    program,
+    configAddress,
+    root: cfg.rootAddress,
+    rootName: cfg.rootName,
+    rootMatchesNameService,
+    feePerYear: cfg.feePerYear.toString(),
+    treasury: cfg.treasury,
+    admin: cfg.admin,
+  };
+}
+
+/**
+ * name.checkCustomLease (v25) — availability truth for one label under the custom
+ * registrar's root. Existence is read directly: lease PDA + name-service domain account.
+ * Notes for the UI:
+ *   - labelProblem is surfaced as plain text when the label can't even derive.
+ *   - lease mine/taken/expired: `expiredHint` compares chain seconds against LOCAL epoch —
+ *     a display hint only; the program's own judgement is authoritative at write time.
+ *   - domain-existing-without-lease is a distinct truth ("another authority got there").
+ */
+export async function checkCustomLease({ name } = {}) {
+  const info = await getCustomRegistrar();
+  if (!info.supported) return info;
+  const n = String(name ?? '').trim().toLowerCase();
+  const prob = tcr.labelProblem(n);
+  if (prob) return { ...info, name: n, labelProblem: prob };
+
+  const leaseAddress = tcr.tcrLeaseAddress(info.program, n);
+  const domainAddress = await domainAccountAddress(info.root, n);
+  const [leaseRead, domainRead] = await Promise.all([
+    fetchAccountData(leaseAddress).catch((e) => ({ readError: String(e?.message ?? e) })),
+    fetchAccountData(domainAddress).catch((e) => ({ readError: String(e?.message ?? e) })),
+  ]);
+  const out = { ...info, name: n, leaseAddress, domainAddress };
+
+  if (leaseRead.readError || domainRead.readError) {
+    out.readError = leaseRead.readError || domainRead.readError;
+    return out; // honest: chain unreadable — the UI must not pretend a verdict
+  }
+
+  out.domainExists = Boolean(domainRead.exists);
+  out.leaseExists = Boolean(leaseRead.exists);
+  out.lease = null;
+  out.leaseParseError = null;
+  out.expiredHint = null;
+  if (out.leaseExists && leaseRead.data) {
+    try {
+      const lease = tcr.parseTcrLease(leaseRead.data);
+      const nowSeconds = BigInt(Math.floor(Date.now() / 1000));
+      out.lease = {
+        owner: lease.owner,
+        resolver: lease.resolver,
+        label: lease.label,
+        expiresAtSeconds: String(lease.expiresAtSeconds),
+        registeredAtSeconds: String(lease.registeredAtSeconds),
+      };
+      out.expiredHint = lease.expiresAtSeconds <= nowSeconds;
+    } catch (err) {
+      out.leaseParseError = err?.message ?? String(err);
+    }
+  }
+  return out;
+}
+
+/**
+ * name.register with `via: 'custom'` — self-signed registration through the custom
+ * registrar program. Mirrors the live-verified probe 1:1 (scripts/registrar/
+ * probe-live-registrar.mjs, evidence 2026-10-25). Non-goals today: RENEW and
+ * CLAIM_EXPIRED are not wired here — only Register is live-verified; an existing lease
+ * (active or expired) is reported, never silently overwritten.
+ */
+export async function registerCustom({ name, years } = {}) {
+  const n = String(name ?? '').trim().toLowerCase();
+  const prob = tcr.labelProblem(n);
+  if (prob) throw tcrCoded('INVALID_NAME', prob);
+  const yp = tcr.yearsProblem(years);
+  if (yp) throw tcrCoded('INVALID_YEARS', yp);
+  const y = Number(years);
+
+  const feePayer = await vault.getActiveAccount();
+  const network = await getActiveNetworkConfig(); // bind before building/signing
+  const info = await getCustomRegistrar();
+  if (!info.supported) throw tcrCoded('TCR_ABSENT', info.reason ?? 'custom registrar unavailable on this network');
+  if (!info.rootMatchesNameService) {
+    throw tcrCoded('TCR_ROOT_MISMATCH', 'the registrar config root does not match the name-service derivation — refusing to construct a registration against a mismatched root');
+  }
+
+  // Existence pre-verification (creation proofs only apply to NON-existing accounts):
+  // lease exists (any state) or domain exists ⇒ the register instruction cannot apply.
+  const check = await checkCustomLease({ name: n });
+  if (check.readError) throw tcrCoded('TCR_READ_ERROR', `Could not verify '${n}' on-chain right now: ${check.readError}`, { retryable: true });
+  if (check.domainExists) throw tcrCoded('NAME_TAKEN', `'${n}.${info.rootName}' already exists as a name-service domain.`);
+  if (check.leaseExists) {
+    const state = check.leaseParseError
+      ? `lease exists but is unparseable (${check.leaseParseError})`
+      : check.expiredHint
+        ? `an expired lease exists (owner ${check.lease.owner})`
+        : `an active lease exists (owner ${check.lease.owner})`;
+    throw tcrCoded('TCR_LEASE_EXISTS',
+      `'${n}.${info.rootName}' cannot be registered: ${state}. Renew/claim through the custom registrar is not yet wired into the wallet — only Register was live-verified (2026-10-25). Nothing was broadcast.`);
+  }
+
+  // Fee quote from the chain-read config (best-effort note: on unowned EOAs ThruVM skips
+  // the in-program debit — see the section comment; the quote is still what the program
+  // INTENDS to charge, and a native balance shortfall elsewhere reverts honestly).
+  const feePerYear = BigInt(info.feePerYear);
+  const totalFee = feePerYear * BigInt(y);
+
+  // The signer must exist on-chain (same reason claimFaucet JIT-activates).
+  const payerInfo = await thruClient.getAccountInfo(feePayer.address);
+  if (!payerInfo.exists) {
+    await thruClient.createOnChainAccount(feePayer);
+  } else if (payerInfo.balance != null && payerInfo.balance < totalFee) {
+    throw tcrCoded('INSUFFICIENT_FUNDS',
+      `The registrar charges ${totalFee} base units (${feePerYear}/yr × ${y}y); your account holds ${payerInfo.balance}.`);
+  }
+
+  const domainAddress = await domainAccountAddress(info.root, n);
+  const leaseAddress = tcr.tcrLeaseAddress(info.program, n);
+
+  // Creation proofs with ALIGNED slots (InvalidProofSlot -33 lesson — live, dfd7316):
+  // generate the domain proof, read its embedded u64le timestamp, mask off the proof-type
+  // bits to get the proof slot, then generate the lease proof at the SAME targetSlot and
+  // pin startSlot in the tx header.
+  const client = thruClient.getClient();
+  const domainProofObj = await client.proofs.generate({ address: domainAddress, proofType: 1 });
+  const dv = new DataView(domainProofObj.proof.buffer, domainProofObj.proof.byteOffset);
+  const slot = dv.getBigUint64(0, true) & ((1n << 62n) - 1n);
+  const leaseProofObj = await client.proofs.generate({ address: leaseAddress, proofType: 1, targetSlot: slot });
+
+  // Header: the exact values of the live-verified probe (vmError 0; consumedComputeUnits
+  // measured 92 128 of a 2 000 000 ceiling — comfortable headroom, calibrated later from
+  // accumulated evidence if it ever drifts).
+  const { rawTransaction } = await client.transactions.buildAndSign({
+    feePayer: { publicKey: feePayer.publicKey, privateKey: feePayer.privateKey },
+    program: info.program,
+    header: {
+      computeUnits: 2_000_000,
+      memoryUnits: 32_768,
+      stateUnits: 6,
+      fee: 0n,
+      startSlot: slot,
+      expiryAfter: 10_000,
+    },
+    accounts: {
+      readWrite: [info.treasury, info.root, domainAddress, leaseAddress],
+      readOnly: [info.configAddress, NAME_SERVICE_PROGRAM],
+    },
+    instructionData: ({ getAccountIndex }) => tcr.buildTcrRegisterInstructionData({
+      label: n,
+      durationYears: y,
+      targetAddress: feePayer.address,
+      domainProof: domainProofObj.proof,
+      leaseProof: leaseProofObj.proof,
+      indexOf: getAccountIndex,
+      treasuryAddress: info.treasury,
+      rootAddress: info.root,
+      domainAddress,
+      leaseAddress,
+      configAddress: info.configAddress,
+      nameServiceProgram: NAME_SERVICE_PROGRAM,
+    }),
+  });
+
+  await balances.getBalances([feePayer.address]).catch(() => null);
+  return submitAndAwait(rawTransaction, {
+    kind: 'name-custom-register',
+    from: feePayer.address,
+    displayAmount: `${totalFee} base units (program fee, best-effort — see docs) — register '${n}.${info.rootName}' (${y}y) via the custom registrar`,
+    errorNoun: 'custom registrar',
+    describeError: (code) => tcr.describeTcrError(code),
+    result: { domainAddress },
+  });
 }

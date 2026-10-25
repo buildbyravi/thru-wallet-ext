@@ -117,7 +117,13 @@
 //   explicit (supported:false reasons; keyReadable:false; null window fields for
 //   slot-clocked rules), never fabricated numbers. Also a behavior note on tx.claimFaucet:
 //   ratelimit-coded vmErrors are now re-labelled honestly (code 'FAUCET_RATE_LIMITED').
-export const CONTRACT_VERSION = 24;
+//   v25 (2026-10-25, owner-directed NEXT of the registrar live verification): the custom
+//   thru-custom-registrar (D-016, live-verified on Betanet 2026-10-25) joins /name as a
+//   second registration provider. Two pure reads (name.getCustomRegistrar,
+//   name.checkCustomLease, auth none) expose the derived config + per-label lease/domain
+//   truth; name.register gains two OPTIONAL params (via, years) — via:'custom' routes to
+//   registrarService.registerCustom, absent via keeps the behaviour byte-identical.
+export const CONTRACT_VERSION = 25;
 
 export const METHODS = {
   // ---- System ------------------------------------------------------------
@@ -406,14 +412,30 @@ export const METHODS = {
     since: 19,
   },
   'name.register': {
-    params: ['name', 'parentAddress', 'networkId', 'password'],
+    params: ['name', 'parentAddress', 'networkId', 'password', 'via', 'years'],
     returns: '{ signature, domainAddress } — register a label under a parent root/domain; self-signed (authority = fee payer, the ONLY key). ' +
       'Protocol fee 0n — NAME_SERVICE_PROGRAM_FEE = 0 in the first-party CLI (txn_tools.rs, 2026-10-24); no payment token involved. ' +
       'parentAddress may be blank: the canonical root is then auto-discovered on-chain. ' +
-      'Authority pre-verification (2026-10-24 Betanet live probe): when the parsed parent\'s authority/owner ≠ the active account the call refuses with NAME_PARENT_AUTHORITY before any broadcast — the chain provably reverts such writes with name-service error 3. Only when the field is unreadable is the CHAIN left to decide.',
+      'Authority pre-verification (2026-10-24 Betanet live probe): when the parsed parent\'s authority/owner ≠ the active account the call refuses with NAME_PARENT_AUTHORITY before any broadcast — the chain provably reverts such writes with name-service error 3. Only when the field is unreadable is the CHAIN left to decide. ' +
+      'v25: custom registrar path (via=\'custom\' + years): evidence-pinned program, root + fee read from its on-chain config, self-signed (target = signer), live-verified on Betanet 2026-10-25; absent via keeps the canonical behaviour byte-identical.',
     auth: 'signing',
     since: 19,
   },
+  // v25 (2026-10-25): custom thru-custom-registrar reads (D-016). Read-only truth: absent
+  // deployments, unreadable configs and root mismatches arrive as declared false-states.
+  'name.getCustomRegistrar': {
+    params: [],
+    returns: 'Custom registrar state: { supported:false, reason } or { supported:true, program, configAddress, root, rootName, rootMatchesNameService, feePerYear, treasury, admin }',
+    auth: 'none',
+    since: 25,
+  },
+  'name.checkCustomLease': {
+    params: ['name'],
+    returns: 'Custom registrar config + per-label truth: { labelProblem? | leaseExists/domainExists with parsed lease, expiredHint (local-clock hint only), or readError }',
+    auth: 'none',
+    since: 25,
+  },
+
   // v23 (2026-10-24): expose the on-chain-proof canonical-root discovery used internally by
   // name.lookup. Read-only; lets the UI offer free name-service registration beneath a root
   // that provably exists on the running network when the `.thru` paid registry is absent.

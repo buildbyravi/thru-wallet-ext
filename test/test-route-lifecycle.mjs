@@ -1305,6 +1305,40 @@ const FIXTURES = {
   // fixture chain has no `.thru` registry) — never a fabricated price on mount.
   'name.getRegistry': () => ({ supported: false, reason: 'fixture: no .thru registry initialized' }),
   'name.checkLease': () => ({ supported: false, reason: 'fixture: no .thru registry initialized' }),
+  // v25 custom registrar provider: supported+parseable with the evidence-pinned Betanet
+  // deployment shape (so the /name toggle renders), and lease lookups report available.
+  'name.getCustomRegistrar': () => ({
+    supported: true,
+    networkId: activeNetwork().id,
+    program: 'ta2vDCBzzptN2qVZgz6PXsCp5cNB7Nef4yeQ3W-OqzZcfF',
+    configAddress: 'ta_9lLvhxurg4J5DyZ82W14rzzGWCEfj9B7Y8wa99amPBa',
+    root: 'taNP1MFOO2shpn6ORofIGSNiQ-qJ9VE2lDkDwvUmgUmaQZ',
+    rootName: 'thru',
+    rootMatchesNameService: true,
+    feePerYear: '1000',
+    treasury: 'taShrn6v-TM_h81ZjmDZLifdhLRlDMfIw_EAIaNKIIdPX-',
+    admin: 'tabDLDL9EVZYhRnbgPr0HrQuIvv01AZm9vtV8yIX26KO2J',
+  }),
+  'name.checkCustomLease': ({ name } = {}) => ({
+    supported: true,
+    networkId: activeNetwork().id,
+    program: 'ta2vDCBzzptN2qVZgz6PXsCp5cNB7Nef4yeQ3W-OqzZcfF',
+    configAddress: 'ta_9lLvhxurg4J5DyZ82W14rzzGWCEfj9B7Y8wa99amPBa',
+    root: 'taNP1MFOO2shpn6ORofIGSNiQ-qJ9VE2lDkDwvUmgUmaQZ',
+    rootName: 'thru',
+    rootMatchesNameService: true,
+    feePerYear: '1000',
+    treasury: 'taShrn6v-TM_h81ZjmDZLifdhLRlDMfIw_EAIaNKIIdPX-',
+    admin: 'tabDLDL9EVZYhRnbgPr0HrQuIvv01AZm9vtV8yIX26KO2J',
+    name: String(name ?? ''),
+    leaseAddress: 'taTestTcrLease',
+    domainAddress: 'taTestTcrDomain',
+    domainExists: false,
+    leaseExists: false,
+    lease: null,
+    leaseParseError: null,
+    expiredHint: null,
+  }),
   'name.getPaymentBalance': () => ({ supported: false, reason: 'fixture: no .thru registry initialized' }),
   'name.lookup': ({ name } = {}) => ({
     chain: [], leaf: { address: 'ta1addressaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', exists: false },
@@ -1365,6 +1399,7 @@ const FIXTURES = {
   // v24 faucet rate-limit read: one fee-payer-keyed rule with a bucket still absent ⇒
   // provably zero usage (matches ratelimit.summarizeRule's absent-bucket semantics exactly).
   'tx.getFaucetLimit': () => ({
+
     supported: true,
     networkId: activeNetwork().id,
     policyAddress: 'taTestFaucetPolicy',
