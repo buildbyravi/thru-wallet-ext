@@ -236,7 +236,7 @@ const feedEvents = () => sentEvents.filter((e) => e?.event === 'feedChanged');
     gated?.reason === 'KILL_SWITCH', JSON.stringify(gated));
 
   ok('a kill vote never changes an unsupported dossier row (narrow, never widen)',
-    REGISTRY.getFeature('swap')?.reason === 'PROGRAM_NOT_VERIFIED'
+    REGISTRY.getFeature('swap')?.reason === 'EXECUTION_UNVERIFIED' // G3 post-q15 dossier row
       && REGISTRY.getFeature('discovery')?.reason === 'NO_INDEXER');
 
   // Genesis dominates kill: records signed for the old chain die with the binding.

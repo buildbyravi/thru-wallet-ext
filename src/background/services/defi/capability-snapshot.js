@@ -268,10 +268,18 @@ export const FEATURES = Object.freeze([
     evidenceRef: ['repo: contract v8-v16 balance services', 'docs/AUDIT_REPORT.md gate C 2026-10-04'] }),
   Object.freeze({ key: 'tokenTransfer', state: 'enabled', reason: null,
     evidenceRef: ['repo: contract v8 token.transferChecked shipped'] }),
-  Object.freeze({ key: 'swap', state: 'unsupported', reason: 'PROGRAM_NOT_VERIFIED',
-    evidenceRef: ['registry role=amm'] }),
-  Object.freeze({ key: 'pools', state: 'unsupported', reason: 'PROGRAM_NOT_VERIFIED',
-    evidenceRef: ['registry role=amm'] }),
+  // G3 (2026-10): the AMM PROGRAM is live-verified — q14 PASS (on-node address == bootstrap
+  // pin) and q15 (derivation + parser surface verified against the live program), dated
+  // 2026-10-07 (scripts/defi-evidence/2026-10-07-live-chain.json, scripts/probe-amm.mjs).
+  //   pools: derive+read+parse pool accounts — READ tier observed live → enabled.
+  //   swap:  quote math is first-party and offline-verified in test/test-dex-swap.mjs, but no
+  //          on-chain swap has been OBSERVED yet (no pools at the 2026-10-07 rung). The row
+  //          graduates to enabled with a dated live-swap probe; until then dex.quote /
+  //          dex.prepareSwap honestly answer EXECUTION_UNVERIFIED.
+  Object.freeze({ key: 'swap', state: 'unsupported', reason: 'EXECUTION_UNVERIFIED',
+    evidenceRef: ['2026-10-07-live-chain q14/q15', 'pending: live swap probe once a pool exists'] }),
+  Object.freeze({ key: 'pools', state: 'enabled', reason: null,
+    evidenceRef: ['2026-10-07-live-chain q14/q15', 'G3 dex-service pool reads'] }),
   Object.freeze({ key: 'launchMint', state: 'unsupported', reason: 'TOKEN_PATH_UNVERIFIED',
     evidenceRef: ['docs/BACKEND_GAPS.md C1/C2', 'registry role=token'] }),
   Object.freeze({ key: 'launchDirectPool', state: 'unsupported', reason: 'DEPENDENCY_UNVERIFIED',

@@ -206,12 +206,14 @@ for (const path of DELETED) {
 
 // M0 change: DeFi vocabulary in FILE NAMES is now allowed — but only under the designated
 // backend feature locations. Everything else named after the surface is still a violation.
-const DEFI_FILE_ALLOWLIST = /^src\/background\/(features\/|services\/(defi\/|(program|feed|market|risk|intent|desktop)-service\.js$))/;
+// (G3, 2026-10: 'dex' joins as its real backend graduates from the M0 stub — the DEX domain
+// service holds the swap-intent pipeline behind the unchanged DEFI_DEX build-time flag.)
+const DEFI_FILE_ALLOWLIST = /^src\/background\/(features\/|services\/(defi\/|(program|feed|market|risk|intent|desktop|dex)-service\.js$))/;
 const resurrected = [...SHIPPED_JS, ...SHIPPED_CSS, ...SHIPPED_HTML]
   .filter((f) => /launchpad|\bdex\b|prediction/i.test(f))
   .filter((f) => !DEFI_FILE_ALLOWLIST.test(f));
 ok(
-  'no shipped source file is named after the surface outside src/background/features|services/defi',
+  'no shipped source file is named after the surface outside src/background/features|services/(defi|<domain>-service)',
   resurrected.length === 0,
   resurrected.join(', '),
 );
@@ -279,7 +281,10 @@ section('DeFi vocabulary is confined to the backend contract surface');
 // dex/launchpad/amm/prediction words are expected in the M0 backend (method names, the
 // capability matrix, feature services). They must appear NOWHERE else in the shipped runtime:
 // not in UI code, not in build.mjs, not in src/manifest.json, not in shared UI-facing helpers.
-const DEFI_VOCAB_ALLOWLIST = /^src\/(background\/(features\/|api-router\.js$|services\/(defi\/|(program|feed|market|risk|intent|desktop)-service\.js$))|shared\/contract\/)/;
+// (G3: src/lib/amm.js — the @thru/programs/amm package adapter, same pattern as the other
+// first-party package adapters in src/lib (name-service, registrar, custom-registrar,
+// ratelimit). Its vocabulary IS the package's own names.)
+const DEFI_VOCAB_ALLOWLIST = /^src\/(background\/(features\/|api-router\.js$|services\/(defi\/|(program|feed|market|risk|intent|desktop|dex)-service\.js$))|lib\/amm\.js$|shared\/contract\/)/;
 const vocabHits = [];
 for (const { file, text } of corpus) {
   if (DEFI_VOCAB_ALLOWLIST.test(file)) continue;

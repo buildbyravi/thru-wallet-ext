@@ -1,4 +1,7 @@
 // Intent pipeline (G2-S0, 2026-10-09): REAL native-send intents behind the unchanged gate.
+// (G3, 2026-10-25: kind drivers — the pipeline core is kind-agnostic; features register their
+// review + execute pair via registerKindDriver at module load. native-send is registered
+// below; dex-swap is registered by the DEX feature service.)
 //
 // Real in this slice:   intent.list / intent.get (READ from a network-scoped store),
 //                       intent.prepareSend (reviewable plan + facts + fee quote + bindingHash),
@@ -54,7 +57,29 @@ async function resolveIntentNetwork(intentId) {
   return { networkId, record };
 }
 
-function reviewFor(record) {
+// ---- Kind drivers ---------------------------------------------------------------
+//
+// The pipeline core (store, bindingHash, ttl, waiting-room statuses) is kind-agnostic; the
+// per-kind parts — the review projection the user reads, and the chain execution at submit —
+// live behind drivers. Features (DEX, later launchpad/market) register their kind here at
+// module load instead of intent-service importing feature code inbound to services
+// (docs/initiatives/MODULE_REGISTRY.md boundary discipline).
+const KIND_DRIVERS = new Map();
+
+/**
+ * @param {string} kind
+ * @param {{ review: (record) => object, execute: (record) => Promise<{ signature: string|null }> }} driver
+ */
+export function registerKindDriver(kind, driver) {
+  if (!kind || typeof kind !== 'string') throw new Error('kind driver requires a kind name');
+  if (typeof driver?.review !== 'function' || typeof driver?.execute !== 'function') {
+    throw new Error(`kind driver '${kind}' requires review and execute functions`);
+  }
+  if (KIND_DRIVERS.has(kind)) throw new Error(`kind driver '${kind}' is already registered`);
+  KIND_DRIVERS.set(kind, driver);
+}
+
+function reviewNativeSend(record) {
   const { plan } = record;
   return {
     reviewAscii: [
@@ -85,6 +110,28 @@ function reviewFor(record) {
     acknowledgements: [],
   };
 }
+
+function reviewFor(record) {
+  const driver = KIND_DRIVERS.get(record.kind);
+  return driver.review(record);
+}
+
+// The native-send driver lives in this module (this pipeline began as native-send, G2-S0).
+async function executeNativeSend(record) {
+  // Executing the RECORDED (fromAddress, networkId) pair: sendTransferChecked asserts the
+  // active account and network still match the recorded ones (a mid-flight switch is
+  // refused, completing on the wrong account or chain is impossible — TX Review semantics).
+  const result = await txService.sendTransferChecked({
+    toAddress: record.plan.toAddress,
+    amountUnits: record.plan.amountUnits,
+    fromAddress: record.plan.fromAddress,
+    networkId: record.plan.networkId,
+    allowDuplicate: false,
+  });
+  return { signature: result?.signature ?? null };
+}
+
+registerKindDriver(INTENT_KIND_NATIVE_SEND, { review: reviewNativeSend, execute: executeNativeSend });
 
 // ---- READ -----------------------------------------------------------------------
 export async function listIntents({ status } = {}) {
@@ -203,16 +250,13 @@ export async function submitIntent({ intentId, bindingHash } = {}) {
   await store.upsert(networkId, intentId, (r) => (r ? { ...r, status: 'waitingChain', updatedAt: Date.now() } : r));
   const submitId = `${intentId}_s1`;
   try {
-    // Executing the RECORDED (fromAddress, networkId) pair: sendTransferChecked asserts the
-    // active account and network still match the recorded ones (a mid-flight switch is
-    // refused, completing on the wrong account or chain is impossible — TX Review semantics).
-    const result = await txService.sendTransferChecked({
-      toAddress: record.plan.toAddress,
-      amountUnits: record.plan.amountUnits,
-      fromAddress: record.plan.fromAddress,
-      networkId: record.plan.networkId,
-      allowDuplicate: false,
-    });
+    // Dispatch through the driver's executor: native-send runs the checked TX Review path,
+    // dex-swap runs the feature's guarded swap execution (registered at module load). Every
+    // executor executes the RECORDED (fromAddress, networkId) pair and refuses a mid-flight
+    // account/network switch — this pipeline binds execution to the review, not the session.
+    const driver = KIND_DRIVERS.get(record.kind);
+    if (!driver) throw errCode('INVALID_INPUT', `no executor registered for intent kind '${record.kind}'`);
+    const result = await driver.execute(record);
     const signature = result?.signature ?? null;
     const landed = await store.upsert(networkId, intentId, (r) => (
       r ? { ...r, status: 'waitingChain', signature: signature ?? r.signature, submitId, updatedAt: Date.now() } : r
@@ -222,6 +266,20 @@ export async function submitIntent({ intentId, bindingHash } = {}) {
     // The duplicate guard has its own stable code the UI keys on — carry it through unchanged.
     if (e?.code === 'DUPLICATE_SUBMISSION') {
       await store.upsert(networkId, intentId, (r) => (r ? { ...r, status: 'prepared', updatedAt: Date.now(), reason: 'duplicate-refused' } : r));
+      throw e;
+    }
+    // Kind-driver failures marked keepCode carry their own honest code + message (e.g.
+    // SWAP_STALE, INSUFFICIENT_BALANCE, TOKEN_ACCOUNT_MISSING) — never collapsed into
+    // PROGRAM_ERROR, which is reserved for unclassified chain rejects.
+    if (e?.keepCode && typeof e?.code === 'string') {
+      await store.upsert(networkId, intentId, (r) => (r ? {
+        ...r,
+        status: 'failed',
+        errorCode: e.code,
+        resumable: e.retryable === true,
+        errorMessage: String(e?.message ?? '').slice(0, 200),
+        updatedAt: Date.now(),
+      } : r));
       throw e;
     }
     const dropped = /fetch|timed?\s?out|network|ECONN|abort|offline/i.test(e?.message ?? '');

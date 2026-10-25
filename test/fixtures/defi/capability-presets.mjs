@@ -99,16 +99,16 @@ export const CAPABILITY_PRESETS = Object.freeze([
     name: 'readOnly',
     simulated: true,
     flags: { ...OFF, DEFI: true, DEFI_READ: true },
-    note: 'Discovery/pool/launch reads switch from FLAG_OFF to their dossier reasons '
-      + '(NO_INDEXER, PROGRAM_NOT_VERIFIED, TOKEN_PATH_UNVERIFIED). risk/validateDraft still '
-      + 'need DEFI_RISK; the intent pipeline is entirely off.',
+    note: 'Discovery/launch reads switch from FLAG_OFF to their dossier reasons '
+      + '(NO_INDEXER, TOKEN_PATH_UNVERIFIED); pool reads (G3) answer REAL chain reads now '
+      + '(enabled). risk/validateDraft still need DEFI_RISK; the intent pipeline is off.',
   }),
   buildPreset({
     name: 'swapOnly',
     simulated: true,
     flags: { ...OFF, DEFI: true, DEFI_READ: true, DEFI_DEX: true },
-    note: 'Quote/prepare methods surface PROGRAM_NOT_VERIFIED until the AMM program verifies '
-      + 'live (Q14-Q19 + R2 exit-before-entry). Launchpad/market surfaces stay FLAG_OFF.',
+    note: 'Swap quote/prepare surface EXECUTION_UNVERIFIED pending the live swap probe '
+      + '(R2 exit-before-entry keeps quoteLiquidity on the R2 copy). Launchpad/market stay FLAG_OFF.',
   }),
   buildPreset({
     name: 'full',
