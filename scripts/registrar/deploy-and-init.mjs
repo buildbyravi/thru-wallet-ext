@@ -25,10 +25,11 @@
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import process from 'node:process';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
+const toUrl = (p) => pathToFileURL(p).href;
 const EVIDENCE_DIR = join(REPO_ROOT, 'scripts', 'defi-evidence');
 
 // ---------- argv parsing ----------------------------------------------------------------
@@ -50,6 +51,7 @@ const BIN_PATH = flags.get('bin');
 const SEED = flags.get('seed') ?? 'thru-custom-registrar:v1';
 const HD_INDEX = Number(flags.get('hd-index') ?? 0);
 const FUND_TARGET = BigInt(flags.get('fund') ?? '20000'); // base units before deploy
+const SKIP_UPGRADE = flags.get('skip-upgrade') === 'true';
 
 function die(msg) { console.error(`\nFATAL: ${msg}`); process.exit(1); }
 function step(truth, label, detail = '') {
@@ -80,8 +82,8 @@ step(true, 'inputs', `network=${NETWORK_ID} root=${ROOT_NAME} fee=${FEE_PER_YEAR
 
 // ---------- wallet plumbing --------------------------------------------------------------
 const { MnemonicGenerator, ThruHDWallet } = await import('@thru/sdk/crypto');
-const thruClient = await import(join(REPO_ROOT, 'src/lib/thru-client.js'));
-const { getNetworkConfig } = await import(join(REPO_ROOT, 'src/lib/networks.js'));
+const thruClient = await import(toUrl(join(REPO_ROOT, 'src/lib/thru-client.js')));
+const { getNetworkConfig } = await import(toUrl(join(REPO_ROOT, 'src/lib/networks.js')));
 
 const network = getNetworkConfig(NETWORK_ID);
 thruClient.configureNetwork(network);
@@ -112,7 +114,7 @@ step(BigInt(info.balance ?? 0n) >= 1n, 'deployer funded', `${info.balance} base 
 
 // ---------- 1. deploy the program --------------------------------------------------------
 const { deriveManagedProgramAddresses } = await import('@thru/programs/manager');
-const { deployProgram } = await import('@thru/programs/deploy');
+const { deployProgram, upgradeProgram } = await import('@thru/programs/deploy');
 
 const managed = deriveManagedProgramAddresses(SEED);
 const registrarProgramAddress = managed.programAccountAddress;
@@ -120,7 +122,20 @@ step(true, 'registrar program address (seed-derived)', registrarProgramAddress);
 
 const existing = await thruClient.getAccountInfo(registrarProgramAddress).catch(() => null);
 if (existing?.exists) {
-  console.log(`  (something already exists at the derived program address — reusing it and skipping upload; verify before init claims)`);
+  if (SKIP_UPGRADE) {
+    console.log(`  (program exists at ${registrarProgramAddress} — reusing existing bytecode because --skip-upgrade was passed)`);
+  } else {
+    console.log(`  (program exists at ${registrarProgramAddress} — upgrading bytecode with ${BIN_PATH}…)`);
+    const result = await upgradeProgram({
+      programAddress: registrarProgramAddress,
+      seed: SEED,
+      program: new Uint8Array(readFileSync(resolve(BIN_PATH))),
+      signer: { address: deployer.address, privateKey: deployer.privateKey },
+      client: thruClient.getClient(),
+      onProgress: (ev) => console.log(`    [${ev.phase}] ${ev.status ?? ''} ${ev.message ?? ''}`.trim()),
+    });
+    step(!!result?.transactionSignature || !!result?.programAccountAddress, 'upgradeProgram finished', result?.transactionSignature ?? result?.programAccountAddress);
+  }
 } else {
   console.log('  uploading bytecode chunks + commit…');
   const result = await deployProgram({
@@ -137,66 +152,81 @@ if (existing?.exists) {
 // ---------- 2. Initialize (config create + init-root CPI inside the program) --------------
 const {
   buildTcrInitializeInstructionData, tcrConfigAddress, TCR_CONFIG_SEED_LABEL,
-} = await import(join(REPO_ROOT, 'src/lib/custom-registrar.js'));
-const nsLib = await import(join(REPO_ROOT, 'src/lib/name-service.js'));
+} = await import(toUrl(join(REPO_ROOT, 'src/lib/custom-registrar.js')));
+const nsLib = await import(toUrl(join(REPO_ROOT, 'src/lib/name-service.js')));
 
 const configAddress = tcrConfigAddress(registrarProgramAddress);
 const rootAddress = await nsLib.rootRegistrarAddress(ROOT_NAME);
 step(true, 'config + root derived', `config=${configAddress.slice(0, 14)}… root=${rootAddress.slice(0, 14)}…`);
 
 const client = thruClient.getClient();
-const configProof = (await client.proofs.generate({ address: configAddress, proofType: 1 })).proof;
-const rootProof = (await client.proofs.generate({ address: rootAddress, proofType: 1 })).proof;
-step(configProof?.length > 0 && rootProof?.length > 0, 'creation proofs generated');
+const height = await client.blocks.getBlockHeight();
+const slot = height.finalized;
+step(slot > 0n, 'live finalized slot fetched', `slot=${slot}`);
+
+const [configProofObj, rootProofObj] = await Promise.all([
+  client.proofs.generate({ address: configAddress, proofType: 1, targetSlot: slot }),
+  client.proofs.generate({ address: rootAddress, proofType: 1, targetSlot: slot }),
+]);
+const configProof = configProofObj.proof;
+const rootProof = rootProofObj.proof;
+step(configProof?.length > 0 && rootProof?.length > 0, 'creation proofs generated', `slot=${slot}`);
 
 const configSeed = new Uint8Array(32);
 configSeed.set(new TextEncoder().encode(TCR_CONFIG_SEED_LABEL));
 
 const NS_PROGRAM = nsLib.NAME_SERVICE_PROGRAM;
-ok('using pinned native name-service program', /^ta/.test(NS_PROGRAM), NS_PROGRAM);
+step(/^ta/.test(NS_PROGRAM), 'using pinned native name-service program', NS_PROGRAM);
 
-// Account lists per role (SDK byte-sorts them into the final table; the u16 indices
-// are resolved INSIDE the instructionData callback via the SDK's getAccountIndex —
-// Thru ABI convention, same as the first-party name-service/faucet builders).
-// Roles: admin=feePayer(0) · program(1) · config(rw,new) · root(rw,new) · name-service(ro)
-const { rawTransaction } = await client.transactions.buildAndSign({
-  feePayer: { publicKey: deployer.publicKey, privateKey: deployer.privateKey },
-  program: registrarProgramAddress,
-  header: { computeUnits: 2_000_000, memoryUnits: 32_768, stateUnits: 4, fee: 0n },
-  accounts: {
-    readWrite: [configAddress, rootAddress],
-    readOnly: [NS_PROGRAM],
-  },
-  instructionData: ({ getAccountIndex }) => buildTcrInitializeInstructionData({
-    feePerYear: FEE_PER_YEAR,
-    treasury: TREASURY,
-    rootName: ROOT_NAME,
-    configSeed,
-    configProof,
-    rootProof,
-    indexOf: getAccountIndex,
-    configAddress,
-    rootAddress,
-    nameServiceProgram: NS_PROGRAM,
-  }),
-});
-step(!!rawTransaction?.length, 'Initialize built+signed');
-
+const existingCfg = await thruClient.getAccountInfo(configAddress).catch(() => null);
 let signature = null;
 let streamResult = null;
 let streamError = null;
-for await (const update of client.transactions.sendAndTrack(rawTransaction)) {
-  if (update?.signature?.value && !signature) {
-    const { formatSignature } = await import(join(REPO_ROOT, 'src/lib/registrar.js'));
-    signature = formatSignature(update.signature.value);
+let vmError = 0;
+
+if (existingCfg?.exists) {
+  console.log('  (config account already exists — skipping Initialize transaction)');
+} else {
+  // Account lists per role (SDK byte-sorts them into the final table; the u16 indices
+  // are resolved INSIDE the instructionData callback via the SDK's getAccountIndex —
+  // Thru ABI convention, same as the first-party name-service/faucet builders).
+  // Roles: admin=feePayer(0) · program(1) · config(rw,new) · root(rw,new) · name-service(ro)
+  const { rawTransaction } = await client.transactions.buildAndSign({
+    feePayer: { publicKey: deployer.publicKey, privateKey: deployer.privateKey },
+    program: registrarProgramAddress,
+    header: { computeUnits: 2_000_000, memoryUnits: 32_768, stateUnits: 4, fee: 0n, startSlot: slot, expiryAfter: 10_000 },
+    accounts: {
+      readWrite: [configAddress, rootAddress],
+      readOnly: [NS_PROGRAM],
+    },
+    instructionData: ({ getAccountIndex }) => buildTcrInitializeInstructionData({
+      feePerYear: FEE_PER_YEAR,
+      treasury: TREASURY,
+      rootName: ROOT_NAME,
+      configSeed,
+      configProof,
+      rootProof,
+      indexOf: getAccountIndex,
+      configAddress,
+      rootAddress,
+      nameServiceProgram: NS_PROGRAM,
+    }),
+  });
+  step(!!rawTransaction?.length, 'Initialize built+signed');
+
+  for await (const update of client.transactions.sendAndTrack(rawTransaction)) {
+    if (update?.signature?.value && !signature) {
+      const { formatSignature } = await import(toUrl(join(REPO_ROOT, 'src/lib/registrar.js')));
+      signature = formatSignature(update.signature.value);
+    }
+    if (update?.executionResult) streamResult = update.executionResult;
+    if (update?.error) streamError = update.error;
   }
-  if (update?.executionResult) streamResult = update.executionResult;
-  if (update?.error) streamError = update.error;
+  step(!!signature && !streamError, 'Initialize broadcast', signature ?? String(streamError ?? 'no signature'));
+  vmError = Number(streamResult?.vmError ?? -1);
+  step(vmError === 0, 'Initialize executed (vmError 0)',
+    streamResult ? `vmError=${streamResult.vmError} userErrorCode=${streamResult.userErrorCode ?? 0}` : 'stream ended without an execution result (timeout) — check the explorer before re-running');
 }
-step(!!signature && !streamError, 'Initialize broadcast', signature ?? String(streamError ?? 'no signature'));
-const vmError = Number(streamResult?.vmError ?? -1);
-step(vmError === 0, 'Initialize executed (vmError 0)',
-  streamResult ? `vmError=${streamResult.vmError} userErrorCode=${streamResult.userErrorCode ?? 0}` : 'stream ended without an execution result (timeout) — check the explorer before re-running');
 
 const cfgInfo = await thruClient.getAccountInfo(configAddress).catch(() => null);
 const rootInfo = await thruClient.getAccountInfo(rootAddress).catch(() => null);
@@ -205,8 +235,8 @@ step(!!rootInfo?.exists, 'root registrar account exists on-chain');
 
 // Parse what got written — deployment is only real if the state decodes.
 try {
-  const { parseTcrConfig } = await import(join(REPO_ROOT, 'src/lib/custom-registrar.js'));
-  const raw = cfgInfo.raw instanceof Uint8Array ? cfgInfo.raw : cfgInfo.raw?.data;
+  const { parseTcrConfig } = await import(toUrl(join(REPO_ROOT, 'src/lib/custom-registrar.js')));
+  const raw = cfgInfo.raw?.data?.data ?? cfgInfo.raw?.data ?? cfgInfo.raw;
   const parsed = parseTcrConfig(raw);
   step(parsed.rootName === ROOT_NAME, 'config parses and names the root', JSON.stringify({ rootName: parsed.rootName, fee: parsed.feePerYear.toString(), treasury: parsed.treasury.slice(0, 12) }));
 } catch (e) {

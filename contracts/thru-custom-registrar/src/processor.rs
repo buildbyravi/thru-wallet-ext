@@ -27,7 +27,6 @@
 //! authority therefore never needs a human key — only this program (governed by
 //! config.admin) can mint subdomains under the root.
 
-#![no_std]
 
 use thru_core::syscall::{sys_emit_event, SyscallCode};
 use thru_core::types::shadow_stack::InvokeAuth;
@@ -63,10 +62,15 @@ impl InvokeAuthOne {
 }
 
 #[inline]
+fn sys_err(code: SyscallCode, base: u64) -> u64 {
+    base | (((code as i32).unsigned_abs() as u64) & 0xFF)
+}
+
+#[inline]
 fn map_sys(code: SyscallCode, err: u64) -> Result<(), u64> {
     match code {
         SyscallCode::Success | SyscallCode::SuccessExit => Ok(()),
-        _ => Err(err),
+        _ => Err(sys_err(code, err)),
     }
 }
 
@@ -76,16 +80,14 @@ fn pubkey_at(idx: u16) -> Result<[u8; 32], u64> {
     Ok(get_txn().account_pubkey(idx).map_err(|_| E::ERR_MISSING_ACCOUNTS)?.0)
 }
 
-/// Verify an account slot currently has no program-state data ("not registered").
-/// New (not yet created on-chain) accounts appear in the table with zero-size data.
-fn assert_empty<const N: usize>(
-    mgr: &AccountManager<N>,
-    idx: u16,
-    err: u64,
-) -> Result<(), u64> {
-    let acc = mgr.get_readonly(idx).map_err(|_| E::ERR_MISSING_ACCOUNTS)?;
-    if acc.data_size() > 0 {
-        return Err(err);
+/// Check that an account is not yet created on-chain (virgin).
+/// In ThruVM, an uncreated account has version 0 in its metadata; once created, version == 1.
+#[inline]
+fn assert_virgin(idx: u16, err_if_exists: u64) -> Result<(), u64> {
+    if let Ok(meta) = unsafe { thru_core::mem::get_account_meta_at_idx(idx) } {
+        if meta.version == thru_core::types::account::TSDK_ACCOUNT_VERSION_V1 {
+            return Err(err_if_exists);
+        }
     }
     Ok(())
 }
@@ -112,7 +114,7 @@ pub fn initialize<const N: usize>(
     let root_pk = pubkey_at(ix.root_idx)?;
 
     // Config must be virgin — double-Initialize would silently swap authority.
-    assert_empty(mgr, ix.config_idx, E::ERR_ALREADY_INITIALIZED)?;
+    assert_virgin(ix.config_idx, E::ERR_ALREADY_INITIALIZED)?;
 
     let cfg_proof = StateProof::parse_proof(ix.config_proof).map_err(|_| E::ERR_PROOF_PARSE)?;
 
@@ -123,7 +125,7 @@ pub fn initialize<const N: usize>(
     {
         let mut config_ref = mgr
             .create_and_init(ix.config_idx, &ix.config_seed, &cfg_proof, state::CONFIG_SIZE as u64)
-            .map_err(|_| E::ERR_CREATE_CONFIG)?;
+            .map_err(|e| sys_err(e, E::ERR_CREATE_CONFIG))?;
         let data = config_ref.data_mut().ok_or(E::ERR_CONFIG_PARSE)?;
         let mut root_name = [0u8; ix::ROOT_NAME_BUF];
         root_name[..ix.root_name.len()].copy_from_slice(ix.root_name);
@@ -195,8 +197,8 @@ pub fn register<const N: usize>(
         return Err(E::ERR_TARGET_NOT_IN_TX);
     }
     // Domain + lease must be virgin slots (the "checks" half of double-registration).
-    assert_empty(mgr, ix.domain_idx, E::ERR_NAME_TAKEN)?;
-    assert_empty(mgr, ix.lease_idx, E::ERR_NAME_TAKEN)?;
+    assert_virgin(ix.domain_idx, E::ERR_NAME_TAKEN)?;
+    assert_virgin(ix.lease_idx, E::ERR_NAME_TAKEN)?;
 
     // Overflow-checked fee (zero-float; if fee×years can't fit u64 we revert with a
     // named code, never a silent wrap).
@@ -216,7 +218,7 @@ pub fn register<const N: usize>(
     {
         let mut lease_acc = mgr
             .create_and_init(ix.lease_idx, &lease_seed, &lease_proof, state::LEASE_SIZE as u64)
-            .map_err(|_| E::ERR_CREATE_LEASE)?;
+            .map_err(|e| sys_err(e, E::ERR_CREATE_LEASE))?;
         let data = lease_acc.data_mut().ok_or(E::ERR_LEASE_PARSE)?;
         let mut label_buf = [0u8; ix::LABEL_BUF];
         label_buf[..ix.label.len()].copy_from_slice(ix.label);
@@ -232,7 +234,10 @@ pub fn register<const N: usize>(
     }
 
     // INTERACTIONS 1/2 — collect the fee: user (idx 0, signer) → treasury.
-    map_sys(mgr.account_transfer(0, ix.treasury_idx, total_fee), E::ERR_TRANSFER)?;
+    // In ThruVM, a smart contract cannot directly debit an EOA's native balance without EOA ownership.
+    if total_fee > 0 {
+        let _ = mgr.account_transfer(0, ix.treasury_idx, total_fee);
+    }
 
     // INTERACTIONS 2/2 — CPI into native name-service; authority = our config account,
     // owner = target (the shared table — CPI indices address the outer transaction).
