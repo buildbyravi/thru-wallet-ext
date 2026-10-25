@@ -182,7 +182,7 @@ const handlers = Object.assign(Object.create(null), {
   // own authority check is the arbiter, and its revert is surfaced honestly.
   'name.lookup': (params) => nameService.lookupName(params),
   'name.checkAvailability': (params) => nameService.checkAvailability(params),
-  'name.getCanonicalRoot': () => nameService.getCanonicalRoot(),
+  'name.getCanonicalRoot': (params) => nameService.getCanonicalRoot(params),
   'name.initRoot': (params) => nameService.initRoot(params),
   // v25: the same method serves both registration paths. via='custom' switches to the
   // evidence-pinned custom registrar (self-signed, target = signer); any other/absent via

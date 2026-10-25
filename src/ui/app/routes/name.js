@@ -156,6 +156,10 @@ export function NameRoute({ back }) {
     if (!registryUp) {
       try {
         canonRoot = await bridge.send('name.getCanonicalRoot');
+        if (customUp && canonRoot?.supported && canonRoot.rootName === custom.rootName) {
+          const alt = await bridge.send('name.getCanonicalRoot', { root: 'id' }).catch(() => null);
+          if (alt?.supported) canonRoot = alt;
+        }
       } catch (err) {
         canonRoot = { supported: false, reason: err?.message || 'root discovery failed' };
       }

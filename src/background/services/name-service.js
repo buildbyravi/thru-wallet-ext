@@ -189,7 +189,28 @@ export async function initRoot({ name } = {}) {
 
 /** name.getCanonicalRoot (v23): expose the on-chain-proof canonical-root discovery that
  *  name.lookup performs internally. auth:none — a read-only truth ask. */
-export async function getCanonicalRoot() {
+export async function getCanonicalRoot({ root } = {}) {
+  await getActiveNetworkConfig();
+  if (root && typeof root === 'string' && root.trim()) {
+    const rName = root.trim().toLowerCase();
+    const address = await rootRegistrarAddress(rName);
+    const info = await thruClient.getAccountInfo(address).catch(() => null);
+    if (!info?.exists) {
+      return { supported: false, reason: `root '${rName}' (${address.slice(0, 12)}…) does not exist on this network` };
+    }
+    try {
+      const parsed = parseRootRegistrar(info.raw);
+      return {
+        supported: true,
+        rootAddress: address,
+        rootName: parsed.name,
+        authority: parsed.authority,
+        provenance: `explicit .${rName} root registrar`,
+      };
+    } catch (e) {
+      return { supported: false, reason: `root '${rName}' present but unparseable (${e?.message ?? e})` };
+    }
+  }
   const discovered = await discoverDefaultRoot();
   if (!discovered?.supported) {
     return { supported: false, reason: discovered?.reason ?? 'no canonical name root on this network' };

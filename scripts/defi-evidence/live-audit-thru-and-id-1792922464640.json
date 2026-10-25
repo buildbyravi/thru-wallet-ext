@@ -1,0 +1,20 @@
+{
+  "date": "2026-10-25T10:01:04.637Z",
+  "network": "betanet",
+  "activeAccount": "tabDLDL9EVZYhRnbgPr0HrQuIvv01AZm9vtV8yIX26KO2J",
+  "thruTest": {
+    "label": "auditaxr2",
+    "domain": "auditaxr2.thru",
+    "years": 1,
+    "signature": "tsOEhFiPA9x4waIusCX0P12fJV_7WGiJmSYjGMSilFGp-_WfawOLzX3ike63c0KM0GbYab_RBISeftk1J_VV6UBh8a",
+    "domainAddress": "taiteMpeZn-9MGrOoAsAuBk6o_UKlu1tXzSIOgintRFFUw",
+    "verifiedOnChain": true
+  },
+  "idAudit": {
+    "rootAddress": "taLu3d1rxGdQWWHJxUOK6eT9ti4lWeTijNp0Kk_5YKHARg",
+    "rootName": "id",
+    "rootAuthority": "taXZ73Fm56iRRqrZIDB0q9d12EjiaMcOm-2eE9CNkyMLrq",
+    "signerMatchesAuthority": false,
+    "protectionResult": "NAME_PARENT_AUTHORITY"
+  }
+}

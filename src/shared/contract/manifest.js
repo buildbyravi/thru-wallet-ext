@@ -440,7 +440,7 @@ export const METHODS = {
   // name.lookup. Read-only; lets the UI offer free name-service registration beneath a root
   // that provably exists on the running network when the `.thru` paid registry is absent.
   'name.getCanonicalRoot': {
-    params: ['networkId'],
+    params: ['root', 'networkId'],
     returns: '{ supported, rootAddress, rootName, authority, provenance, reason? } — same discovery as name.lookup',
     auth: 'none',
     since: 23,
