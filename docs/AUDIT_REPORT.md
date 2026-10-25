@@ -42,13 +42,21 @@ records below.
 - `npm audit --omit=dev` — 0 vulnerabilities.
 - Contract v16, 81 methods: manifest ↔ router ↔ shipped-callers agreement enforced.
 
-**B. Browser verified: NONE — OPEN.** No real-Chrome check has been run for the current build (the `1.4.1` store package went live 2026-10-04 on automated evidence alone; no browser verification of the shipped package exists — `extension.md` §9):
-popup/side-panel layout at narrow/wide widths, real focus rings, QR canvas, popup/panel mutual
-exclusion, clipboard permission prompt, and MV3 worker eviction/restart all remain open in
-`docs/MANUAL_SMOKE_CHECKLIST.md`. A green DOM-shim suite is not evidence here.
+**B. Browser verified: PARTIAL — OPEN.** One partial real-Chrome run is recorded (2026-10-04;
+run record in `docs/MANUAL_SMOKE_CHECKLIST.md` §7): local build of the current source tree
+loaded unpacked, toolbar popup only — a native Betanet send to the tester's own account
+verified recipient acceptance, amount parsing, the Review fee display, confirmation, and the
+History entry, so the `/send` route row's popup cell is ticked. The charged-fee figure was not
+captured, and a self-send does not exercise v12 recipient activation. Everything else remains
+open: popup/side-panel layout at narrow/wide widths, real focus rings, QR canvas, popup/panel
+mutual exclusion, clipboard permission prompt, and MV3 worker eviction/restart all remain open
+in `docs/MANUAL_SMOKE_CHECKLIST.md`. The `1.4.1` store package went live 2026-10-04 on
+automated evidence alone, predates the same-day fee-provenance/dead-code fixes, and still has
+no browser verification (`extension.md` §9) — the partial run is not evidence about it.
+A green DOM-shim suite is not evidence here.
 
-**C. Betanet live verified (historical observations, provenance retained — they do NOT certify
-the current v12/v16 code paths):**
+**C. Betanet live verified (provenance retained; the historical 2026-09 observations do NOT
+certify the current v12/v16 code paths):**
 
 - Native transfer program behavior and the 1-base-unit fee, measured on the managed-genesis
   chain 2026-09-26 (the same program deployment Betanet runs); recorded per-network with
@@ -56,6 +64,11 @@ the current v12/v16 code paths):**
 - Faucet instruction layout credited 10,000 units from the bootstrap vault PDA (2026-09-26).
 - Explorer `/address/` route with `?network=` scoping verified 2026-09-27; ~6-second block
   cadence verified 2026-09-29.
+- Current-code send observation, partial (2026-10-04): a native Betanet send to the tester's
+  own account was driven end-to-end through the real Chrome popup from a local build of the
+  current source tree (post-`14e16b1`) and confirmed on-chain, appearing in History. One
+  self-send only: the charged-fee figure was not captured, v12 JIT recipient activation was
+  not exercised, and token paths were untouched.
 
 Still open on Betanet: live v12 account activation and Send JIT, token-transfer
 recipient-owner acceptance and the actual token-program fee, current block-time

@@ -1,0 +1,100 @@
+{
+  "id": "2026-10-08-official-docs",
+  "kind": "official-docs",
+  "dateUtc": "2026-10-08",
+  "origin": "https://thru.org/docs + https://www.npmjs.com/~thru-core (fetched 2026-10-08 by agent; both live)",
+  "entry": "audit refresh: pinned deps vs npm latest; runtime spec for the -767 fault model; indexer package question; execution/persistence semantics",
+  "npm": {
+    "@thru/sdk": {
+      "pinned": "0.4.1",
+      "latest": "0.4.1",
+      "published": {
+        "0.4.0": "2026-09-26T00:20:09Z",
+        "0.4.1": "2026-09-30T21:12:04Z"
+      },
+      "note": "0.4.0 published the SAME day as the last verified faucet claim (09-26); 0.4.1 matches thru-node a81ff4cbb (2026-09-30). Wallet on latest; no API drift."
+    },
+    "@thru/programs": {
+      "pinned": "0.4.1",
+      "latest": "0.4.1"
+    },
+    "@thru/indexer": {
+      "latest": "0.4.1 (2026-09-30)",
+      "desc": "official indexer framework: Thru chain data -> Postgres, event+account streams, auto-generated REST API. Answers the 'dedicated indexer package exists?' part of Q9: YES as framework; hosted public endpoint: still none observed."
+    },
+    "@thru/replay": {
+      "latest": "0.4.1 (2026-09-30)",
+      "desc": "gap-free historical+live replay for ETL/analytics - the history/chart data substrate a backend would self-host."
+    },
+    "thru (CLI)": {
+      "latest": "0.4.1",
+      "note": "0.4.x toolchain epoch aligns with node a81ff4cbb"
+    }
+  },
+  "specPins": {
+    "errorClasses": {
+      "validation": "0xFFFFFF00 (-255..): format/signature/sorted-accounts; before state load",
+      "preExecute": "0xFFFFFE00 (-511..-498): nonce advance + fee collection AND fresh fee-payer creation happen HERE; some state persists even on failure",
+      "execute": "0xFFFFFD00 (-767..-763): VM execution failures",
+      "view": "-767 = TN_RUNTIME_TXN_ERR_VM_FAILED (fatal VM error, execute phase); -765 = VM_REVERT (program-explicit revert, rollback); -764 = CU_EXHAUSTED; -506 = EXPIRED"
+    },
+    "feePayerCreation": "pre-execution: 'Fee payer account must exist OR BE CREATED with a valid state proof' (CREATION or EXISTING type). A fresh throwaway acting as its own fee payer with a CREATION proof is materialized at pre-exec time - before program execution - and exists afterward REGARDLESS of the execute-phase result. This explains rung-1 'exists despite VM_FAILED' WITHOUT any state-corruption claim.",
+    "persistenceRule": "post-execution: 'Account state changes are committed if execution SUCCEEDED; failed executions preserve nonce advancement and fee collection ONLY.' A -767/-765 transaction therefore cannot half-write program-owned account data - per spec, reverted-create poisoning by partial writes does not exist.",
+    "correctedFaultModel": "RATIFIED correction of the 2026-10-08 'poisoned account' reading: the activation tx CREATES the account correctly at pre-exec (exists:true is legitimate). The failures (-765 revert w/ user -26n on 10-06/07 -> -767 VM_FATAL on 10-08) happen INSIDE the faucet program's execution on the claim path, drifting between runs - a program/node-side regression on the claim leg for fresh accounts, matching the owner's chain-side escalation. Long-activated accounts claim fine (owner's released 1.4.1).",
+    "feeDistribution": "per-block unified completion; producer live -> claimed_fees; else burned_fees to genesis null account (unspendable, owner all-zero, uncompressible). burned+claimed == collected. surfaced via slot metrics (GetSlotMetrics/StreamSlotMetrics) - BACKEND NOTE for future fee/revenue UI reads."
+  },
+  "sdkDiffAudit": {
+    "scope": "@thru/sdk 0.3.18 -> 0.4.1 and @thru/programs 0.3.18 -> 0.4.1, cross-checked against the wallet's actual usage (owner directive 2026-10-08)",
+    "sdkSurface": "additions only, no removals: ABI_MANAGER/Compression/EOA_PROGRAM_ID/MANAGER/MULTICALL/NOOP/PASSKEY_MANAGER/ROOT_MANAGER/SYSTEM_TEST/TOKEN_PROGRAM/UPLOADER address constants + CompressionError (60 -> 72 exports). note: EOA_PROGRAM_ID/TOKEN_PROGRAM_ADDRESS/NOOP_PROGRAM_ADDRESS are in the ADDED family, and the wallet already imports them \u2014 the wallet is 0.4.x-native, never straddled.",
+    "walletUsedTypes": "IDENTICAL across both versions: BuildTransactionOptions, OptionalProofs, TransactionQueryOptions, TransactionFeePayerConfig (d.ts byte compare) and @thru/sdk/crypto exports (3 -> 3, no changes). methods used and unchanged in signature: transactions.{sendAndTrack,buildAndSign,listForAccount,get}, accounts.{get,create}, proofs.generate, blocks.{getBlockHeight,get}, keys.*, Pubkey/Signature.",
+    "bootstrapFamilyMove": "0.4.0 (published 2026-09-26, same day as sdk 0.4.0) REPLACED EVERY system address: 15 roles re-addressed + 3 added (eoa, compression, uploader) = 18 in 0.4.1. faucet: taWpJIo6... -> taFCTxR0y2..., token: tazba_zSI -> taTOKENKRgcl... etc; verified by installing both versions and diffing BOOTSTRAP_PROGRAM_ADDRESSES directly. This is the 2026-09-26 'managed genesis' epoch ThruScan's addresses.js documents.",
+    "walletCoherence": {
+      "networks.js": "derives every program address from the packages (EOA_PROGRAM_ID/TOKEN_PROGRAM_ADDRESS from @thru/sdk; BOOTSTRAP_PROGRAM_ADDRESSES/BOOTSTRAP_FAUCET_VAULT_ADDRESS from @thru/programs/bootstrap-addresses); its header documents the same 0.4.0-era move.",
+      "registrySnapshot": "2026-10-08 corrected to derive all 18 role addresses from BOOTSTRAP_PROGRAM_ADDRESSES at build time (was: hardcoded strings \u2014 drift-hazard closed; B3-style: the dated evidence seed stays as the 0.4.1-era pin so a future package move fails the build loudly instead of silently drifting). release-1.4.1 pins 0.4.1/0.4.1 and claims work for existing accounts TODAY \u2014 client+chain coherent.",
+      "chainId": "fetched from the node inside buildAndSign at tx-build time \u2014 robust to the observed chainId drift (1 -> 2 between 2026-10-05 and 2026-10-07)."
+    },
+    "verdict": "wallet code and SDK usage check out on every measurable seam; the remaining -767/claim-failure-for-fresh-accounts variable is the RUNNING CHAIN (current 0.4.1-epoch node executing the faucet program fatally on fresh-account claim paths post the observed chainId-2-era drift). Directed at the chain escalation: faucet program taFCTxR0y2ea..., fresh-account claims only, older activated accounts unaffected."
+  },
+  "sdkRefinement_2026_10_09": {
+    "at": "2026-10-09T17:30:00+05:30",
+    "trigger": "owner observation: draft 1.4.0 works fine today (register + faucet); 1.4.1 does not; ThruScan extension 0.4.5 works too",
+    "method": "dual npm install @thru/sdk+programs 0.4.0 vs 0.4.1, normalized dist diff; ThruScan package-lock inspection",
+    "findings": {
+      "sdkSize": "0.4.0 dist JS \u2248 304 KB; 0.4.1 \u2248 1,034 KB (major rebuild: compression, passkey-manager, deploy modules)",
+      "transactionCtorDefaults": "IDENTICAL in both: computeUnits??0, memoryUnits??0, stateUnits??DEFAULT_STATE_UNITS",
+      "accountsCreateDefaults_0_4_0": "{fee:0n, nonce:0n, startSlot:proof slot, chainId, expiryAfter:100, computeUnits:10000, memoryUnits:10000, stateUnits:1}",
+      "accountsCreateDefaults_0_4_1": "{\u2026same\u2026, computeUnits:0, memoryUnits:0, stateUnits:0}  \u2190 THE regression vector",
+      "thruscanExtensionsSdk": "package-lock resolved @thru/sdk@0.4.0 exactly (extension is built by the site's vite config, site lockfile pins 0.4.0)",
+      "storeBuildMapping": "1.4.1 store sync (14e16b1) pinned 0.4.1; the working 1.4.0 draft predates the lockfile era \u2192 0.4.0-era SDK (npm dates: 0.4.0 2026-09-26, 0.4.1 2026-09-30)",
+      "headerOverrideEscape": "options.header is merged over defaults in accounts.create(); callers passing explicit units are unaffected \u2014 ThruScan's claimThru passes explicit units, ours omits them by design remark"
+    },
+    "verdict": "SDK-side-effect, not a chain regression: the 1.4.1 fresh-account create/claim failures are coherently assigned to the 0.4.1 ZERO default units in accounts.create() (and zero Transaction defaults a fresh-account claim rides on), vs 0.4.0's 10k/10k/1. Chain was unchanged: 1.4.0/0.4.0 and ThruScan/0.4.0 still register+claim fine today.",
+    "nextGate": "scripts/probe-claim-variants.mjs on the owner's networked host (A/A-control/B/C/B+C claim cells + D1/D2 create cells) must let the chain confirm the fix shape (explicit units) class-by-class BEFORE any sacred-file (thru-client.js) header change; owner sign-off gates the fix commit"
+  },
+  "sdk_0_4_0_vs_0_4_1_fullDiff": {
+    "at": "2026-10-09",
+    "method": "dual npm install (@thru/sdk+programs 0.4.0 vs 0.4.1): export surfaces, d.ts normalized diff, minified-JS token diff, accounts.create/context extraction",
+    "sdk": {
+      "topLevelExports": "69 -> 72; removed: NONE; added: COMPRESSION_PROGRAM_ADDRESS, CompressionError, PASSKEY_MANAGER_PROGRAM_ADDRESS",
+      "cryptoSubpath": "unchanged",
+      "transactionCtorDefaults": "BYTE-IDENTICAL both: computeUnits??0, memoryUnits??0, stateUnits??DEFAULT_STATE_UNITS",
+      "buildAndSignPath": "identical around Transaction class (verified by context extraction)",
+      "accountsCreate_defaults": {
+        "0.4.0": "{computeUnits:10000, memoryUnits:10000, stateUnits:1}",
+        "0.4.1": "{computeUnits:0, memoryUnits:0, stateUnits:0}  <- THE fresh-account fault vector"
+      },
+      "behavioral": [
+        "State-proof parsing strictened (truncation guards on UPDATING entries; StateProof.validate added)",
+        "Legacy transaction sign path removed; new TransactionSigningMessage + attachSignature + strict canonical verify surface",
+        "executionResultFromProto static normalization",
+        "dist size ~304KB -> ~1034KB (compression/passkey/HSM-parity work)"
+      ]
+    },
+    "programs": {
+      "subpathExports": "12 -> 14; added ./compression and ./resources",
+      "bootstrapTableRoles": "15 -> 18; ADDED eoa/uploader/compression (values: taEOAD2uLK1S\u2026, taUPLMH5QYOAT\u2026, taRB54_92jNbBdc\u2026); shared 15 roles' address values UNMOVED; faucet vault identical",
+      "auditCorrection": "earlier sdkDiffAudit attributed the 15->18 role shift to the whole 0.3.18->0.4.1 epochs; the three roles actually arrive IN 0.4.1"
+    },
+    "walletImpact": "every seam the wallet uses is unchanged EXCEPT accounts.create() zero-budget defaults, which matches the observed 1.4.1-only fresh-account failures and the working 1.4.0/Thrushcan (0.4.0) state; the fix = explicit resource units in thru-client.js (probe-claim-variants.mjs verdict + owner sign-off first)"
+  }
+}

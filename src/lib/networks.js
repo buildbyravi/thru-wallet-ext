@@ -27,6 +27,12 @@ import { BOOTSTRAP_PROGRAM_ADDRESSES, BOOTSTRAP_FAUCET_VAULT_ADDRESS } from '@th
  * @property {string} transferProgramId  - Native transfer program address
  * @property {string} tokenProgramId     - Token program address
  * @property {string} accountCreateProgramId - Program the account-creation (fee-payer activation) transaction targets
+ * @property {string|null} customRegistrarProgram - Deployed thru-custom-registrar program address on this network
+ *   (contracts/thru-custom-registrar; null where never deployed/verified). This is OUR program, so
+ *   there is no first-party package pin to import — the value is a verified deployment fact:
+ *   everything DOWNSTREAM (config address, root, fee, treasury) is derived/read from chain at
+ *   runtime; this address alone must be listed here, and its provenance must be a dated evidence
+ *   entry under scripts/defi-evidence/ (see the betanet comment).
  * @property {boolean} isTestnet    - Test/dev network. Drives faucet visibility and the badge.
  * @property {boolean} enabled      - Whether the network is selectable yet
  * @property {'devnet'|'testnet'|'mainnet'|'local'} environment
@@ -88,6 +94,14 @@ export const NETWORKS = {
     // measurement comment). The Send review quotes this label, so a fee that was measured must
     // never be presented to the user as "not measured on this network".
     feeSource: 'measured',
+    // The thru-custom-registrar deployment on betanet (D-016, owner-verified 2026-10-25).
+    // Live evidence: scripts/defi-evidence/registrar-{deploy,probe}-betanet-*.json — program
+    // deployed+upgraded at exactly this address, config initialised (root 'thru', fee 1000
+    // base units/yr, treasury taShrn6v-…), and an end-to-end register executed vmError 0.
+    // The runtime derives the CONFIG address from this program (TCR:config:v1 seed) and reads
+    // root/fee/treasury from the parsed config account; if that account is absent or
+    // unparseable on the running chain the UI simply does not offer custom registration.
+    customRegistrarProgram: 'ta2vDCBzzptN2qVZgz6PXsCp5cNB7Nef4yeQ3W-OqzZcfF',
   },
 
   // Local node support is NOT offered in the shipped wallet — selecting it bound the
@@ -118,6 +132,7 @@ export const NETWORKS = {
     baseFeeUnits: 1n,
     feeReserveUnits: 1000n,
     feeSource: 'assumed',
+    customRegistrarProgram: null, // never deployed here — no evidence
   },
 
   // Declared but NOT enabled. This is the reserved slot for a future Thru-declared 'testnet'
@@ -137,6 +152,7 @@ export const NETWORKS = {
     faucetProgramId: null,
     faucetStateAccount: null,
     faucetMaxPerClaim: null,
+    customRegistrarProgram: null, // never deployed here — no evidence
     transferProgramId: TRANSFER_PROGRAM_ID,
     tokenProgramId: TOKEN_PROGRAM_ID,
     accountCreateProgramId: ACCOUNT_CREATE_PROGRAM_ID,
@@ -159,6 +175,7 @@ export const NETWORKS = {
     faucetProgramId: null,
     faucetStateAccount: null,
     faucetMaxPerClaim: null,
+    customRegistrarProgram: null, // never deployed here — no evidence
     transferProgramId: TRANSFER_PROGRAM_ID,
     tokenProgramId: TOKEN_PROGRAM_ID,
     accountCreateProgramId: ACCOUNT_CREATE_PROGRAM_ID,

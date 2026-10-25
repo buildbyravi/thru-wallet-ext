@@ -32,6 +32,7 @@ import {
 } from '@thru/programs/token';
 import { BOOTSTRAP_PROGRAM_ADDRESSES, BOOTSTRAP_FAUCET_VAULT_ADDRESS } from '@thru/programs/bootstrap-addresses';
 import { scopedKey } from '../shared/network-scope.js';
+import { autoUnits, noteExecution, UNIT_CLASS } from './tx-units.js';
 
 export const BETANET_RPC = 'https://rpc.betanet.thru.org';
 
@@ -314,26 +315,23 @@ export async function createOnChainAccount(feePayer, { beforeSign } = {}) {
       if (beforeSign) await beforeSign();
       assertRegistrationNetwork(network);
 
+      const units = autoUnits({ kind: UNIT_CLASS.CREATE, bytes: 0, accounts: 0, balanceUnits: 0n });
       const { rawTransaction } = await client.transactions.buildAndSign({
         feePayer: signer,
         // Account creation is a fee-payer activation against the network's configured
         // account-creation program — the NOOP program on 0.4.0+ chains (the SDK's own
         // accounts.createAccount default). The pre-reset reserved program (marker byte 0x03)
-        // is gone from the chain. stateUnits: 1 is explicit because the reset chain refuses
-        // activation with vmError -497 (FEE_PAYER_ACTIVATION_REQUIRES_STATE_UNIT) otherwise.
-        // Live-verified on the reset chain 2026-09-26 (registration ts2bMbIHRlcw…): the
-        // built header carried exactly { fee: 0n, nonce: 0n, stateUnits: 1, chainId: 1 } —
-        // chainId is fetched from the node at build time (it reports 1 today) rather than
-        // pinned, so a future chain-id move cannot silently produce wrong-chain signatures;
-        // startSlot and expiryAfter are fetched the same way.
+        // is gone from the chain. autoUnits provides explicit compute/memory/state units
+        // (10k CU / 10k MU / 1 SU floor) to avoid SDK 0.4.1 zero-default regressions.
         program: activeNetwork.accountCreateProgramId,
-        header: { fee: 0n, nonce: 0n, stateUnits: 1 },
+        header: { nonce: 0n, ...units },
         feePayerStateProof: proofObj.proof,
       });
       assertRegistrationNetwork(network);
 
       for await (const update of client.transactions.sendAndTrack(rawTransaction)) {
         if (update.executionResult) {
+          noteExecution(UNIT_CLASS.CREATE, update.executionResult);
           if (update.executionResult.vmError === 0) {
             assertRegistrationNetwork(network);
             return update.signature?.value ? Signature.from(update.signature.value).toThruFmt() : undefined;
@@ -459,14 +457,16 @@ export async function claimFaucet(feePayer, amount, { onSubmitted = null } = {})
 
   // recipient = feePayer (claiming to own address), so it's already at index 0.
   // Only add non-feePayer accounts to readWrite to avoid duplicate rejection.
+  const units = autoUnits({
+    kind: UNIT_CLASS.CLAIM,
+    bytes: 16,
+    accounts: 1,
+    balanceUnits: info.balance ?? 0n,
+  });
   const { rawTransaction } = await getClient().transactions.buildAndSign({
     feePayer: { publicKey: feePayer.publicKey, privateKey: feePayer.privateKey },
     program: net.faucetProgramId,
-    // fee 0n is the sponsored-claim design (pre-reset and post). stateUnits: 1 is stated
-    // explicitly — the claim writes vault state and this exact header was live-verified on
-    // the reset chain (2026-09-26, claim tsjbbZW9sT…, 10,000 units credited). chainId,
-    // nonce, startSlot and expiryAfter are fetched from the node inside buildAndSign.
-    header: { fee: 0n, stateUnits: 1 },
+    header: units,
     accounts: { readWrite: [net.faucetStateAccount] },
     instructionData: ({ getAccountIndex }) =>
       encodeFaucetInstructionData(getAccountIndex(net.faucetStateAccount), getAccountIndex(address), amountUnits),
@@ -474,6 +474,7 @@ export async function claimFaucet(feePayer, amount, { onSubmitted = null } = {})
 
   for await (const update of withSubmittedNotice(getClient().transactions.sendAndTrack(rawTransaction), onSubmitted)) {
     if (update.executionResult) {
+      noteExecution(UNIT_CLASS.CLAIM, update.executionResult);
       if (update.executionResult.vmError === 0) {
         return update.signature?.value ? Signature.from(update.signature.value).toThruFmt() : undefined;
       }
@@ -532,14 +533,17 @@ export async function sendTransfer(feePayer, toAddress, amount, { onSubmitted = 
   }
   // feePayer.address is already at index 0 — only add distinct accounts to readWrite
   const readWrite = toAddress === feePayer.address ? [] : [toAddress];
+  const transferData = encodeTransferInstructionData(0, 1, amountUnits);
+  const units = autoUnits({
+    kind: UNIT_CLASS.TRANSFER,
+    bytes: transferData.length,
+    accounts: readWrite.length,
+    balanceUnits: info.balance ?? 0n,
+  });
   const { rawTransaction } = await getClient().transactions.buildAndSign({
     feePayer: { publicKey: feePayer.publicKey, privateKey: feePayer.privateKey },
     program: activeNetwork.transferProgramId,
-    // No fee here on purpose: the SDK default is 1 base unit, re-measured on the reset
-    // chain (2026-09-26, transfer tsPbi9uzCb…: 10000 − 1234 − 1 = 8765). stateUnits: 1 is
-    // stated explicitly to match that live-tested wire shape; chainId, nonce, startSlot and
-    // expiryAfter are fetched from the node inside buildAndSign.
-    header: { stateUnits: 1 },
+    header: units,
     accounts: readWrite.length > 0 ? { readWrite } : undefined,
     instructionData: ({ getAccountIndex }) =>
       encodeTransferInstructionData(getAccountIndex(feePayer.address), getAccountIndex(toAddress), amountUnits),
@@ -547,6 +551,7 @@ export async function sendTransfer(feePayer, toAddress, amount, { onSubmitted = 
 
   for await (const update of withSubmittedNotice(getClient().transactions.sendAndTrack(rawTransaction), onSubmitted)) {
     if (update.executionResult) {
+      noteExecution(UNIT_CLASS.TRANSFER, update.executionResult);
       if (update.executionResult.vmError === 0) {
         return update.signature?.value ? Signature.from(update.signature.value).toThruFmt() : undefined;
       }
@@ -1021,22 +1026,34 @@ export async function initializeTokenAccount(feePayer, ownerAddress, mintAddress
       const ownerIsPayer = ownerAddress === (feePayer.address || Pubkey.from(feePayer.publicKey).toThruFmt());
       const readOnly = ownerIsPayer ? [mintAddress] : [mintAddress, ownerAddress];
 
+      const instrData = sdkCreateInitializeAccountInstruction({
+        tokenAccountBytes,
+        mintAccountBytes: mintBytes,
+        ownerAccountBytes: ownerBytes,
+        // The default derivation seed, matching deriveTokenAccountAddress's default.
+        seedBytes: new Uint8Array(32),
+        stateProof: proofObj.proof,
+      });
+      const payerAddress = feePayer.address || Pubkey.from(feePayer.publicKey).toThruFmt();
+      const payerInfo = await getAccountInfo(payerAddress);
+      const units = autoUnits({
+        kind: UNIT_CLASS.TOKEN_OP,
+        bytes: instrData.length,
+        accounts: 1 + readOnly.length,
+        balanceUnits: payerInfo.balance ?? 0n,
+      });
+
       const { rawTransaction } = await getClient().transactions.buildAndSign({
         feePayer: { publicKey: feePayer.publicKey, privateKey: feePayer.privateKey },
         program: activeNetwork.tokenProgramId,
+        header: units,
         accounts: { readWrite: [tokenAccountAddress], readOnly },
-        instructionData: sdkCreateInitializeAccountInstruction({
-          tokenAccountBytes,
-          mintAccountBytes: mintBytes,
-          ownerAccountBytes: ownerBytes,
-          // The default derivation seed, matching deriveTokenAccountAddress's default.
-          seedBytes: new Uint8Array(32),
-          stateProof: proofObj.proof,
-        }),
+        instructionData: instrData,
       });
 
       for await (const update of getClient().transactions.sendAndTrack(rawTransaction)) {
         if (update.executionResult) {
+          noteExecution(UNIT_CLASS.TOKEN_OP, update.executionResult);
           if (update.executionResult.vmError === 0) {
             knownTokenAccounts.add(tokenAccountAddress);
             const signature = update.signature?.value
@@ -1123,24 +1140,36 @@ export async function sendTokenTransfer({ feePayer, mintAddress, recipientAddres
 
   const sourceBytes = Pubkey.from(source.address).toBytes();
   const destBytes = Pubkey.from(dest.address).toBytes();
+  const instrData = sdkCreateTokenTransferInstruction({
+    sourceAccountBytes: sourceBytes,
+    destinationAccountBytes: destBytes,
+    amount,
+  });
+  const payerAddress = feePayer.address || Pubkey.from(feePayer.publicKey).toThruFmt();
+  const payerInfo = await getAccountInfo(payerAddress);
+  const rwAccounts = source.address === dest.address
+    ? [source.address]
+    : [source.address, dest.address];
+  const units = autoUnits({
+    kind: UNIT_CLASS.TOKEN_OP,
+    bytes: instrData.length,
+    accounts: rwAccounts.length,
+    balanceUnits: payerInfo.balance ?? 0n,
+  });
 
   const { rawTransaction } = await getClient().transactions.buildAndSign({
     feePayer: { publicKey: feePayer.publicKey, privateKey: feePayer.privateKey },
     program: activeNetwork.tokenProgramId,
+    header: units,
     accounts: {
-      readWrite: source.address === dest.address
-        ? [source.address]
-        : [source.address, dest.address],
+      readWrite: rwAccounts,
     },
-    instructionData: sdkCreateTokenTransferInstruction({
-      sourceAccountBytes: sourceBytes,
-      destinationAccountBytes: destBytes,
-      amount,
-    }),
+    instructionData: instrData,
   });
 
   for await (const update of withSubmittedNotice(getClient().transactions.sendAndTrack(rawTransaction), onSubmitted)) {
     if (update.executionResult) {
+      noteExecution(UNIT_CLASS.TOKEN_OP, update.executionResult);
       if (update.executionResult.vmError === 0) {
         return {
           signature: update.signature?.value ? Signature.from(update.signature.value).toThruFmt() : null,
@@ -1187,22 +1216,34 @@ export async function mintToToken({ feePayer, mintAddress, destinationOwner, amo
   const init = await initializeTokenAccount(feePayer, ownerAddress, mintAddress);
   const dest = await sdkDeriveTokenAccountAddress(getClient(), ownerAddress, mintAddress, activeNetwork.tokenProgramId);
 
+  const instrData = sdkCreateMintToInstruction({
+    mintAccountBytes: Pubkey.from(mintAddress).toBytes(),
+    destinationAccountBytes: Pubkey.from(dest.address).toBytes(),
+    authorityAccountBytes: Pubkey.from(feePayer.publicKey).toBytes(),
+    amount,
+  });
+  const payerAddress = feePayer.address || Pubkey.from(feePayer.publicKey).toThruFmt();
+  const payerInfo = await getAccountInfo(payerAddress);
+  const units = autoUnits({
+    kind: UNIT_CLASS.TOKEN_OP,
+    bytes: instrData.length,
+    accounts: 2,
+    balanceUnits: payerInfo.balance ?? 0n,
+  });
+
   const { rawTransaction } = await getClient().transactions.buildAndSign({
     feePayer: { publicKey: feePayer.publicKey, privateKey: feePayer.privateKey },
     program: activeNetwork.tokenProgramId,
+    header: units,
     // Mint authority is the feePayer at index 0; both the mint (supply) and the destination
     // token account (balance) change, so both go in readWrite.
     accounts: { readWrite: [mintAddress, dest.address] },
-    instructionData: sdkCreateMintToInstruction({
-      mintAccountBytes: Pubkey.from(mintAddress).toBytes(),
-      destinationAccountBytes: Pubkey.from(dest.address).toBytes(),
-      authorityAccountBytes: Pubkey.from(feePayer.publicKey).toBytes(),
-      amount,
-    }),
+    instructionData: instrData,
   });
 
   for await (const update of getClient().transactions.sendAndTrack(rawTransaction)) {
     if (update.executionResult) {
+      noteExecution(UNIT_CLASS.TOKEN_OP, update.executionResult);
       if (update.executionResult.vmError === 0) {
         return {
           signature: update.signature?.value ? Signature.from(update.signature.value).toThruFmt() : null,
@@ -1303,9 +1344,16 @@ export async function deployTokenMint({
 
   // 5. Build, sign, and broadcast transaction
   onProgress({ step: 'submitting_tx', message: 'Broadcasting Token Deployment transaction…' });
+  const units = autoUnits({
+    kind: UNIT_CLASS.TOKEN_OP,
+    bytes: instructionData.length,
+    accounts: 1,
+    balanceUnits: payerInfo.balance ?? 0n,
+  });
   const { rawTransaction } = await client.transactions.buildAndSign({
     feePayer: { publicKey: feePayer.publicKey, privateKey: feePayer.privateKey },
     program: activeNetwork.tokenProgramId,
+    header: units,
     accounts: { readWrite: [mintAddress] },
     instructionData,
   });
@@ -1313,6 +1361,7 @@ export async function deployTokenMint({
   let signatureStr = '';
   for await (const update of client.transactions.sendAndTrack(rawTransaction)) {
     if (update.executionResult) {
+      noteExecution(UNIT_CLASS.TOKEN_OP, update.executionResult);
       if (update.executionResult.vmError === 0) {
         signatureStr = update.signature?.value ? Signature.from(update.signature.value).toThruFmt() : '';
         break;

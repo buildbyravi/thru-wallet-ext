@@ -1,0 +1,287 @@
+{
+  "registryVersion": 0,
+  "networkId": "betanet",
+  "updatedAt": "2026-10-06",
+  "purpose": "Gate 0 seed for the DeFi program registry (docs/defi/REGISTRY_AND_CAPABILITY_SEED.md). Addresses come from the pinned official packages exactly as src/lib/networks.js already sources them (@thru/programs/bootstrap-addresses, @thru/sdk), never from literals; verification state is layered on top here. Package-declared addresses are NOT proof of live deployment or current management authority (Q14/Q20).",
+  "genesisBinding": {
+    "status": "pending",
+    "reason": "docs/BACKEND_GAPS.md and the 2026-09-26 managed-genesis reset show managed program addresses can be reused across a genesis swap. B3 requires every record and cache to bind to the network's genesis identity; the history service already has a chain-identity gate (offline fingerprint + live genesis check) that will be reused or lifted into a shared helper when the registry is built (build-order step 3). A changed identity must invalidate records, caches and prepared intents with reason NETWORK_RESET.",
+    "boundGenesisId": null
+  },
+  "programs": [
+    {
+      "role": "token",
+      "address": "taTOKENKRgcl3vO0yVhftATDbXuhgWcfaaxv9xpEEdMdUE",
+      "trust": "unverified",
+      "verification": "goldenTested",
+      "changeStatus": "unknown",
+      "managementState": "bootstrap-managed (package-declared; live upgrade authority unverified)",
+      "updatedAt": "2026-10-05",
+      "evidenceRef": [
+        "2026-10-05-package-surface",
+        "repo: test/test-thru-client.mjs + test/test-token-balances.mjs wire goldens vs @thru/programs/token 0.4.1"
+      ],
+      "note": "Instruction byte formats and derivation are golden-tested against the pinned binding locally. LIVE SEMANTICS OPEN: recipient-owner acceptance of sender-created token accounts and the token-program fee (docs/BACKEND_GAPS.md C1/C2 = dossier Q12/Q13 = precondition P3)."
+    },
+    {
+      "role": "amm",
+      "address": "taAMMx8gG44RcOyRqNYZ55pDaAJoGS0R8kPYxBN96sO8kD",
+      "trust": "unverified",
+      "verification": "unknown",
+      "changeStatus": "unknown",
+      "managementState": "bootstrap-managed (package-declared; deployment OBSERVED on-chain 2026-10-06 via live presence probe; upgrade authority and pool-creation control still unverified)",
+      "updatedAt": "2026-10-06",
+      "evidenceRef": [
+        "2026-10-05-package-surface",
+        "2026-10-06-live-chain"
+      ],
+      "note": "Package declares init-pool / add / withdraw / exact-in swap builders, events (swap, mint, burn, pool init, sync) and fee/liquidity constants. The program account EXISTS on betanet (live presence read, 2026-10-06 \u2014 q14/q20 probe row) \u2014 existence is deployment, NOT verification (R4): pool model, quote parity (Q14\u2013Q19), and trust all stay OPEN."
+    },
+    {
+      "role": "curve",
+      "address": null,
+      "trust": "unverified",
+      "verification": "unknown",
+      "changeStatus": "unknown",
+      "managementState": "none found",
+      "updatedAt": "2026-10-05",
+      "evidenceRef": [
+        "2026-10-05-package-surface"
+      ],
+      "note": "No launch or bonding-curve program appears in the pinned package's bootstrap-addresses export or export map (Q20 package-side negative). A live program-directory search is still outstanding; until one exists and is verified, launchCurve/migrate/claim stay LAUNCH_MODEL_UNAVAILABLE (D1: no project-authored on-chain program in this workstream)."
+    },
+    {
+      "role": "multicall",
+      "address": "taMULTIrOL8WpIFr16C1ECsO60qAsuwmwJephZHDOTvSeP",
+      "trust": "unverified",
+      "verification": "unknown",
+      "changeStatus": "unknown",
+      "managementState": "bootstrap-managed (package-declared)",
+      "updatedAt": "2026-10-05",
+      "evidenceRef": [
+        "2026-10-05-package-surface",
+        "2026-10-05-official-docs"
+      ],
+      "note": "Needed for atomic multi-step flows (Q1): the spec shows one program call per transaction, so atomicity wants a verified multicall. Signer-privilege, failure and trust semantics need ABI read + a live multi-call transaction with a deliberate failure."
+    },
+    {
+      "role": "oracle",
+      "address": "taORCLOkTSYq5enR2XOGoSDmzMc0P5NlqjP8nKpfd3vgps",
+      "trust": "unverified",
+      "verification": "unknown",
+      "changeStatus": "unknown",
+      "managementState": "bootstrap-managed (package-declared)",
+      "updatedAt": "2026-10-05",
+      "evidenceRef": [
+        "2026-10-05-package-surface"
+      ],
+      "note": "Only path to THRU/USD (Q22). scripts/probe-oracle-feed.mjs exists but has not run on a reachable machine; D8 keeps USD native-THRU-only and a dash until a verified source exists."
+    },
+    {
+      "role": "abi_manager",
+      "address": "taABII8WXcPaPIt47cXjOBbyoBUGBDXznAMHorVMeok3mw",
+      "trust": "unverified",
+      "verification": "unknown",
+      "changeStatus": "unknown",
+      "managementState": "bootstrap-managed (package-declared)",
+      "updatedAt": "2026-10-08",
+      "evidenceRef": [
+        "2026-10-05-package-surface",
+        "2026-10-08-official-docs"
+      ],
+      "note": "ABI manager program \u2014 feeds Q-series ABI reads if ever needed for program introspection."
+    },
+    {
+      "role": "block_producer",
+      "address": "taBPUH9m3CXZcBQyCrTmclHtltipiPelIHzdAf8QdIDvnt",
+      "trust": "unverified",
+      "verification": "unknown",
+      "changeStatus": "unknown",
+      "managementState": "bootstrap-managed (package-declared)",
+      "updatedAt": "2026-10-08",
+      "evidenceRef": [
+        "2026-10-05-package-surface",
+        "2026-10-08-official-docs"
+      ],
+      "note": "Block producer program per the 0.4.1 bootstrap table; fee distribution to live producers per the transaction-execution spec (2026-10-08-official-docs)."
+    },
+    {
+      "role": "clob",
+      "address": "taCLOBcFk1PT8JTHQM1LzsyK6HLv1YkSJKZ2ZyIxo8fiTe",
+      "trust": "unverified",
+      "verification": "unknown",
+      "changeStatus": "unknown",
+      "managementState": "bootstrap-managed (package-declared)",
+      "updatedAt": "2026-10-08",
+      "evidenceRef": [
+        "2026-10-05-package-surface",
+        "2026-10-08-official-docs"
+      ],
+      "note": "Order-book program (Q15 model space): system-shipped counterpart to the amm; whether pools live here instead of/in addition to the amm is a G3 question. ThrureScan confirms it in the same bootstrap table (third-party corroboration of the package pin)."
+    },
+    {
+      "role": "compression",
+      "address": "taRB54_92jNbBdcmt2jus88F-xrOSne1GR9mmyOh4RidAK",
+      "trust": "unverified",
+      "verification": "unknown",
+      "changeStatus": "unknown",
+      "managementState": "bootstrap-managed (package-declared)",
+      "updatedAt": "2026-10-08",
+      "evidenceRef": [
+        "2026-10-05-package-surface",
+        "2026-10-08-official-docs"
+      ],
+      "note": "Account compression program \u2014 matches the client compression* groups (getAccountStatuses/compressAccount); fee-payer compression-timeout error -498 exists per spec."
+    },
+    {
+      "role": "consensus_validator",
+      "address": "taCONStGMCE1RJ9ttceyt0FZhYapGJ7zzBuCE5qqYdLhaF",
+      "trust": "unverified",
+      "verification": "unknown",
+      "changeStatus": "unknown",
+      "managementState": "bootstrap-managed (package-declared)",
+      "updatedAt": "2026-10-08",
+      "evidenceRef": [
+        "2026-10-05-package-surface",
+        "2026-10-08-official-docs"
+      ],
+      "note": "Consensus validator program per the 0.4.1 bootstrap table."
+    },
+    {
+      "role": "eoa",
+      "address": "taEOAD2uLK1SLzPgtabFLUAx22yDlBs9DE9nZFTOESIGRr",
+      "trust": "unverified",
+      "verification": "unknown",
+      "changeStatus": "unknown",
+      "managementState": "bootstrap-managed (package-declared)",
+      "updatedAt": "2026-10-08",
+      "evidenceRef": [
+        "2026-10-05-package-surface",
+        "2026-10-08-official-docs"
+      ],
+      "note": "Externally-owned-account program: fresh-account activation path (the P3 createOnChainAccount program). Live-relevant: the current activation/claim regression is in this neighborhood."
+    },
+    {
+      "role": "faucet",
+      "address": "taFCTxR0y2eabGGaEdtTwC9pHz7ZY4CYD7FOiBFUJeAW16",
+      "trust": "unverified",
+      "verification": "unknown",
+      "changeStatus": "unknown",
+      "managementState": "bootstrap-managed (package-declared)",
+      "updatedAt": "2026-10-08",
+      "evidenceRef": [
+        "2026-10-05-package-surface",
+        "2026-10-08-official-docs"
+      ],
+      "note": "System program per @thru/programs/bootstrap-addresses 0.4.1 (canonical pin)."
+    },
+    {
+      "role": "name_service",
+      "address": "taNAMEqRNEDeMWp0cDYmMVdZyTZiF5NyGDR9zTwH42rWQG",
+      "trust": "unverified",
+      "verification": "unknown",
+      "changeStatus": "unknown",
+      "managementState": "bootstrap-managed (package-declared)",
+      "updatedAt": "2026-10-08",
+      "evidenceRef": [
+        "2026-10-05-package-surface",
+        "2026-10-08-official-docs"
+      ],
+      "note": "Name service (.id names \u2014 ThruScan runs a root on it, community production)."
+    },
+    {
+      "role": "nft",
+      "address": "taNFTjOaeDBSPHNf0LVRWAkF4raUFQgrz0EQIgJd60ENb5",
+      "trust": "unverified",
+      "verification": "unknown",
+      "changeStatus": "unknown",
+      "managementState": "bootstrap-managed (package-declared)",
+      "updatedAt": "2026-10-08",
+      "evidenceRef": [
+        "2026-10-05-package-surface",
+        "2026-10-08-official-docs"
+      ],
+      "note": "NFT program \u2014 ThruScan's Pixel Pals collection runs on it (community production). Wallet relevance: NFT sub-surface if ever in scope; for now completeness of the 0.4.1 map."
+    },
+    {
+      "role": "noop",
+      "address": "taNOOPV4A7S3WTsirr149To2GoGZ9q8zllQaBrbekHfkJT",
+      "trust": "unverified",
+      "verification": "unknown",
+      "changeStatus": "unknown",
+      "managementState": "bootstrap-managed (package-declared)",
+      "updatedAt": "2026-10-08",
+      "evidenceRef": [
+        "2026-10-05-package-surface",
+        "2026-10-08-official-docs"
+      ],
+      "note": "System program per @thru/programs/bootstrap-addresses 0.4.1 (canonical pin)."
+    },
+    {
+      "role": "passkey_manager",
+      "address": "taPASSIvjIgz2kZ1CIIhvbT00XV9Ve5kZ2I9uDLanzIgbA",
+      "trust": "unverified",
+      "verification": "unknown",
+      "changeStatus": "unknown",
+      "managementState": "bootstrap-managed (package-declared)",
+      "updatedAt": "2026-10-08",
+      "evidenceRef": [
+        "2026-10-05-package-surface",
+        "2026-10-08-official-docs"
+      ],
+      "note": "Passkey manager program \u2014 the on-chain half of @thru/passkey-manager (package also pinned). Future wallet passkey support reads this."
+    },
+    {
+      "role": "thru_registrar",
+      "address": "taREGMtyyVIMr27zDpvN0aRiSS2aOVffM9cZCsc0Xomaxw",
+      "trust": "unverified",
+      "verification": "unknown",
+      "changeStatus": "unknown",
+      "managementState": "bootstrap-managed (package-declared)",
+      "updatedAt": "2026-10-08",
+      "evidenceRef": [
+        "2026-10-05-package-surface",
+        "2026-10-08-official-docs"
+      ],
+      "note": "Registrar program per the 0.4.1 bootstrap table; role detail unverified (package only)."
+    },
+    {
+      "role": "uploader",
+      "address": "taUPLMH5QYOAT4ktwQeO7DXAEKtqBhYehalNGf5BJFQDYq",
+      "trust": "unverified",
+      "verification": "unknown",
+      "changeStatus": "unknown",
+      "managementState": "bootstrap-managed (package-declared)",
+      "updatedAt": "2026-10-08",
+      "evidenceRef": [
+        "2026-10-05-package-surface",
+        "2026-10-08-official-docs"
+      ],
+      "note": "Program uploader (deploy pipeline) per the 0.4.1 bootstrap table."
+    },
+    {
+      "role": "wthru",
+      "address": "taWTHRUBelpONhTRjYc7n4OovodUsUtZKTIuREWAi9G9lm",
+      "trust": "unverified",
+      "verification": "unknown",
+      "changeStatus": "unknown",
+      "managementState": "bootstrap-managed (package-declared)",
+      "updatedAt": "2026-10-08",
+      "evidenceRef": [
+        "2026-10-05-package-surface",
+        "2026-10-08-official-docs"
+      ],
+      "note": "System program per @thru/programs/bootstrap-addresses 0.4.1 (canonical pin)."
+    }
+  ],
+  "relatedDeclaredConstants": {
+    "wthru": "taWTHRUBelpONhTRjYc7n4OovodUsUtZKTIuREWAi9G9lm",
+    "wthru_mint": "taaoXQw03WlYWdo1jhfFi2Nqfqsf4RqYySn_89mchjCiLb",
+    "wthru_vault": "taEqcObTD3WldMGFOW28FBKF6_mQfSbci1TC77YyssQQhP",
+    "note": "Q17 lead: how native THRU enters a pool (wrapped or direct) is unverified live. | 2026-10-08: program map completed to the full 0.4.1 bootstrap declaration set (18 roles; pgreyy/thruscan SYSTEM table corroborates token/eoa/multicall/name_service/faucet/noop/amm/clob/oracle/nft/wthru addresses)",
+    "evidenceRef": [
+      "2026-10-05-package-surface"
+    ]
+  },
+  "customNetworks": "DeFi disabled with reason CUSTOM_NETWORK per D14 and the shipped contract-v7 quarantine; no override path exists or may be added."
+}

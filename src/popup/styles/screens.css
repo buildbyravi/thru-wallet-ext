@@ -423,6 +423,11 @@ form > .btn.text {
   box-sizing: border-box;
 }
 
+/* Tile parity (owner-directed 2026-10-23): every panel item — including the faucet
+   utility tile — uses main's exact 88px geometry, period. No aspect-ratio squares
+   (those grew each tile to ~119px tall at popup width: a big visual change from
+   main), and no per-tile overrides (the 2026-10-10 full-width faucet bar is gone);
+   scripts/check-panel-tiles.mjs fails the suite if parity or this geometry breaks. */
 .panel-item {
   position: relative;
   height: 88px;
@@ -1552,4 +1557,95 @@ form > .btn.text {
 
 [data-theme="dark"] .security-repeat-confirm {
   border-top-color: rgba(255, 255, 255, 0.08);
+}
+
+/* ---- Domain (/name) route accordion -------------------------------------- */
+.name-accordion summary {
+  cursor: pointer;
+  user-select: none;
+}
+
+.name-accordion-body {
+  margin-top: var(--sp-2, 8px);
+}
+
+
+/* ---- /name register card -------------------------------------------------- */
+.name-status {
+  min-height: 1.2em;
+}
+.name-status-ok {
+  color: #1a7f37;
+}
+.name-status-bad {
+  color: var(--danger, #c2240b);
+}
+.name-status-warn {
+  color: var(--warning, #9a6700);
+}
+.name-provider-row {
+  gap: 8px;
+}
+
+.provider-pill {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+  color: var(--text-1);
+  font: inherit;
+  font-size: var(--fs-md);
+  line-height: 1.25;
+  cursor: pointer;
+  text-align: center;
+  transition: border-color var(--t-fast), background var(--t-fast), box-shadow var(--t-fast);
+}
+
+.provider-pill .hint {
+  font-size: var(--fs-2xs, 10px);
+}
+
+.provider-pill:hover {
+  border-color: var(--border-strong);
+}
+
+.provider-pill.selected {
+  border-color: var(--accent);
+  background: var(--accent-tint);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.provider-pill:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.name-stepper .name-step-btn {
+  min-width: 32px;
+  height: 32px;
+  padding: 0 8px;
+}
+.name-stepper .name-years {
+  min-width: 5ch;
+  text-align: center;
+}
+.name-price,
+.name-balance {
+  /* spacing comes from the surrounding stack; the class exists for the register card's
+     price/balance truth-lines so they can be targeted (e.g. balance warning) later. */
+  color: var(--text-secondary, #475569);
+}
+/* ---- Dashboard ecosystem services grid (2026-10-24 owner directive) --------- */
+/* Same classes (.dashboard-panel-grid + .panel-item) => tiles are the EXACT same size
+   as Send/Receive. Owner review: NO gap between the grids — tiles must look like one
+   continuous panel; the 1px hairline matches the grid's own `gap: 1px` seam. */
+.dashboard-services-grid {
+  margin-top: 1px;
 }

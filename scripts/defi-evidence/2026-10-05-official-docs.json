@@ -1,0 +1,15 @@
+{
+  "id": "2026-10-05-official-docs",
+  "kind": "official-docs",
+  "network": null,
+  "dateUtc": "2026-10-05",
+  "tool": "agent page-fetch tool (sandbox direct egress to thru.org is blocked; see 2026-10-05-environment-egress)",
+  "refs": [
+    "https://thru.org/docs/spec/core/transactions/",
+    "https://thru.org/docs/spec/runtime/transaction-execution/",
+    "https://thru.org/docs/spec/runtime/resources/",
+    "https://thru.org/docs/api-ref/overview/"
+  ],
+  "finding": "Official spec facts retrieved on 2026-10-05. (1) Transaction header v1 carries: req_compute_units, req_state_units, req_memory_units, a uint64 fee declared by the fee payer, uint64 nonce, start_slot, expiry_after (slots until expiry), chain_id, one fee_payer_pubkey and ONE program_pubkey with a single instruction-data blob — so one transaction invokes one program; atomic multi-call needs a multicall program or CPI (execution results reference cross-program invocation account attribution). (2) Validation: nonce must exactly match the fee payer's current nonce and advances immediately; slots must satisfy start_slot <= current < expiry; fee is collected at pre-execution and failed executions still keep nonce advancement and fee collection. (3) Resources: 1 CU per byte of instruction/data, syscall base 512 CU, memory units are 4KB pages, state units derive from net account bytes added per page. (4) Transport: gRPC documented for apps and gRPC-Web documented 'for browser-based applications'; streaming services (e.g. StreamSlotMetrics) exist. (5) Execution results expose compute_units_consumed, state_units_consumed and program user_error_code. This is documentary evidence; behavior that can move funds still requires live-chain confirmation before a write path is enabled.",
+  "confidence": "high for what the official docs said on 2026-10-05; the docs are self-described as evolving"
+}

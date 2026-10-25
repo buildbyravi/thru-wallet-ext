@@ -1,0 +1,45 @@
+# Thru Custom Registrar — side-by-side name registrar program (ThruVM / RISC-V).
+#
+# Builds against the FIRST-PARTY Thru on-chain Rust SDK, vendored under ./vendor
+# (provenance + pin recorded in ../VENDORED.md). No crates.io dependency is added by
+# this crate itself; vendor/thru-core pins its own (heapless, zerocopy, …) upstream.
+#
+# Build (requires: rustup toolchain + riscv64imac-unknown-none-elf target +
+# cargo-binutils; see README.md):
+#   cargo build --release --bin thru-custom-registrar
+#   cargo objcopy --release --bin thru-custom-registrar -- -O binary target/.../thru-custom-registrar.bin
+#
+# Host-side layout tests (no RISC-V toolchain needed):
+#   cargo test --target x86_64-unknown-linux-gnu
+
+[package]
+name = "thru-custom-registrar"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Side-by-side Thru name registrar: open subdomain registration with protocol-collected fees, CPI into the native name-service program"
+
+[lib]
+crate-type = ["rlib"]
+
+[[bin]]
+name = "thru-custom-registrar"
+path = "src/main.rs"
+
+[dependencies]
+thru-core = { path = "vendor/thru-core" }
+thru-sdk-macros = { path = "vendor/thru-sdk-macros" }
+
+[profile.release]
+panic = "abort"
+opt-level = "z"
+lto = true
+codegen-units = 1
+debug = 2
+strip = false
+
+# Keep this crate out of any parent workspace; it builds standalone. The vendored
+# first-party SDK crates are path dependencies, not members.
+[workspace]
+members = []
+exclude = ["vendor/thru-core", "vendor/thru-sdk-macros"]

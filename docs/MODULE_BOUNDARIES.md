@@ -45,9 +45,12 @@ That file no longer exists, is not built, and cannot be re-enabled by URL, flag 
 
 ## 2. Proposed target shape — not shipped
 
-The following is a proposal only. There is no `src/features/`, `src/background/features/`,
-`src/lib/thru/` adapter directory, feature registry, or split feature contract in the current
-runtime. Do not describe these proposed modules as present or shipped.
+The following was written as a proposal. As of the M0 contract-first drop (2026-10-05),
+`src/background/features/{dex,launchpad}` exist as gated-off stub backends and
+`scripts/check-layering.mjs` enforces the sibling/vault import bans described below.
+There is still no `src/features/`, `src/lib/thru/` adapter directory, feature registry, or
+split feature contract in the current runtime. Do not describe those proposed modules as
+present or shipped.
 
 If separately approved, a future design may move toward feature modules with clear frontend,
 background, shared-contract, and Thru adapter boundaries:

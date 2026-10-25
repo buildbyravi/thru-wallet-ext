@@ -1,0 +1,357 @@
+#![no_std]
+
+pub use heapless;
+pub mod account_safe;
+pub mod mem;
+pub mod programs;
+pub mod syscall;
+pub mod types;
+pub mod vmptr;
+
+pub use account_safe::{next_pow2, AccountError, AccountManager, AccountRef, AccountType};
+pub use mem::get_txn;
+pub use mem::MemoryError;
+pub use types::pubkey::Pubkey;
+pub use types::shadow_stack::get_shadow_stack;
+pub use vmptr::{copy_bytes_strict, copy_nonoverlapping, VmPtr, VmPtrMut};
+
+/// Error code used by the panic handler
+pub const PANIC_ERROR_CODE: u64 = 555;
+
+mod panic;
+pub mod program_utils {
+    use crate::mem::{get_account_meta_at_idx, get_txn};
+    use crate::syscall;
+    use crate::types::pubkey::Pubkey;
+    use crate::types::shadow_stack::get_shadow_stack;
+    use crate::types::shadow_stack::{InvokeAuth, INVOKE_AUTH_MAGIC};
+    use crate::types::state_proof::StateProof;
+
+    pub fn revert(error_code: u64) -> ! {
+        syscall::sys_exit(error_code, 1)
+    }
+
+    pub fn succeed(return_code: u64) -> ! {
+        syscall::sys_exit(return_code, 0)
+    }
+
+    #[inline(always)]
+    pub fn grow_stack(delta: u64) -> *mut u8 {
+        let sp: u64;
+        unsafe {
+            core::arch::asm!("mv {}, sp", out(reg) sp);
+        }
+        let (_, addr) =
+            unsafe { syscall::sys_increment_anonymous_segment_sz(sp as *mut (), delta) };
+        addr
+    }
+
+    /// Check if an account is authorized by its index.
+    ///
+    /// An account is considered authorized if:
+    /// - It is the fee payer (index 0)
+    /// - It is the current program
+    /// - It is in the chain of program invocations (shadow stack)
+    /// - A parent frame explicitly authorized it via InvokeAuth and the authorizing
+    ///   program owns the target account
+    pub fn is_account_authorized_by_idx(account_idx: u16) -> bool {
+        if account_idx == 0 {
+            return true;
+        }
+
+        let shadow_stack = get_shadow_stack();
+
+        if shadow_stack.current_program_acc_idx() == account_idx {
+            return true;
+        }
+
+        if shadow_stack.call_depth() == 1 {
+            return false;
+        }
+
+        let txn = get_txn();
+        let account_pubkeys = match txn.account_pubkeys() {
+            Ok(pubkeys) => pubkeys,
+            Err(_) => return false,
+        };
+        let target_meta = unsafe {
+            match get_account_meta_at_idx(account_idx) {
+                Ok(meta) => meta,
+                Err(_) => return false,
+            }
+        };
+
+        let depth = shadow_stack.call_depth() as usize;
+        for i in (1..depth).rev() {
+            if let Some(frame) = shadow_stack.get_frame(i as u16) {
+                let auth_ptr = frame.saved_reg(13).unwrap_or(0);
+
+                if auth_ptr != 0 {
+                    let auth = unsafe { &*(auth_ptr as *const InvokeAuth) };
+                    if auth.magic == INVOKE_AUTH_MAGIC {
+                        let deauth_idxs = unsafe { auth.deauth_idxs() };
+                        for &didx in deauth_idxs {
+                            if didx == account_idx {
+                                return false;
+                            }
+                        }
+                        let auth_idxs = unsafe { auth.auth_idxs() };
+                        for &aidx in auth_idxs {
+                            if aidx == account_idx {
+                                let frame_prog_idx = frame.program_acc_idx() as usize;
+                                if let Some(frame_prog_pubkey) = account_pubkeys.get(frame_prog_idx)
+                                {
+                                    if &target_meta.owner == frame_prog_pubkey {
+                                        return true;
+                                    }
+                                }
+                                revert(0xBAD0A174);
+                            }
+                        }
+                    }
+                }
+
+                if frame.program_acc_idx() == account_idx {
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
+
+    /// Check if an account is authorized by its public key.
+    ///
+    /// An account is considered authorized if:
+    /// - It is the fee payer (index 0)
+    /// - It is the current program
+    /// - It is in the chain of program invocations (shadow stack)
+    /// - A parent frame explicitly authorized it via InvokeAuth and the authorizing
+    ///   program owns the target account
+    pub fn is_account_authorized_by_pubkey(pubkey: &Pubkey) -> bool {
+        let txn = get_txn();
+
+        let account_pubkeys = match txn.account_pubkeys() {
+            Ok(pubkeys) => pubkeys,
+            Err(_) => return false,
+        };
+
+        if account_pubkeys.get(0) == Some(pubkey) {
+            return true;
+        }
+
+        let shadow_stack = get_shadow_stack();
+
+        let current_program_idx = shadow_stack.current_program_acc_idx();
+        if account_pubkeys.get(current_program_idx as usize) == Some(pubkey) {
+            return true;
+        }
+
+        if shadow_stack.call_depth() == 1 {
+            return false;
+        }
+
+        let depth = shadow_stack.call_depth() as usize;
+        for i in (1..depth).rev() {
+            if let Some(frame) = shadow_stack.get_frame(i as u16) {
+                let auth_ptr = frame.saved_reg(13).unwrap_or(0);
+
+                if auth_ptr != 0 {
+                    let auth = unsafe { &*(auth_ptr as *const InvokeAuth) };
+                    if auth.magic == INVOKE_AUTH_MAGIC {
+                        let deauth_idxs = unsafe { auth.deauth_idxs() };
+                        for &didx in deauth_idxs {
+                            if account_pubkeys.get(didx as usize) == Some(pubkey) {
+                                return false;
+                            }
+                        }
+                        let auth_idxs = unsafe { auth.auth_idxs() };
+                        for &aidx in auth_idxs {
+                            if account_pubkeys.get(aidx as usize) == Some(pubkey) {
+                                let target_meta = unsafe {
+                                    match get_account_meta_at_idx(aidx) {
+                                        Ok(meta) => meta,
+                                        Err(_) => {
+                                            revert(0xBAD0A174);
+                                        }
+                                    }
+                                };
+                                let frame_prog_idx = frame.program_acc_idx() as usize;
+                                if let Some(frame_prog_pubkey) = account_pubkeys.get(frame_prog_idx)
+                                {
+                                    if &target_meta.owner == frame_prog_pubkey {
+                                        return true;
+                                    }
+                                }
+                                revert(0xBAD0A174);
+                            }
+                        }
+                    }
+                }
+
+                let program_idx = frame.program_acc_idx();
+                if account_pubkeys.get(program_idx as usize) == Some(pubkey) {
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
+
+    /// Checks whether the account at the given index is owned by the current program.
+    pub fn is_account_idx_owned_by_current_program(account_idx: u16) -> bool {
+        let txn = get_txn();
+
+        let account_meta = unsafe {
+            if account_idx >= txn.accounts_cnt() {
+                return false;
+            }
+            get_account_meta_at_idx(account_idx)
+        };
+        let account_meta = match account_meta {
+            Ok(meta) => meta,
+            Err(_) => return false,
+        };
+
+        let account_pubkeys = match txn.account_pubkeys() {
+            Ok(pubkeys) => pubkeys,
+            Err(_) => return false,
+        };
+        let shadow_stack = get_shadow_stack();
+        let current_program_idx = shadow_stack.current_program_acc_idx() as usize;
+
+        account_pubkeys.get(current_program_idx) == Some(&account_meta.owner)
+    }
+
+    /// Checks if the current program is already in the shadow stack (i.e.,
+    /// has been invoked recursively). Returns true if the program is reentrant,
+    /// false otherwise.
+    pub fn is_program_reentrant() -> bool {
+        let shadow_stack = get_shadow_stack();
+        let current_program_idx = shadow_stack.current_program_acc_idx();
+
+        // If there are no previous invocations, the program is not reentrant
+        if shadow_stack.call_depth() == 1 {
+            return false;
+        }
+
+        // Check if the current program appears in any previous stack frame
+        for i in 1..shadow_stack.call_depth() {
+            if let Some(frame) = shadow_stack.get_frame(i as u16) {
+                if frame.program_acc_idx() == current_program_idx {
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
+
+    /// Create an account via raw syscall.
+    ///
+    /// # Safety
+    ///
+    /// This function bypasses `AccountManager` borrow checks. Any
+    /// existing `&AccountMeta` or `&[u8]` references to the account at
+    /// `account_idx` must be dropped before this call. Prefer using
+    /// [`AccountManager::account_create`] which enforces borrow checks.
+    pub unsafe fn account_create(
+        account_idx: u64,
+        seed: &[u8; syscall::SEED_SIZE],
+        proof: StateProof<'_>,
+    ) -> syscall::SyscallCode {
+        syscall::sys_account_create(account_idx, seed, proof.as_ptr(), proof.footprint() as u64)
+    }
+}
+
+#[macro_export]
+macro_rules! tvm_println {
+    // Named argument for buffer size
+    (bufsize = $size:expr, $($arg:tt)*) => {{
+        use core::fmt::Write;
+        let mut buf: $crate::heapless::String<{ $size }> = $crate::heapless::String::new();
+        writeln!(&mut buf, $($arg)*).expect("tvm_println! failed to write");
+        unsafe { $crate::syscall::sys_log(buf.as_ptr(), buf.len() as u64) };
+    }};
+
+    // Default buffer size
+    ($($arg:tt)*) => {{
+        use core::fmt::Write;
+        let mut buf: $crate::heapless::String<1024> = $crate::heapless::String::new();
+        writeln!(&mut buf, $($arg)*).expect("tvm_println! failed to write");
+        unsafe { $crate::syscall::sys_log(buf.as_ptr(), buf.len() as u64) };
+    }};
+}
+
+#[macro_export]
+macro_rules! assert_eq_or_revert {
+    // With a custom error code
+    ($expr:expr, $expected:expr, error = $error_code:expr) => {{
+        if &($expr) != &($expected) {
+            $crate::program_utils::revert($error_code as u64);
+        }
+    }};
+    // With the default error code
+    ($expr:expr, $expected:expr) => {{
+        if &($expr) != &($expected) {
+            $crate::program_utils::revert(4444u64);
+        }
+    }};
+}
+
+#[macro_export]
+macro_rules! assert_or_revert {
+    // With named error
+    ($cond:expr, error = $error_code:expr) => {{
+        if !$cond {
+            $crate::program_utils::revert($error_code as u64);
+        }
+    }};
+    // Without named error (default error)
+    ($cond:expr) => {{
+        if !$cond {
+            $crate::program_utils::revert(4444 as u64);
+        }
+    }};
+}
+
+#[macro_export]
+macro_rules! revert {
+    // With named error
+    (error = $error_code:expr) => {{
+        $crate::program_utils::revert($error_code as u64);
+    }};
+}
+
+/// Read a potentially misaligned field from a packed struct.
+///
+/// Use this for fields in `#[repr(C, packed)]` structs where the field
+/// may not be naturally aligned for its type.
+///
+/// # Example
+/// ```ignore
+/// let amount = read_packed_field!(token_account.amount);
+/// ```
+#[macro_export]
+macro_rules! read_packed_field {
+    ($struct:expr, $field:ident) => {
+        unsafe { core::ptr::read_unaligned(core::ptr::addr_of!($struct.$field)) }
+    };
+}
+
+/// Write to a potentially misaligned field in a packed struct.
+///
+/// Use this for fields in `#[repr(C, packed)]` structs where the field
+/// may not be naturally aligned for its type.
+///
+/// # Example
+/// ```ignore
+/// write_packed_field!(token_account.amount, new_amount);
+/// ```
+#[macro_export]
+macro_rules! write_packed_field {
+    ($struct:expr, $field:ident, $value:expr) => {
+        unsafe { core::ptr::write_unaligned(core::ptr::addr_of_mut!($struct.$field), $value) }
+    };
+}

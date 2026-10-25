@@ -1,0 +1,24 @@
+{
+  "date": "2026-10-24T23:44:43.381Z",
+  "network": "betanet",
+  "program": "ta2vDCBzzptN2qVZgz6PXsCp5cNB7Nef4yeQ3W-OqzZcfF",
+  "label": "probet090i",
+  "years": 1,
+  "config": {
+    "rootName": "thru",
+    "feePerYear": "1000",
+    "treasury": "taShrn6v-TM_h81ZjmDZLifdhLRlDMfIw_EAIaNKIIdPX-"
+  },
+  "rootAddress": "taNP1MFOO2shpn6ORofIGSNiQ-qJ9VE2lDkDwvUmgUmaQZ",
+  "domainAddress": "taoYMAghSQplGUWyNqOGpqMKCr9_aP0DKm0CwI3g3fozEK",
+  "leaseAddress": "taVxuQYVHgmymOzLQwJrx2anAHSc4Yv90I764g1aWaAhiN",
+  "signature": "tsyzTadUpsZgm38OeAboLgHzpFSR-aB86FmCCAOb-pyqqBAt3lg1RHITOR0Vm989E_C2YUBZKIdw5HTTGAicCnDx03",
+  "vmError": -765,
+  "executionResult": {
+    "vmError": -765,
+    "consumedComputeUnits": 36938,
+    "userErrorCode": "53793"
+  },
+  "treasuryBefore": "0",
+  "treasuryAfter": "0"
+}

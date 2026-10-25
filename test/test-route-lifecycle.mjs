@@ -1295,6 +1295,55 @@ const FIXTURES = {
     reason: null,
   }),
   'token.deriveTokenAccount': () => TOKEN_ACCOUNT_FIXTURE,
+  // v21 primary-name UX slice (2026-10-09): the dashboard asks for the verified record on
+  // every mount; the fixture has no name linked (the empty state must render the link
+  // affordance, never a fabricated name).
+  'name.getPrimary': () => null,
+  'name.linkPrimary': () => { throw new Error('fixture: no on-chain name service'); },
+  'name.unlinkPrimary': () => ({ unlinked: false }),
+  // v22 registrar slice: the mount reads must render the honest unsupported state (the
+  // fixture chain has no `.thru` registry) — never a fabricated price on mount.
+  'name.getRegistry': () => ({ supported: false, reason: 'fixture: no .thru registry initialized' }),
+  'name.checkLease': () => ({ supported: false, reason: 'fixture: no .thru registry initialized' }),
+  // v25 custom registrar provider: supported+parseable with the evidence-pinned Betanet
+  // deployment shape (so the /name toggle renders), and lease lookups report available.
+  'name.getCustomRegistrar': () => ({
+    supported: true,
+    networkId: activeNetwork().id,
+    program: 'ta2vDCBzzptN2qVZgz6PXsCp5cNB7Nef4yeQ3W-OqzZcfF',
+    configAddress: 'ta_9lLvhxurg4J5DyZ82W14rzzGWCEfj9B7Y8wa99amPBa',
+    root: 'taNP1MFOO2shpn6ORofIGSNiQ-qJ9VE2lDkDwvUmgUmaQZ',
+    rootName: 'thru',
+    rootMatchesNameService: true,
+    feePerYear: '1000',
+    treasury: 'taShrn6v-TM_h81ZjmDZLifdhLRlDMfIw_EAIaNKIIdPX-',
+    admin: 'tabDLDL9EVZYhRnbgPr0HrQuIvv01AZm9vtV8yIX26KO2J',
+  }),
+  'name.checkCustomLease': ({ name } = {}) => ({
+    supported: true,
+    networkId: activeNetwork().id,
+    program: 'ta2vDCBzzptN2qVZgz6PXsCp5cNB7Nef4yeQ3W-OqzZcfF',
+    configAddress: 'ta_9lLvhxurg4J5DyZ82W14rzzGWCEfj9B7Y8wa99amPBa',
+    root: 'taNP1MFOO2shpn6ORofIGSNiQ-qJ9VE2lDkDwvUmgUmaQZ',
+    rootName: 'thru',
+    rootMatchesNameService: true,
+    feePerYear: '1000',
+    treasury: 'taShrn6v-TM_h81ZjmDZLifdhLRlDMfIw_EAIaNKIIdPX-',
+    admin: 'tabDLDL9EVZYhRnbgPr0HrQuIvv01AZm9vtV8yIX26KO2J',
+    name: String(name ?? ''),
+    leaseAddress: 'taTestTcrLease',
+    domainAddress: 'taTestTcrDomain',
+    domainExists: false,
+    leaseExists: false,
+    lease: null,
+    leaseParseError: null,
+    expiredHint: null,
+  }),
+  'name.getPaymentBalance': () => ({ supported: false, reason: 'fixture: no .thru registry initialized' }),
+  'name.lookup': ({ name } = {}) => ({
+    chain: [], leaf: { address: 'ta1addressaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', exists: false },
+    rootAddress: 'ta1addressaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', name: name ?? null,
+  }),
   'token.readMint': ({ mintAddress } = {}) => {
     if (mintAddress === CUSTOM_MINT_FIXTURE) {
       return {
@@ -1347,6 +1396,32 @@ const FIXTURES = {
     networkId: activeNetwork().id,
   }),
   'tx.getAccountInfo': () => ({ exists: true, balance: activeAccount().balance }),
+  // v24 faucet rate-limit read: one fee-payer-keyed rule with a bucket still absent ⇒
+  // provably zero usage (matches ratelimit.summarizeRule's absent-bucket semantics exactly).
+  'tx.getFaucetLimit': () => ({
+
+    supported: true,
+    networkId: activeNetwork().id,
+    policyAddress: 'taTestFaucetPolicy',
+    policyId: '0',
+    target: activeNetwork().faucetProgramId,
+    targetMatchesFaucet: true,
+    paused: false,
+    maxAmountPerCall: '10000',
+    checkedAt: Date.now(),
+    rules: [{
+      idx: 0,
+      keyReadable: true,
+      bucketAddress: 'taTestFaucetBucket',
+      summary: {
+        keyKind: 1, keyKindLabel: 'fee-payer', clock: 1, clockLabel: 'seconds',
+        window: '600', maxCalls: '3', maxAmount: '30000',
+        inCurrentWindow: true, usedCallsInWindow: '0', usedAmountInWindow: '0',
+        remainingCalls: '3', remainingAmount: '30000',
+        exhausted: false, resetAtUnixSec: null, bucket: null,
+      },
+    }],
+  }),
   'tx.getBalances': ({ addresses } = {}) => {
     const out = {};
     for (const address of addresses || []) {
