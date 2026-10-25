@@ -77,3 +77,21 @@ is on, no chain read/write DeFi path exists, the intent store is unbuilt, and th
 functions of the evidence layer — proven on the flag-on rung, unreachable with flags off.
 G1 keeps the boundary: the registry reads evidence; it does not create it. Live rows land only
 via the evidence session (`scripts/verify-token-transfer.mjs` and successors).
+
+**G3 landed 2026-10-25 (DEX swap intents, all DEFI_* flags still build-time OFF):** the DEX
+backend graduated from the M0 stub. `src/background/services/dex-service.js` (feature keeps a
+thin seam in `features/dex/`) implements real pool discovery/reads (`dex.listPools`,
+`dex.getPool`), first-party constant-product quotes (`dex.quote`, `quoteAmmSwapExactIn`,
+15s quote ttl per dossier limits), exchangeable `dex.prepareSwap` intents, and a `dex-swap`
+kind driver registered into the v20 intent pipeline (`intent.submit` dispatches per kind;
+`services/intent-service.js`). The dossier rows advanced with dated evidence:
+`pools` → **enabled** (2026-10-07 live-chain q14/q15 verified derivation+parser+reads), `swap`
+→ **EXECUTION_UNVERIFIED** (new S10 reason — program verified, first on-chain swap not yet
+observed; the row graduates with a dated live-swap probe once a pool exists, and until then
+`dex.quote`/`dex.prepareSwap` answer the dossier reason even with flags on). R2 exit-first
+stands: `dex.quoteLiquidity`/`dex.prepareLiquidity` still defer add-liquidity until the remove
+path verifies live; `dex.positions` reads LP balances honestly. Offline proof:
+`test/test-dex-swap.mjs` (25 checks, in-process zero-network via the declared chain seams).
+Live follow-up rungs, in order: seed a demo token+pool (needs the P1 token-deploy rung live),
+observe one live swap and file it, then the dossier row flips `swap` → enabled and the flag
+flip becomes reviewable.

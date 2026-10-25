@@ -6,9 +6,27 @@
   "features": [
     { "key": "balances", "state": "enabled", "reason": null, "evidenceRef": ["repo: contract v8-v16 balance services", "docs/AUDIT_REPORT.md gate C 2026-10-04 popup send observation"], "note": "Wallet-core capability; live reads observed working in the 2026-10-04 popup smoke." },
     { "key": "tokenTransfer", "state": "enabled", "reason": null, "evidenceRef": ["repo: contract v8 token.transferChecked shipped", "docs/BACKEND_GAPS.md C1/C2"], "note": "Ships in the wallet today, but LIVE end-to-end semantics are OPEN (recipient-owner acceptance, token-program fee). Dependent DeFi features inherit TOKEN_PATH_UNVERIFIED until dossier Q13 (= P3) closes on a reachable machine." },
-    { "key": "swap", "state": "unsupported", "reason": "PROGRAM_NOT_VERIFIED", "evidenceRef": ["betanet.registry-seed.json role=amm"], "note": "Q14-Q16 and Q19 open; R2 requires a verified sell before any buy; R6 restricts built-in flows to registry programs." },
-    { "key": "pools", "state": "unsupported", "reason": "PROGRAM_NOT_VERIFIED", "evidenceRef": ["betanet.registry-seed.json role=amm"], "note": "Q15 pool model, Q17 native-THRU pool path and Q18 discovery open; add-liquidity stays disabled until remove is verified live (R2)." },
-    { "key": "launchMint", "state": "unsupported", "reason": "TOKEN_PATH_UNVERIFIED", "evidenceRef": ["docs/BACKEND_GAPS.md C1/C2", "betanet.registry-seed.json role=token"], "note": "P3 (Q13) is a hard precondition per B1. Q11 authority-revocation model and Q12 canonical-account rule also gate the template authority policy." },
+    { "key": "swap",
+    "state": "unsupported",
+    "reason": "EXECUTION_UNVERIFIED",
+    "evidenceRef": [
+      "2026-10-07-live-chain q14/q15",
+      "pending: live swap probe once a pool exists"
+    ],
+    "note": "AMM program verified on-node 2026-10-07 (q14: address == bootstrap pin; q15: derivation+parser+quote surface). No swap has been OBSERVED on-chain (zero pools at that rung). Graduates to enabled with a dated live-swap probe; until then dex.quote/prepareSwap answer EXECUTION_UNVERIFIED (G3)."
+  },
+  {
+    "key": "pools",
+    "state": "enabled",
+    "reason": null,
+    "evidenceRef": [
+      "2026-10-07-live-chain q14/q15",
+      "G3 dex-service pool reads"
+    ],
+    "note": "Pool derive+read+parse verified against the live AMM program (q15) plus G3 dex-service reads proven offline (test/test-dex-swap.mjs). No pools initialized on betanet as of the 2026-10-07 rung, so the honest discovery answer today is an empty page."
+  },
+  {
+    "key": "launchMint", "state": "unsupported", "reason": "TOKEN_PATH_UNVERIFIED", "evidenceRef": ["docs/BACKEND_GAPS.md C1/C2", "betanet.registry-seed.json role=token"], "note": "P3 (Q13) is a hard precondition per B1. Q11 authority-revocation model and Q12 canonical-account rule also gate the template authority policy." },
     { "key": "launchDirectPool", "state": "unsupported", "reason": "DEPENDENCY_UNVERIFIED", "evidenceRef": ["matrix: launchMint", "matrix: pools"], "note": "B8 enables models strictly in order: mint-only, then direct AMM pool, then curve." },
     { "key": "launchCurve", "state": "unsupported", "reason": "LAUNCH_MODEL_UNAVAILABLE", "evidenceRef": ["betanet.registry-seed.json role=curve"], "note": "No curve/launch program found package-side (Q20); live search open; D1 forbids a project-authored curve in this workstream." },
     { "key": "migrate", "state": "unsupported", "reason": "LAUNCH_MODEL_UNAVAILABLE", "evidenceRef": ["betanet.registry-seed.json role=curve"], "note": "Q21 (graduation trigger/caller/atomicity/LP disposition) unanswered; also needs the destination-pool griefing check (DESTINATION_POOL_PRE_EXISTING)." },

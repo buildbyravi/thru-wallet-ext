@@ -94,7 +94,8 @@ export const M0_CURRENT = Object.freeze({
     'programFacts.amm': 'taAMMx8gG44RcOyRqNYZ55pDaAJoGS0R8kPYxBN96sO8kD',
     'limits.slippageMaxBps': 2000,
     'limits.quoteTtlMs': 15000,
-    'featureCapabilities.swap': { supported: false, reason: 'PROGRAM_NOT_VERIFIED' },
+    'featureCapabilities.swap': { supported: false, reason: 'EXECUTION_UNVERIFIED' }, // G3: AMM live-verified 2026-10-07 (q14/q15); execution probe pending
+    'featureCapabilities.pools': true,
     'featureCapabilities.usd': { supported: false, reason: 'DEPENDENCY_UNVERIFIED' },
     'featureCapabilities.balances': true,
     'methodCapabilities[dex.quote]': { supported: false, reason: 'FLAG_OFF' },
@@ -166,10 +167,15 @@ export const M0_CURRENT = Object.freeze({
 // Deterministic for methods whose only proceed-path is offline derivation.
 
 export const M0_FLAG_ON = Object.freeze({
-  'dex.listPools': FLAG_ON_DOSSIER('PROGRAM_NOT_VERIFIED'),
-  'dex.getPool': FLAG_ON_DOSSIER('PROGRAM_NOT_VERIFIED'),
-  'dex.quote': FLAG_ON_DOSSIER('PROGRAM_NOT_VERIFIED'),
-  'dex.quoteLiquidity': FLAG_ON_DOSSIER('PROGRAM_NOT_VERIFIED'),
+  // G3 dossier rungs — pool reads are REAL now (pools dossier row is enabled):
+  //   listPools: honest empty discovery page on a token-registry-less offline process.
+  //   getPool:   fixture poolId does not exist on-chain → honest rpc-error envelope.
+  //   quote:     swap dossier row stays unsupported until a live swap probe lands.
+  //   quoteLiquidity: pools row enabled → R2 exit-before-entry reason surfaces directly.
+  'dex.listPools': spot({ supported: true, source: 'chain', items: [], nextCursor: null, partial: false }),
+  'dex.getPool': spot({ supported: false, reason: 'rpc-error' }),
+  'dex.quote': FLAG_ON_DOSSIER('EXECUTION_UNVERIFIED'),
+  'dex.quoteLiquidity': exact(ok({ supported: false, reason: 'Disabled until remove-liquidity verifies live (exit-before-entry, R2).' })),
   'market.assetGet': FLAG_ON_DOSSIER('NO_INDEXER'),
   'market.assetSearch': FLAG_ON_DOSSIER('NO_INDEXER'),
   'market.snapshot': FLAG_ON_DOSSIER('NO_INDEXER'),
@@ -179,7 +185,9 @@ export const M0_FLAG_ON = Object.freeze({
   'launchpad.list': FLAG_ON_DOSSIER('NO_INDEXER'),
   'launchpad.get': FLAG_ON_DOSSIER('NO_INDEXER'),
   'launchpad.templates': FLAG_ON_DOSSIER('TOKEN_PATH_UNVERIFIED'),
-  'dex.positions': FLAG_ON_DOSSIER_ERROR('Pool positions', 'PROGRAM_NOT_VERIFIED'),
+  // G3: pools dossier row enabled → the gated-off stub's dossier error no longer applies.
+  // The real service is account-bound: with no active account it refuses ACCOUNT_MISSING.
+  'dex.positions': exact(fail('ACCOUNT_MISSING', 'no active account')),
   'launchpad.listMine': FLAG_ON_DOSSIER_ERROR('Own-launch reads', 'TOKEN_PATH_UNVERIFIED'),
   'launchpad.uploadImage': FLAG_ON_DOSSIER_ERROR('Launch image upload', 'TOKEN_PATH_UNVERIFIED'),
   'launchpad.prepareCreate': FLAG_ON_DOSSIER_ERROR('Launch creation', 'TOKEN_PATH_UNVERIFIED'),

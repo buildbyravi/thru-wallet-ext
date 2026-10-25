@@ -121,9 +121,12 @@ section('Registry mirrors the G0 evidence seeds');
       && EXPECTED_PROGRAM_ROLES.every((role) => record.programs.some((r) => r.role === role)),
     `${seed.programs.length} seed records; problems: ${programProblems.join(', ')}`);
 
+  // G3 (2026-10): swap is EXECUTION_UNVERIFIED (AMM program live-verified q14/q15; first
+  // swap unobserved) and pools graduated to enabled — matching the seeded seed rows.
   ok('features are the post-binding view of all 13 seed rows',
     record.features.length === 13
-      && record.features.find((f) => f.key === 'swap')?.reason === 'PROGRAM_NOT_VERIFIED'
+      && record.features.find((f) => f.key === 'swap')?.reason === 'EXECUTION_UNVERIFIED'
+      && record.features.find((f) => f.key === 'pools')?.state === 'enabled'
       && record.features.find((f) => f.key === 'balances')?.state === 'enabled');
 
   ok('feed registry is the honest empty list', Array.isArray(record.feeds) && record.feeds.length === 0);
@@ -233,7 +236,7 @@ section('Genesis misalignment flips everything derived to NETWORK_RESET (B3)');
       && recoveryEvents[recoveryEvents.length - 1].data?.reason === null,
     JSON.stringify(recoveryEvents));
   ok('dossier reasons return to the seed values',
-    REGISTRY.getFeature('swap')?.reason === 'PROGRAM_NOT_VERIFIED'
+    REGISTRY.getFeature('swap')?.reason === 'EXECUTION_UNVERIFIED'
       && REGISTRY.getFeature('balances')?.state === 'enabled');
 }
 

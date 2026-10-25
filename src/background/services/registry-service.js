@@ -120,6 +120,12 @@ function feedNarrowingReason(featureKey) {
   return null;
 }
 
+// Documented test seam (same discipline as _setFingerprintForTests / _setFeedStateForTests):
+// lets offline suites exercise gated behavior against chosen dossier rows. Production never
+// calls this — feature rows change via the seeded snapshot with dated evidence refs only.
+const _featureOverrideForTests = {};
+export { _featureOverrideForTests };
+
 /**
  * Test seam (documented like _setFingerprintForTests): injects records/policy and RE-VERIFIES
  * so sync readers see the fresh aggregate. Production never calls this — record transport and
@@ -161,7 +167,7 @@ export function isGenesisAligned(networkId = REGISTRY_NETWORK) {
  *    touches an already-unsupported row — feeds narrow, never widen.
  */
 export function getFeature(key, { networkId = REGISTRY_NETWORK } = {}) {
-  const row = FEATURES.find((f) => f.key === key) ?? null;
+  const row = _featureOverrideForTests[key] ?? (FEATURES.find((f) => f.key === key) ?? null);
   if (!row) return null;
   if (networkId !== REGISTRY_NETWORK || !isGenesisAligned(networkId)) {
     return {

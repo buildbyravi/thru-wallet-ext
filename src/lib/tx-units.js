@@ -25,14 +25,23 @@ export const UNIT_CLASS = Object.freeze({
   CLAIM: 'claim',
   TRANSFER: 'transfer',
   TOKEN_OP: 'token-op',
+  SWAP: 'swap',
 });
 
 // Live-proven floors (provenance in the header). Sized scaling can raise, never lower.
+//
+// SWAP is NOT live-measured yet: the AMM program is deployed but as of the 2026-10-07 evidence
+// rung (q14/q15) no pools exist to measure against. The floor is a conservative superset of
+// TOKEN_OP (a swap touches the same token-program machinery plus the pool/vault accounts), and
+// the first live swap probe MUST record consumed* via noteExecution so this class graduates to
+// "live-proven" with dated, filed evidence — same discipline as CLAIM/TRANSFER. Swap intents
+// are DEFI_DEX-gated (build-time OFF) precisely so this estimate can never quietly ship.
 const CLASS_FLOORS = Object.freeze({
   [UNIT_CLASS.CREATE]: { computeUnits: 10_000, memoryUnits: 10_000, stateUnits: 1 },
   [UNIT_CLASS.CLAIM]: { computeUnits: 300_000, memoryUnits: 10_000, stateUnits: 1_024 },
   [UNIT_CLASS.TRANSFER]: { computeUnits: 300_000, memoryUnits: 10_000, stateUnits: 1_024 },
   [UNIT_CLASS.TOKEN_OP]: { computeUnits: 300_000, memoryUnits: 60_000, stateUnits: 2_048 },
+  [UNIT_CLASS.SWAP]: { computeUnits: 1_000_000, memoryUnits: 120_000, stateUnits: 2_048 },
 });
 
 export const GLOBAL_CEILINGS = Object.freeze({
