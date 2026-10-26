@@ -129,7 +129,11 @@
 //   and registers only chain-verified records. Also the DEFI swap slice shipped (flags flipped
 //   ON in src/shared/flags.js in the same reviewed ship decision) — the contract surface for
 //   dex/intent existed since v17/v18; this flips reachability, not shape.
-export const CONTRACT_VERSION = 26;
+//   v27 (2026-10-26, owner directive: the frontend never waits on RPC — see AGENTS.md hard rule
+//   15): `token.getCachedBalances` additive, auth none. Storage-only snapshot of the last
+//   chain-verified token rows for an address on the active network. Fetches with any
+//   failure are never cached, so a cache row is always a complete verified read.
+export const CONTRACT_VERSION = 27;
 
 export const METHODS = {
   // ---- System ------------------------------------------------------------
@@ -701,6 +705,14 @@ export const METHODS = {
     returns: '{ mintAddress, hidden }',
     auth: 'unlocked',
     since: 4,
+  },
+  'token.getCachedBalances': {
+    params: ['address'],
+    returns: '{ supported, networkId, balances: [cached rows], fetchedAt, stale, reason } — '
+      + 'last clean chain-verified snapshot, storage-only; reason:"no-cache-snapshot" when '
+      + 'nothing is known yet. UI paints this instantly and hydrates via token.getBalances.',
+    auth: 'none',
+    since: 27,
   },
   'token.getBalances': {
     params: ['address'],

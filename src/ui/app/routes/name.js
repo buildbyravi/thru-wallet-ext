@@ -16,7 +16,7 @@
 // the first-party CLI) and are password-gated like Send; not signing = nothing broadcast.
 import { h, disposer } from '../../kit/dom.js';
 import { icon } from '../../kit/icon.js';
-import { PageHeader, Banner, Spinner } from '../../kit/feedback.js';
+import { PageHeader, Banner } from '../../kit/feedback.js';
 import { Field } from '../../kit/field.js';
 import { CopyButton } from '../../kit/button.js';
 import { toast } from '../../kit/toast.js';
@@ -82,7 +82,15 @@ export function NameRoute({ back }) {
   }
 
   const banner = Banner({ tone: 'error' });
-  const body = h('div', { class: 'stack stack-4' }, Spinner({ label: 'Loading' }).el);
+  // Hard rule 15 (2026-10-26): shell paints with its eyebrow + a checking card; the
+  // reads that fill it in (network, account, chain offerings) all arrive in parallel.
+  const body = h('div', { class: 'stack stack-4' }, [
+    h('div', { class: 'eyebrow', text: 'Network: —' }),
+    h('div', { class: 'stack stack-2' }, [
+      h('div', { class: 'eyebrow', text: 'Name' }),
+      h('div', { class: 'hint', text: 'Checking the chain’s registration offers…' }),
+    ]),
+  ]);
   const header = PageHeader({ title: 'Domain', onBack: () => back() });
   const el = h('section', { class: 'screen' }, [header.el, banner.el, body]);
 
@@ -140,17 +148,33 @@ export function NameRoute({ back }) {
     const card = h('div', { class: 'stack stack-2' });
     body.appendChild(card);
 
-    // Read the chain's offering up-front: the official paid .thru registry, the canonical
-    // name-service root (free registration on networks without the paid registry), and the
-    // custom registrar (v25). These three reads are INDEPENDENT — with ms blocks each still
-    // costs a background round trip, and serializing them tripled the perceived load time
-    // (owner report 2026-10-26), so they run in parallel. Absence in any one is reported
-    // honestly, never hidden.
-    const [registryRes, canonicalRootRes, customRes] = await Promise.allSettled([
+    // Hard rule 15 (2026-10-26): the whole card — search field, stepper, price, CTA —
+    // paints immediately against provider-neutral text while the three independent chain
+    // reads (paid registry / canonical root / custom registrar) run in parallel below.
+    // A slow network never leaves a naked Loading card: it sees the shell and the status
+    // line honestly says the offering is still being checked.
+    const readsPromise = Promise.allSettled([
       bridge.send('name.getRegistry'),
       bridge.send('name.getCanonicalRoot'),
       bridge.send('name.getCustomRegistrar'),
     ]);
+
+    // -- pieces -------------------------------------------------------------------
+    // Paint the whole card BEFORE any chain read resolves; the TLD placeholder updates
+    // when providers land. Rule 15: never a bare Loading block while three reads race.
+    const statusLine = h('div', { class: 'name-status hint', text: 'Checking the chain’s registration offers…' });
+    const searchField = track(Field({
+      label: 'Name',
+      placeholder: 'Search a name — e.g. alice',
+      autocomplete: 'off',
+      maxLength: 64,
+      hint: 'Lowercase letters, numbers, hyphens.',
+    }));
+    const cardInner = h('div', { class: 'stack stack-2' }, [searchField.el, statusLine]);
+    card.appendChild(cardInner);
+
+    // The rest of this flow's computation happens against settled reads, so hydrate now.
+    const [registryRes, canonicalRootRes, customRes] = await readsPromise;
     if (destroyed || !card.isConnected) return;
 
     const registry = registryRes.status === 'fulfilled'
@@ -166,7 +190,6 @@ export function NameRoute({ back }) {
     let canonRoot = canonicalRootRes.status === 'fulfilled'
       ? canonicalRootRes.value
       : { supported: false, reason: canonicalRootRes.reason?.message || 'root discovery failed' };
-    // Depends on custom; only consulted when the paid registry is absent.
     if (!registryUp && customUp && canonRoot?.supported && canonRoot.rootName === custom.rootName) {
       try {
         const alt = await bridge.send('name.getCanonicalRoot', { root: 'id' }).catch(() => null);
@@ -205,8 +228,9 @@ export function NameRoute({ back }) {
     }
     const fmt = (raw) => (decimals == null ? `${raw} base units of the payment mint` : `${formatUnits(raw, decimals)} ${symbol}`);
 
-    // -- pieces -------------------------------------------------------------------
-    const statusLine = h('div', { class: 'name-status hint', text: 'Type a name — the extension checks the chain as you type.' });
+    // Providers are settled: bind the card to the active provider's root.
+    if (tld) searchField.control.placeholder = `Search .${tld} — e.g. alice`;
+    statusLine.textContent = 'Type a name — the extension checks the chain as you type.';
 
     const minusBtn = h('button', { type: 'button', class: 'btn secondary name-step-btn', text: '–' });
     const yearsLabel = h('span', { class: 'name-years mono', text: '1 year' });
@@ -221,14 +245,6 @@ export function NameRoute({ back }) {
     const ctaBtn = h('button', { type: 'button', class: 'btn primary hidden' }, [h('span', { text: 'Register' })]);
     const ctaLabel = () => ctaBtn.querySelector('span');
     const linkBtn = h('button', { type: 'button', class: 'btn secondary hidden' }, [h('span', { text: 'Link as my name' })]);
-
-    const searchField = track(Field({
-      label: 'Name',
-      placeholder: tld ? `Search .${tld} — e.g. alice` : 'Search a name — e.g. alice',
-      autocomplete: 'off',
-      maxLength: 64,
-      hint: 'Lowercase letters, numbers, hyphens.',
-    }));
 
     // Provider toggle: visible only when the chain actually offers more than one route
     // (e.g. Betanet today: custom .thru registrar + free .id canonical root).
@@ -605,17 +621,18 @@ export function NameRoute({ back }) {
     if (providerRow) bodyDisposer.on(providerRow, 'click', () => footerEl.textContent = footerHint());
     const footerEl = h('div', { class: 'hint', text: footerHint() });
 
-    card.appendChild(h('div', { class: 'stack stack-2' }, [
-      searchField.el,
-      ...(providerRow ? [providerRow] : []),
-      statusLine,
+    // Hydrate in place: provider pill rows, steppers, price and CTA attach to the same
+    // wrapper the user has already seen — no flash, no re-layout of the field row.
+    if (providerRow) cardInner.insertBefore(providerRow, statusLine);
+    const additions = [
       yearsStepper,
       priceLine,
       balanceLine,
       ctaBtn,
       linkBtn,
       footerEl,
-    ]));
+    ];
+    for (const node of additions) cardInner.appendChild(node);
 
     // Kick off the initial availability read when a linked name was pre-filled.
     if (searchField.value?.trim?.()) queueCheck();

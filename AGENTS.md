@@ -231,6 +231,15 @@ is red. Never weaken or skip a test to make it pass.
     that silently amputated its last two rows and drew no scrollbar -- it passed every automated
     gate and two independent code audits, and was found by a user on a real popup
     (`docs/DEFECT_LOG.md`).
+15. **The frontend never waits on a chain/RPC/backend read before its first paint.** The UI and
+    the service-worker backend are deliberately separate: a slow or dead network must never stall
+    the popup. Every route paints immediately from local state — chrome.storage caches (native
+    balances, token balances, history, swap pool snapshot, name-provider facts) or an explicit
+    "checking/unknown" placeholder — and live reads hydrate asynchronously and REPLACE the
+    placeholder; they never gate it. A route that shows only a spinner until an RPC resolves is
+    a defect of the same class as a crash. When you add a read, also add the cached counterpart
+    (`*.getCached*`), and label stale data instead of pretending it is fresh (2026-10-26 owner
+    directive).
 
 ## Stop and ask instead of guessing
 

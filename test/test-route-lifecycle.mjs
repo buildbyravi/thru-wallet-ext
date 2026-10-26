@@ -1295,6 +1295,17 @@ const FIXTURES = {
     reason: null,
   }),
   'token.deriveTokenAccount': () => TOKEN_ACCOUNT_FIXTURE,
+  // v27 no-block paint (2026-10-26): the swap and dashboard routes fetch the cached balance
+  // snapshot alongside the live read. Providers with slow/unevaluated storage must see the
+  // same shape: a bare snapshot descriptor that paints nothing but proves the path exists.
+  'token.getCachedBalances': () => ({
+    supported: true,
+    networkId: activeNetwork().id,
+    balances: [],
+    fetchedAt: 0,
+    stale: true,
+    reason: 'no-cache-snapshot',
+  }),
   // v26 swap-slice ships (2026-10-26): the swap route exercises dex.listPools + token.discover
   // during load. Fixtures: the empty discovery page honestly and a no-op discovery pass; the
   // swap form must render its empty/pair state off these without pretending pools exist.

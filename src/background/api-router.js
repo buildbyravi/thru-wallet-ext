@@ -243,6 +243,7 @@ const handlers = Object.assign(Object.create(null), {
   'token.discover': ({ address, candidateMints }) => tokenService.discoverTokens({ address, candidateMints }),
   'token.setVisibility': ({ mintAddress, hidden }) => tokenService.setVisibility(mintAddress, hidden),
   'token.getBalances': ({ address }) => tokenService.getTokenBalances({ address }),
+  'token.getCachedBalances': ({ address }) => tokenService.getCachedTokenBalances({ address }),
   'token.transferChecked': (params) => tokenService.transferTokenChecked(params),
 
   // ---- Preferences -----------------------------------------------------

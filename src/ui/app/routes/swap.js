@@ -17,7 +17,7 @@ import { h, disposer } from '../../kit/dom.js';
 import { icon } from '../../kit/icon.js';
 import { Button } from '../../kit/button.js';
 import { Field } from '../../kit/field.js';
-import { PageHeader, Banner, Spinner } from '../../kit/feedback.js';
+import { PageHeader, Banner } from '../../kit/feedback.js';
 import * as bridge from '../bridge.js';
 import { requirePassword } from '../../domain/password-prompt.js';
 import { parseTokenAmount, formatTokenAmount, truncateAddress } from '../../../shared/format.js';
@@ -37,14 +37,31 @@ export function SwapRoute({ navigate, back }) {
   function track(c) { owned.push(c); return c; }
 
   const banner = Banner({ tone: 'error' });
-  const body = h('div', { class: 'stack stack-4' }, Spinner({ label: 'Loading' }).el);
+  // Hard rule 15 (2026-10-26): first paint is the full form skeleton; every value is a labelled
+  // placeholder so the popup never dims to a lone spinner waiting on a chain read.
+  const body = h('div', { class: 'stack stack-4' });
   const header = PageHeader({ title: 'Swap', onBack: () => back() });
   const el = h('section', { class: 'screen' }, [header.el, banner.el, body]);
+  renderShellist();
 
   function clearBody() {
     for (const c of owned) c.destroy?.();
     owned.length = 0;
     while (body.firstChild) body.removeChild(body.firstChild);
+  }
+
+  /** Skeletal first paint: nothing here implies a balance or a tradable pool. */
+  function renderShellist() {
+    clearBody();
+    const ph = (label) => h('select', { class: 'swap-select', disabled: true }, [
+      h('option', { text: `${label} — checking…` }),
+    ]);
+    body.appendChild(h('div', { class: 'swap-field stack stack-2' }, [
+      h('span', { class: 'eyebrow', text: 'From' }), ph('From'), h('p', { class: 'hint', text: 'Checking balances…' }),
+    ]));
+    body.appendChild(h('div', { class: 'swap-field stack stack-2' }, [
+      h('span', { class: 'eyebrow', text: 'To' }), ph('To'), h('p', { class: 'hint', text: 'Checking pools…' }),
+    ]));
   }
 
   function friendlyReason(error) {
@@ -65,27 +82,43 @@ export function SwapRoute({ navigate, back }) {
   async function load({ notice = null } = {}) {
     header.setTitle('Swap');
     banner.clear();
+
+    // Hard rule 15 (2026-10-26): paint immediately from local state. Cached balances/token
+    // registry are storage reads and cost well under a paint frame; pool discovery is a chain
+    // read and so always hydrates. Tokens we know render instantly, live pools refill below.
+    let cachedBal = null;
     try {
-      const [acc, net, bal, list] = await Promise.all([
+      const [acc, net, bal, cached, list] = await Promise.all([
         bridge.send('account.getActive'),
         bridge.send('network.getActive'),
-        bridge.send('token.getBalances'),
+        bridge.send('token.getBalances').catch((e) => e),           // live may fail fast; cache follows
+        bridge.send('token.getCachedBalances'),
         bridge.send('token.list'),
       ]);
       account = acc;
       network = net;
+      if (bal && !bal.code && bal.balances) {                        // a real payload has balances
+        balanceMap = new Map((bal.balances || []).map((r) => [r.mintAddress, r]));
+      }
+      cachedBal = bal?.balances ? null : cached;                     // live already won ⇒ no stale paint
       tokens = Array.isArray(list) ? list : (list && list.tokens) || [];
-      balanceMap = new Map(((bal && bal.balances) || []).map((r) => [r.mintAddress, r]));
       symbolDecimals = new Map(tokens.map((t) => [t.mintAddress, {
         symbol: (t.symbol || 'TOKEN').trim() || 'TOKEN',
         decimals: Number.isInteger(t.decimals) ? t.decimals : 9,
       }]));
 
-      // Auto-discovery: list only pairs that can actually settle. listPools derives pool
+      if (cachedBal?.balances?.length && balanceMap.size === 0) {
+        // Chain read for balances failed/empty: paint the cached snapshot with a stale label.
+        balanceMap = new Map((cachedBal.balances || []).map((r) => [r.mintAddress, r]));
+        banner.set('Balances are last-known cached — chain is still answering.', 'warning');
+      }
+
+      // The pool list is chain-fresh; it comes last and hydrates the form. Auto-discovery:
+      // list only pairs that can actually settle — listPools derives pool
       // addresses from the wallet's known mints, so a mint the wallet does not know yet can
       // never appear in a pair. Adopt any pool-mint we see (chain-verified serverside) before
       // rendering — new tokens from pools thus show up without the user pasting addresses.
-      const poolsRes = await bridge.send('dex.listPools', { limit: 50 });
+      const poolsRes = await bridge.send('dex.listPools', { limit: 50 }).catch((e) => ({ supported: false, reason: e?.message || 'rpc-error' }));
       pools = (poolsRes && poolsRes.supported && Array.isArray(poolsRes.items)) ? poolsRes.items : [];
       if (pools.length) {
         const unknown = [...new Set(pools.flatMap((p) => [p.mintOne, p.mintTwo]).filter(Boolean))]
@@ -113,8 +146,40 @@ export function SwapRoute({ navigate, back }) {
       if (!pools.length) renderEmpty(poolsRes);
       else renderForm();
     } catch (error) {
-      mountError('Swap unavailable', friendlyReason(error));
+      // Hard rule 15: never a spinner forever — local cache may still be renderable.
+      try {
+        const cached = await bridge.send('token.getCachedBalances', { address: account?.address });
+        if (cached?.balances?.length) paintCachedShell(cached.balances, friendlyReason(error));
+        else mountError('Swap unavailable', friendlyReason(error));
+      } catch {
+        mountError('Swap unavailable', friendlyReason(error));
+      }
     }
+  }
+
+  /**
+   * Rule-15 cold-start paint when the chain is unreachable: the last verified token rows the
+   * wallet cached, marked stale, with swap controls explicitly disabled and the real reason
+   * shown. Being able to see your assets on a dead network is spotless even when execution
+   * certainly cannot proceed.
+   */
+  function paintCachedShell(rows, reason) {
+    clearBody();
+    body.appendChild(h('div', { class: 'notice' }, [
+      icon('warning', 16),
+      h('span', { text: `Chain connection slow or unreachable. Showing cached balances — swap is disabled until the network answers. (${reason || 'offline'})` }),
+    ]));
+    const list = h('div', { class: 'detail-table' });
+    for (const row of rows) {
+      if (!row?.mintAddress) continue;
+      list.appendChild(h('div', { class: 'detail-row' }, [
+        h('span', { class: 'eyebrow', text: row.symbol || 'TOKEN' }),
+        h('span', { class: 'detail-val mono', text: row.tokenAccountExists === false || row.amountUnits == null
+          ? 'unknown'
+          : formatTokenAmount(BigInt(String(row.amountUnits)), Number.isInteger(row.decimals) ? row.decimals : 9) }),
+      ]));
+    }
+    body.appendChild(list);
   }
 
   function mountError(title, message) {

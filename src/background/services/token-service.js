@@ -9,6 +9,7 @@ import * as balances from './balance-service.js';
 import { formatTokenAmount } from '../../shared/format.js';
 import { DEFAULT_NETWORK } from '../../lib/networks.js';
 import { assertSendContext } from './send-context.js';
+import { scopedKey } from '../../shared/network-scope.js';
 
 /**
  * Deploy a new native token mint on ThruVM using the active account.
@@ -214,6 +215,65 @@ export async function setVisibility(mintAddress, hidden) {
  * @param {Object} args
  * @param {string} args.address owner whose balances to read (defaults to the active account)
  */
+// ---- Token balance cache (2026-10-26 owner directive: no frontend delay on slow RPC) -------
+// The dashboard/drawer must paint last-known token rows instantly and let live reads catch up
+// — same discipline as balance-service's native cache. The cache is network- AND owner-scoped,
+// written ONLY after a real chain read. A failed fetch is never written as zero.
+
+const TOKEN_BALANCE_CACHE_KEY = 'thru_token_balance_cache';
+const TOKEN_CACHE_FRESH_MS = 30_000;
+
+async function tokenCacheKey(networkId = null) {
+  return scopedKey(TOKEN_BALANCE_CACHE_KEY, networkId || await getActiveNetworkId());
+}
+
+async function readTokenBalanceCache(networkId = null) {
+  try {
+    const key = await tokenCacheKey(networkId);
+    const res = await chrome.storage.local.get(key);
+    const cache = res?.[key];
+    return cache && typeof cache === 'object' ? cache : {};
+  } catch {
+    return {};
+  }
+}
+
+async function writeTokenBalanceCache(owner, balances, networkId) {
+  try {
+    const key = await tokenCacheKey(networkId);
+    const cache = await readTokenBalanceCache(networkId);
+    cache[owner] = { balances, fetchedAt: Date.now() };
+    await chrome.storage.local.set({ [key]: cache });
+  } catch {
+    // A cache-write failure never fails a successful read.
+  }
+}
+
+/**
+ * Network-scoped cached token balances for an address, no RPC. Chain-facts only (the writer is
+ * getTokenBalances after a live read passes verification). Rows carry freshness markers the UI
+ * must honour with a stale/unknown label rather than rendering them as fresh.
+ *
+ * @param {{ address?: string }} params
+ */
+export async function getCachedTokenBalances({ address } = {}) {
+  const owner = address || (await vault.getActiveAccount())?.address;
+  if (!owner) throw new Error('An address is required to read cached token balances.');
+  const networkId = await getActiveNetworkId();
+  const cache = await readTokenBalanceCache(networkId);
+  const entry = cache[owner];
+  const fetchedAt = Number(entry?.fetchedAt) || 0;
+  return {
+    supported: true,
+    networkId,
+    balances: fetchedAt > 0 ? entry.balances : [],
+    fetchedAt,
+    stale: fetchedAt > 0 && Date.now() - fetchedAt > TOKEN_CACHE_FRESH_MS,
+    // Mirrors history stacks: a miss is honest emptiness, not "no tokens".
+    reason: fetchedAt > 0 ? null : 'no-cache-snapshot',
+  };
+}
+
 export async function getTokenBalances({ address } = {}) {
   const owner = address || (await vault.getActiveAccount())?.address;
   if (!owner) throw new Error('An address is required to read token balances.');
@@ -227,7 +287,7 @@ export async function getTokenBalances({ address } = {}) {
     error.retryable = true;
     throw error;
   }
-  return {
+  const response = {
     supported: true,
     networkId,
     balances: results,
@@ -235,6 +295,11 @@ export async function getTokenBalances({ address } = {}) {
       ? 'One or more token balances or mint details could not be verified on the network; those are unknown, not zero.'
       : null,
   };
+  // Cache only clean reads: a partial-failure result never overwrites a good snapshot.
+  if (!anyError && results.every((r) => r && r.amountUnits != null)) {
+    writeTokenBalanceCache(owner, results, networkId); // fire-and-forget
+  }
+  return response;
 }
 
 /**

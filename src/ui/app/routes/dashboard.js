@@ -454,6 +454,24 @@ export function DashboardRoute({ navigate }) {
     // cannot reach some mints yields skipped-reasons, never a failed dashboard.
     bridge.send('token.discover', { address: account.address }).catch(() => null);
 
+    // Hard rule 15 (2026-10-26): token list paints from the network-scoped snapshot BEFORE
+    // any live read. A slow chain replaces the rows; it never blocks them.
+    {
+      try {
+        const [cachedList, cachedBal] = await Promise.all([
+          bridge.send('token.list'),
+          bridge.send('token.getCachedBalances', { address: account.address }),
+        ]);
+        const cachedState = new Map((cachedBal?.balances || []).map((b) => [b.mintAddress, b]));
+        if (cachedBal?.balances?.length || (Array.isArray(cachedList) && cachedList.length)) {
+          updateAssets(nativeText, Array.isArray(cachedList) ? cachedList : [],
+            cachedBal?.stale !== false, cachedState);
+        }
+      } catch {
+        // Cache miss is not an error; live hydration follows.
+      }
+    }
+
     const [infoResult, tokensResult, pendingResult, tokenBalancesResult] = await Promise.allSettled([
       force
         ? bridge.send('tx.getBalances', { addresses: [account.address] })
