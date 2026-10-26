@@ -154,11 +154,11 @@ export async function track(tx) {
     // Badge/events are best-effort after storing the signature; never change the send result.
   }
 
-  // Active self-service: betanet blocks land every ~6 seconds (verified on the explorer
-  // 2026-09-29 — consecutive blocks 5-6s apart), so a transfer settles in about one block.
-  // The passes cover the first two block times plus history-lag slack. The pass list
+  // Active self-service: betanet blocks land in a few milliseconds (owner-confirmed
+  // 2026-10-26; the ~6s cadence measured 2026-09-29 was superseded), so a transfer settles
+  // essentially immediately and the reconcile window lives well under a second. The pass list
   // no-ops once settled and swallows errors. unref keeps Node-based tests from hanging.
-  for (const ms of [2_000, 5_000, 8_000, 12_000]) {
+  for (const ms of [300, 700, 1_400, 2_600]) {
     const timer = setTimeout(() => { reconcile().catch(() => {}); }, ms);
     timer.unref?.();
   }

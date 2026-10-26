@@ -193,8 +193,10 @@ section('Genesis misalignment flips everything derived to NETWORK_RESET (B3)');
   const caps = REGISTRY.deriveCapabilities('betanet');
   ok('featureCapabilities flip to NETWORK_RESET wholesale',
     Object.values(caps.featureCapabilities).every((v) => v && v.supported === false && v.reason === 'NETWORK_RESET'));
+  // 2026-10-26 ship decision: DEFI_DEX flipped on, so dex.quote no longer proves the
+  // flag-dominance law. market.candles stays DEFI_MARKET-gated off and proves it instead.
   ok('flags still dominate method derivation (flag-off methods keep FLAG_OFF)',
-    deepEqual(caps.methodCapabilities['dex.quote'], { supported: false, reason: 'FLAG_OFF' }));
+    deepEqual(caps.methodCapabilities['market.candles'], { supported: false, reason: 'FLAG_OFF' }));
   ok('always-on discovery reads stay true under misalignment',
     caps.methodCapabilities['program.list'] === true && caps.methodCapabilities['feed.status'] === true);
   ok('the genesis block exposes the drift',

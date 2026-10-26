@@ -89,39 +89,53 @@ const INPUT_TA = 'taLjMDKiBDra1EGIKoF_7B-tGFJMnf8MejLDu3VVWTRJRQ';
 const OUTPUT_TA = 'taLu3d1rxGdQWWHJxUOK6eT9ti4lWeTijNp0Kk_5YKHARg';
 
 // ---- [1] quarantine: flag OFF keeps the M0 envelopes ----------------------------------------
-const OFF = [
-  ['dex.listPools', {}],
-  ['dex.getPool', { poolId: POOL }],
-];
-for (const [method, params] of OFF) {
-  const res = await handleApiRequest({ method, params });
-  assert.equal(res.ok, true, `${method} env:'result' arrives inside data`);
-  assert.equal(res.data.supported, false, `${method} supported:false`);
-  assert.equal(typeof res.data.reason, 'string');
+// 2026-10-26 ship decision: the swap slice ships ON in this build, so flag-OFF behaviour is
+// probed by forcing the gates off in-memory, then restoring the shipped default below. The
+// gate law itself is unchanged.
+{
+  const shipped = { ...FLAGS };
+  FLAGS.DEFI = false;
+  FLAGS.DEFI_READ = false;
+  FLAGS.DEFI_DEX = false;
+  FLAGS.DEFI_INTENT = false;
+  try {
+    const OFF = [
+      ['dex.listPools', {}],
+      ['dex.getPool', { poolId: POOL }],
+    ];
+    for (const [method, params] of OFF) {
+      const res = await handleApiRequest({ method, params });
+      assert.equal(res.ok, true, `${method} env:'result' arrives inside data`);
+      assert.equal(res.data.supported, false, `${method} supported:false`);
+      assert.equal(typeof res.data.reason, 'string');
+    }
+    ok('flag OFF: dex.listPools/getPool answer supported:false inside data (env: result)');
+
+    for (const [method, params] of [
+      ['dex.positions', { address: 'taEREREREREREREREREREREREREREREREREREREREREREf' }],
+      ['dex.prepareSwap', { quoteId: 'nope', clientRequestId: 'cr-x', password: PASSWORD }],
+      ['dex.prepareLiquidity', { quoteId: 'nope', clientRequestId: 'cr-x', password: PASSWORD }],
+    ]) {
+      const res = await handleApiRequest({ method, params });
+      assert.equal(res.ok, false, `${method} env:'error' throws`);
+      assert.equal(res.error.code, 'FEATURE_DISABLED', `${method} code`);
+    }
+    ok('flag OFF: dex.positions/prepareSwap/prepareLiquidity answer FEATURE_DISABLED (env: error)');
+
+    const qOff = await handleApiRequest({ method: 'dex.quote', params: { poolId: POOL, inputAssetId: MINT_A, outputAssetId: MINT_B, inputAmountUnits: '1000' } });
+    assert.equal(qOff.ok, true);
+    assert.equal(qOff.data.supported, false);
+    ok('flag OFF: dex.quote answers supported:false inside data (env: result)');
+  } finally {
+    Object.assign(FLAGS, shipped);
+  }
 }
-ok('flag OFF: dex.listPools/getPool answer supported:false inside data (env: result)');
 
-for (const [method, params] of [
-  ['dex.positions', { address: 'taEREREREREREREREREREREREREREREREREREREREREREf' }],
-  ['dex.prepareSwap', { quoteId: 'nope', clientRequestId: 'cr-x', password: PASSWORD }],
-  ['dex.prepareLiquidity', { quoteId: 'nope', clientRequestId: 'cr-x', password: PASSWORD }],
-]) {
-  const res = await handleApiRequest({ method, params });
-  assert.equal(res.ok, false, `${method} env:'error' throws`);
-  assert.equal(res.error.code, 'FEATURE_DISABLED', `${method} code`);
-}
-ok('flag OFF: dex.positions/prepareSwap/prepareLiquidity answer FEATURE_DISABLED (env: error)');
-
-const qOff = await handleApiRequest({ method: 'dex.quote', params: { poolId: POOL, inputAssetId: MINT_A, outputAssetId: MINT_B, inputAmountUnits: '1000' } });
-assert.equal(qOff.ok, true);
-assert.equal(qOff.data.supported, false);
-ok('flag OFF: dex.quote answers supported:false inside data (env: result)');
-
-// ---- flag ON (in-process only; the build remains flag-off) ----------------------------------
-FLAGS.DEFI = true;
-FLAGS.DEFI_READ = true;
-FLAGS.DEFI_DEX = true;
-FLAGS.DEFI_INTENT = true;
+// ---- flag ON (shipped since 2026-10-26 — the assertions below probe the real pipeline) -----
+assert.equal(FLAGS.DEFI, true, 'DEFI ships on');
+assert.equal(FLAGS.DEFI_READ, true, 'DEFI_READ ships on');
+assert.equal(FLAGS.DEFI_DEX, true, 'DEFI_DEX ships on');
+assert.equal(FLAGS.DEFI_INTENT, true, 'DEFI_INTENT ships on');
 
 // Dossier rung, honestly: offline there is no runtime fingerprint, so every seed row answers
 // NETWORK_RESET against this process; align the seam with the seed fingerprint (the runtime

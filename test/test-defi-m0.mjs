@@ -268,9 +268,11 @@ for (const [name, flag] of DOSSIER_RESULT_PROBES) {
   ok('launchpad.validateDraft with DEFI_READ on returns the pinned DraftValidation',
     fixtureMatches(M0_FLAG_ON['launchpad.validateDraft'], draft), JSON.stringify(draft));
 
-  // After every probe the flags are back to all-off.
+  // After every probe the flags are back to the shipped set (2026-10-26: DEFI/READ/DEX/INTENT on).
   ok('flag state fully restored after probes',
-    Object.entries(FLAGS).every(([k, v]) => (k === 'DEBUG_ROUTING' ? true : v === false)),
+    Object.entries(FLAGS).every(([k, v]) => (
+      k === 'DEFI' || k === 'DEFI_READ' || k === 'DEFI_DEX' || k === 'DEFI_INTENT'
+        ? v === true : v === false)),
     JSON.stringify(FLAGS));
 }
 
@@ -289,13 +291,15 @@ section('Capability presets');
 
 {
   const live = await handleApiRequest({ method: 'program.capabilities', params: {} });
-  const everythingOff = PRESETS.getPreset('everythingOff');
-  ok('everythingOff preset deep-equals the live capabilities dispatch',
-    live.ok === true && deepEqual(live.data, everythingOff.capabilities),
+  const swapShipped = PRESETS.getPreset('swapShipped');
+  // 2026-10-26 ship decision: DEFI/DEFI_READ/DEFI_DEX/DEFI_INTENT flipped on in the reviewed
+  // flags commit; this preset is the single non-simulated pin of live dispatch now.
+  ok('swapShipped preset deep-equals the live capabilities dispatch',
+    live.ok === true && deepEqual(live.data, swapShipped.capabilities),
     'live dispatch and preset diverged — update the preset builder and the handler together');
-  ok('everythingOff is the only non-simulated preset',
+  ok('swapShipped is the only non-simulated preset',
     PRESETS.CAPABILITY_PRESETS.filter((p) => !p.simulated).length === 1
-      && everythingOff.simulated === false);
+      && swapShipped.simulated === false);
 
   const capsSpec = DEFI_METHODS['program.capabilities'];
   for (const preset of PRESETS.CAPABILITY_PRESETS) {

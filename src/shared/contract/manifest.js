@@ -123,7 +123,13 @@
 //   name.checkCustomLease, auth none) expose the derived config + per-label lease/domain
 //   truth; name.register gains two OPTIONAL params (via, years) — via:'custom' routes to
 //   registrarService.registerCustom, absent via keeps the behaviour byte-identical.
-export const CONTRACT_VERSION = 25;
+//   v26 (2026-10-26, owner-directed: Solana-style token auto-discovery): `token.discover`
+//   additive, auth 'unlocked'. Scans the wallet's cached history for incoming token mints plus
+//   caller-provided candidates (e.g. discovered pool listings), verifies each mint on-chain,
+//   and registers only chain-verified records. Also the DEFI swap slice shipped (flags flipped
+//   ON in src/shared/flags.js in the same reviewed ship decision) — the contract surface for
+//   dex/intent existed since v17/v18; this flips reachability, not shape.
+export const CONTRACT_VERSION = 26;
 
 export const METHODS = {
   // ---- System ------------------------------------------------------------
@@ -681,6 +687,14 @@ export const METHODS = {
       + 'symbol/decimals are read from the chain, not typed in.',
     auth: 'none',
     since: 14,
+  },
+  'token.discover': {
+    params: ['address', 'candidateMints'],
+    returns: '{ adopted: [record], skipped: [{ mintAddress, reason }] } — auto-discovery: mints '
+      + 'seen in cached history or offered as candidates are chain-verified then registered; '
+      + 'no mint enters the registry without an on-chain denomination read',
+    auth: 'unlocked',
+    since: 26,
   },
   'token.setVisibility': {
     params: ['mintAddress', 'hidden'],

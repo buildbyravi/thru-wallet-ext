@@ -22,6 +22,7 @@ import { SettingsRoute } from './routes/settings.js';
 import { ResetRoute } from './routes/reset.js';
 import { SendRoute } from './routes/send.js';
 import { ReceiveRoute } from './routes/receive.js';
+import { SwapRoute } from './routes/swap.js';
 import { FaucetRoute } from './routes/faucet.js';
 import { NameRoute } from './routes/name.js';
 import { HistoryRoute } from './routes/history.js';
@@ -96,6 +97,12 @@ export const POPUP_ROUTES = [
     view: ReceiveRoute,
     guard: guards.requireUnlocked,
     title: 'Receive',
+  },
+  {
+    path: '/swap',
+    view: SwapRoute,
+    guard: guards.requireUnlocked,
+    title: 'Swap',
   },
   {
     path: '/faucet',

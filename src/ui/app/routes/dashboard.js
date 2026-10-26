@@ -214,10 +214,11 @@ export function DashboardRoute({ navigate }) {
   }));
 
   const swapTile = track(PanelItem({
+    // Enabled 2026-10-26: the swap capability graduated on dated live evidence (2026-10-25
+    // probe) and the DEFI swap slice shipped.
     iconName: 'swap',
     label: 'Swap',
-    disabled: true,
-    onClick: () => toast({ tone: 'info', title: 'Swap is coming later', message: 'Swap is planned for a future upgrade.' }),
+    onClick: () => navigate('/swap'),
   }));
 
   const historyTile = track(PanelItem({
@@ -377,7 +378,7 @@ export function DashboardRoute({ navigate }) {
       } catch {
         // ignore
       }
-    }, 2_000); // ~6s blocks: one check every 2s settles within a beat of the block landing
+    }, 1_000); // blocks land in a few ms (owner 2026-10-26): a 1s poll settles within a beat of the block landing
   }
 
   function renderPending(list) {
@@ -446,6 +447,12 @@ export function DashboardRoute({ navigate }) {
     } catch {
       // cache miss is not an error
     }
+
+    // Auto-discovery (v26, Solana-parity ask 2026-10-26): any incoming token mint observed in
+    // cached history is chain-verified and registered serverside, so the asset list below
+    // shows it without the user pasting an address. Best-effort and non-blocking: a chain that
+    // cannot reach some mints yields skipped-reasons, never a failed dashboard.
+    bridge.send('token.discover', { address: account.address }).catch(() => null);
 
     const [infoResult, tokensResult, pendingResult, tokenBalancesResult] = await Promise.allSettled([
       force

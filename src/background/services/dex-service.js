@@ -458,6 +458,10 @@ export async function quoteSwap({ address, poolId, inputAssetId, outputAssetId, 
 function reviewDexSwap(record) {
   const plan = record.plan;
   return {
+    // intentId is required by intent.submit; without it in the review payload a UI cannot
+    // complete prepare→submit without digging into storage. Additive per contract v18.
+    intentId: record.intentId,
+    kind: record.kind,
     reviewAscii: [
       `Kind          ${record.kind}`,
       `From          ${plan.fromAddress}`,

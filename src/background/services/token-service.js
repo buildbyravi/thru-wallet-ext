@@ -94,6 +94,78 @@ export async function listDeployedTokens() {
  * Manually add a token to the local registry by mint address.
  * Records metadata only — it does not prove the mint exists on-chain.
  */
+/**
+ * Auto-discovery (contract v26). Solana-style wallet behaviour: tokens that reached the
+ * wallet without a registry entry should appear after the chain verifies them.
+ *
+ * Sources of candidate mints, highest trust first:
+ *   1. Incoming transfers already observed in the history cache (tokenMint fields on
+ *      token-received entries). The mint address came off the wire, not from a text field.
+ *   2. Candidate mints the caller passes explicitly (e.g. mints seen in discovered pool
+ *      listings) — same on-chain verification before any registry write.
+ *
+ * A candidate is adopted ONLY when the active network's chain read of the mint actually
+ * exists and reports a usable denomination. Nothing is ever fabricated: an unreadable mint
+ * is returned in `skipped` with a reason instead of silently landing in the registry with
+ * wrong decimals.
+ *
+ * @param {{ address?: string, candidateMints?: string[] }} params
+ * @returns {Promise<{ adopted: Array, skipped: Array<{ mintAddress: string, reason: string }> }>}
+ */
+export async function discoverTokens({ address, candidateMints = [] } = {}) {
+  const owner = address || (await vault.getActiveAccount())?.address;
+  if (!owner) throw new Error('An address is required to discover tokens.');
+  const networkId = await getActiveNetworkId();
+  const registry = await listDeployedTokens();
+  const known = new Set(registry.map((t) => t.mintAddress));
+
+  const candidates = new Set(
+    (Array.isArray(candidateMints) ? candidateMints : [])
+      .map((m) => String(m || '').trim())
+      .filter((m) => /^ta[A-Za-z0-9_-]{20,}$/.test(m)),
+  );
+  // Mine the history cache for incoming token mints, persisted no-RPC reads only.
+  try {
+    const { getCachedHistory } = await import('./history-service.js');
+    const cached = await getCachedHistory(owner);
+    for (const entry of cached?.entries ?? []) {
+      if (entry?.kind === 'token-received' && entry.tokenMint) candidates.add(String(entry.tokenMint));
+    }
+  } catch {
+    // A broken cache read never blocks discovery over explicit candidates.
+  }
+
+  const adopted = [];
+  const skipped = [];
+  for (const mint of candidates) {
+    if (known.has(mint)) continue; // registry rule: already tracked, nothing to adopt
+    let read;
+    try {
+      read = await thruClient.readMintAccount(mint);
+    } catch {
+      skipped.push({ mintAddress: mint, reason: 'chain-read-failed' });
+      continue;
+    }
+    if (!read?.exists) {
+      skipped.push({ mintAddress: mint, reason: 'mint-not-found-on-chain' });
+      continue;
+    }
+    if (!Number.isInteger(read.decimals) || read.decimals < 0 || read.decimals > 18) {
+      skipped.push({ mintAddress: mint, reason: 'unusable-decimals' });
+      continue;
+    }
+    const record = await importToken({
+      mintAddress: mint,
+      symbol: String(read.ticker || '').trim() || 'TOKEN',
+      name: String(read.ticker || 'Token').trim() || 'Token',
+      decimals: read.decimals,
+    });
+    adopted.push(record);
+    known.add(mint);
+  }
+  return { adopted, skipped };
+}
+
 export async function importToken({ mintAddress, symbol, name, decimals }) {
   const mint = String(mintAddress || '').trim();
   if (!mint) throw new Error('A mint address is required.');

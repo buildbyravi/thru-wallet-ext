@@ -240,6 +240,7 @@ const handlers = Object.assign(Object.create(null), {
   'token.generateSeed': () => tokenService.generateMintSeed(),
   'token.import': ({ mintAddress, symbol, name, decimals }) => tokenService.importToken({ mintAddress, symbol, name, decimals }),
   'token.readMint': ({ mintAddress }) => tokenService.readMint({ mintAddress }),
+  'token.discover': ({ address, candidateMints }) => tokenService.discoverTokens({ address, candidateMints }),
   'token.setVisibility': ({ mintAddress, hidden }) => tokenService.setVisibility(mintAddress, hidden),
   'token.getBalances': ({ address }) => tokenService.getTokenBalances({ address }),
   'token.transferChecked': (params) => tokenService.transferTokenChecked(params),

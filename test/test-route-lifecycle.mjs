@@ -1295,6 +1295,18 @@ const FIXTURES = {
     reason: null,
   }),
   'token.deriveTokenAccount': () => TOKEN_ACCOUNT_FIXTURE,
+  // v26 swap-slice ships (2026-10-26): the swap route exercises dex.listPools + token.discover
+  // during load. Fixtures: the empty discovery page honestly and a no-op discovery pass; the
+  // swap form must render its empty/pair state off these without pretending pools exist.
+  'dex.listPools': () => ({
+    supported: true,
+    source: 'chain',
+    items: [],
+    nextCursor: null,
+    partial: false,
+    updatedAt: Date.now(),
+  }),
+  'token.discover': () => ({ adopted: [], skipped: [] }),
   // v21 primary-name UX slice (2026-10-09): the dashboard asks for the verified record on
   // every mount; the fixture has no name linked (the empty state must render the link
   // affordance, never a fabricated name).

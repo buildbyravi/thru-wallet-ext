@@ -67,27 +67,38 @@ const SENDER = walletRes.data.address;
 assert.ok(SENDER.startsWith('ta'));
 console.log('harness: wallet created (offline), sender', SENDER.slice(0, 12) + '…');
 
-// [1] flag OFF: the quarantine envelope is unchanged even though real code now sits behind it.
-for (const [method, params] of [
-  ['intent.list', {}],
-  ['intent.get', { intentId: 'nope' }],
-  ['intent.prepareSend', { address: 'taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKqq', toAddress: RECIPIENT, amountUnits: '1', clientRequestId: 'cr-off' }],
-  ['intent.submit', { intentId: 'nope', bindingHash: 'x', password: PASSWORD }],
-  ['intent.discard', { intentId: 'nope' }],
-  ['intent.rePrepare', { intentId: 'nope' }],
-  ['intent.resume', { intentId: 'nope' }],
-  ['intent.stopWaiting', { intentId: 'nope' }],
-]) {
-  const res = await handleApiRequest({ method, params });
-  assert.equal(res.ok, false, `${method} must be gated off`);
-  assert.equal(res.error.code, 'FEATURE_DISABLED', `${method} code`);
+// [1] flag OFF: the quarantine envelope is unchanged even though the pipeline shipped
+// 2026-10-26 (DEFI_INTENT is ON in this build now) — the law is probed by forcing the gate
+// off in-memory, then restored to the shipped default before the rest of the suite.
+{
+  const shipped = { ...FLAGS };
+  FLAGS.DEFI = false;
+  FLAGS.DEFI_INTENT = false;
+  try {
+    for (const [method, params] of [
+      ['intent.list', {}],
+      ['intent.get', { intentId: 'nope' }],
+      ['intent.prepareSend', { address: 'taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKqq', toAddress: RECIPIENT, amountUnits: '1', clientRequestId: 'cr-off' }],
+      ['intent.submit', { intentId: 'nope', bindingHash: 'x', password: PASSWORD }],
+      ['intent.discard', { intentId: 'nope' }],
+      ['intent.rePrepare', { intentId: 'nope' }],
+      ['intent.resume', { intentId: 'nope' }],
+      ['intent.stopWaiting', { intentId: 'nope' }],
+    ]) {
+      const res = await handleApiRequest({ method, params });
+      assert.equal(res.ok, false, `${method} must be gated off`);
+      assert.equal(res.error.code, 'FEATURE_DISABLED', `${method} code`);
+    }
+    ok('flag OFF: all 8 intent entry points answer the identical FEATURE_DISABLED envelope');
+  } finally {
+    Object.assign(FLAGS, shipped);
+  }
 }
-ok('flag OFF: all 8 intent entry points answer the identical FEATURE_DISABLED envelope');
 
-// Flip the build-time flags in-process (the FLAGS object is const; its properties are the
-// reviewed ship switch — here only to prove the real pipeline behind the gate).
-FLAGS.DEFI = true;
-FLAGS.DEFI_INTENT = true;
+// Ensure the shipped build default is what the rest of the suite assumes (DEFI + DEFI_INTENT
+// on since the 2026-10-26 ship decision; asserts below probe the real pipeline).
+assert.equal(FLAGS.DEFI, true, 'DEFI ships on');
+assert.equal(FLAGS.DEFI_INTENT, true, 'DEFI_INTENT ships on');
 
 // Zero-network client stub: big balance for any account, a signed "raw" tx, and a finished
 // sendAndTrack stream with a 64-byte signature. Behavioural overrides per-test below.

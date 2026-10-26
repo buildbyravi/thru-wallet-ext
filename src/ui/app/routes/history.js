@@ -133,7 +133,7 @@ export function HistoryRoute({ back }) {
       } catch {
         // ignore
       }
-    }, 2_000); // ~6s blocks: one check every 2s settles within a beat of the block landing
+    }, 1_000); // blocks land in a few ms (owner 2026-10-26): a 1s poll settles within a beat of the block landing
   }
 
   function paintPending() {
@@ -416,11 +416,13 @@ export function HistoryRoute({ back }) {
 
   load();
 
+  // Blocks land in a few ms (owner, 2026-10-26): refresh the visible stream several times a
+  // minute so a settled swap/transfer reads settled promptly instead of waiting half a minute.
   const autoRefreshTimer = setInterval(() => {
     if (!destroyed && !feedLoading) {
       load();
     }
-  }, 30_000);
+  }, 5_000);
   d.add(() => clearInterval(autoRefreshTimer));
 
   d.add(

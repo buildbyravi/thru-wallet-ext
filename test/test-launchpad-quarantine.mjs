@@ -284,7 +284,11 @@ section('DeFi vocabulary is confined to the backend contract surface');
 // (G3: src/lib/amm.js — the @thru/programs/amm package adapter, same pattern as the other
 // first-party package adapters in src/lib (name-service, registrar, custom-registrar,
 // ratelimit). Its vocabulary IS the package's own names.)
-const DEFI_VOCAB_ALLOWLIST = /^src\/(background\/(features\/|api-router\.js$|services\/(defi\/|(program|feed|market|risk|intent|desktop|dex)-service\.js$))|lib\/amm\.js$|shared\/contract\/)/;
+// 2026-10-26 ship decision (swaps UI ships): src/ui/app/routes/swap.js passes method names
+// ('dex.quote', 'dex.listPools', 'dex.prepareSwap') to bridge.send — that is code addressing
+// the contract surface, not user copy. Plain "swap" text stays allowed everywhere because the
+// regex bans only \bdex\b/\bamm\b/etc., never "swap" itself.
+const DEFI_VOCAB_ALLOWLIST = /^src\/(background\/(features\/|api-router\.js$|services\/(defi\/|(program|feed|market|risk|intent|desktop|dex)-service\.js$))|lib\/amm\.js$|shared\/contract\/|ui\/app\/routes\/swap\.js$)/;
 const vocabHits = [];
 for (const { file, text } of corpus) {
   if (DEFI_VOCAB_ALLOWLIST.test(file)) continue;
@@ -320,16 +324,23 @@ ok(
 );
 
 const DEFI_FLAG_NAMES = EXPECTED_FLAGS.filter((f) => f.startsWith('DEFI'));
+// 2026-10-26 reviewed ship decision (owner-requested): the swap slice is on —
+// DEFI/DEFI_READ/DEFI_DEX/DEFI_INTENT. Launchpad/market/risk/feed/desktop and NAME_SERVICE stay off.
+const SHIPPED_ON = ['DEFI', 'DEFI_READ', 'DEFI_DEX', 'DEFI_INTENT'];
 ok(
-  'every DEFI_*/NAME_SERVICE gate flag is false in this build',
-  [...DEFI_FLAG_NAMES, 'NAME_SERVICE'].every((f) => FLAGS[f] === false),
+  'the shipped swap slice is on and every other DEFI_*/NAME_SERVICE gate flag stays off',
+  [...DEFI_FLAG_NAMES, 'NAME_SERVICE'].every((f) =>
+    SHIPPED_ON.includes(f) ? FLAGS[f] === true : FLAGS[f] === false),
   JSON.stringify(Object.fromEntries(DEFI_FLAG_NAMES.map((f) => [f, FLAGS[f]]))),
 );
 
-// The master switch must dominate: a lone sub-flag can never enable a feature.
+// The master switch must dominate: a lone sub-flag can never enable a feature. (Probe with the
+// master off so the shipped-on DEFI flag does not make the vacuous pass.)
+const shippedMaster = FLAGS.DEFI;
+FLAGS.DEFI = false;
 FLAGS.DEFI_READ = true;
 ok('a sub-flag alone enables nothing (master switch dominates)', isDefiFeatureEnabled('DEFI_READ') === false);
-FLAGS.DEFI_READ = false;
+FLAGS.DEFI = shippedMaster;
 
 const before = { ...FLAGS };
 applyQueryOverrides('?launchpad=1');
@@ -375,8 +386,11 @@ const registered = [...bootSource.matchAll(/path:\s*'(\/[a-z0-9-]*)'/g)].map((m)
 // always-on name.* READ surface (ownership verified on-chain, nothing signs, nothing gated),
 // not a DeFi surface. The meaningful invariant stays: no launchpad/DEX/market/swap/token
 // route may register.
-ok('the route table is unchanged (15 popup routes, no DeFi routes)', registered.length === 15, registered.join(', '));
-const defiRoutes = registered.filter((p) => /launchpad|dex|prediction|swap|market|token/i.test(p));
+// 2026-10-26 ship decision: '/swap' registers (the swap slice ships). The launchpad/market/
+// prediction/token surfaces still register no routes; the count moved 15 → 16 for /swap only.
+ok('the route table is unchanged apart from /swap (16 popup routes)', registered.length === 16, registered.join(', '));
+const ROUTE_ALLOWLIST = new Set(['/swap']);
+const defiRoutes = registered.filter((p) => /launchpad|dex|prediction|swap|market|token/i.test(p) && !ROUTE_ALLOWLIST.has(p));
 ok('no registered route is a launchpad/DEX/prediction surface', defiRoutes.length === 0, defiRoutes.join(', '));
 
 const tabHits = findHits(corpus, /chrome\s*\.\s*(?:tabs|windows)\s*\.\s*(?:create|update|remove)\s*\(/);
@@ -389,7 +403,7 @@ ok('no getURL() call targets a page that is not built', urlHits.length === 0, ur
 // 4b. Live gating probes: gated DeFi methods refuse IN THIS BUILD
 // ---------------------------------------------------------------------------
 
-section('DeFi handlers provably refuse while every DEFI_* flag is off');
+section('DeFi handlers: unshipped surfaces refuse; the shipped swap slice answers honest unavailability');
 
 // chrome stubs let the background module graph load; only handler dispatch is exercised.
 globalThis.chrome = {
@@ -403,12 +417,15 @@ globalThis.chrome = {
 const { handleApiRequest } = await import('../src/background/api-router.js');
 
 // env:'result' reads (auth none): the gate answer is a real wire value, not an error.
+// 2026-10-26 ship decision: dex.quote ships (flags on, dossier swap row enabled). In this
+// stubbed environment there is no chain, so the honest answer is an rpc/pool read failure —
+// not a fabricated quote, not FLAG_OFF.
 const quote = await handleApiRequest({
   method: 'dex.quote',
   params: { poolId: 'taPoolFixture1', inputAssetId: 'native', outputAssetId: 'taAssetFixture1', inputAmountUnits: '1' },
 });
-ok('dex.quote answers { supported:false, reason:FLAG_OFF } in data',
-  quote.ok === true && quote.data?.supported === false && quote.data?.reason === 'FLAG_OFF',
+ok('dex.quote ships: with no chain behind the stub it honestly answers an unavailable read (never fake)',
+  quote.ok === true && quote.data?.supported === false && quote.data?.reason !== 'FLAG_OFF',
   JSON.stringify(quote));
 
 const candles = await handleApiRequest({
