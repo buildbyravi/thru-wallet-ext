@@ -281,8 +281,8 @@ export function SwapRoute({ navigate, back }) {
       quoteBox.classList.add('hidden');
     }
 
-    d.add(fromSelect.addEventListener('change', syncToOptions));
-    d.add(toSelect.addEventListener('change', syncEnabled));
+    d.on(fromSelect, 'change', syncToOptions);
+    d.on(toSelect, 'change', syncEnabled);
     amountInput.onInput(syncEnabled);
 
     syncFromOptions();
