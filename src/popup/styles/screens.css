@@ -1649,18 +1649,3 @@ form > .btn.text {
 .dashboard-services-grid {
   margin-top: 1px;
 }
-/* ---- Swap screen (2026-10-26 ship decision: swap slice graduated) --------- */
-.swap-field { display: block; }
-.swap-select {
-  width: 100%;
-  padding: 10px 12px;
-  background: var(--surface-inset, var(--surface-raised));
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md, 10px);
-  color: var(--text);
-  font: inherit;
-}
-.swap-select:focus {
-  outline: none;
-  border-color: var(--accent);
-}

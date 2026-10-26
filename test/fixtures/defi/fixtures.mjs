@@ -94,13 +94,14 @@ export const M0_CURRENT = Object.freeze({
     'programFacts.amm': 'taAMMx8gG44RcOyRqNYZ55pDaAJoGS0R8kPYxBN96sO8kD',
     'limits.slippageMaxBps': 2000,
     'limits.quoteTtlMs': 15000,
-    'featureCapabilities.swap': true, // Graduated to enabled with 2026-10-25 live-swap probe
+    // 2026-10-26 (second directive): the swap screen and its flags are withdrawn; the dossier
+    // rows stay graduated (the evidence is real, the flags are simply off).
+    'featureCapabilities.swap': true,
     'featureCapabilities.pools': true,
     'featureCapabilities.usd': { supported: false, reason: 'DEPENDENCY_UNVERIFIED' },
     'featureCapabilities.balances': true,
-    // 2026-10-26 ship decision: swap slice ON — flagged methods now answer true.
-    'methodCapabilities[dex.quote]': true,
-    'methodCapabilities[intent.submit]': true,
+    'methodCapabilities[dex.quote]': { supported: false, reason: 'FLAG_OFF' },
+    'methodCapabilities[intent.submit]': { supported: false, reason: 'FLAG_OFF' },
     'methodCapabilities[program.list]': true,
     'methodCapabilities[feed.status]': true,
     'methodCapabilities[tx.sendChecked]': true,
@@ -127,13 +128,13 @@ export const M0_CURRENT = Object.freeze({
   'market.holders': FLAG_OFF(),
   'risk.assetAssess': DISABLED('Risk assessment'),
 
-  // 2026-10-26 ship decision: DEFI_READ is on — launchpad READS answer their dossier reasons
-  // (unverified substrate — launchpad WRITES stay gated by DEFI_LAUNCHPAD off).
-  'launchpad.list': exact(ok({ supported: false, reason: 'NO_INDEXER' })),
-  'launchpad.get': exact(ok({ supported: false, reason: 'NO_INDEXER' })),
-  'launchpad.templates': exact(ok({ supported: false, reason: 'TOKEN_PATH_UNVERIFIED' })),
+  // 2026-10-26 (second directive): DEFI_READ is off again with the swap screen; launchpad reads
+  // gate on it at the shard boundary. (Launchpad backend build is NEXT — no flag flip here.)
+  'launchpad.list': FLAG_OFF(),
+  'launchpad.get': FLAG_OFF(),
+  'launchpad.templates': FLAG_OFF(),
   'launchpad.listMine': DISABLED('Own-launch reads'),
-  'launchpad.validateDraft': spot({ 'identity.valid': true, 'identity.issues': [], 'curve': null }),
+  'launchpad.validateDraft': DISABLED('Draft validation'),
   'launchpad.draftList': DISABLED('Launch drafts'),
   'launchpad.draftGet': DISABLED('Launch drafts'),
   'launchpad.draftSave': DISABLED('Launch drafts'),
@@ -143,15 +144,14 @@ export const M0_CURRENT = Object.freeze({
   'launchpad.prepareMigrate': DISABLED('Launch migration'),
   'launchpad.prepareClaim': DISABLED('Creator-fee claim'),
 
-  // 2026-10-26 ship decision: the swap slice is ON (DEFI/READ/DEX/INTENT). Offline dispatch
-  // answers honest reads/errors below, never fabrication. R2 keeps quoteLiquidity exit-first
-  // gated; liquidity ADD prepare stays disabled.
-  'dex.listPools': spot({ supported: true, source: 'chain', items: [], nextCursor: null, partial: false }),
-  'dex.getPool': spot({ supported: false, reason: 'rpc-error', 'header.poolId': 'taPoolFixture1' }),
-  'dex.positions': exact(fail('WALLET_LOCKED', 'Unlock your wallet to continue.')),
-  'dex.quote': spot({ supported: false, reason: 'rpc-error' }),
-  'dex.quoteLiquidity': exact(ok({ supported: false, reason: 'Disabled until remove-liquidity verifies live (exit-before-entry, R2).' })),
-  'dex.prepareSwap': exact(fail('WALLET_LOCKED', 'Unlock your wallet to continue.')),
+  // 2026-10-26 (second directive): the swap slice is withdrawn — dex.* answers its M0 gates
+  // envelope (flags build-time OFF). R2 keeps quoteLiquidity exit-first gated.
+  'dex.listPools': FLAG_OFF(),
+  'dex.getPool': FLAG_OFF(),
+  'dex.positions': DISABLED('Pool positions'),
+  'dex.quote': FLAG_OFF(),
+  'dex.quoteLiquidity': FLAG_OFF(),
+  'dex.prepareSwap': DISABLED('Swap preparation'),
   'dex.prepareLiquidity': DISABLED('Liquidity preparation'),
 
   'market.watchlistGet': DISABLED('Market watchlist'),
@@ -159,16 +159,16 @@ export const M0_CURRENT = Object.freeze({
   'market.watchlistRemove': DISABLED('Market watchlist'),
   'desktop.open': exact(ok({ enabled: false, reason: 'FLAG_OFF' })),
 
-  // 2026-10-26 ship decision: DEFI_INTENT is on — the pipeline answers its real auth guard in
-  // a walletless test process (locked → WALLET_LOCKED), not DISABLED.
-  'intent.list': exact(fail('WALLET_LOCKED', 'Unlock your wallet to continue.')),
-  'intent.get': exact(fail('WALLET_LOCKED', 'Unlock your wallet to continue.')),
-  'intent.prepareSend': exact(fail('WALLET_LOCKED', 'Unlock your wallet to continue.')),
-  'intent.rePrepare': exact(fail('WALLET_LOCKED', 'Unlock your wallet to continue.')),
-  'intent.resume': exact(fail('WALLET_LOCKED', 'Unlock your wallet to continue.')),
-  'intent.discard': exact(fail('WALLET_LOCKED', 'Unlock your wallet to continue.')),
-  'intent.stopWaiting': exact(fail('WALLET_LOCKED', 'Unlock your wallet to continue.')),
-  'intent.submit': exact(fail('WALLET_LOCKED', 'Unlock your wallet to continue.')),
+  // 2026-10-26 (second directive): DEFI_INTENT is off again — the pipeline answers the gated
+  // envelope like every other unshipped surface.
+  'intent.list': DISABLED('Intent pipeline'),
+  'intent.get': DISABLED('Intent pipeline'),
+  'intent.prepareSend': DISABLED('Intent pipeline'),
+  'intent.rePrepare': DISABLED('Intent pipeline'),
+  'intent.resume': DISABLED('Intent pipeline'),
+  'intent.discard': DISABLED('Intent pipeline'),
+  'intent.stopWaiting': DISABLED('Intent pipeline'),
+  'intent.submit': DISABLED('Intent pipeline'),
 });
 
 // ---- Dossier fixtures: flag flipped on (in-memory), evidence still missing ----

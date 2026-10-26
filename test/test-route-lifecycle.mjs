@@ -1295,7 +1295,7 @@ const FIXTURES = {
     reason: null,
   }),
   'token.deriveTokenAccount': () => TOKEN_ACCOUNT_FIXTURE,
-  // v27 no-block paint (2026-10-26): the swap and dashboard routes fetch the cached balance
+  // v27 no-block paint (2026-10-26): the dashboard route fetches the cached balance
   // snapshot alongside the live read. Providers with slow/unevaluated storage must see the
   // same shape: a bare snapshot descriptor that paints nothing but proves the path exists.
   'token.getCachedBalances': () => ({
@@ -1306,14 +1306,18 @@ const FIXTURES = {
     stale: true,
     reason: 'no-cache-snapshot',
   }),
-  // v26 swap-slice ships (2026-10-26): the swap route exercises dex.listPools + token.discover
+  // v26 (2026-10-26): token.discover scans chain for wallet-mints the user never pasted
+  // (Solana-parity ask). Fixture serves the empty discovery page honestly.
+  // (the swap UI junto shipped and was withdrawn the same day by owner directive; the
+  // contract method + auto-discovery remain — only the screen went away.)
   // during load. Fixtures: the empty discovery page honestly and a no-op discovery pass; the
   // swap form must render its empty/pair state off these without pretending pools exist.
+  // dex.listPools is gated off at the seam now (swap screen withdrawn the same day it shipped,
+  // 2026-10-26): the fixture answers the FLAG_OFF envelope exactly as the M0 dispatch law pins.
   'dex.listPools': () => ({
-    supported: true,
-    source: 'chain',
+    supported: false,
+    reason: 'FLAG_OFF',
     items: [],
-    nextCursor: null,
     partial: false,
     updatedAt: Date.now(),
   }),

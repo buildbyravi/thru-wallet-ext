@@ -2,18 +2,20 @@
 // (S13). Built FROM the shipped schema + snapshot (test-only imports — never bundled), so a
 // preset can never drift from the contract it simulates.
 //
-//   swapShipped    the 2026-10-26 reviewed ship decision: DEFI + DEFI_READ + DEFI_DEX +
-//                  DEFI_INTENT on (swap slice graduated on dated live evidence).
-//                  TODAY'S real behavior — the M0 test deep-equals this preset against the
-//                  live handler dispatch.
-//   everythingOff  all flags false — kept as a simulated baseline; no longer what ships.
+//   everythingOff  all flags false — TODAY'S real behavior and shipping baseline:
+//                  the swap screen was withdrawn later on 2026-10-26 (second directive of the
+//                  day, launchpad backend builds first), leaving every DEFI_* flag false. The
+//                  M0 test deep-equals this preset against the live handler dispatch.
+//   swapShipped    the earlier 2026-10-26 code path — DEFI + DEFI_READ + DEFI_DEX +
+//                  DEFI_INTENT on (what the swap slice served while it was built). Simulated:
+//                  kept to exercise the gates-on UI state.
 //   readOnly       DEFI + DEFI_READ — discovery/pool reads surface dossier reasons.
 //   swapOnly       + DEFI_DEX — swap/pool quotes and prepares surface dossier reasons.
 //   full           every DEFI_* flag — STILL mostly unsupported: flags do not fabricate
 //                  evidence, so the dossier reasons replace FLAG_OFF everywhere evidence is
 //                  missing. The frontend must render exactly this matrix.
 //
-// `simulated` is true for every preset except swapShipped: they exist to exercise UI states,
+// `simulated` is true for every preset except everythingOff: they exist to exercise UI states,
 // never to claim capabilities the evidence does not back.
 
 import { listMethodNames } from '../../../src/shared/contract/manifest.js';
@@ -93,19 +95,19 @@ const OFF = Object.freeze(Object.fromEntries(['DEFI', ...ALL_DEFI_FLAGS].map((f)
 
 export const CAPABILITY_PRESETS = Object.freeze([
   buildPreset({
-    name: 'swapShipped',
+    name: 'everythingOff',
     simulated: false,
-    flags: { ...OFF, DEFI: true, DEFI_READ: true, DEFI_DEX: true, DEFI_INTENT: true },
-    note: 'Exactly what this build serves since 2026-10-26 (swap ship decision: DEFI/READ/DEX/'
-      + 'INTENT on after the live swap probe graduated; launchpad/market/risk/feed/desktop stay off). '
+    flags: OFF,
+    note: 'What this build serves since 2026-10-26 (second directive: swap screen withdrawn, '
+      + 'launchpad backend builds first) — every DEFI_* flag false; the M0 envelope again. '
       + 'Pinned by deep equality against live dispatch.',
   }),
   buildPreset({
-    name: 'everythingOff',
+    name: 'swapShipped',
     simulated: true,
-    flags: OFF,
-    note: 'Pre-2026-10-26 baseline: all flags false. Kept to exercise the fully-gated UI state; '
-      + 'no longer what this build serves.',
+    flags: { ...OFF, DEFI: true, DEFI_READ: true, DEFI_DEX: true, DEFI_INTENT: true },
+    note: 'Simulated: the previously-built swap slice code path (DEFI/READ/DEX/INTENT on), kept '
+      + 'to exercise the gates-on UI state. Not what this build ships.',
   }),
   buildPreset({
     name: 'readOnly',

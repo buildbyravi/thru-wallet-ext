@@ -10,11 +10,11 @@
 // test proves the override surface stays inert, and test/test-defi-m0.mjs proves every gated
 // handler honours the flags.
 //
-// SHIPPED STATE (2026-10-26, reviewed ship decision by owner): the DEX swap slice is ON —
-// the swap capability row graduated to enabled on dated live evidence
-// (scripts/defi-evidence/2026-10-25-live-swap-probe.json: pool init + add-liquidity + swap all
-// vmError 0 on betanet; quote math matched 1:1 against the wallet's CPMM implementation at the
-// base unit). LAUNCHPAD, MARKET, RISK, FEED and DESKTOP stay off.
+// STATE (2026-10-26, second directive of the day): the DEX swap slice graduated on dated live
+// evidence (scripts/defi-evidence/2026-10-25-live-swap-probe.json: pool init + add-liquidity + swap
+// vmError 0 on betanet; 1:1 CPMM quote parity at the base unit) but the owner has withdrawn the
+// swap SCREEN — the backend modules stay in-tree behind their gates, the UI is un-shipped and the
+// dashboard tile shows the roadmap toast again. All DEFI_* + NAME_SERVICE flags are OFF.
 
 export const FLAGS = {
   /** Log route transitions and bridge method names. Never logs params; they can hold secrets. */
@@ -30,14 +30,14 @@ export const FLAGS = {
 
   // Master switch for the DeFi backend surface. Product logic must use isDefiFeatureEnabled(),
   // which treats every feature as off while this is false, regardless of any other value.
-  // ON since the 2026-10-26 swap ship decision (see this file's header).
-  DEFI: true,
-  DEFI_READ: true,        // read-only discovery/detail surfaces behind the capability gates
-  DEFI_DEX: true,         // swap/liquidity quotes and prepared intents
+  // OFF again since the 2026-10-26 swap-UI withdrawal (see this file's header).
+  DEFI: false,
+  DEFI_READ: false,       // read-only discovery/detail surfaces behind the capability gates
+  DEFI_DEX: false,        // swap/liquidity quotes and prepared intents
   DEFI_LAUNCHPAD: false,  // token create/migrate/claim flows and launch drafts
   DEFI_MARKET: false,     // market data reads (assets, snapshots, candles, trades, holders)
   DEFI_RISK: false,       // risk assessment reads derived from registry facts
-  DEFI_INTENT: true,      // intent prepare/submit/resume pipeline
+  DEFI_INTENT: false,     // intent prepare/submit/resume pipeline
   DEFI_FEED: false,       // signed feed consumption (no publisher verified today)
   DEFI_DESKTOP: false,    // Desktop tab surface (no page exists in this build)
 };

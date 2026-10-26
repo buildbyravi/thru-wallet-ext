@@ -89,9 +89,9 @@ const INPUT_TA = 'taLjMDKiBDra1EGIKoF_7B-tGFJMnf8MejLDu3VVWTRJRQ';
 const OUTPUT_TA = 'taLu3d1rxGdQWWHJxUOK6eT9ti4lWeTijNp0Kk_5YKHARg';
 
 // ---- [1] quarantine: flag OFF keeps the M0 envelopes ----------------------------------------
-// 2026-10-26 ship decision: the swap slice ships ON in this build, so flag-OFF behaviour is
-// probed by forcing the gates off in-memory, then restoring the shipped default below. The
-// gate law itself is unchanged.
+// 2026-10-26 (second directive of the day): the swap SCREEN is un-shipped — the gates ship OFF
+// in this build, so the flag-OFF rung below runs against defaults and the flag-ON pipeline
+// probe further down forces the gates ON in-memory. The gate law itself is unchanged.
 {
   const shipped = { ...FLAGS };
   FLAGS.DEFI = false;
@@ -131,11 +131,15 @@ const OUTPUT_TA = 'taLu3d1rxGdQWWHJxUOK6eT9ti4lWeTijNp0Kk_5YKHARg';
   }
 }
 
-// ---- flag ON (shipped since 2026-10-26 — the assertions below probe the real pipeline) -----
-assert.equal(FLAGS.DEFI, true, 'DEFI ships on');
-assert.equal(FLAGS.DEFI_READ, true, 'DEFI_READ ships on');
-assert.equal(FLAGS.DEFI_DEX, true, 'DEFI_DEX ships on');
-assert.equal(FLAGS.DEFI_INTENT, true, 'DEFI_INTENT ships on');
+// ---- flag ON probe: assert the shipped defaults are OFF, then force the gates ON in-memory --
+assert.equal(FLAGS.DEFI, false, 'DEFI ships off (swap screen withdrawn)');
+assert.equal(FLAGS.DEFI_READ, false, 'DEFI_READ ships off');
+assert.equal(FLAGS.DEFI_DEX, false, 'DEFI_DEX ships off');
+assert.equal(FLAGS.DEFI_INTENT, false, 'DEFI_INTENT ships off');
+FLAGS.DEFI = true;
+FLAGS.DEFI_READ = true;
+FLAGS.DEFI_DEX = true;
+FLAGS.DEFI_INTENT = true;
 
 // Dossier rung, honestly: offline there is no runtime fingerprint, so every seed row answers
 // NETWORK_RESET against this process; align the seam with the seed fingerprint (the runtime
@@ -506,4 +510,8 @@ assert.equal(nativePrepCount, 0);
 ok('kind-driver dispatch: this suite created only dex-swap records; native-send remains its own driver');
 
 console.log(`\ntest-dex-swap: ${checks} checks OK`);
+FLAGS.DEFI = false;
+FLAGS.DEFI_READ = false;
+FLAGS.DEFI_DEX = false;
+FLAGS.DEFI_INTENT = false;
 dexService._resetChainForTests();

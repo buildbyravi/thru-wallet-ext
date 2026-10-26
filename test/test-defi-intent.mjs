@@ -67,9 +67,8 @@ const SENDER = walletRes.data.address;
 assert.ok(SENDER.startsWith('ta'));
 console.log('harness: wallet created (offline), sender', SENDER.slice(0, 12) + '…');
 
-// [1] flag OFF: the quarantine envelope is unchanged even though the pipeline shipped
-// 2026-10-26 (DEFI_INTENT is ON in this build now) — the law is probed by forcing the gate
-// off in-memory, then restored to the shipped default before the rest of the suite.
+// [1] flag OFF: this is now the shipped default (swap screen withdrawn 2026-10-26, second
+// directive of the day). The gates-ON pipeline probe below forces the flags in-memory.
 {
   const shipped = { ...FLAGS };
   FLAGS.DEFI = false;
@@ -95,10 +94,13 @@ console.log('harness: wallet created (offline), sender', SENDER.slice(0, 12) + '
   }
 }
 
-// Ensure the shipped build default is what the rest of the suite assumes (DEFI + DEFI_INTENT
-// on since the 2026-10-26 ship decision; asserts below probe the real pipeline).
-assert.equal(FLAGS.DEFI, true, 'DEFI ships on');
-assert.equal(FLAGS.DEFI_INTENT, true, 'DEFI_INTENT ships on');
+// Ensure the shipped build default (OFF, swap screen withdrawn), then force the gates ON
+// in-memory for the pipeline probe below — the suite's own module instance, like every other
+// defi suite in this repo.
+assert.equal(FLAGS.DEFI, false, 'DEFI ships off');
+assert.equal(FLAGS.DEFI_INTENT, false, 'DEFI_INTENT ships off');
+FLAGS.DEFI = true;
+FLAGS.DEFI_INTENT = true;
 
 // Zero-network client stub: big balance for any account, a signed "raw" tx, and a finished
 // sendAndTrack stream with a 64-byte signature. Behavioural overrides per-test below.
@@ -284,3 +286,5 @@ assert.equal(stopWaiting.error.code, 'NOT_READY');
 ok('resume/stopWaiting remain NOT_READY flag-on (waiting-room slice is not inferred)');
 
 console.log(`\ntest-defi-intent: ${checks} checks passed`);
+FLAGS.DEFI = false;
+FLAGS.DEFI_INTENT = false;

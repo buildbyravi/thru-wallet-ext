@@ -214,11 +214,11 @@ export function DashboardRoute({ navigate }) {
   }));
 
   const swapTile = track(PanelItem({
-    // Enabled 2026-10-26: the swap capability graduated on dated live evidence (2026-10-25
-    // probe) and the DEFI swap slice shipped.
+    // 2026-10-26 owner directive: swap UI removed pending the launchpad backend; tile stays
+    // a roadmap affordance matching main 14e16b1 exactly.
     iconName: 'swap',
     label: 'Swap',
-    onClick: () => navigate('/swap'),
+    onClick: () => toast({ tone: 'info', title: 'Swap is coming later', message: 'Swap is planned for a future upgrade.' }),
   }));
 
   const historyTile = track(PanelItem({
