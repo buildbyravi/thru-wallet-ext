@@ -160,6 +160,9 @@ export function SwapRoute({ navigate, back }) {
       placeholder: 'ta…',
       autocomplete: 'off',
       spellcheck: false,
+      onInput: () => {
+        importBtn.update({ disabled: !/^ta[A-Za-z0-9_-]{20,}$/.test(String(input.value || '').trim()) });
+      },
     }));
     const importBtn = track(Button({
       label: 'Import token',
@@ -188,9 +191,7 @@ export function SwapRoute({ navigate, back }) {
         }
       },
     }));
-    input.onInput(() => {
-      importBtn.update({ disabled: !/^ta[A-Za-z0-9_-]{20,}$/.test(String(input.value || '').trim()) });
-    });
+
     body.appendChild(input.el);
     body.appendChild(h('div', { class: 'screen-actions' }, [importBtn.el]));
   }
@@ -230,6 +231,7 @@ export function SwapRoute({ navigate, back }) {
       inputMode: 'decimal',
       autocomplete: 'off',
       spellcheck: false,
+      onInput: () => syncEnabled(),
     }));
 
     const quoteBox = h('div', { class: 'detail-table hidden' });
@@ -283,7 +285,6 @@ export function SwapRoute({ navigate, back }) {
 
     d.on(fromSelect, 'change', syncToOptions);
     d.on(toSelect, 'change', syncEnabled);
-    amountInput.onInput(syncEnabled);
 
     syncFromOptions();
     syncToOptions();

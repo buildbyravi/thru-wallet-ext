@@ -1316,6 +1316,10 @@ const FIXTURES = {
   // v22 registrar slice: the mount reads must render the honest unsupported state (the
   // fixture chain has no `.thru` registry) — never a fabricated price on mount.
   'name.getRegistry': () => ({ supported: false, reason: 'fixture: no .thru registry initialized' }),
+  // Canonical root read is now unconditionally part of the name mount's parallel prefetch
+  // (2026-10-26 domain-load latency fix): fixture the honest unsupported answer for the
+  // fixture chain — the free-root provider then simply does not appear in the toggle.
+  'name.getCanonicalRoot': () => ({ supported: false, reason: 'fixture: no name-service root' }),
   'name.checkLease': () => ({ supported: false, reason: 'fixture: no .thru registry initialized' }),
   // v25 custom registrar provider: supported+parseable with the evidence-pinned Betanet
   // deployment shape (so the /name toggle renders), and lease lookups report available.

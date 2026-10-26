@@ -140,43 +140,41 @@ export function NameRoute({ back }) {
     const card = h('div', { class: 'stack stack-2' });
     body.appendChild(card);
 
-    // Read the chain's offering up-front: first the official paid .thru registry, then the
-    // canonical name-service root (which enables FREE registration on networks without the
-    // paid registry). Absence in either step is reported honestly, never hidden.
-    let registry = null;
-    try {
-      registry = await bridge.send('name.getRegistry');
-    } catch (err) {
-      registry = { supported: false, reason: err?.message || 'registry read failed' };
-    }
+    // Read the chain's offering up-front: the official paid .thru registry, the canonical
+    // name-service root (free registration on networks without the paid registry), and the
+    // custom registrar (v25). These three reads are INDEPENDENT — with ms blocks each still
+    // costs a background round trip, and serializing them tripled the perceived load time
+    // (owner report 2026-10-26), so they run in parallel. Absence in any one is reported
+    // honestly, never hidden.
+    const [registryRes, canonicalRootRes, customRes] = await Promise.allSettled([
+      bridge.send('name.getRegistry'),
+      bridge.send('name.getCanonicalRoot'),
+      bridge.send('name.getCustomRegistrar'),
+    ]);
     if (destroyed || !card.isConnected) return;
+
+    const registry = registryRes.status === 'fulfilled'
+      ? registryRes.value
+      : { supported: false, reason: registryRes.reason?.message || 'registry read failed' };
     const registryUp = Boolean(registry?.supported && registry?.registry);
 
-    let canonRoot = null;
-    if (!registryUp) {
+    const custom = customRes.status === 'fulfilled'
+      ? customRes.value
+      : { supported: false, reason: customRes.reason?.message || 'custom registrar read failed' };
+    const customUp = Boolean(custom?.supported && custom.rootMatchesNameService);
+
+    let canonRoot = canonicalRootRes.status === 'fulfilled'
+      ? canonicalRootRes.value
+      : { supported: false, reason: canonicalRootRes.reason?.message || 'root discovery failed' };
+    // Depends on custom; only consulted when the paid registry is absent.
+    if (!registryUp && customUp && canonRoot?.supported && canonRoot.rootName === custom.rootName) {
       try {
-        canonRoot = await bridge.send('name.getCanonicalRoot');
-        if (customUp && canonRoot?.supported && canonRoot.rootName === custom.rootName) {
-          const alt = await bridge.send('name.getCanonicalRoot', { root: 'id' }).catch(() => null);
-          if (alt?.supported) canonRoot = alt;
-        }
-      } catch (err) {
-        canonRoot = { supported: false, reason: err?.message || 'root discovery failed' };
-      }
+        const alt = await bridge.send('name.getCanonicalRoot', { root: 'id' }).catch(() => null);
+        if (alt?.supported) canonRoot = alt;
+      } catch { /* honest: primary canonical root read stands */ }
       if (destroyed || !card.isConnected) return;
     }
     const freeRootUp = Boolean(canonRoot?.supported);
-
-    // v25: the custom thru-custom-registrar (evidence-pinned deployment; live-verified
-    // 2026-10-25) is a THIRD registration provider. Read up-front like the other two.
-    let custom = null;
-    try {
-      custom = await bridge.send('name.getCustomRegistrar');
-    } catch (err) {
-      custom = { supported: false, reason: err?.message || 'custom registrar read failed' };
-    }
-    if (destroyed || !card.isConnected) return;
-    const customUp = Boolean(custom?.supported && custom.rootMatchesNameService);
 
     // Provider model: exactly one active provider drives the check + write. The chain's
     // offer can be:.thru paid registry OR custom registrar OR the free canonical root.
