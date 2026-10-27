@@ -139,7 +139,7 @@ section('Contract v17/v18 DeFi contract-first drop (M0)');
 // the swap slice the same day; additive, auth 'unlocked').
 // v27 (2026-10-26): token.getCachedBalances; v28 (2026-10-26): optional reviewed context for
 // existing name writes. These additions bind the existing handlers to what the user saw at Review.
-ok('the contract advances to v28 without reusing earlier numbers', CONTRACT_VERSION === 28);
+ok('the contract advances to v29 without reusing earlier numbers', CONTRACT_VERSION === 29);
 
 const v17 = Object.entries(METHODS).filter(([, spec]) => spec.since === 17).map(([name]) => name);
 const v18 = Object.entries(METHODS).filter(([, spec]) => spec.since === 18).map(([name]) => name);
@@ -217,7 +217,7 @@ ok('token.getCachedBalances is open auth:none like every snapshot read',
   METHODS['token.getCachedBalances']?.auth === 'none');
 ok('token.getCachedBalances declares the address param',
   METHODS['token.getCachedBalances']?.params.includes('address'));
-ok('the contract declares 144 methods in total (143 + 1 cached-read)', Object.keys(METHODS).length === 144,
+ok('the contract declares 149 methods in total (144 + 5 tracked-domain methods)', Object.keys(METHODS).length === 149,
   `got ${Object.keys(METHODS).length}`);
 
 // Auth discipline (DEFI-03): reads are call-time honest, prepares are unlocked-only, and

@@ -134,7 +134,8 @@
 //   chain-verified token rows for an address on the active network. Fetches with any
 //   failure are never cached, so a cache row is always a complete verified read.
 //   v28 appends optional reviewed network/account/price/expiry facts to name signing requests.
-export const CONTRACT_VERSION = 28;
+// v29 adds versioned tracked-domain reads/imports/selection, preserving primary aliases.
+export const CONTRACT_VERSION = 29;
 
 export const METHODS = {
   // ---- System ------------------------------------------------------------
@@ -424,7 +425,7 @@ export const METHODS = {
   },
   'name.register': {
     params: ['name', 'parentAddress', 'networkId', 'password', 'via', 'years', 'expectedNetworkId', 'expectedAccountAddress', 'expectedPricePerYear'],
-    returns: '{ signature, domainAddress } — register a label under a parent root/domain; self-signed (authority = fee payer, the ONLY key). ' +
+    returns: '{ signature, domainAddress, rootAddress, name?, trackingFailed? } — register a label under a parent root/domain; self-signed (authority = fee payer, the ONLY key). ' +
       'Protocol fee 0n — NAME_SERVICE_PROGRAM_FEE = 0 in the first-party CLI (txn_tools.rs, 2026-10-24); no payment token involved. ' +
       'parentAddress may be blank: the canonical root is then auto-discovered on-chain. ' +
       'Authority pre-verification (2026-10-24 Betanet live probe): when the parsed parent\'s authority/owner ≠ the active account the call refuses with NAME_PARENT_AUTHORITY before any broadcast — the chain provably reverts such writes with name-service error 3. Only when the field is unreadable is the CHAIN left to decide. ' +
@@ -477,10 +478,35 @@ export const METHODS = {
     since: 21,
   },
   'name.unlinkPrimary': {
-    params: [],
+    params: ['domainAddress', 'expectedNetworkId', 'expectedAccountAddress'],
     returns: '{ unlinked: boolean }',
     auth: 'unlocked',
     since: 21,
+  },
+  'name.getCachedDomains': {
+    params: ['expectedNetworkId', 'expectedAccountAddress'],
+    returns: '{ networkId, accountAddress, source:"tracked", items:[{name,rootAddress,rootName,domainAddress,status,verifiedAt,checkedAt,isPrimary,stale:true}] } - storage only',
+    auth: 'unlocked', since: 29,
+  },
+  'name.listDomains': {
+    params: ['expectedNetworkId', 'expectedAccountAddress'],
+    returns: '{ networkId, accountAddress, source:"tracked", items:[{name,rootAddress,rootName,domainAddress,status,verifiedAt,checkedAt,isPrimary,stale}] } - verified tracked names, not complete discovery',
+    auth: 'unlocked', since: 29,
+  },
+  'name.trackDomain': {
+    params: ['name', 'expectedNetworkId', 'expectedAccountAddress'],
+    returns: '{ name, rootAddress, domainAddress, verifiedAt } - saved after fresh ownership verification',
+    auth: 'unlocked', since: 29,
+  },
+  'name.setPrimaryDomain': {
+    params: ['domainAddress', 'expectedNetworkId', 'expectedAccountAddress'],
+    returns: '{ name, rootAddress, domainAddress, verifiedAt } - fresh owner check before primary selection',
+    auth: 'unlocked', since: 29,
+  },
+  'name.untrackDomain': {
+    params: ['domainAddress', 'expectedNetworkId', 'expectedAccountAddress'],
+    returns: '{ untracked:boolean } - removes a local candidate, never an on-chain domain; primary must be unlinked first',
+    auth: 'unlocked', since: 29,
   },
   // v22: official `.thru` registrar slice (2026-10-09, first-party formats). Reads answer
   // supported:false when the registry is uninitialized on the running network — never a
@@ -506,19 +532,19 @@ export const METHODS = {
   },
   'name.purchase': {
     params: ['name', 'years', 'password', 'expectedNetworkId', 'expectedAccountAddress', 'expectedPricePerYear'],
-    returns: '{ signature } — buys a .thru lease; price = config.pricePerYear × years in registry token',
+    returns: '{ signature, name, domainAddress, rootAddress, trackingFailed? } — buys a .thru lease; price = config.pricePerYear × years in registry token; tracking failure does not negate confirmation',
     auth: 'signing',
     since: 22,
   },
   'name.renewLease': {
-    params: ['name', 'years', 'password', 'expectedNetworkId', 'expectedAccountAddress', 'expectedPricePerYear', 'expectedLeaseEndTime'],
-    returns: '{ signature } — extends the signer-owned lease',
+    params: ['name', 'years', 'password', 'via', 'expectedNetworkId', 'expectedAccountAddress', 'expectedPricePerYear', 'expectedLeaseEndTime'],
+    returns: '{ signature, name, domainAddress, rootAddress } — extends the signer-owned lease',
     auth: 'signing',
     since: 22,
   },
   'name.claimExpired': {
     params: ['name', 'years', 'password', 'expectedNetworkId', 'expectedAccountAddress', 'expectedPricePerYear', 'expectedLeaseEndTime'],
-    returns: '{ signature } — takes over an expired lease (owner ≠ signer, chain enforces expiry)',
+    returns: '{ signature, name, domainAddress, rootAddress, trackingFailed? } — takes over an expired lease (owner ≠ signer, chain enforces expiry)',
     auth: 'signing',
     since: 22,
   },

@@ -1,142 +1,279 @@
-// Primary-name (domain) linking for the dashboard (2026-10-09, owner-directed UX slice).
-//
-// What this is: a wallet-local, network-scoped record that says "the active account owns this
-// name". Ownership is PROVEN on-chain at link time — the name's domain account is resolved
-// through the always-on read path (name.lookup) and its `owner` field must equal the active
-// account's address. No signing, no writes, nothing gated: reads are live truth asks and the
-// self-signing invariant is untouched because nothing is signed at all.
-//
-// What this is NOT: a reverse index. The chain cannot answer "which names does address X own"
-// today, so the wallet asks the user for the name and verifies it — never guesses one, and
-// silently keeping a name the account no longer owns is caught on the next verify (dashboard
-// re-verifies on load in the background of the displayed record; a broken record falls back
-// to the raw address, honestly).
+// Wallet-local domain tracking and primary aliases. This is not a reverse index.
+// Stored names are candidates: only a fresh, network-bound owner read enables actions.
 import { scopedKey } from '../../shared/network-scope.js';
-import { getActiveNetworkConfig } from './network-service.js';
+import { getActiveNetworkConfig, getActiveNetworkId } from './network-service.js';
 import * as accountService from './account-service.js';
 import * as nameService from './name-service.js';
 import * as ns from '../../lib/name-service.js';
+import * as thruClient from '../../lib/thru-client.js';
+import { purchaseNameProblem } from '../../lib/registrar.js';
 
 const PRIMARY_BASE_KEY = 'thru_primary_names';
+const DOMAINS_BASE_KEY = 'thru_registered_domains';
+const updates = new Map();
+let generation = 0;
+const statuses = ['owned', 'not-owned', 'missing', 'unknown'];
 
 function errCode(code, message) {
-  const err = new Error(message);
-  err.code = code;
-  err.retryable = false;
-  return err;
+  return Object.assign(new Error(message), { code, retryable: false });
 }
 
-async function readAll(networkId) {
-  const key = scopedKey(PRIMARY_BASE_KEY, networkId);
-  const out = await chrome.storage.local.get(key);
-  return out[key] && typeof out[key] === 'object' ? out[key] : {};
+function sameName(a, b) {
+  return a?.name === b?.name && a?.rootAddress === b?.rootAddress;
 }
 
-async function writeAll(networkId, records) {
-  const key = scopedKey(PRIMARY_BASE_KEY, networkId);
-  await chrome.storage.local.set({ [key]: records });
+function primaryRecord(record) {
+  return { name: record.name, rootAddress: record.rootAddress,
+    domainAddress: record.domainAddress, verifiedAt: record.verifiedAt };
 }
 
-/** The verified primary name of an address on the active network, or null. */
-export async function getPrimaryName({ address } = {}) {
-  const network = await getActiveNetworkConfig();
-  const target = address ?? (await accountService.getActiveAccount())?.address;
-  if (!target) return null;
-  return (await readAll(network.id))[target] ?? null;
+async function readState(networkId) {
+  const primaryKey = scopedKey(PRIMARY_BASE_KEY, networkId);
+  const domainsKey = scopedKey(DOMAINS_BASE_KEY, networkId);
+  const stored = await chrome.storage.local.get([primaryKey, domainsKey]);
+  const primary = stored[primaryKey] ?? {};
+  const registry = stored[domainsKey];
+  if (registry != null && registry.version !== 1) {
+    throw errCode('STORAGE_VERSION', 'Domain registry schema is unsupported by this wallet.');
+  }
+  if (registry && (!Array.isArray(registry.records) || !Number.isSafeInteger(registry.revision) || registry.revision < 0)) {
+    throw errCode('STORAGE_INVALID', 'Domain registry is unreadable.');
+  }
+  // v0 held only primary aliases. Project them on reads; the next mutation persists v1
+  // alongside the unchanged primary-key shape. Unlink must migrate BEFORE deleting an alias.
+  const records = registry ? registry.records.map(r => ({ ...r })) : Object.entries(primary).map(([accountAddress, r]) => ({
+    ...r, accountAddress, status: 'unknown', checkedAt: 0,
+  }));
+  for (const r of records) {
+    if (!r || typeof r.accountAddress !== 'string' || typeof r.name !== 'string'
+      || !r.name || typeof r.rootAddress !== 'string'
+      || typeof r.domainAddress !== 'string' || !statuses.includes(r.status)
+      || !Number.isFinite(r.verifiedAt) || !Number.isFinite(r.checkedAt)) {
+      throw errCode('STORAGE_INVALID', 'Domain registry contains an invalid record.');
+    }
+  }
+  return { primary: { ...primary }, records: records.map(r => ({
+    accountAddress: r.accountAddress, name: r.name, rootAddress: r.rootAddress,
+    domainAddress: r.domainAddress, status: r.status, checkedAt: r.checkedAt, verifiedAt: r.verifiedAt,
+  })), revision: registry?.revision ?? 0, primaryKey, domainsKey };
 }
 
-/**
- * Link a primary name to the ACTIVE account after on-chain ownership verification.
- * `rootAddress` may be omitted/blank: the canonical root is then AUTO-DISCOVERED by
- * on-chain proof (see nameService.discoverDefaultRoot) — the wallet never asks the user
- * for an address the chain can prove by itself. When no canonical root exists on this
- * network the call returns NAME_ROOT_UNKNOWN and the UI offers the manual root field.
- * @param {{ name: string, rootAddress?: string }} params
- * @returns the stored record (rootAddress = the root that actually verified)
- */
+function updateState(networkId, edit, expectedGeneration = generation) {
+  const prior = updates.get(networkId) || Promise.resolve();
+  const job = prior.catch(() => {}).then(async () => {
+    if (expectedGeneration !== generation) throw errCode('DOMAIN_CONTEXT_CHANGED', 'Wallet was reset.');
+    const state = await readState(networkId);
+    const changed = await edit(state);
+    if (expectedGeneration !== generation) throw errCode('DOMAIN_CONTEXT_CHANGED', 'Wallet was reset.');
+    if (changed !== false) {
+      state.revision++;
+      await chrome.storage.local.set({
+        [state.primaryKey]: state.primary,
+        [state.domainsKey]: { version: 1, revision: state.revision, records: state.records },
+      });
+    }
+    return state;
+  });
+  updates.set(networkId, job);
+  return job.finally(() => { if (updates.get(networkId) === job) updates.delete(networkId); });
+}
+
+function upsert(state, record) {
+  const index = state.records.findIndex(r => r.accountAddress === record.accountAddress && sameName(r, record));
+  if (index >= 0) state.records[index] = record;
+  else state.records.push(record);
+}
+
+async function context(params = {}, live = false) {
+  const startedGeneration = generation;
+  const networkId = live ? (await getActiveNetworkConfig()).id : await getActiveNetworkId();
+  // Capture the client before another context changes the global adapter binding.
+  const client = live ? thruClient.getClient() : null;
+  if (live && thruClient.getConfiguredNetwork().id !== networkId) throw errCode('DOMAIN_CONTEXT_CHANGED', 'Network changed. Refresh your domains.');
+  const accountAddress = (await accountService.getActiveAccount())?.address;
+  if (!accountAddress) throw errCode('ACCOUNT_MISSING', 'No active account.');
+  if ((params.expectedNetworkId && params.expectedNetworkId !== networkId)
+    || (params.expectedAccountAddress && params.expectedAccountAddress !== accountAddress)) {
+    throw errCode('DOMAIN_CONTEXT_CHANGED', 'Account or network changed. Refresh your domains.');
+  }
+  if (startedGeneration !== generation) throw errCode('DOMAIN_CONTEXT_CHANGED', 'Wallet was reset.');
+  return { networkId, accountAddress, client, generation: startedGeneration };
+}
+
+async function assertCurrent(ctx) {
+  await context({ expectedNetworkId: ctx.networkId, expectedAccountAddress: ctx.accountAddress });
+}
+
+async function verifyRecord(record, ctx) {
+  const checkedAt = Date.now();
+  try {
+    const result = await nameService.lookupTrackedName(record, ctx.client);
+    if (result?.leaf?.address !== record.domainAddress) throw new Error('Stored domain identity does not match.');
+    if (result?.leaf?.decodeError) {
+      return { ...record, status: 'unknown', error: result.leaf.decodeError, checkedAt };
+    }
+    const status = result?.leaf?.exists === false ? 'missing'
+      : result?.leaf?.domain ? (result.leaf.domain.owner === ctx.accountAddress ? 'owned' : 'not-owned') : 'unknown';
+    return { ...record, status, checkedAt, verifiedAt: status === 'owned' ? checkedAt : record.verifiedAt };
+  } catch (err) {
+    return { ...record, status: 'unknown', error: err?.message, checkedAt };
+  }
+}
+
+async function view(state, ctx, stale) {
+  const roots = { [await ns.rootRegistrarAddress('thru')]: 'thru', [await ns.rootRegistrarAddress('id')]: 'id' };
+  return {
+    networkId: ctx.networkId, accountAddress: ctx.accountAddress, source: 'tracked',
+    items: state.records.filter(r => r.accountAddress === ctx.accountAddress).map(r => ({
+      ...r, rootName: roots[r.rootAddress] ?? null, stale: stale || r.status === 'unknown',
+      isPrimary: sameName(state.primary[ctx.accountAddress], r),
+    })),
+  };
+}
+
+/** Storage-only first paint; never presents a previous owner check as current. */
+export async function getCachedDomains(params = {}) {
+  const ctx = await context(params);
+  return view(await readState(ctx.networkId), ctx, true);
+}
+
+/** Bounded concurrency; a late read cannot overwrite a newer import/untrack/primary edit. */
+export async function listDomains(params = {}) {
+  const ctx = await context(params, true);
+  const snapshot = await readState(ctx.networkId);
+  const records = snapshot.records.filter(r => r.accountAddress === ctx.accountAddress);
+  const checked = [];
+  for (let i = 0; i < records.length; i += 4) {
+    checked.push(...await Promise.all(records.slice(i, i + 4).map(r => verifyRecord(r, ctx))));
+  }
+  let superseded = false;
+  const state = await updateState(ctx.networkId, current => {
+    if (current.revision !== snapshot.revision) { superseded = true; return false; }
+    for (const r of checked) {
+      upsert(current, r);
+      if (['missing', 'not-owned'].includes(r.status) && sameName(current.primary[ctx.accountAddress], r)) delete current.primary[ctx.accountAddress];
+    }
+  }, ctx.generation);
+  return view(state, ctx, superseded);
+}
+
+/** Import a .thru base label or fully qualified .thru name. */
+export async function trackDomain(params = {}) {
+  const ctx = await context(params, true);
+  let name = String(params.name ?? '').trim();
+  if (name.toLowerCase().endsWith('.thru')) name = name.slice(0, -5);
+  const problem = purchaseNameProblem(name);
+  if (problem) throw errCode('INVALID_PARAMS', problem);
+  const rootAddress = await ns.rootRegistrarAddress('thru');
+  const record = await verifyRecord({ name, rootAddress, accountAddress: ctx.accountAddress,
+    domainAddress: await ns.domainAccountAddress(rootAddress, name), verifiedAt: 0, checkedAt: 0, status: 'unknown' }, ctx);
+  requireOwned(record);
+  await assertCurrent(ctx);
+  await updateState(ctx.networkId, state => upsert(state, record), ctx.generation);
+  return primaryRecord(record);
+}
+
+function requireOwned(record) {
+  if (record.status === 'missing') throw errCode('NAME_NOT_FOUND', 'Domain not found.');
+  if (record.status === 'not-owned') throw errCode('NOT_NAME_OWNER', 'This domain belongs to another account.');
+  if (record.status !== 'owned') {
+    throw errCode('NAME_UNREADABLE', record.error ? `Ownership could not be verified: ${record.error}` : 'Ownership could not be verified. Try again.');
+  }
+}
+
+/** Capture before signing, save only after confirmation. Reset invalidates late saves. */
+export function registrationRecorder({ networkId, accountAddress }) {
+  const startedGeneration = generation;
+  return async ({ name, rootAddress, domainAddress }) => {
+    if (!name || !rootAddress || !domainAddress) throw errCode('INVALID_PARAMS', 'Registration identity is incomplete.');
+    await updateState(networkId, state => upsert(state, {
+      accountAddress, name, rootAddress, domainAddress, status: 'unknown', verifiedAt: 0, checkedAt: 0,
+    }), startedGeneration);
+  };
+}
+
+export async function clearAllDomains() {
+  generation++;
+  await Promise.allSettled([...updates.values()]);
+  const all = await chrome.storage.local.get(null);
+  const keys = Object.keys(all).filter(key => key.startsWith(`${PRIMARY_BASE_KEY}::`) || key.startsWith(`${DOMAINS_BASE_KEY}::`));
+  if (keys.length) await chrome.storage.local.remove(keys);
+}
+
+export async function setPrimaryDomain(params = {}) {
+  const ctx = await context(params, true);
+  const snapshot = await readState(ctx.networkId);
+  const candidate = snapshot.records.find(r => r.accountAddress === ctx.accountAddress && r.domainAddress === params.domainAddress);
+  if (!candidate) throw errCode('NAME_NOT_FOUND', 'This domain is not tracked.');
+  const record = await verifyRecord(candidate, ctx);
+  requireOwned(record);
+  await assertCurrent(ctx);
+  await updateState(ctx.networkId, state => {
+    if (state.revision !== snapshot.revision) throw errCode('DOMAIN_CONTEXT_CHANGED', 'Domain list changed. Refresh and try again.');
+    upsert(state, record);
+    state.primary[ctx.accountAddress] = primaryRecord(record);
+  }, ctx.generation);
+  return primaryRecord(record);
+}
+
+export async function untrackDomain(params = {}) {
+  const ctx = await context(params);
+  await updateState(ctx.networkId, state => {
+    const record = state.records.find(r => r.accountAddress === ctx.accountAddress && r.domainAddress === params.domainAddress);
+    if (record && sameName(state.primary[ctx.accountAddress], record)) throw errCode('DOMAIN_IS_PRIMARY', 'Unlink the primary name before removing it.');
+    state.records = state.records.filter(r => r !== record);
+  }, ctx.generation);
+  return { untracked: true };
+}
+
+// Existing primary APIs retain their response shape and generic name-service validation.
 export async function linkPrimaryName({ name, rootAddress } = {}) {
   const problem = ns.nameProblem(String(name ?? ''));
   if (problem) throw errCode('INVALID_PARAMS', `invalid name: ${problem}`);
-  const account = await accountService.getActiveAccount();
-  if (!account?.address) throw errCode('ACCOUNT_MISSING', 'no active account');
-
+  const ctx = await context({}, true);
   let root = String(rootAddress ?? '').trim();
   if (!root) {
     const discovered = await nameService.discoverDefaultRoot();
-    if (!discovered?.supported) {
-      throw errCode('NAME_ROOT_UNKNOWN', discovered?.reason ?? 'no canonical name root on this network');
-    }
+    if (!discovered?.supported) throw errCode('NAME_ROOT_UNKNOWN', discovered?.reason ?? 'No canonical name root.');
     root = discovered.rootAddress;
   }
-
-  const result = await nameService.lookupName({ name, rootAddress: root });
-  if (!result?.leaf?.exists) {
-    throw errCode('NAME_NOT_FOUND', `no on-chain domain '${name}' under that root registrar`);
-  }
-  const { domain } = result.leaf;
-  if (!domain) {
-    throw errCode('NAME_UNREADABLE', `the domain account exists but its record cannot be read: ${result.leaf.decodeError}`);
-  }
-  if (domain.owner !== account.address) {
-    throw errCode('NOT_NAME_OWNER', 'that name is owned by a different account — only the owner can link it here');
-  }
-
-  const network = await getActiveNetworkConfig();
-  const record = {
-    name: String(name),
-    rootAddress: root,
-    domainAddress: result.leaf.address,
-    verifiedAt: Date.now(),
-  };
-  const all = await readAll(network.id);
-  all[account.address] = record;
-  await writeAll(network.id, all);
-  return record;
+  const record = await verifyRecord({ name: String(name), rootAddress: root, accountAddress: ctx.accountAddress,
+    domainAddress: (await ns.resolveNameChain(root, name))[0], verifiedAt: 0, checkedAt: 0, status: 'unknown' }, ctx);
+  requireOwned(record);
+  await assertCurrent(ctx);
+  await updateState(ctx.networkId, state => {
+    upsert(state, record);
+    state.primary[ctx.accountAddress] = primaryRecord(record);
+  }, ctx.generation);
+  return primaryRecord(record);
 }
 
-/**
- * Re-verify a stored link against the current chain state. Drops the record ONLY on positive
- * disproof — the chain showed a parseable domain owned by a DIFFERENT address. A name that is
- * temporarily unreadable (node down, answer collapsed to absent by the read layer) keeps the
- * last verified record: losing the badge is honest only when the chain says so, not when it
- * is silent. Every successful call still re-checks, so a real ownership change is caught on
- * the next readable read.
- */
 export async function verifyPrimaryName({ address } = {}) {
-  const network = await getActiveNetworkConfig();
-  const target = address ?? (await accountService.getActiveAccount())?.address;
-  if (!target) return null;
-  const record = (await readAll(network.id))[target] ?? null;
+  const ctx = await context({}, true);
+  ctx.accountAddress = address ?? ctx.accountAddress;
+  const record = (await readState(ctx.networkId)).primary[ctx.accountAddress] ?? null;
   if (!record) return null;
-  let stale = false;
-  try {
-    const result = await nameService.lookupName({ name: record.name, rootAddress: record.rootAddress });
-    if (result?.leaf?.domain && result.leaf.domain.owner !== target) {
-      const all = await readAll(network.id);
-      if (all[target]) {
-        delete all[target];
-        await writeAll(network.id, all);
-      }
-      return null; // honestly gone
-    }
-    stale = !(result?.leaf?.domain && result.leaf.domain.owner === target);
-  } catch {
-    // chain unreadable: keep showing the stored record rather than flapping it away
-    stale = true;
+  const checked = await verifyRecord(record, ctx);
+  if (checked.status === 'not-owned') {
+    await updateState(ctx.networkId, state => {
+      if (sameName(state.primary[ctx.accountAddress], record)) delete state.primary[ctx.accountAddress];
+    }, ctx.generation);
+    return null;
   }
-  return { ...record, stale };
+  return { ...record, stale: checked.status !== 'owned' };
 }
 
-/** Remove the active account's primary name on the active network. */
-export async function unlinkPrimaryName({ address } = {}) {
-  const network = await getActiveNetworkConfig();
-  const target = address ?? (await accountService.getActiveAccount())?.address;
-  if (!target) return { unlinked: false };
-  const all = await readAll(network.id);
-  const had = Object.prototype.hasOwnProperty.call(all, target);
-  if (had) {
-    delete all[target];
-    await writeAll(network.id, all);
-  }
-  return { unlinked: had };
+export async function unlinkPrimaryName(params = {}) {
+  const { address } = params;
+  const ctx = await context(params);
+  const target = address ?? ctx.accountAddress;
+  let unlinked = false;
+  await updateState(ctx.networkId, state => {
+    if (params.domainAddress && state.primary[target]?.domainAddress !== params.domainAddress) {
+      throw errCode('DOMAIN_CONTEXT_CHANGED', 'Primary name changed. Refresh and try again.');
+    }
+    unlinked = Boolean(state.primary[target]);
+    delete state.primary[target];
+  }, ctx.generation);
+  return { unlinked };
 }

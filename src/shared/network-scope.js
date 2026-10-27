@@ -71,6 +71,7 @@ export const SCOPED_KEYS = Object.freeze([
   // Primary-name (domain) links (2026-10-09): a name record only exists on one chain's
   // name-service deployment — a devnet-owned name says nothing about mainnet.
   'thru_primary_names',
+  'thru_registered_domains',
 ]);
 
 /**

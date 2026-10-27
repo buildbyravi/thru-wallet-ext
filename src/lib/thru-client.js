@@ -200,9 +200,18 @@ export function getClient() {
  * `exists: false` means the key is valid but has no on-chain account yet — that's the normal
  * state for a freshly generated key, not an error.
  */
-export async function getAccountInfo(address) {
+// RPC metadata uses SDK Pubkey instances, not strings. Keep owner normalization at
+// the SDK boundary; malformed or absent metadata must never pass an ownership check.
+export function getAccountOwnerAddress(raw) {
+  const owner = raw?.meta?.owner ?? raw?.owner;
+  if (owner == null) return null;
+  try { return Pubkey.from(owner).toThruFmt(); }
+  catch { return null; }
+}
+
+export async function getAccountInfo(address, boundClient = getClient()) {
   try {
-    const account = await getClient().accounts.get(address);
+    const account = await boundClient.accounts.get(address);
     if (account?.meta?.balance == null) {
       throw new Error('The node returned an account without a balance.');
     }

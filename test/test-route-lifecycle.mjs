@@ -1330,6 +1330,11 @@ const FIXTURES = {
   'name.getPrimary': () => null,
   'name.linkPrimary': () => { throw new Error('fixture: no on-chain name service'); },
   'name.unlinkPrimary': () => ({ unlinked: false }),
+  'name.getCachedDomains': () => ({ networkId: activeNetwork().id, accountAddress: activeAccount().address, source: 'tracked', items: [] }),
+  'name.listDomains': () => ({ networkId: activeNetwork().id, accountAddress: activeAccount().address, source: 'tracked', items: [] }),
+  'name.trackDomain': ({ name }) => ({ name, rootAddress: 'taRoot', domainAddress: 'taDomain', verifiedAt: Date.now() }),
+  'name.setPrimaryDomain': () => ({ name: 'alice', rootAddress: 'taRoot', domainAddress: 'taDomain', verifiedAt: Date.now() }),
+  'name.untrackDomain': () => ({ untracked: true }),
   // v22 registrar slice: the mount reads must render the honest unsupported state (the
   // fixture chain has no `.thru` registry) — never a fabricated price on mount.
   'name.getRegistry': () => ({ supported: false, reason: 'fixture: no .thru registry initialized' }),
@@ -5104,6 +5109,10 @@ async function nameReviewTest() {
       FIXTURES['name.checkLease'] = () => ({ supported: true, leaseExists: true,
         lease: { owner: mine ? ADDRESS_A : ADDRESS_B, endTime: '1800000000', expiredHint: !mine } });
       await mount();
+      if (mine) {
+        click(buttons(route.el, /^renew$/i)[0]);
+        await settle();
+      }
       await check();
       sheet = await review();
       ok('official registrar review formats the verified payment-token decimals', /0\.001 LAB/.test(textOf(sheet)));
@@ -5116,9 +5125,153 @@ async function nameReviewTest() {
         && chromeLog.calls.includes(mine ? 'name.renewLease' : 'name.claimExpired'));
       destroy();
     }
+    await mount();
+    click(buttons(route.el, /^renew$/i)[0]);
+    await settle();
+    await check();
+    ok('Renew never offers an expired-claim transaction for somebody else\'s domain',
+      /cannot be renewed by this account/.test(textOf(route.el))
+      && buttons(route.el, /^review /i).every(button => button.classList.contains('hidden')));
+    destroy();
   } finally {
     route?.destroy();
     for (const key of Object.keys(FIXTURES)) if (!(key in originals)) delete FIXTURES[key];
+    Object.assign(FIXTURES, originals);
+  }
+}
+
+async function trackedDomainsTest() {
+  section('domains: cached tracked list, imports, primary selection and stale contexts');
+  resetBackend(SCENARIOS[2]);
+  resetDom();
+  const originals = { ...FIXTURES };
+  const originalSend = chrome.runtime.sendMessage;
+  const held = [];
+  let holdLive = true;
+  let holdCache = false;
+  let items = ['alice', 'bob'].map((name, index) => ({
+    name, rootName: 'thru', rootAddress: 'taNP1MFOO2shpn6ORofIGSNiQ-qJ9VE2lDkDwvUmgUmaQZ', domainAddress: `taDomain${index}`,
+    verifiedAt: 1700000000000, checkedAt: 1700000000000, status: 'owned', stale: false, isPrimary: index === 0,
+  }));
+  const data = (stale = false) => ({ networkId: activeNetwork().id, accountAddress: activeAccount().address, source: 'tracked',
+    items: activeAccount().address === ADDRESS_A ? items.map(r => ({ ...r, stale })) : [] });
+  let chosen = null;
+  FIXTURES['name.getCachedDomains'] = () => data(true);
+  FIXTURES['name.listDomains'] = () => data();
+  FIXTURES['name.checkCustomLease'] = ({ name } = {}) => {
+    const isAliceOrBob = name === 'alice' || name === 'bob';
+    return {
+      ...originals['name.checkCustomLease']({ name }),
+      domainExists: isAliceOrBob,
+      leaseExists: isAliceOrBob,
+      lease: isAliceOrBob ? {
+        owner: ADDRESS_A,
+        expiresAtSeconds: '1800000000',
+      } : null,
+    };
+  };
+  FIXTURES['name.setPrimaryDomain'] = params => {
+    chosen = params;
+    items = items.map(r => ({ ...r, isPrimary: r.domainAddress === params.domainAddress }));
+    return items.find(r => r.isPrimary);
+  };
+  FIXTURES['name.unlinkPrimary'] = () => { items = items.map(r => ({ ...r, isPrimary: false })); return { unlinked: true }; };
+  FIXTURES['name.trackDomain'] = ({ name }) => {
+    if (name === 'foreign.thru') throw apiError('NOT_NAME_OWNER', 'This domain belongs to another account.');
+    items.push({ ...items[0], name: name.replace('.thru', ''), domainAddress: 'taImported', isPrimary: false });
+    return items.at(-1);
+  };
+  FIXTURES['name.untrackDomain'] = ({ domainAddress }) => {
+    items = items.filter(r => r.domainAddress !== domainAddress);
+    return { untracked: true };
+  };
+  chrome.runtime.sendMessage = (message, callback) => {
+    if ((holdLive && message.method === 'name.listDomains') || (holdCache && message.method === 'name.getCachedDomains')) {
+      held.push({ method: message.method, callback, result: data(message.method === 'name.getCachedDomains') });
+      return;
+    }
+    return originalSend(message, callback);
+  };
+  const route = NameRoute({ back() {} });
+  DOC.body.appendChild(route.el);
+  try {
+    await settle();
+    click(buttons(route.el, /^my domains$/i)[0]);
+    await settle();
+    ok('saved domains and import controls paint before a live owner read finishes',
+      held.length === 1 && /alice.thru/.test(textOf(route.el)) && /bob.thru/.test(textOf(route.el))
+      && route.el.querySelector('input[placeholder="yourname.thru"]'));
+    ok('cached ownership is labelled and cannot enable primary or renewal actions',
+      /Ownership not verified/.test(textOf(route.el)) && buttons(route.el, /^make primary$/i)[0].disabled
+      && buttons(route.el.querySelector('.name-domain-list'), /^renew$/i).length === 2
+      && buttons(route.el.querySelector('.name-domain-list'), /^renew$/i).every(b => b.disabled));
+    holdLive = false;
+    held.shift().callback({ ok: true, data: data() });
+    await settle();
+    ok('live verification replaces cache and enables only owned-domain actions',
+      !/Ownership not verified/.test(textOf(route.el)) && !buttons(route.el, /^make primary$/i)[0].disabled);
+    click(buttons(route.el.querySelector('.name-domain-list'), /^renew$/i)[0]);
+    await settle();
+    ok('domain Renew preselects its name and enables renewal review',
+      route.el.querySelector('input')?.value === 'alice'
+      && /Owned by you/.test(textOf(route.el))
+      && buttons(route.el, /^review renewal$/i).length === 1);
+    click(buttons(route.el, /^my domains$/i)[0]);
+    await settle();
+    click(buttons(route.el, /^make primary$/i)[0]);
+    await settle();
+    ok('primary selection carries reviewed account/network identity and retains both domains',
+      chosen.domainAddress === 'taDomain1' && chosen.expectedAccountAddress === ADDRESS_A
+      && chosen.expectedNetworkId === 'betanet' && /alice.thru/.test(textOf(route.el)) && /bob.thru/.test(textOf(route.el)));
+    click(buttons(route.el, /^unlink primary$/i)[0]);
+    await settle();
+    ok('unlink leaves both domains in My Domains', buttons(route.el, /^make primary$/i).length === 2);
+    const input = route.el.querySelector('input[placeholder="yourname.thru"]');
+    type(input, 'carol.thru');
+    click(buttons(route.el, /^import domain$/i)[0]);
+    await settle();
+    ok('import adds another domain without replacing the existing list', /carol.thru/.test(textOf(route.el))
+      && /alice.thru/.test(textOf(route.el)) && input.value === '');
+    type(input, 'foreign.thru');
+    click(buttons(route.el, /^import domain$/i)[0]);
+    await settle();
+    ok('ownership rejection keeps the import input and existing domains', input.value === 'foreign.thru'
+      && /belongs to another account/.test(textOf(route.el)) && items.length === 3);
+    click(buttons(route.el, /^remove from list$/i)[1]);
+    await settle();
+    ok('untrack removes only the selected local entry', !/bob.thru/.test(textOf(route.el)) && /alice.thru/.test(textOf(route.el)));
+
+    holdCache = true;
+    click(buttons(route.el, /^refresh ownership$/i)[0]);
+    await settle();
+    held.shift().callback({ ok: true, data: data(true) });
+    await settle();
+    holdCache = false;
+    ok('late cache cannot overwrite a fresh live verification', !/Ownership not verified/.test(textOf(route.el)));
+    holdLive = true;
+    click(buttons(route.el, /^refresh ownership$/i)[0]);
+    await settle();
+    const oldReply = held.shift();
+    backend.activeIndex = 1;
+    emitEvent('accountsChanged', { active: activeAccount() });
+    await settle();
+    oldReply.callback({ ok: true, data: oldReply.result });
+    await settle();
+    ok('old account replies cannot populate the newly selected account', !/alice.thru|carol.thru/.test(textOf(route.el)));
+    route.destroy();
+    route.el.remove();
+    for (const reply of held.splice(0)) reply.callback({ ok: true, data: reply.result });
+    await settle();
+    // This mounts without Router: clean up application-owned toasts separately from
+    // route-owned row listeners, including the toast host from earlier shim documents.
+    (await import('../src/ui/kit/toast.js')).dismissAllToasts();
+    const leaked = detachedListeners();
+    ok('domain list teardown removes row listeners and ignores late reads', leaked.length === 0, JSON.stringify(leaked));
+  } finally {
+    route.destroy();
+    route.el.remove();
+    chrome.runtime.sendMessage = originalSend;
+    for (const reply of held.splice(0)) reply.callback({ ok: true, data: reply.result });
     Object.assign(FIXTURES, originals);
   }
 }
@@ -5145,6 +5298,7 @@ try {
   await historyCacheFirstTest();
   await offlineBalanceConsumersTest();
   await nameReviewTest();
+  await trackedDomainsTest();
   await panelExclusionTest();
   negativeControls();
 } finally {

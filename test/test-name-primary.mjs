@@ -131,10 +131,10 @@ client.accounts.get = async (address) => {
     return { meta: { balance: 1n }, data: rootParses ? buildRootBytes('id', rootAuthority) : new Uint8Array([8, 8, 8, 8]) };
   }
   if (address === LEAF_ID) { // explicit-root .id read: a foreign-owned domain, always present
-    return { meta: { balance: 1n }, data: buildDomainBytes(SOMEONE_ELSE, NAME, ID_ROOT) };
+    return { meta: { balance: 1n, owner: Pubkey.from(ns.NAME_SERVICE_PROGRAM) }, data: buildDomainBytes(SOMEONE_ELSE, NAME, ID_ROOT) };
   }
   if (address !== LEAF_THRU || !leafExists) return notFound(); // model the SDK's real absence shape
-  return { meta: { balance: 1n }, data: buildDomainBytes(leafOwner) };
+  return { meta: { balance: 1n, owner: Pubkey.from(ns.NAME_SERVICE_PROGRAM) }, data: buildDomainBytes(leafOwner) };
 };
 
 ok('thru_primary_names is declared network-scoped', SCOPED_KEYS.includes('thru_primary_names'));
@@ -247,6 +247,34 @@ leafOwner = SENDER;
     assert.equal(outcome.error.code, 'TX_RESULT_MISSING');
     assert.equal(outcome.error.retryable, true);
     ok('registration submission timeout remains an unknown retryable outcome');
+    assert(!storage.get('thru_registered_domains::betanet').records.some(r => r.name === 'child'));
+    client.transactions.sendAndTrack = async function* () {
+      yield { signature: { value: new Uint8Array(64).fill(1) }, executionResult: { vmError: 0 } };
+    };
+    const confirmed = await handleApiRequest({ method: 'name.register', params: {
+      name: 'child', parentAddress: LEAF_THRU, expectedNetworkId: 'betanet', expectedAccountAddress: SENDER,
+    } });
+    assert.equal(confirmed.ok, true, JSON.stringify(confirmed.error));
+    const saved = storage.get('thru_registered_domains::betanet').records.find(r => r.name === 'child');
+    assert.equal(saved.accountAddress, SENDER);
+    assert.equal(saved.rootAddress, LEAF_THRU);
+    assert.equal(saved.domainAddress, confirmed.data.domainAddress);
+    assert.equal(saved.status, 'unknown');
+    ok('only confirmed registration is automatically retained by the backend without a UI callback');
+    const originalSet = chrome.storage.local.set;
+    try {
+      chrome.storage.local.set = async values => {
+        if ('thru_registered_domains::betanet' in values) throw new Error('quota exceeded');
+        return originalSet(values);
+      };
+      const confirmedUnsaved = await handleApiRequest({ method: 'name.register', params: {
+        name: 'otherchild', parentAddress: LEAF_THRU, expectedNetworkId: 'betanet', expectedAccountAddress: SENDER,
+      } });
+      assert.equal(confirmedUnsaved.ok, true);
+      assert.equal(confirmedUnsaved.data.trackingFailed, true);
+      assert(confirmedUnsaved.data.signature);
+      ok('storage failure after confirmation is separate metadata, never a failed/retryable registration');
+    } finally { chrome.storage.local.set = originalSet; }
   } finally {
     client.proofs.generate = originalProofGenerate;
     client.transactions.buildAndSign = originalBuildAndSign;
@@ -296,6 +324,143 @@ nodeDown = false;
   const after = await handleApiRequest({ method: 'name.getPrimary' });
   assert.equal(after.data, null);
   ok('unlinkPrimary clears the record');
+}
+
+// Versioned tracked registry: migration, preservation, isolation, live truth and races.
+{
+  const registryKey = 'thru_registered_domains::betanet';
+  const primaryKey = 'thru_primary_names::betanet';
+  const primaryService = await import('../src/background/services/primary-name-service.js');
+  storage.delete(registryKey);
+  storage.set(primaryKey, { [SENDER]: { name: NAME, rootAddress: THRU_ROOT, domainAddress: LEAF_THRU, verifiedAt: 123 } });
+  const cachedLegacy = await primaryService.getCachedDomains();
+  assert.equal(cachedLegacy.items[0].name, NAME);
+  assert.equal(cachedLegacy.items[0].stale, true);
+  assert.equal(storage.has(registryKey), false);
+  await primaryService.unlinkPrimaryName();
+  assert.equal(storage.get(registryKey).version, 1);
+  assert.equal(storage.get(registryKey).records[0].name, NAME);
+  assert.equal(storage.get(primaryKey)[SENDER], undefined);
+  ok('storage-only cache projects v0 aliases; unlink persists v1 before removing the primary alias');
+
+  const extra = new Map();
+  const realGet = client.accounts.get;
+  const bobAddress = await ns.domainAccountAddress(THRU_ROOT, 'bob');
+  const mixedAddress = await ns.domainAccountAddress(THRU_ROOT, 'MiX_9');
+  extra.set(bobAddress, { meta: { balance: 1n, owner: Pubkey.from(ns.NAME_SERVICE_PROGRAM) }, data: buildDomainBytes(SENDER, 'bob') });
+  extra.set(mixedAddress, { meta: { balance: 1n, owner: Pubkey.from(ns.NAME_SERVICE_PROGRAM) }, data: buildDomainBytes(SENDER, 'MiX_9') });
+  client.accounts.get = async address => {
+    if (nodeDown) throw new Error('offline');
+    return extra.get(address) ?? realGet(address);
+  };
+  try {
+    await Promise.all([primaryService.trackDomain({ name: 'bob.thru' }), primaryService.trackDomain({ name: 'MiX_9' })]);
+    await primaryService.trackDomain({ name: 'bob' });
+    assert.equal((await primaryService.getCachedDomains()).items.length, 3);
+    assert(storage.get(registryKey).records.some(r => r.name === 'MiX_9'));
+    ok('concurrent imports preserve all names, deduplicate identity and retain paid-registry case/alphabet');
+    await primaryService.setPrimaryDomain({ domainAddress: bobAddress });
+    let live = await primaryService.listDomains();
+    assert.equal(live.source, 'tracked');
+    assert.equal(live.items.length, 3);
+    assert(live.items.every(r => r.status === 'owned' && !r.stale));
+    assert.equal(live.items.find(r => r.isPrimary).name, 'bob');
+    await primaryService.unlinkPrimaryName({ domainAddress: bobAddress });
+    assert.equal((await primaryService.getCachedDomains()).items.length, 3);
+    ok('changing and unlinking primary never removes other tracked domains');
+    const cached = await primaryService.getCachedDomains();
+    assert(cached.items.every(r => r.stale));
+    nodeDown = true;
+    live = await primaryService.listDomains();
+    assert.equal(live.items.length, 3);
+    assert(live.items.every(r => r.stale && r.status === 'unknown'));
+    await assert.rejects(primaryService.setPrimaryDomain({ domainAddress: bobAddress }), e => e.code === 'NAME_UNREADABLE');
+    nodeDown = false;
+    ok('offline reads retain all records as unknown; cached ownership cannot authorize primary selection');
+
+    await primaryService.setPrimaryDomain({ domainAddress: bobAddress });
+    extra.get(bobAddress).data = buildDomainBytes(SOMEONE_ELSE, 'bob');
+    live = await primaryService.listDomains();
+    assert.equal(live.items.find(r => r.name === 'bob').status, 'not-owned');
+    assert.equal(live.items.some(r => r.isPrimary), false);
+    await assert.rejects(primaryService.trackDomain({ name: 'bob' }), e => e.code === 'NOT_NAME_OWNER');
+    await assert.rejects(primaryService.setPrimaryDomain({ domainAddress: bobAddress }), e => e.code === 'NOT_NAME_OWNER');
+    await assert.rejects(primaryService.trackDomain({ name: 'missing' }), e => e.code === 'NAME_NOT_FOUND');
+    ok('transferred/missing domains cannot import or become primary; disproven primary alias is cleared');
+    extra.get(bobAddress).data = buildDomainBytes(SENDER, 'bob');
+    extra.get(bobAddress).meta.owner = Pubkey.from(SOMEONE_ELSE);
+    await assert.rejects(primaryService.trackDomain({ name: 'bob' }), e => e.code === 'NAME_UNREADABLE');
+    extra.get(bobAddress).meta.owner = Pubkey.from(ns.NAME_SERVICE_PROGRAM);
+    extra.get(bobAddress).data = new Uint8Array([2]);
+    await assert.rejects(primaryService.trackDomain({ name: 'bob' }), e => e.code === 'NAME_UNREADABLE');
+    extra.get(bobAddress).data = buildDomainBytes(SENDER, 'bob');
+    ok('wrong owning program and malformed domain bytes never pass ownership verification');
+
+    await assert.rejects(primaryService.trackDomain({ name: 'bob', expectedNetworkId: 'localnet' }), e => e.code === 'DOMAIN_CONTEXT_CHANGED');
+    await assert.rejects(primaryService.trackDomain({ name: 'bob', expectedAccountAddress: SOMEONE_ELSE }), e => e.code === 'DOMAIN_CONTEXT_CHANGED');
+    storage.set('thru_registered_domains::localnet', { version: 1, revision: 0, records: [] });
+    storage.get(registryKey).records.push({ ...storage.get(registryKey).records[0], accountAddress: SOMEONE_ELSE, name: 'foreign' });
+    assert.equal((await primaryService.getCachedDomains()).items.length, 3);
+    assert.deepEqual(storage.get('thru_registered_domains::localnet').records, []);
+    ok('expected context rejects stale actions; other accounts and networks never leak into the list');
+
+    const getBeforeRace = client.accounts.get;
+    let release;
+    const held = new Promise(resolve => { release = resolve; });
+    let requested;
+    const started = new Promise(resolve => { requested = resolve; });
+    client.accounts.get = async address => {
+      if (address === bobAddress) { requested(); await held; }
+      return getBeforeRace(address);
+    };
+    const pendingList = primaryService.listDomains();
+    await started;
+    await primaryService.untrackDomain({ domainAddress: bobAddress });
+    release();
+    const raceResult = await pendingList;
+    assert(!raceResult.items.some(r => r.name === 'bob'));
+    assert(raceResult.items.every(r => r.stale));
+    client.accounts.get = getBeforeRace;
+    ok('a late ownership refresh cannot resurrect an untracked domain');
+    await primaryService.setPrimaryDomain({ domainAddress: LEAF_THRU });
+    await assert.rejects(primaryService.untrackDomain({ domainAddress: LEAF_THRU }), e => e.code === 'DOMAIN_IS_PRIMARY');
+    await assert.rejects(primaryService.unlinkPrimaryName({ domainAddress: bobAddress }), e => e.code === 'DOMAIN_CONTEXT_CHANGED');
+    ok('untracking requires unlinking primary first; stale unlink cannot clear a different primary');
+    const beforeFuture = storage.get(registryKey);
+    storage.set(registryKey, { version: 99, records: [] });
+    await assert.rejects(primaryService.getCachedDomains(), e => e.code === 'STORAGE_VERSION');
+    await assert.rejects(primaryService.trackDomain({ name: NAME }), e => e.code === 'STORAGE_VERSION');
+    assert.equal(storage.get(registryKey).version, 99);
+    storage.set(registryKey, beforeFuture);
+    ok('future registry schemas fail closed and are never overwritten');
+
+    const lateSave = primaryService.registrationRecorder({ networkId: 'betanet', accountAddress: SENDER });
+    let resetRelease;
+    let resetRequested;
+    const resetHeld = new Promise(resolve => { resetRelease = resolve; });
+    const resetStarted = new Promise(resolve => { resetRequested = resolve; });
+    client.accounts.get = async address => {
+      if (address === LEAF_THRU) { resetRequested(); await resetHeld; }
+      return getBeforeRace(address);
+    };
+    const lateList = primaryService.listDomains().then(() => 'unexpected success', error => error.code);
+    await resetStarted;
+    const reset = await handleApiRequest({ method: 'wallet.reset', params: { confirmation: 'RESET', password: 'Password123!' } });
+    assert.equal(reset.ok, true, JSON.stringify(reset.error));
+    resetRelease();
+    assert.equal(await lateList, 'DOMAIN_CONTEXT_CHANGED');
+    await assert.rejects(lateSave({ name: NAME, rootAddress: THRU_ROOT, domainAddress: LEAF_THRU }), e => e.code === 'DOMAIN_CONTEXT_CHANGED');
+    assert(![...storage.keys()].some(key => key.startsWith('thru_registered_domains::') || key.startsWith('thru_primary_names::')));
+    ok('wallet reset clears both stores on every network; late refresh/confirmed-save callbacks cannot repopulate them');
+    for (const method of ['name.getCachedDomains', 'name.listDomains', 'name.trackDomain', 'name.setPrimaryDomain', 'name.untrackDomain']) {
+      const locked = await handleApiRequest({ method });
+      assert.equal(locked.error.code, 'WALLET_LOCKED');
+    }
+    ok('all five tracked-domain methods are unavailable when locked');
+  } finally {
+    client.accounts.get = realGet;
+    nodeDown = false;
+  }
 }
 
 // [8] notification click → explorer of the SETTLING network

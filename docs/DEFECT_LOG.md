@@ -21,7 +21,50 @@ checks remain open. Check `src/` before treating any historical symptom as curre
 
 ---
 
+## Domain review audit (2026-10-27) - `READ`, `TEST`, browser harness
+
+**IMPLEMENTED / TESTED**: domain review expanded the page with an inline panel, and duplicated
+the form's live values at confirmation rather than binding the reviewed term/context. Review
+now uses the existing `Sheet`, with a captured quote, term, account, network and lease expiry.
+Cancel/Escape do not sign; changes invalidate review; close removes the same listeners.
+
+An old availability reply could arm a newly typed name during the 450ms debounce because its
+sequence was invalidated only when the next request started. Input now invalidates immediately,
+and teardown clears the debounce. The password helper previously retained transaction errors
+as authentication retries; the domain flow now keeps only authentication errors in that dialog
+and returns unknown/stale transaction errors to the route. An optional lifecycle abort closes
+the password prompt and clears secrets when leaving the route.
+
+The DOM shim lacked `isConnected`, so generic route-mount checks did not exercise the domain
+card's asynchronous hydration. That property and dedicated mounted domain regressions now run
+in the full suite. Build/full tests pass. Real Chrome screenshots using the actual route and
+built CSS confirm no height expansion and accessible scrolling at 400x600 and narrow/short
+320px sizes. This is not evidence of a live wallet signing flow.
+
 ## 1. The expensive ones
+
+### Domain import rejected SDK metadata owners (2026-10-27)
+
+**IMPLEMENTED / TESTED**: import returned "Ownership could not be verified" for valid domain
+accounts. The strict program-owner check coerced the SDK's `Pubkey` object with `String`,
+yielding `[object Object]` instead of its Thru address. Synthetic tests used strings and missed
+the runtime shape. The adapter now owns one `Pubkey.from(...).toThruFmt()` normalizer, reused
+by domain and registrar verification; tests exercise actual SDK objects, wrong program owners
+and malformed metadata. No ownership check was removed. The generic Manage action was also
+replaced with Renew, which opens a prefilled, renewal-only view; custom-registrar renewal is
+explicitly unavailable rather than falling through to registration or claiming another lease.
+
+### Additional registrations disappeared when primary changed (2026-10-27)
+
+**IMPLEMENTED / TESTED**: a single `thru_primary_names` alias was used as the entire domain
+list. Registering another name replaced that alias; unlinking removed the only discovery hint.
+Contract v29 separates the tracked inventory from primary selection within the same service.
+Versioned migration retains old aliases, confirmed handlers persist new candidates without a
+popup callback, and import verifies ownership before storage. Primary/untrack/refresh share
+one serialized revision guard. Cached candidates remain stale and cannot authorize actions.
+Regression tests cover the original two-domain loss, unlink, concurrent imports, ownership
+loss/offline state, future schemas and late refreshes. This is tracked inventory, not an index
+of all domains owned on-chain; names already lost from the old alias store must be imported.
 
 ### 1.1 BigInt at the message port — `BROWSER`
 

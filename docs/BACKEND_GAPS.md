@@ -48,8 +48,8 @@ registrar first, with the official paid `.thru` registry as fallback when that i
 registrar. It does not query `.id` availability or offer `.id` minting. Name lookup still reads
 explicit `.id` roots, so resolution remains available. The route formats prices using the mint
 decimals returned by `token.readMint`, and formats native THRU with the shared 9-decimal asset
-definition. Each entry has its own review and submission; multiple names are separate
-transactions. The official paid registrar's `name.renewLease` operation is the supported
+definition. Registration is single-name only, with a bottom-sheet review; multi-entry controls
+and batch totals are deleted. The official paid registrar's `name.renewLease` operation is the supported
 meaning of “extend.”
 
 **VERIFIED AGAINST LIVE NETWORK (read-only, Betanet, 2026-10-26)**: the `.thru` paid-registry
@@ -61,9 +61,25 @@ payment behavior.
 
 **UNSUPPORTED / UNVERIFIED**:
 
-- The backend cannot enumerate all domains owned by an account. My Domains shows only an
-  explicitly linked primary name after a fresh ownership check; expiry facts are not available
-  for that link.
+- The backend cannot enumerate all domains owned by an account. My Domains now displays a
+  wallet-local tracked registry (contract v29), not complete discovery. It retains confirmed
+  registrations and migrated primary links, and accepts ownership-verified .thru imports.
+  Removing/unlinking a primary alias does not remove its tracked entry. Cached entries paint
+  immediately as stale; fresh lookup results distinguish owned, transferred, absent and unknown.
+- **BLOCKED (2026-10-27)**: full discovery was requested instead of a saved-domain list.
+  The pinned SDK supports `client.accounts.list`, and the official
+  [ListAccounts request](https://thru.org/docs/api-ref/grpc/messages/thru/services/v1/list-accounts-request.md)
+  documents owner filtering and pagination. A live Betanet query using the name-service
+  program as `params.owner_bytes`, with page size 5, returned `RESOURCE_EXHAUSTED` / `account
+  listing database budget exceeded`. Metadata owner means the program, not the user's domain
+  owner; complete enumeration still requires parsing domain data, checking roots/ownership,
+  and proving pagination completeness. The owner subsequently approved a tracked registry as
+  a separate solution to disappearing names; it does not remove this full-discovery limitation.
+- `name.getCachedDomains`, `name.listDomains`, `name.trackDomain`, `name.setPrimaryDomain`
+  and `name.untrackDomain` are unlocked-only metadata/read methods, not additional signing
+  paths. Primary changes/imports require a fresh backend ownership check. Unsupported future
+  storage schemas are never overwritten. Registrations report `trackingFailed` separately if
+  local persistence fails after confirmation.
 - Betanet's official paid `.thru` registry is not initialized, so its paid registration and lease
   renewal/claim handlers return unsupported there. The custom registrar is the live `.thru`
   offer, but custom lease renewal/claim is not wired in the wallet.
@@ -71,13 +87,15 @@ payment behavior.
   it as resolution-only. The lower-level generic name-service write remains self-signed and
   refuses a signer that is not the parsed root authority (`NAME_PARENT_AUTHORITY`); the Betanet
   `.id` root is third-party controlled, so ordinary wallet accounts cannot mint beneath it.
-- Atomic multi-name registration is not supported. The route prepares, reviews, and confirms
-  each name independently, and tracks confirmed, failed, and unknown outcomes per name.
+- Atomic multi-name registration is not supported or offered. The single-name flow distinguishes
+  confirmed, failed, and unknown outcomes, with no automatic resubmission after a timeout.
 - **VERIFIED AGAINST LIVE NETWORK (Betanet, 2026-10-27)**: one unique `.thru` registration
   through the real background API router returned an on-chain execution result; a follow-up
   read confirmed the selected test account as lease owner. The handler quoted 1,000 base
   units/year. Charged network fee was not returned, and this did not exercise the rendered UI.
-- A rendered Chrome popup/side-panel review/auth flow and live renewal have not been verified.
+- Real Chrome visual-harness review layout is **TESTED** (actual route and built CSS; mocked
+  bridge; 400x600 light/dark and narrow/short 320px layouts). Actual extension popup/side-panel
+  review/auth behavior and live renewal remain **UNVERIFIED**.
 
 ### C1. Token balances — implemented; token-transfer behavior still needs live verification
 

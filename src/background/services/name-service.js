@@ -25,7 +25,7 @@ import * as thruClient from '../../lib/thru-client.js';
 import * as vault from '../../lib/vault.js';
 import { getActiveNetworkConfig } from './network-service.js';
 import * as pending from './pending-tx-service.js';
-import { formatSignature } from '../../lib/registrar.js';
+import { formatSignature, purchaseNameProblem } from '../../lib/registrar.js';
 
 function featureDisabled() {
   const err = new Error(
@@ -77,17 +77,42 @@ export async function lookupName({ name, rootAddress } = {}) {
   } else {
     requireAddress(root, 'rootAddress');
   }
-  const chain = await ns.resolveNameChain(root, name);
+  return readName(name, root, thruClient.getClient());
+}
+
+// Internal tracked-domain read: paid .thru labels have a wider official alphabet than
+// generic name-service labels. Keep that validator at the backend boundary, not in UI.
+export async function lookupTrackedName({ name, rootAddress }, boundClient) {
+  const thruRoot = await ns.rootRegistrarAddress('thru');
+  const registrarLabel = rootAddress === thruRoot && !String(name).includes('.');
+  const problem = registrarLabel ? purchaseNameProblem(name) : ns.nameProblem(name);
+  if (problem) throw coded('INVALID_PARAMS', `invalid name: ${problem}`);
+  requireAddress(rootAddress, 'rootAddress');
+  return readName(name, rootAddress, boundClient, registrarLabel, true);
+}
+
+async function readName(name, root, boundClient, registrarLabel = false, checked = false) {
+  const chain = registrarLabel
+    ? [await ns.domainAccountAddress(root, name), root]
+    : await ns.resolveNameChain(root, name);
   const leafAddress = chain[0];
   // Direct client read preserves domain bytes for owner decoding. Propagate RPC errors:
   // unreadable is unknown, never evidence that a name is available.
-  const info = await thruClient.getAccountInfo(leafAddress);
+  const info = await thruClient.getAccountInfo(leafAddress, boundClient);
   if (!info || !info.exists) {
     return { chain, leaf: { address: leafAddress, exists: false }, rootAddress: root, name };
   }
   let domain = null;
   try {
+    if (checked && thruClient.getAccountOwnerAddress(info.raw) !== ns.NAME_SERVICE_PROGRAM) {
+      throw new Error('Domain program ownership could not be verified.');
+    }
     const parsed = ns.parseDomainAccount(info.raw);
+    const expected = name.split('.')[0].toLowerCase();
+    if (checked && (parsed.parent !== chain[1] || parsed.name.toLowerCase() !== expected
+      || parsed.nameLen !== new TextEncoder().encode(parsed.name).length)) {
+      throw new Error('Domain identity does not match the requested name.');
+    }
     // Bridge-safe: registeredAt is a chain BigInt and cannot cross the message port as-is.
     domain = { ...parsed, registeredAt: parsed.registeredAt.toString() };
   } catch (e) {
@@ -329,7 +354,7 @@ export async function registerName({ name, parentAddress, expectedNetworkId, exp
       }
       if (update?.executionResult) {
         if (update.executionResult.vmError === 0) {
-          return { signature: formatted, domainAddress };
+          return { signature: formatted, domainAddress, rootAddress: parent };
         }
         const userCode = update.executionResult.userErrorCode ?? 0;
         throw coded(
