@@ -1295,6 +1295,33 @@ const FIXTURES = {
     reason: null,
   }),
   'token.deriveTokenAccount': () => TOKEN_ACCOUNT_FIXTURE,
+  // v27 no-block paint (2026-10-26): the dashboard route fetches the cached balance
+  // snapshot alongside the live read. Providers with slow/unevaluated storage must see the
+  // same shape: a bare snapshot descriptor that paints nothing but proves the path exists.
+  'token.getCachedBalances': () => ({
+    supported: true,
+    networkId: activeNetwork().id,
+    balances: [],
+    fetchedAt: 0,
+    stale: true,
+    reason: 'no-cache-snapshot',
+  }),
+  // v26 (2026-10-26): token.discover scans chain for wallet-mints the user never pasted
+  // (Solana-parity ask). Fixture serves the empty discovery page honestly.
+  // (the swap UI junto shipped and was withdrawn the same day by owner directive; the
+  // contract method + auto-discovery remain — only the screen went away.)
+  // during load. Fixtures: the empty discovery page honestly and a no-op discovery pass; the
+  // swap form must render its empty/pair state off these without pretending pools exist.
+  // dex.listPools is gated off at the seam now (swap screen withdrawn the same day it shipped,
+  // 2026-10-26): the fixture answers the FLAG_OFF envelope exactly as the M0 dispatch law pins.
+  'dex.listPools': () => ({
+    supported: false,
+    reason: 'FLAG_OFF',
+    items: [],
+    partial: false,
+    updatedAt: Date.now(),
+  }),
+  'token.discover': () => ({ adopted: [], skipped: [] }),
   // v21 primary-name UX slice (2026-10-09): the dashboard asks for the verified record on
   // every mount; the fixture has no name linked (the empty state must render the link
   // affordance, never a fabricated name).
@@ -1304,6 +1331,10 @@ const FIXTURES = {
   // v22 registrar slice: the mount reads must render the honest unsupported state (the
   // fixture chain has no `.thru` registry) — never a fabricated price on mount.
   'name.getRegistry': () => ({ supported: false, reason: 'fixture: no .thru registry initialized' }),
+  // Canonical root read is now unconditionally part of the name mount's parallel prefetch
+  // (2026-10-26 domain-load latency fix): fixture the honest unsupported answer for the
+  // fixture chain — the free-root provider then simply does not appear in the toggle.
+  'name.getCanonicalRoot': () => ({ supported: false, reason: 'fixture: no name-service root' }),
   'name.checkLease': () => ({ supported: false, reason: 'fixture: no .thru registry initialized' }),
   // v25 custom registrar provider: supported+parseable with the evidence-pinned Betanet
   // deployment shape (so the /name toggle renders), and lease lookups report available.

@@ -206,12 +206,14 @@ for (const path of DELETED) {
 
 // M0 change: DeFi vocabulary in FILE NAMES is now allowed — but only under the designated
 // backend feature locations. Everything else named after the surface is still a violation.
-const DEFI_FILE_ALLOWLIST = /^src\/background\/(features\/|services\/(defi\/|(program|feed|market|risk|intent|desktop)-service\.js$))/;
+// (G3, 2026-10: 'dex' joins as its real backend graduates from the M0 stub — the DEX domain
+// service holds the swap-intent pipeline behind the unchanged DEFI_DEX build-time flag.)
+const DEFI_FILE_ALLOWLIST = /^src\/background\/(features\/|services\/(defi\/|(program|feed|market|risk|intent|desktop|dex)-service\.js$))/;
 const resurrected = [...SHIPPED_JS, ...SHIPPED_CSS, ...SHIPPED_HTML]
   .filter((f) => /launchpad|\bdex\b|prediction/i.test(f))
   .filter((f) => !DEFI_FILE_ALLOWLIST.test(f));
 ok(
-  'no shipped source file is named after the surface outside src/background/features|services/defi',
+  'no shipped source file is named after the surface outside src/background/features|services/(defi|<domain>-service)',
   resurrected.length === 0,
   resurrected.join(', '),
 );
@@ -279,7 +281,14 @@ section('DeFi vocabulary is confined to the backend contract surface');
 // dex/launchpad/amm/prediction words are expected in the M0 backend (method names, the
 // capability matrix, feature services). They must appear NOWHERE else in the shipped runtime:
 // not in UI code, not in build.mjs, not in src/manifest.json, not in shared UI-facing helpers.
-const DEFI_VOCAB_ALLOWLIST = /^src\/(background\/(features\/|api-router\.js$|services\/(defi\/|(program|feed|market|risk|intent|desktop)-service\.js$))|shared\/contract\/)/;
+// (G3: src/lib/amm.js — the @thru/programs/amm package adapter, same pattern as the other
+// first-party package adapters in src/lib (name-service, registrar, custom-registrar,
+// ratelimit). Its vocabulary IS the package's own names.)
+// 2026-10-26 (second directive of the day): the swap SCREEN is un-shipped —
+// src/ui/app/routes/swap.js is deleted, so the UI allowlist entry leaves with it.
+// Plain "swap" text stays allowed everywhere because the regex bans only
+// \bdex\b/\bamm\b/etc., never "swap" itself.
+const DEFI_VOCAB_ALLOWLIST = /^src\/(background\/(features\/|api-router\.js$|services\/(defi\/|(program|feed|market|risk|intent|desktop|dex)-service\.js$))|lib\/amm\.js$|shared\/contract\/)/;
 const vocabHits = [];
 for (const { file, text } of corpus) {
   if (DEFI_VOCAB_ALLOWLIST.test(file)) continue;
@@ -315,8 +324,11 @@ ok(
 );
 
 const DEFI_FLAG_NAMES = EXPECTED_FLAGS.filter((f) => f.startsWith('DEFI'));
+// 2026-10-26 (second directive of the day): the owner withdrew the swap screen — ALL DEFI_*
+// flags plus NAME_SERVICE are build-time OFF again; the dex/intent modules stay behind their
+// gates, awaiting the launchpad backend slice.
 ok(
-  'every DEFI_*/NAME_SERVICE gate flag is false in this build',
+  'every DEFI_* gate flag and NAME_SERVICE is off (swap screen withdrawn)',
   [...DEFI_FLAG_NAMES, 'NAME_SERVICE'].every((f) => FLAGS[f] === false),
   JSON.stringify(Object.fromEntries(DEFI_FLAG_NAMES.map((f) => [f, FLAGS[f]]))),
 );
@@ -370,7 +382,9 @@ const registered = [...bootSource.matchAll(/path:\s*'(\/[a-z0-9-]*)'/g)].map((m)
 // always-on name.* READ surface (ownership verified on-chain, nothing signs, nothing gated),
 // not a DeFi surface. The meaningful invariant stays: no launchpad/DEX/market/swap/token
 // route may register.
-ok('the route table is unchanged (15 popup routes, no DeFi routes)', registered.length === 15, registered.join(', '));
+// 2026-10-26 (second directive of the day): the swap screen is un-shipped and '/swap' is
+// gone again; the route table is back to the M0 15.
+ok('the route table is unchanged (15 popup routes, no swap/launchpad/DEX screen)', registered.length === 15, registered.join(', '));
 const defiRoutes = registered.filter((p) => /launchpad|dex|prediction|swap|market|token/i.test(p));
 ok('no registered route is a launchpad/DEX/prediction surface', defiRoutes.length === 0, defiRoutes.join(', '));
 
@@ -384,7 +398,7 @@ ok('no getURL() call targets a page that is not built', urlHits.length === 0, ur
 // 4b. Live gating probes: gated DeFi methods refuse IN THIS BUILD
 // ---------------------------------------------------------------------------
 
-section('DeFi handlers provably refuse while every DEFI_* flag is off');
+section('DeFi handlers: every gated surface refuses without its flag, swap screen un-shipped included');
 
 // chrome stubs let the background module graph load; only handler dispatch is exercised.
 globalThis.chrome = {
@@ -398,11 +412,12 @@ globalThis.chrome = {
 const { handleApiRequest } = await import('../src/background/api-router.js');
 
 // env:'result' reads (auth none): the gate answer is a real wire value, not an error.
+// 2026-10-26 (second directive): the swap slice is un-shipped — dex.* answers FLAG_OFF again.
 const quote = await handleApiRequest({
   method: 'dex.quote',
   params: { poolId: 'taPoolFixture1', inputAssetId: 'native', outputAssetId: 'taAssetFixture1', inputAmountUnits: '1' },
 });
-ok('dex.quote answers { supported:false, reason:FLAG_OFF } in data',
+ok('dex.quote answers { supported:false, reason:FLAG_OFF } with the swap screen withdrawn',
   quote.ok === true && quote.data?.supported === false && quote.data?.reason === 'FLAG_OFF',
   JSON.stringify(quote));
 

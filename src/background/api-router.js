@@ -49,6 +49,7 @@ import { beginSigningOperation } from './services/signing-guard.js';
 const TRANSACTION_METHODS = new Set([
   'tx.claimFaucet', 'tx.sendChecked', 'tx.autoCreateAccount', 'tx.registerAccount',
   'token.deploy', 'token.transferChecked',
+  'name.register', 'name.purchase', 'name.renewLease', 'name.claimExpired',
   'intent.submit',
 ]);
 
@@ -182,7 +183,7 @@ const handlers = Object.assign(Object.create(null), {
   // own authority check is the arbiter, and its revert is surfaced honestly.
   'name.lookup': (params) => nameService.lookupName(params),
   'name.checkAvailability': (params) => nameService.checkAvailability(params),
-  'name.getCanonicalRoot': () => nameService.getCanonicalRoot(),
+  'name.getCanonicalRoot': (params) => nameService.getCanonicalRoot(params),
   'name.initRoot': (params) => nameService.initRoot(params),
   // v25: the same method serves both registration paths. via='custom' switches to the
   // evidence-pinned custom registrar (self-signed, target = signer); any other/absent via
@@ -240,8 +241,10 @@ const handlers = Object.assign(Object.create(null), {
   'token.generateSeed': () => tokenService.generateMintSeed(),
   'token.import': ({ mintAddress, symbol, name, decimals }) => tokenService.importToken({ mintAddress, symbol, name, decimals }),
   'token.readMint': ({ mintAddress }) => tokenService.readMint({ mintAddress }),
+  'token.discover': ({ address, candidateMints }) => tokenService.discoverTokens({ address, candidateMints }),
   'token.setVisibility': ({ mintAddress, hidden }) => tokenService.setVisibility(mintAddress, hidden),
   'token.getBalances': ({ address }) => tokenService.getTokenBalances({ address }),
+  'token.getCachedBalances': ({ address }) => tokenService.getCachedTokenBalances({ address }),
   'token.transferChecked': (params) => tokenService.transferTokenChecked(params),
 
   // ---- Preferences -----------------------------------------------------

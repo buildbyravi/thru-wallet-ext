@@ -135,7 +135,11 @@ section('Contract v17/v18 DeFi contract-first drop (M0)');
 // v20 (2026-10-09, G2-S0): same method set — the v18 intent surface now has a real,
 // flag-gated native-send implementation behind it (test/test-defi-intent.mjs proves both
 // sides of the gate). A version bump, not a method change.
-ok('the contract advances to v25 without reusing earlier numbers', CONTRACT_VERSION === 25);
+// v26 (2026-10-26): token.discover — Solana-style token auto-discovery (owner-directed ship of
+// the swap slice the same day; additive, auth 'unlocked').
+// v27 (2026-10-26): token.getCachedBalances; v28 (2026-10-26): optional reviewed context for
+// existing name writes. These additions bind the existing handlers to what the user saw at Review.
+ok('the contract advances to v28 without reusing earlier numbers', CONTRACT_VERSION === 28);
 
 const v17 = Object.entries(METHODS).filter(([, spec]) => spec.since === 17).map(([name]) => name);
 const v18 = Object.entries(METHODS).filter(([, spec]) => spec.since === 18).map(([name]) => name);
@@ -188,7 +192,32 @@ ok('v25 custom-registrar reads are open auth:none',
 ok('v25 name.register keeps signing auth and gains optional via/years params',
   METHODS['name.register']?.auth === 'signing'
   && METHODS['name.register']?.params.includes('via') && METHODS['name.register']?.params.includes('years'));
-ok('the contract declares 142 methods in total (81 + 43 + 15 name.* + 1 hook read + 2 registrar reads)', Object.keys(METHODS).length === 142,
+const v26 = Object.entries(METHODS).filter(([, m]) => m.since === 26).map(([n]) => n);
+ok('v26 appends exactly one additive method (token.discover)',
+  v26.length === 1 && v26[0] === 'token.discover', `got ${v26.join(', ')}`);
+ok('token.discover is unlocked-auth (registers tokens; never callable while locked)',
+  METHODS['token.discover']?.auth === 'unlocked');
+ok('token.discover declares address + candidateMints params',
+  METHODS['token.discover']?.params.includes('address') && METHODS['token.discover']?.params.includes('candidateMints'));
+// v27 (2026-10-26): one cached counterpart read so the frontend never gates on RPC.
+const v27 = Object.entries(METHODS).filter(([, m]) => m.since === 27).map(([n]) => n);
+ok('v27 appends exactly one additive method (token.getCachedBalances)',
+  v27.length === 1 && v27[0] === 'token.getCachedBalances', `got ${v27.join(', ')}`);
+for (const nameMethod of ['name.register', 'name.purchase', 'name.renewLease', 'name.claimExpired']) {
+  const spec = METHODS[nameMethod];
+  ok(`${nameMethod} accepts optional reviewed account and network context`,
+    spec.params.includes('expectedAccountAddress') && spec.params.includes('expectedNetworkId'));
+}
+for (const nameMethod of ['name.purchase', 'name.renewLease', 'name.claimExpired']) {
+  ok(`${nameMethod} accepts the reviewed per-year quote`, METHODS[nameMethod].params.includes('expectedPricePerYear'));
+}
+ok('renew and expired claim accept reviewed lease expiry',
+  ['name.renewLease', 'name.claimExpired'].every((nameMethod) => METHODS[nameMethod].params.includes('expectedLeaseEndTime')));
+ok('token.getCachedBalances is open auth:none like every snapshot read',
+  METHODS['token.getCachedBalances']?.auth === 'none');
+ok('token.getCachedBalances declares the address param',
+  METHODS['token.getCachedBalances']?.params.includes('address'));
+ok('the contract declares 144 methods in total (143 + 1 cached-read)', Object.keys(METHODS).length === 144,
   `got ${Object.keys(METHODS).length}`);
 
 // Auth discipline (DEFI-03): reads are call-time honest, prepares are unlocked-only, and

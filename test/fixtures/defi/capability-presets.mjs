@@ -2,8 +2,13 @@
 // (S13). Built FROM the shipped schema + snapshot (test-only imports — never bundled), so a
 // preset can never drift from the contract it simulates.
 //
-//   everythingOff  all flags false — today's real behavior. The M0 test deep-equals the
-//                  `everythingOff` capabilities object against the live handler dispatch.
+//   everythingOff  all flags false — TODAY'S real behavior and shipping baseline:
+//                  the swap screen was withdrawn later on 2026-10-26 (second directive of the
+//                  day, launchpad backend builds first), leaving every DEFI_* flag false. The
+//                  M0 test deep-equals this preset against the live handler dispatch.
+//   swapShipped    the earlier 2026-10-26 code path — DEFI + DEFI_READ + DEFI_DEX +
+//                  DEFI_INTENT on (what the swap slice served while it was built). Simulated:
+//                  kept to exercise the gates-on UI state.
 //   readOnly       DEFI + DEFI_READ — discovery/pool reads surface dossier reasons.
 //   swapOnly       + DEFI_DEX — swap/pool quotes and prepares surface dossier reasons.
 //   full           every DEFI_* flag — STILL mostly unsupported: flags do not fabricate
@@ -93,22 +98,31 @@ export const CAPABILITY_PRESETS = Object.freeze([
     name: 'everythingOff',
     simulated: false,
     flags: OFF,
-    note: 'Exactly what this build serves. Pinned by deep equality against live dispatch.',
+    note: 'What this build serves since 2026-10-26 (second directive: swap screen withdrawn, '
+      + 'launchpad backend builds first) — every DEFI_* flag false; the M0 envelope again. '
+      + 'Pinned by deep equality against live dispatch.',
+  }),
+  buildPreset({
+    name: 'swapShipped',
+    simulated: true,
+    flags: { ...OFF, DEFI: true, DEFI_READ: true, DEFI_DEX: true, DEFI_INTENT: true },
+    note: 'Simulated: the previously-built swap slice code path (DEFI/READ/DEX/INTENT on), kept '
+      + 'to exercise the gates-on UI state. Not what this build ships.',
   }),
   buildPreset({
     name: 'readOnly',
     simulated: true,
     flags: { ...OFF, DEFI: true, DEFI_READ: true },
-    note: 'Discovery/pool/launch reads switch from FLAG_OFF to their dossier reasons '
-      + '(NO_INDEXER, PROGRAM_NOT_VERIFIED, TOKEN_PATH_UNVERIFIED). risk/validateDraft still '
-      + 'need DEFI_RISK; the intent pipeline is entirely off.',
+    note: 'Discovery/launch reads switch from FLAG_OFF to their dossier reasons '
+      + '(NO_INDEXER, TOKEN_PATH_UNVERIFIED); pool reads (G3) answer REAL chain reads now '
+      + '(enabled). risk/validateDraft still need DEFI_RISK; the intent pipeline is off.',
   }),
   buildPreset({
     name: 'swapOnly',
     simulated: true,
     flags: { ...OFF, DEFI: true, DEFI_READ: true, DEFI_DEX: true },
-    note: 'Quote/prepare methods surface PROGRAM_NOT_VERIFIED until the AMM program verifies '
-      + 'live (Q14-Q19 + R2 exit-before-entry). Launchpad/market surfaces stay FLAG_OFF.',
+    note: 'Swap quote/prepare surface EXECUTION_UNVERIFIED pending the live swap probe '
+      + '(R2 exit-before-entry keeps quoteLiquidity on the R2 copy). Launchpad/market stay FLAG_OFF.',
   }),
   buildPreset({
     name: 'full',

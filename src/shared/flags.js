@@ -3,12 +3,18 @@
 // features return only as isolated modules with explicit contracts and tests.
 
 // DeFi feature flags (M0, 2026-10-05 — docs/defi/, docs/DECISIONS.md D-012). These gate the
-// contract-first DeFi backend declared at contract v17 (READ) and v18 (EXEC). Every DEFI_* flag
-// is a build-time constant false with NO query-parameter and NO storage override, by design
-// (DEFI-02): turning one on is a ship decision made by editing this file in a reviewed commit,
-// never something a URL, a message, or a stored value can do at runtime. The launchpad-
-// quarantine test proves the override surface stays inert, and test/test-defi-m0.mjs proves
-// every gated handler honours the flags.
+// contract-first DeFi backend declared at contract v17 (READ) and v18 (EXEC). DEFI_* flags are
+// build-time constants with NO query-parameter and NO storage override, by design (DEFI-02):
+// turning one on is a ship decision made by editing this file in a reviewed commit, never
+// something a URL, a message, or a stored value can do at runtime. The launchpad-quarantine
+// test proves the override surface stays inert, and test/test-defi-m0.mjs proves every gated
+// handler honours the flags.
+//
+// STATE (2026-10-26, second directive of the day): the DEX swap slice graduated on dated live
+// evidence (scripts/defi-evidence/2026-10-25-live-swap-probe.json: pool init + add-liquidity + swap
+// vmError 0 on betanet; 1:1 CPMM quote parity at the base unit) but the owner has withdrawn the
+// swap SCREEN — the backend modules stay in-tree behind their gates, the UI is un-shipped and the
+// dashboard tile shows the roadmap toast again. All DEFI_* + NAME_SERVICE flags are OFF.
 
 export const FLAGS = {
   /** Log route transitions and bridge method names. Never logs params; they can hold secrets. */
@@ -24,6 +30,7 @@ export const FLAGS = {
 
   // Master switch for the DeFi backend surface. Product logic must use isDefiFeatureEnabled(),
   // which treats every feature as off while this is false, regardless of any other value.
+  // OFF again since the 2026-10-26 swap-UI withdrawal (see this file's header).
   DEFI: false,
   DEFI_READ: false,       // read-only discovery/detail surfaces behind the capability gates
   DEFI_DEX: false,        // swap/liquidity quotes and prepared intents

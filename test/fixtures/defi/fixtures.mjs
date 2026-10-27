@@ -94,7 +94,10 @@ export const M0_CURRENT = Object.freeze({
     'programFacts.amm': 'taAMMx8gG44RcOyRqNYZ55pDaAJoGS0R8kPYxBN96sO8kD',
     'limits.slippageMaxBps': 2000,
     'limits.quoteTtlMs': 15000,
-    'featureCapabilities.swap': { supported: false, reason: 'PROGRAM_NOT_VERIFIED' },
+    // 2026-10-26 (second directive): the swap screen and its flags are withdrawn; the dossier
+    // rows stay graduated (the evidence is real, the flags are simply off).
+    'featureCapabilities.swap': true,
+    'featureCapabilities.pools': true,
     'featureCapabilities.usd': { supported: false, reason: 'DEPENDENCY_UNVERIFIED' },
     'featureCapabilities.balances': true,
     'methodCapabilities[dex.quote]': { supported: false, reason: 'FLAG_OFF' },
@@ -125,6 +128,8 @@ export const M0_CURRENT = Object.freeze({
   'market.holders': FLAG_OFF(),
   'risk.assetAssess': DISABLED('Risk assessment'),
 
+  // 2026-10-26 (second directive): DEFI_READ is off again with the swap screen; launchpad reads
+  // gate on it at the shard boundary. (Launchpad backend build is NEXT — no flag flip here.)
   'launchpad.list': FLAG_OFF(),
   'launchpad.get': FLAG_OFF(),
   'launchpad.templates': FLAG_OFF(),
@@ -139,6 +144,8 @@ export const M0_CURRENT = Object.freeze({
   'launchpad.prepareMigrate': DISABLED('Launch migration'),
   'launchpad.prepareClaim': DISABLED('Creator-fee claim'),
 
+  // 2026-10-26 (second directive): the swap slice is withdrawn — dex.* answers its M0 gates
+  // envelope (flags build-time OFF). R2 keeps quoteLiquidity exit-first gated.
   'dex.listPools': FLAG_OFF(),
   'dex.getPool': FLAG_OFF(),
   'dex.positions': DISABLED('Pool positions'),
@@ -152,6 +159,8 @@ export const M0_CURRENT = Object.freeze({
   'market.watchlistRemove': DISABLED('Market watchlist'),
   'desktop.open': exact(ok({ enabled: false, reason: 'FLAG_OFF' })),
 
+  // 2026-10-26 (second directive): DEFI_INTENT is off again — the pipeline answers the gated
+  // envelope like every other unshipped surface.
   'intent.list': DISABLED('Intent pipeline'),
   'intent.get': DISABLED('Intent pipeline'),
   'intent.prepareSend': DISABLED('Intent pipeline'),
@@ -166,10 +175,15 @@ export const M0_CURRENT = Object.freeze({
 // Deterministic for methods whose only proceed-path is offline derivation.
 
 export const M0_FLAG_ON = Object.freeze({
-  'dex.listPools': FLAG_ON_DOSSIER('PROGRAM_NOT_VERIFIED'),
-  'dex.getPool': FLAG_ON_DOSSIER('PROGRAM_NOT_VERIFIED'),
-  'dex.quote': FLAG_ON_DOSSIER('PROGRAM_NOT_VERIFIED'),
-  'dex.quoteLiquidity': FLAG_ON_DOSSIER('PROGRAM_NOT_VERIFIED'),
+  // G3 dossier rungs — pool reads are REAL now (pools dossier row is enabled):
+  //   listPools: honest empty discovery page on a token-registry-less offline process.
+  //   getPool:   fixture poolId does not exist on-chain → honest rpc-error envelope.
+  //   quote:     swap dossier row stays unsupported until a live swap probe lands.
+  //   quoteLiquidity: pools row enabled → R2 exit-before-entry reason surfaces directly.
+  'dex.listPools': spot({ supported: true, source: 'chain', items: [], nextCursor: null, partial: false }),
+  'dex.getPool': spot({ supported: false, reason: 'rpc-error' }),
+  'dex.quote': spot({ supported: false, reason: 'rpc-error' }),
+  'dex.quoteLiquidity': exact(ok({ supported: false, reason: 'Disabled until remove-liquidity verifies live (exit-before-entry, R2).' })),
   'market.assetGet': FLAG_ON_DOSSIER('NO_INDEXER'),
   'market.assetSearch': FLAG_ON_DOSSIER('NO_INDEXER'),
   'market.snapshot': FLAG_ON_DOSSIER('NO_INDEXER'),
@@ -179,7 +193,9 @@ export const M0_FLAG_ON = Object.freeze({
   'launchpad.list': FLAG_ON_DOSSIER('NO_INDEXER'),
   'launchpad.get': FLAG_ON_DOSSIER('NO_INDEXER'),
   'launchpad.templates': FLAG_ON_DOSSIER('TOKEN_PATH_UNVERIFIED'),
-  'dex.positions': FLAG_ON_DOSSIER_ERROR('Pool positions', 'PROGRAM_NOT_VERIFIED'),
+  // G3: pools dossier row enabled → the gated-off stub's dossier error no longer applies.
+  // The real service is account-bound: with no active account it refuses ACCOUNT_MISSING.
+  'dex.positions': exact(fail('ACCOUNT_MISSING', 'no active account')),
   'launchpad.listMine': FLAG_ON_DOSSIER_ERROR('Own-launch reads', 'TOKEN_PATH_UNVERIFIED'),
   'launchpad.uploadImage': FLAG_ON_DOSSIER_ERROR('Launch image upload', 'TOKEN_PATH_UNVERIFIED'),
   'launchpad.prepareCreate': FLAG_ON_DOSSIER_ERROR('Launch creation', 'TOKEN_PATH_UNVERIFIED'),

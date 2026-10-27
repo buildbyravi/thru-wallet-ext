@@ -6,6 +6,8 @@ import { emitAccountsChanged } from './event-service.js';
 import * as balances from './balance-service.js';
 import { registerCreatedRef } from './registration-service.js';
 import { getActiveNetworkId } from './network-service.js';
+import { assertAccountSwitchAllowed, hasActiveSigningOperation } from './signing-guard.js';
+import { refsEqual } from '../../shared/refs.js';
 
 /**
  * Strips raw private key bytes before returning account metadata to the UI.
@@ -72,6 +74,7 @@ export async function listAccounts(options = {}) {
  * @param {Object} ref
  */
 export async function switchActiveAccount(ref) {
+  assertAccountSwitchAllowed();
   await vault.switchActiveAccount(ref);
   const active = await vault.getActiveAccount();
   const publicAccount = toPublicAccount(active);
@@ -86,6 +89,7 @@ export async function switchActiveAccount(ref) {
  * @param {string|null} keyringId
  */
 export async function addHdAccount(keyringId = null) {
+  assertAccountSwitchAllowed();
   const networkId = await getActiveNetworkId();
   const account = await vault.addHdAccount(keyringId);
   const active = await vault.getActiveAccount();
@@ -119,6 +123,7 @@ export async function previewHdAccounts({ keyringId, start = 0, count = 5, withB
  * @param {{ keyringId: string, indices: number[] }} params
  */
 export async function addHdAccounts({ keyringId, indices }) {
+  assertAccountSwitchAllowed();
   const networkId = await getActiveNetworkId();
   const result = await vault.addHdAccounts(keyringId, indices);
   const active = await vault.getActiveAccount();
@@ -136,6 +141,11 @@ export async function addHdAccounts({ keyringId, indices }) {
  * @param {{ ref: Object }} params
  */
 export async function removeHdAccount({ ref }) {
+  // Removing an inactive account does not change the signer for an in-flight operation.
+  // Removing the active account would switch the signer, so keep that mutation locked.
+  if (hasActiveSigningOperation() && refsEqual(ref, await vault.getActiveRef())) {
+    assertAccountSwitchAllowed();
+  }
   const result = await vault.removeHdAccount(ref);
   const active = await vault.getActiveAccount();
   emitAccountsChanged({ active: toPublicAccount(active), removed: result });
@@ -155,6 +165,7 @@ export async function removeHdAccount({ ref }) {
  * @param {string} [label]
  */
 export async function addImportedKey(privateKeyHex, password, label = '') {
+  assertAccountSwitchAllowed();
   const networkId = await getActiveNetworkId();
   const ring = await vault.addPrivateKeyKeyring(privateKeyHex, password, label);
   const active = await vault.getActiveAccount();

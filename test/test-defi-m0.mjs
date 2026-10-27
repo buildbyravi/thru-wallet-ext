@@ -268,9 +268,10 @@ for (const [name, flag] of DOSSIER_RESULT_PROBES) {
   ok('launchpad.validateDraft with DEFI_READ on returns the pinned DraftValidation',
     fixtureMatches(M0_FLAG_ON['launchpad.validateDraft'], draft), JSON.stringify(draft));
 
-  // After every probe the flags are back to all-off.
+  // After every probe the flags are back to the shipped set (2026-10-26, second directive of
+  // the day: ALL off — the swap screen was withdrawn; the launchpad backend builds first).
   ok('flag state fully restored after probes',
-    Object.entries(FLAGS).every(([k, v]) => (k === 'DEBUG_ROUTING' ? true : v === false)),
+    Object.entries(FLAGS).every(([k, v]) => v === false),
     JSON.stringify(FLAGS));
 }
 
@@ -290,6 +291,8 @@ section('Capability presets');
 {
   const live = await handleApiRequest({ method: 'program.capabilities', params: {} });
   const everythingOff = PRESETS.getPreset('everythingOff');
+  // 2026-10-26 (second directive of the day): the swap screen is withdrawn and every DEFI flag
+  // is off; this baseline preset is again the single non-simulated pin of live dispatch.
   ok('everythingOff preset deep-equals the live capabilities dispatch',
     live.ok === true && deepEqual(live.data, everythingOff.capabilities),
     'live dispatch and preset diverged — update the preset builder and the handler together');

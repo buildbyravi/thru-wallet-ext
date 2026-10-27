@@ -38,6 +38,10 @@ export const UNSUPPORTED_REASONS = Object.freeze([
   'FULL_NODE_ONLY',
   'FEE_RESERVE_REQUIRED',
   'PROGRAM_NOT_VERIFIED',
+  // The program IS live-verified but its EXECUTION path has not been observed on-chain yet
+  // (G3 swap dossier row: q14/q15 verified the AMM program 2026-10-07; a dated live-swap
+  // probe graduates it). Distinct from PROGRAM_NOT_VERIFIED so probes read precisely.
+  'EXECUTION_UNVERIFIED',
   'DESTINATION_POOL_PRE_EXISTING',
   'LAUNCH_MODEL_UNAVAILABLE',
   'GUARD_CANNED',

@@ -34,6 +34,19 @@ function coded(code, message, extra = {}) {
   return err;
 }
 
+function assertReviewContext({ expectedNetworkId, expectedAccountAddress, expectedPricePerYear } = {}, network, account, cfg) {
+  if (expectedNetworkId && expectedNetworkId !== network?.id) {
+    throw coded('REVIEW_NETWORK_CHANGED', 'The active network changed after review. Check the name again before signing.');
+  }
+  if (expectedAccountAddress && expectedAccountAddress !== account?.address) {
+    throw coded('REVIEW_ACCOUNT_CHANGED', 'The active account changed after review. Check the name again before signing.');
+  }
+  const currentPrice = cfg?.pricePerYear ?? cfg?.feePerYear;
+  if (expectedPricePerYear != null && String(expectedPricePerYear) !== String(currentPrice)) {
+    throw coded('REVIEW_PRICE_CHANGED', 'The registrar price changed after review. Check the name again for the current price.');
+  }
+}
+
 async function fetchAccountData(address) {
   const info = await thruClient.getAccountInfo(address);
   if (!info?.exists) return { exists: false, data: null, raw: null };
@@ -117,8 +130,11 @@ export async function checkLease({ name } = {}) {
   ]);
   const leaseInfo = await fetchAccountData(leaseAddress);
   let lease = null;
+  let leaseParseError = null;
   if (leaseInfo.exists && leaseInfo.data) {
-    try { lease = reg.parseLease(leaseInfo.data); } catch { lease = null; }
+    try { lease = reg.parseLease(leaseInfo.data); } catch (err) { leaseParseError = err?.message ?? String(err); }
+  } else if (leaseInfo.exists) {
+    leaseParseError = 'lease account data is unavailable';
   }
   const nowSeconds = BigInt(Math.floor(Date.now() / 1000));
   const expirationHint = lease ? lease.leaseEndTime <= nowSeconds : null;
@@ -128,7 +144,8 @@ export async function checkLease({ name } = {}) {
     name: n,
     leaseAddress,
     domainAddress,
-    leaseExists: Boolean(lease),
+    leaseExists: Boolean(leaseInfo.exists),
+    leaseParseError,
     domainExists: domainInfo.exists,
     lease: lease && {
       owner: lease.owner,
@@ -168,7 +185,7 @@ export async function getPaymentBalance() {
  * Token charge = price_per_year × years, paid from the signer's own token account of the
  * registry mint. Steps mirror the first-party CLI exactly.
  */
-export async function purchaseDomain({ name, years } = {}) {
+export async function purchaseDomain({ name, years, expectedNetworkId, expectedAccountAddress, expectedPricePerYear } = {}) {
   const prob = reg.purchaseNameProblem(name);
   if (prob) throw coded('INVALID_NAME', prob);
   const yp = reg.yearsProblem(years);
@@ -181,6 +198,7 @@ export async function purchaseDomain({ name, years } = {}) {
   const registry = await getRegistry();
   if (!registry.supported) throw coded('REGISTRY_ABSENT', registry.reason ?? 'registry not available here');
   const cfg = registry.registry;
+  assertReviewContext({ expectedNetworkId, expectedAccountAddress, expectedPricePerYear }, network, feePayer, cfg);
   if (cfg.tokenProgram !== network.tokenProgramId) {
     throw coded('REGISTRY_UNSUPPORTED', `the registry's token program (${cfg.tokenProgram.slice(0, 12)}…) differs from this build's pinned token program — refusing to construct the payment`);
   }
@@ -255,18 +273,18 @@ export async function purchaseDomain({ name, years } = {}) {
 /**
  * name.renewLease — extend an EXISTING lease owned by the active account. No proofs.
  */
-export async function renewLease({ name, years } = {}) {
-  return renewOrClaim({ name, years, claim: false });
+export async function renewLease(params = {}) {
+  return renewOrClaim({ ...params, claim: false });
 }
 
 /**
  * name.claimExpiredDomain — take over a lease whose end time has passed (owner ≠ signer).
  */
-export async function claimExpiredDomain({ name, years } = {}) {
-  return renewOrClaim({ name, years, claim: true });
+export async function claimExpiredDomain(params = {}) {
+  return renewOrClaim({ ...params, claim: true });
 }
 
-async function renewOrClaim({ name, years, claim }) {
+async function renewOrClaim({ name, years, claim, expectedNetworkId, expectedAccountAddress, expectedPricePerYear, expectedLeaseEndTime }) {
   const prob = reg.purchaseNameProblem(name);
   if (prob) throw coded('INVALID_NAME', prob);
   const yp = reg.yearsProblem(years);
@@ -279,6 +297,7 @@ async function renewOrClaim({ name, years, claim }) {
   const registry = await getRegistry();
   if (!registry.supported) throw coded('REGISTRY_ABSENT', registry.reason ?? 'registry not available here');
   const cfg = registry.registry;
+  assertReviewContext({ expectedNetworkId, expectedAccountAddress, expectedPricePerYear }, network, feePayer, cfg);
   if (cfg.tokenProgram !== network.tokenProgramId) {
     throw coded('REGISTRY_UNSUPPORTED', `the registry's token program (${cfg.tokenProgram.slice(0, 12)}…) differs from this build's pinned token program — refusing to construct the payment`);
   }
@@ -289,6 +308,9 @@ async function renewOrClaim({ name, years, claim }) {
   let lease;
   try { lease = reg.parseLease(leaseInfo.data); }
   catch { throw coded('LEASE_UNREADABLE', `the lease account for '${n}' is present but unreadable`); }
+  if (expectedLeaseEndTime != null && String(expectedLeaseEndTime) !== String(lease.leaseEndTime)) {
+    throw coded('REVIEW_EXPIRY_CHANGED', 'The lease expiry changed after review. Check the name again before signing.');
+  }
 
   const nowSeconds = BigInt(Math.floor(Date.now() / 1000));
   if (claim) {
@@ -341,19 +363,24 @@ async function renewOrClaim({ name, years, claim }) {
 async function submitAndAwait(rawTransaction, { kind, from, displayAmount, errorNoun = 'registrar', describeError = null, result = null } = {}) {
   const network = await getActiveNetworkConfig();
   let formatted = null;
-  for await (const update of thruClient.getClient().transactions.sendAndTrack(rawTransaction)) {
-    if (update?.signature?.value && formatted === null) {
-      formatted = reg.formatSignature(update.signature.value);
-      await pending.track({ signature: formatted, kind, from, to: from, amountUnits: '0', displayAmount: displayAmount ?? null, networkId: network.id }).catch(() => null);
-    }
-    if (update?.executionResult) {
-      if (update.executionResult.vmError === 0) {
-        return { signature: formatted, blockHeight: null, ...(result ?? {}) };
+  try {
+    for await (const update of thruClient.getClient().transactions.sendAndTrack(rawTransaction)) {
+      if (update?.signature?.value && formatted === null) {
+        formatted = reg.formatSignature(update.signature.value);
+        await pending.track({ signature: formatted, kind, from, to: from, amountUnits: '0', displayAmount: displayAmount ?? null, networkId: network.id }).catch(() => null);
       }
-      const userCode = update.executionResult.userErrorCode ?? 0;
-      const decoded = userCode && describeError ? describeError(Number(userCode)) : null;
-      throw coded('REGISTRAR_TX_REVERTED', `Registration transaction reverted on-chain (vmError=${update.executionResult.vmError}${userCode ? `, ${errorNoun} error ${userCode}${decoded ? ` — ${decoded}` : ''}` : ''}).`);
+      if (update?.executionResult) {
+        if (update.executionResult.vmError === 0) {
+          return { signature: formatted, blockHeight: null, ...(result ?? {}) };
+        }
+        const userCode = update.executionResult.userErrorCode ?? 0;
+        const decoded = userCode && describeError ? describeError(Number(userCode)) : null;
+        throw coded('REGISTRAR_TX_REVERTED', `Registration transaction reverted on-chain (vmError=${update.executionResult.vmError}${userCode ? `, ${errorNoun} error ${userCode}${decoded ? ` — ${decoded}` : ''}` : ''}).`);
+      }
     }
+  } catch (err) {
+    if (err?.code === 'REGISTRAR_TX_REVERTED') throw err;
+    throw coded('TX_RESULT_MISSING', `The ${errorNoun} submission could not be resolved${formatted ? ` (signature ${formatted})` : ''}. Check pending transactions and the name before retrying.`, { retryable: true });
   }
   throw coded('TX_RESULT_MISSING', 'Registration transaction never returned an execution result (timed out?).', { retryable: true });
 }
@@ -492,7 +519,7 @@ export async function checkCustomLease({ name } = {}) {
  * CLAIM_EXPIRED are not wired here — only Register is live-verified; an existing lease
  * (active or expired) is reported, never silently overwritten.
  */
-export async function registerCustom({ name, years } = {}) {
+export async function registerCustom({ name, years, expectedNetworkId, expectedAccountAddress, expectedPricePerYear } = {}) {
   const n = String(name ?? '').trim().toLowerCase();
   const prob = tcr.labelProblem(n);
   if (prob) throw tcrCoded('INVALID_NAME', prob);
@@ -507,6 +534,7 @@ export async function registerCustom({ name, years } = {}) {
   if (!info.rootMatchesNameService) {
     throw tcrCoded('TCR_ROOT_MISMATCH', 'the registrar config root does not match the name-service derivation — refusing to construct a registration against a mismatched root');
   }
+  assertReviewContext({ expectedNetworkId, expectedAccountAddress, expectedPricePerYear }, network, feePayer, info);
 
   // Existence pre-verification (creation proofs only apply to NON-existing accounts):
   // lease exists (any state) or domain exists ⇒ the register instruction cannot apply.

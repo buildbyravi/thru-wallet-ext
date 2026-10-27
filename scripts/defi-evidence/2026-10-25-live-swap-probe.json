@@ -1,0 +1,44 @@
+{
+  "date": "2026-10-25T21:09:36.769Z",
+  "network": "betanet",
+  "rpcUrl": "https://rpc.betanet.thru.org",
+  "tester": "tabDLDL9EVZYhRnbgPr0HrQuIvv01AZm9vtV8yIX26KO2J",
+  "tokenA": {
+    "ticker": "AMMA",
+    "mint": "tafXtl25J1-kWm8yPvmJDTw4gHGfqP6raMz-g1Jo5XPdhQ",
+    "deployTx": "tscM8K5SuxFZFiKq9jy9Gv9pSUb5ryjxPpw8vunb0Ak80w4yESn8OuphR0pFBCbB3CR4oXw__GIK9A6c1LXZFrAiFT"
+  },
+  "tokenB": {
+    "ticker": "AMMB",
+    "mint": "ta8mZ99Bkg_U3sUPiPaug66lrA9cvp7z_q3VSSwet0lTEJ",
+    "deployTx": "ts1meV25BE7Mi7VJCW-xLQLBzRgfYEZ-l91sLG0h0xgGOGfuIH40O_RzLPQvT_o1Y_I9PUiVMdkYuFjOPir2N0AiLN"
+  },
+  "pool": {
+    "poolAddress": "taBm41iePetyWNgp2DUC1xTaaS8JWNuTNK6MUzOblC9nw_",
+    "mintOne": "tafXtl25J1-kWm8yPvmJDTw4gHGfqP6raMz-g1Jo5XPdhQ",
+    "mintTwo": "ta8mZ99Bkg_U3sUPiPaug66lrA9cvp7z_q3VSSwet0lTEJ",
+    "lpMint": "taLNCvE9uZe2XYwdCdFoAP7t4GZGzxqxXRTETbUa839nv0",
+    "vaultOne": "taViM4UvO5OMKnHaLcQuRCEREnnyT11XR-sKtEsmsMgFm8",
+    "vaultTwo": "ta0omOnqXxfUtIzq1OxATXdSBPzpkSNmY87EVxGbhqf5G3",
+    "swapFeeBps": 30,
+    "initTx": "tsuVniTBYRtIpuJIcO-e225W9cMxtgM3Ijv1R1XOEkat-WxohuA_NfREfj1NuSE6yI2E_btfp2i9V_6fNnC6GpBSEA"
+  },
+  "liquidity": {
+    "addTx": "tsqMr3GM_uz3zqFhF-FjgXLoNzDnVz_L1xtzn_8WYW_KZt4bHiEZTeBh-Kqxo4gX0UHMJ7-pMPCxUcDT9WbFnJAR1D",
+    "initialReserveOne": "100000000",
+    "initialReserveTwo": "100000000"
+  },
+  "swap": {
+    "direction": "mintOne -> mintTwo",
+    "amountIn": "1000000",
+    "quotedAmountOut": "987158",
+    "minAmountOut": "937800",
+    "swapTx": "tsfYuFIMtMoTJu5-RzICJOc61wBIqiFXlkzY3ByJLA5Q2CY_BRV9_mbXDHtX8q1flF03w9HAfeDaLbQxW7wiW6Ah_Q",
+    "postReserveOne": "101000000",
+    "postReserveTwo": "99012842",
+    "consumedComputeUnits": 56105,
+    "consumedStateUnits": 0,
+    "vmError": 0,
+    "verifiedLive": true
+  }
+}

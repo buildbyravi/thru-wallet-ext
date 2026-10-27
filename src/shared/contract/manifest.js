@@ -123,7 +123,18 @@
 //   name.checkCustomLease, auth none) expose the derived config + per-label lease/domain
 //   truth; name.register gains two OPTIONAL params (via, years) — via:'custom' routes to
 //   registrarService.registerCustom, absent via keeps the behaviour byte-identical.
-export const CONTRACT_VERSION = 25;
+//   v26 (2026-10-26, owner-directed: Solana-style token auto-discovery): `token.discover`
+//   additive, auth 'unlocked'. Scans the wallet's cached history for incoming token mints plus
+//   caller-provided candidates (e.g. discovered pool listings), verifies each mint on-chain,
+//   and registers only chain-verified records. Also the DEFI swap slice shipped (flags flipped
+//   ON in src/shared/flags.js in the same reviewed ship decision) — the contract surface for
+//   dex/intent existed since v17/v18; this flips reachability, not shape.
+//   v27 (2026-10-26, owner directive: the frontend never waits on RPC — see AGENTS.md hard rule
+//   15): `token.getCachedBalances` additive, auth none. Storage-only snapshot of the last
+//   chain-verified token rows for an address on the active network. Fetches with any
+//   failure are never cached, so a cache row is always a complete verified read.
+//   v28 appends optional reviewed network/account/price/expiry facts to name signing requests.
+export const CONTRACT_VERSION = 28;
 
 export const METHODS = {
   // ---- System ------------------------------------------------------------
@@ -412,7 +423,7 @@ export const METHODS = {
     since: 19,
   },
   'name.register': {
-    params: ['name', 'parentAddress', 'networkId', 'password', 'via', 'years'],
+    params: ['name', 'parentAddress', 'networkId', 'password', 'via', 'years', 'expectedNetworkId', 'expectedAccountAddress', 'expectedPricePerYear'],
     returns: '{ signature, domainAddress } — register a label under a parent root/domain; self-signed (authority = fee payer, the ONLY key). ' +
       'Protocol fee 0n — NAME_SERVICE_PROGRAM_FEE = 0 in the first-party CLI (txn_tools.rs, 2026-10-24); no payment token involved. ' +
       'parentAddress may be blank: the canonical root is then auto-discovered on-chain. ' +
@@ -437,10 +448,10 @@ export const METHODS = {
   },
 
   // v23 (2026-10-24): expose the on-chain-proof canonical-root discovery used internally by
-  // name.lookup. Read-only; lets the UI offer free name-service registration beneath a root
-  // that provably exists on the running network when the `.thru` paid registry is absent.
+  // name.lookup. Read-only root facts remain available for lookup and ownership checks; the
+  // Domain route offers `.thru` registrar minting only and does not use this to offer `.id` minting.
   'name.getCanonicalRoot': {
-    params: ['networkId'],
+    params: ['root', 'networkId'],
     returns: '{ supported, rootAddress, rootName, authority, provenance, reason? } — same discovery as name.lookup',
     auth: 'none',
     since: 23,
@@ -494,19 +505,19 @@ export const METHODS = {
     since: 22,
   },
   'name.purchase': {
-    params: ['name', 'years', 'password'],
+    params: ['name', 'years', 'password', 'expectedNetworkId', 'expectedAccountAddress', 'expectedPricePerYear'],
     returns: '{ signature } — buys a .thru lease; price = config.pricePerYear × years in registry token',
     auth: 'signing',
     since: 22,
   },
   'name.renewLease': {
-    params: ['name', 'years', 'password'],
+    params: ['name', 'years', 'password', 'expectedNetworkId', 'expectedAccountAddress', 'expectedPricePerYear', 'expectedLeaseEndTime'],
     returns: '{ signature } — extends the signer-owned lease',
     auth: 'signing',
     since: 22,
   },
   'name.claimExpired': {
-    params: ['name', 'years', 'password'],
+    params: ['name', 'years', 'password', 'expectedNetworkId', 'expectedAccountAddress', 'expectedPricePerYear', 'expectedLeaseEndTime'],
     returns: '{ signature } — takes over an expired lease (owner ≠ signer, chain enforces expiry)',
     auth: 'signing',
     since: 22,
@@ -682,11 +693,27 @@ export const METHODS = {
     auth: 'none',
     since: 14,
   },
+  'token.discover': {
+    params: ['address', 'candidateMints'],
+    returns: '{ adopted: [record], skipped: [{ mintAddress, reason }] } — auto-discovery: mints '
+      + 'seen in cached history or offered as candidates are chain-verified then registered; '
+      + 'no mint enters the registry without an on-chain denomination read',
+    auth: 'unlocked',
+    since: 26,
+  },
   'token.setVisibility': {
     params: ['mintAddress', 'hidden'],
     returns: '{ mintAddress, hidden }',
     auth: 'unlocked',
     since: 4,
+  },
+  'token.getCachedBalances': {
+    params: ['address'],
+    returns: '{ supported, networkId, balances: [cached rows], fetchedAt, stale, reason } — '
+      + 'last clean chain-verified snapshot, storage-only; reason:"no-cache-snapshot" when '
+      + 'nothing is known yet. UI paints this instantly and hydrates via token.getBalances.',
+    auth: 'none',
+    since: 27,
   },
   'token.getBalances': {
     params: ['address'],

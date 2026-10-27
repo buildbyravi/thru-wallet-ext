@@ -214,9 +214,10 @@ export function DashboardRoute({ navigate }) {
   }));
 
   const swapTile = track(PanelItem({
+    // 2026-10-26 owner directive: swap UI removed pending the launchpad backend; tile stays
+    // a roadmap affordance matching main 14e16b1 exactly.
     iconName: 'swap',
     label: 'Swap',
-    disabled: true,
     onClick: () => toast({ tone: 'info', title: 'Swap is coming later', message: 'Swap is planned for a future upgrade.' }),
   }));
 
@@ -377,7 +378,7 @@ export function DashboardRoute({ navigate }) {
       } catch {
         // ignore
       }
-    }, 2_000); // ~6s blocks: one check every 2s settles within a beat of the block landing
+    }, 1_000); // blocks land in a few ms (owner 2026-10-26): a 1s poll settles within a beat of the block landing
   }
 
   function renderPending(list) {
@@ -445,6 +446,30 @@ export function DashboardRoute({ navigate }) {
       }
     } catch {
       // cache miss is not an error
+    }
+
+    // Auto-discovery (v26, Solana-parity ask 2026-10-26): any incoming token mint observed in
+    // cached history is chain-verified and registered serverside, so the asset list below
+    // shows it without the user pasting an address. Best-effort and non-blocking: a chain that
+    // cannot reach some mints yields skipped-reasons, never a failed dashboard.
+    bridge.send('token.discover', { address: account.address }).catch(() => null);
+
+    // Hard rule 15 (2026-10-26): token list paints from the network-scoped snapshot BEFORE
+    // any live read. A slow chain replaces the rows; it never blocks them.
+    {
+      try {
+        const [cachedList, cachedBal] = await Promise.all([
+          bridge.send('token.list'),
+          bridge.send('token.getCachedBalances', { address: account.address }),
+        ]);
+        const cachedState = new Map((cachedBal?.balances || []).map((b) => [b.mintAddress, b]));
+        if (cachedBal?.balances?.length || (Array.isArray(cachedList) && cachedList.length)) {
+          updateAssets(nativeText, Array.isArray(cachedList) ? cachedList : [],
+            cachedBal?.stale !== false, cachedState);
+        }
+      } catch {
+        // Cache miss is not an error; live hydration follows.
+      }
     }
 
     const [infoResult, tokensResult, pendingResult, tokenBalancesResult] = await Promise.allSettled([

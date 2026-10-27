@@ -1,0 +1,20 @@
+{
+  "date": "2026-10-25T10:52:12.206Z",
+  "network": "betanet",
+  "activeAccount": "tabDLDL9EVZYhRnbgPr0HrQuIvv01AZm9vtV8yIX26KO2J",
+  "thruTest": {
+    "label": "audit5jit",
+    "domain": "audit5jit.thru",
+    "years": 1,
+    "signature": "tsTUHcbUDf-u1khdeHOJXnZ5F5SEg_8V_71Ds69KO0u4pT66qV7Gq3fPRRNrUksl2QXdEffai1ZGXVki-RuseEBSNW",
+    "domainAddress": "taEZJhq7_8GVn62KuRVMtQLMR8TOKw3LvljLcXXboR-tdy",
+    "verifiedOnChain": true
+  },
+  "idAudit": {
+    "rootAddress": "taLu3d1rxGdQWWHJxUOK6eT9ti4lWeTijNp0Kk_5YKHARg",
+    "rootName": "id",
+    "rootAuthority": "taXZ73Fm56iRRqrZIDB0q9d12EjiaMcOm-2eE9CNkyMLrq",
+    "signerMatchesAuthority": false,
+    "protectionResult": "NAME_PARENT_AUTHORITY"
+  }
+}

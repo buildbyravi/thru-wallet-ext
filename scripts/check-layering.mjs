@@ -75,10 +75,19 @@ const RULES = [
   {
     id: 'background-features-reach-chain-through-services',
     when: (f) => f.startsWith('src/background/features/'),
-    forbid: (spec) => /lib\/vault(\.js)?$/.test(spec)
-      || /lib\/thru-client(\.js)?$/.test(spec)
-      || (/(^|\/)services\//.test(spec) && !/services\/defi\//.test(spec)),
-    why: 'Features reach chain/vault only through adapters and services; direct imports bypass the fixture-vs-implementation boundary. At M0 the only permitted service import is services/defi.',
+    forbid: (spec, file) => {
+      if (/lib\/vault(\.js)?$/.test(spec) || /lib\/thru-client(\.js)?$/.test(spec)) return true;
+      if (!/(^|\/)services\//.test(spec)) return false;
+      if (/services\/defi\//.test(spec)) return false;
+      // G3+ (DEX graduated from the M0 stub): a feature may import its own single named
+      // domain service (services/<feature>-service.js) where the real logic lives; the thin
+      // feature seam stays the wire/discovery boundary. All OTHER service imports remain
+      // forbidden — the router is still the only integration point between domains.
+      const feature = /^src\/background\/features\/([^/]+)\//.exec(file)?.[1];
+      if (feature && new RegExp(`(^|/)services/${feature}-service(\\.js)?$`).test(spec)) return false;
+      return true;
+    },
+    why: 'Features reach chain/vault only through adapters and services; direct imports bypass the fixture-vs-implementation boundary. Features may import services/defi/* (shared DeFi machinery) and their own services/<feature>-service.js domain module only.',
   },
   {
     id: 'defi-shared-machinery-stays-a-leaf',
@@ -186,7 +195,7 @@ for (const file of files) {
     }
     if (!spec.startsWith('.') && !spec.startsWith('src/')) continue; // other package import
     for (const rule of RULES) {
-      if (rule.when(f) && rule.forbid(spec)) {
+      if (rule.when(f) && rule.forbid(spec, f)) {
         violations.push({ rule: rule.id, file: f, detail: `imports '${spec}'`, why: rule.why });
       }
     }

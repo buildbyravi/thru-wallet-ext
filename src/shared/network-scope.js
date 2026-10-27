@@ -57,6 +57,10 @@ export const GLOBAL_KEYS = Object.freeze([
 /** Base keys that must ALWAYS be network-scoped. Asserted in tests. */
 export const SCOPED_KEYS = Object.freeze([
   'thru_balance_cache',
+  // Token balance rows (2026-10-26): the dashboard's asset list is per-(network, owner) chain
+  // state; a Betanet snapshot must never render on another network, and a failed fetch may not
+  // overwrite a successful snapshot with zeroes.
+  'thru_token_balance_cache',
   'thru_pending_txs',
   'thru_deployed_tokens',
   'thru_history_cache',

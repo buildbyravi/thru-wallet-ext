@@ -67,25 +67,38 @@ const SENDER = walletRes.data.address;
 assert.ok(SENDER.startsWith('ta'));
 console.log('harness: wallet created (offline), sender', SENDER.slice(0, 12) + '…');
 
-// [1] flag OFF: the quarantine envelope is unchanged even though real code now sits behind it.
-for (const [method, params] of [
-  ['intent.list', {}],
-  ['intent.get', { intentId: 'nope' }],
-  ['intent.prepareSend', { address: 'taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKqq', toAddress: RECIPIENT, amountUnits: '1', clientRequestId: 'cr-off' }],
-  ['intent.submit', { intentId: 'nope', bindingHash: 'x', password: PASSWORD }],
-  ['intent.discard', { intentId: 'nope' }],
-  ['intent.rePrepare', { intentId: 'nope' }],
-  ['intent.resume', { intentId: 'nope' }],
-  ['intent.stopWaiting', { intentId: 'nope' }],
-]) {
-  const res = await handleApiRequest({ method, params });
-  assert.equal(res.ok, false, `${method} must be gated off`);
-  assert.equal(res.error.code, 'FEATURE_DISABLED', `${method} code`);
+// [1] flag OFF: this is now the shipped default (swap screen withdrawn 2026-10-26, second
+// directive of the day). The gates-ON pipeline probe below forces the flags in-memory.
+{
+  const shipped = { ...FLAGS };
+  FLAGS.DEFI = false;
+  FLAGS.DEFI_INTENT = false;
+  try {
+    for (const [method, params] of [
+      ['intent.list', {}],
+      ['intent.get', { intentId: 'nope' }],
+      ['intent.prepareSend', { address: 'taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKqq', toAddress: RECIPIENT, amountUnits: '1', clientRequestId: 'cr-off' }],
+      ['intent.submit', { intentId: 'nope', bindingHash: 'x', password: PASSWORD }],
+      ['intent.discard', { intentId: 'nope' }],
+      ['intent.rePrepare', { intentId: 'nope' }],
+      ['intent.resume', { intentId: 'nope' }],
+      ['intent.stopWaiting', { intentId: 'nope' }],
+    ]) {
+      const res = await handleApiRequest({ method, params });
+      assert.equal(res.ok, false, `${method} must be gated off`);
+      assert.equal(res.error.code, 'FEATURE_DISABLED', `${method} code`);
+    }
+    ok('flag OFF: all 8 intent entry points answer the identical FEATURE_DISABLED envelope');
+  } finally {
+    Object.assign(FLAGS, shipped);
+  }
 }
-ok('flag OFF: all 8 intent entry points answer the identical FEATURE_DISABLED envelope');
 
-// Flip the build-time flags in-process (the FLAGS object is const; its properties are the
-// reviewed ship switch — here only to prove the real pipeline behind the gate).
+// Ensure the shipped build default (OFF, swap screen withdrawn), then force the gates ON
+// in-memory for the pipeline probe below — the suite's own module instance, like every other
+// defi suite in this repo.
+assert.equal(FLAGS.DEFI, false, 'DEFI ships off');
+assert.equal(FLAGS.DEFI_INTENT, false, 'DEFI_INTENT ships off');
 FLAGS.DEFI = true;
 FLAGS.DEFI_INTENT = true;
 
@@ -273,3 +286,5 @@ assert.equal(stopWaiting.error.code, 'NOT_READY');
 ok('resume/stopWaiting remain NOT_READY flag-on (waiting-room slice is not inferred)');
 
 console.log(`\ntest-defi-intent: ${checks} checks passed`);
+FLAGS.DEFI = false;
+FLAGS.DEFI_INTENT = false;
