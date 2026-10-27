@@ -174,6 +174,8 @@ export function NameRoute({ back }) {
   // THE search card — the whole product typed into one field, ENS-style.
   async function renderSearchCard(host, entry = draft) {
     const card = h('div', { class: 'name-entry stack stack-2' });
+    const signingAbort = new AbortController();
+    bodyDisposer.add(() => signingAbort.abort());
     host.appendChild(card);
 
     // Hard rule 15 (2026-10-26): the whole card — search field, stepper, price, CTA —
@@ -564,6 +566,7 @@ export function NameRoute({ back }) {
       }
       setStatus('Waiting for password…', '');
       const outcome = await requirePassword({
+        signal: signingAbort.signal,
         title: 'Confirm transaction',
         body: `Enter your password to sign for ${name}.${currentTld()}.`,
         confirmLabel: 'Confirm and sign',
@@ -572,7 +575,7 @@ export function NameRoute({ back }) {
           catch (error) {
             // Only authentication errors stay in the password dialog. A submitted or stale
             // transaction must return to the route, never become a password retry.
-            if (['AUTH_REQUIRED', 'AUTH_FAILED', 'AUTH_LOCKED_OUT', 'INVALID_PASSWORD'].includes(error?.code)) throw error;
+            if (['AUTH_REQUIRED', 'AUTH_LOCKED_OUT'].includes(error?.code)) throw error;
             return { error };
           }
         },
@@ -678,7 +681,7 @@ export function NameRoute({ back }) {
       } catch (err) {
         if (destroyed || !card.isConnected) return;
         if (err?.code === 'TX_RESULT_MISSING' || err?.retryable) {
-          setStatus('Confirmation pending. Check the outcome before trying again.', 'warn');
+          setStatus('Confirmation unavailable. Check the outcome before trying again.', 'warn');
           entry.outcomeUnknown = true;
           entry.recheckRequired = true;
           leaseState = null;
@@ -714,8 +717,10 @@ export function NameRoute({ back }) {
           : registryUp
             ? registry.registry.rootRegistrar
             : leaseState.rootAddress || '';
-        primary = await bridge.send('name.linkPrimary', { name: leaseState.name, rootAddress: rootForLink });
-        toast(`'${leaseState.name}' verified — linked to active account.`);
+        const linked = await bridge.send('name.linkPrimary', { name: leaseState.name, rootAddress: rootForLink });
+        if (destroyed || !card.isConnected) return;
+        primary = linked;
+        toast('Primary name updated');
         await load();
       } catch (err) {
         banner.set(err?.message || 'Could not verify that name on-chain.');

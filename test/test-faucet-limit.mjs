@@ -23,7 +23,6 @@ import {
   RATELIMIT_BUCKET_MAGIC,
   RATELIMIT_POLICY_SIZE,
   RATELIMIT_BUCKET_SIZE,
-  RATELIMIT_CONFIG_SIZE,
   RATELIMIT_GLOBAL_KEY,
   encodeRatelimitConfig,
 } from '@thru/programs/ratelimit';
