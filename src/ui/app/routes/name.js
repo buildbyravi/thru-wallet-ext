@@ -14,7 +14,10 @@ import { PageHeader, Banner } from '../../kit/feedback.js';
 import { Field } from '../../kit/field.js';
 import { Sheet } from '../../kit/sheet.js';
 import { toast } from '../../kit/toast.js';
-import { requirePassword } from '../../domain/password-prompt.js';
+import { TxReviewCard } from '../../domain/tx-review/review-card.js';
+import {
+  submitReviewedReview, classifyReviewError, discardReview,
+} from '../../domain/tx-review/confirm.js';
 import * as bridge from '../bridge.js';
 import { formatTokenAmount } from '../../../shared/format.js';
 import { NATIVE_TOKEN } from '../../../shared/tokens.js';
@@ -549,38 +552,6 @@ export function NameRoute({ back }) {
       if (e.key === 'Enter' && leaseState && !ctaBtn.classList.contains('hidden')) ctaBtn.click();
     });
 
-    async function writeWithPassword(method, name, yrs, customRegister = false, reviewed = {}) {
-      const sendChecked = (extra = {}) => {
-        if (destroyed || !card.isConnected) return null;
-        setStatus('Submitting transaction…', '');
-        return bridge.send(method, customRegister
-          ? { name, years: yrs, via: 'custom', ...reviewed, ...extra }
-          : { name, years: yrs, ...reviewed, ...extra });
-      };
-      const prefs = await bridge.send('settings.get').catch(() => null);
-      if (destroyed || !card.isConnected) return null;
-      if (prefs?.requirePasswordForSigning === false) {
-        return sendChecked();
-      }
-      setStatus('Waiting for password…', '');
-      const outcome = await requirePassword({
-        title: 'Confirm transaction',
-        body: `Enter your password to sign for ${name}.${currentTld()}.`,
-        confirmLabel: 'Confirm and sign',
-        verify: async (password) => {
-          try { return { result: await sendChecked({ password }) }; }
-          catch (error) {
-            // Only authentication errors stay in the password dialog. A submitted or stale
-            // transaction must return to the route, never become a password retry.
-            if (['AUTH_REQUIRED', 'AUTH_FAILED', 'AUTH_LOCKED_OUT', 'INVALID_PASSWORD'].includes(error?.code)) throw error;
-            return { error };
-          }
-        },
-      });
-      if (outcome?.error) throw outcome.error;
-      return outcome?.result ?? null;
-    }
-
     bodyDisposer.on(ctaBtn, 'click', () => {
       if (destroyed || submissionInFlight || ctaBtn.disabled || reviewSheet) return;
       banner.set('');
@@ -595,81 +566,110 @@ export function NameRoute({ back }) {
       const state = leaseState;
       const customRegister = state.kind === 'custom-available';
       if (!customRegister && !registryUp) return;
-      const method = customRegister
-        ? 'name.register'
-        : state.kind === 'mine' ? 'name.renewLease' : state.kind === 'claimable' ? 'name.claimExpired' : 'name.purchase';
-      const title = method === 'name.renewLease' ? 'Confirm renewal'
-        : method === 'name.claimExpired' ? 'Confirm expired claim' : 'Confirm registration';
+
+      // The SAME review pipeline the Send route uses. The domain decoders decide what the
+      // sheet renders; this route only chooses the operation kind.
+      const kind = customRegister ? 'domain-register'
+        : state.kind === 'mine' ? 'domain-renew'
+          : state.kind === 'claimable' ? 'domain-claim' : 'domain-purchase';
+      const title = kind === 'domain-renew' ? 'Confirm renewal'
+        : kind === 'domain-claim' ? 'Confirm expired claim'
+          : kind === 'domain-purchase' ? 'Confirm purchase' : 'Confirm registration';
       const reviewedYears = years;
-      const amount = `${formatTokenAmount(entry.quote.raw, entry.quote.decimals)} ${entry.quote.ticker}`;
-      const reviewed = {
-        expectedAccountAddress: account.address,
-        expectedNetworkId: network.id,
-        ...(customRegister ? { expectedPricePerYear: String(custom.feePerYear) } : {}),
-        ...(!customRegister ? {
-          expectedPricePerYear: String(registry.registry.pricePerYear),
-          ...(state.lease?.endTime != null ? { expectedLeaseEndTime: String(state.lease.endTime) } : {}),
-        } : {}),
-      };
-      const sheet = Sheet({ label: title, className: 'name-confirm-sheet', onClose: () => {
-        if (reviewSheet === sheet) reviewSheet = null;
-      } });
-      reviewSheet = sheet;
-      const row = (label, value) => h('div', { class: 'detail-row' }, [
-        h('span', { class: 'hint', text: label }),
-        h('span', { class: 'detail-val', text: value }),
-      ]);
-      const cancel = h('button', { type: 'button', class: 'btn secondary', text: 'Cancel' });
-      const confirm = h('button', { type: 'button', class: 'btn primary', text: 'Confirm and sign' });
-      sheet.card.appendChild(h('div', { class: 'name-confirm-hero stack stack-2' }, [
-        h('div', { class: 'eyebrow', text: title }),
-        h('h2', { class: 'name-confirm-title', text: `${state.name}.${currentTld()}` }),
-        h('div', { class: 'hint', text: `${reviewedYears} ${reviewedYears === 1 ? 'year' : 'years'}` }),
-      ]));
-      sheet.card.appendChild(h('div', { class: 'detail-table' }, [
-        row('Quoted fee', amount),
-        row('Network fee', 'Not available'),
-        row('Network', network.label || network.id),
-      ]));
-      sheet.card.appendChild(h('div', { class: 'tx-sheet-sig' }, [
-        h('span', { class: 'hint', text: 'Account' }),
-        h('span', { class: 'detail-sheet-mono', text: reviewed.expectedAccountAddress }),
-      ]));
-      sheet.card.appendChild(h('p', { class: 'tx-sheet-note', text: customRegister
-        ? 'Final registration charges may differ from the quote. Network fees are not included.'
-        : 'Network fees are not included in the quote.' }));
-      sheet.card.appendChild(h('div', { class: 'screen-actions' }, [cancel, confirm]));
-      sheet.d.on(cancel, 'click', () => sheet.close());
-      sheet.d.on(confirm, 'click', () => {
-        if (sheet.closed || destroyed || !card.isConnected || submissionInFlight) return;
-        // Close the review trap before opening password authentication. All signed values
-        // come from this review snapshot, never from a subsequently edited form.
-        sheet.close();
-        void submitReviewed(state, method, reviewedYears, customRegister, reviewed);
-      });
-      sheet.open();
+      const params = { name: state.name, years: reviewedYears, ...(customRegister ? { via: 'custom' } : {}) };
+
+      void (async () => {
+        setStatus('Preparing review…', '');
+        let prepared;
+        try {
+          prepared = await bridge.send('tx.prepareReview', { kind, params });
+        } catch (error) {
+          if (destroyed || !card.isConnected) return;
+          setStatus('', '');
+          banner.set(error?.message || 'The review could not be prepared.');
+          return;
+        }
+        if (destroyed || !card.isConnected) return;
+        setStatus('', '');
+        if (!prepared?.supported) {
+          banner.set('This wallet has no decoder for that transaction, so it cannot be signed.');
+          return;
+        }
+
+        const sheet = Sheet({ label: title, className: 'name-confirm-sheet', onClose: () => {
+          if (reviewSheet === sheet) reviewSheet = null;
+        } });
+        reviewSheet = sheet;
+
+        const reviewCard = sheet.track(TxReviewCard({ review: prepared.review }));
+        sheet.card.appendChild(reviewCard.el);
+
+        const cancel = sheet.track({
+          el: h('button', { type: 'button', class: 'btn secondary', text: 'Cancel' }),
+          destroy: () => {},
+        });
+        let confirm = null;
+        confirm = sheet.track({
+          el: h('button', {
+            type: 'button',
+            class: 'btn primary',
+            text: prepared.review.operation.confirmLabel || 'Confirm and sign',
+            disabled: !reviewCard.canConfirm(),
+          }),
+          destroy: () => {},
+        });
+        // The card's acknowledgements gate the confirm control; the sheet owns the listener
+        // so it is removed on close even if the sheet closes while a prompt is open.
+        sheet.d.on(reviewCard.el, 'change', () => {
+          confirm.el.disabled = !reviewCard.canConfirm();
+        });
+
+        sheet.d.on(cancel.el, 'click', () => {
+          discardReview(prepared.reviewId);
+          sheet.close();
+        });
+        sheet.d.on(confirm.el, 'click', () => {
+          if (sheet.closed || destroyed || !card.isConnected || submissionInFlight) return;
+          const acknowledgements = reviewCard.acknowledgements;
+          // Close the review trap before opening password authentication. All signed values
+          // come from this prepared review, never from a subsequently edited form.
+          sheet.close();
+          void submitReviewed(prepared, acknowledgements, kind, state.name);
+        });
+
+        sheet.card.appendChild(h('div', { class: 'screen-actions' }, [confirm.el, cancel.el]));
+        sheet.open();
+      })();
     });
 
-    async function submitReviewed(state, method, reviewedYears, customRegister, reviewed) {
+    async function submitReviewed(prepared, acknowledgements, kind, nameText) {
       submissionInFlight = true;
       setListMutationLocked();
       for (const control of transactionControls) control.disabled = true;
       setStatus('Preparing transaction…', '');
+      const review = prepared.review;
+      const customRegister = kind === 'domain-register';
       try {
-        const result = await writeWithPassword(method, state.name, reviewedYears, customRegister, reviewed);
+        const outcome = await submitReviewedReview({
+          review,
+          acknowledgements,
+          passwordTitle: 'Confirm transaction',
+          passwordBody: `Enter your password to sign for ${nameText}.${currentTld()}.`,
+          confirmLabel: 'Confirm and sign',
+        });
         if (destroyed || !card.isConnected) return;
-        if (!result) { setStatus('Transaction cancelled', ''); return; }
+        if (outcome.status === 'cancelled') { setStatus('Transaction cancelled', ''); return; }
         toast('Transaction confirmed');
-        setStatus(`${state.name}.${currentTld()} · ${method === 'name.renewLease' ? 'Renewal' : 'Registration'} confirmed`, 'ok');
+        setStatus(`${nameText}.${currentTld()} · ${kind === 'domain-renew' ? 'Renewal' : 'Registration'} confirmed`, 'ok');
         ctaBtn.classList.add('hidden');
         entry.completed = true;
         entry.quote = null;
-        if (method !== 'name.renewLease') {
+        if (kind !== 'domain-renew') {
           // Best-effort primary-name link; a failed link must not masquerade as a failed
           // registration — the search card remains the single source of truth afterwards.
           try {
             const rootForLink = customRegister ? custom.root : registry.registry.rootRegistrar;
-            const linked = await bridge.send('name.linkPrimary', { name: state.name, rootAddress: rootForLink });
+            const linked = await bridge.send('name.linkPrimary', { name: nameText, rootAddress: rootForLink });
             if (destroyed || !card.isConnected) return;
             primary = linked;
             toast('Primary name updated');
@@ -677,14 +677,15 @@ export function NameRoute({ back }) {
         }
       } catch (err) {
         if (destroyed || !card.isConnected) return;
-        if (err?.code === 'TX_RESULT_MISSING' || err?.retryable) {
+        const classified = classifyReviewError(err);
+        if (classified.kind === 'uncertain') {
           setStatus('Confirmation pending. Check the outcome before trying again.', 'warn');
           entry.outcomeUnknown = true;
           entry.recheckRequired = true;
           leaseState = null;
           ctaBtn.classList.remove('hidden');
           ctaLabel().textContent = 'Check outcome';
-        } else if (String(err?.code || '').startsWith('REVIEW_')) {
+        } else if (classified.kind === 'stale') {
           banner.set('Transaction details changed. Review the updated details before signing.');
           leaseState = null;
           await load();

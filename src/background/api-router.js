@@ -31,6 +31,7 @@ import * as feedService from './services/feed-service.js';
 import * as marketService from './services/market-service.js';
 import * as riskService from './services/risk-service.js';
 import * as intentService from './services/intent-service.js';
+import * as reviewService from './services/review-service.js';
 import * as nameService from './services/name-service.js';
 import * as primaryNameService from './services/primary-name-service.js';
 import * as registrarService from './services/registrar-service.js';
@@ -232,6 +233,13 @@ const handlers = Object.assign(Object.create(null), {
   'tx.estimateFee': ({ toAddress, amountUnits }) => txService.estimateFee({ toAddress, amountUnits }),
   'tx.simulate': ({ toAddress, amountUnits }) => txService.simulate({ toAddress, amountUnits }),
   'tx.checkDuplicate': (params) => txService.checkDuplicate(params),
+
+  // ---- Contract v29: shared transaction review ---------------------------------
+  // Prepare/decode/review plus the confirm gate. None of these sign; the submit instructions
+  // they return name each operation's EXISTING signing method.
+  'tx.prepareReview': (params = {}) => reviewService.prepareReview(params),
+  'tx.confirmReview': (params = {}) => reviewService.confirmReview(params),
+  'tx.discardReview': (params = {}) => reviewService.discardReview(params),
 
   // ---- Tokens and launchpad --------------------------------------------
   'token.deploy': (params) => tokenService.deployToken(params),

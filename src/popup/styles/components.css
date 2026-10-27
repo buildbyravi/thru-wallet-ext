@@ -1442,6 +1442,102 @@ button.row { cursor: pointer; }
   font-size: 11px;
 }
 
+/* The shared review surface (src/ui/domain/tx-review) — one card for every operation type.
+   Section order is fixed by the component: header -> identity -> what you are doing ->
+   balance change -> fee -> simulation -> execution -> warnings -> acknowledgements. */
+
+.tx-review-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+
+.tx-review-title {
+  font-size: var(--fs-lg);
+  font-weight: 650;
+  color: var(--text-1);
+  margin: 0;
+  line-height: 1.25;
+}
+
+.tx-review-badges {
+  display: flex;
+  gap: var(--sp-1);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  max-width: 50%;
+}
+
+.tx-review-sub {
+  margin: 0;
+  font-size: var(--fs-sm);
+}
+
+.tx-review-protocol {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-3);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+
+.tx-review-protocol-right {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+.tx-review-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.tx-review-section-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: var(--eyebrow-tracking);
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.tx-review-fee-note {
+  margin-top: var(--sp-1);
+}
+
+.tx-review-ack {
+  align-items: flex-start;
+}
+
+.tx-review-ack-label {
+  line-height: 1.4;
+}
+
+.tx-review-disclosure-toggle {
+  align-self: flex-start;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tx-review-disclosure-toggle:hover {
+  color: var(--accent-hover);
+}
+
+.tx-review-raw {
+  word-break: break-all;
+  font-size: var(--fs-xs);
+  white-space: pre-wrap;
+}
+
 /* ---- Rabby Dashboard Tabs ---- */
 
 .dash-tabs {

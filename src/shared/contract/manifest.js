@@ -134,7 +134,14 @@
 //   chain-verified token rows for an address on the active network. Fetches with any
 //   failure are never cached, so a cache row is always a complete verified read.
 //   v28 appends optional reviewed network/account/price/expiry facts to name signing requests.
-export const CONTRACT_VERSION = 28;
+//   v29 (2026-10-27, owner directive: ONE transaction-review system for every wallet feature)
+//   appends the review pipeline: tx.prepareReview (typed intent -> canonical review + bindingHash),
+//   tx.confirmReview (revalidate TTL/binding/account/network/chain facts -> the exact submit
+//   instructions) and tx.discardReview. All three are auth 'unlocked' and NONE of them signs:
+//   submission still goes through each operation's existing signing method, so the signing
+//   boundary, D-003 auth policy and every existing guard are unchanged. Reviews are stored
+//   per network under the scoped key `tx_reviews`.
+export const CONTRACT_VERSION = 29;
 
 export const METHODS = {
   // ---- System ------------------------------------------------------------
@@ -1100,6 +1107,32 @@ export const METHODS = {
     since: 18,
   },
 
+  // ---- Contract v29: the shared transaction-review pipeline -----------------
+  // A typed intent in, the canonical review out. Reads chain facts, decodes through the one
+  // registry, stores the review network-scoped for 120s, and never signs.
+  'tx.prepareReview': {
+    params: ['kind', 'params'],
+    returns: 'ReviewEnvelope { reviewId, bindingHash, expiresAt, review } or '
+      + '{ supported:false, reason } for an operation type with no decoder',
+    auth: 'unlocked',
+    since: 29,
+  },
+  // The revalidation gate between review and signature. Returns the recorded
+  // { method, params } plus the authoritative auth/password policy; does not sign.
+  'tx.confirmReview': {
+    params: ['reviewId', 'bindingHash', 'acknowledgements'],
+    returns: '{ reviewId, kind, submit:{ method, params }, submitPolicy, revalidatedAt, expiresAt }',
+    auth: 'unlocked',
+    since: 29,
+  },
+  // Dropping a prepared review (cancel) — a local delete, no chain effect.
+  'tx.discardReview': {
+    params: ['reviewId'],
+    returns: '{ reviewId, discarded }',
+    auth: 'unlocked',
+    since: 29,
+  },
+
   // ---- Contract v18: DeFi EXECUTE surface (M0) -----------------------------
   // The ONLY DeFi signing method. Signing re-authentication follows the same policy as the
   // wallet-core signing methods (session-only default, password-gated opt-in).
@@ -1137,6 +1170,12 @@ export const ERROR_CODES = {
   // Contract v7. Permanent policy refusal from network.setActive for a saved custom id.
   CUSTOM_NETWORK_DISABLED: 'Custom networks cannot be activated; choose a built-in network.',
   SEND_CONTEXT_CHANGED: 'Sending account or network no longer matches the reviewed transfer.',
+  // Contract v29. Stable review-pipeline refusals; the UI branches on these, never on prose.
+  REVIEW_NOT_FOUND: 'No prepared review with that id exists on the active network.',
+  REVIEW_EXPIRED: 'The prepared review aged out; prepare and read a fresh one.',
+  REVIEW_CONTEXT_CHANGED: 'The active account or network changed after the review.',
+  ACKNOWLEDGEMENT_REQUIRED: 'A required acknowledgement was not accepted.',
+  NOT_EXECUTABLE: 'The review is display-only (undecodable operation); nothing can be signed.',
 
   // ---- Contract v17/v18: DeFi surface (M0) ----------------------------------
   // Stable codes for the DeFi lifecycle. Every one is a first-class state the UI may branch

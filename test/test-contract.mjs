@@ -139,7 +139,22 @@ section('Contract v17/v18 DeFi contract-first drop (M0)');
 // the swap slice the same day; additive, auth 'unlocked').
 // v27 (2026-10-26): token.getCachedBalances; v28 (2026-10-26): optional reviewed context for
 // existing name writes. These additions bind the existing handlers to what the user saw at Review.
-ok('the contract advances to v28 without reusing earlier numbers', CONTRACT_VERSION === 28);
+// v29 (2026-10-27): the shared transaction-review pipeline (tx.prepareReview /
+// tx.confirmReview / tx.discardReview) — prepare+decode reads and a revalidation gate, none of
+// them signing.
+ok('the contract advances to v29 without reusing earlier numbers', CONTRACT_VERSION === 29);
+
+const v29 = Object.entries(METHODS).filter(([, spec]) => spec.since === 29).map(([name]) => name).sort();
+ok('v29 appends exactly the 3 review-pipeline methods',
+  v29.length === 3 && v29.join(',') === 'tx.confirmReview,tx.discardReview,tx.prepareReview',
+  `got ${v29.join(', ')}`);
+ok('no review-pipeline method signs — submission stays on each operation\'s existing method',
+  v29.every((name) => METHODS[name].auth === 'unlocked'));
+ok('tx.prepareReview declares the typed intent params',
+  METHODS['tx.prepareReview']?.params.includes('kind')
+  && METHODS['tx.prepareReview']?.params.includes('params'));
+ok('tx.confirmReview takes the review id, binding and acknowledgements',
+  ['reviewId', 'bindingHash', 'acknowledgements'].every((k) => METHODS['tx.confirmReview']?.params.includes(k)));
 
 const v17 = Object.entries(METHODS).filter(([, spec]) => spec.since === 17).map(([name]) => name);
 const v18 = Object.entries(METHODS).filter(([, spec]) => spec.since === 18).map(([name]) => name);
@@ -217,8 +232,8 @@ ok('token.getCachedBalances is open auth:none like every snapshot read',
   METHODS['token.getCachedBalances']?.auth === 'none');
 ok('token.getCachedBalances declares the address param',
   METHODS['token.getCachedBalances']?.params.includes('address'));
-ok('the contract declares 144 methods in total (143 + 1 cached-read)', Object.keys(METHODS).length === 144,
-  `got ${Object.keys(METHODS).length}`);
+ok('the contract declares 147 methods in total (144 + 3 review-pipeline)',
+  Object.keys(METHODS).length === 147, `got ${Object.keys(METHODS).length}`);
 
 // Auth discipline (DEFI-03): reads are call-time honest, prepares are unlocked-only, and
 // exactly ONE DeFi method signs.

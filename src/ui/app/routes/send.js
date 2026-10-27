@@ -33,7 +33,10 @@ import { AccountAvatar, AddressText } from '../../domain/account-avatar.js';
 import { AccountPicker } from '../../domain/account-picker.js';
 import { AssetSelector } from '../../domain/asset-selector.js';
 import { TokenAvatar } from '../../domain/token-avatar.js';
-import { requirePassword } from '../../domain/password-prompt.js';
+import { TxReviewCard } from '../../domain/tx-review/review-card.js';
+import {
+  submitReviewedReview, classifyReviewError, discardReview,
+} from '../../domain/tx-review/confirm.js';
 import * as bridge from '../bridge.js';
 import { formatThru, parseThruAmount, formatTokenAmount, parseTokenAmount, truncateAddress } from '../../../shared/format.js';
 import { safeAddressParam } from '../../../shared/refs.js';
@@ -770,226 +773,141 @@ export function SendRoute({ params, navigate, back }) {
       })).el));
   }
 
-  // ---- Step 2: review ----------------------------------------------------
-  function renderReview(to, amountText) {
+  // ---- Step 2: review (shared pipeline) ----------------------------------
+  //
+  // This step used to hand-build its own rows, its own duplicate card and its own password
+  // flow — the same confirmation logic the Domain route duplicated. It now asks the shared
+  // review pipeline for the canonical review and renders it with the one review component.
+  // What stays route-specific: the success screen and the error copy that depends on whether
+  // the transfer was actually sent.
+
+  let preparedReview = null;
+  let reviewSeq = 0;
+
+  async function renderReview(to, amountText) {
     clearBody();
     subView = 'review';
     header.setTitle('Confirm send');
-
-    const symbol = asset.isNative ? 'THRU' : (asset.symbol || 'TOKEN');
-    const displayAmount = asset.isNative
-      ? `${formatThru(amountUnits)} THRU`
-      : `${formatTokenAmount(amountUnits, tokenDecimals())} ${symbol}`;
-    const feeUnits = feeInfo?.supported ? BigInt(feeInfo.feeUnits) : 0n;
-    const total = amountUnits + feeUnits;
-    const destAccount = accounts.find((a) => a.address === to);
-    const destContact = contacts.find((c) => c.address === to);
-    const destLabel = destAccount
-      ? (destAccount.label || destAccount.keyring?.label || 'Account')
-      : destContact?.label;
-
-    const rows = [
-      h('div', { class: 'detail-row' }, [
-        h('span', { class: 'eyebrow', text: 'From' }),
-        h('div', { class: 'detail-val' }, [
-          h('div', { text: account.label || 'Account' }),
-          h('div', { class: 'mono hint', text: truncateAddress(account.address) }),
-        ]),
-      ]),
-      h('div', { class: 'detail-row' }, [
-        h('span', { class: 'eyebrow', text: 'To' }),
-        // The human label helps identify an own account/contact, but the FULL address must
-        // remain visible at review: a nickname alone cannot authorize an irreversible send.
-        h('div', { class: 'detail-val' }, [
-          ...(destLabel ? [h('div', { class: 'strong', text: destLabel })] : []),
-          h('div', { class: 'mono', style: { wordBreak: 'break-all' }, text: to }),
-        ]),
-      ]),
-      h('div', { class: 'detail-row' }, [
-        h('span', { class: 'eyebrow', text: 'Amount' }),
-        h('div', { class: 'detail-val mono', text: displayAmount }),
-      ]),
-    ];
-
-    if (!asset.isNative && recipientState?.tokenAccountExists === false) {
-      // A real, user-visible consequence: this send is two chain transactions, not one, and
-      // the second fee is part of the cost of sending to a first-time holder.
-      rows.push(h('div', { class: 'detail-row' }, [
-        h('span', { class: 'eyebrow', text: 'Recipient token account' }),
-        h('div', { class: 'detail-val', text: `Will be created for them — one extra THRU fee applies.` }),
-      ]));
-    }
-
-    rows.push(h('div', { class: 'detail-row' }, [
-      h('span', { class: 'eyebrow', text: 'Network fee' }),
-      h('div', {
-        class: 'detail-val mono',
-        text: asset.isNative
-          ? (feeInfo?.supported ? `${formatThru(feeUnits)} THRU` : 'unknown')
-          : 'paid in THRU · unmeasured for token transfers',
-      }),
-    ]));
-
-    rows.push(h('div', { class: 'detail-row' }, [
-      h('span', { class: 'eyebrow', text: 'Total' }),
-      h('div', {
-        class: 'detail-val mono strong',
-        text: asset.isNative
-          ? (feeInfo?.supported ? `${formatThru(total)} THRU` : `${formatThru(amountUnits)} THRU + fee`)
-          : `${displayAmount} + THRU fee`,
-      }),
-    ]));
-
-    rows.push(h('div', { class: 'detail-row' }, [
-      h('span', { class: 'eyebrow', text: 'Network' }),
-      h('div', { class: 'detail-val', text: network?.label || '—' }),
-    ]));
-
-    body.appendChild(h('div', { class: 'detail-table' }, rows));
-
-    // Repeated transaction confirmation (Option C: Rabby security card)
-    let isRepeatConfirmed = false;
-    let isRepeatDetected = false;
-
-    const repeatDesc = h('div', { class: 'security-repeat-desc', text: '' });
-    const repeatCheckbox = h('input', {
-      type: 'checkbox',
-      id: 'send-repeat-confirm-check',
-    });
-    const repeatCheckboxLabel = h('label', {
-      for: 'send-repeat-confirm-check',
-      class: 'checkbox-field',
-    }, [
-      repeatCheckbox,
-      h('span', { text: 'I want to send this duplicate transfer anyway' }),
-    ]);
-
-    const repeatCard = h('div', { class: ['security-repeat-card', 'hidden'] }, [
-      h('div', { class: 'security-repeat-header' }, [
-        h('div', { class: 'security-repeat-badge' }, [icon('clock', 14)]),
-        h('div', { class: 'security-repeat-titles' }, [
-          h('div', { class: 'security-repeat-title', text: 'Repeated Transaction' }),
-          repeatDesc,
-        ]),
-      ]),
-      h('div', { class: 'security-repeat-confirm' }, [repeatCheckboxLabel]),
-    ]);
-
-    body.appendChild(repeatCard);
-
-    const confirmBtn = track(Button({
-      label: 'Sign & send',
-      variant: 'accent',
-      iconName: 'send',
-      busyLabel: 'Sending…',
-      onClick: () => submit(to, confirmBtn, editBtn, isRepeatConfirmed),
-    }));
-
-    viewDisposer.on(repeatCheckbox, 'change', () => {
-      isRepeatConfirmed = Boolean(repeatCheckbox.checked);
-      if (isRepeatDetected) {
-        confirmBtn.update({ disabled: !isRepeatConfirmed });
-      }
-    });
-
-    const editBtn = track(Button({
-      label: 'Edit',
-      variant: 'text',
-      onClick: () => {
-        if (!submitting) renderForm({ to, amount: amountText });
-      },
-    }));
-
-    body.appendChild(h('div', { class: 'screen-actions' }, [confirmBtn.el, editBtn.el]));
-
-    // Check duplicate asynchronously
-    bridge.send('tx.checkDuplicate', {
-      toAddress: to,
-      amountUnits: amountUnits.toString(),
-      mintAddress: asset.mintAddress || null,
-      fromAddress: account.address,
-    }).then((dup) => {
-      if (dup?.isDuplicate && !destroyed && subView === 'review') {
-        isRepeatDetected = true;
-        repeatCard.classList.remove('hidden');
-        const timing = dup.isPending
-          ? 'is currently pending on-chain'
-          : `was submitted ${dup.elapsedMs ? Math.round(dup.elapsedMs / 1000) : 'a few'}s ago`;
-        repeatDesc.textContent = `Identical send ${timing}`;
-        confirmBtn.update({ disabled: !isRepeatConfirmed });
-      }
-    }).catch(() => {});
-  }
-
-  // ---- Step 3: submit ----------------------------------------------------
-  async function submit(to, confirmBtn, editBtn, allowDuplicate = false) {
-    if (submitting) return;
-    submitting = true;
-    confirmBtn?.setBusy?.(true);
-    confirmBtn?.update({ disabled: true });
-    editBtn?.update({ disabled: true });
     banner.clear();
-    // Capture the reviewed facts BEFORE an async settings read or password prompt. Another
-    // extension page may switch source/network while that dialog is open; the checked
-    // background methods refuse to sign against anything but this exact reviewed context.
-    let sendStarted = false;
-    const reviewed = {
+
+    const seq = ++reviewSeq;
+    const snapshot = {
+      to,
       fromAddress: account.address,
-      network: { ...network },
+      network: { id: network.id, label: network.label, explorerUrl: network.explorerUrl },
       asset: { ...asset },
       amountUnits,
       decimals: tokenDecimals(),
     };
-    try {
-      const method = reviewed.asset.isNative ? 'tx.sendChecked' : 'token.transferChecked';
-      const params = reviewed.asset.isNative
-        ? { toAddress: to, amountUnits: reviewed.amountUnits.toString(), allowDuplicate: Boolean(allowDuplicate) }
-        : { mintAddress: reviewed.asset.mintAddress, toAddress: to,
-          amountUnits: reviewed.amountUnits.toString(), allowDuplicate: Boolean(allowDuplicate) };
-      params.fromAddress = reviewed.fromAddress;
-      params.networkId = reviewed.network.id;
-      const symbol = reviewed.asset.isNative ? 'THRU' : (reviewed.asset.symbol || 'TOKEN');
-      const prefs = await bridge.send('settings.get').catch(() => null);
-      const sendChecked = (extra = {}) => {
-        sendStarted = true;
-        return bridge.send(method, { ...params, ...extra });
+
+    body.appendChild(Spinner({ label: 'Preparing review…' }).el);
+
+    const kind = snapshot.asset.isNative ? 'native-send' : 'token-transfer';
+    const reviewParams = snapshot.asset.isNative
+      ? { toAddress: to, amountUnits: snapshot.amountUnits.toString() }
+      : {
+        mintAddress: snapshot.asset.mintAddress,
+        toAddress: to,
+        amountUnits: snapshot.amountUnits.toString(),
       };
-      const result = prefs?.requirePasswordForSigning === false
-        ? await sendChecked()
-        : await requirePassword({
-          title: 'Confirm send',
-          body: `Re-enter your password to sign and broadcast this ${symbol} transfer.`,
-          confirmLabel: 'Sign & send',
-          verify: (password) => sendChecked({ password }),
-        });
-      if (!result || destroyed) return;
-      renderSuccess(to, result, reviewed);
+
+    let prepared;
+    try {
+      prepared = await bridge.send('tx.prepareReview', { kind, params: reviewParams });
+    } catch (error) {
+      if (destroyed || seq !== reviewSeq) return;
+      banner.set(error.message || 'The review could not be prepared.');
+      renderForm({ to, amount: amountText });
+      return;
+    }
+    if (destroyed || seq !== reviewSeq) return;
+
+    if (!prepared?.supported) {
+      // No decoder means no review, and no review means no signature. Never a generic screen.
+      banner.set('This wallet has no decoder for that transaction, so it cannot be signed.',
+        'warning');
+      renderForm({ to, amount: amountText });
+      return;
+    }
+
+    preparedReview = prepared;
+    paintReview(prepared, snapshot, amountText);
+  }
+
+  function paintReview(prepared, snapshot, amountText) {
+    clearBody();
+    header.setTitle('Confirm send');
+
+    let confirmBtn = null;
+    const card = track(TxReviewCard({
+      review: prepared.review,
+      onChange: ({ canConfirm }) => confirmBtn?.update({ disabled: !canConfirm }),
+    }));
+    body.appendChild(card.el);
+
+    confirmBtn = track(Button({
+      label: prepared.review.operation.confirmLabel || 'Sign & send',
+      variant: 'accent',
+      iconName: 'send',
+      busyLabel: 'Sending…',
+      disabled: !card.canConfirm(),
+      onClick: () => signPrepared(prepared, card, snapshot, confirmBtn, editBtn),
+    }));
+
+    let editBtn = null;
+    editBtn = track(Button({
+      label: 'Edit',
+      variant: 'text',
+      onClick: async () => {
+        if (submitting) return;
+        // Cancelling drops the prepared review: it must not stay confirmable after the form
+        // is edited, and it must not linger in storage for the whole TTL.
+        discardReview(prepared.reviewId);
+        preparedReview = null;
+        renderForm({ to: snapshot.to, amount: amountText });
+      },
+    }));
+
+    body.appendChild(h('div', { class: 'screen-actions' }, [confirmBtn.el, editBtn.el]));
+  }
+
+  async function signPrepared(prepared, card, snapshot, confirmBtn, editBtn) {
+    if (submitting || !prepared) return;
+    submitting = true;
+    confirmBtn?.update({ disabled: true });
+    editBtn?.update({ disabled: true });
+    banner.clear();
+
+    const symbol = snapshot.asset.isNative ? 'THRU' : (snapshot.asset.symbol || 'TOKEN');
+    try {
+      const outcome = await submitReviewedReview({
+        review: prepared.review,
+        acknowledgements: card.acknowledgements,
+        passwordTitle: 'Confirm send',
+        passwordBody: `Re-enter your password to sign and broadcast this ${symbol} transfer.`,
+        confirmLabel: 'Sign & send',
+      });
+      if (outcome.status === 'cancelled' || destroyed) return;
+      preparedReview = null;
+      renderSuccess(snapshot.to, outcome.result, snapshot);
     } catch (error) {
       if (destroyed) return;
-      // The background owns the authoritative guards (whitelist, duplicate submission,
-      // recipient activation, mint existence, token balance), so its message is shown rather
-      // than re-derived here.
-      if (error.code === 'RECIPIENT_NOT_ACTIVATED') {
-        banner.set(error.message, 'warning');
-      } else if (error.code === 'DUPLICATE_SUBMISSION') {
-        banner.set(error.message, 'warning');
-      } else if (error.code === 'SEND_CONTEXT_CHANGED') {
-        await load({ notice: error.message });
-      } else if (sendStarted && (error.retryable
-        || ['SERVICE_TIMEOUT', 'PORT_ERROR', 'NO_RESPONSE'].includes(error.code))) {
-        // A bridge timeout is NOT proof that signing failed. The worker may still be
-        // broadcasting after this page gave up waiting; inviting an immediate retry can
-        // send twice. In-flight dedupe is a backstop, not a substitute for honest status.
-        banner.set('Could not confirm whether this transfer was submitted. Check Activity '
-          + 'and the explorer before trying again.', 'warning');
+      const classified = classifyReviewError(error, {
+        uncertainMessage: 'Could not confirm whether this transfer was submitted. Check Activity '
+          + 'and the explorer before trying again.',
+      });
+      if (classified.kind === 'stale') {
+        // The reviewed transaction no longer matches the chain. Show the form again with the
+        // reason; the user must read a fresh review before anything is signed.
+        preparedReview = null;
+        await load({ notice: classified.message });
       } else {
-        banner.set(error.message || 'The transfer failed.');
+        banner.set(classified.message, classified.kind === 'uncertain' ? 'warning' : 'error');
       }
     } finally {
       submitting = false;
       if (!destroyed) {
-        confirmBtn?.setBusy?.(false);
-        confirmBtn?.update({ disabled: false });
+        confirmBtn?.update({ disabled: !card?.canConfirm?.() });
         editBtn?.update({ disabled: false });
       }
     }

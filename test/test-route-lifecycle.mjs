@@ -35,6 +35,11 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { applyTheme } from '../src/popup/theme.js';
 import { CONTRACT_VERSION } from '../src/shared/contract/manifest.js';
+// The route tests drive the REAL review decoders through mocked bridge replies, so a decoder
+// regression fails here as well as in test-tx-review.mjs.
+import { decodeReview } from '../src/shared/tx-review/registry.js';
+import '../src/shared/tx-review/decoders/index.js';
+import { stateFromWarnings } from '../src/shared/tx-review/model.js';
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -1108,6 +1113,133 @@ function apiError(code, message, retryable = false) {
   return err;
 }
 
+/** Prepared reviews held by the mocked background, keyed by review id. */
+const preparedReviews = new Map();
+let reviewCounter = 0;
+
+function reviewEnvelope(kind, facts) {
+  const network = activeNetwork();
+  const account = activeAccount();
+  const content = decodeReview(kind, {
+    network: { id: network.id, label: network.label, isTestnet: Boolean(network.isTestnet) },
+    account: { address: account.address, label: account.label },
+    facts,
+  });
+  const review = {
+    reviewVersion: 1,
+    reviewId: `review_${++reviewCounter}`,
+    kind,
+    state: stateFromWarnings(content.warnings),
+    createdAt: Date.now(),
+    expiresAt: Date.now() + 120_000,
+    bindingHash: `binding_${reviewCounter}`,
+    network: { id: network.id, label: network.label, isTestnet: Boolean(network.isTestnet) },
+    account: { address: account.address, label: account.label },
+    ...content,
+    assets: { ...content.assets, balanceAfter: null },
+    simulation: {
+      status: 'unavailable',
+      reason: 'Transaction simulation requires a dry-run RPC that has not been verified on Thru.',
+      provenance: 'tx.simulate (capability stub)',
+      checkedAt: Date.now(),
+    },
+    submitPolicy: null,
+  };
+  return review;
+}
+
+function prepareReviewFixture(kind, params) {
+  const network = activeNetwork();
+  const account = activeAccount();
+  let facts;
+  if (kind === 'native-send') {
+    facts = {
+      fromAddress: account.address,
+      fromLabel: account.label,
+      toAddress: params.toAddress,
+      recipientLabel: backend.contacts.find((c) => c.address === params.toAddress)?.label || null,
+      amountUnits: String(params.amountUnits),
+      recipient: { exists: true },
+      balanceUnits: account.balance,
+      fee: FIXTURES['tx.estimateFee'](),
+      duplicate: null,
+      selfSend: params.toAddress === account.address,
+      transferProgramId: network.transferProgramId,
+      networkId: network.id,
+      networkLabel: network.label,
+    };
+  } else if (kind === 'token-transfer') {
+    const token = backend.tokens.find((t) => t.mintAddress === params.mintAddress) || TOKEN_FIXTURE;
+    facts = {
+      fromAddress: account.address,
+      fromLabel: account.label,
+      toAddress: params.toAddress,
+      recipientLabel: null,
+      mintAddress: token.mintAddress,
+      symbol: token.symbol,
+      name: token.name,
+      decimals: token.decimals,
+      metadataVerified: true,
+      metadataSource: 'mint-account',
+      mintExists: true,
+      amountUnits: String(params.amountUnits),
+      recipient: { exists: true },
+      sourceTokenAccount: { address: TOKEN_ACCOUNT_FIXTURE, exists: true },
+      recipientTokenAccount: { address: TOKEN_ACCOUNT_FIXTURE, exists: true },
+      balanceUnits: '9000000',
+      fee: { supported: false, reason: 'No measured fee for token transfers on this chain.' },
+      duplicate: null,
+      tokenProgramId: network.tokenProgramId,
+      networkId: network.id,
+      networkLabel: network.label,
+    };
+  } else if (kind === 'domain-register') {
+    facts = {
+      fromAddress: account.address,
+      fromLabel: account.label,
+      name: params.name,
+      tld: 'thru',
+      years: params.years,
+      provider: 'custom',
+      pricePerYear: '1000',
+      totalPriceUnits: String(1000n * BigInt(params.years)),
+      nativeBalanceUnits: account.balance,
+      availability: { state: 'available', readError: null },
+      root: 'ta1rootfixture00000000000000000000000000000',
+      configAddress: 'ta1configfixture00000000000000000000000000',
+      treasury: 'ta1treasuryfixture000000000000000000000000',
+      program: { name: 'Custom `.thru` registrar', address: 'ta1registrarfixture00000000000000000000000', verified: true, source: 'fixture' },
+      instruction: { name: 'Register domain', opcode: 1 },
+      feeReserveUnits: '1000',
+      networkId: network.id,
+      networkLabel: network.label,
+    };
+  } else {
+    return { supported: false, kind, reason: 'KIND_UNSUPPORTED', knownKinds: [] };
+  }
+  const review = reviewEnvelope(kind, facts);
+  const submit = kind === 'native-send'
+    ? { method: 'tx.sendChecked', params: { toAddress: facts.toAddress, amountUnits: facts.amountUnits, fromAddress: account.address, networkId: network.id } }
+    : kind === 'token-transfer'
+      ? { method: 'token.transferChecked', params: { mintAddress: facts.mintAddress, toAddress: facts.toAddress, amountUnits: facts.amountUnits, fromAddress: account.address, networkId: network.id } }
+      : { method: 'name.register', params: { name: facts.name, years: facts.years, via: 'custom', expectedAccountAddress: account.address, expectedNetworkId: network.id, expectedPricePerYear: facts.pricePerYear } };
+  review.submitPolicy = { method: submit.method, auth: 'signing', passwordRequired: Boolean(backend.preferences.requirePasswordForSigning) };
+  preparedReviews.set(review.reviewId, {
+    kind,
+    review,
+    submit,
+    submitPolicy: review.submitPolicy,
+    bindingHash: review.bindingHash,
+  });
+  return {
+    supported: true,
+    reviewId: review.reviewId,
+    bindingHash: review.bindingHash,
+    expiresAt: review.expiresAt,
+    review,
+  };
+}
+
 const FIXTURES = {
   'system.bootstrap': () => ({
     contractVersion: CONTRACT_VERSION,
@@ -1561,6 +1693,31 @@ const FIXTURES = {
       throw apiError('SEND_CONTEXT_CHANGED', 'Review source or network changed.');
     }
     return FIXTURES['tx.send']();
+  },
+  // ---- contract v29: the shared review pipeline --------------------------------------
+  // These fixtures deliberately run the REAL decoder for the requested kind, then add the
+  // envelope the background adds. A route can therefore only render what a decoder produced.
+  'tx.prepareReview': ({ kind, params = {} } = {}) => prepareReviewFixture(kind, params),
+  'tx.confirmReview': ({ reviewId, bindingHash, acknowledgements = [] } = {}) => {
+    const record = preparedReviews.get(reviewId);
+    if (!record) throw apiError('REVIEW_NOT_FOUND', 'That review is no longer available.');
+    if (record.bindingHash !== bindingHash) throw apiError('BINDING_MISMATCH', 'Binding mismatch.');
+    const missing = record.review.acknowledgements
+      .map((ack) => ack.id)
+      .filter((id) => !acknowledgements.includes(id));
+    if (missing.length) throw apiError('ACKNOWLEDGEMENT_REQUIRED', 'Acknowledgement required.');
+    return {
+      reviewId,
+      kind: record.kind,
+      submit: record.submit,
+      submitPolicy: record.submitPolicy,
+      revalidatedAt: Date.now(),
+      expiresAt: record.review.expiresAt,
+    };
+  },
+  'tx.discardReview': ({ reviewId } = {}) => {
+    preparedReviews.delete(reviewId);
+    return { reviewId, discarded: true };
   },
   'tx.claimFaucet': () => ({ signature: 'sig_faucet_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', amountUnits: '10000' }),
 };
