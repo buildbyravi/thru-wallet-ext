@@ -1657,9 +1657,18 @@ form > .btn.text {
   flex-shrink: 0;
 }
 .name-domain-actions {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--sp-2);
+}
+.name-domain-actions .btn {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 4px;
+  font-size: var(--fs-xs);
+  text-align: center;
+  justify-content: center;
+  white-space: nowrap;
 }
 .name-stepper .name-step-btn {
   min-width: 32px;

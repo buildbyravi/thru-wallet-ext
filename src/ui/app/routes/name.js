@@ -173,10 +173,10 @@ export function NameRoute({ back }) {
         const stateLabel = item.stale ? 'Ownership not verified'
           : item.status === 'owned' ? 'Verified ownership'
             : item.status === 'not-owned' ? 'No longer owned by this account' : 'Not found on this network';
-        const select = h('button', { type: 'button', class: 'btn secondary', text: item.isPrimary ? 'Unlink primary' : 'Make primary',
+        const select = h('button', { type: 'button', class: 'btn secondary', text: item.isPrimary ? 'Unlink' : 'Make primary',
           disabled: busy || (!item.isPrimary && !verified) });
-        const remove = h('button', { type: 'button', class: 'btn text', text: 'Remove from list', disabled: busy || item.isPrimary });
-        const renew = h('button', { type: 'button', class: 'btn text', text: 'Renew', disabled: busy || !verified || item.rootName !== 'thru' });
+        const renew = h('button', { type: 'button', class: 'btn secondary', text: 'Renew', disabled: busy || !verified || item.rootName !== 'thru' });
+        const remove = h('button', { type: 'button', class: 'btn secondary', text: 'Remove', disabled: busy || item.isPrimary });
         const card = h('div', { class: 'name-entry stack stack-2' }, [
           h('div', { class: 'row-flex name-domain-heading' }, [
             icon('globe', 16), h('span', { class: 'row-title name-domain-title', text: label }),
@@ -197,7 +197,7 @@ export function NameRoute({ back }) {
         rows.on(renew, 'click', () => {
           if (renew.disabled) return;
           draft = { name: item.name, rootAddress: item.rootAddress, years: 1, quote: null };
-          activeTab = 'renew';
+          activeTab = 'register';
           render();
         });
       }
@@ -449,12 +449,17 @@ export function NameRoute({ back }) {
         priceLine.classList.remove('hidden');
         priceLine.textContent = `Registration quote: ${formatTokenAmount(cost, NATIVE_TOKEN.decimals)} ${NATIVE_TOKEN.symbol}`;
         balanceLine.classList.remove('hidden');
-        if (nativeBalance?.exists && !nativeBalance.stale && nativeBalance.balance != null) {
+        if (nativeBalance?.exists && nativeBalance.balance != null) {
           const have = BigInt(nativeBalance.balance);
-          balanceLine.textContent = `Balance: ${formatTokenAmount(have, NATIVE_TOKEN.decimals)} ${NATIVE_TOKEN.symbol}${have < cost ? ' · Insufficient balance' : ''}`;
+          const staleTag = nativeBalance.stale ? ' (cached)' : '';
+          balanceLine.textContent = `Balance: ${formatTokenAmount(have, NATIVE_TOKEN.decimals)} ${NATIVE_TOKEN.symbol}${staleTag}${have < cost ? ' · Insufficient balance' : ''}`;
           ctaBtn.disabled = have < cost;
         } else if (nativeBalance && !nativeBalance.exists && !nativeBalance.stale) {
           balanceLine.textContent = 'This account needs activation before registration.';
+          ctaBtn.disabled = true;
+        } else if (nativeBalance === null) {
+          balanceLine.textContent = 'Checking balance…';
+          ctaBtn.disabled = true;
         } else {
           balanceLine.textContent = 'Balance unavailable. Refresh to try again.';
           ctaBtn.disabled = true;
@@ -470,12 +475,17 @@ export function NameRoute({ back }) {
         priceLine.classList.remove('hidden');
         priceLine.textContent = `Renewal quote: ${formatTokenAmount(cost, NATIVE_TOKEN.decimals)} ${NATIVE_TOKEN.symbol}`;
         balanceLine.classList.remove('hidden');
-        if (nativeBalance?.exists && !nativeBalance.stale && nativeBalance.balance != null) {
+        if (nativeBalance?.exists && nativeBalance.balance != null) {
           const have = BigInt(nativeBalance.balance);
-          balanceLine.textContent = `Balance: ${formatTokenAmount(have, NATIVE_TOKEN.decimals)} ${NATIVE_TOKEN.symbol}${have < cost ? ' · Insufficient balance' : ''}`;
+          const staleTag = nativeBalance.stale ? ' (cached)' : '';
+          balanceLine.textContent = `Balance: ${formatTokenAmount(have, NATIVE_TOKEN.decimals)} ${NATIVE_TOKEN.symbol}${staleTag}${have < cost ? ' · Insufficient balance' : ''}`;
           ctaBtn.disabled = have < cost;
         } else if (nativeBalance && !nativeBalance.exists && !nativeBalance.stale) {
           balanceLine.textContent = 'This account needs activation before renewal.';
+          ctaBtn.disabled = true;
+        } else if (nativeBalance === null) {
+          balanceLine.textContent = 'Checking balance…';
+          ctaBtn.disabled = true;
         } else {
           balanceLine.textContent = 'Balance unavailable. Refresh to try again.';
           ctaBtn.disabled = true;
@@ -522,6 +532,41 @@ export function NameRoute({ back }) {
       }
     }
 
+    async function fetchNativeBalance(mySeq) {
+      let addr = account?.address;
+      if (!addr) {
+        const acc = await bridge.send('account.getActive').catch(() => null);
+        if (acc?.address) {
+          account = acc;
+          addr = acc.address;
+        }
+      }
+      if (!addr) return null;
+      try {
+        const cached = await bridge.send('tx.getCachedBalances', { addresses: [addr] }).catch(() => null);
+        if (cached?.[addr] && cached[addr].balance != null) {
+          nativeBalance = cached[addr];
+          if (leaseState) armForState(leaseState);
+        }
+      } catch { /* best effort */ }
+      try {
+        const balances = await bridge.send('tx.getBalances', { addresses: [addr] }).catch(() => null);
+        if (destroyed || !statusLine.isConnected || mySeq !== checkSeq) return null;
+        if (balances?.[addr] && balances[addr].balance != null) {
+          nativeBalance = balances[addr];
+          if (leaseState) armForState(leaseState);
+        } else if (!nativeBalance) {
+          const info = await bridge.send('tx.getAccountInfo', { address: addr }).catch(() => null);
+          if (destroyed || !statusLine.isConnected || mySeq !== checkSeq) return null;
+          if (info && info.exists != null) {
+            nativeBalance = { balance: String(info.balance ?? '0'), exists: Boolean(info.exists), stale: false };
+            if (leaseState) armForState(leaseState);
+          }
+        }
+      } catch { /* best effort */ }
+      return nativeBalance;
+    }
+
     // Custom registrar mode (v25): lease PDA + domain existence, fee from on-chain config.
     async function customCheck(name) {
       const mySeq = ++checkSeq;
@@ -548,6 +593,11 @@ export function NameRoute({ back }) {
           if (mine) {
             leaseState = { kind: 'custom-mine', name, lease: res.lease, rootAddress: res.root };
             setStatus(`Owned by you · Expires ${formatChainTime(res.lease.expiresAtSeconds)}`, 'ok');
+            armForState(leaseState);
+            await fetchNativeBalance(mySeq);
+            if (destroyed || !statusLine.isConnected || mySeq !== checkSeq) return;
+            armForState(leaseState);
+            return;
           } else if (res.expiredHint) {
             leaseState = null;
             hideActions();
@@ -564,12 +614,12 @@ export function NameRoute({ back }) {
         } else {
           nativeBalance = null;
           leaseState = { kind: 'custom-available', name, rootAddress: res.root };
-          if (account?.address) {
-            const balances = await bridge.send('tx.getBalances', { addresses: [account.address] }).catch(() => null);
-            if (destroyed || !statusLine.isConnected || mySeq !== checkSeq) return;
-            nativeBalance = balances?.[account.address] ?? null;
-          }
           setStatus('Available', 'ok');
+          armForState(leaseState);
+          await fetchNativeBalance(mySeq);
+          if (destroyed || !statusLine.isConnected || mySeq !== checkSeq) return;
+          armForState(leaseState);
+          return;
         }
         armForState(leaseState);
       } catch (err) {
@@ -878,7 +928,7 @@ export function NameRoute({ back }) {
     const tabs = h('div', { class: 'name-tabs', role: 'tablist', 'aria-label': 'Domain sections' });
     const panel = h('div', { class: 'name-tab-content stack stack-3', role: 'tabpanel', 'aria-labelledby': `domain-tab-${activeTab}` });
     const tabButtons = [];
-    for (const [key, label] of [['register', 'Register'], ['domains', 'My Domains'], ['renew', 'Renew']]) {
+    for (const [key, label] of [['register', 'Register'], ['domains', 'My Domains']]) {
       const tab = h('button', {
         type: 'button', class: `name-tab${activeTab === key ? ' selected' : ''}`,
         id: `domain-tab-${key}`, role: 'tab',
@@ -890,7 +940,6 @@ export function NameRoute({ back }) {
       tabButtons.push(tab);
       bodyDisposer.on(tab, 'click', () => {
         if (activeTab === key) return;
-        if (key === 'renew' && draft.completed) draft.completed = false;
         activeTab = key;
         render();
       });
@@ -902,21 +951,17 @@ export function NameRoute({ back }) {
       if (current < 0 || !['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
       event.preventDefault();
       const next = (current + (event.key === 'ArrowRight' ? 1 : tabButtons.length - 1)) % tabButtons.length;
-      if (next === 2 && activeTab !== 'renew' && draft.completed) draft.completed = false;
-      activeTab = ['register', 'domains', 'renew'][next];
+      activeTab = ['register', 'domains'][next];
       render();
       body.querySelectorAll('.name-tab')[next]?.focus();
     });
     body.appendChild(tabs);
     body.appendChild(panel);
 
-    if (activeTab === 'register' || activeTab === 'renew') {
-      const renewing = activeTab === 'renew';
-      panel.appendChild(h('div', { class: 'hint', text: renewing
-        ? 'Extend your registration period to maintain ownership.'
-        : 'Your name on Thru. Find and register a .thru domain.' }));
-      void renderSearchCard(panel, draft, renewing);
-      const refresh = h('button', { type: 'button', class: 'btn text', text: renewing ? 'Refresh renewal status' : 'Refresh availability' });
+    if (activeTab === 'register') {
+      panel.appendChild(h('div', { class: 'hint', text: 'Your name on Thru. Find, register or renew a .thru domain.' }));
+      void renderSearchCard(panel, draft);
+      const refresh = h('button', { type: 'button', class: 'btn text', text: 'Refresh availability' });
       mutationControls.add(refresh);
       refresh.disabled = submissionInFlight;
       bodyDisposer.on(refresh, 'click', () => {
@@ -967,7 +1012,7 @@ export function NameRoute({ back }) {
       });
       if (destroyed || attempt !== loadSeq || activeTab === 'domains') return;
       primary = result.items.find(item => item.isPrimary) ?? null;
-      if (activeTab === 'renew') render();
+      render();
     } catch { /* no cache: keep the immediately painted route */ }
   }
 

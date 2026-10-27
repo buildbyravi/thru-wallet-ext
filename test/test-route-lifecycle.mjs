@@ -5109,10 +5109,6 @@ async function nameReviewTest() {
       FIXTURES['name.checkLease'] = () => ({ supported: true, leaseExists: true,
         lease: { owner: mine ? ADDRESS_A : ADDRESS_B, endTime: '1800000000', expiredHint: !mine } });
       await mount();
-      if (mine) {
-        click(buttons(route.el, /^renew$/i)[0]);
-        await settle();
-      }
       await check();
       sheet = await review();
       ok('official registrar review formats the verified payment-token decimals', /0\.001 LAB/.test(textOf(sheet)));
@@ -5125,14 +5121,6 @@ async function nameReviewTest() {
         && chromeLog.calls.includes(mine ? 'name.renewLease' : 'name.claimExpired'));
       destroy();
     }
-    await mount();
-    click(buttons(route.el, /^renew$/i)[0]);
-    await settle();
-    await check();
-    ok('Renew never offers an expired-claim transaction for somebody else\'s domain',
-      /cannot be renewed by this account/.test(textOf(route.el))
-      && buttons(route.el, /^review /i).every(button => button.classList.contains('hidden')));
-    destroy();
   } finally {
     route?.destroy();
     for (const key of Object.keys(FIXTURES)) if (!(key in originals)) delete FIXTURES[key];
@@ -5223,7 +5211,7 @@ async function trackedDomainsTest() {
     ok('primary selection carries reviewed account/network identity and retains both domains',
       chosen.domainAddress === 'taDomain1' && chosen.expectedAccountAddress === ADDRESS_A
       && chosen.expectedNetworkId === 'betanet' && /alice.thru/.test(textOf(route.el)) && /bob.thru/.test(textOf(route.el)));
-    click(buttons(route.el, /^unlink primary$/i)[0]);
+    click(buttons(route.el, /^unlink/i)[0]);
     await settle();
     ok('unlink leaves both domains in My Domains', buttons(route.el, /^make primary$/i).length === 2);
     const input = route.el.querySelector('input[placeholder="yourname.thru"]');
@@ -5237,7 +5225,7 @@ async function trackedDomainsTest() {
     await settle();
     ok('ownership rejection keeps the import input and existing domains', input.value === 'foreign.thru'
       && /belongs to another account/.test(textOf(route.el)) && items.length === 3);
-    click(buttons(route.el, /^remove from list$/i)[1]);
+    click(buttons(route.el, /^remove/i)[1]);
     await settle();
     ok('untrack removes only the selected local entry', !/bob.thru/.test(textOf(route.el)) && /alice.thru/.test(textOf(route.el)));
 
