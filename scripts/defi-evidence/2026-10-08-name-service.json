@@ -1,0 +1,29 @@
+{
+  "2026-10-23T21:04:20.082Z": {
+    "at": "2026-10-23T21:04:20.082Z",
+    "baseUrl": "https://rpc.betanet.thru.org",
+    "program": "taNAMEqRNEDeMWp0cDYmMVdZyTZiF5NyGDR9zTwH42rWQG",
+    "readings": [
+      {
+        "check": "name-service-program-exists",
+        "ok": true,
+        "detail": "program=taNAMEqRNEDeMWp0cDYmMVdZyTZiF5NyGDR9zTwH42rWQG (address from the pinned @thru/programs bootstrap table)"
+      },
+      {
+        "check": "id-root-registrar-decodes",
+        "ok": false,
+        "detail": "ID root not resolvable on this chain: HTTP 415 (ROOTS MAY NOT HAVE MIGRATED POST-0.4.0 GENESIS — unknown, flagged)"
+      },
+      {
+        "check": "thru-root-registrar-decodes",
+        "ok": false,
+        "detail": "official .thru root not present/decodable on this chain: HTTP 415 (the wallet's register writes answer REGISTRY_ABSENT there)"
+      },
+      {
+        "check": "registrar-config-decodes",
+        "ok": false,
+        "detail": "registrar config not present/decodable on this chain: HTTP 415 (purchase/renew/claim stay REGISTRY_ABSENT there)"
+      }
+    ]
+  }
+}

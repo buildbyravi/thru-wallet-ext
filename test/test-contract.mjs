@@ -137,11 +137,9 @@ section('Contract v17/v18 DeFi contract-first drop (M0)');
 // sides of the gate). A version bump, not a method change.
 // v26 (2026-10-26): token.discover — Solana-style token auto-discovery (owner-directed ship of
 // the swap slice the same day; additive, auth 'unlocked').
-// v27 (2026-10-26, owner directive "no delay in frontend if rpc has issue" — AGENTS.md rule 15):
-// token.getCachedBalances — the UI-side snapshot pair for token.getBalances (network-scoped
-// chrome.storage.local, written only after a fully clean live read). auth 'none': the data was
-// already on-chain and locally painted; no signing of any kind.
-ok('the contract advances to v27 without reusing earlier numbers', CONTRACT_VERSION === 27);
+// v27 (2026-10-26): token.getCachedBalances; v28 (2026-10-26): optional reviewed context for
+// existing name writes. These additions bind the existing handlers to what the user saw at Review.
+ok('the contract advances to v28 without reusing earlier numbers', CONTRACT_VERSION === 28);
 
 const v17 = Object.entries(METHODS).filter(([, spec]) => spec.since === 17).map(([name]) => name);
 const v18 = Object.entries(METHODS).filter(([, spec]) => spec.since === 18).map(([name]) => name);
@@ -205,6 +203,16 @@ ok('token.discover declares address + candidateMints params',
 const v27 = Object.entries(METHODS).filter(([, m]) => m.since === 27).map(([n]) => n);
 ok('v27 appends exactly one additive method (token.getCachedBalances)',
   v27.length === 1 && v27[0] === 'token.getCachedBalances', `got ${v27.join(', ')}`);
+for (const nameMethod of ['name.register', 'name.purchase', 'name.renewLease', 'name.claimExpired']) {
+  const spec = METHODS[nameMethod];
+  ok(`${nameMethod} accepts optional reviewed account and network context`,
+    spec.params.includes('expectedAccountAddress') && spec.params.includes('expectedNetworkId'));
+}
+for (const nameMethod of ['name.purchase', 'name.renewLease', 'name.claimExpired']) {
+  ok(`${nameMethod} accepts the reviewed per-year quote`, METHODS[nameMethod].params.includes('expectedPricePerYear'));
+}
+ok('renew and expired claim accept reviewed lease expiry',
+  ['name.renewLease', 'name.claimExpired'].every((nameMethod) => METHODS[nameMethod].params.includes('expectedLeaseEndTime')));
 ok('token.getCachedBalances is open auth:none like every snapshot read',
   METHODS['token.getCachedBalances']?.auth === 'none');
 ok('token.getCachedBalances declares the address param',

@@ -100,7 +100,7 @@ function buildLeaseBytes(ownerAddress, name = NAME, start = 1_700_000_000n, end 
 // Mutable chain-world switchboard
 let configPresent = true;
 let domainExists = false;
-let leaseState = 'absent'; // absent | mine-active | other-active | other-expired
+let leaseState = 'absent'; // absent | unparseable | mine-active | other-active | other-expired
 const ENCODER = new TextEncoder();
 const OTHER = Pubkey.from(new Uint8Array(32).fill(8)).toThruFmt();
 const nowSeconds = Math.floor(Date.now() / 1000);
@@ -123,6 +123,7 @@ client.accounts.get = async (address) => {
   }
   if (address === LEASE) {
     if (leaseState === 'absent') return notFound();
+    if (leaseState === 'unparseable') return { meta: { balance: 1n }, data: new Uint8Array([1, 2, 3]) };
     const activeEnd = BigInt(nowSeconds + 86_400);
     const expiredEnd = BigInt(nowSeconds - 86_400);
     if (leaseState === 'mine-active') return { meta: { balance: 1n }, data: buildLeaseBytes(SENDER, NAME, BigInt(nowSeconds - 100), activeEnd) };
@@ -230,6 +231,55 @@ ok('lease derivation byte-exact: alice → ta06ZB32… (official CLI derive-leas
   configPresent = true;
 }
 
+// Reviewed quote/context is revalidated before the write path can prepare a transaction.
+{
+  for (const [label, params, code] of [
+    ['network', { expectedNetworkId: 'localnet', expectedAccountAddress: SENDER, expectedPricePerYear: '1000000' }, 'REVIEW_NETWORK_CHANGED'],
+    ['account', { expectedNetworkId: 'betanet', expectedAccountAddress: OTHER, expectedPricePerYear: '1000000' }, 'REVIEW_ACCOUNT_CHANGED'],
+    ['price', { expectedNetworkId: 'betanet', expectedAccountAddress: SENDER, expectedPricePerYear: '1000001' }, 'REVIEW_PRICE_CHANGED'],
+  ]) {
+    const stale = await handleApiRequest({ method: 'name.purchase', params: { name: NAME, years: 1, ...params } });
+    assert.equal(stale.ok, false);
+    assert.equal(stale.error.code, code, `stale ${label} context is refused`);
+  }
+  ok('stale Review network, account and on-chain price facts are refused');
+}
+
+// Name signing enters the same global guard before its first account/RPC read.
+{
+  const originalGet = client.accounts.get;
+  let releaseConfigRead = null;
+  let reachedConfigRead = false;
+  client.accounts.get = async (address) => {
+    if (address === CONFIG_ADDR && !reachedConfigRead) {
+      reachedConfigRead = true;
+      return new Promise((resolve) => {
+        releaseConfigRead = () => resolve({ meta: { balance: 1n }, data: buildConfigBytes() });
+      });
+    }
+    return originalGet(address);
+  };
+  try {
+    const pendingPurchase = handleApiRequest({ method: 'name.purchase', params: { name: NAME, years: 1 } });
+    for (let i = 0; i < 500 && !releaseConfigRead; i += 1) await new Promise((resolve) => setTimeout(resolve, 2));
+    assert.equal(typeof releaseConfigRead, 'function', 'purchase reached a held registrar read');
+    const blocked = await handleApiRequest({ method: 'account.switch', params: { ref: {} } });
+    assert.equal(blocked.ok, false);
+    assert.equal(blocked.error.code, 'SIGNING_IN_PROGRESS');
+    const activeRef = await handleApiRequest({ method: 'account.getActiveRef' });
+    const activeRemoval = await handleApiRequest({ method: 'account.removeHd', params: { ref: activeRef.data } });
+    assert.equal(activeRemoval.ok, false);
+    assert.equal(activeRemoval.error.code, 'SIGNING_IN_PROGRESS');
+    releaseConfigRead();
+    const result = await pendingPurchase;
+    assert.equal(result.ok, false, 'mock purchase stops before any signed transaction');
+    ok('account switching is locked while a name purchase is preparing');
+  } finally {
+    releaseConfigRead?.();
+    client.accounts.get = originalGet;
+  }
+}
+
 // [5] NAME_TAKEN / LEASE_CLAIM_REQUIRED routing
 {
   const free = await handleApiRequest({ method: 'name.checkLease', params: { name: NAME } });
@@ -237,6 +287,13 @@ ok('lease derivation byte-exact: alice → ta06ZB32… (official CLI derive-leas
   assert.equal(free.data.supported, true);
   assert.equal(free.data.leaseExists, false);
   assert.equal(free.data.domainExists, false);
+
+  leaseState = 'unparseable';
+  const unreadable = await handleApiRequest({ method: 'name.checkLease', params: { name: NAME } });
+  assert.equal(unreadable.ok, true);
+  assert.equal(unreadable.data.leaseExists, true);
+  assert.ok(unreadable.data.leaseParseError);
+  leaseState = 'absent';
 
   domainExists = true;
   const taken = await handleApiRequest({ method: 'name.purchase', params: { name: NAME, years: 1, password: 'Password123!' } });
@@ -265,6 +322,14 @@ ok('lease derivation byte-exact: alice → ta06ZB32… (official CLI derive-leas
   const notExpired = await handleApiRequest({ method: 'name.claimExpired', params: { name: NAME, years: 1, password: 'Password123!' } });
   assert.equal(notExpired.ok, false);
   assert.equal(notExpired.error.code, 'LEASE_NOT_EXPIRED');
+
+  leaseState = 'mine-active';
+  const staleExpiry = await handleApiRequest({ method: 'name.renewLease', params: {
+    name: NAME, years: 1, expectedNetworkId: 'betanet', expectedAccountAddress: SENDER,
+    expectedPricePerYear: '1000000', expectedLeaseEndTime: '1',
+  } });
+  assert.equal(staleExpiry.ok, false);
+  assert.equal(staleExpiry.error.code, 'REVIEW_EXPIRY_CHANGED');
 
   leaseState = 'other-expired';
   const badYears = await handleApiRequest({ method: 'name.claimExpired', params: { name: NAME, years: 0, password: 'Password123!' } });

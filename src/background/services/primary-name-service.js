@@ -108,6 +108,7 @@ export async function verifyPrimaryName({ address } = {}) {
   if (!target) return null;
   const record = (await readAll(network.id))[target] ?? null;
   if (!record) return null;
+  let stale = false;
   try {
     const result = await nameService.lookupName({ name: record.name, rootAddress: record.rootAddress });
     if (result?.leaf?.domain && result.leaf.domain.owner !== target) {
@@ -118,10 +119,12 @@ export async function verifyPrimaryName({ address } = {}) {
       }
       return null; // honestly gone
     }
+    stale = !(result?.leaf?.domain && result.leaf.domain.owner === target);
   } catch {
     // chain unreadable: keep showing the stored record rather than flapping it away
+    stale = true;
   }
-  return record;
+  return { ...record, stale };
 }
 
 /** Remove the active account's primary name on the active network. */

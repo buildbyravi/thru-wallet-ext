@@ -319,6 +319,9 @@ try {
   const blockedSwitch = await handleApiRequest({ method: 'network.setActive', params: { networkId: 'localnet' } });
   assert.equal(blockedSwitch.error?.code, 'SIGNING_IN_PROGRESS');
   assert.equal(blockedSwitch.error?.retryable, true);
+  const blockedAccountSwitch = await handleApiRequest({ method: 'account.switch', params: { ref: accountsList[1].ref } });
+  assert.equal(blockedAccountSwitch.ok, false);
+  assert.equal(blockedAccountSwitch.error?.code, 'SIGNING_IN_PROGRESS');
   releaseRecipient();
   const sentOnReviewedNetwork = await pendingChecked;
   assert.equal(sentOnReviewedNetwork.ok, true, sentOnReviewedNetwork.error?.message);
@@ -331,7 +334,7 @@ try {
   await handleApiRequest({ method: 'network.setActive', params: { networkId: 'betanet' } });
   storage.delete('thru_pending_txs::betanet');
 }
-console.log('  ok - duplicate sends are refused and network switching is locked through signing/submission');
+console.log('  ok - duplicate sends are refused; account and network switching are locked through signing/submission');
 
 // The SDK can finish broadcasting and return a signature before a balance RPC responds.
 // A post-send refresh is advisory: waiting for it would turn a successful transfer into a

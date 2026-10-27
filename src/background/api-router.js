@@ -49,6 +49,7 @@ import { beginSigningOperation } from './services/signing-guard.js';
 const TRANSACTION_METHODS = new Set([
   'tx.claimFaucet', 'tx.sendChecked', 'tx.autoCreateAccount', 'tx.registerAccount',
   'token.deploy', 'token.transferChecked',
+  'name.register', 'name.purchase', 'name.renewLease', 'name.claimExpired',
   'intent.submit',
 ]);
 

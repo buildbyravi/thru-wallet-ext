@@ -25,6 +25,15 @@ export function assertNetworkSwitchAllowed() {
   throw error;
 }
 
+/** Prevent the active signing source from changing while a transaction is in flight. */
+export function assertAccountSwitchAllowed() {
+  if (activeOperations === 0) return;
+  const error = new Error('A transaction is being signed or submitted. Wait for it to finish before switching or changing accounts.');
+  error.code = 'SIGNING_IN_PROGRESS';
+  error.retryable = true;
+  throw error;
+}
+
 export function hasActiveSigningOperation() {
   return activeOperations > 0;
 }

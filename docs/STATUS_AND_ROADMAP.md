@@ -14,6 +14,33 @@ Single source of truth for the **shipped baseline**, what automated evidence pro
 
 Companion docs: `docs/DOCS_INDEX.md` · `docs/PROJECT_LEDGER.md` · `CONTEXT.md` · `docs/MODULE_BOUNDARIES.md` · `docs/BACKEND_GAPS.md` · `docs/BUILD_SPEC.md` · `docs/MANUAL_SMOKE_CHECKLIST.md` · `docs/SEND_PATH_AUDIT.md`.
 
+## Domain route status (2026-10-27)
+
+The `/name` route has Register, My Domains, and Renew / Extend sections, per-name checks and
+quotes, explicit review before the existing `name.*` signing handlers, and independent
+single-name submissions. Register offers `.thru` only, automatically selecting the verified
+deployed custom registrar first and the official paid registry only when that is the available
+`.thru` route. It does not query `.id` availability or offer `.id` minting; `.id` lookup and
+resolution remain available through name lookup. Registrar totals group only matching assets
+and use BigInt; they are quotes for separate transactions, not an atomic batch. Native THRU uses
+the shared 9-decimal definition; paid-registry token decimals come from the on-chain mint.
+
+**TESTED**: the Domain focused suites and the project suite cover formatting, validation,
+eligibility, reviewed account/network/price/expiry facts, unknown submission outcomes, and
+account-switch locking, and `.id` authority refusal while preserving lookup. **VERIFIED AGAINST
+LIVE NETWORK**: read-only Betanet RPC calls on 2026-10-26 found the paid `.thru` registry absent,
+the evidence-pinned custom `.thru` registrar present at 1,000 native base units per year, the
+`.id` root present, and a fresh sample label unregistered under both routes. No signing
+transaction was sent during that probe. On 2026-10-27, one unique `.thru` registration through
+the real background API router returned an on-chain execution result, and a follow-up Betanet
+read confirmed the selected test account as lease owner. The handler quoted 1,000 base
+units/year; charged network fee was not returned.
+
+**UNVERIFIED**: rendered popup / side-panel behavior in Chrome and a wallet-signed Betanet
+review/auth flow and renewal in the browser. The API-router registration verifies the backend
+write path, not the rendered review screen or charged network fee. See `docs/BACKEND_GAPS.md` for
+the precise unsupported and live-write boundaries.
+
 ---
 
 ## 1. Where we are

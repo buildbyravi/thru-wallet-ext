@@ -16,7 +16,7 @@
 //   [3] refuses a name absent under the canonical root (NAME_NOT_FOUND)
 //   [4] a correctly-owned name links with no root input and persists network-scoped
 //   [5] getPrimary re-verifies each call; a proven owner change drops the record honestly,
-//       an unreadable node keeps the last verified record
+//       an unreadable node keeps the last verified record marked stale
 //   [6] unlink clears the record
 //   [7] lookupName reads real domain bytes (owner check is real)
 //   [8] notification clicks open the SETTLING network's explorer; legacy ids ignored;
@@ -121,6 +121,7 @@ ok('root/config derivation pins hold: thru→taNP1M…, id→taLu3d…, config�
 
 const thru = await import('../src/lib/thru-client.js');
 const client = thru.getClient();
+const notFound = () => { const err = new Error('account not found'); err.code = 5; throw err; };
 client.accounts.get = async (address) => {
   if (nodeDown) throw new Error('fetch failed');
   if (address === THRU_ROOT) {
@@ -132,7 +133,7 @@ client.accounts.get = async (address) => {
   if (address === LEAF_ID) { // explicit-root .id read: a foreign-owned domain, always present
     return { meta: { balance: 1n }, data: buildDomainBytes(SOMEONE_ELSE, NAME, ID_ROOT) };
   }
-  if (address !== LEAF_THRU || !leafExists) return { meta: { balance: null } }; // unparseable → treated absent
+  if (address !== LEAF_THRU || !leafExists) return notFound(); // model the SDK's real absence shape
   return { meta: { balance: 1n }, data: buildDomainBytes(leafOwner) };
 };
 
@@ -167,6 +168,21 @@ thruParses = true;
   ok('blank root → auto-discovered canonical root; official .thru beats community .id when both parse');
 }
 
+// Registration pins the same account/network context that the Review screen displayed.
+{
+  const staleNetwork = await handleApiRequest({ method: 'name.register', params: {
+    name: 'child', parentAddress: THRU_ROOT, expectedNetworkId: 'localnet', expectedAccountAddress: SENDER,
+  } });
+  assert.equal(staleNetwork.ok, false);
+  assert.equal(staleNetwork.error.code, 'REVIEW_NETWORK_CHANGED');
+  const staleAccount = await handleApiRequest({ method: 'name.register', params: {
+    name: 'child', parentAddress: THRU_ROOT, expectedNetworkId: 'betanet', expectedAccountAddress: SOMEONE_ELSE,
+  } });
+  assert.equal(staleAccount.ok, false);
+  assert.equal(staleAccount.error.code, 'REVIEW_ACCOUNT_CHANGED');
+  ok('owner-authorized name registration refuses a stale Review network or account');
+}
+
 // [7] the read path really carries domain bytes
 {
   const direct = await handleApiRequest({ method: 'name.lookup', params: { name: NAME, rootAddress: ID_ROOT } });
@@ -175,6 +191,12 @@ thruParses = true;
   assert.equal(direct.data.leaf.domain.owner, SOMEONE_ELSE);
   assert.equal(direct.data.leaf.decodeError, undefined);
   ok('name.lookup parses the domain account owner from chain bytes (no permanent decodeError)');
+  const mintAttempt = await handleApiRequest({ method: 'name.register', params: {
+    name: 'child', parentAddress: ID_ROOT, expectedNetworkId: 'betanet', expectedAccountAddress: SENDER,
+  } });
+  assert.equal(mintAttempt.ok, false);
+  assert.equal(mintAttempt.error.code, 'NAME_PARENT_AUTHORITY');
+  ok('.id lookup remains available while a non-authority signer cannot mint beneath its root');
 }
 
 // [2] another owner's name is refused
@@ -208,6 +230,29 @@ leafOwner = SENDER;
   assert.equal(stored[SENDER].rootAddress, THRU_ROOT);
   ok('linkPrimary with no root input verifies ownership via the discovered root and stores it');
 }
+
+// A transport failure after submission begins is an unknown outcome, never a verified failure.
+{
+  const originalProofGenerate = client.proofs.generate;
+  const originalBuildAndSign = client.transactions.buildAndSign;
+  const originalSendAndTrack = client.transactions.sendAndTrack;
+  try {
+    client.proofs.generate = async () => ({ proof: new Uint8Array([1]) });
+    client.transactions.buildAndSign = async () => ({ rawTransaction: new Uint8Array([1]) });
+    client.transactions.sendAndTrack = async function* () { throw new Error('network timeout'); };
+    const outcome = await handleApiRequest({ method: 'name.register', params: {
+      name: 'child', parentAddress: LEAF_THRU, expectedNetworkId: 'betanet', expectedAccountAddress: SENDER,
+    } });
+    assert.equal(outcome.ok, false);
+    assert.equal(outcome.error.code, 'TX_RESULT_MISSING');
+    assert.equal(outcome.error.retryable, true);
+    ok('registration submission timeout remains an unknown retryable outcome');
+  } finally {
+    client.proofs.generate = originalProofGenerate;
+    client.transactions.buildAndSign = originalBuildAndSign;
+    client.transactions.sendAndTrack = originalSendAndTrack;
+  }
+}
 {
   const fetched = await handleApiRequest({ method: 'name.getPrimary' });
   assert.equal(fetched.ok, true);
@@ -233,7 +278,13 @@ nodeDown = true;
   const kept = await handleApiRequest({ method: 'name.getPrimary' });
   assert.equal(kept.ok, true);
   assert.equal(kept.data.name, NAME);
-  ok('an unreadable node keeps the last verified record instead of flapping it away');
+  assert.equal(kept.data.stale, true);
+  ok('an unreadable node keeps the last verified record and marks it stale');
+  const lookup = await handleApiRequest({ method: 'name.lookup', params: { name: NAME, rootAddress: THRU_ROOT } });
+  assert.equal(lookup.ok, false);
+  const availability = await handleApiRequest({ method: 'name.checkAvailability', params: { name: NAME, parentAddress: THRU_ROOT } });
+  assert.equal(availability.ok, false);
+  ok('offline lookups and availability checks stay unknown instead of returning an available name');
 }
 nodeDown = false;
 

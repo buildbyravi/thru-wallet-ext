@@ -1,0 +1,20 @@
+{
+  "date": "2026-10-25T09:57:40.986Z",
+  "network": "betanet",
+  "activeAccount": "tabDLDL9EVZYhRnbgPr0HrQuIvv01AZm9vtV8yIX26KO2J",
+  "thruTest": {
+    "label": "audit4xh7",
+    "domain": "audit4xh7.thru",
+    "years": 1,
+    "signature": "ts1IglANJ9x2YO3XjnPdCyoElwjENfy6k3_3pzIw9hfeRKlzZ2nJVZmiY1T0B_BkdsYX4asdHTJ4fql2aqk9WoDx6X",
+    "domainAddress": "tauyi7Z88TQZOFobyGGeXVttFzdjI7y9fQNBlHzmxnmYGU",
+    "verifiedOnChain": true
+  },
+  "idAudit": {
+    "rootAddress": "taNP1MFOO2shpn6ORofIGSNiQ-qJ9VE2lDkDwvUmgUmaQZ",
+    "rootName": "thru",
+    "rootAuthority": "ta_9lLvhxurg4J5DyZ82W14rzzGWCEfj9B7Y8wa99amPBa",
+    "signerMatchesAuthority": false,
+    "protectionResult": "NAME_PARENT_AUTHORITY"
+  }
+}

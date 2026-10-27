@@ -33,12 +33,51 @@
 | Additional — checked Send context | Contract v11 adds `tx.sendChecked` and `token.transferChecked`; source account and network from Review are checked at the backend boundary around preflight work. |
 | Additional — owned-account activation | Contract v12 adds `tx.registerAccount` (`auth: 'unlocked'`) for an exact address in the unlocked vault. It self-signs with that account; Send calls it just in time only after a successful absence check for a selected/typed owned recipient. External contacts are never registered by the sender. |
 | Additional — History first paint | Contract v12 adds storage-only `tx.getCachedHistory`; cache is scoped by network and address, painted before the RPC feed/pending reads, and serialized writes preserve concurrent accounts. Block-time provenance is retained. |
+| Additional — Domain registration review | Contract v28 adds optional reviewed account, network, price, and (for lease renewal/claim) expiry facts to the existing `name.*` write methods. The Domain route uses those handlers and the wallet's existing signing/auth boundary; it does not add a signing path. |
 
 These are implementation claims backed by `src/` and local tests, not a claim that the corresponding live-chain or real-browser checks have all been performed.
 
 ---
 
 ## 2. Open or unsupported capabilities
+
+### Domain registration and management — current Betanet boundary
+
+**IMPLEMENTED**: Register is `.thru`-only. It selects the evidence-pinned deployed custom
+registrar first, with the official paid `.thru` registry as fallback when that is the available
+registrar. It does not query `.id` availability or offer `.id` minting. Name lookup still reads
+explicit `.id` roots, so resolution remains available. The route formats prices using the mint
+decimals returned by `token.readMint`, and formats native THRU with the shared 9-decimal asset
+definition. Each entry has its own review and submission; multiple names are separate
+transactions. The official paid registrar's `name.renewLease` operation is the supported
+meaning of “extend.”
+
+**VERIFIED AGAINST LIVE NETWORK (read-only, Betanet, 2026-10-26)**: the `.thru` paid-registry
+config is absent; the custom `.thru` registrar is present, root-matched, and quotes 1,000 native
+base units per year; the `.id` root exists; a fresh sample label read as unregistered under both
+routes. The 1,000 native base-unit quote formats to `0.000001 THRU/year` using the configured
+9-decimal native scale. This was a read-only probe; it did not establish wallet-signed write or
+payment behavior.
+
+**UNSUPPORTED / UNVERIFIED**:
+
+- The backend cannot enumerate all domains owned by an account. My Domains shows only an
+  explicitly linked primary name after a fresh ownership check; expiry facts are not available
+  for that link.
+- Betanet's official paid `.thru` registry is not initialized, so its paid registration and lease
+  renewal/claim handlers return unsupported there. The custom registrar is the live `.thru`
+  offer, but custom lease renewal/claim is not wired in the wallet.
+- `.id` supports name-service lookup and has no lease-renewal operation. The Domain route treats
+  it as resolution-only. The lower-level generic name-service write remains self-signed and
+  refuses a signer that is not the parsed root authority (`NAME_PARENT_AUTHORITY`); the Betanet
+  `.id` root is third-party controlled, so ordinary wallet accounts cannot mint beneath it.
+- Atomic multi-name registration is not supported. The route prepares, reviews, and confirms
+  each name independently, and tracks confirmed, failed, and unknown outcomes per name.
+- **VERIFIED AGAINST LIVE NETWORK (Betanet, 2026-10-27)**: one unique `.thru` registration
+  through the real background API router returned an on-chain execution result; a follow-up
+  read confirmed the selected test account as lease owner. The handler quoted 1,000 base
+  units/year. Charged network fee was not returned, and this did not exercise the rendered UI.
+- A rendered Chrome popup/side-panel review/auth flow and live renewal have not been verified.
 
 ### C1. Token balances — implemented; token-transfer behavior still needs live verification
 

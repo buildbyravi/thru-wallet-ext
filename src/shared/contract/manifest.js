@@ -133,7 +133,8 @@
 //   15): `token.getCachedBalances` additive, auth none. Storage-only snapshot of the last
 //   chain-verified token rows for an address on the active network. Fetches with any
 //   failure are never cached, so a cache row is always a complete verified read.
-export const CONTRACT_VERSION = 27;
+//   v28 appends optional reviewed network/account/price/expiry facts to name signing requests.
+export const CONTRACT_VERSION = 28;
 
 export const METHODS = {
   // ---- System ------------------------------------------------------------
@@ -422,7 +423,7 @@ export const METHODS = {
     since: 19,
   },
   'name.register': {
-    params: ['name', 'parentAddress', 'networkId', 'password', 'via', 'years'],
+    params: ['name', 'parentAddress', 'networkId', 'password', 'via', 'years', 'expectedNetworkId', 'expectedAccountAddress', 'expectedPricePerYear'],
     returns: '{ signature, domainAddress } — register a label under a parent root/domain; self-signed (authority = fee payer, the ONLY key). ' +
       'Protocol fee 0n — NAME_SERVICE_PROGRAM_FEE = 0 in the first-party CLI (txn_tools.rs, 2026-10-24); no payment token involved. ' +
       'parentAddress may be blank: the canonical root is then auto-discovered on-chain. ' +
@@ -447,8 +448,8 @@ export const METHODS = {
   },
 
   // v23 (2026-10-24): expose the on-chain-proof canonical-root discovery used internally by
-  // name.lookup. Read-only; lets the UI offer free name-service registration beneath a root
-  // that provably exists on the running network when the `.thru` paid registry is absent.
+  // name.lookup. Read-only root facts remain available for lookup and ownership checks; the
+  // Domain route offers `.thru` registrar minting only and does not use this to offer `.id` minting.
   'name.getCanonicalRoot': {
     params: ['root', 'networkId'],
     returns: '{ supported, rootAddress, rootName, authority, provenance, reason? } — same discovery as name.lookup',
@@ -504,19 +505,19 @@ export const METHODS = {
     since: 22,
   },
   'name.purchase': {
-    params: ['name', 'years', 'password'],
+    params: ['name', 'years', 'password', 'expectedNetworkId', 'expectedAccountAddress', 'expectedPricePerYear'],
     returns: '{ signature } — buys a .thru lease; price = config.pricePerYear × years in registry token',
     auth: 'signing',
     since: 22,
   },
   'name.renewLease': {
-    params: ['name', 'years', 'password'],
+    params: ['name', 'years', 'password', 'expectedNetworkId', 'expectedAccountAddress', 'expectedPricePerYear', 'expectedLeaseEndTime'],
     returns: '{ signature } — extends the signer-owned lease',
     auth: 'signing',
     since: 22,
   },
   'name.claimExpired': {
-    params: ['name', 'years', 'password'],
+    params: ['name', 'years', 'password', 'expectedNetworkId', 'expectedAccountAddress', 'expectedPricePerYear', 'expectedLeaseEndTime'],
     returns: '{ signature } — takes over an expired lease (owner ≠ signer, chain enforces expiry)',
     auth: 'signing',
     since: 22,

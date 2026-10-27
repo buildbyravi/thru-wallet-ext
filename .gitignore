@@ -8,3 +8,4 @@ thru-wallet-deploy.txt
 *.zip
 .env
 target/
+.kilo/

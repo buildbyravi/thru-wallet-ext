@@ -64,6 +64,7 @@ function requireAddress(value, field) {
  *  → auto-discovered canonical root, proven on-chain; NAME_ROOT_UNKNOWN when none exists). */
 export async function lookupName({ name, rootAddress } = {}) {
   requireValidName(name);
+  await getActiveNetworkConfig();
   let root = String(rootAddress ?? '').trim();
   if (!root) {
     const discovered = await discoverDefaultRoot();
@@ -78,15 +79,9 @@ export async function lookupName({ name, rootAddress } = {}) {
   }
   const chain = await ns.resolveNameChain(root, name);
   const leafAddress = chain[0];
-  let info = null;
-  try {
-    // Direct client read: tx-service's getAccountInfo drops the raw account DATA, and a
-    // domain's owner/records live in that data — a wrapper without it produced a permanent
-    // decodeError for every existing name. Reads stay truth-only either way.
-    info = await thruClient.getAccountInfo(leafAddress);
-  } catch {
-    info = null; // node answered nothing — same as absent for read purposes
-  }
+  // Direct client read preserves domain bytes for owner decoding. Propagate RPC errors:
+  // unreadable is unknown, never evidence that a name is available.
+  const info = await thruClient.getAccountInfo(leafAddress);
   if (!info || !info.exists) {
     return { chain, leaf: { address: leafAddress, exists: false }, rootAddress: root, name };
   }
@@ -109,15 +104,11 @@ export async function checkAvailability({ name, parentAddress } = {}) {
     throw err;
   }
   requireValidName(name);
+  await getActiveNetworkConfig();
   requireAddress(parentAddress, 'parentAddress');
   const address = await ns.domainAccountAddress(parentAddress, name);
-  let exists = false;
-  try {
-    const info = await txService.getAccountInfo(address);
-    exists = Boolean(info && info.exists);
-  } catch {
-    exists = false;
-  }
+  const info = await txService.getAccountInfo(address);
+  const exists = Boolean(info && info.exists);
   return { address, exists, name, parentAddress };
 }
 
@@ -146,28 +137,30 @@ async function canonicalRootCandidates() {
   ];
 }
 
-let discoveredCache = null; // session-scoped; one RPC on first use per worker
+let discoveredCache = null; // positive result scoped to the stable active network id
 
 /**
  * The chain's canonical root registrar, auto-discovered by on-chain proof.
  * @returns {{ supported: true, rootAddress, name, authority, provenance } | { supported: false, reason }}
  */
 export async function discoverDefaultRoot() {
-  if (discoveredCache) return discoveredCache;
+  const network = await getActiveNetworkConfig();
+  if (discoveredCache?.networkId === network.id) return discoveredCache.result;
   const tries = [];
   for (const candidate of await canonicalRootCandidates()) {
     try {
       const info = await thruClient.getAccountInfo(candidate.address);
       if (!info?.exists) { tries.push(`${candidate.address.slice(0, 12)}…: absent`); continue; }
       const root = parseRootRegistrar(info.raw);
-      discoveredCache = {
+      const result = {
         supported: true,
         rootAddress: candidate.address,
         name: root.name,
         authority: root.authority,
         provenance: candidate.provenance,
       };
-      return discoveredCache;
+      discoveredCache = { networkId: network.id, result };
+      return result;
     } catch (e) {
       tries.push(`${candidate.address.slice(0, 12)}…: ${String(e?.message ?? e).slice(0, 80)}`);
     }
@@ -194,7 +187,7 @@ export async function getCanonicalRoot({ root } = {}) {
   if (root && typeof root === 'string' && root.trim()) {
     const rName = root.trim().toLowerCase();
     const address = await rootRegistrarAddress(rName);
-    const info = await thruClient.getAccountInfo(address).catch(() => null);
+    const info = await thruClient.getAccountInfo(address);
     if (!info?.exists) {
       return { supported: false, reason: `root '${rName}' (${address.slice(0, 12)}…) does not exist on this network` };
     }
@@ -231,14 +224,17 @@ export async function getCanonicalRoot({ root } = {}) {
  *  [domain (rw), parent (rw), owner (ro), authority (ro)] with authority = fee payer.
  *  A foreign-authority parent lets the CHAIN decide — a revert is surfaced verbatim, never
  *  retried silently or sponsored with a different key. */
-export async function registerName({ name, parentAddress } = {}) {
+export async function registerName({ name, parentAddress, expectedNetworkId, expectedAccountAddress } = {}) {
   if (name && String(name).includes('.')) {
     const err = new Error('register one label at a time under its parent (no dotted forms)');
     err.code = 'INVALID_PARAMS';
     throw err;
   }
   requireValidName(name);
-  await getActiveNetworkConfig(); // bind the SDK RPC binding to the active network before any read
+  const network = await getActiveNetworkConfig(); // bind the SDK RPC binding to the active network before any read
+  if (expectedNetworkId && expectedNetworkId !== network.id) {
+    throw coded('REVIEW_NETWORK_CHANGED', 'The active network changed after review. Check the name again before signing.');
+  }
 
   let parent = String(parentAddress ?? '').trim();
   let rootName = null;
@@ -255,7 +251,7 @@ export async function registerName({ name, parentAddress } = {}) {
 
   // The parent must exist and parse as a name-service registrar root (or domain) — never
   // register against an account we cannot even read. Honest absence beats blind creation.
-  const parentInfo = await thruClient.getAccountInfo(parent).catch(() => null);
+  const parentInfo = await thruClient.getAccountInfo(parent);
   if (!parentInfo?.exists) {
     throw coded('PARENT_UNKNOWN', `the parent name account ${parent.slice(0, 12)}… does not exist on this network`);
   }
@@ -272,6 +268,9 @@ export async function registerName({ name, parentAddress } = {}) {
   }
 
   const feePayer = await vault.getActiveAccount();
+  if (expectedAccountAddress && expectedAccountAddress !== feePayer?.address) {
+    throw coded('REVIEW_ACCOUNT_CHANGED', 'The active account changed after review. Check the name again before signing.');
+  }
 
   // Authority pre-verification. Live evidence (Betanet probe, 2026-10-24): the name-service
   // program reverts register-subdomain with error 3 (access authority mismatch) whenever the
@@ -286,7 +285,7 @@ export async function registerName({ name, parentAddress } = {}) {
 
   const n = String(name);
   const domainAddress = await ns.domainAccountAddress(parent, n);
-  const domainInfo = await thruClient.getAccountInfo(domainAddress).catch(() => null);
+  const domainInfo = await thruClient.getAccountInfo(domainAddress);
   if (domainInfo?.exists) {
     throw coded('NAME_TAKEN', `'${n}' is already registered under this parent on-chain.`);
   }
@@ -318,26 +317,31 @@ export async function registerName({ name, parentAddress } = {}) {
 
   const label = rootName ? `${n}.${rootName}` : `${n} (parent ${parent.slice(0, 12)}…)`;
   let formatted = null;
-  for await (const update of client.transactions.sendAndTrack(rawTransaction)) {
-    if (update?.signature?.value && formatted === null) {
-      formatted = formatSignature(update.signature.value);
-      const network = await getActiveNetworkConfig();
-      await pending.track({
-        signature: formatted, kind: 'name-register', from: feePayer.address, to: feePayer.address,
-        amountUnits: '0', displayAmount: `register '${label}' (fee 0n — no payment)`, networkId: network.id,
-      }).catch(() => null);
-    }
-    if (update?.executionResult) {
-      if (update.executionResult.vmError === 0) {
-        return { signature: formatted, domainAddress };
+  try {
+    for await (const update of client.transactions.sendAndTrack(rawTransaction)) {
+      if (update?.signature?.value && formatted === null) {
+        formatted = formatSignature(update.signature.value);
+        const network = await getActiveNetworkConfig();
+        await pending.track({
+          signature: formatted, kind: 'name-register', from: feePayer.address, to: feePayer.address,
+          amountUnits: '0', displayAmount: `register '${label}' (fee 0n — no payment)`, networkId: network.id,
+        }).catch(() => null);
       }
-      const userCode = update.executionResult.userErrorCode ?? 0;
-      throw coded(
-        'REGISTRATION_FAILED',
-        `Registration transaction reverted on-chain (vmError=${update.executionResult.vmError}${userCode ? `, name-service error ${userCode}` : ''}).`
-        + ' A revert here usually means the chain failed the authority check — the parent root must canonically allow the registering key.',
-      );
+      if (update?.executionResult) {
+        if (update.executionResult.vmError === 0) {
+          return { signature: formatted, domainAddress };
+        }
+        const userCode = update.executionResult.userErrorCode ?? 0;
+        throw coded(
+          'REGISTRATION_FAILED',
+          `Registration transaction reverted on-chain (vmError=${update.executionResult.vmError}${userCode ? `, name-service error ${userCode}` : ''}).`
+          + ' A revert here usually means the chain failed the authority check — the parent root must canonically allow the registering key.',
+        );
+      }
     }
+  } catch (err) {
+    if (err?.code === 'REGISTRATION_FAILED') throw err;
+    throw coded('TX_RESULT_MISSING', `The registration submission could not be resolved${formatted ? ` (signature ${formatted})` : ''}. Check pending transactions and the name before retrying.`, { retryable: true });
   }
   throw coded('TX_RESULT_MISSING', 'Registration transaction never returned an execution result (timed out?).', { retryable: true });
 }
