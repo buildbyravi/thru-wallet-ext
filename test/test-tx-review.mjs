@@ -776,5 +776,101 @@ console.log('[14] no UI file can reach a signing method on its own');
     expected.filter((m) => !literals.has(m)).join(','));
 }
 
+console.log('[15] the review fits one screen (owner review, 2026-10-28)');
+{
+  // The first shipped card stacked eleven sections: header, summary paragraph, protocol box,
+  // "what you are doing", "balance change" boxes, a balance-after row, a four-row fee block,
+  // a simulation notice, "execution details", warnings and acknowledgements. The owner asked
+  // for the previous-mainsend shape back, and for Rabby's before-sign order: header, the value
+  // moving, ONE table, warnings, and everything technical behind a single disclosure.
+  //
+  // These are the structural guards for that shape. They are source and decoder assertions,
+  // not screenshots — this repository has no browser engine in CI.
+  const cardSource = readFileSync(new URL('../src/ui/domain/tx-review/review-card.js', import.meta.url), 'utf8');
+  const callCount = (source, name) => (source.match(new RegExp(`\\b${name}\\(`, 'g')) || []).length;
+  ok('the card renders exactly one label/value table', callCount(cardSource, 'detailTable') === 2,
+    `${callCount(cardSource, 'detailTable')} sites (definition + one call expected)`);
+  // Two disclosure buttons exist by construction: the advanced panel and, inside it, the raw
+  // bytes. Never a third top-level section.
+  ok('the card keeps exactly one advanced disclosure plus the raw toggle',
+    (cardSource.match(/class: 'tx-review-disclosure-toggle'/g) || []).length === 2
+      && cardSource.includes("'Advanced details'")
+      && cardSource.includes("'Hide advanced details'"));
+  ok('the stacked section wrappers are gone', !cardSource.includes('tx-review-section')
+    && !cardSource.includes('tx-review-protocol') && !cardSource.includes("'Balance after'"));
+  ok('the card marks a fee quote as an estimate', cardSource.includes("(estimated)"));
+  // `.detail-address` ellipsizes; a review address must wrap so the user can read all of it.
+  ok('no review address is rendered with the ellipsizing class',
+    cardSource.includes("'mono tx-review-address'") && !cardSource.includes("'mono detail-address'"));
+  ok('an unknown transaction opens its details instead of folding them',
+    /String\(!known\)/.test(cardSource) && /known \? 'hidden' : null/.test(cardSource));
+
+  // One table per operation, with a budget chosen from what the operation actually needs.
+  // A decoder that starts appending "Network", "Program", "Registrar"… rows again fails here.
+  const claimFacts = {
+    fromAddress: SENDER,
+    fromLabel: 'Main account',
+    amountUnits: '10000',
+    capUnits: '10000',
+    accountExists: true,
+    limit: {
+      supported: true, paused: false, exhausted: false, remainingAmount: '10000',
+      window: '3600', resetAtUnixSec: null,
+    },
+    fee: { supported: false, reason: 'not reported' },
+    programAddress: asAddress(14),
+    vaultAddress: asAddress(15),
+    networkId: 'betanet',
+    networkLabel: 'Betanet',
+  };
+  const rawFacts = {
+    programAddress: asAddress(16),
+    programName: null,
+    programVerified: false,
+    programNote: null,
+    dataHex: 'deadbeef',
+    note: null,
+    accounts: [{ role: 'Payer', address: SENDER }],
+    networkId: 'betanet',
+    networkLabel: 'Betanet',
+  };
+  const shapes = [
+    ['native-send', decode('native-send', nativeFacts()), 3],
+    ['token-transfer', decode('token-transfer', tokenFacts()), 5],
+    ['domain-register', decode('domain-register', domainFacts()), 4],
+    ['domain-purchase', decode('domain-purchase', paidFacts()), 5],
+    ['domain-renew', decode('domain-renew', paidFacts()), 6],
+    ['domain-claim', decode('domain-claim', paidFacts()), 5],
+    ['faucet-claim', decode('faucet-claim', claimFacts), 4],
+    ['raw', decode('raw', rawFacts), 3],
+  ];
+  for (const [kind, review, max] of shapes) {
+    ok(`${kind} keeps its fact table within ${max} rows`, review.summary.length <= max,
+      `${review.summary.length} rows: ${review.summary.map((row) => row.label).join(', ')}`);
+    ok(`${kind} does not repeat the network (the header badge states it)`,
+      !review.summary.some((row) => row.label === 'Network'));
+  }
+
+  // Simplification must not become deletion: every technical fact the first version showed
+  // still exists in the envelope, because the card moves it behind the disclosure rather than
+  // dropping it (no balance-after is predicted, by design).
+  for (const [kind, review] of shapes.filter(([kind]) => kind !== 'raw')) {
+    ok(`${kind} still carries its program, instruction and fee provenance`,
+      Boolean(review.execution.program?.name)
+        && review.execution.instructions.length >= 1
+        && review.execution.program.verified === true
+        && Boolean(review.assets.fee.note),
+      kind);
+    ok(`${kind} still refuses to predict a post-transaction balance`,
+      review.assets.balanceAfter === null && Boolean(review.assets.balanceAfterNote));
+  }
+  const rawReview = shapes.find(([kind]) => kind === 'raw')[1];
+  ok('raw still exposes the bytes and stays unsignable',
+    rawReview.execution.raw?.format === 'hex'
+      && rawReview.execution.raw?.data === 'deadbeef'
+      && rawReview.operation.confirmLabel === null
+      && model.stateFromWarnings(rawReview.warnings) === 'blocked');
+}
+
 console.log(`\nAll tx-review checks passed: ${checks}/${checks}.`);
 console.log('No network was contacted: the SDK account read was stubbed at the client boundary.');

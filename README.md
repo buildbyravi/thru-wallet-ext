@@ -155,7 +155,7 @@ npm run build
 npm audit --omit=dev
 ```
 
-`npm test` runs the whole deterministic suite (2,193 checks across 32 test suites plus 5 build gates, as of 2026-10-28):
+`npm test` runs the whole deterministic suite (2,236 checks across 32 test suites plus 5 build gates, as of 2026-10-28):
 
 1. derivation and QR checks,
 2. layering and DOM-sink checks (all of `src/`),

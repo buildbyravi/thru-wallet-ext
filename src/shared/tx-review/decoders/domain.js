@@ -151,16 +151,20 @@ export function decodeDomainRegister({ facts }) {
       source: facts.program?.source
         || 'Evidence-pinned deployment on the active network (docs/DECISIONS.md D-016)',
     },
+    // The owner's 2026-10-28 review called this preview too long. This table carries only the
+    // decision — which name, for how long, for how much. The registrar identity is the card's
+    // protocol line, the network is its header badge, the root registry address is a technical
+    // account (already in `execution.accounts`), and "price per year" is identical to the total
+    // for a single year, so it is shown only when more than one year is being bought.
     summary: [
       domainRow(facts),
       yearsRow(facts),
-      row('Registrar', registrarProgram(facts).name),
-      row('Root', facts.root ?? 'unknown', { mono: true }),
-      row('Price per year', feePerYear == null
-        ? 'not readable'
-        : displayAmount(feePerYear, NATIVE.decimals, NATIVE.symbol), { mono: true }),
+      ...(Number(facts.years) > 1
+        ? [row('Price per year', feePerYear == null
+          ? 'not readable'
+          : displayAmount(feePerYear, NATIVE.decimals, NATIVE.symbol), { mono: true })]
+        : []),
       row('Total charge', displayAmount(facts.totalPriceUnits, NATIVE.decimals, NATIVE.symbol), { mono: true }),
-      row('Network', facts.networkLabel ?? ''),
     ],
     assets: {
       outgoing: [movement({
@@ -223,7 +227,7 @@ function paidRegistryBlock({ facts, operation, rows, instructions, extraWarnings
       source: facts.program?.source
         || 'Registry config parsed from the on-chain account (src/lib/registrar.js)',
     },
-    summary: [...rows, row('Network', facts.networkLabel ?? '')],
+    summary: rows,
     assets: {
       outgoing: [paymentMovement(facts)],
       incoming: [],
@@ -317,10 +321,14 @@ export function decodeDomainRenew({ facts }) {
       domainRow(facts),
       row('Current expiry', chainTime(facts.lease?.endTime)),
       yearsRow(facts),
-      row('Price per year', facts.pricePerYear == null
-        ? 'not readable'
-        : displayAmount(String(facts.pricePerYear), facts.payment?.decimals ?? 0,
-          facts.payment?.symbol || 'TOKEN'), { mono: true }),
+      // One year makes "price per year" identical to "total price"; show it only when the
+      // multiplication is real information.
+      ...(Number(facts.years) > 1
+        ? [row('Price per year', facts.pricePerYear == null
+          ? 'not readable'
+          : displayAmount(String(facts.pricePerYear), facts.payment?.decimals ?? 0,
+            facts.payment?.symbol || 'TOKEN'), { mono: true })]
+        : []),
       row('Total price', displayAmount(facts.totalPriceUnits, facts.payment?.decimals ?? 0,
         facts.payment?.symbol || 'TOKEN'), { mono: true }),
       // Deliberately not computed: the program decides how an extension maps to a new end time.

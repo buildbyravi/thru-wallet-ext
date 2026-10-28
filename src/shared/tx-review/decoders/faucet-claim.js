@@ -68,7 +68,6 @@ export function decodeFaucetClaim({ facts }) {
   const rows = [
     row('To', facts.fromAddress, { above: facts.fromLabel ?? null, mono: true }),
     row('Amount', amount, { mono: true }),
-    row('Network', facts.networkLabel ?? ''),
   ];
   const window = windowLabel(facts.limit);
   if (facts.limit?.supported && facts.limit.remainingAmount != null) {

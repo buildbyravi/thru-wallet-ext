@@ -24,7 +24,7 @@ This record answers three questions the owner asked in one pass:
   so `npm install` + `npm run build` were re-run before any verification.
 - Rabby was read from the real repository at `develop` (GitHub contents API, individual files —
   not screenshots, not marketing pages). Files named in §2 are the ones actually read.
-- Local gates: `npm run build`, `npm test` (2,193 checks after the §4 and §10 fixes), `scripts/check-layering.mjs`,
+- Local gates: `npm run build`, `npm test` (2,236 checks after the §4, §10 and §11 fixes), `scripts/check-layering.mjs`,
   `scripts/check-routes.mjs`, `scripts/check-csp.mjs` via the build, plus the new browser harness
   in §5.
 - No browser binary exists in this sandbox, so **no automated screenshot or layout assertion is
@@ -117,7 +117,7 @@ are explicitly **not** copied.
 | 8 | Timeout ≠ failure | `confirm.js:104–150` tags `phase:'confirm'`/`'submit'` and `classifyReviewError` only reports `uncertain` after a submit-phase error | Met; the route-level wording is asserted in `test-route-lifecycle.mjs`. |
 | 9 | Revalidation before signing | `confirmReview` re-checks TTL, binding hash, active account/network, then the kind's recheck (fee/token/price/expiry/faucet) | Met; tests cover account switch, network switch, expiry, and each recheck family. |
 | 10 | No duplicated review UI | one component (`ui/domain/tx-review/review-card.js:96`), one confirm helper (`confirm.js:59`); both routes deleted their own rows, duplicate card and password flow | Met. `check-routes.mjs` reports every class defined; `check-layering.mjs` 0 violations, DOM sinks 0. |
-| 11 | Build + suite green | `npm run build` PASS; `npm test` exit 0, **2,193 checks** (incl. `test-tx-review.mjs` 89 and `test-route-lifecycle.mjs` 1,059) | Met; re-run after every fix in §4 and §10, and again on the merged head. |
+| 11 | Build + suite green | `npm run build` PASS; `npm test` exit 0, **2,236 checks** (incl. `test-tx-review.mjs` 126 and `test-route-lifecycle.mjs` 1,065) | Met; re-run after every fix in §4, §10 and §11, and again on the merged head. |
 
 ---
 
@@ -260,7 +260,7 @@ actually run.
 | Operations actually integrated | `native-send` → `tx.sendChecked`; `token-transfer` → `token.transferChecked`; `domain-register` → `name.register` (`via:'custom'`); `domain-purchase` → `name.purchase`; `domain-renew` → `name.renewLease`; `domain-claim` → `name.claimExpired`; `faucet-claim` → `tx.claimFaucet`; `raw` → **no** submit. Activation (Dashboard for the active account, Send for an owned recipient) goes through the v12 `tx.registerAccount`, not the review pipeline — it is an unlocked-only, zero-fee, self-signed activation, not a value-moving transfer. | `services/review/kinds.js`; route-level coverage in `test/test-route-lifecycle.mjs`. |
 | Decoders implemented vs unsupported | Implemented: native send, token transfer, domain register, domain purchase, domain renew, domain claim, faucet claim, raw/unknown (display-only). Unsupported **by design**: swap, AMM/LP add/remove, pool creation, token launch/migration/claim — the contract declares them behind `DEFI_*` flags that are all off, no handler can execute, and no kind exists, so `tx.prepareReview` answers `supported:false` with the known-kinds list. Arbitrary programs decode as `kind:'unknown'` with raw bytes and cannot be signed. | `registry.listDecoderKinds()` = `listKinds()`; `test/test-tx-review.mjs` [0] and [2]. |
 | Simulation availability and limits | Unavailable and said so: `tx.simulate` returns `{supported:false, changes:null, reason}` and every review carries `simulation.status:'unavailable'` with a null post-transaction balance (`assets.balanceAfter` is validator-enforced null). Deterministic facts (exact base-unit amount, fee provenance or its explicit reason, target program/instruction, warnings) are shown; nothing is interpolated. | `services/tx-service.js §simulate`; `model.js assertReview`; [1]/[3]. |
-| Tests and build results | `npm test`: **2,193 checks**, exit 0 — `test-tx-review.mjs` 89, `test-route-lifecycle.mjs` 1,059, `test-contract.mjs` 161, plus the rest of the suite. `npm run build`: PASS, layering 126 files / 0 DOM sinks, routes 15/15, 259 defined CSS classes. | Local/deterministic only; no browser binary exists in this sandbox. |
+| Tests and build results | `npm test`: **2,236 checks**, exit 0 — `test-tx-review.mjs` 126, `test-route-lifecycle.mjs` 1,065, `test-contract.mjs` 161, plus the rest of the suite. `npm run build`: PASS, layering 126 files / 0 DOM sinks, routes 15/15, 257 used CSS classes (all defined). | Local/deterministic only; no browser binary exists in this sandbox. |
 | Browser verification evidence | **None claimed.** `scripts/preview-tx-review.html` renders the real component against the real `dist/popup.css` for seven fixtures and was served and HTTP-checked; the DOM shim has no layout engine, so this is a harness, not a layout proof. The human runbook is `docs/MANUAL_SMOKE_CHECKLIST.md` §7. | §5; §7 item 1. |
 | New guard added for "no direct signing from the UI" | `test/test-tx-review.mjs` [14] scans every `src/ui/**/*.js` for `bridge.send('<method>')` literals (comments stripped), fails if any names an `auth:'signing'` method or an unknown method, and asserts the sanctioned literals (review trio + `tx.registerAccount`) are present so the scan cannot pass vacuously. This is what found the Dashboard defect fixed in §10. | [14]; `test/test-route-lifecycle.mjs` "dashboard activation" checks. |
 | Remaining security/protocol blockers | (1) token-transfer network fee unmeasured and recipient-owner acceptance unproven; (2) charged network fee is not returned by the RPC detail path; (3) no simulation/dry-run RPC; (4) custom-lease renew has no bridge method; (5) real-browser layout/focus and MV3 suspension untested; (6) no external security audit; (7) no dapp provider surface exists, by design. | §7, `docs/BACKEND_GAPS.md`, `docs/STATUS_AND_ROADMAP.md` §2. |
@@ -276,8 +276,8 @@ were wrong about this tree. Both kinds are recorded here so the next reader does
 | --- | --- | --- |
 | "PR backend contract is RIGHT (v29)… reuse it, do not build a parallel lifecycle" | **Agree** | `manifest.js` v29; `review-service.js`; `services/review/*`. No parallel lifecycle exists. |
 | "PR frontend is HALF-DONE… per-route sheets (tx-card, tx-detail-sheet, send.js inline review) still exist" | **Wrong** | `tx-card.js` and `tx-detail-sheet.js` are **Activity/History** components (`docs/HISTORY_REDESIGN_PLAN.md` P1/P2), not review sheets. `routes/send.js`, `routes/name.js` and `routes/faucet.js` each call `tx.prepareReview` → `TxReviewCard` → `submitReviewedReview`; those three are the only files under `src/ui/` that call the review pipeline, and there is no `/send`-owned review markup left. |
-| "U-3 PARTIAL: shared component + risk banners missing" | **Wrong** | `ui/domain/tx-review/review-card.js` renders header, amount delta, fee provenance, an explicit simulation-unavailable row, expandable execution details (program, decoded instruction, accounts, raw), a Warnings section, acknowledgements, and a disabled confirm when blocked. |
-| "U-8 PARTIAL: review-pipeline tests missing" | **Wrong** | `test/test-tx-review.mjs` (89 checks: registry parity, every decoder, malformed/unknown input, formatting, binding/TTL/account/network, acknowledgements, discard, code registry, UI signing-literal scan) + the Send/Domain/Faucet review flows inside `test/test-route-lifecycle.mjs`. |
+| "U-3 PARTIAL: shared component + risk banners missing" | **Wrong** | `ui/domain/tx-review/review-card.js` renders the review, a Warnings section, acknowledgements, and a disabled confirm when blocked. (At the time of this review that was eleven stacked sections; the 2026-10-28 owner review folded them into one table plus one disclosure — §11.) |
+| "U-8 PARTIAL: review-pipeline tests missing" | **Wrong** | `test/test-tx-review.mjs` (89 checks at the time of this review, 126 after §11: registry parity, every decoder, malformed/unknown input, formatting, binding/TTL/account/network, acknowledgements, discard, code registry, UI signing-literal scan, decoder row budget) + the Send/Domain/Faucet review flows inside `test/test-route-lifecycle.mjs`. |
 | "U-9 PARTIAL: A+B done, C–D in progress" | **Stale** | Stage C (shared UI + Send migration), D (DOM-level verification) and E (Domain + Faucet migration) are committed; the only unclosed stage is F's browser pass, which is open for environmental reasons. |
 | "U-10 FAIL: §10 completion report missing" | **Fair** | The substance existed across §3/§7/§8 but was not written as the required report nor linked from `STATUS_AND_ROADMAP.md`. Fixed: §9 above, linked from `docs/STATUS_AND_ROADMAP.md`. |
 | "P0: forbid submit without bindingHash" | **Already enforced** | `confirmReview` rejects a missing/blank `bindingHash` (`INVALID_INPUT`) and a mismatch (`BINDING_MISMATCH`); a display-only review has `submit:null` → `NOT_EXECUTABLE`. Covered by [4]. |
@@ -289,3 +289,80 @@ were wrong about this tree. Both kinds are recorded here so the next reader does
 | "Domain batch UI, dedup record layer, import list missing" | **True, out of v29 scope** | §6 already lists them as greenfield for the Domain task; the v29 directive was one review pipeline for shipped operations, not new domain features. |
 | "Browser-signed renewal and real-Chrome review remain open" | **Agree** | §5 and §7; `MANUAL_SMOKE_CHECKLIST.md` §7. |
 | "Simulation honesty PASS / security constraints PASS" | **Agree** | §9 rows; `tx.simulate`; D-003 untouched. |
+
+## 11. Simplification pass (2026-10-28): the owner's review
+
+The owner reviewed the shipped card against the previous `main` Send screen and against their own
+Rabby before-sign screenshots, and said three things: the Send review had changed too much compared
+with `main`, the Domain register preview was long enough to confuse ("so long users get confused"),
+and the Rabby before-sign format — decoded facts, value in and out, one card — was the target. That
+is a UX defect in this delivery, not a new feature; it is recorded in `docs/DEFECT_LOG.md` §11.
+
+### 11.1 What the card renders now
+
+One card, six blocks for a decoded operation (a seventh only for an undecoded one, which adds
+its one-sentence explanation), in this order:
+
+1. **Header** — operation name, network badge (+ testnet), decoded/not-decoded badge.
+2. **Program identity** — one line: program name, the signing account, verified/unverified badge.
+   This is the Thru analogue of Rabby's site line; the program address moved into the disclosure.
+3. **Value in / value out** — one signed, exact box per movement (`−0.000001 THRU` / `+0.00001 THRU`),
+   followed by the existing one-line "no post-transaction balance" note.
+4. **One fact table** (`detail-table`, the same component the old Send screen used) — the decoder's
+   rows, then `Network fee` (`… (estimated)` or `Not quoted`), then `Total` when the wallet can
+   actually add the numbers (one outgoing asset; asset-denominated fee). Nothing is invented when it
+   cannot: a token send reads `1 SMK + fee (not quoted)`.
+5. **Warnings**, unchanged in substance.
+6. **One `Advanced details ›` disclosure**, closed by default — program name/address/provenance,
+   instructions, account roles, fee provenance, reserve, fee note, "charged is reported in Activity",
+   simulation status + reason, and the raw-bytes toggle. For a `decode:'unknown'` review the panel is
+   OPEN, because the raw facts are then the only information there is.
+
+Acknowledgements stay outside the disclosure (they gate the confirm button), and the route still owns
+the footer button via `onChange({canConfirm})`.
+
+Removed as separate blocks (moved, not deleted): the summary sentence for decoded operations, the
+two-column protocol box, the "What you are doing" heading, the "Balance change" heading and its
+balance-after row, the four-row fee section, the standalone simulation notice, and the "Execution
+details" section. The summary sentence is still rendered for `decode:'unknown'`.
+
+### 11.2 Decoder rows trimmed
+
+| Decoder | Before | After | Why |
+| --- | --- | --- | --- |
+| `native-send` | From, To, Amount, **Network** | From, To, Amount | the network is the header badge |
+| `token-transfer` | From, To, Amount, **Token**, Mint, [Recipient token account], **Network** | From, To, Amount, Mint, [Recipient token account] | network = header badge; the title + value box already name the token |
+| `faucet-claim` | To, Amount, **Network**, [Remaining this window] | same minus Network | as above |
+| `raw` | Program, Instruction data, [Note], **Network** | same minus Network | as above |
+| `domain-register` | Domain, Duration, **Registrar**, **Root**, **Price per year**, Total charge, **Network** | Domain, Duration, [Price per year **only when years > 1**], Total charge | registrar = protocol line; root address = technical, in `execution.accounts`; per-year price repeats Total charge for one year |
+| `domain-{purchase,renew,claim}` | operation rows + **Network** | operation rows | as above; renew applies the same one-year rule to its per-year price |
+
+No fact was deleted from the envelope: programs, instructions, accounts, fee provenance/reserve/note
+and the simulation reason all still exist and are asserted in §11.3 (`[15]`).
+
+### 11.3 Guards added
+
+- `test-tx-review.mjs` **[15]** (37 checks): the card has exactly one `detailTable` call and exactly
+  two disclosure buttons (advanced + raw); the old section markers/classes are gone; the fee quote is
+  labelled `(estimated)`; an unknown review opens its details. Then a per-decoder **row budget** —
+  native-send 3, token-transfer 5, domain-register 4, purchase 5, renew 6, claim 5, faucet 4, raw 3 —
+  and "no decoder repeats the network". Finally, "nothing was dropped": every decoded review still
+  carries its verified program, ≥1 instruction and a fee note, and still refuses to predict a
+  balance; raw still exposes the bytes and stays unsignable.
+- `test-route-lifecycle.mjs`: four DOM assertions in the Faucet review flow (signed exact amount
+  `+0.00001 THRU`, one table / no sections, disclosure closed, opening it reveals program + fee note
+  + simulation status without re-preparing) and two in the token-send flow (one table with
+  From/To/Amount/fee/Total, `−1 SMK`, `Not quoted`, closed disclosure). Those flows drive the real
+  routes, real bridges and real component.
+
+### 11.4 Result
+
+`npm run build` PASS. `npm test` exit 0 — **2,236 checks**: `test-tx-review.mjs` 126/126,
+`test-route-lifecycle.mjs` 1,065/1,065, contract 161/161, plus the rest of the suite. The CSS for the
+removed sections (`.tx-review-protocol*`, `.tx-review-section*`, `.tx-review-fee-note`) was deleted so
+the stylesheet has no dead review classes; `check-css-nesting.mjs` and the route/CSS gate still pass.
+
+**UNVERIFIED:** the visual result at 400 px and in a real browser. There is no browser binary in this
+sandbox, so §11.1 describes the DOM the tests assert, not a rendered screenshot. The harness
+(`scripts/preview-tx-review.html`, seven fixtures) and `docs/MANUAL_SMOKE_CHECKLIST.md` §7 are how
+that check gets recorded.

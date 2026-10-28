@@ -86,7 +86,6 @@ export function decodeNativeSend({ facts }) {
       row('From', facts.fromAddress, { above: facts.fromLabel ?? null, mono: true }),
       row('To', facts.toAddress, { above: facts.recipientLabel ?? null, mono: true }),
       row('Amount', displayAmount(facts.amountUnits, 9, 'THRU'), { mono: true }),
-      row('Network', facts.networkLabel ?? ''),
     ],
     assets: {
       outgoing: [movement({

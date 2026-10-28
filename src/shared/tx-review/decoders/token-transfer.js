@@ -102,13 +102,13 @@ export function decodeTokenTransfer({ facts }) {
     row('From', facts.fromAddress, { above: facts.fromLabel ?? null, mono: true }),
     row('To', facts.toAddress, { above: facts.recipientLabel ?? null, mono: true }),
     row('Amount', displayAmount(facts.amountUnits, decimals, symbol), { mono: true }),
-    row('Token', facts.name ? `${symbol} — ${facts.name}` : symbol, { mono: true }),
+    // No "Token" row: the title says "Send SMK" and the value box already names the asset. The
+    // mint address stays because it is the only unambiguous identity of a token on Thru.
     row('Mint', facts.mintAddress, { mono: true }),
   ];
   if (createsRecipientAccount) {
     summary.push(row('Recipient token account', 'Created by this send (extra fee)'));
   }
-  summary.push(row('Network', facts.networkLabel ?? ''));
 
   const accounts = [
     accountRole('Source owner', facts.fromAddress),

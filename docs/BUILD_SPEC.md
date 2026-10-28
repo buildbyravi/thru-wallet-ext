@@ -393,9 +393,13 @@ re-implement any of them:
 2. **Decode** — `src/shared/tx-review/decoders/*` turn the intent into explicit review facts
    (assets out/in, fee provenance, program, decoded instruction name, warnings). The registry has
    no fallback: an unregistered kind decodes as `unknown` with raw details and **no submit policy**.
-3. **Review** — `src/ui/domain/tx-review/review-card.js` renders those facts and nothing else. It
-   never recomputes amounts, never invents a post-tx balance, and never claims success. Warnings
-   that matter are blocking: the confirm control stays disabled.
+3. **Review** — `src/ui/domain/tx-review/review-card.js` renders those facts in one screen, in
+   Rabby's before-sign order: header + program identity, the value leaving/arriving, ONE label/value
+   table (decoder rows, estimated fee or `Not quoted`, total), warnings, and one collapsed
+   `Advanced details` disclosure holding program/instruction/account/fee/simulation/raw facts
+   (`docs/TX_REVIEW_VERIFICATION.md` §11). It never recomputes amounts, never invents a post-tx
+   balance, and never claims success. Warnings that matter are blocking: the confirm control stays
+   disabled.
 4. **Authenticate → sign → reconcile** — `src/ui/domain/tx-review/confirm.js` calls
    `tx.confirmReview`, which re-validates account/network/facts/TTL/acknowledgements and returns
    the exact submit instructions without signing. The helper then calls that method through the

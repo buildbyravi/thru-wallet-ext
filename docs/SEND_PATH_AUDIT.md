@@ -7,7 +7,7 @@ Scope: the popup/side-panel Send route, adjacent balance displays, UI bridge, sh
 
 > **Refresh 2026-10-28 (this record's body is unchanged).** The audited findings below still
 > describe the Send path, but two things moved since: the shared contract is now **v29** (147
-> methods, 15 routes) and `test/test-route-lifecycle.mjs` is **1,059** checks in a **2,193**-check
+> methods, 15 routes) and `test/test-route-lifecycle.mjs` is **1,065** checks in a **2,236**-check
 > suite. Send's review step is now the shared v29 card (`src/ui/domain/tx-review/review-card.js`,
 > prepared by `tx.prepareReview`) instead of route-owned markup; the activation gate, balance/fee
 > rules, checked methods and timeout wording described here are unchanged, and the confirm step is

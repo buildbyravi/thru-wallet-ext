@@ -11,13 +11,14 @@ Legend for how each was found:
 guardrail script caught it
 
 
-## Status convention — current as of 2026-09-26
+## Status convention — current as of 2026-10-28
 
 The defects in §§1–4 are **historical**: their old paths and failure descriptions are retained to
 explain the fixes, not to claim those paths still ship. §5 records resolved legacy duplication, not
 a current backlog. The current verification gaps are listed in §6; the popup/side-panel and History
 cross-network fixes in §§7–8 are implemented and locally tested, but their real-Chrome/live-RPC
-checks remain open. Check `src/` before treating any historical symptom as current.
+checks remain open. §9–§11 are v29 review fixes verified in source and the deterministic suite; none
+of them has a real-browser pass. Check `src/` before treating any historical symptom as current.
 
 ---
 
@@ -394,3 +395,75 @@ touches `tx.autoCreateAccount`.
 > **Lesson:** "documented as allowed" is not the same as "reaches the one sanctioned implementation".
 > A capability that is convenient to call directly will be called directly; make the direct call
 > fail in a test, not in a user's wallet.
+
+## 11. The review surface was over-built — FIXED in source/tests
+
+Found by the owner reading the shipped screen, not by a test: "the send view changed too much — make
+it back like the previous one from main", "the Domain register preview is so long users get
+confused", with two of their own Rabby before-sign screenshots as the target shape.
+
+### 11.1 Symptom — `BROWSER` (owner)
+
+A native THRU send rendered **eleven** blocks: an eyebrow + title, a prose summary, a two-column
+"signing account / interaction" box with the program address and provenance, a "What you are doing"
+heading over a table, a "Balance change" heading over one large box plus a "Balance after: not
+available" row and its note, a "Network fee" heading over four rows (fee, reserve, provenance, note)
+and two more hints, a "Simulation unavailable" box, an "Execution details" heading over program +
+instruction + four account roles + a raw toggle, a "Warnings" heading, acknowledgements, and the
+blocked notice. A `.name` registration was longer still, because it has more facts.
+
+The facts were all true; the screen answered "what am I signing?" only after a scroll. The previous
+`main` Send screen had done the same job with one table, and Rabby's before-sign screen shows the
+value, one card and two taps of detail at 400 px.
+
+### 11.2 Root cause — `READ`
+
+Two defaults compounded:
+
+1. **Every decoder fact got a section of its own.** The card's contract said "render the envelope",
+   so each new fact (protocol provenance, simulation status, balance-after note, fee provenance,
+   reserve) was added as a visible block rather than folded into the facts the user needs to decide.
+   The envelope grew; the card grew one section per field, forever.
+2. **The old Send review's information architecture was treated as replaced rather than preserved.**
+   The single `detail-table` with From/To/Amount/fee/total was exactly the right shape for a transfer;
+   it was rebuilt from scratch as three sections, so the screen the owner recognised disappeared
+   instead of becoming the shared one.
+
+### 11.3 Fix
+
+`review-card.js` now renders one table (`detail-table`, the same component as old `main`) with the
+decoder's rows + `Network fee (estimated)`/`Not quoted` + `Total` when arithmetic is possible, above
+it one signed exact value box per movement, above that a one-line program identity, and **one closed
+`Advanced details` disclosure** holding program address/provenance, instructions, account roles, fee
+provenance/reserve/note, the simulation status and the raw toggle. Unknown reviews open that
+disclosure. Decoders dropped the redundant `Network` row (the header badge owns it), the registrar
+row (the protocol line owns it), and the per-year price when it duplicates the total.
+
+### 11.4 A clipped destination address, found while simplifying — `READ`
+
+The first card rendered mono summary values with the shared `.detail-address` class, which is
+`white-space: nowrap; text-overflow: ellipsis`. At the 400 px popup width a 44-character Thru address
+was therefore **visually truncated in the "To" row** of a send review — the destination the user is
+about to pay irreversibly. The full address existed in the DOM (and in `Advanced details`), so no test
+noticed; the old `main` screen deliberately rendered `to` with `word-break: break-all`.
+
+Fix: review values now use `.tx-review-address` (`word-break: break-all`, no ellipsis), so a long
+address wraps to a second line instead of being cut off. `.detail-address` stays for the compact
+account rows that actually want ellipsis.
+
+> **Lesson:** "the data is in the DOM" is not the same as "the user can read it". Any class borrowed
+> from a compact list can silently shorten the one string the decision depends on.
+
+### 11.5 Guards
+
+- `test-tx-review.mjs` [15] fails if the card grows a second table or a third top-level section, if
+  the old section classes return, if any decoder exceeds its row budget, or if any decoder repeats
+  the network in its rows. It also asserts the folded facts still exist in the envelope, so the next
+  simplification cannot become deletion.
+- `test-route-lifecycle.mjs` asserts the rendered DOM through the real Send and Faucet routes: one
+  table, no sections, disclosure closed by default, opening it reveals the program/fee note/simulation
+  without re-preparing the review, and an unmeasured fee prints `Not quoted` rather than a number.
+
+> **Lesson:** a shared component's envelope is a data contract, not a layout. Every new fact does not
+> earn a section; the screen has to stay the size of the decision. And when replacing a screen users
+> already know, the old shape is the baseline to beat, not the thing to throw away.

@@ -37,7 +37,6 @@ export function decodeRawTransaction({ facts }) {
     row('Instruction data', facts.dataHex ? `${facts.dataHex.length} hex characters` : 'not supplied'),
   ];
   if (facts.note) rows.push(row('Note', String(facts.note)));
-  rows.push(row('Network', facts.networkLabel ?? ''));
 
   return {
     operation: {

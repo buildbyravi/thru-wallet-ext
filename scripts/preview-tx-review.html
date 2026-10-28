@@ -19,10 +19,12 @@
     open http://localhost:8000/scripts/preview-tx-review.html
 
   What to look for:
-    - a simple transfer reads as a simple transfer; the domain/faucet sheets carry only the
-      rows that operation actually has;
+    - a simple transfer reads as a simple transfer: header, program line, the signed value,
+      ONE fact table (fee marked "estimated" or "Not quoted"), and one closed disclosure;
+    - the domain/faucet cards carry only the rows that operation actually has — a registration
+      is the name, the duration and the price, not a DeFi position;
     - the blocked sends and the unknown instruction render a disabled confirm, and the
-      unknown case shows raw data behind a disclosure;
+      unknown case opens with its raw facts already showing (its details panel starts open);
     - at the 408px stress width (the real popup is 400px) nothing is clipped, long addresses
       wrap, and the raw-data block scrolls
       horizontally instead of pushing the card wider than the popup;

@@ -70,13 +70,13 @@ The popup entry `src/popup/popup.js` is a boot stub. The removed legacy screens 
 | `test/test-qr.mjs` | QR generation/encoding (15 checks). |
 | `scripts/check-layering.mjs` | Import boundaries and DOM-sink scan (126 files; zero sinks). |
 | `scripts/check-csp.mjs` | Enabled-network/CSP consistency. |
-| `scripts/check-routes.mjs` | Route registration/reachability (15/15) and used CSS classes (259, all defined). |
+| `scripts/check-routes.mjs` | Route registration/reachability (15/15) and used CSS classes (257, all defined). |
 | `scripts/check-css-nesting.mjs` | Flat-CSS guard. |
 | `scripts/check-panel-tiles.mjs` | Dashboard action/services tile size and grid consistency. |
 | `test/test-launchpad-quarantine.mjs` | Deleted launchpad/DEX/prediction surface remains out of source and `dist/` (66 checks). |
 | `test/test-contract.mjs` | Manifest/router/UI agreement and security invariants, v29 / 147 methods (161 checks). |
 | `test/test-ui-dom.mjs` | DOM safety and reference codec. |
-| `test/test-route-lifecycle.mjs` | All 15 routes through Router/guards/bridge, teardown, secrets, focus, Send/Domain/Faucet review flows, Dashboard activation, History, panel behavior (1,059 checks). |
+| `test/test-route-lifecycle.mjs` | All 15 routes through Router/guards/bridge, teardown, secrets, focus, Send/Domain/Faucet review flows, Dashboard activation, History, panel behavior (1,065 checks). |
 | `test/test-tx-review.mjs` | The review pipeline: registry↔kind parity, every decoder, malformed and unknown input, amount/fee formatting, binding/TTL/account/network refusals, acknowledgements, blocking, discard, the central error-code registry, and the UI signing-literal scan (89 checks). |
 | `test/test-vault.mjs`, `test/test-thru-client.mjs` | Vault/SDK integration, instruction and decoder behavior. |
 | `test/test-token-balances.mjs`, `test/test-balance-network.mjs` | Token denomination, proven-zero/unknown, network-scoped reads/caches. |
@@ -84,7 +84,7 @@ The popup entry `src/popup/popup.js` is a boot stub. The removed legacy screens 
 | `test/test-registration.mjs` | Owned-account registration policy and bounded retries with deterministic SDK fixtures. |
 | `test/test-api-router.mjs` | Auth, context, serialization, background dispatch, and send/registration integration. |
 
-The suite is **2,193 checks across 32 test suites plus 5 build gates** (2026-10-28). Use the final test output for any subsequent refresh. They are deterministic/local evidence only. Real-browser and live-chain checks are separate.
+The suite is **2,236 checks across 32 test suites plus 5 build gates** (2026-10-28). Use the final test output for any subsequent refresh. They are deterministic/local evidence only. Real-browser and live-chain checks are separate.
 
 Visual harness: `scripts/preview-tx-review.html` renders the real `TxReviewCard` with the real built
 `dist/popup.css` for seven fixtures (`scripts/preview-tx-review.fixtures.js`), served by
@@ -167,7 +167,7 @@ No DOM or `chrome.*` access. Contract **v29** has **147 methods**. Security-poli
 | `tokens.js` | 13 | `NATIVE_TOKEN`: THRU, 9 decimals (the scale `format.js` and every decoder use) |
 | `tx-review/model.js` | 331 | The review wire contract, strict validator, TTL, and the ONE error-code registry |
 | `tx-review/registry.js` | 75 | Decoder registry; no fallback, duplicate registration throws |
-| `tx-review/decoders/*` | 1,086 | `common`, `native-send`, `token-transfer`, `domain`, `faucet-claim`, `raw`, `index` — pure facts → content |
+| `tx-review/decoders/*` | 1,091 | `common`, `native-send`, `token-transfer`, `domain`, `faucet-claim`, `raw`, `index` — pure facts → content |
 
 Network-specific balances, pending transactions, token state, and History are kept separate by network where applicable. Vault keys, account labels, and contacts are global wallet/device state.
 
@@ -177,7 +177,7 @@ Network-specific balances, pending transactions, token state, and History are ke
 
 `src/ui/kit/`: `dom.js` (285), `icon.js` (241), `button.js` (171), `field.js` (193), `feedback.js` (124), `focus-trap.js` (189), `help-tooltip.js` (68), `sheet.js` (117), `toast.js` (145).
 
-`src/ui/domain/`: account-avatar (60), account-row (151), account-picker (155), asset-selector (136), balance-hero (111), current-connection (118), fresh-phrase (33), panel-item (57), password-prompt (153), seed-phrase-grid (160), token-avatar (49), token-row (123), token-drawer (483), tx-card (243), tx-detail-sheet (311), security-sheet (186), and `tx-review/`: `review-card.js` (323 — the one review surface) + `confirm.js` (148 — the one confirm→auth→submit path).
+`src/ui/domain/`: account-avatar (60), account-row (151), account-picker (155), asset-selector (136), balance-hero (111), current-connection (118), fresh-phrase (33), panel-item (57), password-prompt (153), seed-phrase-grid (160), token-avatar (49), token-row (123), token-drawer (483), tx-card (243), tx-detail-sheet (311), security-sheet (186), and `tx-review/`: `review-card.js` (368 — the one review surface) + `confirm.js` (148 — the one confirm→auth→submit path).
 
 ### Router and route files
 
