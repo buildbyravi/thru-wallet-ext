@@ -57,6 +57,21 @@ function requireYears(value, field = 'years') {
   return years;
 }
 
+/**
+ * The name the route resolved the recipient FROM ("alice.thru"), when it did. Display-only and
+ * never the source of truth: the address beside it is what the handler signs for, and
+ * `tx.validateAddress` in the background is what resolved the name in the first place. Until
+ * 2026-10-28 this was dropped, so a send the user typed as a name showed only a raw address
+ * and they could not recognise what they had asked for (audit D-2).
+ */
+function resolvedRecipientLabel(params) {
+  const value = params?.recipientLabel;
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > 120) return null;
+  return trimmed;
+}
+
 async function labelFor(address) {
   try {
     const accounts = await accountService.listAccounts();
@@ -156,7 +171,7 @@ async function nativeSendFacts(params, { account, network }) {
     fromAddress: account.address,
     fromLabel: account.label ?? null,
     toAddress,
-    recipientLabel: await labelFor(toAddress),
+    recipientLabel: resolvedRecipientLabel(params) ?? await labelFor(toAddress),
     amountUnits,
     recipient: { exists: recipient.exists },
     balanceUnits: sender.balanceUnits,
@@ -216,7 +231,7 @@ async function tokenTransferFacts(params, { account, network }) {
     fromAddress: account.address,
     fromLabel: account.label ?? null,
     toAddress,
-    recipientLabel: await labelFor(toAddress),
+    recipientLabel: resolvedRecipientLabel(params) ?? await labelFor(toAddress),
     mintAddress,
     symbol: metadata.symbol,
     name: metadata.name,

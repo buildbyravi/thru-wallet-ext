@@ -34,6 +34,31 @@ function paymentMovement(facts) {
   });
 }
 
+/**
+ * The unit the registrar actually charges in. The paid registry charges its configured payment
+ * token; the custom registrar charges native THRU from the signer. A row that formats a custom
+ * registrar price with the payment-token fallback prints "1000 TOKEN" for a THRU amount.
+ */
+function priceUnit(facts) {
+  if (facts.provider === 'custom') return { symbol: NATIVE.symbol, decimals: NATIVE.decimals };
+  return {
+    symbol: facts.payment?.symbol || 'TOKEN',
+    decimals: Number.isInteger(facts.payment?.decimals) ? facts.payment.decimals : 0,
+  };
+}
+
+function priceRow(facts, label) {
+  const unit = priceUnit(facts);
+  return row(label, facts.pricePerYear == null
+    ? 'not readable'
+    : displayAmount(String(facts.pricePerYear), unit.decimals, unit.symbol), { mono: true });
+}
+
+function totalRow(facts, label) {
+  const unit = priceUnit(facts);
+  return row(label, displayAmount(facts.totalPriceUnits, unit.decimals, unit.symbol), { mono: true });
+}
+
 function paymentLabel(facts) {
   const payment = facts.payment ?? {};
   return `${payment.symbol || 'TOKEN'}${payment.name ? ` — ${payment.name}` : ''}`;
@@ -112,6 +137,40 @@ function registrarProgram(facts) {
 }
 
 // ---------------------------------------------------------------------------------------
+// The custom registrar (native THRU fee, self-signed)
+// ---------------------------------------------------------------------------------------
+
+/**
+ * The custom registrar prices its writes in NATIVE THRU, not in the paid registry's payment
+ * token. Reading it as a payment-token amount rendered 2,000 base units as "2000 TOKEN"
+ * (audit 2026-10-28): the facts carry no `payment` block at all, so `paymentMovement` fell
+ * back to symbol 'TOKEN', decimals 0.
+ */
+function nativeRegistrarMovement(facts) {
+  return movement({
+    symbol: NATIVE.symbol,
+    name: 'Thru native token',
+    decimals: NATIVE.decimals,
+    amountUnits: facts.totalPriceUnits,
+    verified: true,
+    // processor.rs debits the treasury with `let _ = account_transfer(..)`, so a failed
+    // charge does not fail the registration. Saying "you will pay" would be an overclaim.
+    note: 'Declared by the registrar program in THRU base units. The deployed program applies '
+      + 'the charge best-effort, so the amount actually debited is decided on-chain.',
+  });
+}
+
+/** Shared by register and renew: the quote is a config read, not a signed amount. */
+function customQuoteWarning() {
+  return warn('quote-not-final', 'info',
+    'The final charge is decided by the program',
+    'The registrar prices its writes from its on-chain config, read at prepare time. A config '
+    + 'change before signing is caught by the background review check and by the handler. On '
+    + 'the deployed program the debit is best-effort, so the amount actually collected is '
+    + 'decided on-chain.');
+}
+
+// ---------------------------------------------------------------------------------------
 // Registration through the custom registrar (native fee, self-signed)
 // ---------------------------------------------------------------------------------------
 
@@ -126,14 +185,13 @@ export function decodeDomainRegister({ facts }) {
   if (facts.nativeBalanceUnits != null && BigInt(facts.nativeBalanceUnits) < BigInt(facts.totalPriceUnits)) {
     warnings.push(warn('insufficient-native', 'danger',
       'Balance is lower than the registration fee',
+      // The deployed program does not reject a transfer it cannot make (it ignores the
+      // error), so "the program would reject it" was wrong. What actually refuses is the
+      // handler's own balance check — say that instead of predicting the chain's behaviour.
       'The registrar charges its fee in THRU from the signing account; the account holds less '
-      + 'than the total below, so the program would reject it.', { blocking: true }));
+      + 'than the total below, so the wallet will refuse to sign.', { blocking: true }));
   }
-  warnings.push(warn('quote-not-final', 'info',
-    'The final charge is decided by the program',
-    'The registrar debits its configured fee inside the program. The quote above is the '
-    + 'config read at prepare time; a config change before signing is caught by the background '
-    + 'review check and by the handler.'));
+  warnings.push(customQuoteWarning());
 
   return {
     operation: {
@@ -167,14 +225,7 @@ export function decodeDomainRegister({ facts }) {
       row('Total charge', displayAmount(facts.totalPriceUnits, NATIVE.decimals, NATIVE.symbol), { mono: true }),
     ],
     assets: {
-      outgoing: [movement({
-        symbol: NATIVE.symbol,
-        name: 'Thru native token',
-        decimals: NATIVE.decimals,
-        amountUnits: facts.totalPriceUnits,
-        verified: true,
-        note: 'Charged by the registrar program itself, in THRU base units.',
-      })],
+      outgoing: [nativeRegistrarMovement(facts)],
       incoming: [],
       fee: registrarFee(facts),
       balanceAfter: null,
@@ -202,11 +253,22 @@ export function decodeDomainRegister({ facts }) {
 // ---------------------------------------------------------------------------------------
 
 function paidRegistryBlock({ facts, operation, rows, instructions, extraWarnings = [] }) {
+  // Two registrars with the same shape and different money: the paid registry charges in its
+  // payment token, the custom registrar charges in native THRU from the signer.
+  const native = facts.provider === 'custom';
   const warnings = [...extraWarnings];
   const unavailable = availabilityWarning(facts);
   if (unavailable) warnings.push(unavailable);
 
-  if (facts.paymentBalanceUnits != null
+  if (native) {
+    if (facts.nativeBalanceUnits != null
+        && BigInt(facts.nativeBalanceUnits) < BigInt(facts.totalPriceUnits)) {
+      warnings.push(warn('insufficient-native', 'danger',
+        'Balance is lower than the registrar fee',
+        'The registrar charges its fee in THRU from the signing account; the account holds less '
+        + 'than the total below, so the wallet will refuse to sign.', { blocking: true }));
+    }
+  } else if (facts.paymentBalanceUnits != null
       && BigInt(facts.paymentBalanceUnits) < BigInt(facts.totalPriceUnits)) {
     warnings.push(warn('insufficient-payment-funds', 'danger',
       'Payment token balance is too low',
@@ -221,7 +283,9 @@ function paidRegistryBlock({ facts, operation, rows, instructions, extraWarnings
   return {
     operation,
     protocol: {
-      name: 'Thru `.thru` name registrar',
+      // The registry facts and the custom facts both name their program; hardcoding the
+      // registry's title here labelled a custom-registrar renewal as the official one.
+      name: registrarProgram(facts).name,
       address: facts.program?.address ?? null,
       verified: Boolean(facts.program?.verified),
       source: facts.program?.source
@@ -229,7 +293,7 @@ function paidRegistryBlock({ facts, operation, rows, instructions, extraWarnings
     },
     summary: rows,
     assets: {
-      outgoing: [paymentMovement(facts)],
+      outgoing: [native ? nativeRegistrarMovement(facts) : paymentMovement(facts)],
       incoming: [],
       fee: registrarFee(facts),
       balanceAfter: null,
@@ -237,7 +301,7 @@ function paidRegistryBlock({ facts, operation, rows, instructions, extraWarnings
     },
     execution: executionBlock({
       program: {
-        name: 'Thru `.thru` name registrar',
+        name: registrarProgram(facts).name,
         address: facts.program?.address ?? null,
         verified: Boolean(facts.program?.verified),
       },
@@ -258,72 +322,6 @@ function paidRegistryBlock({ facts, operation, rows, instructions, extraWarnings
 export const DOMAIN_PURCHASE_KIND = 'domain-purchase';
 
 export function decodeDomainPurchase({ facts }) {
-  if (facts.provider === 'custom') {
-    const feePerYear = facts.pricePerYear == null ? null : String(facts.pricePerYear);
-    if (facts.nativeBalanceUnits != null && BigInt(facts.nativeBalanceUnits) < BigInt(facts.totalPriceUnits)) {
-      warnings.push(warn('insufficient-native', 'danger',
-        'Balance is lower than the renewal fee',
-        'The registrar charges its fee in THRU from the signing account; the account holds less '
-        + 'than the total below.', { blocking: true }));
-    }
-    return {
-      operation: {
-        id: DOMAIN_RENEW_KIND,
-        name: 'Renew domain lease',
-        summary: `Extend '${facts.name}.${facts.tld}' by ${Number(facts.years)} `
-          + `${Number(facts.years) === 1 ? 'year' : 'years'} through the custom registrar.`,
-        confirmLabel: 'Confirm and sign',
-        decode: 'decoded',
-      },
-      protocol: {
-        name: registrarProgram(facts).name,
-        address: registrarProgram(facts).address,
-        verified: registrarProgram(facts).verified,
-        source: facts.program?.source
-          || 'Evidence-pinned deployment on the active network (docs/DECISIONS.md D-016)',
-      },
-      summary: [
-        domainRow(facts),
-        row('Current expiry', chainTime(facts.lease?.endTime)),
-        yearsRow(facts),
-        row('Registrar', registrarProgram(facts).name),
-        row('Price per year', feePerYear == null
-          ? 'not readable'
-          : displayAmount(feePerYear, NATIVE.decimals, NATIVE.symbol), { mono: true }),
-        row('Total charge', displayAmount(facts.totalPriceUnits, NATIVE.decimals, NATIVE.symbol), { mono: true }),
-        row('Network', facts.networkLabel ?? ''),
-      ],
-      assets: {
-        outgoing: [movement({
-          symbol: NATIVE.symbol,
-          name: 'Thru native token',
-          decimals: NATIVE.decimals,
-          amountUnits: facts.totalPriceUnits,
-          verified: true,
-          note: 'Charged by the registrar program itself, in THRU base units.',
-        })],
-        incoming: [],
-        fee: registrarFee(facts),
-        balanceAfter: null,
-        balanceAfterNote: 'Thru has no verified dry-run, so no post-transaction balance is shown.',
-      },
-      execution: executionBlock({
-        program: registrarProgram(facts),
-        instructions: [namedInstruction(facts, 'Renew domain lease',
-          'Extends the domain lease period through the custom registrar.')],
-        accounts: [
-          accountRole('Signer / owner', facts.fromAddress),
-          accountRole('Registrar config', facts.configAddress ?? 'derived from the program id'),
-          accountRole('Treasury', facts.treasury ?? 'unknown'),
-          accountRole('Root', facts.root ?? 'unknown'),
-        ],
-        raw: null,
-      }),
-      warnings,
-      acknowledgements: [],
-    };
-  }
-
   return paidRegistryBlock({
     facts,
     operation: {
@@ -337,13 +335,11 @@ export function decodeDomainPurchase({ facts }) {
     rows: [
       domainRow(facts),
       yearsRow(facts),
-      row('Price per year', facts.pricePerYear == null
-        ? 'not readable'
-        : displayAmount(String(facts.pricePerYear), facts.payment?.decimals ?? 0,
-          facts.payment?.symbol || 'TOKEN'), { mono: true }),
-      row('Total price', displayAmount(facts.totalPriceUnits, facts.payment?.decimals ?? 0,
-        facts.payment?.symbol || 'TOKEN'), { mono: true }),
-      row('Payment token', paymentLabel(facts), { mono: true }),
+      priceRow(facts, 'Price per year'),
+      totalRow(facts, 'Total price'),
+      // Native THRU has no payment token to name; a "Payment token: TOKEN" row beside a THRU
+      // amount would name a currency the transaction does not use.
+      ...(facts.provider === 'custom' ? [] : [row('Payment token', paymentLabel(facts), { mono: true })]),
     ],
     instructions: [namedInstruction(facts, 'Purchase domain',
       'Creates the lease and the domain account, and debits the registry price from your '
@@ -372,6 +368,35 @@ export function decodeDomainRenew({ facts }) {
       'The handler re-reads the lease before signing. Without it, the wallet cannot show the '
       + 'start of the extension window.'));
   }
+  // A custom-registrar renewal is the same intent through a different program: native THRU
+  // instead of the registry token, and a registrar the wallet can name. Until 2026-10-28 this
+  // fell through to the registry rows and printed "2000 TOKEN" for 2,000 base units of THRU
+  // (audit D-1); asking the purchase decoder for it crashed outright.
+  if (facts.provider === 'custom') {
+    return paidRegistryBlock({
+      facts,
+      extraWarnings: [...warnings, customQuoteWarning()],
+      operation: {
+        id: DOMAIN_RENEW_KIND,
+        name: 'Renew domain lease',
+        summary: `Extend '${facts.name}.${facts.tld}' by ${Number(facts.years)} `
+          + `${Number(facts.years) === 1 ? 'year' : 'years'} through the custom registrar.`,
+        confirmLabel: 'Confirm and sign',
+        decode: 'decoded',
+      },
+      rows: [
+        domainRow(facts),
+        row('Current expiry', chainTime(facts.lease?.endTime)),
+        yearsRow(facts),
+        ...(Number(facts.years) > 1 ? [priceRow(facts, 'Price per year')] : []),
+        totalRow(facts, 'Total charge'),
+        row('New expiry', 'Set by the chain — not computed here'),
+      ],
+      instructions: [namedInstruction(facts, 'Renew lease',
+        'Extends the existing lease through the custom registrar and debits its configured fee. '
+        + 'Irreversible.')],
+    });
+  }
   return paidRegistryBlock({
     facts,
     extraWarnings: warnings,
@@ -389,14 +414,8 @@ export function decodeDomainRenew({ facts }) {
       yearsRow(facts),
       // One year makes "price per year" identical to "total price"; show it only when the
       // multiplication is real information.
-      ...(Number(facts.years) > 1
-        ? [row('Price per year', facts.pricePerYear == null
-          ? 'not readable'
-          : displayAmount(String(facts.pricePerYear), facts.payment?.decimals ?? 0,
-            facts.payment?.symbol || 'TOKEN'), { mono: true })]
-        : []),
-      row('Total price', displayAmount(facts.totalPriceUnits, facts.payment?.decimals ?? 0,
-        facts.payment?.symbol || 'TOKEN'), { mono: true }),
+      ...(Number(facts.years) > 1 ? [priceRow(facts, 'Price per year')] : []),
+      totalRow(facts, facts.provider === 'custom' ? 'Total charge' : 'Total price'),
       // Deliberately not computed: the program decides how an extension maps to a new end time.
       row('New expiry', 'Set by the chain — not computed here'),
     ],
@@ -435,8 +454,7 @@ export function decodeDomainClaim({ facts }) {
       row('Current expiry', chainTime(facts.lease?.endTime)),
       row('Previous owner', facts.lease?.owner ?? 'unknown', { mono: true }),
       yearsRow(facts),
-      row('Total price', displayAmount(facts.totalPriceUnits, facts.payment?.decimals ?? 0,
-        facts.payment?.symbol || 'TOKEN'), { mono: true }),
+      totalRow(facts, 'Total price'),
     ],
     instructions: [namedInstruction(facts, 'Claim expired lease',
       'Replaces the expired lease\'s ownership with your account and debits the registry price. '
