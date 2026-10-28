@@ -9,6 +9,7 @@
 // contract fails loudly instead of rendering a pretty lie.
 
 import { assertReview, stateFromWarnings, TX_REVIEW_VERSION } from '../src/shared/tx-review/model.js';
+import { simulationWarning } from '../src/shared/tx-review/decoders/common.js';
 import '../src/shared/tx-review/decoders/index.js';
 import { decodeReview } from '../src/shared/tx-review/registry.js';
 
@@ -33,18 +34,34 @@ const UNMEASURED_FEE = {
     + 'The charge is paid in THRU and reported only after the chain answers.',
 };
 
-function envelope(kind, facts, { submittable = true } = {}) {
+const NO_SIMULATION = {
+  status: 'unavailable',
+  reason: 'This network has no dry-run RPC, so the wallet cannot simulate the transaction.',
+  provenance: 'tx.simulate (capability stub)',
+};
+
+function envelope(kind, facts, { submittable = true, simulation = null } = {}) {
+  const createdAt = Date.now();
   const content = decodeReview(kind, {
     network: BETANET,
     account: ACCOUNT,
     facts: { ...facts, networkId: 'betanet', networkLabel: 'Betanet' },
   });
-  const createdAt = Date.now();
+
+  // Mirrors review-service.buildReview: the node's simulation block is folded in as a warning
+  // BEFORE the state is computed, and a blocking warning makes the review unsignable. The
+  // preview has to go through the same fold, or it would show a card the wallet cannot emit
+  // (a failed simulation that still offers a confirm button).
+  const sim = { checkedAt: createdAt, ...(simulation ?? NO_SIMULATION) };
+  const simWarning = simulationWarning(sim);
+  const warnings = simWarning ? [...content.warnings, simWarning] : [...content.warnings];
+  const signable = submittable && stateFromWarnings(warnings) === 'ready';
+
   return assertReview({
     reviewVersion: TX_REVIEW_VERSION,
     reviewId: `betanet_preview_${kind}`,
     kind,
-    state: submittable ? stateFromWarnings(content.warnings) : 'blocked',
+    state: signable ? 'ready' : 'blocked',
     createdAt,
     expiresAt: createdAt + 120_000,
     bindingHash: 'preview',
@@ -61,15 +78,10 @@ function envelope(kind, facts, { submittable = true } = {}) {
       balanceAfterNote: content.assets.balanceAfterNote,
     },
     execution: content.execution,
-    warnings: content.warnings,
+    warnings,
     acknowledgements: content.acknowledgements,
-    simulation: {
-      status: 'unavailable',
-      reason: 'This network has no dry-run RPC, so the wallet cannot simulate the transaction.',
-      provenance: 'tx.simulate (capability stub)',
-      checkedAt: createdAt,
-    },
-    submitPolicy: submittable
+    simulation: sim,
+    submitPolicy: signable
       ? { method: 'tx.sendChecked', auth: 'signing', passwordRequired: false }
       : null,
   });
@@ -210,6 +222,31 @@ export function previewFixtures() {
         fee: { supported: false, reason: 'The faucet claim path does not report a charged fee, so none is shown.' },
         programAddress: 'taFAUCETprogramaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
         vaultAddress: 'taFAUCETvaultaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      }),
+    },
+    {
+      title: 'Native send · simulation rejected (blocked)',
+      note: 'SYNTHETIC: Thru exposes no dry-run RPC, so no node can return this today. It is here '
+        + 'to prove the card and the state agree when one does — the same blocking warning the '
+        + 'service folds in, a disabled confirm, and the word "Failed" instead of "Not available".',
+      review: envelope('native-send', {
+        fromAddress: ACCOUNT.address,
+        fromLabel: ACCOUNT.label,
+        toAddress: OTHER,
+        recipientLabel: null,
+        amountUnits: '1500000',
+        selfSend: false,
+        balanceUnits: '4200000000',
+        recipient: { exists: true },
+        fee: FEE,
+        duplicate: null,
+        transferProgramId: 'taTRANSFERprogramaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      }, {
+        simulation: {
+          status: 'failed',
+          reason: 'The node rejected the dry run: program error 0x12 (account not found).',
+          provenance: 'tx.simulate',
+        },
       }),
     },
     {
