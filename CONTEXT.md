@@ -77,14 +77,14 @@ The popup entry `src/popup/popup.js` is a boot stub. The removed legacy screens 
 | `test/test-contract.mjs` | Manifest/router/UI agreement and security invariants, v29 / 147 methods (161 checks). |
 | `test/test-ui-dom.mjs` | DOM safety and reference codec. |
 | `test/test-route-lifecycle.mjs` | All 15 routes through Router/guards/bridge, teardown, secrets, focus, Send/Domain/Faucet review flows, Dashboard activation, History, panel behavior (1,065 checks). |
-| `test/test-tx-review.mjs` | The review pipeline: registry↔kind parity, every decoder, malformed and unknown input, amount/fee formatting, binding/TTL/account/network refusals, acknowledgements, blocking, discard, the central error-code registry, and the UI signing-literal scan (89 checks). |
+| `test/test-tx-review.mjs` | The review pipeline: registry↔kind parity, every decoder, malformed and unknown input, amount/fee formatting, binding/TTL/account/network refusals, acknowledgements, blocking, discard, the central error-code registry, and the UI signing-literal scan and the one-screen/compactness guards (143 checks). |
 | `test/test-vault.mjs`, `test/test-thru-client.mjs` | Vault/SDK integration, instruction and decoder behavior. |
 | `test/test-token-balances.mjs`, `test/test-balance-network.mjs` | Token denomination, proven-zero/unknown, network-scoped reads/caches. |
 | `test/test-history-cache.mjs`, `test/test-history-block-time.mjs` | Cache-first History, timestamp provenance, network/slot isolation, races, paging. |
 | `test/test-registration.mjs` | Owned-account registration policy and bounded retries with deterministic SDK fixtures. |
 | `test/test-api-router.mjs` | Auth, context, serialization, background dispatch, and send/registration integration. |
 
-The suite is **2,251 checks across 32 test suites plus 5 build gates** (2026-10-28). Use the final test output for any subsequent refresh. They are deterministic/local evidence only. Real-browser and live-chain checks are separate.
+The suite is **2,253 checks across 32 test suites plus 5 build gates** (2026-10-28). Use the final test output for any subsequent refresh. They are deterministic/local evidence only. Real-browser and live-chain checks are separate.
 
 Visual harness: `scripts/preview-tx-review.html` renders the real `TxReviewCard` with the real built
 `dist/popup.css` for eight fixtures (`scripts/preview-tx-review.fixtures.js`), served by

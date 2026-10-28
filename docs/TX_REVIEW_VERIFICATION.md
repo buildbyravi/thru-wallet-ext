@@ -24,7 +24,7 @@ This record answers three questions the owner asked in one pass:
   so `npm install` + `npm run build` were re-run before any verification.
 - Rabby was read from the real repository at `develop` (GitHub contents API, individual files —
   not screenshots, not marketing pages). Files named in §2 are the ones actually read.
-- Local gates: `npm run build`, `npm test` (2,251 checks after the §4, §10 and §11 fixes), `scripts/check-layering.mjs`,
+- Local gates: `npm run build`, `npm test` (2,253 checks after the §4, §10 and §11 fixes), `scripts/check-layering.mjs`,
   `scripts/check-routes.mjs`, `scripts/check-csp.mjs` via the build, plus the new browser harness
   in §5.
 - No browser binary exists in this sandbox, so **no automated screenshot or layout assertion is
@@ -117,7 +117,7 @@ are explicitly **not** copied.
 | 8 | Timeout ≠ failure | `confirm.js:104–150` tags `phase:'confirm'`/`'submit'` and `classifyReviewError` only reports `uncertain` after a submit-phase error | Met; the route-level wording is asserted in `test-route-lifecycle.mjs`. |
 | 9 | Revalidation before signing | `confirmReview` re-checks TTL, binding hash, active account/network, then the kind's recheck (fee/token/price/expiry/faucet) | Met; tests cover account switch, network switch, expiry, and each recheck family. |
 | 10 | No duplicated review UI | one component (`ui/domain/tx-review/review-card.js:96`), one confirm helper (`confirm.js:59`); both routes deleted their own rows, duplicate card and password flow | Met. `check-routes.mjs` reports every class defined; `check-layering.mjs` 0 violations, DOM sinks 0. |
-| 11 | Build + suite green | `npm run build` PASS; `npm test` exit 0, **2,251 checks** (incl. `test-tx-review.mjs` 141 and `test-route-lifecycle.mjs` 1,065) | Met; re-run after every fix in §4, §10 and §11, and again on the merged head. |
+| 11 | Build + suite green | `npm run build` PASS; `npm test` exit 0, **2,253 checks** (incl. `test-tx-review.mjs` 143 and `test-route-lifecycle.mjs` 1,065) | Met; re-run after every fix in §4, §10 and §11, and again on the merged head. |
 
 ---
 
@@ -159,8 +159,11 @@ return that today — the fixture exists so the card's four simulation words can
   behaviour itself was and remains proven by the DOM-shim suite (`test-route-lifecycle.mjs`,
   `test-tx-review.mjs`), never by the harness.
 - **Not verified, and not claimed:** actual pixel layout, scrolling, wrapping, focus rings and
-  dark/light contrast. No browser binary is available in this environment. Those remain a human
-  check through the harness and `docs/MANUAL_SMOKE_CHECKLIST.md`.
+  dark/light contrast. No browser binary ships in this environment. Attempted 2026-10-28: a
+  headless Chromium was fetched from the npm registry (`@sparticuz/chromium` + `puppeteer-core`,
+  outside the repo) and unpacked, but it cannot start here — `libnspr4.so`/`libnss3` are absent
+  and there is no package index to install them — so not even a harness screenshot is automated.
+  Those remain a human check through the harness and `docs/MANUAL_SMOKE_CHECKLIST.md`.
 - Also not claimed: any live-chain behaviour. Every review in the suite and the harness is built
   from fixtures or the stubbed client boundary.
 
@@ -274,7 +277,7 @@ actually run.
 | Operations actually integrated | `native-send` → `tx.sendChecked`; `token-transfer` → `token.transferChecked`; `domain-register` → `name.register` (`via:'custom'`); `domain-purchase` → `name.purchase`; `domain-renew` → `name.renewLease`; `domain-claim` → `name.claimExpired`; `faucet-claim` → `tx.claimFaucet`; `raw` → **no** submit. Activation (Dashboard for the active account, Send for an owned recipient) goes through the v12 `tx.registerAccount`, not the review pipeline — it is an unlocked-only, zero-fee, self-signed activation, not a value-moving transfer. | `services/review/kinds.js`; route-level coverage in `test/test-route-lifecycle.mjs`. |
 | Decoders implemented vs unsupported | Implemented: native send, token transfer, domain register, domain purchase, domain renew, domain claim, faucet claim, raw/unknown (display-only). Unsupported **by design**: swap, AMM/LP add/remove, pool creation, token launch/migration/claim — the contract declares them behind `DEFI_*` flags that are all off, no handler can execute, and no kind exists, so `tx.prepareReview` answers `supported:false` with the known-kinds list. Arbitrary programs decode as `kind:'unknown'` with raw bytes and cannot be signed. | `registry.listDecoderKinds()` = `listKinds()`; `test/test-tx-review.mjs` [0] and [2]. |
 | Simulation availability and limits | Unavailable and said so: `tx.simulate` returns `{supported:false, changes:null, reason}` and every review carries `simulation.status:'unavailable'` with a null post-transaction balance (`assets.balanceAfter` is validator-enforced null). Deterministic facts (exact base-unit amount, fee provenance or its explicit reason, target program/instruction, warnings) are shown; nothing is interpolated. | `services/tx-service.js §simulate`; `model.js assertReview`; [1]/[3]. |
-| Tests and build results | `npm test`: **2,251 checks**, exit 0 — `test-tx-review.mjs` 141, `test-route-lifecycle.mjs` 1,065, `test-contract.mjs` 161, plus the rest of the suite. `npm run build`: PASS, layering 126 files / 0 DOM sinks, routes 15/15, 257 used CSS classes (all defined). | Local/deterministic only; no browser binary exists in this sandbox. |
+| Tests and build results | `npm test`: **2,253 checks**, exit 0 — `test-tx-review.mjs` 143, `test-route-lifecycle.mjs` 1,065, `test-contract.mjs` 161, plus the rest of the suite. `npm run build`: PASS, layering 126 files / 0 DOM sinks, routes 15/15, 257 used CSS classes (all defined). | Local/deterministic only; no browser binary exists in this sandbox. |
 | Browser verification evidence | **None claimed.** `scripts/preview-tx-review.html` renders the real component against the real `dist/popup.css` for eight fixtures; its modules were HTTP-checked (200) but the page itself drew nothing until `d45a085` (§5 correction), and the DOM shim has no layout engine, so this is a harness, not a layout proof. The human runbook is `docs/MANUAL_SMOKE_CHECKLIST.md` §7. | §5; §7 item 1. |
 | New guard added for "no direct signing from the UI" | `test/test-tx-review.mjs` [14] scans every `src/ui/**/*.js` for `bridge.send('<method>')` literals (comments stripped), fails if any names an `auth:'signing'` method or an unknown method, and asserts the sanctioned literals (review trio + `tx.registerAccount`) are present so the scan cannot pass vacuously. This is what found the Dashboard defect fixed in §10. | [14]; `test/test-route-lifecycle.mjs` "dashboard activation" checks. |
 | Remaining security/protocol blockers | (1) token-transfer network fee unmeasured and recipient-owner acceptance unproven; (2) charged network fee is not returned by the RPC detail path; (3) no simulation/dry-run RPC; (4) custom-lease renew has no bridge method; (5) real-browser layout/focus and MV3 suspension untested; (6) no external security audit; (7) no dapp provider surface exists, by design. | §7, `docs/BACKEND_GAPS.md`, `docs/STATUS_AND_ROADMAP.md` §2. |
@@ -371,7 +374,7 @@ and the simulation reason all still exist and are asserted in §11.3 (`[15]`).
 
 ### 11.4 Result
 
-`npm run build` PASS. `npm test` exit 0 — **2,251 checks**: `test-tx-review.mjs` 141/141,
+`npm run build` PASS. `npm test` exit 0 — **2,253 checks**: `test-tx-review.mjs` 143/143,
 `test-route-lifecycle.mjs` 1,065/1,065, contract 161/161, plus the rest of the suite. The CSS for the
 removed sections (`.tx-review-protocol*`, `.tx-review-section*`, `.tx-review-fee-note`) was deleted so
 the stylesheet has no dead review classes; `check-css-nesting.mjs` and the route/CSS gate still pass.
@@ -424,7 +427,7 @@ which `514ac33` had already changed before this pass.
 
 ### 12.2 Gates
 
-`npm run build` PASS. `npm test` exit 0 — **2,251 checks** (`test-tx-review.mjs` 141/141,
+`npm run build` PASS. `npm test` exit 0 — **2,253 checks** (`test-tx-review.mjs` 143/143,
 `test-route-lifecycle.mjs` 1,065/1,065, `test-contract.mjs` 161/161, derivation 16/16 with the 0.4.2
 pin and no warning). Still **UNVERIFIED** by this pass: a real failed simulation, real Chrome layout,
 and any live-chain behaviour.

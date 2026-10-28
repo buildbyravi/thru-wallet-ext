@@ -22,7 +22,7 @@ Baseline evidence (re-run green 2026-10-04): `npm run build` PASS · `npm test` 
 `npm audit --omit=dev` 0 vulnerabilities.
 
 **Refresh (2026-10-28, no new audit performed).** The tree has since advanced to contract **v29**
-with **147 methods** and **15 routes**; `npm test` is **2,251 checks (32 suites + 5 gates)**, `npm run build`
+with **147 methods** and **15 routes**; `npm test` is **2,253 checks (32 suites + 5 gates)**, `npm run build`
 PASS, layering 126 files / 0 DOM sinks, `check-routes` 15/15 with 257 used classes, all defined. The v29
 change is the owner-directed shared transaction-review pipeline; its verification record, including
 the fixes found during review, is `docs/TX_REVIEW_VERIFICATION.md`. That record adds **no** live-chain
