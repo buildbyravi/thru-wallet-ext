@@ -142,15 +142,22 @@ are explicitly **not** copied.
 
 `scripts/preview-tx-review.html` renders the **real** `TxReviewCard` with the **real**
 `dist/popup.css` and **real** decoder output (fixtures are chain facts only; each envelope is
-validated with `assertReview` before it is rendered). Seven shapes are shown at popup (408×600),
+validated with `assertReview` before it is rendered). Eight shapes are shown at popup (408×600),
 side-panel (380) and full-page (720) widths: native send ready/blocked, token transfer with an
-unverified mint and a duplicate acknowledgement, domain register, domain renew, faucet claim, and
-an unknown instruction (display-only).
+unverified mint and a duplicate acknowledgement, domain register, domain renew, faucet claim, an
+unknown instruction (display-only), and one **synthetic** simulation-rejected send (no Thru node can
+return that today — the fixture exists so the card's four simulation words cannot drift apart).
 
 - Verified: every module URL the page imports returns 200 from
-  `node scripts/serve-dist.mjs --root . --port 8000`; all seven fixtures decode and pass
-  `assertReview`; the blocked and unknown cards render with confirmation disabled; the component
-  works outside the extension bundle (no `chrome.*` dependency).
+  `node scripts/serve-dist.mjs --root . --port 8000`; all eight fixtures decode and pass
+  `assertReview`; the component works outside the extension bundle (no `chrome.*` dependency).
+- **Corrected 2026-10-28.** This section previously also claimed that "the blocked and unknown
+  cards render with confirmation disabled" in the harness. They did not: the harness's inline
+  script assigned to bindings it declared *after* constructing the card, and the card fires
+  `onChange` from its constructor — the same defect class as §9.1 of `DEFECT_LOG.md`. The page
+  threw before appending anything, so it drew nothing. Fixed in `d45a085`; the disabled-confirm
+  behaviour itself was and remains proven by the DOM-shim suite (`test-route-lifecycle.mjs`,
+  `test-tx-review.mjs`), never by the harness.
 - **Not verified, and not claimed:** actual pixel layout, scrolling, wrapping, focus rings and
   dark/light contrast. No browser binary is available in this environment. Those remain a human
   check through the harness and `docs/MANUAL_SMOKE_CHECKLIST.md`.
@@ -268,7 +275,7 @@ actually run.
 | Decoders implemented vs unsupported | Implemented: native send, token transfer, domain register, domain purchase, domain renew, domain claim, faucet claim, raw/unknown (display-only). Unsupported **by design**: swap, AMM/LP add/remove, pool creation, token launch/migration/claim — the contract declares them behind `DEFI_*` flags that are all off, no handler can execute, and no kind exists, so `tx.prepareReview` answers `supported:false` with the known-kinds list. Arbitrary programs decode as `kind:'unknown'` with raw bytes and cannot be signed. | `registry.listDecoderKinds()` = `listKinds()`; `test/test-tx-review.mjs` [0] and [2]. |
 | Simulation availability and limits | Unavailable and said so: `tx.simulate` returns `{supported:false, changes:null, reason}` and every review carries `simulation.status:'unavailable'` with a null post-transaction balance (`assets.balanceAfter` is validator-enforced null). Deterministic facts (exact base-unit amount, fee provenance or its explicit reason, target program/instruction, warnings) are shown; nothing is interpolated. | `services/tx-service.js §simulate`; `model.js assertReview`; [1]/[3]. |
 | Tests and build results | `npm test`: **2,251 checks**, exit 0 — `test-tx-review.mjs` 141, `test-route-lifecycle.mjs` 1,065, `test-contract.mjs` 161, plus the rest of the suite. `npm run build`: PASS, layering 126 files / 0 DOM sinks, routes 15/15, 257 used CSS classes (all defined). | Local/deterministic only; no browser binary exists in this sandbox. |
-| Browser verification evidence | **None claimed.** `scripts/preview-tx-review.html` renders the real component against the real `dist/popup.css` for seven fixtures and was served and HTTP-checked; the DOM shim has no layout engine, so this is a harness, not a layout proof. The human runbook is `docs/MANUAL_SMOKE_CHECKLIST.md` §7. | §5; §7 item 1. |
+| Browser verification evidence | **None claimed.** `scripts/preview-tx-review.html` renders the real component against the real `dist/popup.css` for eight fixtures; its modules were HTTP-checked (200) but the page itself drew nothing until `d45a085` (§5 correction), and the DOM shim has no layout engine, so this is a harness, not a layout proof. The human runbook is `docs/MANUAL_SMOKE_CHECKLIST.md` §7. | §5; §7 item 1. |
 | New guard added for "no direct signing from the UI" | `test/test-tx-review.mjs` [14] scans every `src/ui/**/*.js` for `bridge.send('<method>')` literals (comments stripped), fails if any names an `auth:'signing'` method or an unknown method, and asserts the sanctioned literals (review trio + `tx.registerAccount`) are present so the scan cannot pass vacuously. This is what found the Dashboard defect fixed in §10. | [14]; `test/test-route-lifecycle.mjs` "dashboard activation" checks. |
 | Remaining security/protocol blockers | (1) token-transfer network fee unmeasured and recipient-owner acceptance unproven; (2) charged network fee is not returned by the RPC detail path; (3) no simulation/dry-run RPC; (4) custom-lease renew has no bridge method; (5) real-browser layout/focus and MV3 suspension untested; (6) no external security audit; (7) no dapp provider surface exists, by design. | §7, `docs/BACKEND_GAPS.md`, `docs/STATUS_AND_ROADMAP.md` §2. |
 
@@ -371,7 +378,7 @@ the stylesheet has no dead review classes; `check-css-nesting.mjs` and the route
 
 **UNVERIFIED:** the visual result at 400 px and in a real browser. There is no browser binary in this
 sandbox, so §11.1 describes the DOM the tests assert, not a rendered screenshot. The harness
-(`scripts/preview-tx-review.html`, seven fixtures) and `docs/MANUAL_SMOKE_CHECKLIST.md` §7 are how
+(`scripts/preview-tx-review.html`, eight fixtures) and `docs/MANUAL_SMOKE_CHECKLIST.md` §7 are how
 that check gets recorded.
 
 ## 12. External audit of `2e2178f`, re-checked at `983724b` (2026-10-28)

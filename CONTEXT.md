@@ -87,9 +87,11 @@ The popup entry `src/popup/popup.js` is a boot stub. The removed legacy screens 
 The suite is **2,251 checks across 32 test suites plus 5 build gates** (2026-10-28). Use the final test output for any subsequent refresh. They are deterministic/local evidence only. Real-browser and live-chain checks are separate.
 
 Visual harness: `scripts/preview-tx-review.html` renders the real `TxReviewCard` with the real built
-`dist/popup.css` for seven fixtures (`scripts/preview-tx-review.fixtures.js`), served by
+`dist/popup.css` for eight fixtures (`scripts/preview-tx-review.fixtures.js`), served by
 `node scripts/serve-dist.mjs --root . --port 8000`. It is a layout aid, not a test: there is no
-browser binary in CI, so no layout assertion is automated. The human runbook is
+browser binary in CI, so no layout assertion is automated. One fixture is SYNTHETIC (a simulation
+rejection — Thru has no dry-run RPC, so no node returns one today); it exists to keep the card's
+four simulation words honest. The human runbook is
 `docs/MANUAL_SMOKE_CHECKLIST.md` §7.
 
 ## 4. `src/lib/` — vault and Thru client

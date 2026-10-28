@@ -302,7 +302,7 @@ wallet; never paste a real seed into DevTools or its command history:
 
 Every value-moving screen now shows the SAME card (`src/ui/domain/tx-review/review-card.js`): Send,
 Send token, `/name` register/purchase/renew/claim, `/faucet` claim. There is no browser evidence for
-it yet — `scripts/preview-tx-review.html` renders seven fixtures against the real `dist/` CSS and the
+it yet — `scripts/preview-tx-review.html` renders eight fixtures against the real `dist/` CSS and the
 real component, but the shim has no layout engine. Run these with a funded Betanet account and an
 amount you are willing to send.
 

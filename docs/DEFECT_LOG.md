@@ -554,3 +554,23 @@ design) and F-08 (the Domain lifecycle) are architecture decisions, not defects:
 open in `docs/TX_REVIEW_VERIFICATION.md` §12 rather than "fixed" here. One enforcement gap *was*
 closed on the way: `confirmReview` now refuses a review whose persisted state is not `ready`, so a
 blocked review is no longer confirmable merely because the UI would have disabled the button.
+
+### 12.8 The evidence harness was broken, and one doc claimed it worked — `READ`
+
+`scripts/preview-tx-review.html` is dev-only, but it is the only place a human can see the real
+card against the real stylesheet, so it is the intended input to the browser checklist. It drew
+nothing: its inline script declared the confirm button and the status span *after* constructing the
+card, and `TxReviewCard` reports its initial confirmability synchronously from the constructor, so
+the first callback threw a `ReferenceError` (temporal dead zone) and the module stopped before
+appending the first card. `docs/TX_REVIEW_VERIFICATION.md` §5 had claimed the harness rendered the
+blocked and unknown cards with confirmation disabled; that sentence was removed and replaced with a
+dated correction, because the behaviour was only ever proven by the DOM-shim suite.
+
+Fix (`d45a085`): bindings declared before construction, the full-page pane selects its fixture by
+title instead of array index, and the fixture factory folds the node's simulation block in exactly
+as `review-service` does (`simulationWarning` → `state`), so a new synthetic simulation-rejected
+fixture is unsignable for the same reason the shipped review would be.
+
+> **Lesson:** a harness is part of the evidence, so it gets the same review as the component —
+> and a doc sentence about evidence is a claim that has to be re-checked when the evidence tool
+> changes. A page that serves 200 is not a page that rendered.
