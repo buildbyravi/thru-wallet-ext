@@ -10,6 +10,8 @@ import {
   TRANSFER_PROGRAM_ID,
   ACCOUNT_CREATE_PROGRAM_ID,
   getClient,
+  getAccountInfo,
+  getAccountOwnerAddress,
 } from '../src/lib/thru-client.js';
 import { Transaction, keys, Signature } from '@thru/sdk';
 
@@ -29,6 +31,18 @@ function decode(data) {
 }
 
 console.log('\n[1] Faucet instruction encoding round-trips correctly');
+const boundRead = await getAccountInfo('bound-account', { accounts: { get: async address => {
+  assert(address === 'bound-account', 'bound account read uses the requested address');
+  return { meta: { balance: 7n } };
+} } });
+assert(boundRead.balance === 7n, 'an explicit captured RPC client is used instead of the mutable global binding');
+const metadataOwner = Pubkey.from(new Uint8Array(32).fill(0x43));
+const metadataAddress = metadataOwner.toThruFmt();
+assert(String(metadataOwner) === '[object Object]', 'SDK metadata Pubkey must not be compared through String coercion');
+assert(getAccountOwnerAddress({ meta: { owner: metadataOwner } }) === metadataAddress, 'SDK Pubkey owner normalizes to its exact Thru address');
+assert(getAccountOwnerAddress({ meta: { owner: metadataAddress } }) === metadataAddress, 'string owner metadata retains its exact address');
+assert(getAccountOwnerAddress({ meta: { owner: {} } }) === null, 'malformed owner metadata is unknown');
+assert(getAccountOwnerAddress({}) === null, 'absent owner metadata is unknown');
 const encoded = encodeFaucetInstructionData(0, 1, 1000n);
 assert(encoded.length === 16, 'instruction data is exactly 16 bytes');
 const decoded = decode(encoded);

@@ -267,6 +267,8 @@ class ShimStyle {
 }
 
 class ShimElement extends ShimNode {
+  get isConnected() { return isConnected(this); }
+
   constructor(tagName, namespaceURI = null) {
     super();
     this.nodeType = 1;
@@ -1460,6 +1462,11 @@ const FIXTURES = {
   'name.getPrimary': () => null,
   'name.linkPrimary': () => { throw new Error('fixture: no on-chain name service'); },
   'name.unlinkPrimary': () => ({ unlinked: false }),
+  'name.getCachedDomains': () => ({ networkId: activeNetwork().id, accountAddress: activeAccount().address, source: 'tracked', items: [] }),
+  'name.listDomains': () => ({ networkId: activeNetwork().id, accountAddress: activeAccount().address, source: 'tracked', items: [] }),
+  'name.trackDomain': ({ name }) => ({ name, rootAddress: 'taRoot', domainAddress: 'taDomain', verifiedAt: Date.now() }),
+  'name.setPrimaryDomain': () => ({ name: 'alice', rootAddress: 'taRoot', domainAddress: 'taDomain', verifiedAt: Date.now() }),
+  'name.untrackDomain': () => ({ untracked: true }),
   // v22 registrar slice: the mount reads must render the honest unsupported state (the
   // fixture chain has no `.thru` registry) — never a fabricated price on mount.
   'name.getRegistry': () => ({ supported: false, reason: 'fixture: no .thru registry initialized' }),
@@ -2086,6 +2093,7 @@ const { SendRoute } = await import('../src/ui/app/routes/send.js');
 const { HistoryRoute } = await import('../src/ui/app/routes/history.js');
 const { DashboardRoute } = await import('../src/ui/app/routes/dashboard.js');
 const { AccountsRoute } = await import('../src/ui/app/routes/accounts.js');
+const { NameRoute } = await import('../src/ui/app/routes/name.js');
 
 function isInside(node, root) {
   for (let n = node; n; n = n.parentNode) {
@@ -5087,6 +5095,332 @@ async function lastSourceRemovalTest() {
   }
 }
 
+async function nameReviewTest() {
+  section('domains: single-name review, checked signing, cancellation and stale replies');
+  const originals = { ...FIXTURES };
+  let route;
+  let writes = [];
+  let failure = null;
+  const mount = async (password = false) => {
+    resetBackend(SCENARIOS[2]);
+    resetDom();
+    backend.preferences.requirePasswordForSigning = password;
+    route = NameRoute({ back() {} });
+    DOC.body.appendChild(route.el);
+    await settle();
+    return route.el.querySelector('input');
+  };
+  const check = async (name = 'alice') => {
+    type(route.el.querySelector('input'), name);
+    ok('typing stays quiet until the debounce fires', route.el.querySelector('.name-status').textContent === '');
+    await sleep(500);
+    await settle();
+  };
+  const review = async () => {
+    const opener = buttons(route.el, /^review /i)[0];
+    opener.focus();
+    click(opener);
+    await settle();
+    return DOC.body.querySelector('.name-confirm-sheet');
+  };
+  const destroy = () => { route.destroy(); route.el.remove(); };
+  const sign = (params) => {
+    writes.push(params);
+    if (failure) throw failure;
+    return { signature: 'domain-confirmed-fixture' };
+  };
+  FIXTURES['name.register'] = sign;
+  FIXTURES['name.purchase'] = sign;
+  FIXTURES['name.renewLease'] = sign;
+  FIXTURES['name.claimExpired'] = sign;
+  try {
+    await mount();
+    ok('registration has one input and no batch controls or inline review',
+      route.el.querySelectorAll('input').length === 1
+      && !/Name 1|Add another name|atomic batch|base units|Header fee/.test(textOf(route.el))
+      && !route.el.querySelector('.name-review'));
+    await check();
+    ok('available status is concise', route.el.querySelector('.name-status').textContent === 'Available');
+    click(buttons(route.el, /increase registration period/i)[0]);
+    let sheet = await review();
+    ok('review is a body-level modal, never part of the route layout',
+      sheet?.getAttribute('role') === 'dialog' && !isInside(sheet, route.el));
+    ok('review shows exact cost, term, account, network and unknown network fee',
+      /alice.thru/.test(textOf(sheet)) && /2 years/.test(textOf(sheet))
+      && /0\.000002 THRU/.test(textOf(sheet)) && textOf(sheet).includes(ADDRESS_A)
+      && textOf(sheet).includes(activeNetwork().label) && /Not available/.test(textOf(sheet))
+      && !/Sponsored|0 THRU/.test(textOf(sheet)));
+    const oldConfirm = buttons(sheet, /confirm and sign/i)[0];
+    pressKey(DOC.activeElement, 'Escape');
+    await settle();
+    click(oldConfirm);
+    ok('Escape restores the opener and detached confirm cannot sign',
+      !sheet.isConnected && /^review /i.test(labelOf(DOC.activeElement)) && writes.length === 0);
+    sheet = await review();
+    click(buttons(sheet, /^cancel$/i)[0]);
+    ok('Cancel closes review without signing', !sheet.isConnected && writes.length === 0);
+    sheet = await review();
+    click(buttons(route.el, /increase registration period/i)[0]);
+    ok('changing duration invalidates an open review', !sheet.isConnected);
+    sheet = await review();
+    type(route.el.querySelector('input'), 'bob');
+    ok('editing a name invalidates an open review', !sheet.isConnected);
+    await sleep(500);
+    await settle();
+    sheet = await review();
+    const confirm = buttons(sheet, /confirm and sign/i)[0];
+    click(confirm);
+    click(confirm);
+    await settle();
+    ok('double confirmation signs exactly once using reviewed values', writes.length === 1
+      && writes[0].name === 'bob' && writes[0].years === 3 && writes[0].via === 'custom'
+      && writes[0].expectedPricePerYear === '1000'
+      && writes[0].expectedAccountAddress === ADDRESS_A && writes[0].expectedNetworkId === 'betanet');
+    ok('only a returned confirmation renders success', /Registration confirmed/.test(textOf(route.el)));
+    destroy();
+
+    // Old availability must not win during the replacement query's debounce window.
+    await mount();
+    const originalSend = chrome.runtime.sendMessage;
+    let held;
+    chrome.runtime.sendMessage = (message, callback) => {
+      if (message.method === 'name.checkCustomLease' && message.params.name === 'alice') {
+        held = callback;
+        return;
+      }
+      return originalSend(message, callback);
+    };
+    await check();
+    type(route.el.querySelector('input'), 'carol');
+    held({ ok: true, data: originals['name.checkCustomLease']({ name: 'alice' }) });
+    await settle();
+    ok('old availability cannot arm the replacement draft during debounce',
+      route.el.querySelector('.name-status').textContent === ''
+      && buttons(route.el, /^review /i)[0].classList.contains('hidden'));
+    chrome.runtime.sendMessage = originalSend;
+    destroy();
+
+    // Password authentication has one trap and transaction errors must exit that dialog.
+    await mount(true);
+    await check();
+    sheet = await review();
+    click(buttons(sheet, /confirm and sign/i)[0]);
+    await settle();
+    let password = DOC.body.querySelector('input[type="password"]');
+    ok('password replaces review instead of stacking focus traps',
+      !sheet.isConnected && DOC.body.querySelectorAll('[role="dialog"]').length === 1 && password);
+    type(password, SECRET_PASSWORD);
+    failure = apiError('AUTH_REQUIRED', 'Incorrect password.');
+    click(buttons(DOC.body.querySelector('[role="dialog"]'), /confirm and sign/i)[0]);
+    await settle();
+    ok('wrong password clears the secret and allows an authentication retry', password.isConnected && password.value === '');
+    failure = apiError('TX_RESULT_MISSING', 'Result unavailable', true);
+    type(password, SECRET_PASSWORD);
+    click(buttons(DOC.body.querySelector('[role="dialog"]'), /confirm and sign/i)[0]);
+    await settle();
+    ok('unknown submission closes password dialog, clears secret and offers outcome check',
+      !password.isConnected && password.value === '' && !DOC.body.querySelector('[role="dialog"]')
+      && /Confirmation unavailable/.test(textOf(route.el)) && buttons(route.el, /check outcome/i).length === 1
+      && !/Registration confirmed/.test(textOf(route.el)));
+    destroy();
+    failure = null;
+
+    await mount(true);
+    await check();
+    sheet = await review();
+    click(buttons(sheet, /confirm and sign/i)[0]);
+    await settle();
+    password = DOC.body.querySelector('input[type="password"]');
+    type(password, SECRET_PASSWORD);
+    const writeCount = writes.length;
+    const authConfirm = buttons(DOC.body.querySelector('[role="dialog"]'), /confirm and sign/i)[0];
+    destroy();
+    click(authConfirm);
+    await settle();
+    ok('route teardown aborts authentication, clears secret and removes submit listeners',
+      !DOC.body.querySelector('[role="dialog"]') && password.value === '' && writes.length === writeCount);
+
+    await mount();
+    await check();
+    sheet = await review();
+    const sendBeforeHold = chrome.runtime.sendMessage;
+    let settingsReply;
+    chrome.runtime.sendMessage = (message, callback) => {
+      if (message.method === 'settings.get') { settingsReply = callback; return; }
+      return sendBeforeHold(message, callback);
+    };
+    click(buttons(sheet, /confirm and sign/i)[0]);
+    destroy();
+    settingsReply({ ok: true, data: { requirePasswordForSigning: false } });
+    await settle();
+    chrome.runtime.sendMessage = sendBeforeHold;
+    ok('a late settings response after teardown cannot initiate signing', writes.length === writeCount);
+
+    // Official renewal and expired-claim paths keep the same reviewed price/lease binding.
+    FIXTURES['name.getCustomRegistrar'] = () => ({ supported: false });
+    FIXTURES['name.getRegistry'] = () => ({ supported: true, registry: {
+      rootName: 'thru', rootRegistrar: 'taRegistryRoot', tokenMint: CUSTOM_MINT_FIXTURE, pricePerYear: '1000',
+    } });
+    FIXTURES['name.getPaymentBalance'] = () => ({ supported: true, exists: true, amount: '100000' });
+    for (const mine of [true, false]) {
+      FIXTURES['name.checkLease'] = () => ({ supported: true, leaseExists: true,
+        lease: { owner: mine ? ADDRESS_A : ADDRESS_B, endTime: '1800000000', expiredHint: !mine } });
+      await mount();
+      await check();
+      sheet = await review();
+      ok('official registrar review formats the verified payment-token decimals', /0\.001 LAB/.test(textOf(sheet)));
+      click(buttons(sheet, /confirm and sign/i)[0]);
+      await settle();
+      const last = writes.at(-1);
+      ok('renewal/claim retains reviewed lease expiry, account, price and network',
+        last.expectedLeaseEndTime === '1800000000' && last.expectedPricePerYear === '1000'
+        && last.expectedAccountAddress === ADDRESS_A && last.expectedNetworkId === 'betanet'
+        && chromeLog.calls.includes(mine ? 'name.renewLease' : 'name.claimExpired'));
+      destroy();
+    }
+  } finally {
+    route?.destroy();
+    for (const key of Object.keys(FIXTURES)) if (!(key in originals)) delete FIXTURES[key];
+    Object.assign(FIXTURES, originals);
+  }
+}
+
+async function trackedDomainsTest() {
+  section('domains: cached tracked list, imports, primary selection and stale contexts');
+  resetBackend(SCENARIOS[2]);
+  resetDom();
+  const originals = { ...FIXTURES };
+  const originalSend = chrome.runtime.sendMessage;
+  const held = [];
+  let holdLive = true;
+  let holdCache = false;
+  let items = ['alice', 'bob'].map((name, index) => ({
+    name, rootName: 'thru', rootAddress: 'taNP1MFOO2shpn6ORofIGSNiQ-qJ9VE2lDkDwvUmgUmaQZ', domainAddress: `taDomain${index}`,
+    verifiedAt: 1700000000000, checkedAt: 1700000000000, status: 'owned', stale: false, isPrimary: index === 0,
+  }));
+  const data = (stale = false) => ({ networkId: activeNetwork().id, accountAddress: activeAccount().address, source: 'tracked',
+    items: activeAccount().address === ADDRESS_A ? items.map(r => ({ ...r, stale })) : [] });
+  let chosen = null;
+  FIXTURES['name.getCachedDomains'] = () => data(true);
+  FIXTURES['name.listDomains'] = () => data();
+  FIXTURES['name.checkCustomLease'] = ({ name } = {}) => {
+    const isAliceOrBob = name === 'alice' || name === 'bob';
+    return {
+      ...originals['name.checkCustomLease']({ name }),
+      domainExists: isAliceOrBob,
+      leaseExists: isAliceOrBob,
+      lease: isAliceOrBob ? {
+        owner: ADDRESS_A,
+        expiresAtSeconds: '1800000000',
+      } : null,
+    };
+  };
+  FIXTURES['name.setPrimaryDomain'] = params => {
+    chosen = params;
+    items = items.map(r => ({ ...r, isPrimary: r.domainAddress === params.domainAddress }));
+    return items.find(r => r.isPrimary);
+  };
+  FIXTURES['name.unlinkPrimary'] = () => { items = items.map(r => ({ ...r, isPrimary: false })); return { unlinked: true }; };
+  FIXTURES['name.trackDomain'] = ({ name }) => {
+    if (name === 'foreign.thru') throw apiError('NOT_NAME_OWNER', 'This domain belongs to another account.');
+    items.push({ ...items[0], name: name.replace('.thru', ''), domainAddress: 'taImported', isPrimary: false });
+    return items.at(-1);
+  };
+  FIXTURES['name.untrackDomain'] = ({ domainAddress }) => {
+    items = items.filter(r => r.domainAddress !== domainAddress);
+    return { untracked: true };
+  };
+  chrome.runtime.sendMessage = (message, callback) => {
+    if ((holdLive && message.method === 'name.listDomains') || (holdCache && message.method === 'name.getCachedDomains')) {
+      held.push({ method: message.method, callback, result: data(message.method === 'name.getCachedDomains') });
+      return;
+    }
+    return originalSend(message, callback);
+  };
+  const route = NameRoute({ back() {} });
+  DOC.body.appendChild(route.el);
+  try {
+    await settle();
+    click(buttons(route.el, /^my domains$/i)[0]);
+    await settle();
+    ok('saved domains and import controls paint before a live owner read finishes',
+      held.length === 1 && /alice.thru/.test(textOf(route.el)) && /bob.thru/.test(textOf(route.el))
+      && route.el.querySelector('input[placeholder="yourname.thru"]'));
+    ok('cached ownership is labelled and cannot enable primary or renewal actions',
+      /Ownership not verified/.test(textOf(route.el)) && buttons(route.el, /^make primary$/i)[0].disabled
+      && buttons(route.el.querySelector('.name-domain-list'), /^renew$/i).length === 2
+      && buttons(route.el.querySelector('.name-domain-list'), /^renew$/i).every(b => b.disabled));
+    holdLive = false;
+    held.shift().callback({ ok: true, data: data() });
+    await settle();
+    ok('live verification replaces cache and enables only owned-domain actions',
+      !/Ownership not verified/.test(textOf(route.el)) && !buttons(route.el, /^make primary$/i)[0].disabled);
+    click(buttons(route.el.querySelector('.name-domain-list'), /^renew$/i)[0]);
+    await settle();
+    ok('domain Renew preselects its name and enables renewal review',
+      route.el.querySelector('input')?.value === 'alice'
+      && /Owned by you/.test(textOf(route.el))
+      && buttons(route.el, /^review renewal$/i).length === 1);
+    click(buttons(route.el, /^my domains$/i)[0]);
+    await settle();
+    click(buttons(route.el, /^make primary$/i)[0]);
+    await settle();
+    ok('primary selection carries reviewed account/network identity and retains both domains',
+      chosen.domainAddress === 'taDomain1' && chosen.expectedAccountAddress === ADDRESS_A
+      && chosen.expectedNetworkId === 'betanet' && /alice.thru/.test(textOf(route.el)) && /bob.thru/.test(textOf(route.el)));
+    click(buttons(route.el, /^unlink/i)[0]);
+    await settle();
+    ok('unlink leaves both domains in My Domains', buttons(route.el, /^make primary$/i).length === 2);
+    const input = route.el.querySelector('input[placeholder="yourname.thru"]');
+    type(input, 'carol.thru');
+    click(buttons(route.el, /^import domain$/i)[0]);
+    await settle();
+    ok('import adds another domain without replacing the existing list', /carol.thru/.test(textOf(route.el))
+      && /alice.thru/.test(textOf(route.el)) && input.value === '');
+    type(input, 'foreign.thru');
+    click(buttons(route.el, /^import domain$/i)[0]);
+    await settle();
+    ok('ownership rejection keeps the import input and existing domains', input.value === 'foreign.thru'
+      && /belongs to another account/.test(textOf(route.el)) && items.length === 3);
+    click(buttons(route.el, /^remove/i)[1]);
+    await settle();
+    ok('untrack removes only the selected local entry', !/bob.thru/.test(textOf(route.el)) && /alice.thru/.test(textOf(route.el)));
+
+    holdCache = true;
+    click(buttons(route.el, /^refresh ownership$/i)[0]);
+    await settle();
+    held.shift().callback({ ok: true, data: data(true) });
+    await settle();
+    holdCache = false;
+    ok('late cache cannot overwrite a fresh live verification', !/Ownership not verified/.test(textOf(route.el)));
+    holdLive = true;
+    click(buttons(route.el, /^refresh ownership$/i)[0]);
+    await settle();
+    const oldReply = held.shift();
+    backend.activeIndex = 1;
+    emitEvent('accountsChanged', { active: activeAccount() });
+    await settle();
+    oldReply.callback({ ok: true, data: oldReply.result });
+    await settle();
+    ok('old account replies cannot populate the newly selected account', !/alice.thru|carol.thru/.test(textOf(route.el)));
+    route.destroy();
+    route.el.remove();
+    for (const reply of held.splice(0)) reply.callback({ ok: true, data: reply.result });
+    await settle();
+    // This mounts without Router: clean up application-owned toasts separately from
+    // route-owned row listeners, including the toast host from earlier shim documents.
+    (await import('../src/ui/kit/toast.js')).dismissAllToasts();
+    const leaked = detachedListeners();
+    ok('domain list teardown removes row listeners and ignores late reads', leaked.length === 0, JSON.stringify(leaked));
+  } finally {
+    route.destroy();
+    route.el.remove();
+    chrome.runtime.sendMessage = originalSend;
+    for (const reply of held.splice(0)) reply.callback({ ok: true, data: reply.result });
+    Object.assign(FIXTURES, originals);
+  }
+}
+
 // ---- Run -------------------------------------------------------------------
 
 const startedAt = Date.now();
@@ -5108,6 +5442,8 @@ try {
   await ownRecipientRegistrationTest();
   await historyCacheFirstTest();
   await offlineBalanceConsumersTest();
+  await nameReviewTest();
+  await trackedDomainsTest();
   await panelExclusionTest();
   negativeControls();
 } finally {

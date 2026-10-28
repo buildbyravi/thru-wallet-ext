@@ -1599,7 +1599,6 @@ form > .btn.text {
   border-radius: var(--radius-lg, 12px);
   background: var(--surface-1);
 }
-.name-renew-intro,
 .name-empty {
   padding: var(--sp-3, 12px);
   border: 1px solid var(--border);
@@ -1636,6 +1635,40 @@ form > .btn.text {
   font-size: var(--fs-xl);
   line-height: 1.3;
   overflow-wrap: anywhere;
+}
+.name-confirm-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-2);
+}
+.name-domain-list {
+  min-width: 0;
+}
+.name-domain-title {
+  flex: 1;
+  min-width: 0;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
+}
+.name-domain-heading > svg,
+.name-domain-heading > .tag-native {
+  flex-shrink: 0;
+}
+.name-domain-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--sp-2);
+}
+.name-domain-actions .btn {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 4px;
+  font-size: var(--fs-xs);
+  text-align: center;
+  justify-content: center;
+  white-space: nowrap;
 }
 .name-stepper .name-step-btn {
   min-width: 32px;

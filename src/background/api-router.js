@@ -74,6 +74,22 @@ const SYNC_READ_METHODS = new Set([
   'name.getCustomRegistrar', 'name.checkCustomLease',
 ]);
 
+// Runs inside the existing transaction guard. Persistence survives popup teardown and
+// cannot turn an already confirmed registration into a retryable transaction failure.
+async function registerAndRemember(operation, params) {
+  const networkId = await networkService.getActiveNetworkId();
+  const accountAddress = (await accountService.getActiveAccount())?.address;
+  const remember = primaryNameService.registrationRecorder({ networkId, accountAddress });
+  const result = await operation(params);
+  try {
+    await remember({ name: result.name ?? params.name,
+      rootAddress: result.rootAddress, domainAddress: result.domainAddress });
+  } catch {
+    return { ...result, trackingFailed: true };
+  }
+  return result;
+}
+
 const handlers = Object.assign(Object.create(null), {
   // ---- System ------------------------------------------------------------
   //
@@ -140,7 +156,11 @@ const handlers = Object.assign(Object.create(null), {
   'wallet.importPrivateKey': ({ privateKeyHex, password }) => walletService.importPrivateKeyVault(privateKeyHex, password),
   'wallet.unlock': ({ password }) => walletService.unlock(password),
   'wallet.lock': () => walletService.lock(),
-  'wallet.reset': ({ confirmation, password }) => walletService.resetWallet({ confirmation, password }),
+  'wallet.reset': async ({ confirmation, password }) => {
+    const result = await walletService.resetWallet({ confirmation, password });
+    await primaryNameService.clearAllDomains();
+    return result;
+  },
   'wallet.hasSeed': () => walletService.hasSeed(),
   'wallet.exportSecret': ({ ref, password }) => walletService.exportSecret(ref, password),
   'wallet.exportPrivateKey': ({ ref, password }) => walletService.exportPrivateKey(ref, password),
@@ -189,24 +209,30 @@ const handlers = Object.assign(Object.create(null), {
   // v25: the same method serves both registration paths. via='custom' switches to the
   // evidence-pinned custom registrar (self-signed, target = signer); any other/absent via
   // keeps the canonical name-service behaviour exactly as before.
-  'name.register': (params) => (
-    params?.via === 'custom' ? registrarService.registerCustom(params) : nameService.registerName(params)
-  ),
+  'name.register': (params) => registerAndRemember(
+    params?.via === 'custom' ? registrarService.registerCustom : nameService.registerName, params),
   'name.setRecord': (params) => nameService.setRecord(params),
   // v21 primary-name UX slice: get re-verifies the stored record against the chain (one live
   // read per call; a broken ownership record is dropped honestly, an unreadable node keeps the
   // last verified record rather than flapping it).
   'name.getPrimary': () => primaryNameService.verifyPrimaryName({}),
   'name.linkPrimary': (params) => primaryNameService.linkPrimaryName(params),
-  'name.unlinkPrimary': () => primaryNameService.unlinkPrimaryName({}),
+  'name.unlinkPrimary': (params) => primaryNameService.unlinkPrimaryName(params),
+  'name.getCachedDomains': (params) => primaryNameService.getCachedDomains(params),
+  'name.listDomains': (params) => primaryNameService.listDomains(params),
+  'name.trackDomain': (params) => primaryNameService.trackDomain(params),
+  'name.setPrimaryDomain': (params) => primaryNameService.setPrimaryDomain(params),
+  'name.untrackDomain': (params) => primaryNameService.untrackDomain(params),
   // v22 official `.thru` registrar (first-party formats): reads are parse-proofed honesty,
   // writes are self-signed (signer = fee payer) registrar program calls at fee 0n.
   'name.getRegistry': () => registrarService.getRegistry(),
   'name.checkLease': (params) => registrarService.checkLease(params),
   'name.getPaymentBalance': () => registrarService.getPaymentBalance(),
-  'name.purchase': (params) => registrarService.purchaseDomain(params),
-  'name.renewLease': (params) => registrarService.renewLease(params),
-  'name.claimExpired': (params) => registrarService.claimExpiredDomain(params),
+  'name.purchase': (params) => registerAndRemember(registrarService.purchaseDomain, params),
+  'name.renewLease': (params) => (
+    params?.via === 'custom' ? registrarService.renewCustom(params) : registrarService.renewLease(params)
+  ),
+  'name.claimExpired': (params) => registerAndRemember(registrarService.claimExpiredDomain, params),
   // v25 custom registrar (contracts/thru-custom-registrar; evidence-pinned deployment):
   // candid reads mirror the v22 honesty contract — absence/mismatch is a declared state.
   'name.getCustomRegistrar': () => registrarService.getCustomRegistrar(),

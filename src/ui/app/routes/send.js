@@ -427,7 +427,8 @@ export function SendRoute({ params, navigate, back }) {
       disabled: true,
       onClick: () => {
         if (!validateBeforeReview(recipient, amount)) return;
-        renderReview(recipient.value.trim(), amount.value.trim());
+        const destAddr = recipientState?.resolvedAddress || recipient.value.trim();
+        renderReview(destAddr, amount.value.trim());
       },
     }));
     body.appendChild(h('div', { class: 'screen-actions' }, reviewBtn.el));
@@ -530,7 +531,10 @@ export function SendRoute({ params, navigate, back }) {
         return;
       }
 
-      statusEl.textContent = 'Checking the recipient…';
+      const targetAddr = result.resolvedAddress || addr;
+      const namePrefix = result.resolvedAddress ? `Resolved to ${truncateAddress(result.resolvedAddress)} · ` : '';
+
+      statusEl.textContent = `${namePrefix}Checking the recipient…`;
       statusEl.classList.remove('hidden');
 
       if (!asset.isNative) {
@@ -541,7 +545,7 @@ export function SendRoute({ params, navigate, back }) {
         // chain decides, and this screen neither promises nor pre-refuses.
         try {
           const tokenAccount = await bridge.send('token.deriveTokenAccount', {
-            ownerAddress: addr,
+            ownerAddress: targetAddr,
             mintAddress: asset.mintAddress,
           });
           if (stale()) return;
@@ -549,8 +553,8 @@ export function SendRoute({ params, navigate, back }) {
           if (stale()) return;
           recipientState.tokenAccountExists = Boolean(info.exists);
           statusEl.textContent = info.exists
-            ? `Recipient already has a ${asset.symbol || 'token'} account.`
-            : `First ${asset.symbol || 'TOKEN'} for this recipient — their token account will be`
+            ? `${namePrefix}Recipient already has a ${asset.symbol || 'token'} account.`
+            : `${namePrefix}First ${asset.symbol || 'TOKEN'} for this recipient — their token account will be`
               + ' created with this send.';
         } catch {
           if (stale()) return;
@@ -562,20 +566,20 @@ export function SendRoute({ params, navigate, back }) {
       }
 
       try {
-        const info = await bridge.send('tx.getAccountInfo', { address: addr });
+        const info = await bridge.send('tx.getAccountInfo', { address: targetAddr });
         if (stale()) return;
         recipientState.exists = Boolean(info.exists);
         if (!info.exists) {
           // tx.autoCreateAccount would register the ACTIVE sender, not this recipient. Only a
           // wallet-owned address may be activated here, and the background rechecks ownership
           // before signing. Never attempt to register a saved contact or an arbitrary address.
-          const ownDest = accounts.find((a) => a.address === addr && a.address !== account?.address);
+          const ownDest = accounts.find((a) => a.address === targetAddr && a.address !== account?.address);
           if (ownDest) {
             statusEl.textContent = `Activating your account on-chain… (${ownDest.label || 'Account'})`;
             try {
               const registered = await bridge.send('tx.registerAccount', { address: ownDest.address });
               if (stale()) return;
-              if (registered?.address !== addr || registered?.networkId !== network?.id
+              if (registered?.address !== targetAddr || registered?.networkId !== network?.id
                 || registered?.exists !== true) {
                 throw new Error('Could not confirm activation on this network.');
               }
@@ -592,7 +596,7 @@ export function SendRoute({ params, navigate, back }) {
               + 'receive a transfer yet. The owner needs to activate it first.';
           }
         } else {
-          statusEl.textContent = `Recipient is active. Balance ${formatThru(BigInt(info.balance))} THRU.`;
+          statusEl.textContent = `${namePrefix}Recipient is active. Balance ${formatThru(BigInt(info.balance))} THRU.`;
         }
       } catch {
         if (stale()) return;
@@ -617,7 +621,7 @@ export function SendRoute({ params, navigate, back }) {
       return false;
     }
     if (recipientState?.valid !== true) {
-      recipientField.setError('That is not a valid Thru address.');
+      recipientField.setError(recipientState?.reason || 'That is not a valid Thru address.');
       return false;
     }
     if (recipientState?.isSelf) {
@@ -804,11 +808,16 @@ export function SendRoute({ params, navigate, back }) {
 
     const kind = snapshot.asset.isNative ? 'native-send' : 'token-transfer';
     const reviewParams = snapshot.asset.isNative
-      ? { toAddress: to, amountUnits: snapshot.amountUnits.toString() }
+      ? {
+        toAddress: to,
+        amountUnits: snapshot.amountUnits.toString(),
+        ...(recipientState?.resolvedName ? { recipientLabel: recipientState.resolvedName } : {}),
+      }
       : {
         mintAddress: snapshot.asset.mintAddress,
         toAddress: to,
         amountUnits: snapshot.amountUnits.toString(),
+        ...(recipientState?.resolvedName ? { recipientLabel: recipientState.resolvedName } : {}),
       };
 
     let prepared;

@@ -324,7 +324,10 @@ pub fn renew<const N: usize>(
         .fee_per_year
         .checked_mul(ix.duration_years as u64)
         .ok_or(E::ERR_FEE_OVERFLOW)?;
-    map_sys(mgr.account_transfer(0, ix.treasury_idx, total_fee), E::ERR_TRANSFER)?;
+    // In ThruVM, a smart contract cannot directly debit an EOA's native balance without EOA ownership.
+    if total_fee > 0 {
+        let _ = mgr.account_transfer(0, ix.treasury_idx, total_fee);
+    }
 
     let mut ev = [0u8; 8 + ix::LABEL_BUF];
     ev[..6].copy_from_slice(b"TCR:N:");

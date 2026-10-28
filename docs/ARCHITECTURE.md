@@ -55,6 +55,28 @@ future versions fail closed. Balance and History stores are rebuildable caches: 
 scoped, freshness-labelled, and discarded when chain identity evidence does not match. Schema changes
 must add old→new fixtures before shipping.
 
+Domain tracking (contract v29) is owned by `primary-name-service.js`, alongside primary
+aliases. `thru_registered_domains::<networkId>` stores `{version:1, revision, records}`;
+each candidate carries its account address, name/root/domain identity, last check status,
+and verification timestamps. The absent-registry v0 migration projects existing
+`thru_primary_names::<networkId>` aliases without RPC or a read-side write. The next
+mutation atomically persists both keys, preserving the old primary-key shape. Unlinking
+therefore migrates the old primary before removing its alias. Unsupported versions fail closed.
+
+All registry/primary mutations share a per-network queue. Refreshes only apply to their
+unchanged revision, so a late read cannot resurrect an untracked name or overwrite newer
+primary/import edits. Reads capture an RPC client before asynchronous derivation; the
+adapter's optional bound-client `getAccountInfo` argument prevents cross-network hydration
+without blocking network switching. Cached candidates are always stale. Fresh ownership
+requires the name-service program, derived identity, decoded name/parent and wallet owner
+to agree. Import and primary selection recheck ownership in the backend; local untracking
+is not a chain operation. Confirmed registration handlers retain candidates before returning,
+even if the popup closes. Persistence failure is reported separately from transaction success.
+Program-owner metadata is normalized through `thruClient.getAccountOwnerAddress`: SDK
+`Pubkey` objects require `toThruFmt()`, never `String(object)`. Malformed metadata stays unknown.
+Wallet reset clears both stores across networks and invalidates late reads/registration saves
+with a process-local generation; in-flight storage writes settle before cleanup completes.
+
 ## Optional features
 
 Core wallet services do not depend on optional products. Future Launchpad, DEX, Prediction,

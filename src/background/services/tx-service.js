@@ -585,6 +585,45 @@ export async function validateAddress(address) {
     return { valid: false, isSelf: false, reason: 'Enter a recipient address.' };
   }
   if (!thruClient.isValidThruAddress(addr)) {
+    const isDomain = addr.includes('.') || addr.toLowerCase().endsWith('.thru') || addr.toLowerCase().endsWith('.id');
+    if (isDomain) {
+      try {
+        const nameService = await import('./name-service.js');
+        const lookup = await nameService.lookupName({ name: addr });
+        if (lookup?.leaf?.exists && lookup.leaf.domain) {
+          const dom = lookup.leaf.domain;
+          const addressRecord = dom.records?.find((r) => r.key === 'address')?.value;
+          const resolvedAddress = addressRecord && thruClient.isValidThruAddress(addressRecord)
+            ? addressRecord
+            : dom.owner;
+          if (resolvedAddress && thruClient.isValidThruAddress(resolvedAddress)) {
+            let isSelf = false;
+            try {
+              const active = await vault.getActiveAccount();
+              isSelf = active?.address === resolvedAddress;
+            } catch {}
+            return {
+              valid: true,
+              isSelf,
+              resolvedAddress,
+              resolvedName: addr,
+              reason: isSelf ? "That's the address you're sending from." : null,
+            };
+          }
+        }
+        if (lookup?.leaf?.exists === false) {
+          return { valid: false, isSelf: false, reason: `Domain '${addr}' is not registered on this network.` };
+        }
+        if (lookup?.leaf?.decodeError) {
+          return { valid: false, isSelf: false, reason: `Domain '${addr}' state could not be read: ${lookup.leaf.decodeError}` };
+        }
+      } catch (err) {
+        if (err?.code === 'NAME_ROOT_UNKNOWN') {
+          return { valid: false, isSelf: false, reason: 'Name service is not available on this network.' };
+        }
+        return { valid: false, isSelf: false, reason: `Could not resolve domain '${addr}': ${err?.message ?? err}` };
+      }
+    }
     return { valid: false, isSelf: false, reason: 'That does not look like a valid Thru address.' };
   }
   let isSelf = false;

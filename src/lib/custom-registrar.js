@@ -89,7 +89,29 @@ export const TCR_ERRORS = Object.freeze({
 });
 
 export function describeTcrError(code) {
-  return TCR_ERRORS[Number(code)] ?? `unknown registrar error ${code}`;
+  const c = Number(code);
+  if (TCR_ERRORS[c]) return TCR_ERRORS[c];
+  if (c === 53770 || c === 0xd20a) {
+    return 'fee transfer failed (account not writable)';
+  }
+  const sysNames = {
+    0x0a: 'account not writable',
+    0x08: 'invalid account index',
+    0x09: 'account does not exist',
+    0x26: 'insufficient balance',
+  };
+  if ((c & 0xff00) === 0xd200) {
+    const sysCode = c & 0xff;
+    const detail = sysNames[sysCode] ? ' (' + sysNames[sysCode] + ')' : ' (syscall error ' + sysCode + ')';
+    if (sysCode === 0x26) {
+      return TCR_ERRORS[0xd202] + detail;
+    }
+    const base = c & ~0xff;
+    if (TCR_ERRORS[base]) {
+      return TCR_ERRORS[base] + detail;
+    }
+  }
+  return 'unknown registrar error ' + code;
 }
 
 // ---- Pure validation -------------------------------------------------------------

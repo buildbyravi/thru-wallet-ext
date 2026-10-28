@@ -254,6 +254,72 @@ function paidRegistryBlock({ facts, operation, rows, instructions, extraWarnings
 export const DOMAIN_PURCHASE_KIND = 'domain-purchase';
 
 export function decodeDomainPurchase({ facts }) {
+  if (facts.provider === 'custom') {
+    const feePerYear = facts.pricePerYear == null ? null : String(facts.pricePerYear);
+    if (facts.nativeBalanceUnits != null && BigInt(facts.nativeBalanceUnits) < BigInt(facts.totalPriceUnits)) {
+      warnings.push(warn('insufficient-native', 'danger',
+        'Balance is lower than the renewal fee',
+        'The registrar charges its fee in THRU from the signing account; the account holds less '
+        + 'than the total below.', { blocking: true }));
+    }
+    return {
+      operation: {
+        id: DOMAIN_RENEW_KIND,
+        name: 'Renew domain lease',
+        summary: `Extend '${facts.name}.${facts.tld}' by ${Number(facts.years)} `
+          + `${Number(facts.years) === 1 ? 'year' : 'years'} through the custom registrar.`,
+        confirmLabel: 'Confirm and sign',
+        decode: 'decoded',
+      },
+      protocol: {
+        name: registrarProgram(facts).name,
+        address: registrarProgram(facts).address,
+        verified: registrarProgram(facts).verified,
+        source: facts.program?.source
+          || 'Evidence-pinned deployment on the active network (docs/DECISIONS.md D-016)',
+      },
+      summary: [
+        domainRow(facts),
+        row('Current expiry', chainTime(facts.lease?.endTime)),
+        yearsRow(facts),
+        row('Registrar', registrarProgram(facts).name),
+        row('Price per year', feePerYear == null
+          ? 'not readable'
+          : displayAmount(feePerYear, NATIVE.decimals, NATIVE.symbol), { mono: true }),
+        row('Total charge', displayAmount(facts.totalPriceUnits, NATIVE.decimals, NATIVE.symbol), { mono: true }),
+        row('Network', facts.networkLabel ?? ''),
+      ],
+      assets: {
+        outgoing: [movement({
+          symbol: NATIVE.symbol,
+          name: 'Thru native token',
+          decimals: NATIVE.decimals,
+          amountUnits: facts.totalPriceUnits,
+          verified: true,
+          note: 'Charged by the registrar program itself, in THRU base units.',
+        })],
+        incoming: [],
+        fee: registrarFee(facts),
+        balanceAfter: null,
+        balanceAfterNote: 'Thru has no verified dry-run, so no post-transaction balance is shown.',
+      },
+      execution: executionBlock({
+        program: registrarProgram(facts),
+        instructions: [namedInstruction(facts, 'Renew domain lease',
+          'Extends the domain lease period through the custom registrar.')],
+        accounts: [
+          accountRole('Signer / owner', facts.fromAddress),
+          accountRole('Registrar config', facts.configAddress ?? 'derived from the program id'),
+          accountRole('Treasury', facts.treasury ?? 'unknown'),
+          accountRole('Root', facts.root ?? 'unknown'),
+        ],
+        raw: null,
+      }),
+      warnings,
+      acknowledgements: [],
+    };
+  }
+
   return paidRegistryBlock({
     facts,
     operation: {

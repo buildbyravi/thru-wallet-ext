@@ -346,6 +346,88 @@ async function domainRegisterRecheck(record) {
   }
 }
 
+
+async function domainCustomRenewFacts(params, { account, network }) {
+  const name = requireLabel(params.name, 'name');
+  const years = requireYears(params.years);
+
+  const info = await registrarService.getCustomRegistrar();
+  if (!info.supported) {
+    throw coded('TCR_ABSENT', info.reason || 'The custom registrar is unavailable on this network.');
+  }
+  const check = await registrarService.checkCustomLease({ name });
+  if (check.readError) {
+    throw coded('LEASE_READ_FAILED', check.readError);
+  }
+  if (!check.leaseExists || !check.lease) {
+    throw coded('LEASE_NOT_FOUND', `'${name}.${info.rootName}' has no active lease on-chain.`);
+  }
+  if (check.lease.owner !== account.address) {
+    throw coded('NOT_NAME_OWNER', `'${name}.${info.rootName}' belongs to another account.`);
+  }
+
+  const [payer, fee] = await Promise.all([accountState(account.address), feeQuote()]);
+  const feePerYear = String(info.feePerYear);
+  const totalPriceUnits = (BigInt(feePerYear) * BigInt(years)).toString();
+
+  return {
+    fromAddress: account.address,
+    fromLabel: account.label ?? null,
+    name,
+    tld: info.rootName,
+    years,
+    provider: 'custom',
+    pricePerYear: feePerYear,
+    totalPriceUnits,
+    nativeBalanceUnits: payer.balanceUnits,
+    availability: { state: 'mine', readError: null },
+    lease: {
+      owner: check.lease.owner,
+      endTime: check.lease.expiresAtSeconds == null ? null : String(check.lease.expiresAtSeconds),
+      expiredHint: check.lease.expiredHint ?? false,
+      mine: true,
+    },
+    root: info.root,
+    configAddress: info.configAddress,
+    treasury: info.treasury,
+    program: {
+      name: 'Custom `.thru` registrar',
+      address: info.program,
+      verified: Boolean(info.rootMatchesNameService),
+      source: info.rootMatchesNameService
+        ? 'Evidence-pinned deployment (D-016); config root matches the name-service derivation'
+        : 'Config root does NOT match the name-service derivation',
+    },
+    instruction: { name: 'Renew domain lease', opcode: customRegistrar.TCR_OP_RENEW },
+    feeReserveUnits: fee.supported ? fee.reserveUnits : null,
+    feeNote: null,
+  };
+}
+
+async function domainCustomRenewRecheck(record) {
+  const facts = record.facts;
+  const info = await registrarService.getCustomRegistrar();
+  if (!info.supported) {
+    throw coded('REVIEW_REGISTRAR_CHANGED', 'The custom registrar is no longer readable on this network. Review the renewal again.');
+  }
+  if (String(info.feePerYear) !== String(facts.pricePerYear)) {
+    throw coded('REVIEW_PRICE_CHANGED', 'The registrar price changed after review. Review the renewal again.');
+  }
+  const check = await registrarService.checkCustomLease({ name: facts.name });
+  if (check.readError) {
+    throw coded('REVIEW_UNAVAILABLE', 'Lease could not be re-verified before signing.', true);
+  }
+  if (!check.leaseExists || !check.lease) {
+    throw coded('LEASE_NOT_FOUND', `'${facts.name}' no longer has a lease.`);
+  }
+  if (check.lease.owner !== record.accountAddress) {
+    throw coded('NOT_NAME_OWNER', `'${facts.name}' is owned by another account now.`);
+  }
+  if (facts.lease?.endTime != null && String(check.lease.expiresAtSeconds) !== String(facts.lease.endTime)) {
+    throw coded('REVIEW_EXPIRY_CHANGED', 'The lease expiry changed after review. Review the renewal again.');
+  }
+}
+
 // ---------------------------------------------------------------------------------------
 // Paid registry writes: purchase / renew / claim
 // ---------------------------------------------------------------------------------------
@@ -675,13 +757,18 @@ register('domain-purchase', {
 });
 
 register('domain-renew', {
-  facts: (params, ctx) => registryWriteFacts(params, { ...ctx, mode: 'renew' }),
-  recheck: registryWriteRecheck,
+  facts: (params, ctx) => params.via === 'custom'
+    ? domainCustomRenewFacts(params, ctx)
+    : registryWriteFacts(params, { ...ctx, mode: 'renew' }),
+  recheck: (record) => record.facts.provider === 'custom'
+    ? domainCustomRenewRecheck(record)
+    : registryWriteRecheck(record),
   submit: (facts) => ({
     method: 'name.renewLease',
     params: {
       name: facts.name,
       years: facts.years,
+      ...(facts.provider === 'custom' ? { via: 'custom' } : {}),
       expectedAccountAddress: facts.fromAddress,
       expectedNetworkId: facts.networkId,
       expectedPricePerYear: facts.pricePerYear,

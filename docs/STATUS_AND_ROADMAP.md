@@ -14,15 +14,15 @@ Single source of truth for the **shipped baseline**, what automated evidence pro
 
 Companion docs: `docs/DOCS_INDEX.md` · `docs/PROJECT_LEDGER.md` · `CONTEXT.md` · `docs/MODULE_BOUNDARIES.md` · `docs/BACKEND_GAPS.md` · `docs/BUILD_SPEC.md` · `docs/MANUAL_SMOKE_CHECKLIST.md` · `docs/SEND_PATH_AUDIT.md`.
 
-## Domain route status (2026-10-27)
+## Domain route and tracked registry (2026-10-27)
 
-The `/name` route has Register, My Domains, and Renew / Extend sections, per-name checks and
-quotes, explicit review before the existing `name.*` signing handlers, and independent
-single-name submissions. Register offers `.thru` only, automatically selecting the verified
+The `/name` route has Register, My Domains, and Renew sections, a single-name search and
+quote, and a bottom-sheet review before the existing `name.*` signing handlers. The inline
+review, multi-entry controls, batch copy, and unused amount aggregator are deleted.
+Register offers `.thru` only, automatically selecting the verified
 deployed custom registrar first and the official paid registry only when that is the available
 `.thru` route. It does not query `.id` availability or offer `.id` minting; `.id` lookup and
-resolution remain available through name lookup. Registrar totals group only matching assets
-and use BigInt; they are quotes for separate transactions, not an atomic batch. Native THRU uses
+resolution remain available through name lookup. Quotes use BigInt. Native THRU uses
 the shared 9-decimal definition; paid-registry token decimals come from the on-chain mint.
 
 **TESTED**: the Domain focused suites and the project suite cover formatting, validation,
@@ -36,10 +36,56 @@ the real background API router returned an on-chain execution result, and a foll
 read confirmed the selected test account as lease owner. The handler quoted 1,000 base
 units/year; charged network fee was not returned.
 
-**UNVERIFIED**: rendered popup / side-panel behavior in Chrome and a wallet-signed Betanet
-review/auth flow and renewal in the browser. The API-router registration verifies the backend
-write path, not the rendered review screen or charged network fee. See `docs/BACKEND_GAPS.md` for
-the precise unsupported and live-write boundaries.
+**TESTED (2026-10-27 UI audit)**: build and full `npm test` pass. Mounted route regressions
+cover exact review values, renewal/claim expiry binding, Escape/Cancel focus restoration,
+double-confirm suppression, edits invalidating review, stale availability during debounce,
+password retries versus unknown transaction outcomes, and teardown before signing. Route
+teardown aborts the password dialog and clears its input. The DOM shim now implements
+`isConnected`; previously the name route's post-read guards could silently skip hydration.
+
+**TESTED in real Chrome, isolated visual harness**: actual `NameRoute`/`Sheet` and built
+`dist/popup.css`, mocked bridge only, at 400x600 light/dark and 320x700/320x400 with a
+64-character paid-registry name. Screenshot inspection and geometry checks confirm no
+document/route-height increase on review, wrapping names, and scroll-reachable confirmation
+actions. No live wallet or signing was used. Harness/screenshots are session-local under
+`C:/Users/ravi/AppData/Local/Temp/kilo/domain-visual*` and `domain-*.png`.
+
+**BLOCKED**: full owned-domain discovery. The pinned SDK and official QueryService document
+paginated `ListAccounts`, but the live Betanet name-service-owner query returned
+`RESOURCE_EXHAUSTED: account listing database budget exceeded` on 2026-10-27. Complete
+enumeration/pagination has not been verified. This is not presented as complete discovery.
+
+**IMPLEMENTED / TESTED (owner-approved tracked registry, contract v29)**: My Domains now
+lists this wallet's tracked names, independently of the primary alias. Existing primary links
+migrate into versioned, account/network-scoped records; changing or unlinking primary retains
+all tracked names. Confirmed registration is retained in the backend even if the popup closes;
+a storage failure does not turn confirmation into a retryable transaction failure. Import,
+Make primary, Unlink primary, Remove from list and Renew reuse the existing bridge and
+registration/review flow. Imports are .thru-only and preserve the paid registrar's label case.
+
+`name.getCachedDomains` paints saved candidates immediately; `name.listDomains` verifies
+ownership with bounded concurrency. Cache/unknown records never enable ownership-dependent
+actions. Transferred/absent records remain visible, and a disproven primary alias is cleared.
+All mutations share a serialized, revision-checked store. Future schema versions fail closed.
+Tests cover migration, concurrent imports, primary preservation, wrong owner/program,
+malformed bytes, offline state, late cache/live responses, untrack races and account changes.
+No expiry is guessed: Renew preselects the domain in the renewal-only flow. The official
+paid registry uses the existing checked renewal handler; custom renewal remains unavailable
+and is stated explicitly, with no registration/expired-claim fallback in the Renew view.
+The tracked list was also exercised in the real Chrome visual harness (400px light/dark,
+320px dark, online/offline, 64-character name): scrolling reaches the import controls, importing
+adds a third candidate, and offline ownership cannot enable Make primary. No live wallet was used.
+Wallet reset clears domain metadata on all networks; regression tests reject late refresh/save
+callbacks after reset. Names already overwritten by the old single-alias store must be imported.
+
+**Import correction (2026-10-27)**: live SDK account metadata carries `Pubkey` objects;
+`String(meta.owner)` produced `[object Object]` and falsely rejected ownership. Program-owner
+normalization is now centralized in the Thru adapter using `Pubkey.from(...).toThruFmt()`.
+Domain and registry tests use actual SDK objects and still reject wrong/malformed owners.
+
+**UNVERIFIED**: actual extension popup/side-panel behavior with MV3 and a wallet-signed Betanet
+review/auth flow or renewal. The visual harness does not establish these, or charged network
+fees. See `docs/BACKEND_GAPS.md` for unsupported and live-write boundaries.
 
 ---
 

@@ -49,7 +49,6 @@ function indexResolver(table) {
   const bytes = table.map((a) => hex(Pubkey.from(a).toBytes()));
   return (address) => bytes.indexOf(hex(Pubkey.from(address).toBytes()));
 }
-const NS_PROG = 'taNAMEqRNEDeMWp0cDYmMVdZyTZiF5NyGDR9zTwH42rWQG';
 
 // ---- Mirror the Rust policy table ------------------------------------------------
 ok('min label 3 / max 32 (Rust instruction.rs)', TCR_MIN_LABEL === 3 && TCR_MAX_LABEL === 32);
