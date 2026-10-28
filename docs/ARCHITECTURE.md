@@ -77,6 +77,14 @@ Program-owner metadata is normalized through `thruClient.getAccountOwnerAddress`
 Wallet reset clears both stores across networks and invalidates late reads/registration saves
 with a process-local generation; in-flight storage writes settle before cleanup completes.
 
+## Smart contract integration & engineering policy
+
+All on-chain program integrations (native programs, official registry, custom registrar, token standards, and future DeFi/AMM modules) adhere to `docs/GLOBAL_SMART_CONTRACT_POLICY.md`. Key invariants:
+1. **Inspect before build or reuse**: verify ABI, account layouts, and opcode behavior against official Thru protocol implementations before implementation.
+2. **Reuse vs. new program hierarchy**: prefer standard SDK and protocol contracts; deploy custom programs only when justified by unresolvable upstream gaps, strictly maintaining integer-only BigInt arithmetic and PDA derivation safety.
+3. **Official source reuse discipline**: modified or extended contracts must have separate namespaces, explicit delta documentation, and must never masquerade as official protocol programs.
+4. **Mainnet deployment gates**: zero-warning builds, 100% deterministic test passes, Betanet live verification, key security governance, and audit sign-off are required prior to Mainnet release.
+
 ## Optional features
 
 Core wallet services do not depend on optional products. Future Launchpad, DEX, Prediction,

@@ -90,6 +90,7 @@ authority documents", never "this is how the code works".
 | `docs/DECISIONS.md` | durable decisions D-001…D-011 with context, options, trade-offs, and consequences |
 | `docs/BACKEND_GAPS.md` | implemented backend capabilities and genuinely open/unsupported behavior |
 | `docs/MODULE_BOUNDARIES.md` | wallet-core layering; authority on future feature separation (its feature modules are proposals, not shipped code) |
+| `docs/GLOBAL_SMART_CONTRACT_POLICY.md` | smart contract inspection, reuse vs build hierarchy, and mainnet deployment gates |
 
 ### Operational verification — runbooks and records
 
