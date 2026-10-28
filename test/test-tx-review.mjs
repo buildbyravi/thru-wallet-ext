@@ -934,6 +934,21 @@ console.log('[15] the review fits one screen (owner review, 2026-10-28)');
     ok(`${kind} still refuses to predict a post-transaction balance`,
       review.assets.balanceAfter === null && Boolean(review.assets.balanceAfterNote));
   }
+  // The harness is part of the evidence, so its wiring is guarded too: TxReviewCard reports its
+  // initial confirmability from the constructor, and the version of this page that bound the
+  // confirm control afterwards threw on the first callback and drew nothing (d45a085).
+  const harness = readFileSync(new URL('../scripts/preview-tx-review.html', import.meta.url), 'utf8');
+  const loopAt = harness.indexOf('for (const fixture of previewFixtures())');
+  ok('the harness binds the confirm control before it constructs the card',
+    loopAt > 0
+      && harness.indexOf('const confirmBtn', loopAt) < harness.indexOf('TxReviewCard({', loopAt));
+  // ...and it must compute a fixture's state the way the service does, or it can show a card the
+  // wallet can never emit (a failed simulation that still offers a confirm button).
+  const fixturesSource = readFileSync(new URL('../scripts/preview-tx-review.fixtures.js', import.meta.url), 'utf8');
+  ok('the harness folds the simulation verdict into state like review-service',
+    fixturesSource.includes('simulationWarning(sim)')
+      && fixturesSource.includes('stateFromWarnings(warnings)'));
+
   const rawReview = shapes.find(([kind]) => kind === 'raw')[1];
   ok('raw still exposes the bytes and stays unsignable',
     rawReview.execution.raw?.format === 'hex'
