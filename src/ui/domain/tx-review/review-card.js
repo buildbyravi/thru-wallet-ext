@@ -23,16 +23,14 @@
 
 import { h, clear, disposer } from '../../kit/dom.js';
 import { icon } from '../../kit/icon.js';
-import { formatThru, formatTokenAmount } from '../../../shared/format.js';
+import { formatAssetAmount } from '../../../shared/format.js';
 
+// The decoder's displayAmount and this card render the same fee/amount numbers through the same
+// shared formatter. "Unavailable" is a word, never a zero.
 function amountText(amountUnits, decimals, symbol) {
   if (amountUnits == null) return 'unknown';
   try {
-    const units = BigInt(amountUnits);
-    const text = Number(decimals) === 9 && symbol === 'THRU'
-      ? formatThru(units)
-      : formatTokenAmount(units, Number(decimals));
-    return `${text} ${symbol}`;
+    return formatAssetAmount(amountUnits, decimals, symbol);
   } catch {
     return `${amountUnits} ${symbol}`;
   }

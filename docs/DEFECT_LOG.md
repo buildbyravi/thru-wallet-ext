@@ -312,3 +312,49 @@ latency; keep that check open in `docs/MANUAL_SMOKE_CHECKLIST.md`.
 
 > **Lesson:** a block height is meaningful only together with its chain, and optional enrichment
 > RPCs should never run under the lock that protects unrelated cached accounts.
+
+## 9. The shared review card and its two integration seams — FIXED in source/tests
+
+Found while verifying the v29 transaction-review pipeline against Rabby's source and while building
+the browser harness (`scripts/preview-tx-review.html`). Neither was a pipeline bug; both were seams
+where a feature met the shared component.
+
+### 9.1 A feature can re-derive the card's decision and get it wrong — `READ` + `TEST`
+
+The Domain review sheet kept its confirm button enabled by listening for a DOM `change` event on the
+card element, and built that button *after* the card. `TxReviewCard` fires its documented
+`onChange({canConfirm})` from inside its constructor, so the sheet's handler ran before its own
+button existed, and afterwards depended on an event that only bubbles when an acknowledgement input
+changes. A review with no acknowledgements — a plain registration — therefore had one code path
+(render) and no path at all for "confirmability changed".
+
+Fix: every caller declares its confirm control first and passes `onChange`; the card remains the only
+place that decides confirmability. Send already did this; Domain now does, and the faucet route was
+written that way from the start.
+
+> **Lesson:** a shared component's callback contract is the contract. A caller that recreates the
+> decision from DOM events is not "using" the component, it is duplicating it.
+
+### 9.2 Acknowledgement ids were unique per review, not per document — `BROWSER HARNESS`
+
+The card rendered `id="tx-review-ack-<ackId>"`. One card per screen hid it. The harness mounts seven
+cards in one document, and the duplicated ids made a `<label for>` resolve to the first match — so a
+click on card 5 could tick card 3's checkbox. Accessibility and correctness both broken, silently.
+
+Fix: ids are namespaced by a per-instance counter (`tx-review-ack-<instance>-<ackId>`).
+
+> **Lesson:** "one at a time" is a runtime assumption, not a property of the markup. Ids belong to the
+> document, not to the component.
+
+### 9.3 A prepared review could be confirmed twice inside its TTL — `READ`
+
+`tx.confirmReview` did not consume the record, so the same `reviewId` could be confirmed repeatedly
+within 120 s. The handlers' own duplicate guards and the disabled-while-in-flight button were the
+only protection, which is a weaker claim than the pipeline advertises.
+
+Fix: a successful submit discards the review (`submitReviewedReview` → `tx.discardReview`), so a
+replay fails with `REVIEW_NOT_FOUND` and is classified stale. A *failed* submit deliberately keeps
+the review: retrying from the same reviewed facts is safe and avoids a needless re-read.
+
+> **Lesson:** "the downstream guard will catch it" is a reason a bug is survivable, not a reason to
+> leave the upstream hole open.

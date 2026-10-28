@@ -4,7 +4,7 @@ Single source of truth for the **shipped baseline**, what automated evidence pro
 
 ## Shipped baseline
 
-- **Contract v18, 124 methods.** 81 wallet-core methods plus the 43-method DeFi M0 contract surface (v17 READ+LOCAL, v18 PREPARE+EXECUTE) — every DeFi method is declared, schema-validated, and gated behind build-time flags that are all off; reads answer explicit unsupported states and the only signing method (`intent.submit`) refuses `FEATURE_DISABLED`. v16 removed the retired unbound `tx.send` / `token.transfer` mutation paths after all shipped callers migrated to checked methods.
+- **Contract v29, 147 methods** (2026-10-28). `CONTRACT_VERSION` in `src/shared/contract/manifest.js` is authoritative; the historical M0 line is: 81 wallet-core methods plus the 43-method DeFi M0 contract surface (v17 READ+LOCAL, v18 PREPARE+EXECUTE) — every DeFi method is declared, schema-validated, and gated behind build-time flags that are all off; reads answer explicit unsupported states and the only signing method (`intent.submit`) refuses `FEATURE_DISABLED`. v16 removed the retired unbound `tx.send` / `token.transfer` mutation paths after all shipped callers migrated to checked methods. v29 adds the shared transaction-review pipeline described below and changes no existing method.
 - **Account activation.** Account/keyring creation paths make bounded, best-effort self-registration attempts for newly added accounts on the selected network. There is no periodic signer. Send checks an unregistered recipient and calls `tx.registerAccount` just in time only when that destination is an owned account. The target account signs for itself; arbitrary contacts are never registered.
 - **Send review.** The JIT activation must complete before Review enables. Review shows the matched recipient label above the full destination address; the label is display-only. Checked native/token methods bind the reviewed account and network at the background boundary.
 - **Signing preference.** Signing requires an unlocked wallet. Password re-authentication is **off by default** (`requirePasswordForSigning: false`); a user can explicitly enable it through the password-gated Settings path. The v12 registration exception remains narrowly unlocked-only.
@@ -13,6 +13,36 @@ Single source of truth for the **shipped baseline**, what automated evidence pro
 - **Structural hardening.** Layering, CSP, route/CSS, contract, DOM, lifecycle, history, registration, network-cache, and quarantine checks run from `npm test`.
 
 Companion docs: `docs/DOCS_INDEX.md` · `docs/PROJECT_LEDGER.md` · `CONTEXT.md` · `docs/MODULE_BOUNDARIES.md` · `docs/BACKEND_GAPS.md` · `docs/BUILD_SPEC.md` · `docs/MANUAL_SMOKE_CHECKLIST.md` · `docs/SEND_PATH_AUDIT.md`.
+
+## Transaction review pipeline (contract v29, 2026-10-28)
+
+Every value-moving screen prepares a typed intent through `tx.prepareReview`, renders the ONE
+`TxReviewCard`, and submits through `submitReviewedReview` (confirm → optional password → the
+operation's existing signing handler). Features no longer own review rows, fee formatting, warning
+copy or the password flow.
+
+- **Integrated:** Send (native + token transfer), Domain (register / purchase / renew / claim),
+  Faucet (claim). No UI route calls a signing method directly any more.
+- **Not integrated:** DeFi/DEX/launchpad — no UI surface ships while every `DEFI_*` flag is off, so
+  there is nothing to migrate; their kinds do not exist and `tx.prepareReview` answers
+  `supported:false` with the known-kinds list rather than a guessed review.
+- **Honest states:** an operation with no decoder returns `supported:false`; a transaction decoded as
+  `unknown` renders with raw data and **no submit policy**, so it cannot be signed; a fee that was
+  never measured is shown as "not quoted" with its reason, never borrowed from another path;
+  `assets.balanceAfter` is validator-enforced `null` because Thru has no verified dry-run.
+- **Single use:** a successful submit discards its review, so the same `reviewId` cannot sign twice
+  inside its 120 s TTL. A definite failure keeps it (retrying reviewed facts is safe).
+- **Error surface:** `model.js` owns `REVIEW_ERROR_CODES` / `REVIEW_RECHECK_CODES` and the derived
+  `STALE_REVIEW_CODES`; `test-tx-review.mjs` scans the background and fails if a thrown code is
+  registered in neither the model nor the contract.
+
+**TESTED:** `test/test-tx-review.mjs` (83 checks: registry parity, every decoder, malformed and
+unknown input, amount/fee formatting, binding/TTL/account/network refusals, acknowledgements,
+blocking, discard, code registry) and `test/test-route-lifecycle.mjs` (1,054 checks, including the
+Send, Domain and Faucet review flows driven through the real routes). **BUILD:** `npm run build`
+passes, including the layering, CSP, route/CSS and contract gates. **UNVERIFIED:** real-browser
+layout and live-chain behaviour — no browser binary and no network writes were available; the
+harness `scripts/preview-tx-review.html` is the recorded human runbook for the former.
 
 ## Domain route status (2026-10-27)
 

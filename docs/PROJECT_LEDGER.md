@@ -13,8 +13,8 @@ The identifier refresh is based on the audited source at `7883219` plus the 2026
 | --- | --- |
 | Repository | `buildbyravi/thru-wallet-ext` |
 | Audited implementation baseline | `7883219` (`arena/01a10602-thru-wallet-ext`, 2026-10-04 audit) |
-| Contract version | v18 |
-| Contract methods | 124, counted from `Object.keys(METHODS)` in `src/shared/contract/manifest.js` (81 wallet-core + 43 DeFi M0 surface, all feature-flagged off) |
+| Contract version | **v29** (2026-10-28). The v18 figure below in §3 is the historical M0 measurement; `CONTRACT_VERSION` in `src/shared/contract/manifest.js` is authoritative. |
+| Contract methods | **147**, counted from `Object.keys(METHODS)` in `src/shared/contract/manifest.js` (the v18 audit counted 124: 81 wallet-core + 43 DeFi M0 surface, all feature-flagged off). v29 adds the three review methods. |
 | Route count | 14 popup/side-panel routes |
 | Signing preference default | Session-only while unlocked (`requirePasswordForSigning: false`); password re-auth is an explicit, password-gated Settings opt-in |
 | Built extension page | `popup.html`, shared by toolbar popup and side panel |
@@ -88,6 +88,19 @@ No launchpad, DEX, swap, or prediction UI is shipped. The old `src/launchpad/` t
 - History paints a storage-only cache scoped by network and address before its RPC feed/pending reconciliation completes. Known block times carry `timestampSource: 'block'`; only an actual local submission time for the wallet's own transaction may be used as a fallback. Otherwise the card shows `Block <slot>` rather than a fabricated date. The UI is a flat stream without day headers and has no per-card fee line.
 
 ---
+
+### v29 — shared transaction review (2026-10-28)
+
+| Item | Shipped value |
+| --- | --- |
+| Methods | `tx.prepareReview`, `tx.confirmReview`, `tx.discardReview` — all `auth: 'unlocked'`, none signs |
+| Wire model | `src/shared/tx-review/model.js` (`TX_REVIEW_VERSION = 1`, 120 s TTL, strict `assertReview` validator) |
+| Decoders | `native-send`, `token-transfer`, `domain-register`, `domain-purchase`, `domain-renew`, `domain-claim`, `faucet-claim`, `raw` (display-only) |
+| Submit map | `src/background/services/review/kinds.js` — every kind names an EXISTING signing handler; `raw` has `submit: null` |
+| Storage | `tx_reviews`, network-scoped, capped at 40 records, TTL evaluated on read |
+| UI | one card (`src/ui/domain/tx-review/review-card.js`) and one confirm helper (`confirm.js`) |
+| Integrated routes | Send (native + token), Domain (register/purchase/renew/claim), Faucet (claim) |
+| Not integrated | DeFi/DEX/launchpad: no UI surface ships (all flags off) and no backend execute path is reachable |
 
 ## 4. Current verified state
 

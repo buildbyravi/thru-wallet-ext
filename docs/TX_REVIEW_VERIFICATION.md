@@ -50,7 +50,7 @@ This record answers three questions the owner asked in one pass:
 - The review is keyed by approval id; a race can never resolve a different request than the one
   rendered.
 
-### 2.2 How the review screen is composed (`SignTx.tsx`, ~2.4k lines)
+### 2.2 How the review screen is composed (`SignTx.tsx`, 3,187 lines)
 
 - Card 1 — origin/protocol identity, chain, security level, and `BalanceChangeWrapper`
   (balance change is rendered only when a pre-exec result actually exists).
@@ -86,11 +86,11 @@ This record answers three questions the owner asked in one pass:
 
 | Observation | Evidence |
 | --- | --- |
-| Two signing paths for the same swap | `Swap/Component/Main.tsx:263,351` (`wallet.dexSwap` / `buildDexSwap`, approval-based) **and** `Main.tsx:~853` `openDirect` via `useMiniSigner` (mini-sign popup). Plus `useMiniApprovalDirectSign`. |
+| Two signing paths for the same swap | `Swap/Component/Main.tsx:263,351` (`wallet.dexSwap` / `buildDexSwap`, approval-based) **and** `Main.tsx:878` `openDirect` via `useMiniSigner` (mini-sign popup). Plus `useMiniApprovalDirectSign`. |
 | At least three overlapping gas UIs | `TxComponents/GasSelectorHeader.tsx`, `TxComponents/GasSelector/*` (8 files incl. `SignMainnetGasSelectorHeader`), `FooterBar/GasLessComponents`, `GasAccount`. |
 | Per-action bespoke layouts | 45 files in `Approval/components/Actions/` plus a parallel `TypedDataActions/` tree; reuse exists only at the `Table`/`Card` level. |
-| Very large surface for one extension | 74 top-level views, 40 background services, 223 UI components; the swap feature alone is 32 files + 12 hooks. |
-| One component holding unrelated concerns | `SignTx.tsx` mixes gas selection, EIP-7702, Gnosis Safe nonces, Cobo, Ledger/imKey, gasless and swap-gas in one state machine. |
+| Very large surface for one extension | 74 top-level views, 40 background services, 84 top-level shared component directories (`src/ui/component/`); the swap feature alone is 32 files + 12 hooks. |
+| One component holding unrelated concerns | `SignTx.tsx` (3,187 lines) mixes gas selection, EIP-7702, Gnosis Safe nonces, Cobo, Ledger/imKey, gasless and swap-gas in one state machine. |
 | Known drift admitted in-source | `Approval/index.tsx` documents that `'Unlock'` (and other non-dispatch components) could reach the approval surface via races — hence the fail-closed guard. |
 
 ### 2.6 Patterns that were worth copying, and are in v29
@@ -195,13 +195,14 @@ Verified from source, not from documentation prose:
 
 ## 7. Remaining gaps and risks
 
-1. **Faucet claim bypasses the review** (`routes/faucet.js:254`). The decoder and kind exist and
-   are tested; only the route is unmigrated. This is the last non-review signing call in the UI.
+1. ~~**Faucet claim bypasses the review.**~~ **Closed 2026-10-28:** the faucet route prepares a
+   `faucet-claim` review, renders the shared card, and submits through the same confirm helper. No
+   UI route calls a signing method directly any more.
 2. **Token-transfer fee is unmeasured, not unknown.** The review says so rather than borrowing the
    native number. The improvement is measurement (`scripts/measure-fee.mjs` pattern), not UI.
-3. **`tx.confirmReview` is not single-use.** A review can be confirmed repeatedly inside its 120 s
-   TTL. Safe today because submission runs through the handlers' own guards and the UI disables the
-   button while in flight, but a one-shot policy after a successful submit would be stronger.
+3. ~~**`tx.confirmReview` is not single-use.**~~ **Closed 2026-10-28:** a successful submit now
+   discards the review, so a replay inside the TTL fails with `REVIEW_NOT_FOUND` (classified stale).
+   A definite failure keeps the review, because retrying the same reviewed facts is safe.
 4. **A failed simulation would not block.** `stateFromWarnings` only reads warnings; with
    `tx.simulate` permanently `{supported:false}` there is no way to produce or test a `failed`
    simulation path, so it is documented rather than guessed at.
@@ -210,6 +211,24 @@ Verified from source, not from documentation prose:
    directive (§11–12): provenance, tests, and a testnet deployment check.
 
 ---
+
+## 7a. Follow-up commit after the independent audit (2026-10-28)
+
+An independent audit of this PR raised F-1…F-7. Status of each:
+
+| ID | Finding | Status |
+| --- | --- | --- |
+| F-1 | Orphaned CSS after the migration (`screens.css`) | **Fixed** — the whole `.security-repeat-*` block and `.name-confirm-hero`/`-title` are deleted, and the equally stale `scripts/preview-duplicate-tx.html` (which previewed markup no longer built) is gone |
+| F-2 | Standing docs not refreshed for v29 | **Fixed** — `STATUS_AND_ROADMAP.md` and `PROJECT_LEDGER.md` now carry the v29 identifiers and the pipeline's honest states; `DEFECT_LOG.md` §9 records the three review defects |
+| F-3 | `amountText` in the card duplicated `displayAmount` | **Fixed** — `shared/format.js` owns `formatAssetAmount`; both the decoders and the card delegate to it, so there is exactly one 9-decimal-THRU rule |
+| F-4 | Split error-code registry | **Fixed** — `model.js` owns `REVIEW_ERROR_CODES`, `REVIEW_RECHECK_CODES` and the derived `STALE_REVIEW_CODES`; `confirm.js` imports rather than re-lists; a test scans the background for thrown codes and fails on any that is registered in neither the model nor the contract |
+| F-5 | `confirmReview` replayable inside its TTL | **Fixed** — a successful submit discards the review (see §7 item 3) |
+| F-6 | Numeric slips in this document | **Corrected** — `SignTx.tsx` is 3,187 lines, `openDirect` is at `Main.tsx:878`, and the component count is 84 top-level directories |
+| F-7 | Directive assumed 8 decimals | **Confirmed** — this repo is 9 decimals, as recorded in §6 |
+
+The audit also proposed the faucet migration as P1; that is done, with route-level coverage in
+`test-route-lifecycle.mjs` (prepare → card → confirm gating → `tx.confirmReview` →
+`tx.claimFaucet` → consumed review, plus paused-faucet refusal and unknown-outcome copy).
 
 ## 8. Result
 

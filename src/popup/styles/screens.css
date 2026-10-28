@@ -1482,83 +1482,6 @@ form > .btn.text {
   pointer-events: none;
 }
 
-/* Option C: Rabby-style security card for repeated send confirmation */
-.security-repeat-card {
-  background: var(--surface-inset);
-  border: 1px solid var(--accent-border);
-  border-radius: var(--radius-md);
-  padding: 12px 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-top: var(--sp-3);
-}
-
-[data-theme="dark"] .security-repeat-card {
-  background: #241417;
-  border-color: rgba(230, 91, 98, 0.28);
-}
-
-.security-repeat-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.security-repeat-badge {
-  width: 26px;
-  height: 26px;
-  border-radius: 6px;
-  background: var(--accent-tint);
-  border: 1px solid var(--accent-border);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--accent);
-  flex-shrink: 0;
-}
-
-[data-theme="dark"] .security-repeat-badge {
-  background: rgba(230, 91, 98, 0.18);
-  border-color: rgba(230, 91, 98, 0.35);
-  color: #ed3845;
-}
-
-.security-repeat-titles {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-
-.security-repeat-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-1);
-}
-
-[data-theme="dark"] .security-repeat-title {
-  color: #f3a8ae;
-}
-
-.security-repeat-desc {
-  font-size: 11px;
-  color: var(--text-3);
-  line-height: 1.4;
-}
-
-[data-theme="dark"] .security-repeat-desc {
-  color: #c98e94;
-}
-
-.security-repeat-confirm {
-  padding-top: 8px;
-  border-top: 1px solid var(--border-hairline);
-}
-
-[data-theme="dark"] .security-repeat-confirm {
-  border-top-color: rgba(255, 255, 255, 0.08);
-}
-
 /* ---- /name register card -------------------------------------------------- */
 .name-tabs {
   display: flex;
@@ -1625,16 +1548,6 @@ form > .btn.text {
   flex-shrink: 0;
 }
 .name-confirm-sheet .detail-val {
-  overflow-wrap: anywhere;
-}
-.name-confirm-hero {
-  text-align: center;
-  padding: var(--sp-2) 0;
-}
-.name-confirm-title {
-  margin: 0;
-  font-size: var(--fs-xl);
-  line-height: 1.3;
   overflow-wrap: anywhere;
 }
 .name-stepper .name-step-btn {

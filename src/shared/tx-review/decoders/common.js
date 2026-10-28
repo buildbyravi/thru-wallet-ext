@@ -4,15 +4,15 @@
 // exact base-unit strings and rendered ONLY through src/shared/format.js. A decoder must not
 // divide by 1e9 itself, and it must never turn "we could not read this" into a number.
 
-import { formatThru, formatTokenAmount } from '../../format.js';
+import { formatAssetAmount } from '../../format.js';
 
-/** Render base units with the asset's own scale. THRU keeps its single 9-decimal formatter. */
+/**
+ * Render base units with the asset's own scale. The scale rule itself lives in
+ * `shared/format.js` (`formatAssetAmount`) so the review CARD — which renders the same fee and
+ * balance numbers — cannot drift from the decoders.
+ */
 export function displayAmount(amountUnits, decimals, symbol) {
-  const decimalsNumber = Number(decimals);
-  const text = decimalsNumber === 9 && symbol === 'THRU'
-    ? formatThru(BigInt(amountUnits))
-    : formatTokenAmount(BigInt(amountUnits), decimalsNumber);
-  return `${text} ${symbol}`;
+  return formatAssetAmount(amountUnits, decimals, symbol);
 }
 
 /**

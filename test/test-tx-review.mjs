@@ -21,6 +21,7 @@
 // network is touched and nothing here claims to be a live-chain result.
 
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 // ---- chrome.storage shim ---------------------------------------------------------------
 
@@ -50,7 +51,7 @@ globalThis.chrome = {
 const { handleApiRequest } = await import('../src/background/api-router.js');
 const { Pubkey } = await import('@thru/sdk');
 const thruClient = await import('../src/lib/thru-client.js');
-const { METHODS } = await import('../src/shared/contract/manifest.js');
+const { METHODS, ERROR_CODES } = await import('../src/shared/contract/manifest.js');
 const { SCOPED_KEYS } = await import('../src/shared/network-scope.js');
 const model = await import('../src/shared/tx-review/model.js');
 const registry = await import('../src/shared/tx-review/registry.js');
@@ -671,6 +672,43 @@ console.log('[12] discard drops a prepared review');
   });
   ok('a discarded review can no longer be confirmed', after.error?.code === 'REVIEW_NOT_FOUND');
   await reviewStore.clear('betanet');
+}
+
+console.log('[13] the review error surface is declared in exactly one place');
+{
+  // Codes the review layer may throw: model.js owns the review-specific ones, the contract owns
+  // the generic ones. This scan is the ratchet — a new `coded('X', …)` anywhere in the review
+  // background must be registered, so `classifyReviewError` can never miss a stale case.
+  const files = [
+    '../src/background/services/review/kinds.js',
+    '../src/background/services/review-service.js',
+  ];
+  const known = new Set([
+    ...Object.keys(model.REVIEW_CODE),
+    ...Object.keys(model.REVIEW_ERROR_CODES),
+    ...Object.keys(ERROR_CODES),
+  ]);
+  const coined = new Set();
+  for (const file of files) {
+    const source = readFileSync(new URL(file, import.meta.url), 'utf8');
+    for (const match of source.matchAll(/coded\(\s*'([A-Z_]+)'/g)) coined.add(match[1]);
+    for (const match of source.matchAll(/coded\(\s*REVIEW_ERROR_CODES\.([A-Z_]+)/g)) coined.add(match[1]);
+  }
+  ok('the review layer coins codes and the scan finds them', coined.size >= 10, `${coined.size} codes`);
+  const unregistered = [...coined].filter((code) => !known.has(code)).sort();
+  ok('every code the review layer throws is registered in model.js or the contract',
+    unregistered.length === 0, unregistered.join(','));
+
+  // The stale set must cover every "the thing you reviewed moved" code, and nothing else.
+  const stale = new Set(model.STALE_REVIEW_CODES);
+  for (const code of ['REVIEW_FEE_CHANGED', 'REVIEW_TOKEN_CHANGED', 'REVIEW_PRICE_CHANGED',
+    'REVIEW_EXPIRY_CHANGED', 'REVIEW_REGISTRAR_CHANGED', 'REVIEW_FAUCET_CHANGED',
+    'NAME_TAKEN', 'LEASE_NOT_FOUND', 'LEASE_NOT_EXPIRED', 'NOT_NAME_OWNER',
+    'REVIEW_NOT_FOUND', 'REVIEW_EXPIRED', 'BINDING_MISMATCH', 'REVIEW_CONTEXT_CHANGED']) {
+    ok(`'${code}' forces a re-read before signing`, stale.has(code));
+  }
+  ok('a plain failure is not classified as stale',
+    !stale.has('INVALID_INPUT') && !stale.has('INTERNAL') && !stale.has('UNSUPPORTED'));
 }
 
 console.log(`\nAll tx-review checks passed: ${checks}/${checks}.`);

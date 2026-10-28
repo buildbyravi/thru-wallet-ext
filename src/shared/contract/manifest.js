@@ -1176,6 +1176,10 @@ export const ERROR_CODES = {
   REVIEW_CONTEXT_CHANGED: 'The active account or network changed after the review.',
   ACKNOWLEDGEMENT_REQUIRED: 'A required acknowledgement was not accepted.',
   NOT_EXECUTABLE: 'The review is display-only (undecodable operation); nothing can be signed.',
+  // Codes the review layer re-raises verbatim from the name services. Declared here because the
+  // contract is the one place a UI may look up what it can be handed (v29 append; prose only).
+  REGISTRY_ABSENT: 'No supported `.thru` paid registry is readable on this network.',
+  TCR_ABSENT: 'The custom `.thru` registrar is not present on this network.',
 
   // ---- Contract v17/v18: DeFi surface (M0) ----------------------------------
   // Stable codes for the DeFi lifecycle. Every one is a first-class state the UI may branch
