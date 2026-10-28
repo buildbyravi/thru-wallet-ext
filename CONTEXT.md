@@ -132,7 +132,7 @@ Network/program configuration. Betanet is enabled; Localnet, Testnet and Mainnet
 | `services/system-service.js` | 192 | Inactivity auto-lock, activity, diagnostics |
 | `services/event-service.js` | 67 | Background push events |
 | `services/review-service.js` | 344 | v29 review pipeline: `prepareReview` / `confirmReview` / `discardReview`; binding hash, TTL, rechecks. Never signs |
-| `services/review/kinds.js` | 728 | The ONLY kind → facts + recheck + existing-submit-method table (8 kinds) |
+| `services/review/kinds.js` | 727 | The ONLY kind → facts + recheck + existing-submit-method table (8 kinds) |
 | `services/review/store.js` | 113 | Network-scoped prepared-review records (`tx_reviews`), schema v1, TTL on read, cap 40 |
 | `services/registrar-service.js` | 625 | Official `.thru` registry reads/writes and the custom-registrar provider |
 | `services/name-service.js` | 368 | Name-service lookups, availability, canonical root |
