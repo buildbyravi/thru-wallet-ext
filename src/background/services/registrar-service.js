@@ -372,7 +372,8 @@ async function submitAndAwait(rawTransaction, { kind, from, displayAmount, error
         }
         const userCode = update.executionResult.userErrorCode ?? 0;
         const decoded = userCode && describeError ? describeError(Number(userCode)) : null;
-        throw coded('REGISTRAR_TX_REVERTED', `Registration transaction reverted on-chain (vmError=${update.executionResult.vmError}${userCode ? `, ${errorNoun} error ${userCode}${decoded ? ` — ${decoded}` : ''}` : ''}).`);
+        const opLabel = kind && kind.includes('renew') ? 'Renewal' : 'Registration';
+        throw coded('REGISTRAR_TX_REVERTED', `${opLabel} transaction reverted on-chain (vmError=${update.executionResult.vmError}${userCode ? `, ${errorNoun} error ${userCode}${decoded ? ` — ${decoded}` : ''}` : ''}).`);
       }
     }
   } catch (err) {

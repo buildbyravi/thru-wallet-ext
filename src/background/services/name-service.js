@@ -63,9 +63,11 @@ function requireAddress(value, field) {
 /** name.lookup: resolve a dotted name under an explicit root registrar address (blank root
  *  → auto-discovered canonical root, proven on-chain; NAME_ROOT_UNKNOWN when none exists). */
 export async function lookupName({ name, rootAddress } = {}) {
-  requireValidName(name);
+  let cleanName = String(name ?? '').trim().toLowerCase();
+  requireValidName(cleanName);
   await getActiveNetworkConfig();
   let root = String(rootAddress ?? '').trim();
+  let rootName = 'thru';
   if (!root) {
     const discovered = await discoverDefaultRoot();
     if (!discovered?.supported) {
@@ -74,10 +76,21 @@ export async function lookupName({ name, rootAddress } = {}) {
       throw err;
     }
     root = discovered.rootAddress;
+    rootName = String(discovered.name || 'thru').toLowerCase();
   } else {
     requireAddress(root, 'rootAddress');
+    try {
+      const info = await thruClient.getAccountInfo(root);
+      if (info?.exists) {
+        const parsed = parseRootRegistrar(info.raw);
+        if (parsed?.name) rootName = String(parsed.name).toLowerCase();
+      }
+    } catch {}
   }
-  return readName(name, root, thruClient.getClient());
+  if (cleanName.endsWith('.' + rootName)) {
+    cleanName = cleanName.slice(0, -(rootName.length + 1));
+  }
+  return readName(cleanName, root, thruClient.getClient());
 }
 
 // Internal tracked-domain read: paid .thru labels have a wider official alphabet than

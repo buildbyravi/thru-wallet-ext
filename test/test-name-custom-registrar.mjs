@@ -80,5 +80,13 @@ ok(tcr.labelProblem('a'.repeat(33)) != null, '33-char labels refused (max 32)');
 ok(tcr.labelProblem('-abc') != null && tcr.labelProblem('abc-') != null, 'edge hyphens refused');
 ok(tcr.yearsProblem(0) != null && tcr.yearsProblem(11) != null, 'year bounds 1–10 enforced');
 
+// ---- describeTcrError error decoding ----------------------------------------------------
+console.log('tcr error descriptions');
+eq(tcr.describeTcrError(0xD201), 'lease creation failed', 'standard TCR error 0xD201 decodes');
+eq(tcr.describeTcrError(0xD103), 'not admin', 'standard TCR error 0xD103 decodes');
+eq(tcr.describeTcrError(53770), 'fee transfer failed (account not writable)', 'composite 53770 (0xD20A) decodes to account not writable');
+eq(tcr.describeTcrError(0xD226), 'fee transfer failed (insufficient balance)', 'composite 0xD226 decodes to insufficient balance');
+eq(tcr.describeTcrError(99999), 'unknown registrar error 99999', 'unrecognized code falls back honestly');
+
 if (failures) { console.error(`\n${failures} failure(s)`); process.exit(1); }
 console.log('\nCustom-registrar evidence tests passed');

@@ -168,6 +168,24 @@ thruParses = true;
   ok('blank root → auto-discovered canonical root; official .thru beats community .id when both parse');
 }
 
+// [1b] Canonical root suffix stripping & Send recipient resolution
+{
+  const resDotted = await handleApiRequest({ method: 'name.lookup', params: { name: `${NAME}.thru`, rootAddress: '' } });
+  assert.equal(resDotted.ok, true, JSON.stringify(resDotted.error));
+  assert.equal(resDotted.data.rootAddress, THRU_ROOT);
+  assert.equal(resDotted.data.chain[0], LEAF_THRU);
+  assert.equal(resDotted.data.leaf.exists, true);
+  ok('name.lookup resolves "name.thru" with root suffix stripped identically to "name"');
+
+  const validDotted = await handleApiRequest({ method: 'tx.validateAddress', params: { address: `${NAME}.thru` } });
+  assert.equal(validDotted.ok, true, JSON.stringify(validDotted.error));
+  assert.equal(validDotted.data.valid, true);
+  assert.equal(validDotted.data.resolvedAddress, SOMEONE_ELSE);
+  assert.equal(validDotted.data.resolvedName, `${NAME}.thru`);
+  assert.equal(validDotted.data.isSelf, false);
+  ok('tx.validateAddress resolves .thru recipient domain to destination address');
+}
+
 // Registration pins the same account/network context that the Review screen displayed.
 {
   const staleNetwork = await handleApiRequest({ method: 'name.register', params: {

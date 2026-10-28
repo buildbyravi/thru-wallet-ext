@@ -847,18 +847,7 @@ export function NameRoute({ back }) {
         entry.completed = true;
         entry.quote = null;
         if (result.trackingFailed) banner.set('Registration confirmed, but the domain could not be saved. Import it from My Domains.');
-        if (method !== 'name.renewLease') {
-          // Best-effort primary-name link; a failed link must not masquerade as a failed
-          // registration — the search card remains the single source of truth afterwards.
-          try {
-            if (result.trackingFailed) return;
-            const linked = await bridge.send('name.setPrimaryDomain', { domainAddress: result.domainAddress,
-              expectedNetworkId: reviewed.expectedNetworkId, expectedAccountAddress: reviewed.expectedAccountAddress });
-            if (destroyed || !card.isConnected) return;
-            primary = linked;
-            toast('Primary name updated');
-          } catch { /* registration itself is done */ }
-        }
+
       } catch (err) {
         if (destroyed || !card.isConnected) return;
         if (err?.code === 'TX_RESULT_MISSING' || err?.retryable) {
