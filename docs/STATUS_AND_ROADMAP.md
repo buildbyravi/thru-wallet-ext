@@ -1,10 +1,10 @@
 # Status and roadmap
 
-Single source of truth for the **shipped baseline**, what automated evidence proves, and the remaining work. Source baseline reviewed on branch `arena/01a10231-thru-wallet-ext` (2026-10-03). `src/`, `test/`, and `scripts/` remain authoritative.
+Single source of truth for the **shipped baseline**, what automated evidence proves, and the remaining work. Source baseline re-verified on `arena/0439c226-thru-wallet-ext` at contract v29 (2026-10-28). `src/`, `test/`, and `scripts/` remain authoritative.
 
 ## Shipped baseline
 
-- **Contract v18, 124 methods.** 81 wallet-core methods plus the 43-method DeFi M0 contract surface (v17 READ+LOCAL, v18 PREPARE+EXECUTE) — every DeFi method is declared, schema-validated, and gated behind build-time flags that are all off; reads answer explicit unsupported states and the only signing method (`intent.submit`) refuses `FEATURE_DISABLED`. v16 removed the retired unbound `tx.send` / `token.transfer` mutation paths after all shipped callers migrated to checked methods.
+- **Contract v29, 147 methods** (2026-10-28). `CONTRACT_VERSION` in `src/shared/contract/manifest.js` is authoritative; the historical M0 line is: 81 wallet-core methods plus the 43-method DeFi M0 contract surface (v17 READ+LOCAL, v18 PREPARE+EXECUTE) — every DeFi method is declared, schema-validated, and gated behind build-time flags that are all off; reads answer explicit unsupported states and the only signing method (`intent.submit`) refuses `FEATURE_DISABLED`. v16 removed the retired unbound `tx.send` / `token.transfer` mutation paths after all shipped callers migrated to checked methods. v29 adds the shared transaction-review pipeline described below and changes no existing method.
 - **Account activation.** Account/keyring creation paths make bounded, best-effort self-registration attempts for newly added accounts on the selected network. There is no periodic signer. Send checks an unregistered recipient and calls `tx.registerAccount` just in time only when that destination is an owned account. The target account signs for itself; arbitrary contacts are never registered.
 - **Send review.** The JIT activation must complete before Review enables. Review shows the matched recipient label above the full destination address; the label is display-only. Checked native/token methods bind the reviewed account and network at the background boundary.
 - **Signing preference.** Signing requires an unlocked wallet. Password re-authentication is **off by default** (`requirePasswordForSigning: false`); a user can explicitly enable it through the password-gated Settings path. The v12 registration exception remains narrowly unlocked-only.
@@ -14,7 +14,48 @@ Single source of truth for the **shipped baseline**, what automated evidence pro
 
 Companion docs: `docs/DOCS_INDEX.md` · `docs/PROJECT_LEDGER.md` · `CONTEXT.md` · `docs/MODULE_BOUNDARIES.md` · `docs/BACKEND_GAPS.md` · `docs/BUILD_SPEC.md` · `docs/MANUAL_SMOKE_CHECKLIST.md` · `docs/SEND_PATH_AUDIT.md`.
 
+<<<<<<< HEAD
 ## Domain route and tracked registry (2026-10-27)
+=======
+## Transaction review pipeline (contract v29, 2026-10-28)
+
+Every value-moving screen prepares a typed intent through `tx.prepareReview`, renders the ONE
+`TxReviewCard`, and submits through `submitReviewedReview` (confirm → optional password → the
+operation's existing signing method). Features no longer own review rows, fee formatting, warning
+copy or the password flow.
+
+- **Integrated:** Send (native + token transfer), Domain (register / purchase / renew / claim),
+  Faucet (claim). No UI file names a signing-gated method any more: Dashboard and Send activate
+  through the v12 `tx.registerAccount` path, and `test/test-tx-review.mjs` [14] fails the suite if a
+  `bridge.send('…')` literal in `src/ui/` is `auth:'signing'`.
+- **Not integrated:** DeFi/DEX/launchpad — no UI surface ships while every `DEFI_*` flag is off, so
+  there is nothing to migrate; their kinds do not exist and `tx.prepareReview` answers
+  `supported:false` with the known-kinds list rather than a guessed review.
+- **Honest states:** an operation with no decoder returns `supported:false`; a transaction decoded as
+  `unknown` renders with raw data and **no submit policy**, so it cannot be signed; a fee that was
+  never measured is shown as "not quoted" with its reason, never borrowed from another path;
+  `assets.balanceAfter` is validator-enforced `null` because Thru has no verified dry-run.
+- **Single use:** a successful submit discards its review, so the same `reviewId` cannot sign twice
+  inside its 120 s TTL. A definite failure keeps it (retrying reviewed facts is safe).
+- **Error surface:** `model.js` owns `REVIEW_ERROR_CODES` / `REVIEW_RECHECK_CODES` and the derived
+  `STALE_REVIEW_CODES`; `test-tx-review.mjs` scans the background and fails if a thrown code is
+  registered in neither the model nor the contract.
+- **No second signing path:** `test-tx-review.mjs` [14] scans every `src/ui/**/*.js` for
+  `bridge.send('…')` literals and fails on any `auth:'signing'` method. It found one — Dashboard's
+  `tx.autoCreateAccount` — which is now migrated to `tx.registerAccount`; see `docs/DEFECT_LOG.md` §10.
+- **Completion report and independent-review response:** `docs/TX_REVIEW_VERIFICATION.md` §9 (the
+  owner-required report) and §10 (a second AI review checked claim-by-claim against the code).
+
+**TESTED:** `test/test-tx-review.mjs` (89 checks: registry parity, every decoder, malformed and
+unknown input, amount/fee formatting, binding/TTL/account/network refusals, acknowledgements,
+blocking, discard, code registry, the UI signing-literal scan) and `test/test-route-lifecycle.mjs` (1,059 checks, including the
+Send, Domain and Faucet review flows driven through the real routes). **BUILD:** `npm run build`
+passes, including the layering, CSP, route/CSS and contract gates. **UNVERIFIED:** real-browser
+layout and live-chain behaviour — no browser binary and no network writes were available; the
+harness `scripts/preview-tx-review.html` is the recorded human runbook for the former.
+
+## Domain route status (2026-10-27)
+>>>>>>> origin/arena/0439c226-thru-wallet-ext
 
 The `/name` route has Register, My Domains, and Renew sections, a single-name search and
 quote, and a bottom-sheet review before the existing `name.*` signing handlers. The inline
@@ -94,11 +135,11 @@ fees. See `docs/BACKEND_GAPS.md` for unsupported and live-write boundaries.
 ### The frontend rebuild is DONE
 
 One stack. The migration flag and legacy tree are deleted, and there is no fallback path left.
-All 14 routes are real:
+All 15 routes are real:
 
 ```
 /welcome  /unlock  /dashboard  /accounts  /account  /add-account  /keyring
-/export   /send    /receive    /faucet    /history  /settings     /reset
+/export   /send    /receive    /faucet    /name     /history     /settings  /reset
 ```
 
 Structural properties now enforced by CI rather than by discipline:
@@ -119,23 +160,24 @@ Structural properties now enforced by CI rather than by discipline:
 
 ### Verified green
 
-Final deterministic verification on the Mainnet-readiness remediation (2026-10-03):
+Final deterministic verification on the current tree (contract v29, 2026-10-28):
 
 ```text
-npm test       PASS — derivation 16; QR 15; layering 80 files / 0 sinks; CSP pass;
-               routes 14/14; CSS nesting pass; launchpad quarantine 47;
-               contract v16 checks, storage migrations, DOM/lifecycle, vault,
-               Thru client, token/balance, History, registration, API-router,
+npm test       PASS — 2,193 checks (32 suites + 5 gates): derivation 16; QR 15; layering 126 files / 0 sinks;
+               CSP pass; routes 15/15 with 259 defined CSS classes; CSS nesting pass;
+               launchpad quarantine; contract 161/161; security-checks; DOM/refs;
+               route lifecycle 1,059/1,059; transaction review 89/89; storage migrations;
+               vault, Thru client, token/balance, History, registration, API-router,
                pending concurrency, signing/network lock, and auto-lock suites pass.
-npm run build  PASS — generated dist/ from the current source.
+npm run build  PASS — generated dist/ from the current source, no warnings.
 ```
 
 These results are deterministic/local. They do not close the browser or live-chain checks below.
 
-Re-verified on the 2026-10-04 production-rules conformance audit (branch
-`arena/01a10602-thru-wallet-ext`): same suites green with the current counts — contract 80/80,
-route lifecycle 1017/1017, security-checks 20, DOM/refs 130/130 — plus the new fee-provenance
-regression (`test-api-router.mjs [13]`). See `docs/AUDIT_REPORT.md`.
+Historical baselines, kept for provenance: the Mainnet-readiness remediation (2026-10-03) and the
+2026-10-04 production-rules conformance audit (`arena/01a10602-thru-wallet-ext`, contract 80/80,
+route lifecycle 1017/1017). Those counts describe the tree at their date, not this one. See
+`docs/AUDIT_REPORT.md`.
 
 ### Recent security hardening
 
@@ -181,7 +223,7 @@ documentation remediation — wallet core first; no DEX/launchpad/prediction wor
 5. **Transaction/signing race testing + MV3 suspension/restart** — network switch during SDK signing, concurrent pending-record writes, worker suspension mid-registration/Send, bridge-timeout unknown-outcome messaging; deterministic interleaving tests exist, real MV3 scheduling does not.
 6. **Token transfer live verification** — `scripts/verify-token-transfer.mjs`: recipient-owner acceptance and the actual token-program fee.
 7. **Explorer/block-time verification** — current feed availability/latency, the `/tx/` explorer route, and whether any authoritative charged-fee source exists.
-8. **Final dependency/security review** — re-run `npm audit --omit=dev`, review advisories for `@thru/*` and `esbuild`, re-verify the 0.4.1 pins before any store release. **Architecture is frozen here** (standing rule in `AGENTS.md`): no refactor without a measurable security, correctness, performance, or maintainability benefit and a proving test.
+8. **Final dependency/security review** — re-run `npm audit --omit=dev`, review advisories for `@thru/*` and `esbuild`, re-verify the 0.4.2 pins before any store release. **Architecture is frozen here** (standing rule in `AGENTS.md`): no refactor without a measurable security, correctness, performance, or maintainability benefit and a proving test.
 9. **External security review/audit** — required before any mainnet-readiness claim; none has been performed.
 10. **Mainnet-specific configuration + verification** — re-measure the fee on mainnet (its `baseFeeUnits` is deliberately null), verify program deployments and explorer routing, add the RPC origin to `connect-src`, and enable deliberately; a Betanet observation cannot prove mainnet behavior.
 
@@ -246,7 +288,8 @@ What was removed, and what deliberately was not:
 
 This was the largest remaining test gap: `check-routes.mjs` proves a route is *reachable* and its
 classes are *defined*; nothing proved it *mounts*. All three requirements are now asserted, for all
-14 routes, in no-vault / locked / unlocked states (904 checks in the current audited run):
+15 routes, in no-vault / locked / unlocked states (**1,059 checks** in the current run, including
+the reviewed Send/Name/Faucet flows):
 
 1. mount through the real Router, guards, bridge and kit, and assert no throw plus the landing path
    the guard actually specifies;
@@ -372,7 +415,7 @@ the probe.
 Completed in the 2026-09-18 audit pass: `@thru/programs` and `@thru/sdk` were exact-pinned at
 `0.3.16`, and derivation imports from the SDK's public `@thru/sdk/crypto` subpath rather than
 the deprecated standalone crypto package. Both pins have since advanced deliberately and remain
-exact: `0.4.1` today, with derivation vectors verified unchanged against that pin
+exact: `0.4.2` today, with derivation vectors verified unchanged against that pin
 (`test/test-derivation.mjs`). Golden addresses have never changed; `npm ci` is the CI install
 gate.
 

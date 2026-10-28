@@ -1195,6 +1195,39 @@ function prepareReviewFixture(kind, params) {
       networkId: network.id,
       networkLabel: network.label,
     };
+  } else if (kind === 'faucet-claim') {
+    // Mirrors faucetClaimFacts: the policy read decides paused/exhausted, and an unavailable
+    // policy is declared rather than treated as "no limit".
+    const limit = FIXTURES['tx.getFaucetLimit']();
+    const summary = Array.isArray(limit?.rules) ? limit.rules[0]?.summary ?? null : null;
+    facts = {
+      fromAddress: account.address,
+      fromLabel: account.label,
+      amountUnits: String(params.amountUnits),
+      capUnits: String(network.faucetMaxPerClaim ?? '10000'),
+      accountExists: true,
+      limit: limit?.supported
+        ? {
+          supported: true,
+          paused: Boolean(limit.paused),
+          exhausted: summary?.exhausted === true,
+          targetMatchesFaucet: limit.targetMatchesFaucet !== false,
+          remainingAmount: summary?.remainingAmount ?? null,
+          window: summary?.window ?? null,
+          resetAtUnixSec: summary?.resetAtUnixSec ?? null,
+          maxAmountPerCall: limit.maxAmountPerCall ?? null,
+          reason: null,
+        }
+        : { supported: false, reason: limit?.reason || 'The faucet policy could not be read.' },
+      fee: {
+        supported: false,
+        reason: 'The faucet claim path does not report a charged fee, so none is shown.',
+      },
+      programAddress: network.faucetProgramId,
+      vaultAddress: network.faucetStateAccount ?? null,
+      networkId: network.id,
+      networkLabel: network.label,
+    };
   } else if (kind === 'domain-register') {
     facts = {
       fromAddress: account.address,
@@ -1264,6 +1297,8 @@ function prepareReviewFixture(kind, params) {
   const review = reviewEnvelope(kind, facts);
   const submit = kind === 'native-send'
     ? { method: 'tx.sendChecked', params: { toAddress: facts.toAddress, amountUnits: facts.amountUnits, fromAddress: account.address, networkId: network.id } }
+    : kind === 'faucet-claim'
+      ? { method: 'tx.claimFaucet', params: { amountUnits: facts.amountUnits } }
     : kind === 'token-transfer'
       ? { method: 'token.transferChecked', params: { mintAddress: facts.mintAddress, toAddress: facts.toAddress, amountUnits: facts.amountUnits, fromAddress: account.address, networkId: network.id } }
       : kind === 'domain-register'
@@ -2138,6 +2173,7 @@ const { installSidePanelExclusion } = await import('../src/ui/app/side-panel-exc
 const { isSidePanelPage, SIDE_PANEL_SEARCH, CLOSE_SIDE_PANEL_ACTION } = await import('../src/shared/side-panel.js');
 const { Router } = await import('../src/ui/app/router.js');
 const { SendRoute } = await import('../src/ui/app/routes/send.js');
+const { FaucetRoute } = await import('../src/ui/app/routes/faucet.js');
 const { HistoryRoute } = await import('../src/ui/app/routes/history.js');
 const { DashboardRoute } = await import('../src/ui/app/routes/dashboard.js');
 const { AccountsRoute } = await import('../src/ui/app/routes/accounts.js');
@@ -4656,6 +4692,9 @@ async function progressiveSendTest() {
       && /0\.0001 THRU sent/.test(textOf(switched.el))
       && /Submitted on Betanet/.test(textOf(switched.el)),
     chromeLog.calls.slice(-12).join(','));
+  ok('the Send review is consumed on success, so the same reviewId cannot sign twice',
+    chromeLog.calls.lastIndexOf('tx.discardReview') > chromeLog.calls.indexOf('tx.sendChecked'),
+    chromeLog.calls.slice(-12).join(','));
   switched.destroy();
   accountHolds.restore();
   await settle();
@@ -4717,6 +4756,115 @@ async function progressiveSendTest() {
   await settle();
   ok('uncertain-outcome view leaves no detached listeners', detachedListeners().length === 0);
   uncertain.el.remove();
+}
+
+// ---- v29: the faucet claim is a reviewed transaction, not a direct signing call --------
+
+async function faucetReviewTest() {
+  section('faucet: the claim is prepared, reviewed and gated by the shared pipeline');
+  resetBackend(SCENARIOS[2]);
+  resetDom();
+
+  const prepared = [];
+  const realPrepare = FIXTURES['tx.prepareReview'];
+  FIXTURES['tx.prepareReview'] = (params) => {
+    prepared.push(params);
+    return realPrepare(params);
+  };
+  const realLimit = FIXTURES['tx.getFaucetLimit'];
+
+  const route = FaucetRoute({ params: {}, navigate() {}, back() {} });
+  DOC.body.appendChild(route.el);
+  await settle();
+
+  const claimBtn = buttons(route.el, /claim on-chain/i)[0];
+  ok('the faucet form offers a claim without any review pre-fetched',
+    Boolean(claimBtn) && prepared.length === 0,
+    `${route.el.textContent.slice(0, 120)}`);
+
+  click(claimBtn);
+  await settle();
+  ok('claiming prepares a faucet-claim review instead of calling the signing method',
+    prepared.length === 1 && prepared[0].kind === 'faucet-claim'
+      && prepared[0].params.amountUnits === '10000'
+      && !chromeLog.calls.includes('tx.claimFaucet'),
+    JSON.stringify(prepared.map((p) => [p.kind, p.params])));
+  ok('the review sheet renders the canonical card, not a bespoke confirm list',
+    Boolean(DOC.querySelector('.tx-review-card')) && /Claim from faucet|Claim THRU/i.test(
+      DOC.querySelector('.tx-review-card')?.textContent || ''),
+    DOC.querySelector('.tx-review-card')?.textContent?.slice(0, 160));
+  const reviewConfirm = buttons(DOC.body, /^claim$/i)[0];
+  ok('a clean review enables its confirm control', reviewConfirm?.disabled === false,
+    `disabled=${reviewConfirm?.disabled}`);
+
+  click(reviewConfirm);
+  await settle();
+  ok('confirming revalidates through tx.confirmReview, then submits via tx.claimFaucet',
+    chromeLog.calls.includes('tx.confirmReview') && chromeLog.calls.includes('tx.claimFaucet')
+      && chromeLog.calls.indexOf('tx.confirmReview') < chromeLog.calls.indexOf('tx.claimFaucet'),
+    chromeLog.calls.slice(-8).join(','));
+  ok('a review that produced a signature is discarded, so it cannot be replayed',
+    chromeLog.calls.lastIndexOf('tx.discardReview') > chromeLog.calls.indexOf('tx.claimFaucet')
+      && prepared.length === 1,
+    chromeLog.calls.slice(-8).join(','));
+  ok('the success screen reports what the chain returned, never a bare "done"',
+    /Claimed|Claim submitted|Received/.test(textOf(route.el)), textOf(route.el).slice(0, 160));
+  route.destroy();
+  await settle();
+  ok('the faucet route tears down without leaving a listener behind',
+    detachedListeners().length === 0, JSON.stringify(detachedListeners().slice(0, 3)));
+  route.el.remove();
+
+  // A paused faucet is proof of failure. The route refuses BEFORE preparing a review, which is
+  // the strongest form: no decoder runs, nothing is ever confirmable.
+  resetBackend(SCENARIOS[2]);
+  resetDom();
+  prepared.length = 0;
+  FIXTURES['tx.getFaucetLimit'] = () => ({ ...realLimit(), paused: true });
+  const pausedRoute = FaucetRoute({ params: {}, navigate() {}, back() {} });
+  DOC.body.appendChild(pausedRoute.el);
+  await settle();
+  const pausedClaim = buttons(pausedRoute.el, /claim on-chain/i)[0];
+  ok('a paused faucet disables the claim and says why, before any review exists',
+    pausedClaim?.disabled === true
+      && /paused by its administrator/i.test(textOf(pausedRoute.el))
+      && prepared.length === 0,
+    `disabled=${pausedClaim?.disabled} prepared=${prepared.length}`);
+  click(pausedClaim);
+  await settle();
+  ok('clicking the disabled claim cannot reach a prepare or a signing call',
+    prepared.length === 0 && !chromeLog.calls.includes('tx.claimFaucet')
+      && !chromeLog.calls.includes('tx.confirmReview'));
+  pausedRoute.destroy();
+  FIXTURES['tx.getFaucetLimit'] = realLimit;
+  await settle();
+  pausedRoute.el.remove();
+
+  // A timeout during submission is an UNKNOWN outcome, never a failure message.
+  resetBackend(SCENARIOS[2]);
+  resetDom();
+  const realClaim = FIXTURES['tx.claimFaucet'];
+  FIXTURES['tx.claimFaucet'] = () => {
+    throw apiError('SERVICE_TIMEOUT', 'The wallet service did not respond. Try again.', true);
+  };
+  const uncertainRoute = FaucetRoute({ params: {}, navigate() {}, back() {} });
+  DOC.body.appendChild(uncertainRoute.el);
+  await settle();
+  click(buttons(uncertainRoute.el, /claim on-chain/i)[0]);
+  await settle();
+  click(buttons(DOC.body, /^claim$/i)[0]);
+  await settle();
+  ok('a claim timeout reports an unknown outcome and forbids an immediate retry',
+    /Could not confirm whether this claim was submitted/.test(textOf(uncertainRoute.el))
+      && !/wallet service did not respond/.test(textOf(uncertainRoute.el)),
+    textOf(uncertainRoute.el).slice(0, 200));
+  uncertainRoute.destroy();
+  FIXTURES['tx.claimFaucet'] = realClaim;
+  FIXTURES['tx.prepareReview'] = realPrepare;
+  await settle();
+  ok('an uncertain faucet claim leaves no detached listeners',
+    detachedListeners().length === 0);
+  uncertainRoute.el.remove();
 }
 
 // ---- Contract v12: creation-bound recipient activation + cache-before-RPC History -------
@@ -5001,6 +5149,59 @@ async function offlineBalanceConsumersTest() {
       detachedListeners().length === 0, JSON.stringify(detachedListeners().slice(0, 3)));
   } finally {
     Object.assign(FIXTURES, original);
+  }
+}
+
+// ---- Dashboard activation goes through the v12 owned-address path -----------
+
+/**
+ * Regression for a direct signing call from the UI: Dashboard used to fire
+ * `tx.autoCreateAccount` (auth: 'signing') for an unregistered active account. That bypassed
+ * the one review/signing boundary AND silently failed whenever the user enabled per-sign
+ * password re-auth, because a background refresh cannot answer a password prompt. The v12
+ * `tx.registerAccount` path is unlocked-only, proves the vault owns the address, and signs with
+ * that account's own key.
+ */
+async function dashboardActivationTest() {
+  section('dashboard activation: owned-address path, never a signing-gated direct call');
+  const original = {
+    info: FIXTURES['tx.getAccountInfo'],
+    register: FIXTURES['tx.registerAccount'],
+  };
+  const activationArgs = [];
+  try {
+    resetBackend(SCENARIOS[2]);
+    resetDom();
+    chromeLog.calls.length = 0;
+    FIXTURES['tx.getAccountInfo'] = () => ({ exists: false, balance: '0', stale: false });
+    FIXTURES['tx.registerAccount'] = (args) => {
+      activationArgs.push(args);
+      return { address: args?.address, networkId: 'betanet', exists: true, created: true,
+        signature: 'activation-signature' };
+    };
+    const dash = DashboardRoute({ navigate() {} });
+    DOC.body.appendChild(dash.el);
+    await settle();
+    const registerCall = chromeLog.calls.includes('tx.registerAccount');
+    const activationCall = chromeLog.calls.indexOf('tx.registerAccount');
+    ok('an unregistered active account is activated with tx.registerAccount',
+      registerCall, chromeLog.calls.slice(-12).join(','));
+    ok('Dashboard never calls the signing-gated tx.autoCreateAccount',
+      !chromeLog.calls.includes('tx.autoCreateAccount'),
+      chromeLog.calls.slice(-12).join(','));
+    ok('the activation targets the active account address, not an arbitrary one',
+      activationArgs.length === 1 && activationArgs[0]?.address === activeAccount().address,
+      JSON.stringify(activationArgs));
+    ok('the activation passes no password and no recipient-shaped field',
+      activationArgs.length === 1 && Object.keys(activationArgs[0]).join(',') === 'address',
+      JSON.stringify(activationArgs));
+    dash.destroy();
+    dash.el.remove();
+    ok('dashboard activation tears down without listeners on detached nodes',
+      detachedListeners().length === 0, JSON.stringify(detachedListeners().slice(0, 3)));
+  } finally {
+    FIXTURES['tx.getAccountInfo'] = original.info;
+    FIXTURES['tx.registerAccount'] = original.register;
   }
 }
 
@@ -5486,11 +5687,16 @@ try {
   await lastSourceRemovalTest();
   await navigationTest();
   await progressiveSendTest();
+  await faucetReviewTest();
   await ownRecipientRegistrationTest();
   await historyCacheFirstTest();
   await offlineBalanceConsumersTest();
+<<<<<<< HEAD
   await nameReviewTest();
   await trackedDomainsTest();
+=======
+  await dashboardActivationTest();
+>>>>>>> origin/arena/0439c226-thru-wallet-ext
   await panelExclusionTest();
   negativeControls();
 } finally {

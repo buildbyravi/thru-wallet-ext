@@ -14,14 +14,22 @@ Chrome MV3 self-custody wallet extension for the **Thru native Layer 1**. Built 
 ## Current state
 
 - Single popup UI stack; no legacy popup fallback.
-- 14 popup routes: welcome, unlock, dashboard, accounts, account detail, add account, keyring, export, send, receive, faucet, history, settings, reset.
-- Contract version: **16**; **81** methods.
+- 15 popup routes: welcome, unlock, dashboard, accounts, account detail, add account, keyring, export, send, receive, faucet, domains (`/name`), history, settings, reset.
+- Contract version: **29**; **147** methods (81 wallet-core, 43 gated-off DeFi M0, plus the v19–v29 additive slices; `CONTRACT_VERSION` in `src/shared/contract/manifest.js` is authoritative).
 - Value-moving methods use centralized `auth: 'signing'`, checked account/network context, and a
   network-mutation lock through submission. Session-only signing is the explicit default; users may
   enable per-sign password re-authentication, and changing that security setting is password-gated.
+- **One transaction-review pipeline (contract v29).** Every value-moving screen — native send, token
+  transfer, domain register/purchase/renew/claim, faucet claim — prepares a typed intent through
+  `tx.prepareReview`, renders the single shared review card, and submits through
+  `tx.confirmReview` → the operation's existing signing method. `confirmReview` never signs: it
+  re-validates and returns the exact submit instructions, and the card's confirm helper calls that
+  method through the bridge (its `auth: 'signing'` policy still applies). No UI file names a
+  signing-gated method at all — a source scan in `test/test-tx-review.mjs` enforces that. A transaction the wallet cannot decode renders as an explicit unknown with raw data and
+  **cannot be signed**; there is no fabricated fee or post-transaction balance.
 - Reset and auto-lock changes are background-hardened in contract v6.
 - Contract v7 quarantines legacy custom networks at the background boundary: saved records stay listable/removable, but direct activation is permanently refused and a stale active selection self-heals to Betanet before RPC binding.
-- Every route is mounted by a test: `test-route-lifecycle.mjs` drives all 14 routes through the real Router, guards and bridge in no-vault / locked / unlocked states, and asserts teardown, secret hygiene, modal focus trapping and the Settings guarantees. Layout, real focus and the side panel itself are a browser runbook: [`docs/MANUAL_SMOKE_CHECKLIST.md`](docs/MANUAL_SMOKE_CHECKLIST.md).
+- Every route is mounted by a test: `test-route-lifecycle.mjs` drives all 15 routes through the real Router, guards and bridge in no-vault / locked / unlocked states, and asserts teardown, secret hygiene, modal focus trapping and the Settings guarantees. Layout, real focus and the side panel itself are a browser runbook: [`docs/MANUAL_SMOKE_CHECKLIST.md`](docs/MANUAL_SMOKE_CHECKLIST.md).
 - Settings no longer offers "Add custom network". `network.upsertCustom` remains for contract compatibility but has no UI caller. A legacy saved record is shown as **not selectable**, with Remove as its only action; `network.setActive` enforces the same quarantine in the background.
 - Side Panel Mode is an explicit Settings preference. It is persisted through the versioned backend
   preference service and re-applied after worker restart; popup/panel mutual exclusion is covered by
@@ -51,7 +59,8 @@ Start with the docs index:
 | [`docs/AUDIT_REPORT.md`](docs/AUDIT_REPORT.md) | Security audit findings and remediation status. |
 | [`docs/DEFECT_LOG.md`](docs/DEFECT_LOG.md) | Historical defects, root causes, and lessons. |
 | [`docs/BACKEND_GAPS.md`](docs/BACKEND_GAPS.md) | Capability gaps and unsupported backend states. |
-| [`docs/MANUAL_SMOKE_CHECKLIST.md`](docs/MANUAL_SMOKE_CHECKLIST.md) | Browser-only verification runbook: popup + side panel, narrow + wide widths, all 14 routes, focus, secret hygiene. |
+| [`docs/MANUAL_SMOKE_CHECKLIST.md`](docs/MANUAL_SMOKE_CHECKLIST.md) | Browser-only verification runbook: popup + side panel, narrow + wide widths, all 15 routes, focus, secret hygiene. |
+| [`docs/TX_REVIEW_VERIFICATION.md`](docs/TX_REVIEW_VERIFICATION.md) | The v29 review pipeline's verification record: Rabby source study, claim-by-claim audit, browser-harness limits, open gaps. |
 | [`docs/archive/WALLET_FEATURES_PERFORMANCE_STUDY.md`](docs/archive/WALLET_FEATURES_PERFORMANCE_STUDY.md) | Popular wallet feature study and no-lag popup/full-tab performance model. |
 | [`docs/archive/THRU_NATIVE_DEFI_TAB_UX.md`](docs/archive/THRU_NATIVE_DEFI_TAB_UX.md) | Thru-native launchpad/DEX/full-tab architecture direction. Research only; no shipped code corresponds to it. |
 | [`docs/archive/LAUNCHPAD_UX_STUDY.md`](docs/archive/LAUNCHPAD_UX_STUDY.md) | Launchpad UX study. Retained research only. |
@@ -105,8 +114,10 @@ src/lib/thru/*-adapter.js
 - Multiple accounts.
 - Account labels, hiding, pinning, ordering.
 - Receive address and QR.
-- Native THRU send.
-- Faucet claim where the active network supports a faucet.
+- Native THRU send and token transfer, both through the shared review pipeline.
+- `.thru` domain registration (verified custom registrar, or the official paid registry when that is
+  the only `.thru` route), renewal and expired-name claims, plus a wallet-local primary-name link.
+- Faucet claim where the active network supports a faucet, through the shared review pipeline.
 - Transaction history decoding where known.
 - Pending transaction tracking.
 - Selection between enabled built-in networks; legacy custom-network records can be reviewed and removed but not activated.
@@ -114,6 +125,8 @@ src/lib/thru/*-adapter.js
 - Centralized checked signing with an optional password-per-sign policy.
 - Token balances and checked token transfer are implemented with official Token Program bindings;
   the remaining live-chain questions are explicitly listed in `docs/STATUS_AND_ROADMAP.md`.
+- Honest unsupported states instead of guesses: undecodable transactions, unmeasured fees,
+  unreadable chain facts and unavailable simulation are all rendered as such, never as zeros.
 
 ---
 
@@ -122,10 +135,12 @@ src/lib/thru/*-adapter.js
 Highest priority:
 
 1. Run the browser-only smoke checklist for popup/side-panel layout, focus, canvas, and worker eviction.
-2. Token transfer is implemented on the official Token Program bindings, but two live-chain questions remain open: whether a never-registered recipient owner can receive a sender-initialized token account, and the actual token-program fee (`scripts/verify-token-transfer.mjs`).
-3. Custom networks remain quarantined until HTTPS/host-permission, verified chain-program capability, and re-authentication requirements are implemented together.
-4. Any future launchpad/DEX/prediction work must be built as isolated feature modules. The legacy surface is deleted and nothing of the kind ships today.
-5. An external wallet security audit has not been performed; no mainnet-readiness claim is valid without it.
+2. Token transfer is implemented on the official Token Program bindings, but two live-chain questions remain open: whether a never-registered recipient owner can receive a sender-initialized token account, and the actual token-program fee (`scripts/verify-token-transfer.mjs`). This is why the token-transfer review shows its network fee as **not quoted** instead of borrowing the native number.
+3. Transaction simulation is unavailable: Thru exposes no verified dry-run RPC, so the review shows deterministic facts only and never a post-transaction balance.
+4. Custom-lease renewal is not reachable from the UI: `name.renewLease` covers the official paid registry only, and the custom registrar's Renew instruction has no bridge method yet.
+5. Custom networks remain quarantined until HTTPS/host-permission, verified chain-program capability, and re-authentication requirements are implemented together.
+6. Any future launchpad/DEX/prediction work must be built as isolated feature modules. The legacy surface is deleted, the DeFi backend flags are all off, and nothing of the kind ships today.
+7. An external wallet security audit has not been performed; no mainnet-readiness claim is valid without it.
 
 See [`docs/STATUS_AND_ROADMAP.md`](docs/STATUS_AND_ROADMAP.md) for the live ordered list.
 
@@ -140,17 +155,17 @@ npm run build
 npm audit --omit=dev
 ```
 
-`npm test` runs:
+`npm test` runs the whole deterministic suite (2,193 checks across 32 test suites plus 5 build gates, as of 2026-10-28):
 
-1. derivation checks,
+1. derivation and QR checks,
 2. layering and DOM-sink checks (all of `src/`),
-3. route reachability/CSS checks,
+3. CSP, route reachability/CSS and CSS-nesting checks,
 4. launchpad quarantine checks (source, flags, routes, manifest, and a real `dist/` build),
-5. contract/router/caller checks,
-6. DOM helper security checks,
-7. vault integration checks,
-8. Thru client checks,
-9. API router integration checks.
+5. contract/router/caller checks (manifest ↔ router ↔ shipped callers, both directions),
+6. the shared transaction-review suite (`test-tx-review.mjs`) and the route lifecycle sweep,
+7. DOM helper, vault, Thru client, token-balance, history, registration and API-router integration checks.
+
+`npm run build` runs the same structural gates before bundling, so a violation fails the build too.
 
 Load `dist/` as an unpacked extension in Chrome/Chromium after `npm run build`.
 

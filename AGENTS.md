@@ -203,6 +203,7 @@ is red. Never weaken or skip a test to make it pass.
     not permission for alternate signing paths: every value-moving method still uses centralized
     `auth: 'signing'`, reviewed account/network binding, and the one signing service. Use
     `requirePassword()` from `src/ui/domain/password-prompt.js` when the preference requires it.
+    Value-moving screens reach that service only through the v29 review pipeline (Hard rule 16).
     **Narrow contract-v12 exception:**
     `tx.registerAccount` is unlocked-only for a vault-owned address at account creation or when
     selected as an unregistered own Send recipient. It still signs/broadcasts; never add a
@@ -222,7 +223,8 @@ is red. Never weaken or skip a test to make it pass.
 13. **Small commits.** Never mix a security fix + a UI redesign + a new feature.
 14. **Layout must be SEEN, not reasoned about.** Any change touching modal, sheet, drawer or
     overlay layout must be visually validated in a real browser -- or in a visual harness that
-    loads the real built `dist/popup.css`, e.g. `scripts/preview-tx-sheet.html` -- before the PR
+    loads the real built `dist/popup.css`, e.g. `scripts/preview-tx-sheet.html` or
+    `scripts/preview-tx-review.html` -- before the PR
     is opened. `npm test` runs on a hand-rolled DOM shim with **no layout engine**: it cannot
     compute a height, resolve `max-height`, run the flexbox algorithm or read `scrollHeight`, so
     it is structurally incapable of detecting flex shrinking, `overflow` clipping or a scroll
@@ -240,6 +242,22 @@ is red. Never weaken or skip a test to make it pass.
     a defect of the same class as a crash. When you add a read, also add the cached counterpart
     (`*.getCached*`), and label stale data instead of pretending it is fresh (2026-10-26 owner
     directive).
+16. **A value-moving screen goes through the ONE review pipeline; it never signs.** The sequence is
+    `tx.prepareReview` → `src/ui/domain/tx-review/review-card.js` → `tx.confirmReview` (which
+    re-validates and returns the submit instructions for the operation's existing signing method)
+    → `confirm.js`, the only confirm→auth→submit step. Do not add a feature-owned signing screen, fee formatter, warning copy or password
+    flow, and do not call a signing method from a route. `test/test-tx-review.mjs` [14] enforces
+    this: it scans every `src/ui/**/*.js` for `bridge.send('<method>')` literals and fails if any
+    names an `auth:'signing'` method (or a method absent from the manifest). The only non-review
+    call the UI makes itself is the v12 `tx.registerAccount` activation, which is `auth:'unlocked'`
+    by design. Dashboard used to fail this rule with `tx.autoCreateAccount`; do not reintroduce it. To support a new operation, add a decoder
+    (`src/shared/tx-review/decoders/`), register it, and add a kind spec in
+    `src/background/services/review/kinds.js` naming the EXISTING submit method. An undecodable
+    transaction decodes as explicit unknown with raw details and `submit: null` — never guess a
+    friendly name for it, never give it a submit policy, and never let it be signed. Simulation
+    is unavailable (`tx.simulate` → `supported:false`), so never render a post-transaction
+    balance or a simulated-success state. A review is single-use: a successful confirm discards
+    it, so a replay is `REVIEW_NOT_FOUND` (stale), not a second broadcast.
 
 ## Stop and ask instead of guessing
 
@@ -287,6 +305,10 @@ bare version, the failure is in the **request** direction.
   extension reload. Run `system.diagnostics` before blaming auto-lock.
 - **Hand-maintained file lists rot.** `test-contract.mjs` walks directories for exactly this
   reason -- its old static list stopped covering new files and let a phantom method through.
+- **`TxReviewCard` fires `onChange({ canConfirm })` from its constructor.** Declare the gated
+  confirm button BEFORE constructing the card and let the card drive it. Listening for DOM
+  `change` events, or re-validating the facts yourself, recreates the duplicated-review bug the
+  card exists to delete. Also never recover an amount from `review.summary` label text.
 - **`test-route-lifecycle.mjs` mounts every route, but not in a browser.** It drives the real
   Router, guards, bridge and kit against a hand-rolled DOM shim with only
   `chrome.runtime.sendMessage` mocked, in all three vault states, and asserts teardown, focus

@@ -5,6 +5,15 @@ Branch: `arena/01a0da78-thru-wallet-ext`
 Audited source baseline: `main` at `4aa55ba`.
 Scope: the popup/side-panel Send route, adjacent balance displays, UI bridge, shared contract v12, MV3 request listener, router, network/account/token/balance/pending services, and `src/lib/thru-client.js`. This is a source and deterministic-test audit, **not** a live-chain or real-browser certification. Side-panel mutual exclusion is implemented and guarded by tests; real Chrome interaction remains open.
 
+> **Refresh 2026-10-28 (this record's body is unchanged).** The audited findings below still
+> describe the Send path, but two things moved since: the shared contract is now **v29** (147
+> methods, 15 routes) and `test/test-route-lifecycle.mjs` is **1,059** checks in a **2,193**-check
+> suite. Send's review step is now the shared v29 card (`src/ui/domain/tx-review/review-card.js`,
+> prepared by `tx.prepareReview`) instead of route-owned markup; the activation gate, balance/fee
+> rules, checked methods and timeout wording described here are unchanged, and the confirm step is
+> `tx.confirmReview` → `tx.sendChecked`. Residual risks 1–5 and the browser-only acceptance list
+> are still open exactly as written — no live or real-browser evidence has been added.
+
 ## Finding and fix: why Send kept spinning
 
 Previously, `SendRoute.load()` awaited **seven** bridge calls in one `Promise.all`, including `account.list`, `keyring.list`, `token.list`, and `tx.estimateFee`. It then awaited `tx.getAccountInfo` and **all** `token.getBalances` mint reads *before mounting the form*. One slow/offline token RPC could hold the whole Send screen behind a spinner. This was not a network-health requirement; these calls were only needed for secondary metadata and spending eligibility.

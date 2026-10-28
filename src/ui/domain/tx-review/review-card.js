@@ -23,16 +23,14 @@
 
 import { h, clear, disposer } from '../../kit/dom.js';
 import { icon } from '../../kit/icon.js';
-import { formatThru, formatTokenAmount } from '../../../shared/format.js';
+import { formatAssetAmount } from '../../../shared/format.js';
 
+// The decoder's displayAmount and this card render the same fee/amount numbers through the same
+// shared formatter. "Unavailable" is a word, never a zero.
 function amountText(amountUnits, decimals, symbol) {
   if (amountUnits == null) return 'unknown';
   try {
-    const units = BigInt(amountUnits);
-    const text = Number(decimals) === 9 && symbol === 'THRU'
-      ? formatThru(units)
-      : formatTokenAmount(units, Number(decimals));
-    return `${text} ${symbol}`;
+    return formatAssetAmount(amountUnits, decimals, symbol);
   } catch {
     return `${amountUnits} ${symbol}`;
   }
@@ -72,6 +70,11 @@ function assetBox(asset, direction) {
   ]);
 }
 
+// The acknowledgement checkbox pairs a label with an input by id. Ids must be unique per
+// document, and two preview panes (or a future multi-review surface) can mount two cards at
+// once, so the id is namespaced per instance instead of per acknowledgement.
+let instanceSeq = 0;
+
 function warningBlock(warning) {
   const tone = warning.severity === 'info' ? 'notice' : `notice ${warning.severity === 'danger' ? 'danger' : 'warning'}`;
   return h('div', { class: tone }, [
@@ -91,6 +94,7 @@ function warningBlock(warning) {
 export function TxReviewCard({ review, onChange = null } = {}) {
   const d = disposer();
   const el = h('div', { class: 'tx-review-card' });
+  const instanceId = ++instanceSeq;
   let state = review;
   const accepted = new Set();
   const ackInputs = [];
@@ -265,14 +269,15 @@ export function TxReviewCard({ review, onChange = null } = {}) {
 
     // ---- acknowledgements ----------------------------------------------------------
     for (const ack of r.acknowledgements) {
-      const input = h('input', { type: 'checkbox', id: `tx-review-ack-${ack.id}` });
+      const ackId = `tx-review-ack-${instanceId}-${ack.id}`;
+      const input = h('input', { type: 'checkbox', id: ackId });
       ackInputs.push({ ack, input });
       d.on(input, 'change', () => {
         if (input.checked) accepted.add(ack.id);
         else accepted.delete(ack.id);
         notify();
       });
-      el.appendChild(h('label', { class: 'checkbox-field tx-review-ack', for: `tx-review-ack-${ack.id}` }, [
+      el.appendChild(h('label', { class: 'checkbox-field tx-review-ack', for: ackId }, [
         input,
         h('span', { class: 'tx-review-ack-label', text: ack.label }),
       ]));

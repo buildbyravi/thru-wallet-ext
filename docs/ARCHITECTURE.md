@@ -28,17 +28,42 @@ The UI cannot import the vault, backend services, network implementation, or RPC
 | Thru RPC, transaction construction, program bindings | `src/lib/thru-client.js` |
 | Network identity and verified capabilities | `src/lib/networks.js` |
 | Network activation and adapter binding | `src/background/services/network-service.js` |
-| Amount parsing/formatting | `src/shared/format.js` |
+| Amount parsing/formatting (incl. the one 9-decimal THRU scale rule) | `src/shared/format.js` |
+| Transaction review contract, decoder registry, error codes | `src/shared/tx-review/model.js` + `registry.js` + `decoders/` |
+| Review preparation, binding, recheck, dispatch to signing | `src/background/services/review-service.js` + `services/review/{kinds,store}.js` |
+| Review rendering and the confirm→auth→submit step | `src/ui/domain/tx-review/review-card.js` + `confirm.js` |
 | Persistent user preferences | `src/background/services/preferences-service.js` |
 | Submitted transaction lifecycle | `src/background/services/pending-tx-service.js` |
 | UI DOM construction | `src/ui/kit/dom.js` |
 
 ## Signing and transaction boundary
 
-Shipped UI calls only `tx.sendChecked` and `token.transferChecked`. Contract v16 removed the retired
-unbound mutation methods. The background verifies authorization and reviewed account/network context.
-A signing-operation guard prevents active-network rebinding from operation entry through submission
+No UI route signs. A value-moving route calls `tx.prepareReview`, renders
+`src/ui/domain/tx-review/review-card.js`, and submits through `tx.confirmReview`
+(`src/ui/domain/tx-review/confirm.js`). `confirmReview` re-validates and returns the exact submit
+instructions (`method` + `params`); the helper then calls that operation's existing signing method
+through the bridge — `tx.sendChecked`, `token.transferChecked`, `name.register` /
+`name.purchase` / `name.renewLease` / `name.claimExpired`, or `tx.claimFaucet` — and discards the
+review on success. Neither `prepareReview` nor `confirmReview` signs. Contract v16 removed the retired
+unbound send mutations; contract v29 added the review trio (`prepareReview`, `confirmReview`,
+`discardReview`), all `auth: 'unlocked'` and none of them signing — `confirmReview` returns
+`{method, params}` for the existing signed call. The background verifies
+authorization and reviewed account/network context on prepare and again on confirm, and a
+signing-operation guard prevents active-network rebinding from operation entry through submission
 completion. Pending acceptance is recorded as `submitted`; it is never presented as confirmation.
+
+The only signing-adjacent call a UI file makes by name is the v12 activation path,
+`tx.registerAccount` (`auth:'unlocked'`, exact vault-owned address, zero declared fee, signed with
+that account's own key). Dashboard uses it for the active account and Send uses it JIT for an owned
+recipient. `test/test-tx-review.mjs` [14] scans `src/ui/**/*.js` for `bridge.send('…')` literals and
+fails on any `auth:'signing'` method, so the older `tx.autoCreateAccount` cannot come back through a
+route (it was removed from Dashboard; see `docs/DEFECT_LOG.md` §10).
+
+The review boundary is also a decoding boundary: `decoders/` produces explicit facts for known
+intents and an explicit unknown with raw data (and no submit policy) for everything else. A review
+service never guesses a friendly name for an instruction it cannot decode, and never fabricates a
+fee, balance change, or simulation result. `tx.simulate` answers `supported:false` on the current
+backend, so post-transaction balances are always unavailable by policy, not by omission.
 
 The current adapter uses one process-level SDK binding. The operation guard is therefore a required
 part of the design, not a UI convenience. A future immutable per-network SDK client may replace the
@@ -89,7 +114,8 @@ All on-chain program integrations (native programs, official registry, custom re
 
 Core wallet services do not depend on optional products. Future Launchpad, DEX, Prediction,
 Portfolio, NFT, or token-product UI belongs under `src/features/<feature>/`; backend code uses a
-separate feature namespace. Features never import the vault or implement signing. Detailed target
+separate feature namespace. Features never import the vault, implement signing, or own a signing
+screen: they add a decoder + a kind spec and reuse the shared review pipeline. Detailed target
 boundaries and deletion criteria are in `docs/MODULE_BOUNDARIES.md`.
 
 ## Verification boundaries

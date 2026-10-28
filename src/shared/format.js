@@ -52,6 +52,22 @@ export function formatTokenAmount(rawUnits, decimals = 9) {
 }
 
 /**
+ * Render base units with an asset's own scale, symbol included — the ONE place the "THRU uses
+ * the 9-decimal formatter" special case lives. Decoders (shared) and the review card (ui) both
+ * call this, so a fee row and a balance row can never disagree about the same number.
+ *
+ * Throws on a non-integer input; callers that may hold `null` must decide what to show first.
+ */
+export function formatAssetAmount(amountUnits, decimals, symbol) {
+  const scale = Number(decimals);
+  const units = typeof amountUnits === 'bigint' ? amountUnits : BigInt(amountUnits);
+  const text = scale === 9 && symbol === 'THRU'
+    ? formatThru(units)
+    : formatTokenAmount(units, scale);
+  return `${text} ${symbol}`;
+}
+
+/**
  * Parse a human-entered token amount (e.g. "1.5") into raw units for a mint with the given
  * decimals. Same no-float discipline as parseThruAmount — the only difference is the scale.
  */

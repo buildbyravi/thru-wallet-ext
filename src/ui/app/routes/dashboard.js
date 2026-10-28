@@ -498,7 +498,13 @@ export function DashboardRoute({ navigate }) {
       });
 
       if (info.exists === false) {
-        bridge.send('tx.autoCreateAccount').catch(() => {});
+        // Activate THIS account through the v12 owned-address path, not the legacy
+        // `tx.autoCreateAccount` (auth: 'signing'). The legacy method demanded the signing
+        // password whenever the user opted into per-sign re-auth, so a fire-and-forget call
+        // from a background refresh silently failed for exactly those users. registerAccount
+        // is the sanctioned unlocked-only exception: it proves the address is owned by this
+        // vault, signs with that account's own key, and re-checks the network before signing.
+        bridge.send('tx.registerAccount', { address: account.address }).catch(() => {});
       }
     } else {
       // Do not leave the neutral "$0.00" default looking like a verified zero when no

@@ -8,21 +8,31 @@ Chrome MV3 self-custody wallet extension for the Thru native Layer 1. Thru is no
 
 ## Current state
 
-- Single popup route stack with 14 routes.
-- Contract version: 18 (124 methods = 81 wallet-core + 43 DeFi M0 surface, all feature-gated off; machine schema in `src/shared/contract/defi-schema.js`, fixtures in `test/fixtures/defi/`).
+- Single popup route stack with 15 routes (`welcome`, `unlock`, `dashboard`, `accounts`, `account`, `add-account`, `keyring`, `export`, `send`, `receive`, `faucet`, `name`, `history`, `settings`, `reset`).
+- Contract version: 29 (147 methods = 81 wallet-core + 43 DeFi M0 surface, all feature-gated off, plus the v19–v29 additive slices; machine schema in `src/shared/contract/defi-schema.js`, fixtures in `test/fixtures/defi/`).
 - Contract source: `src/shared/contract/manifest.js`.
 - API seam: UI calls `bridge.send(method, params)` only.
 - Background owns auth, signing, services, and RPC coordination.
 - Vault and transaction/RPC code are sacred: `src/lib/vault.js`, `src/lib/thru-client.js`, `src/lib/networks.js`.
 - The legacy launchpad/DEX/prediction surface is quarantined: `src/launchpad/**` is deleted, no launchpad page is built, and `popup.html?launchpad=1` no longer does anything. `test-launchpad-quarantine.mjs` enforces this. Do not revive it; a future launchpad is a new `src/features/launchpad/**` module with `launchpad.*` backend namespaces.
-- All 14 routes are mounted by `test-route-lifecycle.mjs` (real Router/guards/bridge, only `chrome.runtime.sendMessage` mocked) in no-vault, locked and unlocked states: no throw, correct guard landing, no secret in text/attributes/dataset/input values/URLs, no listener left on a detached node. There is no jsdom dependency and there must not be one.
+- All 15 routes are mounted by `test-route-lifecycle.mjs` (real Router/guards/bridge, only `chrome.runtime.sendMessage` mocked) in no-vault, locked and unlocked states: no throw, correct guard landing, no secret in text/attributes/dataset/input values/URLs, no listener left on a detached node. There is no jsdom dependency and there must not be one.
 - What a shim cannot prove (layout at narrow/wide widths, real focus, canvas QR, the side panel, service-worker eviction) is `docs/MANUAL_SMOKE_CHECKLIST.md`. Run it before merging UI changes.
+- One transaction-review pipeline (contract v29): every value-moving screen prepares a typed intent with `tx.prepareReview`, renders the one card in `src/ui/domain/tx-review/review-card.js`, and submits through `confirm.js` → `tx.confirmReview` (re-validate, return the submit instructions) → that operation's existing signing method. No UI file names a signing-gated method: `test-tx-review.mjs` [14] scans `src/ui/` for `bridge.send('…')` literals and fails on any `auth:'signing'` one. The only non-review signing-adjacent call is the v12 `tx.registerAccount` activation (`auth:'unlocked'`, owned address only) — used by Send and Dashboard. `tx.autoCreateAccount` has no UI caller. The pipeline never signs, never invents a fee or a post-tx balance, and refuses to sign anything it cannot decode.
 - Checked sends: the UI calls only `tx.sendChecked` and `token.transferChecked`; contract v16 removed the retired unbound send methods. Value-moving methods bind the reviewed source account and network at the background boundary, and a signing-operation guard blocks network switching from operation entry through submission.
 - Token transfer and real registry-mint balances are implemented on the official `@thru/programs/token` bindings; token unit math is BigInt with mint-scaled decimals (`parseTokenAmount`/`formatTokenAmount` in `src/shared/format.js`); recipient token-account initialization rides as a preceding sender-signed transaction; the remaining live-chain questions (recipient-owner acceptance, token-program fee) are in `docs/BACKEND_GAPS.md` C1, with `scripts/verify-token-transfer.mjs` as the pending live probe.
 - Contract v7 quarantines custom networks in the background, not just Settings. `network.setActive` accepts enabled built-ins only; a saved custom id returns permanent `CUSTOM_NETWORK_DISABLED`, and a stale custom/disabled active id self-heals to Betanet before `configureNetwork()`. Legacy records remain listable/removable and render as inert rows. `network.upsertCustom` stays in the contract with no UI caller. Do not re-enable custom endpoints without all four preconditions in `docs/STATUS_AND_ROADMAP.md` Step 2b.
-- Betanet is the enabled network (Localnet, Testnet and Mainnet are declared but disabled). Thru packages are exact-pinned (`@thru/sdk`/`@thru/programs` 0.4.1) and derivation vectors are verified against that pin.
+- Betanet is the enabled network (Localnet, Testnet and Mainnet are declared but disabled). Thru packages are exact-pinned (`@thru/sdk`/`@thru/programs` 0.4.2) and derivation vectors are verified against that pin. Native THRU has 9 decimals (`src/shared/tokens.js`); 1,000 base units = 0.000001 THRU.
 - Package `1.4.1` is live in the Chrome Web Store (listed 2026-10-04, verified on the live page) on automated evidence alone; no real-browser verification of the store package is recorded, and the package predates the same-day fee-provenance/dead-code source fixes. A first partial real-Chrome run on current source is recorded (2026-10-04, popup-only native Betanet send to the tester's own account — the `/send` popup cell is ticked; charged fee not captured; run record in `docs/MANUAL_SMOKE_CHECKLIST.md` §7). The rest of `docs/MANUAL_SMOKE_CHECKLIST.md` remains the top open item.
 - The side panel is opened by an explicit Dashboard control that calls `chrome.sidePanel.open({ windowId })`; Settings carries a separate explicit Side Panel Mode opt-in. Nothing else may call `chrome.sidePanel.setPanelBehavior`.
+
+## Honest-state rules (apply to every screen)
+
+- Undecodable transaction → explicit unknown with raw data, no submit policy, cannot be signed.
+- Unmeasured fee → "not quoted" with the reason. Never borrow another path's number.
+- Unverified balance change / simulation → shown as unavailable. Thru has no verified dry-run RPC (`tx.simulate` answers `supported:false`).
+- Failed chain read → a warning or a blocking state, never a default of zero or "available".
+- A submitted transaction is not a confirmed one; a timeout is an unknown outcome, never a failure.
+- `.thru` has no separate "Extend": the custom registrar has tags 0–3 (Initialize/Register/Renew/UpdateConfig) and Renew is a rolling extension. Custom-lease renewal is not yet reachable from the UI.
 
 ## Read first
 
@@ -72,9 +82,9 @@ Features must not import sibling features or vault internals.
 
 ## Current P0 work
 
-Done: signing-auth centralization (contract v5), reset/auto-lock background hardening (v6), custom-network background quarantine (v7), token transfer and real token balances (v8, live-chain verification still open), History feed/detail/cached reads (v9–v12), checked sends (v11), owned-account activation (v12), duplicate-send detection (v15), retirement of the unbound send paths (v16), passkey feasibility spike (`docs/archive/PASSKEY_SPIKE.md`), legacy launchpad quarantine, route lifecycle tests for all 14 routes with secret-hygiene and teardown assertions, modal focus trapping, and an explicit side-panel action.
+Done: signing-auth centralization (contract v5), reset/auto-lock background hardening (v6), custom-network background quarantine (v7), token transfer and real token balances (v8, live-chain verification still open), History feed/detail/cached reads (v9–v12), checked sends (v11), owned-account activation (v12), duplicate-send detection (v15), retirement of the unbound send paths (v16), the flag-off DeFi M0 surface (v17/v18), the gated name-service slice (v19), the primary name (v21), the official `.thru` registrar (v22) and the first-party free `name.register` (v23), the faucet rate-limit read (v24), the custom registrar provider (v25), token discovery (v26) and cached token balances (v27), reviewed name facts (v28), and **the shared transaction-review pipeline (v29)**, passkey feasibility spike (`docs/archive/PASSKEY_SPIKE.md`), legacy launchpad quarantine, route lifecycle tests for all 15 routes with secret-hygiene and teardown assertions, modal focus trapping, and an explicit side-panel action.
 
-1. Run `docs/MANUAL_SMOKE_CHECKLIST.md` in Chrome (popup and side panel, narrow and wide): layout, focus rings, QR canvas, mutual exclusion, clipboard prompt, MV3 worker eviction/restart.
+1. Run `docs/MANUAL_SMOKE_CHECKLIST.md` in Chrome (popup and side panel, narrow and wide): layout, focus rings, QR canvas, mutual exclusion, clipboard prompt, MV3 worker eviction/restart — plus §7, the v29 review card, which has no real-browser pass yet.
 2. Live v12 activation and live token-transfer verification (recipient-owner acceptance, actual token-program fee) on a safe throwaway wallet; see `scripts/verify-token-transfer.mjs` and `scripts/verify-live-e2e.mjs`.
 3. Custom-network re-enablement: HTTPS-only policy with an explicit localhost exception, narrow user-granted host permission, a verified per-network capability record instead of default program ids, and password re-auth before the wallet talks to a user-supplied endpoint. Blocked until all four exist.
 4. External security audit before any Mainnet-readiness claim; none has been performed.

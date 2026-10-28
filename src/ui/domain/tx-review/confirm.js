@@ -18,25 +18,11 @@
 
 import * as bridge from '../../app/bridge.js';
 import { requirePassword } from '../password-prompt.js';
+import { STALE_REVIEW_CODES } from '../../../shared/tx-review/model.js';
 
-/** Codes that mean "the review you are looking at is no longer the transaction". */
-const STALE_CODES = new Set([
-  'REVIEW_NOT_FOUND',
-  'REVIEW_EXPIRED',
-  'BINDING_MISMATCH',
-  'REVIEW_CONTEXT_CHANGED',
-  'REVIEW_PRICE_CHANGED',
-  'REVIEW_EXPIRY_CHANGED',
-  'REVIEW_FEE_CHANGED',
-  'REVIEW_TOKEN_CHANGED',
-  'REVIEW_REGISTRAR_CHANGED',
-  'REVIEW_FAUCET_CHANGED',
-  'REVIEW_UNAVAILABLE',
-  'NAME_TAKEN',
-  'LEASE_NOT_FOUND',
-  'LEASE_NOT_EXPIRED',
-  'NOT_NAME_OWNER',
-]);
+// One source of truth for "this review is stale": model.js owns the code list, the background
+// throws those codes, and this UI only decides how to present them.
+const STALE_CODES = new Set(STALE_REVIEW_CODES);
 
 const SIGNING_FAILURE_CODES = new Set([
   'SERVICE_TIMEOUT',
@@ -44,6 +30,12 @@ const SIGNING_FAILURE_CODES = new Set([
   'NO_RESPONSE',
   'SIGNING_IN_PROGRESS',
 ]);
+
+/** Drop a prepared review (cancelled or replaced). Failure here is not user-visible. */
+export function discardReview(reviewId) {
+  if (!reviewId) return Promise.resolve();
+  return bridge.send('tx.discardReview', { reviewId }).catch(() => {});
+}
 
 /**
  * Confirm a prepared review, authenticate if required, and submit it.
@@ -105,8 +97,18 @@ export async function submitReviewedReview({
     }
   };
 
+  // A review is SINGLE-USE once it has produced a signature. Discarding it here (rather than
+  // leaving it to expire) means a second confirm of the same reviewId cannot replay the same
+  // transaction inside its TTL — the handler's own duplicate guard stays the second line of
+  // defence, not the only one. A FAILED submit deliberately keeps the review: retrying a
+  // definite failure from the same reviewed facts is safe and saves a re-read.
+  const settle = async (result) => {
+    await discardReview(review.reviewId);
+    return { status: 'submitted', result };
+  };
+
   if (!submitPolicy?.passwordRequired) {
-    return { status: 'submitted', result: await guardedSend() };
+    return settle(await guardedSend());
   }
 
   const outcome = await requirePassword({
@@ -127,9 +129,14 @@ export async function submitReviewedReview({
       }
     },
   });
+<<<<<<< HEAD
   if (outcome == null) return { status: 'cancelled' };
   if (outcome.error) throw outcome.error;
   return { status: 'submitted', result: outcome.result };
+=======
+  if (result == null) return { status: 'cancelled' };
+  return settle(result);
+>>>>>>> origin/arena/0439c226-thru-wallet-ext
 }
 
 /**
@@ -162,8 +169,3 @@ export function classifyReviewError(error, { submitted = false, uncertainMessage
   return { kind: 'failed', message: error?.message || 'The transaction failed.' };
 }
 
-/** Drop a prepared review (cancelled or replaced). Failure here is not user-visible. */
-export function discardReview(reviewId) {
-  if (!reviewId) return Promise.resolve();
-  return bridge.send('tx.discardReview', { reviewId }).catch(() => {});
-}

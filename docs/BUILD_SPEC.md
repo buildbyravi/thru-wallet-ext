@@ -36,19 +36,21 @@ For exact current state, route/method counts, and next tasks, read:
 - `CONTEXT.md` — current file map;
 - `docs/MODULE_BOUNDARIES.md` — future feature separation and SDK-adapter boundaries.
 
-Current shipped facts, cross-checked against `src/` on 2026-10-04 (see `docs/PROJECT_LEDGER.md` §1 for the identifier authority):
+Current shipped facts, cross-checked against `src/` on 2026-10-28 (see `docs/PROJECT_LEDGER.md` §1 for the identifier authority):
 
 | Area | Shipped state |
 | --- | --- |
-| UI stack | One popup/side-panel route stack; 14 registered routes. |
-| Contract | v16, 81 methods; `src/shared/contract/manifest.js` is authoritative. |
+| UI stack | One popup/side-panel route stack; 15 registered routes. |
+| Contract | v29, 147 methods (81 wallet-core + 43 flag-off DeFi M0 + the v19–v29 additive slices); `src/shared/contract/manifest.js` is authoritative. |
 | Signing | Signing requires an unlocked wallet. Password re-auth defaults off and is a password-gated Settings opt-in. |
 | Registration | v12 `tx.registerAccount` is unlocked-only and restricted to exact vault-owned accounts; it is used for bounded creation-time activation and Send JIT, never arbitrary contacts or periodic signing. |
 | Send | Review pins the source account/network through checked methods; an unregistered owned recipient must finish JIT activation before Review. |
+| Transaction review | One shared pipeline behind every value-moving screen: `tx.prepareReview` → the one card in `src/ui/domain/tx-review/review-card.js` → `tx.confirmReview` (re-validate, return submit instructions) → that operation's existing signing method. A decoded transaction shows its exact asset/fee facts; an undecodable one shows explicit unknown details and cannot be signed. No route signs a value-moving transaction directly (JIT `tx.registerAccount` activation is the only direct signing call). |
+| Names | `/name` covers the official `.thru` registrar (purchase, renew, claim expired) and the custom registrar (register), each with a reviewed intent. Renewal is a rolling extension; there is no separate "extend" instruction. |
 | History | Flat stream without day headers; cache-first reads are network/address-scoped; block times carry provenance and unavailable times are not invented. No per-card fee line. |
 | Side panel | Shared page with popup/panel mutual exclusion; Side Panel Mode is an explicit opt-in. Browser behavior remains a manual check. |
 | Guarded DOM | Zero guarded injection sinks across shipped `src/` (vendored QR code excluded). |
-| Unshipped surfaces | Launchpad/DEX/prediction UI, extension dApp provider, and simulation are not claimed shipped. |
+| Unshipped surfaces | Launchpad/DEX/prediction UI, extension dApp provider, and transaction simulation are not claimed shipped. `tx.simulate` answers `supported:false`; the review card states simulation is unavailable rather than showing an invented post-tx state. |
 Older archived docs describe pre-rebuild structures such as `src/desktop`, dual routers, and
 unreachable export flows. Those are historical facts, not current state.
 
@@ -196,6 +198,20 @@ migrated to the checked counterparts — the same documented-security-break prec
 The v12 registration method is an intentionally narrow unlocked-only exception; it is not a
 value-moving send and cannot sign for an address outside the vault.
 
+**Contract v17–v29 additions:** v17/v18 append the 43-method DeFi M0 surface behind build-time
+flags that are all false; v19 appends the gated name-service slice (`name.lookup`,
+`checkAvailability`, `initRoot`, `register`, `setRecord` — `initRoot`/`setRecord` stay behind
+`NAME_SERVICE`); v20 backs the v18 intent methods with a real (still flag-off) native-send
+pipeline, v21 the wallet-local primary name, v22 the official
+`.thru` registrar read/purchase/renew/claim, v23 a real first-party `name.register`, v24 the faucet
+rate-limit read, v25 the custom registrar provider, v26 token auto-discovery (the same drop briefly
+enabled the DEX swap slice, withdrawn by the owner on 2026-10-26 — every `DEFI_*` flag is off
+today), v27 storage-only cached token balances, v28 reviewed price/expiry facts on the name writes,
+and **v29 the shared transaction-review pipeline** (`tx.prepareReview`, `tx.confirmReview`, `tx.discardReview`). All
+three v29 methods are `auth: 'unlocked'` and none of them signs: `confirmReview` re-validates and
+returns the exact submit instructions, and the UI then calls the operation's existing
+`auth: 'signing'` method, which keeps its own policy. Every one of these is a pure append.
+
 **R3 — Layering is enforced by a script, not by discipline.** `scripts/check-layering.mjs` scans
 static imports against the shipped background/UI/kit/shared boundaries and fails on a prohibited
 edge. It also enforces the `chrome.runtime.sendMessage` allowlist: UI-to-background messages go
@@ -330,7 +346,7 @@ routes for those surfaces. Verify exact controls against `src/ui/app/routes/acco
 
 Signing requires an unlocked wallet. Password re-authentication is **off by default**; the user may enable it in Settings through password-gated `settings.setSecurity`. Secret export, password-gated keyring operations, and security-setting changes require their declared password policy. `wallet.reset` always requires explicit confirmation and additionally requires the password when the wallet is unlocked; other account operations follow their declared contract auth.
 
-**Contract v12 owned-account activation:** `tx.registerAccount({ address })` is `auth: 'unlocked'` and is restricted in the background to the exact address in the unlocked vault. Creation/addition paths make a bounded best-effort attempt for the account just created; Send invokes it JIT only after a successful absence check for a selected/typed owned recipient. The target account self-signs with its own key and pays the declared account-creation fee of `0n` (nonce `0n`, `stateUnits` `1` — the activation requirement; `chainId` is taken from the node at build time). A zero declared fee does not mean a broadcast has no network/privacy effects. There is no periodic signer, and the sender never registers an external contact. Checked value-moving methods (`tx.sendChecked` / `token.transferChecked`) remain under `auth: 'signing'`.
+**Contract v12 owned-account activation:** `tx.registerAccount({ address })` is `auth: 'unlocked'` and is restricted in the background to the exact address in the unlocked vault. Creation/addition paths make a bounded best-effort attempt for the account just created; Dashboard invokes it for the active account after an absence check; Send invokes it JIT only after a successful absence check for a selected/typed owned recipient. Nothing calls the older signing-gated `tx.autoCreateAccount`. The target account self-signs with its own key and pays the declared account-creation fee of `0n` (nonce `0n`, `stateUnits` `1` — the activation requirement; `chainId` is taken from the node at build time). A zero declared fee does not mean a broadcast has no network/privacy effects. There is no periodic signer, and the sender never registers an external contact. Checked value-moving methods (`tx.sendChecked` / `token.transferChecked`) remain under `auth: 'signing'`.
 
 ### Send — a reviewed flow, never a one-click form
 
@@ -363,6 +379,41 @@ adapters.
 Review and signing are explicit user actions. The Send route pins the reviewed source/network through
 `tx.sendChecked` or `token.transferChecked` and invalidates stale review context. Do not infer that
 mocked route tests establish a live broadcast or a real-Chrome focus guarantee.
+
+### Transaction review — one shared pipeline, never per-feature signing
+
+Every shipped value-moving screen goes through the same four steps, and no route may skip or
+re-implement any of them:
+
+1. **Prepare** — the route builds a typed intent and calls `tx.prepareReview`. The background
+   service (`src/background/services/review-service.js` + `services/review/kinds.js`) checks the
+   intent, binds account + network + a facts hash, and stores a short-lived record
+   (`src/background/services/review/store.js`, TTL 120 s). Unknown or unsupported intents are
+   refused, never guessed.
+2. **Decode** — `src/shared/tx-review/decoders/*` turn the intent into explicit review facts
+   (assets out/in, fee provenance, program, decoded instruction name, warnings). The registry has
+   no fallback: an unregistered kind decodes as `unknown` with raw details and **no submit policy**.
+3. **Review** — `src/ui/domain/tx-review/review-card.js` renders those facts and nothing else. It
+   never recomputes amounts, never invents a post-tx balance, and never claims success. Warnings
+   that matter are blocking: the confirm control stays disabled.
+4. **Authenticate → sign → reconcile** — `src/ui/domain/tx-review/confirm.js` calls
+   `tx.confirmReview`, which re-validates account/network/facts/TTL/acknowledgements and returns
+   the exact submit instructions without signing. The helper then calls that method through the
+   bridge, so the operation's existing `auth: 'signing'` policy applies unchanged (session-only by
+   default, password prompt only if the user opted in). The result is signature/receipt, definite
+   failure (the review may be retried on the same facts), or unknown outcome after a timeout —
+   never a claimed confirmation.
+
+Facts the pipeline refuses to fake: `tx.simulate` answers `supported:false`, so no simulated
+success, no post-tx balance, and no "verified balance change" appears anywhere; a token-transfer
+fee is marked unmeasured; an unmeasured native fee stays unknown with its reason. Native THRU's 9
+decimals are applied by `src/shared/format.js`; base-unit strings stay BigInt-exact end to end.
+
+The review is **single-use**: a successful submit discards it, so a replay answers
+`REVIEW_NOT_FOUND` (classified stale). `test/test-tx-review.mjs` covers registry↔kind parity, every
+decoder, malformed/unknown input, formatting, binding/TTL/account/network refusals, blocking, and
+the central error-code registry; `test/test-route-lifecycle.mjs` drives the Send, Name and Faucet
+routes through the real card.
 
 ### Receive
 
@@ -594,11 +645,15 @@ Run `npm test` and `npm run build` on the final tree. The current test command i
 - layering/DOM-sink, CSP, route/CSS, and CSS-nesting guards;
 - launchpad quarantine, contract agreement, DOM/ref safety, and route lifecycle;
 - vault, Thru client/program goldens, token balances, network-scoped balances, History cache and
-  block-time, account registration, and API-router integration.
+  block-time, account registration, and API-router integration;
+- the transaction-review pipeline: registry↔kind parity, every decoder, malformed/unknown input,
+  amount and fee formatting, review binding/TTL/account/network refusals, acknowledgements, the
+  single-use confirm, the shared error-code registry, and the "no signing-gated method literal in
+  `src/ui/`" scan (`test/test-tx-review.mjs`).
 
-`test/test-route-lifecycle.mjs` mounts all 14 routes through the real Router, guards, bridge, and
+`test/test-route-lifecycle.mjs` mounts all 15 routes through the real Router, guards, bridge, and
 kit using the repository's DOM shim. It asserts route behavior, secret hygiene, teardown, focus
-trapping, Send races/activation, and History behavior. The shim does not contain a layout engine and
+trapping, Send races/activation, the reviewed Send/Name/Faucet flows, and History behavior. The shim does not contain a layout engine and
 cannot certify real Chrome rendering or MV3 scheduling.
 
 Live-chain scripts live under `scripts/` and are not part of `npm test`. A deterministic fake-SDK

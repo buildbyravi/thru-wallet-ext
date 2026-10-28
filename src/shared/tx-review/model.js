@@ -36,6 +36,7 @@ export const SIMULATION_STATUSES = Object.freeze(['supported', 'unavailable', 'f
 export const SUBMIT_AUTHS = Object.freeze(['signing', 'unlocked']);
 
 /** First session-only-signing default (D-003) is unchanged; this only names what the UI sees. */
+/** Pipeline refusals raised by tx.prepareReview / tx.confirmReview / tx.discardReview. */
 export const REVIEW_ERROR_CODES = Object.freeze({
   KIND_UNSUPPORTED: 'KIND_UNSUPPORTED',
   REVIEW_NOT_FOUND: 'REVIEW_NOT_FOUND',
@@ -45,6 +46,57 @@ export const REVIEW_ERROR_CODES = Object.freeze({
   ACKNOWLEDGEMENT_REQUIRED: 'ACKNOWLEDGEMENT_REQUIRED',
   NOT_EXECUTABLE: 'NOT_EXECUTABLE',
 });
+
+/**
+ * Every code the review layer may throw, in one place.
+ *
+ * The `REVIEW_*_CHANGED` family is raised by a kind's recheck (the chain moved under the
+ * review); the domain codes are the registrar's own refusals re-surfaced unchanged. They used to
+ * be string literals spread across `review/kinds.js` and enumerated a second time in the UI's
+ * `classifyReviewError` — two lists that could silently disagree. `test-tx-review.mjs` now walks
+ * the background sources and fails if a code is thrown that is not registered here or in the
+ * contract's ERROR_CODES, so the list cannot drift again.
+ */
+export const REVIEW_RECHECK_CODES = Object.freeze({
+  REVIEW_FEE_CHANGED: 'REVIEW_FEE_CHANGED',
+  REVIEW_TOKEN_CHANGED: 'REVIEW_TOKEN_CHANGED',
+  REVIEW_REGISTRAR_CHANGED: 'REVIEW_REGISTRAR_CHANGED',
+  REVIEW_PRICE_CHANGED: 'REVIEW_PRICE_CHANGED',
+  REVIEW_EXPIRY_CHANGED: 'REVIEW_EXPIRY_CHANGED',
+  REVIEW_FAUCET_CHANGED: 'REVIEW_FAUCET_CHANGED',
+  REVIEW_UNAVAILABLE: 'REVIEW_UNAVAILABLE',
+  REVIEW_INTERNAL: 'REVIEW_INTERNAL',
+  // Registrar refusals that mean "the thing you reviewed is not there any more".
+  NAME_TAKEN: 'NAME_TAKEN',
+  LEASE_NOT_FOUND: 'LEASE_NOT_FOUND',
+  LEASE_NOT_EXPIRED: 'LEASE_NOT_EXPIRED',
+  NOT_NAME_OWNER: 'NOT_NAME_OWNER',
+});
+
+/** The full set, for callers that need to branch on any review code. */
+export const REVIEW_CODE = Object.freeze({ ...REVIEW_ERROR_CODES, ...REVIEW_RECHECK_CODES });
+
+/**
+ * Codes that mean "the review you are looking at is no longer the transaction". The only correct
+ * response is to prepare and READ a fresh review; never to retry the same signature.
+ */
+export const STALE_REVIEW_CODES = Object.freeze([
+  REVIEW_ERROR_CODES.REVIEW_NOT_FOUND,
+  REVIEW_ERROR_CODES.REVIEW_EXPIRED,
+  REVIEW_ERROR_CODES.BINDING_MISMATCH,
+  REVIEW_ERROR_CODES.REVIEW_CONTEXT_CHANGED,
+  REVIEW_RECHECK_CODES.REVIEW_PRICE_CHANGED,
+  REVIEW_RECHECK_CODES.REVIEW_EXPIRY_CHANGED,
+  REVIEW_RECHECK_CODES.REVIEW_FEE_CHANGED,
+  REVIEW_RECHECK_CODES.REVIEW_TOKEN_CHANGED,
+  REVIEW_RECHECK_CODES.REVIEW_REGISTRAR_CHANGED,
+  REVIEW_RECHECK_CODES.REVIEW_FAUCET_CHANGED,
+  REVIEW_RECHECK_CODES.REVIEW_UNAVAILABLE,
+  REVIEW_RECHECK_CODES.NAME_TAKEN,
+  REVIEW_RECHECK_CODES.LEASE_NOT_FOUND,
+  REVIEW_RECHECK_CODES.LEASE_NOT_EXPIRED,
+  REVIEW_RECHECK_CODES.NOT_NAME_OWNER,
+]);
 
 const MAX_TEXT = 400;
 

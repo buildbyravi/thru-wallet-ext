@@ -780,14 +780,20 @@ export function NameRoute({ back }) {
         } });
         reviewSheet = sheet;
 
-        const reviewCard = sheet.track(TxReviewCard({ review: prepared.review }));
+        // The card fires onChange from its own constructor, so the button it gates must
+        // exist first. Every confirmability decision stays inside the card: this route never
+        // re-derives validation from the review envelope itself.
+        let confirm = null;
+        const reviewCard = sheet.track(TxReviewCard({
+          review: prepared.review,
+          onChange: ({ canConfirm }) => confirm?.el && (confirm.el.disabled = !canConfirm),
+        }));
         sheet.card.appendChild(reviewCard.el);
 
         const cancel = sheet.track({
           el: h('button', { type: 'button', class: 'btn secondary', text: 'Cancel' }),
           destroy: () => {},
         });
-        let confirm = null;
         confirm = sheet.track({
           el: h('button', {
             type: 'button',
@@ -797,9 +803,12 @@ export function NameRoute({ back }) {
           }),
           destroy: () => {},
         });
+<<<<<<< HEAD
         sheet.d.on(reviewCard.el, 'change', () => {
           confirm.el.disabled = !reviewCard.canConfirm();
         });
+=======
+>>>>>>> origin/arena/0439c226-thru-wallet-ext
 
         sheet.d.on(cancel.el, 'click', () => {
           discardReview(prepared.reviewId);

@@ -292,18 +292,21 @@ monolith comparison is not evidence of duplicate code in the shipped route stack
 > **Lesson:** when deduplicating, compare behavior before deleting either implementation. The old
 > versions differed; preserve the required behavior in the shared current component and its tests.
 
-## 6. Open verification gaps — as of 2026-09-26
+## 6. Open verification gaps — refreshed 2026-10-28
 
 Automated coverage is materially stronger than the original audit: `scripts/check-routes.mjs`
-checks route reachability/CSS classes; `test/test-route-lifecycle.mjs` mounts all 14 routes through
-the real Router/guards/bridge and checks secret hygiene, listeners, focus-trap behavior, Send and
-History flows; focused suites cover registration, history cache/block-time, network scoping, the API
-router, and contract invariants. These tests use deterministic fixtures/DOM shims and do not close
+checks route reachability/CSS classes; `test/test-route-lifecycle.mjs` mounts all 15 routes through
+the real Router/guards/bridge and checks secret hygiene, listeners, focus-trap behavior, the reviewed
+Send/Name/Faucet flows and History; `test/test-tx-review.mjs` covers the review pipeline; focused
+suites cover registration, history cache/block-time, network scoping, the API router, and contract
+invariants. These tests use deterministic fixtures/DOM shims and do not close
 the following items:
 
 | Boundary | Still open |
 | --- | --- |
 | Real Chrome | Popup/side-panel layout and focus at narrow/wide sizes, QR rendering, clipboard prompt, actual mutual exclusion/toolbar mode, and MV3 worker eviction/restart. Use `docs/MANUAL_SMOKE_CHECKLIST.md`. |
+| Review card in a browser | The v29 card has DOM-level tests and a static fixture harness (`scripts/preview-tx-review.html`), but no real-browser pass at 400px or in the side panel (Dashboard/Send activation and the reviewed flows are DOM-shim only). Checklist §7 lists the specific checks (simple-transfer hierarchy, fee honesty, no simulated balance, blocking warnings, single-use confirm, timeout wording). |
+| Transaction simulation | Not available on the current Thru backend: `tx.simulate` returns `{supported:false}`. Reviews therefore show no post-transaction balances. Enabling it requires a trustworthy dry-run RPC boundary, not a UI change. |
 | Live v12 registration | Creation-time registration and Send JIT for an owned absent recipient on a live enabled network; include offline-vs-absent and exact target signer checks. |
 | Live token transfer | Recipient-owner acceptance when the recipient has never registered, and the actual token-program fee (`scripts/verify-token-transfer.mjs`). |
 | Send/pending races | A network switch after the final preflight while SDK signing is in progress, and concurrent pending-record read/modify/write operations (`docs/SEND_PATH_AUDIT.md`). |
@@ -355,3 +358,82 @@ latency; keep that check open in `docs/MANUAL_SMOKE_CHECKLIST.md`.
 
 > **Lesson:** a block height is meaningful only together with its chain, and optional enrichment
 > RPCs should never run under the lock that protects unrelated cached accounts.
+
+## 9. The shared review card and its two integration seams — FIXED in source/tests
+
+Found while verifying the v29 transaction-review pipeline against Rabby's source and while building
+the browser harness (`scripts/preview-tx-review.html`). Neither was a pipeline bug; both were seams
+where a feature met the shared component.
+
+### 9.1 A feature can re-derive the card's decision and get it wrong — `READ` + `TEST`
+
+The Domain review sheet kept its confirm button enabled by listening for a DOM `change` event on the
+card element, and built that button *after* the card. `TxReviewCard` fires its documented
+`onChange({canConfirm})` from inside its constructor, so the sheet's handler ran before its own
+button existed, and afterwards depended on an event that only bubbles when an acknowledgement input
+changes. A review with no acknowledgements — a plain registration — therefore had one code path
+(render) and no path at all for "confirmability changed".
+
+Fix: every caller declares its confirm control first and passes `onChange`; the card remains the only
+place that decides confirmability. Send already did this; Domain now does, and the faucet route was
+written that way from the start.
+
+> **Lesson:** a shared component's callback contract is the contract. A caller that recreates the
+> decision from DOM events is not "using" the component, it is duplicating it.
+
+### 9.2 Acknowledgement ids were unique per review, not per document — `BROWSER HARNESS`
+
+The card rendered `id="tx-review-ack-<ackId>"`. One card per screen hid it. The harness mounts seven
+cards in one document, and the duplicated ids made a `<label for>` resolve to the first match — so a
+click on card 5 could tick card 3's checkbox. Accessibility and correctness both broken, silently.
+
+Fix: ids are namespaced by a per-instance counter (`tx-review-ack-<instance>-<ackId>`).
+
+> **Lesson:** "one at a time" is a runtime assumption, not a property of the markup. Ids belong to the
+> document, not to the component.
+
+### 9.3 A prepared review could be confirmed twice inside its TTL — `READ`
+
+`tx.confirmReview` did not consume the record, so the same `reviewId` could be confirmed repeatedly
+within 120 s. The handlers' own duplicate guards and the disabled-while-in-flight button were the
+only protection, which is a weaker claim than the pipeline advertises.
+
+Fix: a successful submit discards the review (`submitReviewedReview` → `tx.discardReview`), so a
+replay fails with `REVIEW_NOT_FOUND` and is classified stale. A *failed* submit deliberately keeps
+the review: retrying from the same reviewed facts is safe and avoids a needless re-read.
+
+> **Lesson:** "the downstream guard will catch it" is a reason a bug is survivable, not a reason to
+> leave the upstream hole open.
+
+## 10. Dashboard activated accounts through a signing-gated method — FIXED in source/tests
+
+Found by the new "no UI file names a signing method" scan added in `test/test-tx-review.mjs` [14],
+prompted by a second independent review asking whether any direct signing call remained.
+
+`routes/dashboard.js` fired `tx.autoCreateAccount` (declared `auth: 'signing'`) whenever a live
+balance read reported `exists: false` for the active account. Two problems, one of them user-facing:
+
+1. **It bypassed the v12 activation policy.** Every other activation path — account/keyring creation,
+   Send's JIT path — goes through `tx.registerAccount`, which is `auth: 'unlocked'` precisely
+   because it proves vault ownership, signs with the *target* account's own key, re-checks the
+   network immediately before signing, and declares fee `0n`. The Dashboard path called the older
+   method that signs with whatever the active account is.
+2. **It could never succeed for a user who enabled per-sign password re-auth.** The Dashboard call is
+   fire-and-forget from a background refresh (`.catch(() => {})`). A `signing` method behind the
+   opt-in needs a password argument, and no screen was asking for one, so the call failed silently
+   and the account simply stayed unregistered — with no message anywhere.
+
+Fix: Dashboard now calls `bridge.send('tx.registerAccount', { address: account.address })`, the same
+narrow exception the rest of the wallet uses. `tx.autoCreateAccount` remains in the contract
+(append-only) but has zero UI callers.
+
+Guards: `test/test-tx-review.mjs` [14] scans every `src/ui/**/*.js` for `bridge.send('…')` literals
+(comments stripped), fails on any `auth:'signing'` or unknown method, asserts the sanctioned literals
+are present so the scan cannot pass vacuously, and asserts `tx.autoCreateAccount` has no caller.
+`test/test-route-lifecycle.mjs` mounts Dashboard with `exists:false` and asserts the call is
+`tx.registerAccount`, targets the active address, passes only `{address}` (no password), and never
+touches `tx.autoCreateAccount`.
+
+> **Lesson:** "documented as allowed" is not the same as "reaches the one sanctioned implementation".
+> A capability that is convenient to call directly will be called directly; make the direct call
+> fail in a test, not in a user's wallet.
