@@ -200,7 +200,10 @@ export function TxReviewCard({ review, onChange = null } = {}) {
         h('span', { class: 'tx-review-origin-icon' }, icon(r.protocol.verified ? 'shield' : 'warning', 16)),
         h('div', { class: 'tx-review-origin-copy' }, [
           h('span', { class: 'tx-review-origin-name', text: r.protocol.name }),
-          h('span', { class: 'hint', text: `${r.account.label || 'Active account'} · ${r.account.address}` }),
+          // The signing account by LABEL, not by address: the address is already a fact row on
+          // every send (From) and on every other operation it is in the advanced details. Printing
+          // it twice was the kind of duplication the owner's "too long" review was about.
+          h('span', { class: 'hint', text: `Signing with ${r.account.label || 'the active account'}` }),
         ]),
         badge(r.protocol.verified ? 'Verified program' : 'Unverified program'),
       ]));
