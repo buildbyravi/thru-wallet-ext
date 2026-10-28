@@ -11,13 +11,14 @@ Legend for how each was found:
 guardrail script caught it
 
 
-## Status convention — current as of 2026-09-26
+## Status convention — current as of 2026-10-28
 
 The defects in §§1–4 are **historical**: their old paths and failure descriptions are retained to
 explain the fixes, not to claim those paths still ship. §5 records resolved legacy duplication, not
 a current backlog. The current verification gaps are listed in §6; the popup/side-panel and History
 cross-network fixes in §§7–8 are implemented and locally tested, but their real-Chrome/live-RPC
-checks remain open. Check `src/` before treating any historical symptom as current.
+checks remain open. §9–§12 are v29 review fixes verified in source and the deterministic suite; none
+of them has a real-browser pass. Check `src/` before treating any historical symptom as current.
 
 ---
 
@@ -437,3 +438,182 @@ touches `tx.autoCreateAccount`.
 > **Lesson:** "documented as allowed" is not the same as "reaches the one sanctioned implementation".
 > A capability that is convenient to call directly will be called directly; make the direct call
 > fail in a test, not in a user's wallet.
+
+## 11. The review surface was over-built — FIXED in source/tests
+
+Found by the owner reading the shipped screen, not by a test: "the send view changed too much — make
+it back like the previous one from main", "the Domain register preview is so long users get
+confused", with two of their own Rabby before-sign screenshots as the target shape.
+
+### 11.1 Symptom — `BROWSER` (owner)
+
+A native THRU send rendered **eleven** blocks: an eyebrow + title, a prose summary, a two-column
+"signing account / interaction" box with the program address and provenance, a "What you are doing"
+heading over a table, a "Balance change" heading over one large box plus a "Balance after: not
+available" row and its note, a "Network fee" heading over four rows (fee, reserve, provenance, note)
+and two more hints, a "Simulation unavailable" box, an "Execution details" heading over program +
+instruction + four account roles + a raw toggle, a "Warnings" heading, acknowledgements, and the
+blocked notice. A `.name` registration was longer still, because it has more facts.
+
+The facts were all true; the screen answered "what am I signing?" only after a scroll. The previous
+`main` Send screen had done the same job with one table, and Rabby's before-sign screen shows the
+value, one card and two taps of detail at 400 px.
+
+### 11.2 Root cause — `READ`
+
+Two defaults compounded:
+
+1. **Every decoder fact got a section of its own.** The card's contract said "render the envelope",
+   so each new fact (protocol provenance, simulation status, balance-after note, fee provenance,
+   reserve) was added as a visible block rather than folded into the facts the user needs to decide.
+   The envelope grew; the card grew one section per field, forever.
+2. **The old Send review's information architecture was treated as replaced rather than preserved.**
+   The single `detail-table` with From/To/Amount/fee/total was exactly the right shape for a transfer;
+   it was rebuilt from scratch as three sections, so the screen the owner recognised disappeared
+   instead of becoming the shared one.
+
+### 11.3 Fix
+
+`review-card.js` now renders one table (`detail-table`, the same component as old `main`) with the
+decoder's rows + `Network fee (estimated)`/`Not quoted` + `Total` when arithmetic is possible, above
+it one signed exact value box per movement, above that a one-line program identity, and **one closed
+`Advanced details` disclosure** holding program address/provenance, instructions, account roles, fee
+provenance/reserve/note, the simulation status and the raw toggle. Unknown reviews open that
+disclosure. Decoders dropped the redundant `Network` row (the header badge owns it), the registrar
+row (the protocol line owns it), and the per-year price when it duplicates the total.
+
+### 11.4 A clipped destination address, found while simplifying — `READ`
+
+The first card rendered mono summary values with the shared `.detail-address` class, which is
+`white-space: nowrap; text-overflow: ellipsis`. At the 400 px popup width a 44-character Thru address
+was therefore **visually truncated in the "To" row** of a send review — the destination the user is
+about to pay irreversibly. The full address existed in the DOM (and in `Advanced details`), so no test
+noticed; the old `main` screen deliberately rendered `to` with `word-break: break-all`.
+
+Fix: review values now use `.tx-review-address` (`word-break: break-all`, no ellipsis), so a long
+address wraps to a second line instead of being cut off. `.detail-address` stays for the compact
+account rows that actually want ellipsis.
+
+> **Lesson:** "the data is in the DOM" is not the same as "the user can read it". Any class borrowed
+> from a compact list can silently shorten the one string the decision depends on.
+
+### 11.5 Guards
+
+- `test-tx-review.mjs` [15] fails if the card grows a second table or a third top-level section, if
+  the old section classes return, if any decoder exceeds its row budget, or if any decoder repeats
+  the network in its rows. It also asserts the folded facts still exist in the envelope, so the next
+  simplification cannot become deletion.
+- `test-route-lifecycle.mjs` asserts the rendered DOM through the real Send and Faucet routes: one
+  table, no sections, disclosure closed by default, opening it reveals the program/fee note/simulation
+  without re-preparing the review, and an unmeasured fee prints `Not quoted` rather than a number.
+
+> **Lesson:** a shared component's envelope is a data contract, not a layout. Every new fact does not
+> earn a section; the screen has to stay the size of the decision. And when replacing a screen users
+> already know, the old shape is the baseline to beat, not the thing to throw away.
+
+## 12. The review pipeline's truth-states, store and simulation gate — FIXED in source/tests
+
+Found by an external audit of `2e2178f`, re-checked finding-by-finding at the current head
+(`docs/TX_REVIEW_VERIFICATION.md` §12). Every item below was still true at `983724b`; all are fixed
+with a regression test in `test/test-tx-review.mjs`.
+
+### 12.1 An unreadable mint was reported as a proven absence — `READ` + `TEST`
+
+`review/kinds.js` deliberately keeps `mintExists: null` when `token.readMint` fails, but the decoder
+tested truthiness:
+
+```js
+if (!facts.mintExists) { /* "This mint does not exist on this network", blocking */ }
+```
+
+An RPC outage therefore became an authoritative chain statement, and the review blocked with a fact
+the wallet had not established. Fixed by branching on `=== false` (proven absent, blocking) versus
+`== null` (unreadable, warning; the token handler re-reads the mint before signing).
+
+> **Lesson:** a tri-state fact needs three branches. `!value` silently merges "unknown" into "no",
+> which is the one collapse this wallet's rules exist to prevent.
+
+### 12.2 A failed simulation changed nothing — `READ`
+
+`simulationBlock()` could return `status:'failed'`, but state came only from decoder warnings and the
+card rendered every non-`supported` state as "Simulation unavailable". A dry run that ran and failed
+is *proof the transaction cannot succeed*, so it must block — and "failed" must not read as "we
+couldn't check".
+
+Fix: `simulationWarning()` produces a blocking warning; the service folds it in before computing and
+persisting state; `confirmReview` refuses any record that is not `ready`; the card labels the four
+states distinctly. Dormant today (Thru has no dry-run RPC), which is why it survived: the only tests
+that could exercise it needed a seam that did not exist.
+
+> **Lesson:** a status enum that the UI renders but the gate ignores is decoration. If a state can
+> exist, decide what it means for signing, or delete the state.
+
+### 12.3 Concurrent prepares erased each other — `READ` + `TEST`
+
+`review/store.js` said "single-writer per network" in its header and then did plain
+read-modify-writes. Two prepares from popup and side panel could read the same list and the later
+write dropped the earlier record, so a visible review then answered `REVIEW_NOT_FOUND` for no reason
+the user could see. Fixed with the per-network promise queue `pending-tx-service` already uses.
+Negative control: restoring the old body makes the new put/put test lose a record and the suite fail.
+
+> **Lesson:** "single writer" is a property you enforce, not a comment you write. Any read-modify-write
+> over a shared array needs a queue before the second caller exists.
+
+### 12.4 The faucet review invented an activation and ignored a policy mismatch — `READ` + `TEST`
+
+`accountExists: state.exists === true` turned an unreadable account into "does not exist", so the
+review promised "Your account will be activated first" on no evidence. Separately, the facts carried
+`targetMatchesFaucet:false` (the rate-limit policy belongs to another program) and the decoder never
+showed it, although the confirm-time recheck refused to sign. Fixed: tri-state existence with an
+`account-state-unverified` warning, and a blocking `faucet-target-mismatch`.
+
+> **Lesson:** when a recheck refuses on a fact, the review must show that fact. Otherwise the button
+> is disabled for a reason the user never saw.
+
+### 12.5 The registrar treasury rendered as `unknown` — `READ` + `TEST`
+
+The facts builder emitted `treasurer: cfg.treasurer`; the decoder read `facts.treasury`. The real
+authoritative address was already in hand and the execution table said "unknown". One name is now
+used end-to-end, and a decoder test asserts the address reaches the account table.
+
+> **Lesson:** `?? 'unknown'` hides naming drift. A fallback that turns a missing field into a word
+> makes a type error look like a chain limitation.
+
+### 12.6 "Verified program" could be true with no address — `READ`
+
+Native and token decoders hard-coded `verified: true` while allowing the pinned program id to be
+`null`; the validator did not require the pair. Fixed in both decoders (blocking
+`program-unidentified` when the id is missing) and enforced structurally in `model.js` for the
+protocol and execution program, so no future decoder can repeat it.
+
+> **Lesson:** a trust label is a claim about a specific identifier. The validator is the right place
+> to make "verified without an address" unrepresentable.
+
+### 12.7 What the audit also raised, and why it is not in this section
+
+F-01 (the dormant `intent-service` lifecycle), F-02's general form (direct signing methods remain
+callable; no one-shot authorization), F-05's residual (background `confirmReview` is idempotent by
+design) and F-08 (the Domain lifecycle) are architecture decisions, not defects: each is recorded as
+open in `docs/TX_REVIEW_VERIFICATION.md` §12 rather than "fixed" here. One enforcement gap *was*
+closed on the way: `confirmReview` now refuses a review whose persisted state is not `ready`, so a
+blocked review is no longer confirmable merely because the UI would have disabled the button.
+
+### 12.8 The evidence harness was broken, and one doc claimed it worked — `READ`
+
+`scripts/preview-tx-review.html` is dev-only, but it is the only place a human can see the real
+card against the real stylesheet, so it is the intended input to the browser checklist. It drew
+nothing: its inline script declared the confirm button and the status span *after* constructing the
+card, and `TxReviewCard` reports its initial confirmability synchronously from the constructor, so
+the first callback threw a `ReferenceError` (temporal dead zone) and the module stopped before
+appending the first card. `docs/TX_REVIEW_VERIFICATION.md` §5 had claimed the harness rendered the
+blocked and unknown cards with confirmation disabled; that sentence was removed and replaced with a
+dated correction, because the behaviour was only ever proven by the DOM-shim suite.
+
+Fix (`d45a085`): bindings declared before construction, the full-page pane selects its fixture by
+title instead of array index, and the fixture factory folds the node's simulation block in exactly
+as `review-service` does (`simulationWarning` → `state`), so a new synthetic simulation-rejected
+fixture is unsignable for the same reason the shipped review would be.
+
+> **Lesson:** a harness is part of the evidence, so it gets the same review as the component —
+> and a doc sentence about evidence is a claim that has to be re-checked when the evidence tool
+> changes. A page that serves 200 is not a page that rendered.

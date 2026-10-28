@@ -27,12 +27,27 @@ export function decodeTokenTransfer({ facts }) {
   const acknowledgements = [];
   const symbol = facts.symbol || 'TOKEN';
   const decimals = Number.isInteger(facts.decimals) ? facts.decimals : 0;
+  // Same invariant as the native send: "verified" must name the pinned program it verified.
+  const tokenProgramId = facts.tokenProgramId ?? null;
+  if (!tokenProgramId) {
+    warnings.push(warn('program-unidentified', 'danger',
+      'The token program is not pinned for this network',
+      'The wallet has no verified token-program address for the active network, so it cannot '
+      + 'say which program this transfer calls.', { blocking: true }));
+  }
 
-  if (!facts.mintExists) {
+  // Tri-state on purpose: an RPC failure is NOT proof that the mint is absent. `null` is
+  // "could not read", which is a warning; only a read that returned `exists:false` blocks.
+  if (facts.mintExists === false) {
     warnings.push(warn('mint-absent', 'danger',
       'This mint does not exist on this network',
       'The token program has no account at the mint address, so a transfer cannot be built '
       + 'against it.', { blocking: true }));
+  } else if (facts.mintExists == null) {
+    warnings.push(warn('mint-unverified', 'warning',
+      'The mint account could not be read',
+      'The chain did not answer for this mint, so the wallet cannot prove the transfer would '
+      + 'succeed. The token path re-reads the mint before signing and refuses an absent one.'));
   }
 
   if (!facts.metadataVerified) {
@@ -102,13 +117,13 @@ export function decodeTokenTransfer({ facts }) {
     row('From', facts.fromAddress, { above: facts.fromLabel ?? null, mono: true }),
     row('To', facts.toAddress, { above: facts.recipientLabel ?? null, mono: true }),
     row('Amount', displayAmount(facts.amountUnits, decimals, symbol), { mono: true }),
-    row('Token', facts.name ? `${symbol} — ${facts.name}` : symbol, { mono: true }),
+    // No "Token" row: the title says "Send SMK" and the value box already names the asset. The
+    // mint address stays because it is the only unambiguous identity of a token on Thru.
     row('Mint', facts.mintAddress, { mono: true }),
   ];
   if (createsRecipientAccount) {
     summary.push(row('Recipient token account', 'Created by this send (extra fee)'));
   }
-  summary.push(row('Network', facts.networkLabel ?? ''));
 
   const accounts = [
     accountRole('Source owner', facts.fromAddress),
@@ -134,9 +149,11 @@ export function decodeTokenTransfer({ facts }) {
     },
     protocol: {
       name: 'Thru token program',
-      address: facts.tokenProgramId ?? null,
-      verified: true,
-      source: 'Pinned program address for the active network (src/lib/networks.js)',
+      address: tokenProgramId,
+      verified: Boolean(tokenProgramId),
+      source: tokenProgramId
+        ? 'Pinned program address for the active network (src/lib/networks.js)'
+        : 'No pinned token-program address for the active network',
     },
     summary,
     assets: {
@@ -167,8 +184,8 @@ export function decodeTokenTransfer({ facts }) {
     execution: executionBlock({
       program: {
         name: 'Thru token program',
-        address: facts.tokenProgramId ?? null,
-        verified: true,
+        address: tokenProgramId,
+        verified: Boolean(tokenProgramId),
       },
       instructions: [
         ...(createsRecipientAccount

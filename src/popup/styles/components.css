@@ -1443,8 +1443,10 @@ button.row { cursor: pointer; }
 }
 
 /* The shared review surface (src/ui/domain/tx-review) — one card for every operation type.
-   Section order is fixed by the component: header -> identity -> what you are doing ->
-   balance change -> fee -> simulation -> execution -> warnings -> acknowledgements. */
+   Order is fixed by the component and follows Rabby's before-sign shape: header (operation +
+   network) -> program identity -> value in/out -> one label/value table (facts + estimated
+   fee + total) -> warnings -> one collapsed advanced disclosure -> acknowledgements.
+   Everything technical lives behind that single disclosure; nothing is dropped. */
 
 .tx-review-head {
   display: flex;
@@ -1474,9 +1476,11 @@ button.row { cursor: pointer; }
   font-size: var(--fs-sm);
 }
 
-.tx-review-protocol {
+/* Program identity: Rabby puts the site you are talking to above the transaction; the Thru
+   equivalent is the program, one line, with the wallet's own verified/unverified verdict. */
+.tx-review-origin {
   display: flex;
-  flex-direction: column;
+  align-items: center;
   gap: var(--sp-3);
   padding: var(--sp-3);
   border-radius: var(--radius-md);
@@ -1484,28 +1488,35 @@ button.row { cursor: pointer; }
   border: 1px solid var(--border);
 }
 
-.tx-review-protocol-right {
+.tx-review-origin-icon {
+  display: flex;
+  align-items: center;
+  color: var(--text-2);
+  flex: 0 0 auto;
+}
+
+.tx-review-origin-copy {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-1);
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
-.tx-review-section {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-2);
+.tx-review-origin-name {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--text-1);
+  overflow-wrap: anywhere;
 }
 
-.tx-review-section-title {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: var(--eyebrow-tracking);
-  text-transform: uppercase;
-  color: var(--text-3);
-}
-
-.tx-review-fee-note {
-  margin-top: var(--sp-1);
+/* A review value is evidence, not a preview. `.detail-address` (used by account rows elsewhere)
+   ellipsizes for compactness; a destination address in this card must never be clipped, so mono
+   values wrap instead. A truncated recipient cannot be checked before an irreversible send. */
+.tx-review-address {
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+  word-break: break-all;
 }
 
 .tx-review-ack {

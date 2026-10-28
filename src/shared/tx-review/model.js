@@ -184,6 +184,11 @@ export function assertReviewContent(content, path = 'content') {
     requireString(protocol.name, `${path}.protocol.name`, { max: 96 });
     optionalString(protocol.address, `${path}.protocol.address`, { max: 128 });
     if (typeof protocol.verified !== 'boolean') bad(`${path}.protocol.verified`, 'must be a boolean');
+    // "Verified" is a claim about a specific pinned address. Without the address there is
+    // nothing to have verified, so the pair is refused rather than rendered as trust.
+    if (protocol.verified === true && !protocol.address) {
+      bad(`${path}.protocol.address`, 'must be present when protocol.verified is true');
+    }
     optionalString(protocol.source, `${path}.protocol.source`, { max: MAX_TEXT });
   }
 
@@ -223,6 +228,9 @@ export function assertReviewContent(content, path = 'content') {
     requireString(program.name, `${path}.execution.program.name`, { max: 96 });
     optionalString(program.address, `${path}.execution.program.address`, { max: 128 });
     if (typeof program.verified !== 'boolean') bad(`${path}.execution.program.verified`, 'must be a boolean');
+    if (program.verified === true && !program.address) {
+      bad(`${path}.execution.program.address`, 'must be present when execution.program.verified is true');
+    }
   }
   requireArray(execution.instructions, `${path}.execution.instructions`).forEach((instruction, index) => {
     requireObject(instruction, `${path}.execution.instructions[${index}]`);
@@ -301,6 +309,16 @@ export function assertReview(review, path = 'review') {
   // A "successful" simulation must carry actual results; there is no other way to claim one.
   if (simulation.status === 'supported' && simulation.changes == null) {
     bad(`${path}.simulation.changes`, 'must be present when status is supported');
+  }
+
+  // State and warnings must agree in BOTH directions: "blocked" is only ever the result of a
+  // proven blocking warning, and a "ready" review may not silently carry one.
+  const hasBlocking = review.warnings.some((warning) => warning?.blocking === true);
+  if (review.state === 'blocked' && !hasBlocking) {
+    bad(`${path}.state`, 'a blocked review must carry at least one blocking warning');
+  }
+  if (review.state === 'ready' && hasBlocking) {
+    bad(`${path}.state`, 'a ready review may not carry a blocking warning');
   }
 
   if (review.submitPolicy == null) {

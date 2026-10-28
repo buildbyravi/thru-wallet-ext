@@ -43,12 +43,16 @@ copy or the password flow.
 - **No second signing path:** `test-tx-review.mjs` [14] scans every `src/ui/**/*.js` for
   `bridge.send('…')` literals and fails on any `auth:'signing'` method. It found one — Dashboard's
   `tx.autoCreateAccount` — which is now migrated to `tx.registerAccount`; see `docs/DEFECT_LOG.md` §10.
-- **Completion report and independent-review response:** `docs/TX_REVIEW_VERIFICATION.md` §9 (the
-  owner-required report) and §10 (a second AI review checked claim-by-claim against the code).
+- **Completion report, review responses, simplification:** `docs/TX_REVIEW_VERIFICATION.md`
+  §9 (the owner-required report), §10 (a second AI review checked claim-by-claim against the code),
+  §11 (the 2026-10-28 simplification to Rabby's before-sign shape) and §12 (a third audit's
+  F-01…F-13 re-checked at HEAD; the still-true decoder/store/simulation findings are fixed there,
+  with `docs/DEFECT_LOG.md` §12 recording the defects and lessons).
 
-**TESTED:** `test/test-tx-review.mjs` (89 checks: registry parity, every decoder, malformed and
+**TESTED:** `test/test-tx-review.mjs` (126 checks: registry parity, every decoder, malformed and
 unknown input, amount/fee formatting, binding/TTL/account/network refusals, acknowledgements,
-blocking, discard, code registry, the UI signing-literal scan) and `test/test-route-lifecycle.mjs` (1,059 checks, including the
+blocking, discard, code registry, the UI signing-literal scan, and [15] the one-screen/one-table
+budget for every decoder) and `test/test-route-lifecycle.mjs` (1,065 checks, including the
 Send, Domain and Faucet review flows driven through the real routes). **BUILD:** `npm run build`
 passes, including the layering, CSP, route/CSS and contract gates. **UNVERIFIED:** real-browser
 layout and live-chain behaviour — no browser binary and no network writes were available; the
@@ -163,10 +167,10 @@ Structural properties now enforced by CI rather than by discipline:
 Final deterministic verification on the current tree (contract v29, 2026-10-28):
 
 ```text
-npm test       PASS — 2,193 checks (32 suites + 5 gates): derivation 16; QR 15; layering 126 files / 0 sinks;
-               CSP pass; routes 15/15 with 259 defined CSS classes; CSS nesting pass;
+npm test       PASS — 2,253 checks (32 suites + 5 gates): derivation 16; QR 15; layering 126 files / 0 sinks;
+               CSP pass; routes 15/15 with 257 used CSS classes, all defined; CSS nesting pass;
                launchpad quarantine; contract 161/161; security-checks; DOM/refs;
-               route lifecycle 1,059/1,059; transaction review 89/89; storage migrations;
+               route lifecycle 1,065/1,065; transaction review 143/143; storage migrations;
                vault, Thru client, token/balance, History, registration, API-router,
                pending concurrency, signing/network lock, and auto-lock suites pass.
 npm run build  PASS — generated dist/ from the current source, no warnings.
@@ -288,7 +292,7 @@ What was removed, and what deliberately was not:
 
 This was the largest remaining test gap: `check-routes.mjs` proves a route is *reachable* and its
 classes are *defined*; nothing proved it *mounts*. All three requirements are now asserted, for all
-15 routes, in no-vault / locked / unlocked states (**1,059 checks** in the current run, including
+15 routes, in no-vault / locked / unlocked states (**1,065 checks** in the current run, including
 the reviewed Send/Name/Faucet flows):
 
 1. mount through the real Router, guards, bridge and kit, and assert no throw plus the landing path

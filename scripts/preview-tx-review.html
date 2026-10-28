@@ -19,10 +19,15 @@
     open http://localhost:8000/scripts/preview-tx-review.html
 
   What to look for:
-    - a simple transfer reads as a simple transfer; the domain/faucet sheets carry only the
-      rows that operation actually has;
+    - a simple transfer reads as a simple transfer: header, program line, the signed value,
+      ONE fact table (fee marked "estimated" or "Not quoted"), and one closed disclosure;
+    - the domain/faucet cards carry only the rows that operation actually has — a registration
+      is the name, the duration and the price, not a DeFi position;
     - the blocked sends and the unknown instruction render a disabled confirm, and the
-      unknown case shows raw data behind a disclosure;
+      unknown case opens with its raw facts already showing (its details panel starts open);
+    - the simulation row distinguishes all four node answers: Succeeded, Failed (a blocking
+      verdict, so its fixture is unsignable), Still running, Not available — the last one being
+      the only thing Thru can honestly say today, because it has no dry-run RPC;
     - at the 408px stress width (the real popup is 400px) nothing is clipped, long addresses
       wrap, and the raw-data block scrolls
       horizontally instead of pushing the card wider than the popup;
@@ -93,19 +98,10 @@ for (const fixture of previewFixtures()) {
   const viewport = document.createElement('div');
   viewport.className = 'viewport';
 
-  const state = { canConfirm: false, acknowledgements: [] };
-  const card = TxReviewCard({
-    review: fixture.review,
-    onChange: (next) => {
-      Object.assign(state, next);
-      confirmBtn.disabled = !next.canConfirm;
-      status.textContent = next.canConfirm
-        ? 'confirm enabled'
-        : `confirm disabled${fixture.review.state === 'blocked' ? ' (blocked by the wallet)' : ''}`;
-    },
-  });
-  viewport.appendChild(card.el);
-
+  // Declared BEFORE the card is constructed: the card reports its initial confirmability
+  // synchronously from the constructor, so an onChange that touches later bindings would throw
+  // a ReferenceError and leave this page blank (it did — found while reviewing the 4-way
+  // simulation labels).
   const actions = document.createElement('div');
   actions.className = 'harness-actions';
 
@@ -118,6 +114,18 @@ for (const fixture of previewFixtures()) {
 
   const status = document.createElement('span');
   status.className = 'harness-sub';
+
+  const card = TxReviewCard({
+    review: fixture.review,
+    onChange: (next) => {
+      confirmBtn.disabled = !next.canConfirm;
+      const blocked = fixture.review.state === 'blocked';
+      status.textContent = next.canConfirm
+        ? 'confirm enabled'
+        : `confirm disabled${blocked ? ' (blocked by the wallet)' : ''}`;
+    },
+  });
+  viewport.appendChild(card.el);
 
   actions.appendChild(confirmBtn);
   actions.appendChild(status);
@@ -134,10 +142,29 @@ wideLabel.className = 'harness-label';
 wideLabel.textContent = 'Full-page width (720px)';
 const wideViewport = document.createElement('div');
 wideViewport.className = 'viewport fullpage';
-wideViewport.appendChild(TxReviewCard({ review: previewFixtures()[3].review }).el);
+// By title, not by index: the fixture list grows as shapes are added, and a stale index would
+// quietly show the wrong operation at full width.
+const wideFixture = previewFixtures().find((f) => f.title.startsWith('Domain register'))
+  ?? previewFixtures()[0];
+wideViewport.appendChild(TxReviewCard({ review: wideFixture.review }).el);
 wide.appendChild(wideLabel);
 wide.appendChild(wideViewport);
+
+// The side panel is a real MV3 surface and it is NARROWER than the popup (380 vs 400), so the
+// same card is rendered there too — the simple send, the shape most likely to be looked at in it.
+const panel = document.createElement('div');
+panel.className = 'harness-col';
+const panelLabel = document.createElement('div');
+panelLabel.className = 'harness-label';
+panelLabel.textContent = 'Side-panel width (380px)';
+const panelViewport = document.createElement('div');
+panelViewport.className = 'viewport panel';
+panelViewport.appendChild(TxReviewCard({ review: previewFixtures()[0].review }).el);
+panel.appendChild(panelLabel);
+panel.appendChild(panelViewport);
+
 document.getElementById('grid').appendChild(wide);
+document.getElementById('grid').appendChild(panel);
 
 const root = document.documentElement;
 root.setAttribute('data-theme', 'dark');

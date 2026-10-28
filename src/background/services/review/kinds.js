@@ -267,12 +267,6 @@ async function tokenTransferRecheck(record) {
 // Custom-registrar registration (native fee, self-signed)
 // ---------------------------------------------------------------------------------------
 
-function programIdentity(kind, { name, address, verified, source }) {
-  if (!address) {
-    throw coded('REVIEW_INTERNAL', `No ${kind} program address is pinned for this network.`);
-  }
-  return { name, address, verified, source };
-}
 
 async function domainRegisterFacts(params, { account, network }) {
   if (params.via !== 'custom') {
@@ -511,7 +505,9 @@ async function registryWriteFacts(params, { account, mode }) {
     leaseExists: Boolean(lease.leaseExists),
     domainExists: Boolean(lease.domainExists),
     configAddress: registry.configAddress,
-    treasurer: cfg.treasurer,
+    // The decoder and the execution account table call this `treasury`; emitting `treasurer`
+    // here silently rendered the real address as 'unknown' (audit F-10, 2026-10-28).
+    treasury: cfg.treasurer ?? null,
     nameServiceProgram: cfg.nameServiceProgram,
     program: {
       ...REGISTRY_PROGRAM,
@@ -816,5 +812,3 @@ export function getKind(kind) {
 export function listKinds() {
   return [...KINDS.keys()].sort();
 }
-
-export { programIdentity };

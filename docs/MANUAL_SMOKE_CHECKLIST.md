@@ -302,24 +302,31 @@ wallet; never paste a real seed into DevTools or its command history:
 
 Every value-moving screen now shows the SAME card (`src/ui/domain/tx-review/review-card.js`): Send,
 Send token, `/name` register/purchase/renew/claim, `/faucet` claim. There is no browser evidence for
-it yet — `scripts/preview-tx-review.html` renders seven fixtures against the real `dist/` CSS and the
+it yet — `scripts/preview-tx-review.html` renders eight fixtures against the real `dist/` CSS and the
 real component, but the shim has no layout engine. Run these with a funded Betanet account and an
 amount you are willing to send.
 
-- [ ] **Simple transfer must not look like DeFi.** On `/send`, the card shows exactly: operation name,
-  network, signing account, recipient label (when matched) plus the FULL destination address, exact
-  amount with symbol, fee (or its explicit unknown/unmeasured reason), and one confirm action. No
-  empty sections, no placeholder rows, no technical table unless expanded.
-- [ ] **Header identity.** Network pill says Betanet, the account shown is the source account you
-  selected, and a verified/matched recipient label is visibly distinguished from the raw address.
-- [ ] **Fee honesty.** A native fee shows the measured/assumed provenance and the reserve; a token
-  transfer says the fee is unmeasured (it is never borrowed from the native path). Nothing shows a
-  charged fee before it is charged.
+- [ ] **Simple transfer must not look like DeFi.** On `/send`, the card shows exactly: the operation
+  name + network badge, a one-line program identity, one signed "You pay" box with the exact amount,
+  and ONE table — From, To (label when matched plus the FULL address), Amount, `Network fee
+  (estimated)` or `Not quoted`, and `Total` — followed by `Advanced details ›`. No prose summary, no
+  "balance after" row, no separate fee/simulation/execution sections. If any of those appear, treat
+  it as a defect against `docs/DEFECT_LOG.md` §11.
+- [ ] **Header identity.** Network pill says Betanet, the program line names the program and the
+  signing account, the account is the source account you selected, and a verified/matched recipient
+  label is visibly distinguished from the raw address.
+- [ ] **Fee honesty.** The fee row is labelled as an estimate or `Not quoted`; measured/assumed
+  provenance and the reserve appear under `Advanced details`. A token transfer says the fee is
+  unmeasured (it is never borrowed from the native path). Nothing shows a charged fee before it is
+  charged.
 - [ ] **Simulation is absent, not faked.** No post-transaction balance, no "simulated" success state,
-  and no balance-change table appears. If any of those appear, treat it as a defect.
-- [ ] **Expandable details.** The disclosure expands with the keyboard (Enter/Space), shows the target
-  program/decoded instruction name and raw fields, and does not push the confirm button off-screen at
-  400px. Collapse returns focus to the disclosure control.
+  and no balance-after row appears; `Advanced details` says `Simulation: Not available` with the
+  reason. If a balance is ever predicted, treat it as a defect.
+- [ ] **Expandable details.** The single disclosure is closed by default (open for an undecoded
+  transaction), expands with the keyboard (Enter/Space), shows the program address/provenance, the
+  decoded instruction, account roles, fee provenance, simulation status and the raw-bytes toggle, and
+  does not push the confirm button off-screen at 400px. Collapse returns focus to the disclosure
+  control.
 - [ ] **Warnings block.** Trigger a blocking state if one is reachable (e.g. a stale review after a
   network switch in another trusted page): the confirm control is disabled, the reason is stated, and
   Cancel is still available.

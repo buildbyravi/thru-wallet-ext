@@ -4718,6 +4718,24 @@ async function progressiveSendTest() {
   await settle();
   click(buttons(tokenRoute.el, /^review$/i)[0]);
   await settle();
+
+  // Owner review (2026-10-28): Send goes back to the previous-main shape — one fact table,
+  // the value moving above it, technical detail folded. Asserted on the rendered DOM.
+  const tokenCard = tokenRoute.el.querySelector('.tx-review-card');
+  ok('the send review is one table of From/To/Amount/fee/total, not a stack of sections',
+    tokenCard?.querySelectorAll('.detail-table').length === 1
+      && tokenCard.querySelectorAll('.tx-review-section').length === 0
+      && /From/.test(tokenCard.textContent) && /To/.test(tokenCard.textContent)
+      && /Amount/.test(tokenCard.textContent) && /Network fee/.test(tokenCard.textContent)
+      && /Total/.test(tokenCard.textContent),
+    tokenCard?.textContent?.slice(0, 240));
+  ok('the send review states the outgoing value and labels an unmeasured fee honestly',
+    /\u22121 SMK/.test(tokenCard?.textContent || '')
+      && /Not quoted/.test(tokenCard?.textContent || '')
+      && /Thru token program/.test(tokenCard?.textContent || '')
+      && tokenCard?.querySelector('.tx-review-details')?.classList.contains('hidden') === true,
+    tokenCard?.textContent?.slice(0, 240));
+
   click(buttons(tokenRoute.el, /sign & send/i)[0]);
   await settle();
   ok('token signing uses token.transferChecked, never a native send or legacy token method',
@@ -4793,6 +4811,37 @@ async function faucetReviewTest() {
     Boolean(DOC.querySelector('.tx-review-card')) && /Claim from faucet|Claim THRU/i.test(
       DOC.querySelector('.tx-review-card')?.textContent || ''),
     DOC.querySelector('.tx-review-card')?.textContent?.slice(0, 160));
+
+  // v29 + owner review (2026-10-28): the card must read as one screen — the value it moves,
+  // then one fact table, with the protocol/instruction/fee detail folded away. These are DOM
+  // assertions against the real component; no screenshot is implied.
+  const cardEl = DOC.querySelector('.tx-review-card');
+  ok('the card states the incoming value with an exact, signed amount',
+    /\+0\.00001 THRU/.test(cardEl?.textContent || ''),
+    cardEl?.textContent?.slice(0, 200));
+  ok('the card carries one fact table and no stacked sections',
+    cardEl?.querySelectorAll('.detail-table').length === 1
+      && cardEl?.querySelectorAll('.tx-review-section').length === 0);
+  ok('the technical detail starts folded for a decoded review',
+    cardEl?.querySelector('.tx-review-details')?.classList.contains('hidden') === true);
+  const advancedToggle = [...(cardEl?.querySelectorAll('button') || [])]
+    .find((btn) => btn.textContent === 'Advanced details');
+  click(advancedToggle);
+  await settle();
+  ok('opening the disclosure shows the program, the fee note and the simulation status',
+    prepared.length === 1
+      && !cardEl.querySelector('.tx-review-details').classList.contains('hidden')
+      && /Program/.test(cardEl.querySelector('.tx-review-details').textContent)
+      && /reported in Activity/.test(cardEl.querySelector('.tx-review-details').textContent)
+      && /Simulation/.test(cardEl.querySelector('.tx-review-details').textContent)
+      && advancedToggle.textContent === 'Hide advanced details',
+    JSON.stringify({
+      prepared: prepared.length,
+      hidden: cardEl.querySelector('.tx-review-details').classList.contains('hidden'),
+      toggle: advancedToggle.textContent,
+      text: cardEl.querySelector('.tx-review-details').textContent.slice(0, 120),
+    }));
+
   const reviewConfirm = buttons(DOC.body, /^claim$/i)[0];
   ok('a clean review enables its confirm control', reviewConfirm?.disabled === false,
     `disabled=${reviewConfirm?.disabled}`);

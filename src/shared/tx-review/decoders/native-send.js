@@ -19,6 +19,16 @@ export const NATIVE_SEND_KIND = 'native-send';
 
 export function decodeNativeSend({ facts }) {
   const warnings = [];
+  // A pinned program id is what "verified" refers to. No id, no claim — and because the
+  // signing builder needs that program, its absence is a proven blocker, not a cosmetic gap.
+  const transferProgramId = facts.transferProgramId ?? null;
+  if (!transferProgramId) {
+    warnings.push(warn('program-unidentified', 'danger',
+      'The transfer program is not pinned for this network',
+      'The wallet has no verified program address for the active network, so it cannot say '
+      + 'which program this transfer calls. Refusing to sign is the only safe answer.',
+      { blocking: true }));
+  }
   const acknowledgements = [];
 
   if (facts.selfSend) {
@@ -78,15 +88,16 @@ export function decodeNativeSend({ facts }) {
     },
     protocol: {
       name: 'Thru EOA transfer program',
-      address: facts.transferProgramId ?? null,
-      verified: true,
-      source: 'Pinned program address for the active network (src/lib/networks.js)',
+      address: transferProgramId,
+      verified: Boolean(transferProgramId),
+      source: transferProgramId
+        ? 'Pinned program address for the active network (src/lib/networks.js)'
+        : 'No pinned program address for the active network',
     },
     summary: [
       row('From', facts.fromAddress, { above: facts.fromLabel ?? null, mono: true }),
       row('To', facts.toAddress, { above: facts.recipientLabel ?? null, mono: true }),
       row('Amount', displayAmount(facts.amountUnits, 9, 'THRU'), { mono: true }),
-      row('Network', facts.networkLabel ?? ''),
     ],
     assets: {
       outgoing: [movement({
@@ -112,8 +123,8 @@ export function decodeNativeSend({ facts }) {
     execution: executionBlock({
       program: {
         name: 'Thru EOA transfer program',
-        address: facts.transferProgramId ?? null,
-        verified: true,
+        address: transferProgramId,
+        verified: Boolean(transferProgramId),
       },
       instructions: [instruction('Transfer (EOA program instruction 1)', {
         note: '16 bytes: instruction tag, amount, source and destination account indices. '

@@ -7,7 +7,7 @@ Read `AGENTS.md` first for repository rules, then `docs/STATUS_AND_ROADMAP.md` f
 ## Shipped baseline at a glance
 
 - Contract **v29**: **147 methods** in `src/shared/contract/manifest.js` (81 wallet-core + 43 DeFi M0 surface whose flags are all off + the v19–v29 additive slices, v29 being the review pipeline; machine schema in `src/shared/contract/defi-schema.js` for the DeFi half); **15** registered wallet routes.
-- **One transaction-review pipeline.** Every value-moving screen (native send, token transfer, domain register/purchase/renew/claim, faucet claim) prepares through `tx.prepareReview`, renders `src/ui/domain/tx-review/review-card.js`, and submits through `confirm.js` → `tx.confirmReview` → the operation's existing signing method. `confirmReview` never signs: it re-validates and returns the submit instructions. No UI route signs a value-moving transaction directly (the v12 JIT `tx.registerAccount` activation call in `send.js` is the only direct signing call); an undecodable transaction renders as explicit unknown and cannot be signed.
+- **One transaction-review pipeline.** Every value-moving screen (native send, token transfer, domain register/purchase/renew/claim, faucet claim) prepares through `tx.prepareReview`, renders `src/ui/domain/tx-review/review-card.js`, and submits through `confirm.js` → `tx.confirmReview` → the operation's existing signing method. `confirmReview` never signs: it re-validates and returns the submit instructions, and it refuses any review whose persisted state is not `ready` (a blocking warning, or a simulation that ran and failed). No UI route signs a value-moving transaction directly (the v12 JIT `tx.registerAccount` activation call in `send.js` is the only direct signing call); an undecodable transaction renders as explicit unknown and cannot be signed.
 - Signing requires an unlocked wallet. Password re-authentication defaults off and is an explicit, password-gated Settings opt-in.
 - `tx.registerAccount` self-signs only for an exact vault-owned address. Account/keyring creation paths make bounded, best-effort registration attempts for new addresses. Send JIT-activates only a selected/typed owned recipient after an on-chain absence check; it never registers an external contact. Review waits for activation and shows the matched label above the full address.
 - History is a flat stream without day headers. It paints storage-only cached entries scoped by network and address before fresh feed/pending reads. Block-time provenance is retained; an actual local submission time is only an own-send fallback; otherwise display `Block <slot>`. No per-card fee line is shipped.
@@ -70,26 +70,28 @@ The popup entry `src/popup/popup.js` is a boot stub. The removed legacy screens 
 | `test/test-qr.mjs` | QR generation/encoding (15 checks). |
 | `scripts/check-layering.mjs` | Import boundaries and DOM-sink scan (126 files; zero sinks). |
 | `scripts/check-csp.mjs` | Enabled-network/CSP consistency. |
-| `scripts/check-routes.mjs` | Route registration/reachability (15/15) and used CSS classes (259, all defined). |
+| `scripts/check-routes.mjs` | Route registration/reachability (15/15) and used CSS classes (257, all defined). |
 | `scripts/check-css-nesting.mjs` | Flat-CSS guard. |
 | `scripts/check-panel-tiles.mjs` | Dashboard action/services tile size and grid consistency. |
 | `test/test-launchpad-quarantine.mjs` | Deleted launchpad/DEX/prediction surface remains out of source and `dist/` (66 checks). |
 | `test/test-contract.mjs` | Manifest/router/UI agreement and security invariants, v29 / 147 methods (161 checks). |
 | `test/test-ui-dom.mjs` | DOM safety and reference codec. |
-| `test/test-route-lifecycle.mjs` | All 15 routes through Router/guards/bridge, teardown, secrets, focus, Send/Domain/Faucet review flows, Dashboard activation, History, panel behavior (1,059 checks). |
-| `test/test-tx-review.mjs` | The review pipeline: registry↔kind parity, every decoder, malformed and unknown input, amount/fee formatting, binding/TTL/account/network refusals, acknowledgements, blocking, discard, the central error-code registry, and the UI signing-literal scan (89 checks). |
+| `test/test-route-lifecycle.mjs` | All 15 routes through Router/guards/bridge, teardown, secrets, focus, Send/Domain/Faucet review flows, Dashboard activation, History, panel behavior (1,065 checks). |
+| `test/test-tx-review.mjs` | The review pipeline: registry↔kind parity, every decoder, malformed and unknown input, amount/fee formatting, binding/TTL/account/network refusals, acknowledgements, blocking, discard, the central error-code registry, and the UI signing-literal scan and the one-screen/compactness guards (143 checks). |
 | `test/test-vault.mjs`, `test/test-thru-client.mjs` | Vault/SDK integration, instruction and decoder behavior. |
 | `test/test-token-balances.mjs`, `test/test-balance-network.mjs` | Token denomination, proven-zero/unknown, network-scoped reads/caches. |
 | `test/test-history-cache.mjs`, `test/test-history-block-time.mjs` | Cache-first History, timestamp provenance, network/slot isolation, races, paging. |
 | `test/test-registration.mjs` | Owned-account registration policy and bounded retries with deterministic SDK fixtures. |
 | `test/test-api-router.mjs` | Auth, context, serialization, background dispatch, and send/registration integration. |
 
-The suite is **2,193 checks across 32 test suites plus 5 build gates** (2026-10-28). Use the final test output for any subsequent refresh. They are deterministic/local evidence only. Real-browser and live-chain checks are separate.
+The suite is **2,253 checks across 32 test suites plus 5 build gates** (2026-10-28). Use the final test output for any subsequent refresh. They are deterministic/local evidence only. Real-browser and live-chain checks are separate.
 
 Visual harness: `scripts/preview-tx-review.html` renders the real `TxReviewCard` with the real built
-`dist/popup.css` for seven fixtures (`scripts/preview-tx-review.fixtures.js`), served by
+`dist/popup.css` for eight fixtures (`scripts/preview-tx-review.fixtures.js`), served by
 `node scripts/serve-dist.mjs --root . --port 8000`. It is a layout aid, not a test: there is no
-browser binary in CI, so no layout assertion is automated. The human runbook is
+browser binary in CI, so no layout assertion is automated. One fixture is SYNTHETIC (a simulation
+rejection — Thru has no dry-run RPC, so no node returns one today); it exists to keep the card's
+four simulation words honest. The human runbook is
 `docs/MANUAL_SMOKE_CHECKLIST.md` §7.
 
 ## 4. `src/lib/` — vault and Thru client
@@ -129,9 +131,9 @@ Network/program configuration. Betanet is enabled; Localnet, Testnet and Mainnet
 | `services/auth-service.js` | 99 | Persisted unlock throttle/backoff |
 | `services/system-service.js` | 192 | Inactivity auto-lock, activity, diagnostics |
 | `services/event-service.js` | 67 | Background push events |
-| `services/review-service.js` | 326 | v29 review pipeline: `prepareReview` / `confirmReview` / `discardReview`; binding hash, TTL, rechecks. Never signs |
-| `services/review/kinds.js` | 733 | The ONLY kind → facts + recheck + existing-submit-method table (8 kinds) |
-| `services/review/store.js` | 91 | Network-scoped prepared-review records (`tx_reviews`), schema v1, TTL on read, cap 40 |
+| `services/review-service.js` | 344 | v29 review pipeline: `prepareReview` / `confirmReview` / `discardReview`; binding hash, TTL, rechecks. Never signs |
+| `services/review/kinds.js` | 727 | The ONLY kind → facts + recheck + existing-submit-method table (8 kinds) |
+| `services/review/store.js` | 113 | Network-scoped prepared-review records (`tx_reviews`), schema v1, TTL on read, cap 40 |
 | `services/registrar-service.js` | 625 | Official `.thru` registry reads/writes and the custom-registrar provider |
 | `services/name-service.js` | 368 | Name-service lookups, availability, canonical root |
 | `services/primary-name-service.js` | 142 | Wallet-local, network-scoped primary name (links only after an owner match) |
@@ -165,9 +167,9 @@ No DOM or `chrome.*` access. Contract **v29** has **147 methods**. Security-poli
 | `side-panel.js` | 17 | Side-panel context marker/action |
 | `security-checks.js` | 184 | Shared password/security validation used by Settings and the router |
 | `tokens.js` | 13 | `NATIVE_TOKEN`: THRU, 9 decimals (the scale `format.js` and every decoder use) |
-| `tx-review/model.js` | 331 | The review wire contract, strict validator, TTL, and the ONE error-code registry |
+| `tx-review/model.js` | 349 | The review wire contract, strict validator, TTL, and the ONE error-code registry |
 | `tx-review/registry.js` | 75 | Decoder registry; no fallback, duplicate registration throws |
-| `tx-review/decoders/*` | 1,086 | `common`, `native-send`, `token-transfer`, `domain`, `faucet-claim`, `raw`, `index` — pure facts → content |
+| `tx-review/decoders/*` | 1,151 | `common`, `native-send`, `token-transfer`, `domain`, `faucet-claim`, `raw`, `index` — pure facts → content |
 
 Network-specific balances, pending transactions, token state, and History are kept separate by network where applicable. Vault keys, account labels, and contacts are global wallet/device state.
 
@@ -177,7 +179,7 @@ Network-specific balances, pending transactions, token state, and History are ke
 
 `src/ui/kit/`: `dom.js` (285), `icon.js` (241), `button.js` (171), `field.js` (193), `feedback.js` (124), `focus-trap.js` (189), `help-tooltip.js` (68), `sheet.js` (117), `toast.js` (145).
 
-`src/ui/domain/`: account-avatar (60), account-row (151), account-picker (155), asset-selector (136), balance-hero (111), current-connection (118), fresh-phrase (33), panel-item (57), password-prompt (153), seed-phrase-grid (160), token-avatar (49), token-row (123), token-drawer (483), tx-card (243), tx-detail-sheet (311), security-sheet (186), and `tx-review/`: `review-card.js` (323 — the one review surface) + `confirm.js` (148 — the one confirm→auth→submit path).
+`src/ui/domain/`: account-avatar (60), account-row (151), account-picker (155), asset-selector (136), balance-hero (111), current-connection (118), fresh-phrase (33), panel-item (57), password-prompt (153), seed-phrase-grid (160), token-avatar (49), token-row (123), token-drawer (483), tx-card (243), tx-detail-sheet (311), security-sheet (186), and `tx-review/`: `review-card.js` (380 — the one review surface) + `confirm.js` (148 — the one confirm→auth→submit path).
 
 ### Router and route files
 
@@ -193,7 +195,7 @@ Network-specific balances, pending transactions, token state, and History are ke
 | `/add-account` | `routes/add-account.js` | 438 |
 | `/keyring?id=` | `routes/keyring.js` | 203 |
 | `/export?ref=` | `routes/export.js` | 361 |
-| `/send` | `routes/send.js` | 1,211 |
+| `/send` | `routes/send.js` | 1,206 |
 | `/receive` | `routes/receive.js` | 179 |
 | `/faucet` | `routes/faucet.js` | 462 |
 | `/name` | `routes/name.js` (+ `name-providers.js`) | 883 (+12) |
