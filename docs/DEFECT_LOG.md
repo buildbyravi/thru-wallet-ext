@@ -17,8 +17,8 @@ The defects in §§1–4 are **historical**: their old paths and failure descrip
 explain the fixes, not to claim those paths still ship. §5 records resolved legacy duplication, not
 a current backlog. The current verification gaps are listed in §6; the popup/side-panel and History
 cross-network fixes in §§7–8 are implemented and locally tested, but their real-Chrome/live-RPC
-checks remain open. §9–§12 are v29 review fixes verified in source and the deterministic suite; none
-of them has a real-browser pass. Check `src/` before treating any historical symptom as current.
+checks remain open. §9–§12 are v29 review fixes verified in source and the deterministic suite, and §13 audits the
+v30 domain merge; none of them has a real-browser pass. Check `src/` before treating any historical symptom as current.
 
 ---
 
@@ -617,3 +617,93 @@ fixture is unsignable for the same reason the shipped review would be.
 > **Lesson:** a harness is part of the evidence, so it gets the same review as the component —
 > and a doc sentence about evidence is a claim that has to be re-checked when the evidence tool
 > changes. A page that serves 200 is not a page that rendered.
+
+---
+
+## 13. The v30 domain merge — audit of `3276245` (2026-10-28)
+
+Full findings, evidence and the commands that produced them: `docs/audits/2026-10-28-sync-audit.md`.
+Summary: `npm test` 2,326 checks, build PASS. D-1 and D-2 are fixed with negative controls; D-3,
+D-4 are reported and need an owner/contract decision; D-5, D-6 are documentation defects, fixed.
+
+### 13.1 A custom-registrar renewal rendered in the wrong currency — `READ` + `TEST`
+
+`domainCustomRenewFacts` emits native THRU facts with no `payment` block, and `decodeDomainRenew`
+had no `provider:'custom'` branch, so the registry rows formatted 2,000 base units with the
+payment-token fallback (`symbol 'TOKEN'`, `decimals 0`) and the card read **"Total price 2000
+TOKEN"**. The branch written for this case sat in `decodeDomainPurchase` — a kind whose facts are
+always `provider:'registry'`, so it was unreachable — and threw `ReferenceError: warnings is not
+defined` the moment it ran.
+
+Fix: one currency decision for the registrar family (`priceUnit`/`priceRow`/`totalRow`), a real
+custom branch in `decodeDomainRenew` (native THRU, custom registrar identity, best-effort quote
+warning, expiry still not computed), and deletion of the dead branch. `test-tx-review.mjs` `[3]`
+now asserts the currency, the protocol name, the warning, the low-balance block, and that no domain
+decoder throws or mislabels a currency for an unexpected provider.
+
+> **Lesson:** a decoder branch that the background cannot reach is untested code with a comment
+> around it. Drive every branch with the facts its kind actually emits — and with facts another
+> provider would emit, because that is how the unreachable branch was written in the first place.
+
+### 13.2 A name-resolved recipient lost its name before the review — `READ` + `TEST`
+
+The Send route learned to resolve `alice.thru` (contract v30) and passed `recipientLabel` into
+`tx.prepareReview`; both send kinds overwrote it with the address-book label, so the review showed
+a bare address the user could not connect to what they typed. The decoder already renders a label
+above the address — only the background dropped it.
+
+Fix: `resolvedRecipientLabel(params)`, bounded and display-only, used by both kinds. `[2b]` asserts
+the card shows the name above the exact reviewed address and that both kinds read it.
+
+> **Lesson:** when a route starts passing a new field, grep the consumer for it. A param nothing
+> reads is a silent no-op with a confident call site.
+
+### 13.3 The registrar fee is best-effort on chain, and the card claimed it would be taken — `READ`
+
+`processor.rs` performs the fee as `let _ = mgr.account_transfer(...)`, so a charge the VM refuses
+does not fail the registration; `describeTcrError` gained the `0xd20a` "fee transfer failed (account
+not writable)" mapping in the same merge, which is the live failure that motivated it. The review
+said "Charged by the registrar program itself, in THRU base units" and blocked a low balance with
+"so the program would reject it" — both false statements about the deployed program.
+
+Corrected to what is provable: the movement note and the `quote-not-final` warning say the debit is
+best-effort and decided on-chain, and the insufficiency warning says the **wallet** will refuse
+(which is exactly what `registrar-service.js` does). **Open:** whether the program should fail the
+charge, use a writable treasury, or drop the price. Until then a shown price is a declared price,
+and the handler's balance refusal can block a renewal the program would perform for free.
+
+> **Lesson:** a review may describe the intent, but it may only promise what the deployed program
+> provably does. When the program swallows an error, "you will pay" is a fabrication.
+
+### 13.4 The batch registration queue is unreachable — and renders no review if reached — `READ`
+
+`55703d0` added a registration queue and a `Register N names` loop that prepares each review and
+calls `submitReviewedReview` **without rendering the review card**. The only control that starts it
+is created hidden and never un-hidden (`grep queueBtn.classList` → one `add('hidden')`), so the
+whole flow is dead code today. Revealed, it would be a feature-owned signing loop that shows a
+password prompt instead of a decoded review.
+
+Not changed here: it is the owner's in-flight feature and the fix is a product decision (delete it,
+or gate each item behind the card). Docs no longer claim multi-entry controls were deleted.
+
+> **Lesson:** dead code that can sign is not neutral. Either delete it in the same change that
+> orphans it, or leave a failing guard that says it must not be revealed as-is.
+
+### 13.5 Merge-conflict markers were committed — `READ`
+
+`docs/STATUS_AND_ROADMAP.md` shipped `<<<<<<< HEAD` / `=======` / `>>>>>>>` between the review and
+domain sections; both sides were kept (deduplicated) and the stale counts in them corrected. No
+test reads Markdown, so only a diff review catches this.
+
+> **Lesson:** `git diff --check` and a merge-conflict grep belong in the release checklist, not only
+> in a reviewer's head.
+
+### 13.6 Documentation contradicted the code — `READ`
+
+`docs/BACKEND_GAPS.md` said custom "lease renewal/claim is not wired" (renewal is wired; claim is
+not) and, with `STATUS_AND_ROADMAP.md`, that multi-entry controls were deleted (see 13.4).
+Current-state figures were one merge stale: v29/147 methods → v30/152, 2,253 → 2,326 checks,
+143 → 152 review checks, 1,065 → 1,104 lifecycle checks, 257 → 262 CSS classes.
+
+> **Lesson:** a "current state" line is a claim with a commit behind it. Re-read it against the
+> tree in the same pass that adds the feature, or it becomes the next audit's finding.

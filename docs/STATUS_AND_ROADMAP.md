@@ -14,10 +14,7 @@ Single source of truth for the **shipped baseline**, what automated evidence pro
 
 Companion docs: `docs/DOCS_INDEX.md` · `docs/PROJECT_LEDGER.md` · `CONTEXT.md` · `docs/MODULE_BOUNDARIES.md` · `docs/BACKEND_GAPS.md` · `docs/BUILD_SPEC.md` · `docs/MANUAL_SMOKE_CHECKLIST.md` · `docs/SEND_PATH_AUDIT.md`.
 
-<<<<<<< HEAD
-## Domain route and tracked registry (2026-10-27)
-=======
-## Transaction review pipeline (contract v29, 2026-10-28)
+## Transaction review pipeline (introduced in v29; the current contract is v30)
 
 Every value-moving screen prepares a typed intent through `tx.prepareReview`, renders the ONE
 `TxReviewCard`, and submits through `submitReviewedReview` (confirm → optional password → the
@@ -49,26 +46,40 @@ copy or the password flow.
   F-01…F-13 re-checked at HEAD; the still-true decoder/store/simulation findings are fixed there,
   with `docs/DEFECT_LOG.md` §12 recording the defects and lessons).
 
-**TESTED:** `test/test-tx-review.mjs` (126 checks: registry parity, every decoder, malformed and
+**TESTED:** `test/test-tx-review.mjs` (152 checks: registry parity, every decoder, malformed and
 unknown input, amount/fee formatting, binding/TTL/account/network refusals, acknowledgements,
-blocking, discard, code registry, the UI signing-literal scan, and [15] the one-screen/one-table
-budget for every decoder) and `test/test-route-lifecycle.mjs` (1,065 checks, including the
+blocking, discard, code registry, the UI signing-literal scan, [15] the one-screen/one-table
+budget for every decoder, and [2b] the name a recipient was resolved from reaching the card) and `test/test-route-lifecycle.mjs` (1,104 checks, including the
 Send, Domain and Faucet review flows driven through the real routes). **BUILD:** `npm run build`
 passes, including the layering, CSP, route/CSS and contract gates. **UNVERIFIED:** real-browser
 layout and live-chain behaviour — no browser binary and no network writes were available; the
 harness `scripts/preview-tx-review.html` is the recorded human runbook for the former.
 
-## Domain route status (2026-10-27)
->>>>>>> origin/arena/0439c226-thru-wallet-ext
+## Domain route, tracked registry and custom renewal (2026-10-28)
 
-The `/name` route has Register, My Domains, and Renew sections, a single-name search and
-quote, and a bottom-sheet review before the existing `name.*` signing handlers. The inline
-review, multi-entry controls, batch copy, and unused amount aggregator are deleted.
-Register offers `.thru` only, automatically selecting the verified
+The `/name` route has two tabs — Register and My Domains — with a single-name search and quote,
+and a bottom-sheet review before the existing `name.*` signing handlers. Renewal is an action on a
+domain, not a third tab. Register offers `.thru` only, automatically selecting the verified
 deployed custom registrar first and the official paid registry only when that is the available
 `.thru` route. It does not query `.id` availability or offer `.id` minting; `.id` lookup and
 resolution remain available through name lookup. Quotes use BigInt. Native THRU uses
 the shared 9-decimal definition; paid-registry token decimals come from the on-chain mint.
+
+- **Custom-registrar renewal is wired (contract v30).** A `.thru` lease owned through the custom
+  registrar is renewed with `name.renewLease` + `via:'custom'`; the review is the same
+  `domain-renew` card, priced in native THRU (a 2026-10-28 audit found it rendering the payment
+  token instead — `docs/DEFECT_LOG.md` §13.1).
+- **The registrar's fee is best-effort on chain.** `contracts/thru-custom-registrar` debits the
+  treasury with `let _ = account_transfer(..)`, so a charge that cannot be made does not fail the
+  registration; the error mapping added in `2f98b5a` (`0xd20a`, "fee transfer failed") is the
+  evidence. The card therefore states that the debit is best-effort and is not a guarantee
+  (`quote-not-final`). Whether the program should refuse instead is an open contract decision,
+  not a wallet claim — §13.3.
+- **The batch registration queue is in source but unreachable.** A queue and a
+  "Register N names" loop were added in `55703d0`, but the control that reveals them is never
+  un-hidden, and that loop submits prepared reviews without rendering the review card. If the
+  queue is meant to ship it needs a review gate per item; until then it is dead code with a
+  signing loop in it — §13.4.
 
 **TESTED**: the Domain focused suites and the project suite cover formatting, validation,
 eligibility, reviewed account/network/price/expiry facts, unknown submission outcomes, and
@@ -167,10 +178,10 @@ Structural properties now enforced by CI rather than by discipline:
 Final deterministic verification on the current tree (contract v29, 2026-10-28):
 
 ```text
-npm test       PASS — 2,253 checks (32 suites + 5 gates): derivation 16; QR 15; layering 126 files / 0 sinks;
-               CSP pass; routes 15/15 with 257 used CSS classes, all defined; CSS nesting pass;
+npm test       PASS — 2,326 checks (32 suites + 5 gates): derivation 16; QR 15; layering 126 files / 0 sinks;
+               CSP pass; routes 15/15 with 262 used CSS classes, all defined; CSS nesting pass;
                launchpad quarantine; contract 161/161; security-checks; DOM/refs;
-               route lifecycle 1,065/1,065; transaction review 143/143; storage migrations;
+               route lifecycle 1,104/1,104; transaction review 152/152; storage migrations;
                vault, Thru client, token/balance, History, registration, API-router,
                pending concurrency, signing/network lock, and auto-lock suites pass.
 npm run build  PASS — generated dist/ from the current source, no warnings.
@@ -292,7 +303,7 @@ What was removed, and what deliberately was not:
 
 This was the largest remaining test gap: `check-routes.mjs` proves a route is *reachable* and its
 classes are *defined*; nothing proved it *mounts*. All three requirements are now asserted, for all
-15 routes, in no-vault / locked / unlocked states (**1,065 checks** in the current run, including
+15 routes, in no-vault / locked / unlocked states (**1,104 checks** in the current run, including
 the reviewed Send/Name/Faucet flows):
 
 1. mount through the real Router, guards, bridge and kit, and assert no throw plus the landing path

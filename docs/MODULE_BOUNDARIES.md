@@ -15,7 +15,7 @@ Current code structure for the wallet core is:
 src/ui/app/routes → bridge.send() → v29 contract/router → background services → vault / thru-client
 ```
 
-The current contract has 147 methods (81 wallet-core + 43 flag-off DeFi M0 + the v19–v29 additive
+The current contract has 152 methods (81 wallet-core + 43 flag-off DeFi M0 + the v19–v29 additive
 slices). Value-moving routes reach signing only through the shared review pipeline
 (`tx.prepareReview` → `TxReviewCard` → `tx.confirmReview` → the operation's existing signing
 method; `confirmReview` itself re-validates and returns the submit instructions, it never signs). Signing requires an unlocked wallet; password re-authentication
@@ -295,7 +295,7 @@ node test/test-feature-prediction.mjs
 - All 15 routes mount through the real Router/guards/bridge under the deterministic DOM shim (`test/test-route-lifecycle.mjs`).
 - Signing methods use the background `auth: 'signing'` policy (v5); its password re-auth preference defaults off and can be enabled only through the password-gated security-settings API.
 - Custom-network activation is rejected and stale active IDs are healed before RPC binding (v7).
-- v8–v15 additions include token balances/transfers, History feed/detail, checked Send context, owned-account registration, storage-only cached History, chain mint reads, and duplicate checks. Contract v16 retires unbound legacy send methods after zero shipped callers. v17–v28 append the flag-off DeFi surface, the primary name, the official and custom registrars, faucet limits, token discovery and cached balances, and reviewed name facts. **Contract v29 appends the shared transaction review** (`tx.prepareReview` / `tx.confirmReview` / `tx.discardReview`). Current source authority is `src/shared/contract/manifest.js` (v29, 147 methods).
+- v8–v15 additions include token balances/transfers, History feed/detail, checked Send context, owned-account registration, storage-only cached History, chain mint reads, and duplicate checks. Contract v16 retires unbound legacy send methods after zero shipped callers. v17–v28 append the flag-off DeFi surface, the primary name, the official and custom registrars, faucet limits, token discovery and cached balances, and reviewed name facts. **Contract v29 appends the shared transaction review** (`tx.prepareReview` / `tx.confirmReview` / `tx.discardReview`). Current source authority is `src/shared/contract/manifest.js` (v30, 152 methods).
 
 ### Phase B — quarantine legacy launchpad — DONE
 

@@ -41,7 +41,7 @@ Current shipped facts, cross-checked against `src/` on 2026-10-28 (see `docs/PRO
 | Area | Shipped state |
 | --- | --- |
 | UI stack | One popup/side-panel route stack; 15 registered routes. |
-| Contract | v29, 147 methods (81 wallet-core + 43 flag-off DeFi M0 + the v19–v29 additive slices); `src/shared/contract/manifest.js` is authoritative. |
+| Contract | v30, 152 methods (81 wallet-core + 43 flag-off DeFi M0 + the v19–v29 additive slices); `src/shared/contract/manifest.js` is authoritative. |
 | Signing | Signing requires an unlocked wallet. Password re-auth defaults off and is a password-gated Settings opt-in. |
 | Registration | v12 `tx.registerAccount` is unlocked-only and restricted to exact vault-owned accounts; it is used for bounded creation-time activation and Send JIT, never arbitrary contacts or periodic signing. |
 | Send | Review pins the source account/network through checked methods; an unregistered owned recipient must finish JIT activation before Review. |

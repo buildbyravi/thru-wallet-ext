@@ -1,6 +1,6 @@
 # Backend capability inventory and open gaps
 
-**Status as of 2026-10-28:** the originally identified Tier A and Tier B capabilities are implemented. This file distinguishes shipped code from behavior that is still unsupported or requires live-chain verification. Contract **v29** has **147** methods (81 wallet-core + the 43-method gated-off DeFi M0 contract surface declared 2026-10-05 — handlers answer explicit unsupported/`FEATURE_DISABLED` states; no DeFi live evidence yet — plus the v19–v29 additive slices, v29 being the shared transaction-review trio); `src/shared/contract/manifest.js`, its router handlers, and tests are authoritative.
+**Status as of 2026-10-28:** the originally identified Tier A and Tier B capabilities are implemented. This file distinguishes shipped code from behavior that is still unsupported or requires live-chain verification. Contract **v30** has **152** methods (81 wallet-core + the 43-method gated-off DeFi M0 contract surface declared 2026-10-05 — handlers answer explicit unsupported/`FEATURE_DISABLED` states; no DeFi live evidence yet — plus the v19–v29 additive slices, v29 being the shared transaction-review trio); `src/shared/contract/manifest.js`, its router handlers, and tests are authoritative.
 
 | Tier | Meaning | Status |
 | --- | --- | --- |
@@ -48,9 +48,10 @@ registrar first, with the official paid `.thru` registry as fallback when that i
 registrar. It does not query `.id` availability or offer `.id` minting. Name lookup still reads
 explicit `.id` roots, so resolution remains available. The route formats prices using the mint
 decimals returned by `token.readMint`, and formats native THRU with the shared 9-decimal asset
-definition. Registration is single-name only, with a bottom-sheet review; multi-entry controls
-and batch totals are deleted. The official paid registrar's `name.renewLease` operation is the supported
-meaning of “extend.”
+definition. Registration is single-name, with a bottom-sheet review. A queue/batch control
+exists in source (`55703d0`) but is never revealed, and its submit loop renders no review card, so
+it is not a supported flow — see `docs/DEFECT_LOG.md` §13.4. The official paid registrar's
+`name.renewLease` operation is the supported meaning of “extend.”
 
 **VERIFIED AGAINST LIVE NETWORK (read-only, Betanet, 2026-10-26)**: the `.thru` paid-registry
 config is absent; the custom `.thru` registrar is present, root-matched, and quotes 1,000 native
@@ -82,7 +83,14 @@ payment behavior.
   local persistence fails after confirmation.
 - Betanet's official paid `.thru` registry is not initialized, so its paid registration and lease
   renewal/claim handlers return unsupported there. The custom registrar is the live `.thru`
-  offer, but custom lease renewal/claim is not wired in the wallet.
+  offer: **registration and renewal are wired** (`domain-register`, and `domain-renew` with
+  `via:'custom'`, contract v30); custom-lease **claim is not**.
+- **The custom registrar's fee is not guaranteed to be collected.** Its `renew`/`register`
+  instructions call `account_transfer` and discard the result (`let _ =`), so a charge that the
+  VM refuses does not fail the transaction. The review prices the declared fee in native THRU and
+  labels it best-effort (`quote-not-final`); the handlers still refuse to sign when the account
+  cannot cover it. Whether the program should fail the charge instead is an open contract
+  decision (`docs/DEFECT_LOG.md` §13.3).
 - `.id` supports name-service lookup and has no lease-renewal operation. The Domain route treats
   it as resolution-only. The lower-level generic name-service write remains self-signed and
   refuses a signer that is not the parsed root authority (`NAME_PARENT_AUTHORITY`); the Betanet

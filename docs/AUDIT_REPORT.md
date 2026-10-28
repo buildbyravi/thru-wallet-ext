@@ -21,11 +21,12 @@ Baseline evidence (re-run green 2026-10-04): `npm run build` PASS · `npm test` 
 (derivation 16/16, contract 80/80, lifecycle 1017/1017, 1647 assertions) ·
 `npm audit --omit=dev` 0 vulnerabilities.
 
-**Refresh (2026-10-28, no new audit performed).** The tree has since advanced to contract **v29**
-with **147 methods** and **15 routes**; `npm test` is **2,253 checks (32 suites + 5 gates)**, `npm run build`
-PASS, layering 126 files / 0 DOM sinks, `check-routes` 15/15 with 257 used classes, all defined. The v29
+**Refresh (2026-10-28, no new audit performed).** The tree has since advanced to contract **v30**
+with **152 methods** and **15 routes**; `npm test` is **2,326 checks (32 suites + 5 gates)**, `npm run build`
+PASS, layering 126 files / 0 DOM sinks, `check-routes` 15/15 with 262 used classes, all defined. The v29
 change is the owner-directed shared transaction-review pipeline; its verification record, including
-the fixes found during review, is `docs/TX_REVIEW_VERIFICATION.md`. That record adds **no** live-chain
+the fixes found during review, is `docs/TX_REVIEW_VERIFICATION.md`. v30 adds the tracked-domain
+registry and the custom-registrar renewal path, audited in `docs/audits/2026-10-28-sync-audit.md`. That record adds **no** live-chain
 or browser evidence: the review card still has no real-browser pass (checklist §7), and no review
 has been confirmed against a funded Betanet account. The 2026-10-04 findings F-01…F-08 remain fixed;
 this refresh changes counts and adds a feature, not the audit conclusion.

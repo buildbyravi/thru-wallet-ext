@@ -7,7 +7,7 @@ config, a scoped storage key, or a live chain read (never a guess).
 > **Refresh 2026-10-28.** The verdicts below still hold; only the pointers age. Specific line
 > numbers (e.g. `faucet.js:230`, `token-service.js:87`) refer to the 2026-10-09 tree — those files
 > have since grown and the faucet screen was rebuilt around the shared review card. Contract is
-> now **v29** (147 methods, 15 routes): a faucet claim and every name write now go through
+> now **v30** (152 methods, 15 routes): a faucet claim and every name write now go through
 > `tx.prepareReview` → `tx.confirmReview`, which re-checks the bound account/network before
 > dispatching to the same signing method. Simulation remains unavailable on every network
 > (`tx.simulate` → `supported:false`), so no mainnet-readiness claim may imply simulated

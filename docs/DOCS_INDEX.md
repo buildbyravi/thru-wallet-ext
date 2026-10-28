@@ -1,6 +1,6 @@
 # Documentation index
 
-Date: 2026-10-05; refreshed 2026-10-28 (contract v29, shared transaction review).
+Date: 2026-10-05; refreshed 2026-10-28 (contract v30, shared transaction review + tracked domains).
 Purpose: map the maintained documentation and point readers to the implementation and verification sources of truth. Documentation summarizes the code; it does not override it.
 
 ---
@@ -27,6 +27,8 @@ Purpose: map the maintained documentation and point readers to the implementatio
 
 1. `docs/TX_REVIEW_VERIFICATION.md` — what v29 is, the Rabby study, the claim-by-claim verdict, and the
    defects found and fixed while reviewing it.
+2. `docs/audits/2026-10-28-sync-audit.md` — the audit of the v30 domain merge: what shipped, what
+   was broken, and what is still open (`docs/DEFECT_LOG.md` §13).
 2. `docs/ARCHITECTURE.md` — the review/signing boundary and its authorities.
 3. `src/shared/tx-review/` and `src/background/services/review/` — the contract, decoders, kinds and
    store; `src/ui/domain/tx-review/` — the one card and the one confirm path.

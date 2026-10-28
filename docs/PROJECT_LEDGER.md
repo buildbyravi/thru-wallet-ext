@@ -13,8 +13,8 @@ The identifier refresh is based on the audited source at `7883219` plus the 2026
 | --- | --- |
 | Repository | `buildbyravi/thru-wallet-ext` |
 | Audited implementation baseline | `7883219` (`arena/01a10602-thru-wallet-ext`, 2026-10-04 audit) |
-| Contract version | **v29** (2026-10-28). The v18 figure below in §3 is the historical M0 measurement; `CONTRACT_VERSION` in `src/shared/contract/manifest.js` is authoritative. |
-| Contract methods | **147**, counted from `Object.keys(METHODS)` in `src/shared/contract/manifest.js` (the v18 audit counted 124: 81 wallet-core + 43 DeFi M0 surface, all feature-flagged off). v29 adds the three review methods. |
+| Contract version | **v30** (2026-10-28). The v18 figure below in §3 is the historical M0 measurement; `CONTRACT_VERSION` in `src/shared/contract/manifest.js` is authoritative. |
+| Contract methods | **152**, counted from `Object.keys(METHODS)` in `src/shared/contract/manifest.js` (the v18 audit counted 124: 81 wallet-core + 43 DeFi M0 surface, all feature-flagged off). v29 adds the three review methods. |
 | Route count | 15 popup/side-panel routes |
 | Signing preference default | Session-only while unlocked (`requirePasswordForSigning: false`); password re-auth is an explicit, password-gated Settings opt-in |
 | Built extension page | `popup.html`, shared by toolbar popup and side panel |
@@ -112,13 +112,23 @@ No launchpad, DEX, swap, or prediction UI is shipped. The old `src/launchpad/` t
 | Integrated routes | Send (native + token), Domain (register/purchase/renew/claim), Faucet (claim) |
 | Not integrated | DeFi/DEX/launchpad: no UI surface ships (all flags off) and no backend execute path is reachable |
 
+### v30 — tracked domains and the custom-repair renewal path (2026-10-28)
+
+| Item | Shipped value |
+| --- | --- |
+| Methods | `name.getCachedDomains`, `name.listDomains`, `name.trackDomain`, `name.setPrimaryDomain`, `name.untrackDomain` — all `auth: 'unlocked'`, none signs |
+| Storage | `thru_registered_domains::<networkId>` = `{version:1, revision, records}`; v0 primary aliases migrate on the next mutation; unsupported versions fail closed |
+| Ownership | every import/primary selection re-reads the domain account, checks the name-service program owner, and compares parent/name/length before the record is enabled |
+| Renewal | `name.renewLease` + `via:'custom'` extends a custom-registrar lease; the `domain-renew` review prices it in native THRU and marks the debit best-effort |
+| Not v30 | the batch registration queue added in `55703d0` is unreachable (its control is never revealed) and renders no review before signing (`docs/DEFECT_LOG.md` §13.4) |
+
 ## 4. Current verified state
 
 | Area | Current state and evidence |
 | --- | --- |
-| `npm test` | PASS on the 2026-10-28 tree: **2,253 checks across 32 suites plus 5 build gates**, exit 0. Includes derivation and QR vectors, layering 126 files/0 DOM sinks, CSP, routes 15/15 with 257 used CSS classes, all defined, CSS nesting, launchpad quarantine, contract 161/161, DOM/refs, route lifecycle 1,065/1,065, the transaction review suite 143/143, plus storage-migrations, vault, Thru client, token/balance, History, registration, and API-router suites. Use the final test output for any subsequent refresh. |
+| `npm test` | PASS on the 2026-10-28 tree: **2,326 checks across 32 suites plus 5 build gates**, exit 0. Includes derivation and QR vectors, layering 126 files/0 DOM sinks, CSP, routes 15/15 with 262 used CSS classes, all defined, CSS nesting, launchpad quarantine, contract 161/161, DOM/refs, route lifecycle 1,104/1,104, the transaction review suite 152/152, plus storage-migrations, vault, Thru client, token/balance, History, registration, and API-router suites. Use the final test output for any subsequent refresh. |
 | `npm run build` | PASS on the 2026-10-28 tree; `build.mjs` regenerated `dist/` from current source with no warnings. |
-| Contract | v29, 147 methods (81 wallet-core + 43 gated-off DeFi M0 surface + the v19–v29 additive slices). v16 deliberately retired unbound legacy send methods after zero shipped callers. v29 adds `tx.prepareReview` / `tx.confirmReview` / `tx.discardReview`, all `unlocked` and none of them signing. |
+| Contract | v30, 152 methods (81 wallet-core + 43 gated-off DeFi M0 surface + the v19–v30 additive slices). v16 deliberately retired unbound legacy send methods after zero shipped callers. v29 adds `tx.prepareReview` / `tx.confirmReview` / `tx.discardReview`, all `unlocked` and none of them signing; v30 adds the tracked-domain reads/writes and `via:'custom'` renewal. |
 | Transaction review | One shared pipeline (`src/shared/tx-review/*`, `services/review-service.js`, `ui/domain/tx-review/*`) behind Send (native + token), Domain (register/purchase/renew/claim) and Faucet (claim). Decoders: native-send, token-transfer, domain-register, domain-purchase, domain-renew, domain-claim, faucet-claim, raw. Unknown intents render explicit technical details and have no submit policy. Simulation is unsupported (`tx.simulate` → `supported:false`), so no post-tx balance is ever shown. |
 | Signing | Signing methods use `auth: 'signing'`. The wallet must be unlocked; password re-authentication is required only when the user enables it in Settings. That opt-in is itself password-gated. |
 | Registration | Exact ownership is checked in the background, the target account is the signer, Send JIT does not touch external recipients, and retry behavior is covered by deterministic registration/API tests. |
