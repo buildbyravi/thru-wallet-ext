@@ -532,7 +532,16 @@ export function SendRoute({ params, navigate, back }) {
       }
 
       const targetAddr = result.resolvedAddress || addr;
-      const namePrefix = result.resolvedAddress ? `Resolved to ${truncateAddress(result.resolvedAddress)} · ` : '';
+      let namePrefix = result.resolvedAddress ? `Resolved to ${truncateAddress(result.resolvedAddress)} · ` : '';
+      if (!result.resolvedAddress) {
+        try {
+          const rev = await bridge.send('name.reverseLookup', { address: targetAddr });
+          if (!stale() && rev?.resolved && rev?.name) {
+            recipientState.reverseName = rev.name;
+            namePrefix = `${rev.name} (${truncateAddress(targetAddr)}) · `;
+          }
+        } catch {}
+      }
 
       statusEl.textContent = `${namePrefix}Checking the recipient…`;
       statusEl.classList.remove('hidden');
@@ -806,17 +815,18 @@ export function SendRoute({ params, navigate, back }) {
     body.appendChild(Spinner({ label: 'Preparing review…' }).el);
 
     const kind = snapshot.asset.isNative ? 'native-send' : 'token-transfer';
+    const recLabel = recipientState?.resolvedName || recipientState?.reverseName;
     const reviewParams = snapshot.asset.isNative
       ? {
         toAddress: to,
         amountUnits: snapshot.amountUnits.toString(),
-        ...(recipientState?.resolvedName ? { recipientLabel: recipientState.resolvedName } : {}),
+        ...(recLabel ? { recipientLabel: recLabel } : {}),
       }
       : {
         mintAddress: snapshot.asset.mintAddress,
         toAddress: to,
         amountUnits: snapshot.amountUnits.toString(),
-        ...(recipientState?.resolvedName ? { recipientLabel: recipientState.resolvedName } : {}),
+        ...(recLabel ? { recipientLabel: recLabel } : {}),
       };
 
     let prepared;

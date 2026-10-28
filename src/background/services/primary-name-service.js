@@ -277,3 +277,59 @@ export async function unlinkPrimaryName(params = {}) {
   }, ctx.generation);
   return { unlinked };
 }
+
+
+/**
+ * name.reverseLookup: reverse-resolves an address to its verified .thru domain.
+ * Bidirectional verification:
+ * 1. Checks if the address has a primary domain or tracked domain candidate.
+ * 2. Checks on-chain whether the domain's owner matches the address.
+ * 3. Inspects records for an 'addr' record matching the address for bidirectional proof.
+ */
+export async function reverseLookup({ address, networkId } = {}) {
+  const target = String(address ?? '').trim();
+  if (!thruClient.isValidThruAddress(target)) {
+    return { resolved: false, name: null, verified: false, reason: 'INVALID_ADDRESS' };
+  }
+
+  const netId = networkId || (await getActiveNetworkConfig()).id;
+  const state = await readState(netId);
+
+  let candidate = state.primary[target] || null;
+  if (!candidate && state.records) {
+    candidate = state.records.find((r) => r.accountAddress === target && r.status === 'owned') || null;
+  }
+
+  if (!candidate) {
+    return { resolved: false, name: null, verified: false, reason: 'NO_CANDIDATE' };
+  }
+
+  try {
+    const forward = await nameService.lookupTrackedName(
+      { name: candidate.name, rootAddress: candidate.rootAddress },
+      thruClient.getClient(),
+    );
+    if (!forward?.leaf?.exists || !forward.leaf.domain) {
+      return { resolved: false, name: null, verified: false, reason: 'DOMAIN_NOT_FOUND' };
+    }
+    const domainOwner = forward.leaf.domain.owner;
+    if (domainOwner !== target) {
+      return { resolved: false, name: null, verified: false, reason: 'NOT_NAME_OWNER' };
+    }
+
+    const records = forward.leaf.domain.records || [];
+    const addrRecord = records.find((r) => r.key === 'addr' && r.value === target);
+    const hasReverseRecord = Boolean(addrRecord);
+
+    const displayName = candidate.name.includes('.') ? candidate.name : `${candidate.name}.thru`;
+    return {
+      resolved: true,
+      name: displayName,
+      verified: true,
+      hasReverseRecord,
+      domainAddress: candidate.domainAddress,
+    };
+  } catch (err) {
+    return { resolved: false, name: null, verified: false, reason: err?.message || 'LOOKUP_FAILED' };
+  }
+}

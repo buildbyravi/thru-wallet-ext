@@ -139,7 +139,7 @@ section('Contract v17/v18 DeFi contract-first drop (M0)');
 // the swap slice the same day; additive, auth 'unlocked').
 // v27 (2026-10-26): token.getCachedBalances; v28 (2026-10-26): optional reviewed context for
 // existing name writes. These additions bind the existing handlers to what the user saw at Review.
-ok('the contract advances to v30 without reusing earlier numbers', CONTRACT_VERSION === 30);
+ok('the contract advances to v31 without reusing earlier numbers', CONTRACT_VERSION === 31);
 
 const v29 = Object.entries(METHODS).filter(([, spec]) => spec.since === 29).map(([name]) => name).sort();
 ok('v29 appends exactly the 3 review-pipeline methods',
@@ -157,6 +157,11 @@ const v30 = Object.entries(METHODS).filter(([, spec]) => spec.since === 30).map(
 ok('v30 appends exactly the 5 tracked-domain methods',
   v30.length === 5 && v30.join(',') === 'name.getCachedDomains,name.listDomains,name.setPrimaryDomain,name.trackDomain,name.untrackDomain',
   `got ${v30.join(', ')}`);
+
+const v31 = Object.entries(METHODS).filter(([, spec]) => spec.since === 31).map(([name]) => name).sort();
+ok('v31 appends exactly the reverse-lookup read',
+  v31.length === 1 && v31[0] === 'name.reverseLookup',
+  `got ${v31.join(', ')}`);
 
 const v17 = Object.entries(METHODS).filter(([, spec]) => spec.since === 17).map(([name]) => name);
 const v18 = Object.entries(METHODS).filter(([, spec]) => spec.since === 18).map(([name]) => name);
@@ -234,8 +239,8 @@ ok('token.getCachedBalances is open auth:none like every snapshot read',
   METHODS['token.getCachedBalances']?.auth === 'none');
 ok('token.getCachedBalances declares the address param',
   METHODS['token.getCachedBalances']?.params.includes('address'));
-ok('the contract declares 152 methods in total (144 baseline + 3 review-pipeline + 5 tracked-domain)',
-  Object.keys(METHODS).length === 152, `got ${Object.keys(METHODS).length}`);
+ok('the contract declares 153 methods in total (144 baseline + 3 review-pipeline + 5 tracked-domain + 1 reverse-lookup)',
+  Object.keys(METHODS).length === 153, `got ${Object.keys(METHODS).length}`);
 
 // Auth discipline (DEFI-03): reads are call-time honest, prepares are unlocked-only, and
 // exactly ONE DeFi method signs.

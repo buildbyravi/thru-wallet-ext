@@ -384,23 +384,139 @@ export async function registerName({ name, parentAddress, expectedNetworkId, exp
   throw coded('TX_RESULT_MISSING', 'Registration transaction never returned an execution result (timed out?).', { retryable: true });
 }
 
-/** name.setRecord — gated (see header); appends a record on a domain the signer owns. */
-export async function setRecord({ name, rootAddress, key, value } = {}) {
-  requireValidName(name);
-  requireAddress(rootAddress, 'rootAddress');
-  if (!key || typeof key !== 'string') {
+/** name.setRecord: appends a key/value record on a domain the active account owns. */
+export async function setRecord({
+  name, rootAddress, key, value, expectedNetworkId, expectedAccountAddress,
+} = {}) {
+  let cleanName = String(name ?? '').trim();
+  if (!cleanName) {
+    const err = new Error('name is required');
+    err.code = 'INVALID_PARAMS';
+    throw err;
+  }
+  let root = String(rootAddress ?? '').trim();
+  let rootName = 'thru';
+  if (!root) {
+    const discovered = await discoverDefaultRoot();
+    if (!discovered?.supported) {
+      throw coded('NAME_ROOT_UNKNOWN', discovered?.reason ?? 'no canonical name root on this network');
+    }
+    root = discovered.rootAddress;
+    rootName = String(discovered.name || 'thru').toLowerCase();
+  } else {
+    requireAddress(root, 'rootAddress');
+    try {
+      const info = await thruClient.getAccountInfo(root);
+      if (info?.exists) {
+        const parsed = ns.parseRootRegistrar(ns.extractAccountData(info.raw));
+        if (parsed?.name) rootName = String(parsed.name).toLowerCase();
+      }
+    } catch {}
+  }
+  if (cleanName.endsWith('.' + rootName)) {
+    cleanName = cleanName.slice(0, -(rootName.length + 1));
+  }
+  requireValidName(cleanName);
+
+  if (typeof key !== 'string' || !key.trim()) {
     const err = new Error('key is required');
     err.code = 'INVALID_PARAMS';
     throw err;
   }
-  if (typeof value !== 'string') featureDisabledSoftValue(value);
-  featureDisabled();
-}
+  const cleanKey = key.trim();
+  const keyBytes = new TextEncoder().encode(cleanKey);
+  if (keyBytes.length > ns.NS_KEY_FIELD) {
+    const err = new Error(`key is too long (max ${ns.NS_KEY_FIELD} bytes)`);
+    err.code = 'INVALID_PARAMS';
+    throw err;
+  }
 
-function featureDisabledSoftValue(value) {
-  if (typeof value === 'undefined' || value === null) {
+  if (typeof value !== 'string') {
     const err = new Error('value is required');
     err.code = 'INVALID_PARAMS';
     throw err;
   }
+  const valueBytes = new TextEncoder().encode(value);
+  if (valueBytes.length > ns.NS_VALUE_FIELD) {
+    const err = new Error(`value is too long (max ${ns.NS_VALUE_FIELD} bytes)`);
+    err.code = 'INVALID_PARAMS';
+    throw err;
+  }
+
+  const network = await getActiveNetworkConfig();
+  if (expectedNetworkId && expectedNetworkId !== network.id) {
+    throw coded('REVIEW_NETWORK_CHANGED', 'The active network changed after review. Check the record again before signing.');
+  }
+
+  const feePayer = await vault.getActiveAccount();
+  if (expectedAccountAddress && expectedAccountAddress !== feePayer?.address) {
+    throw coded('REVIEW_ACCOUNT_CHANGED', 'The active account changed after review. Check the record again before signing.');
+  }
+
+  const domainAddress = await ns.domainAccountAddress(root, cleanName);
+  const domainInfo = await thruClient.getAccountInfo(domainAddress);
+  if (!domainInfo?.exists) {
+    throw coded('NAME_NOT_FOUND', `'${cleanName}.${rootName}' is not registered on-chain.`);
+  }
+
+  let parsedDomain = null;
+  try {
+    parsedDomain = ns.parseDomainAccount(domainInfo.raw);
+  } catch (e) {
+    throw coded('DOMAIN_UNREADABLE', `failed to read domain account for '${cleanName}.${rootName}': ${e?.message ?? e}`);
+  }
+
+  if (parsedDomain.owner !== feePayer.address) {
+    throw coded('NOT_NAME_OWNER', `your active account ${feePayer.address.slice(0, 12)}… does not own '${cleanName}.${rootName}'.`);
+  }
+
+  const client = thruClient.getClient();
+  const { rawTransaction } = await client.transactions.buildAndSign({
+    feePayer: { publicKey: feePayer.publicKey, privateKey: feePayer.privateKey },
+    program: ns.NAME_SERVICE_PROGRAM,
+    header: { computeUnits: 300_000, memoryUnits: 10_000, stateUnits: 1, fee: 0n },
+    accounts: {
+      readWrite: [domainAddress],
+    },
+    instructionData: ({ getAccountIndex }) => ns.buildAppendRecordInstructionData({
+      domainAddress,
+      key: cleanKey,
+      value,
+      indexOf: getAccountIndex,
+    }),
+  });
+
+  const displayLabel = `'${cleanKey}' on '${cleanName}.${rootName}'`;
+  let formatted = null;
+  try {
+    for await (const update of client.transactions.sendAndTrack(rawTransaction)) {
+      if (update?.signature?.value && formatted === null) {
+        formatted = formatSignature(update.signature.value);
+        const net = await getActiveNetworkConfig();
+        await pending.track({
+          signature: formatted,
+          kind: 'name-record',
+          from: feePayer.address,
+          to: domainAddress,
+          amountUnits: '0',
+          displayAmount: `set record ${displayLabel} (fee 0n)`,
+          networkId: net.id,
+        }).catch(() => null);
+      }
+      if (update?.executionResult) {
+        if (update.executionResult.vmError === 0) {
+          return { signature: formatted, domainAddress, rootAddress: root, key: cleanKey, value };
+        }
+        const userCode = update.executionResult.userErrorCode ?? 0;
+        throw coded(
+          'RECORD_UPDATE_FAILED',
+          `Record update reverted on-chain (vmError=${update.executionResult.vmError}${userCode ? `, code ${userCode}` : ''}).`,
+        );
+      }
+    }
+  } catch (err) {
+    if (err?.code === 'RECORD_UPDATE_FAILED') throw err;
+    throw coded('TX_RESULT_MISSING', `The record update submission could not be resolved${formatted ? ` (signature ${formatted})` : ''}. Check pending transactions before retrying.`, { retryable: true });
+  }
+  throw coded('TX_RESULT_MISSING', 'Record update transaction never returned an execution result (timed out?).', { retryable: true });
 }

@@ -223,6 +223,7 @@ const handlers = Object.assign(Object.create(null), {
   'name.trackDomain': (params) => primaryNameService.trackDomain(params),
   'name.setPrimaryDomain': (params) => primaryNameService.setPrimaryDomain(params),
   'name.untrackDomain': (params) => primaryNameService.untrackDomain(params),
+  'name.reverseLookup': (params) => primaryNameService.reverseLookup(params),
   // v22 official `.thru` registrar (first-party formats): reads are parse-proofed honesty,
   // writes are self-signed (signer = fee payer) registrar program calls at fee 0n.
   'name.getRegistry': () => registrarService.getRegistry(),

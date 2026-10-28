@@ -73,7 +73,7 @@ const SELF = null; // filled after wallet.create
 console.log('[0] registry discipline');
 {
   const decoderKinds = registry.listDecoderKinds();
-  ok('eight operation types ship a decoder', decoderKinds.length === 8, decoderKinds.join(','));
+  ok('nine operation types ship a decoder', decoderKinds.length === 9, decoderKinds.join(','));
   ok('the registry and the background kind table agree',
     JSON.stringify(decoderKinds) === JSON.stringify(kindTable.listKinds()),
     `${decoderKinds.join(',')} vs ${kindTable.listKinds().join(',')}`);
@@ -409,6 +409,38 @@ console.log('[3] decoders: domain writes');
   }));
   ok('claiming a still-active lease blocks signing', warningIds(active).includes('lease-still-active'));
 }
+
+  const recFacts = (overrides = {}) => ({
+    name: 'alice',
+    tld: 'thru',
+    key: 'twitter',
+    value: '@alice',
+    domainAddress: asAddress(10),
+    domainExists: true,
+    isOwner: true,
+    ownerAddress: ACCOUNT.address,
+    unchanged: false,
+    keyProblem: null,
+    valueProblem: null,
+    program: {
+      name: 'Thru Name Service',
+      address: asAddress(20),
+      verified: true,
+      source: 'Pinned system program at BOOTSTRAP_PROGRAM_ADDRESSES.name_service',
+    },
+    ...overrides,
+  });
+
+  const recordReview = decode('domain-record', recFacts());
+  model.assertReviewContent(recordReview);
+  ok('domain-record decodes with summary and zero fee',
+    recordReview.summary.some((row) => row.label === 'Record Key' && row.value === 'twitter')
+      && recordReview.assets.fee.amountUnits === '0');
+
+  const notOwnerRec = decode('domain-record', recFacts({ isOwner: false }));
+  ok('setting record on someone else domain blocks signing',
+    model.stateFromWarnings(notOwnerRec.warnings) === 'blocked'
+      && warningIds(notOwnerRec).includes('not-name-owner'));
 
 console.log('[4] decoders: faucet claims and raw transactions');
 {
@@ -781,7 +813,7 @@ console.log('[11] blocking facts block, and unexplained transactions cannot be s
     unsupported.ok === true
       && unsupported.data.supported === false
       && unsupported.data.reason === 'KIND_UNSUPPORTED'
-      && unsupported.data.knownKinds.length === 8);
+      && unsupported.data.knownKinds.length === 9);
 
   const invented = await handleApiRequest({
     method: 'tx.prepareReview',

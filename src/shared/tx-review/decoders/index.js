@@ -21,6 +21,7 @@ import {
   DOMAIN_RENEW_KIND, decodeDomainRenew,
   DOMAIN_CLAIM_KIND, decodeDomainClaim,
 } from './domain.js';
+import { DOMAIN_RECORD_KIND, decodeDomainRecord } from './domain-record.js';
 import { FAUCET_CLAIM_KIND, decodeFaucetClaim } from './faucet-claim.js';
 import { RAW_KIND, decodeRawTransaction } from './raw.js';
 
@@ -30,11 +31,13 @@ registerDecoder(DOMAIN_REGISTER_KIND, decodeDomainRegister);
 registerDecoder(DOMAIN_PURCHASE_KIND, decodeDomainPurchase);
 registerDecoder(DOMAIN_RENEW_KIND, decodeDomainRenew);
 registerDecoder(DOMAIN_CLAIM_KIND, decodeDomainClaim);
+registerDecoder(DOMAIN_RECORD_KIND, decodeDomainRecord);
 registerDecoder(FAUCET_CLAIM_KIND, decodeFaucetClaim);
 registerDecoder(RAW_KIND, decodeRawTransaction);
 
 export {
   NATIVE_SEND_KIND, TOKEN_TRANSFER_KIND,
   DOMAIN_REGISTER_KIND, DOMAIN_PURCHASE_KIND, DOMAIN_RENEW_KIND, DOMAIN_CLAIM_KIND,
+  DOMAIN_RECORD_KIND,
   FAUCET_CLAIM_KIND, RAW_KIND,
 };

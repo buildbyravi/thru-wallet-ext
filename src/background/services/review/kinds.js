@@ -18,6 +18,8 @@ import * as tokenService from '../token-service.js';
 import * as registrarService from '../registrar-service.js';
 import * as accountService from '../account-service.js';
 import * as contactsService from '../contacts-service.js';
+import * as primaryNameService from '../primary-name-service.js';
+import * as ns from '../../../lib/name-service.js';
 
 function coded(code, message, retryable = false) {
   const err = new Error(message);
@@ -82,10 +84,18 @@ async function labelFor(address) {
   }
   try {
     const contacts = await contactsService.listContacts();
-    return contacts.find((entry) => entry.address === address)?.label ?? null;
+    const contact = contacts.find((entry) => entry.address === address);
+    if (contact?.label) return contact.label;
   } catch {
-    return null;
+    // an unreadable contacts list only costs a display label
   }
+  try {
+    const rev = await primaryNameService.reverseLookup({ address });
+    if (rev?.resolved && rev?.name) return rev.name;
+  } catch {
+    // an unreadable reverse lookup only costs a display label
+  }
+  return null;
 }
 
 /** Fee quote with its provenance, or an explicit unsupported answer. */
@@ -689,6 +699,80 @@ async function rawFacts(params) {
 }
 
 // ---------------------------------------------------------------------------------------
+async function domainRecordFacts(params, { account, network }) {
+  const name = requireLabel(params.name, 'name');
+  const key = String(params.key ?? '').trim();
+  if (!key) throw coded('INVALID_INPUT', 'key is required');
+  const value = String(params.value ?? '');
+
+  const rootAddress = params.rootAddress || await ns.rootRegistrarAddress('thru');
+  const domainAddress = await ns.domainAccountAddress(rootAddress, name);
+
+  let domainExists = false;
+  let isOwner = false;
+  let ownerAddress = null;
+  let currentRecords = [];
+
+  const domainInfo = await thruClient.getAccountInfo(domainAddress).catch(() => null);
+  if (domainInfo?.exists) {
+    domainExists = true;
+    try {
+      const parsed = ns.parseDomainAccount(domainInfo.raw);
+      ownerAddress = parsed.owner;
+      isOwner = parsed.owner === account.address;
+      currentRecords = parsed.records || [];
+    } catch {}
+  }
+
+  const existing = currentRecords.find((r) => r.key === key);
+  const unchanged = existing ? existing.value === value : false;
+
+  const keyBytes = new TextEncoder().encode(key);
+  const keyProblem = keyBytes.length > ns.NS_KEY_FIELD ? `key exceeds ${ns.NS_KEY_FIELD} bytes` : null;
+  const valueBytes = new TextEncoder().encode(value);
+  const valueProblem = valueBytes.length > ns.NS_VALUE_FIELD ? `value exceeds ${ns.NS_VALUE_FIELD} bytes` : null;
+
+  return {
+    fromAddress: account.address,
+    networkId: network.id,
+    name,
+    tld: 'thru',
+    key,
+    value,
+    rootAddress,
+    domainAddress,
+    domainExists,
+    isOwner,
+    ownerAddress,
+    unchanged,
+    keyProblem,
+    valueProblem,
+    program: {
+      name: 'Thru Name Service',
+      address: ns.NAME_SERVICE_PROGRAM,
+      verified: true,
+      source: 'Pinned system program at BOOTSTRAP_PROGRAM_ADDRESSES.name_service',
+    },
+  };
+}
+
+async function domainRecordRecheck(record) {
+  const { facts, binding } = record;
+  const domainInfo = await thruClient.getAccountInfo(facts.domainAddress).catch(() => null);
+  if (!domainInfo?.exists) {
+    throw coded('NAME_TAKEN', `'${facts.name}.${facts.tld}' is no longer readable on-chain.`);
+  }
+  try {
+    const parsed = ns.parseDomainAccount(domainInfo.raw);
+    if (parsed.owner !== binding.accountAddress) {
+      throw coded('NOT_NAME_OWNER', `'${facts.name}.${facts.tld}' is no longer owned by the signing account.`);
+    }
+  } catch (e) {
+    if (e.code) throw e;
+    throw coded('REVIEW_UNAVAILABLE', `Failed to verify domain ownership: ${e.message}`);
+  }
+}
+
 // The table
 // ---------------------------------------------------------------------------------------
 
@@ -810,6 +894,22 @@ register('faucet-claim', {
   submit: (facts) => ({
     method: 'tx.claimFaucet',
     params: { amountUnits: facts.amountUnits },
+  }),
+});
+
+register('domain-record', {
+  facts: domainRecordFacts,
+  recheck: domainRecordRecheck,
+  submit: (facts) => ({
+    method: 'name.setRecord',
+    params: {
+      name: facts.name,
+      rootAddress: facts.rootAddress,
+      key: facts.key,
+      value: facts.value,
+      expectedAccountAddress: facts.fromAddress,
+      expectedNetworkId: facts.networkId,
+    },
   }),
 });
 

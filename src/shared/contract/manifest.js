@@ -142,7 +142,8 @@
 //   boundary, D-003 auth policy and every existing guard are unchanged. Reviews are stored
 //   per network under the scoped key `tx_reviews`.
 //   v30 adds versioned tracked-domain reads/imports/selection, preserving primary aliases.
-export const CONTRACT_VERSION = 30;
+//   v31 adds bidirectional reverse domain resolution.
+export const CONTRACT_VERSION = 31;
 
 export const METHODS = {
   // ---- System ------------------------------------------------------------
@@ -514,6 +515,13 @@ export const METHODS = {
     params: ['domainAddress', 'expectedNetworkId', 'expectedAccountAddress'],
     returns: '{ untracked:boolean } - removes a local candidate, never an on-chain domain; primary must be unlinked first',
     auth: 'unlocked', since: 30,
+  },
+  // v31: reverse domain lookup with live bidirectional ownership verification
+  'name.reverseLookup': {
+    params: ['address', 'networkId'],
+    returns: '{ resolved, name, verified, hasReverseRecord?, reason? } — reverse-resolves an address to its verified .thru domain',
+    auth: 'none',
+    since: 31,
   },
   // v22: official `.thru` registrar slice (2026-10-09, first-party formats). Reads answer
   // supported:false when the registry is uninitialized on the running network — never a
