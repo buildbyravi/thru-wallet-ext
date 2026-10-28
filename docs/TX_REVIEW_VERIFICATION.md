@@ -24,7 +24,7 @@ This record answers three questions the owner asked in one pass:
   so `npm install` + `npm run build` were re-run before any verification.
 - Rabby was read from the real repository at `develop` (GitHub contents API, individual files —
   not screenshots, not marketing pages). Files named in §2 are the ones actually read.
-- Local gates: `npm run build`, `npm test` (2,152 checks), `scripts/check-layering.mjs`,
+- Local gates: `npm run build`, `npm test` (2,182 checks after the §4 fixes), `scripts/check-layering.mjs`,
   `scripts/check-routes.mjs`, `scripts/check-csp.mjs` via the build, plus the new browser harness
   in §5.
 - No browser binary exists in this sandbox, so **no automated screenshot or layout assertion is
@@ -117,7 +117,7 @@ are explicitly **not** copied.
 | 8 | Timeout ≠ failure | `confirm.js:104–150` tags `phase:'confirm'`/`'submit'` and `classifyReviewError` only reports `uncertain` after a submit-phase error | Met; the route-level wording is asserted in `test-route-lifecycle.mjs`. |
 | 9 | Revalidation before signing | `confirmReview` re-checks TTL, binding hash, active account/network, then the kind's recheck (fee/token/price/expiry/faucet) | Met; tests cover account switch, network switch, expiry, and each recheck family. |
 | 10 | No duplicated review UI | one component (`ui/domain/tx-review/review-card.js:96`), one confirm helper (`confirm.js:59`); both routes deleted their own rows, duplicate card and password flow | Met. `check-routes.mjs` reports every class defined; `check-layering.mjs` 0 violations, DOM sinks 0. |
-| 11 | Build + suite green | `npm run build` PASS; `npm test` exit 0, 2,152 checks (incl. `test-tx-review.mjs` 66 and `test-route-lifecycle.mjs` 1,041) | Met, re-run after the fixes in §4. |
+| 11 | Build + suite green | `npm run build` PASS; `npm test` exit 0, **2,182 checks** (incl. `test-tx-review.mjs` 83 and `test-route-lifecycle.mjs` 1,054) | Met; re-run after every fix in §4 and again on the merged head. |
 
 ---
 
@@ -197,7 +197,9 @@ Verified from source, not from documentation prose:
 
 1. ~~**Faucet claim bypasses the review.**~~ **Closed 2026-10-28:** the faucet route prepares a
    `faucet-claim` review, renders the shared card, and submits through the same confirm helper. No
-   UI route calls a signing method directly any more.
+   UI route calls a signing method directly any more. (Precision, 2026-10-28: the v12 JIT
+   `tx.registerAccount` activation in `send.js` is a direct unlocked-only signing call and was never
+   value-moving; it is outside this claim.)
 2. **Token-transfer fee is unmeasured, not unknown.** The review says so rather than borrowing the
    native number. The improvement is measurement (`scripts/measure-fee.mjs` pattern), not UI.
 3. ~~**`tx.confirmReview` is not single-use.**~~ **Closed 2026-10-28:** a successful submit now

@@ -4,6 +4,11 @@ Date: 2026-10-05. The owner left every PROJECT INPUTS field blank → **all defa
 ("blank means default"). Corrections found at recon are listed explicitly (S0: report every
 conflict, never resolve one silently).
 
+> **State note (2026-10-28).** This is a dated record of the Gate-0 decisions. Contract counts
+> quoted inside (e.g. "contract v16, 81 methods" as the 2026-10-05 reality) are historical; the
+> current contract is **v29 / 147 methods**, all DeFi flags still OFF. Nothing in this record was
+> rewritten.
+
 ## 1. Networks
 
 `betanet` is the only network in scope (only enabled network in the repo). Mainnet joins when

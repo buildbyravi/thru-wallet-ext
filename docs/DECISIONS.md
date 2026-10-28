@@ -30,13 +30,13 @@ lived only in `AGENTS.md` and audit history.
 
 **Options considered.** (a) SemVer ranges for easy upgrades; (b) exact pins with a mandatory upgrade protocol; (c) vendoring the SDK.
 
-**Chosen.** Exact pins only (currently `@thru/sdk` and `@thru/programs` at `0.4.1`), `npm ci` as the install gate, and golden vectors for mnemonic→key→address derivation, public keys, amount conversion, and transaction encoding/decoding.
+**Chosen.** Exact pins only (currently `@thru/sdk` and `@thru/programs` at `0.4.2`), `npm ci` as the install gate, and golden vectors for mnemonic→key→address derivation, public keys, amount conversion, and transaction encoding/decoding.
 
 **Why.** Wallet addresses must never change silently. The goldens make any derivation or encoding drift fail the build instead of shipping.
 
 **Trade-offs.** Upgrades require deliberate work: changelog/API review, full deterministic suite (derivation, transaction, network, migration tests), bundle inspection, and a recorded reason.
 
-**Consequences.** An unexpected golden-vector change is a STOP condition — investigate, never merely update the expected value. The 0.4.0→0.4.1 upgrade was verified this way with unchanged golden addresses (`test/test-derivation.mjs`).
+**Consequences.** An unexpected golden-vector change is a STOP condition — investigate, never merely update the expected value. The 0.4.0→0.4.1 and 0.4.1→0.4.2 upgrades were verified this way with unchanged golden addresses (`test/test-derivation.mjs`).
 
 ## D-003 — Session-only signing default
 
@@ -96,13 +96,13 @@ lived only in `AGENTS.md` and audit history.
 
 **Options considered.** (a) Keep both stacks with a fallback bridge indefinitely; (b) one active route tree with a strangler migration and same-commit deletion of migrated screens; (c) big-bang rewrite.
 
-**Chosen.** Exactly one route tree: 14 routes in `src/ui/app/boot.js`, one Router, one bridge, one DOM factory. There is no legacy fallback path; an unknown hash redirects to the router fallback.
+**Chosen.** Exactly one route tree: 15 routes in `src/ui/app/boot.js`, one Router, one bridge, one DOM factory. There is no legacy fallback path; an unknown hash redirects to the router fallback.
 
 **Why.** Two stacks means every fix lands twice or not at all, and the weaker stack defines the user's experience. The migration itself is D-009.
 
 **Trade-offs.** Legacy behavior is recoverable only from Git history. Any new screen must be a route — there is no side door.
 
-**Consequences.** `scripts/check-routes.mjs` enforces both directions (every navigated route exists; every registered route is reachable), and `test/test-route-lifecycle.mjs` mounts all 14 routes in all three vault states. A future second frontend (e.g. full-tab) requires a new explicit decision, not a quiet exception.
+**Consequences.** `scripts/check-routes.mjs` enforces both directions (every navigated route exists; every registered route is reachable), and `test/test-route-lifecycle.mjs` mounts all 15 routes in all three vault states. A future second frontend (e.g. full-tab) requires a new explicit decision, not a quiet exception.
 
 ## D-007 — Thru SDK adapter boundary
 
@@ -235,3 +235,47 @@ lived only in `AGENTS.md` and audit history.
 **Honesty guardrails.** `test/test-custom-registrar.mjs` (39 checks: byte-pins, Rust-source regexes, and an in-process SDK sort sentinel proving the installed @thru/sdk account-table ordering) runs in `npm test`. Rust host tests are authored (`cargo test --lib`) but un-run in the Arena sandbox — no `cargo` there; recorded in contracts/thru-custom-registrar/README.md. Deploy/initialize and register probe scripts (`scripts/registrar/deploy-and-init.mjs`, `probe-live-registrar.mjs`) run on the owner host only and write evidence JSON.
 
 **Consequences.** Wallet UI ships NOTHING about the registrar until a live Betanet probe passes — the D-013/D-015 domain screen stays on the official root semantics. When evidence exists, a services-grid tile can expose label search + years + the config-derived price read live (never hardcoded).
+
+## D-017 — One shared transaction review pipeline (2026-10-27, owner-directed)
+
+**Decision.** Every value-moving operation goes through one lifecycle — intent → validate → prepare →
+decode/explain → review → authenticate → sign → submit → reconcile — implemented once:
+
+- `tx.prepareReview` (contract v29) turns a typed intent into a canonical review plus a `bindingHash`
+  that pins account, network and the reviewed facts; the record is network-scoped, TTL'd (120 s) and
+  capped (`src/background/services/review/store.js`).
+- `src/shared/tx-review/decoders/*` produce the facts. The registry has no fallback: a kind with no
+  decoder is refused, and a decode failure yields `kind:'unknown'` with raw data and **no submit
+  policy**, so it cannot be signed.
+- `src/ui/domain/tx-review/review-card.js` is the only review surface, and
+  `src/ui/domain/tx-review/confirm.js` the only confirm→auth→submit path. Feature routes build a
+  draft and call these; they own no review rows, fee formatter, warning copy or password flow.
+- `tx.confirmReview` re-validates TTL/binding/account/network/facts and returns the exact submit
+  instructions (`method` + `params`); it does not sign and does not consume the review. The confirm
+  helper then calls that method through the bridge, so the operation's **existing** `auth:
+  'signing'` policy applies untouched, and discards the review once a signature comes back.
+  `tx.discardReview` covers cancellation.
+
+**Why.** Before v29 the review/confirm step was re-implemented per screen: Send and Domain each had
+their own review markup, fee line, warning copy and confirm gate, and Faucet skipped review
+altogether. The same class of bug (stale context, double submit, unstated fee, invented success) had
+to be fixed per screen, and a new feature could quietly add a second signing path. The owner's standing direction is wallet-core, not feature-owned:
+a new feature must not add a second signing path. Rabby was studied as a UX/legibility reference only
+(its approval funnel, summary+table+raw disclosure, fail-closed unknown handling). No Rabby code,
+EVM/ABI assumption, gas model or brand asset is copied; Rabby's MIT license reserves its brand and
+logos, and none are used.
+
+**Honest states, by policy.** Simulation is unavailable (`tx.simulate` → `supported:false`), so no
+post-transaction balance, "simulated success" or verified balance change is ever rendered; an
+unmeasured token fee is labelled unmeasured; a native fee without a quote stays unknown with its
+reason. A timeout is an unknown outcome, never a failure, and no screen claims confirmation without
+reconciliation evidence. D-003 is untouched: the default stays session-only signing with the
+password-gated opt-in, and the review only *reuses* it.
+
+**Consequences.** Adding an operation means adding a decoder + a kind spec (with the existing submit
+method named) and a route that calls `tx.prepareReview` — never a new signing screen.
+`test/test-tx-review.mjs` enforces registry↔kind parity, every decoder, malformed/unknown input,
+formatting, binding/TTL/account/network refusals and the central error-code registry;
+`test/test-route-lifecycle.mjs` drives the migrated Send, Name and Faucet routes through the real
+card. DeFi/DEX/launchpad kinds are deliberately absent while their flags are off, and
+`tx.prepareReview` answers `supported:false` with the known-kinds list instead of guessing.

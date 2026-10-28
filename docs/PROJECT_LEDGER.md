@@ -1,9 +1,9 @@
 # Project ledger — shipped baseline and open verification
 
-Date: 2026-10-04
+Date: 2026-10-04; refreshed 2026-10-28 (contract v29, shared transaction review).
 Purpose: concise source-backed record of the current implementation, contract identifiers, completed milestones, and checks that remain open. `src/`, tests, and scripts are authoritative; this ledger is a summary.
 
-The identifier refresh is based on the audited source at `7883219` plus the 2026-10-04 conformance audit (`docs/audits/2026-10-04-conformance.md`; index and open gates in `docs/AUDIT_REPORT.md`). The documentation does not claim new runtime behavior beyond what `src/` ships.
+The identifier refresh is based on the audited source at `7883219` plus the 2026-10-04 conformance audit (`docs/audits/2026-10-04-conformance.md`; index and open gates in `docs/AUDIT_REPORT.md`), then re-counted against `src/` on 2026-10-28. The documentation does not claim new runtime behavior beyond what `src/` ships.
 
 ---
 
@@ -15,11 +15,11 @@ The identifier refresh is based on the audited source at `7883219` plus the 2026
 | Audited implementation baseline | `7883219` (`arena/01a10602-thru-wallet-ext`, 2026-10-04 audit) |
 | Contract version | **v29** (2026-10-28). The v18 figure below in §3 is the historical M0 measurement; `CONTRACT_VERSION` in `src/shared/contract/manifest.js` is authoritative. |
 | Contract methods | **147**, counted from `Object.keys(METHODS)` in `src/shared/contract/manifest.js` (the v18 audit counted 124: 81 wallet-core + 43 DeFi M0 surface, all feature-flagged off). v29 adds the three review methods. |
-| Route count | 14 popup/side-panel routes |
+| Route count | 15 popup/side-panel routes |
 | Signing preference default | Session-only while unlocked (`requirePasswordForSigning: false`); password re-auth is an explicit, password-gated Settings opt-in |
 | Built extension page | `popup.html`, shared by toolbar popup and side panel |
 | Network availability | Betanet enabled; Localnet, Testnet and Mainnet declared but disabled (tests re-enable Localnet in-process) |
-| Thru package versions | `@thru/sdk` and `@thru/programs` exact-pinned at `0.4.1` |
+| Thru package versions | `@thru/sdk` and `@thru/programs` exact-pinned at `0.4.2` |
 | Build output | Generated under `dist/`; do not edit by hand |
 | Store package | `1.4.1` live in the Chrome Web Store since 2026-10-04 (live page verified; record in `extension.md` §9); no browser verification of the store package is recorded |
 
@@ -52,7 +52,7 @@ src/lib/thru-client.js # RPC, transaction/program adapters, history decoding
 src/lib/networks.js    # enabled network and program configuration
 ```
 
-The 14 routes are registered in `src/ui/app/boot.js`: `/welcome`, `/unlock`, `/dashboard`, `/accounts`, `/account`, `/add-account`, `/keyring`, `/export`, `/send`, `/receive`, `/faucet`, `/history`, `/settings`, and `/reset`.
+The 15 routes are registered in `src/ui/app/boot.js`: `/welcome`, `/unlock`, `/dashboard`, `/accounts`, `/account`, `/add-account`, `/keyring`, `/export`, `/send`, `/receive`, `/faucet`, `/name`, `/history`, `/settings`, and `/reset`.
 
 The toolbar popup and side panel share `popup.html`. The side panel uses the `?thru_panel=1` context marker. A popup opening broadcasts a close message and uses Chrome's side-panel close API when available; the panel listener is installed before asynchronous boot work. Settings exposes an explicit **Side Panel Mode** opt-in that controls whether the toolbar action opens the panel. This behavior is covered by deterministic tests; actual Chrome interaction remains a manual check.
 
@@ -78,6 +78,16 @@ No launchpad, DEX, swap, or prediction UI is shipped. The old `src/launchpad/` t
 | v16 | Retires the unbound `tx.send` / `token.transfer` mutation endpoints after every shipped UI caller migrated to the checked counterparts; the weaker alternate signing path is gone. |
 | v17 | M0 DeFi READ+LOCAL surface (29 methods): `program.*`, `feed.*`, `market.*` reads/watchlist, `risk.assetAssess`, `launchpad.*` reads/drafts/validateDraft, `dex.*` pool reads/positions, `intent.list/get`, `desktop.open`. Discovery reads answer from the evidence-pinned capability snapshot; capability-gated reads answer `{ supported:false, reason }`. All behind build-time flags, all off. |
 | v18 | M0 DeFi PREPARE+EXECUTE surface (14 methods): `intent.prepareSend/rePrepare/resume/discard/stopWaiting`, `dex.quote/quoteLiquidity/prepareSwap/prepareLiquidity`, `launchpad.uploadImage/prepareCreate/prepareMigrate/prepareClaim`, and `intent.submit` — the only signing-gated DeFi method. All refuse honestly (unsupported/`FEATURE_DISABLED`) intent-store pending; events `intentChanged`/`capabilitiesChanged`/`feedChanged` and the S10 error-code map appended in the same drop. |
+| v19 | Name-service slice (5 methods): `name.lookup` and `name.checkAvailability` reads, plus `name.initRoot`, `name.register` and `name.setRecord` behind the `NAME_SERVICE` flag (the latter two become real writes later, v23 for `register`). |
+| v20 | The v18 intent methods gain a real native-send intent pipeline (network-scoped store, bindingHash-pinned submit, honest `NOT_READY` resume/stopWaiting). Method shapes unchanged; still behind `DEFI_INTENT`. |
+| v21 | Primary-name slice (3 `name.*` methods): a wallet-local, network-scoped "my name" record. Linking verifies on-chain ownership through the existing `name.lookup` read; nothing signs. |
+| v22 | Official `.thru` registrar slice (6 `name.*` methods): `getRegistry`, `checkLease` and `getPaymentBalance` reads plus self-signed `purchase`, `renewLease`, `claimExpired` from first-party formats. Fee policy follows the first-party builder: `0n`, because the registrar prices in its own payment token. |
+| v23 | Owner-directed: `name.register` leaves the `NAME_SERVICE` gate and becomes a real self-signed write (first-party subdomain-register format, fee `0n`). Auth tightens `unlocked` → `signing`. `name.getCanonicalRoot` appended as a proof-backed read. `initRoot`/`setRecord` stay gated. |
+| v24 | `tx.getFaucetLimit`: a pure read of the faucet's on-chain rate-limit policy plus the active account's per-rule bucket usage. Unknown states stay explicit; ratelimit-coded `vmError`s are re-labelled `FAUCET_RATE_LIMITED`. |
+| v25 | The custom thru-custom-registrar (D-016, live-verified on Betanet 2026-10-25) joins `/name` as a second provider: `name.getCustomRegistrar` / `name.checkCustomLease` reads, and optional `via`/`years` on `name.register` (`via:'custom'` routes to the custom registrar). |
+| v26 | `token.discover` (additive, `unlocked`): chain-verified incoming-mint discovery. The same drop enabled the DEX swap slice on dated live evidence; the owner withdrew the swap screen on 2026-10-26, so every `DEFI_*` flag is off again and the UI is un-shipped. |
+| v27 | `token.getCachedBalances` (additive, auth none): a storage-only snapshot of the last chain-verified token rows, so the dashboard never waits on RPC. Failed reads are never cached. |
+| v28 | Optional reviewed network/account/price/expiry facts on the name signing requests. |
 
 ### v12 registration and History behavior
 
@@ -96,7 +106,7 @@ No launchpad, DEX, swap, or prediction UI is shipped. The old `src/launchpad/` t
 | Methods | `tx.prepareReview`, `tx.confirmReview`, `tx.discardReview` — all `auth: 'unlocked'`, none signs |
 | Wire model | `src/shared/tx-review/model.js` (`TX_REVIEW_VERSION = 1`, 120 s TTL, strict `assertReview` validator) |
 | Decoders | `native-send`, `token-transfer`, `domain-register`, `domain-purchase`, `domain-renew`, `domain-claim`, `faucet-claim`, `raw` (display-only) |
-| Submit map | `src/background/services/review/kinds.js` — every kind names an EXISTING signing handler; `raw` has `submit: null` |
+| Submit map | `src/background/services/review/kinds.js` — every kind names an EXISTING signing method (method + params, called by the confirm helper); `raw` has `submit: null` |
 | Storage | `tx_reviews`, network-scoped, capped at 40 records, TTL evaluated on read |
 | UI | one card (`src/ui/domain/tx-review/review-card.js`) and one confirm helper (`confirm.js`) |
 | Integrated routes | Send (native + token), Domain (register/purchase/renew/claim), Faucet (claim) |
@@ -106,15 +116,16 @@ No launchpad, DEX, swap, or prediction UI is shipped. The old `src/launchpad/` t
 
 | Area | Current state and evidence |
 | --- | --- |
-| `npm test` | PASS on the 2026-10-04 audited tree: derivation 16/16, QR 15/15, layering 80 files/0 sinks, CSP, routes 14/14, CSS nesting, quarantine 47/47, contract 80/80, security-checks 20, DOM/refs 130/130, route lifecycle 1017/1017, plus storage-migrations, vault, Thru client, token/balance, History, registration, and API-router suites. Counts are the audited run's; use the final test output for any subsequent refresh. |
-| `npm run build` | PASS on the 2026-10-04 audited tree; `build.mjs` regenerated `dist/` from current source with no warnings. |
-| Contract | v18, 124 methods (81 wallet-core + 43 gated-off DeFi M0 surface). v16 deliberately retired unbound legacy send methods after zero shipped callers; registration/history APIs remain. |
+| `npm test` | PASS on the 2026-10-28 tree: **2,182 checks across 32 suites plus 5 build gates**, exit 0. Includes derivation and QR vectors, layering 126 files/0 DOM sinks, CSP, routes 15/15 with 259 defined CSS classes, CSS nesting, launchpad quarantine, contract 161/161, DOM/refs, route lifecycle 1,054/1,054, the transaction review suite 83/83, plus storage-migrations, vault, Thru client, token/balance, History, registration, and API-router suites. Use the final test output for any subsequent refresh. |
+| `npm run build` | PASS on the 2026-10-28 tree; `build.mjs` regenerated `dist/` from current source with no warnings. |
+| Contract | v29, 147 methods (81 wallet-core + 43 gated-off DeFi M0 surface + the v19–v29 additive slices). v16 deliberately retired unbound legacy send methods after zero shipped callers. v29 adds `tx.prepareReview` / `tx.confirmReview` / `tx.discardReview`, all `unlocked` and none of them signing. |
+| Transaction review | One shared pipeline (`src/shared/tx-review/*`, `services/review-service.js`, `ui/domain/tx-review/*`) behind Send (native + token), Domain (register/purchase/renew/claim) and Faucet (claim). Decoders: native-send, token-transfer, domain-register, domain-purchase, domain-renew, domain-claim, faucet-claim, raw. Unknown intents render explicit technical details and have no submit policy. Simulation is unsupported (`tx.simulate` → `supported:false`), so no post-tx balance is ever shown. |
 | Signing | Signing methods use `auth: 'signing'`. The wallet must be unlocked; password re-authentication is required only when the user enables it in Settings. That opt-in is itself password-gated. |
 | Registration | Exact ownership is checked in the background, the target account is the signer, Send JIT does not touch external recipients, and retry behavior is covered by deterministic registration/API tests. |
 | History | Flat card stream, storage-only cache-first paint, per-network/address cache, network-scoped block-time lookup, and provenance/fallback behavior are covered by deterministic tests. |
 | Popup/side panel | Mutual-exclusion and side-panel mode paths have deterministic route/service tests. No real-Chrome certification is claimed. |
 | DOM safety | `scripts/check-layering.mjs` checks the shipped `src/` tree (vendored QR code excluded); current sink count is zero. |
-| Dependency pin | `@thru/sdk` and `@thru/programs` are exact-pinned at `0.4.1`; derivation vectors record verification against 0.4.1 with unchanged golden addresses. This is complete, not open work. |
+| Dependency pin | `@thru/sdk` and `@thru/programs` are exact-pinned at `0.4.2`; derivation vectors record verification against that pin with unchanged golden addresses. This is complete, not open work. |
 
 ---
 
@@ -176,9 +187,9 @@ When these change, update this ledger, `CONTEXT.md`, `docs/STATUS_AND_ROADMAP.md
 
 | Identifier | Current value |
 | --- | --- |
-| contract version | 18 |
-| method count | 124 |
-| route count | 14 |
+| contract version | 29 |
+| method count | 147 |
+| route count | 15 |
 | guarded DOM sink count | 0 across shipped `src/` (vendored QR excluded) |
 | store package | `1.4.1`, listed 2026-10-04; browser verification of the store package: not recorded |
 | enabled networks | Betanet |
@@ -186,4 +197,4 @@ When these change, update this ledger, `CONTEXT.md`, `docs/STATUS_AND_ROADMAP.md
 | built extension pages | one shared `popup.html` for popup + side panel |
 | launchpad/DEX/prediction UI | not shipped; launchpad tree is quarantined by source/build tests |
 | signing re-auth default | off; unlocked session only, with password-gated opt-in |
-| `@thru/sdk` / `@thru/programs` | exact-pinned `0.4.1` |
+| `@thru/sdk` / `@thru/programs` | exact-pinned `0.4.2` |

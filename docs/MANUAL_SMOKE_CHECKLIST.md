@@ -1,6 +1,6 @@
 # Manual smoke checklist
 
-The automated suite includes `test/test-route-lifecycle.mjs`, which mounts all 14 routes in all
+The automated suite includes `test/test-route-lifecycle.mjs`, which mounts all 15 routes in all
 three vault states through the real Router, guards, bridge and kit and asserts route behavior,
 teardown, focus trapping and secret hygiene. `scripts/check-routes.mjs` checks route consistency
 and used CSS classes. These are specific deterministic checks, not a substitute for Chrome.
@@ -118,7 +118,7 @@ hash directly (`#/send`) where the UI has no link, so unmigrated or unreachable 
 | `/add-account` | HD preview renders; adding an account returns to `/accounts` | [ ] | [ ] |
 | `/keyring` | Source list, rename, backed-up state; `#/keyring?id=<id>` from Accounts | [ ] | [ ] |
 | `/export` | Password prompt before any secret; reveal shows the phrase; navigating away removes it (see §5) | [ ] | [ ] |
-| `/send` | Form appears after account/network metadata, without waiting for live balances or token reads; unknown/last-known balance is labelled and cannot unlock Max/Review; recipient validation, amount parsing, fee, confirmation and receipt work after verification | [x] | [ ] |
+| `/send` | Form appears after account/network metadata, without waiting for live balances or token reads; unknown/last-known balance is labelled and cannot unlock Max/Review; recipient validation, amount parsing, fee, confirmation and receipt work after verification. **Review is the shared v29 card** (header, amount, fee, warning, one confirm); Review stays disabled until the form is valid, and the card's confirm stays disabled while any blocking warning is shown | [x] | [ ] |
 | `/send` (token) | Pending reads say checking, failures say unknown (not zero); only a token with a verified positive balance and on-chain mint decimals is selectable; amount re-denominates correctly; review discloses recipient token-account init fee; MAX excludes broken values | [ ] | [ ] |
 | `/receive` | Address, QR renders in the raised Thru palette (gradient red tiles, slate finder eyes, ice paper) and scans from a phone; clicking the address box copies it, the box says \"Copied\", then returns to the address after ~1s | [ ] | [ ] |
 || `/faucet` | Claim state, disabled when already claimed, error when the network has no faucet; **rate-limit readout (v24)**: a "Faucet rate limit" note appears under the form with real per-rule usage and (unix-windowed) reset time when the policy is readable — pause/exhaustion disables the claim button, an exhausted window surfaces as a warning banner with reset time (verified vs the on-chain policy `BOOTSTRAP_FAUCET_RATE_LIMIT_POLICY_ADDRESS`, never fabricated), unknown/unreadable limit state stays silent and claiming stays possible | [ ] | [ ] |
@@ -298,7 +298,46 @@ wallet; never paste a real seed into DevTools or its command history:
 4. With a **1 min** window, sit on the send review screen and move the pointer occasionally:
    the wallet must NOT lock while you are actively using it (presence counts as activity).
 
-## 7. Recording the result
+## 7. The shared review card (v29) — never opened in a real browser
+
+Every value-moving screen now shows the SAME card (`src/ui/domain/tx-review/review-card.js`): Send,
+Send token, `/name` register/purchase/renew/claim, `/faucet` claim. There is no browser evidence for
+it yet — `scripts/preview-tx-review.html` renders seven fixtures against the real `dist/` CSS and the
+real component, but the shim has no layout engine. Run these with a funded Betanet account and an
+amount you are willing to send.
+
+- [ ] **Simple transfer must not look like DeFi.** On `/send`, the card shows exactly: operation name,
+  network, signing account, recipient label (when matched) plus the FULL destination address, exact
+  amount with symbol, fee (or its explicit unknown/unmeasured reason), and one confirm action. No
+  empty sections, no placeholder rows, no technical table unless expanded.
+- [ ] **Header identity.** Network pill says Betanet, the account shown is the source account you
+  selected, and a verified/matched recipient label is visibly distinguished from the raw address.
+- [ ] **Fee honesty.** A native fee shows the measured/assumed provenance and the reserve; a token
+  transfer says the fee is unmeasured (it is never borrowed from the native path). Nothing shows a
+  charged fee before it is charged.
+- [ ] **Simulation is absent, not faked.** No post-transaction balance, no "simulated" success state,
+  and no balance-change table appears. If any of those appear, treat it as a defect.
+- [ ] **Expandable details.** The disclosure expands with the keyboard (Enter/Space), shows the target
+  program/decoded instruction name and raw fields, and does not push the confirm button off-screen at
+  400px. Collapse returns focus to the disclosure control.
+- [ ] **Warnings block.** Trigger a blocking state if one is reachable (e.g. a stale review after a
+  network switch in another trusted page): the confirm control is disabled, the reason is stated, and
+  Cancel is still available.
+- [ ] **Single-use confirm.** Confirm once and wait for the result: the card leaves the review state
+  and cannot be re-submitted. A second attempt on the same review must not broadcast twice.
+- [ ] **Failure keeps the review.** A definite broadcast/validation failure shows the error and leaves
+  the same reviewed facts on screen for a retry (no silent amount/recipient change).
+- [ ] **Timeout is unknown.** If the bridge times out, the UI says the outcome is unknown and does not
+  offer a retry that would double-send. Check History afterwards rather than assuming failure.
+- [ ] **Password re-auth.** With Settings → Signing → Require password ON, Confirm opens the password
+  prompt; Cancel there signs NOTHING and returns to the card. With it OFF, an unlocked wallet
+  confirms without a prompt (D-003 default unchanged).
+- [ ] **`/name` variants.** Register (custom registrar), purchase, renew and claim each show their own
+  facts (years, price, expiry) with no Send rows. A name action must never render as a transfer.
+- [ ] **Faucet.** Claim shows the reviewed claim facts; a paused/exhausted faucet disables claiming at
+  the form, before any review exists.
+
+## 8. Recording the result
 
 Copy this block into the PR description and fill it in. An unchecked box with a reason is far more
 useful than a silently skipped section.
@@ -306,7 +345,10 @@ useful than a silently skipped section.
 ```
 Manual smoke: <date>, Chrome <version>, build <git short sha>
   contexts: popup [ ] side panel [ ]    widths: narrow (<400px) [ ] wide (>=800px) [ ]
-  routes: 14/14 [ ]   redirects [ ]   keyboard/focus [ ]   secret hygiene [ ]
+  routes: 15/15 [ ]   redirects [ ]   keyboard/focus [ ]   secret hygiene [ ]
+  review card: simple-transfer [ ]   fee honesty [ ]   no-simulation [ ]   details/keyboard [ ]
+               blocking-warning [ ]   single-use [ ]   failure-retry [ ]   timeout-unknown [ ]
+               password [ ]   name variants [ ]   faucet [ ]
   browser: mutual exclusion [ ]   QR/layout [ ]   worker lifecycle [ ]
   live chain: v12 activation [ ]   token owner/fee [ ]   block time/latency [ ]   explorer route [ ]
   registrar (host scripts): cargo host tests [ ]   deploy+initialize [ ]   live register probe [ ]   (faucet ceiling: CLOSED 2026-10-24 — cap is exactly 10 000)

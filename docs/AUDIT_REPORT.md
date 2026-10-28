@@ -21,6 +21,15 @@ Baseline evidence (re-run green 2026-10-04): `npm run build` PASS · `npm test` 
 (derivation 16/16, contract 80/80, lifecycle 1017/1017, 1647 assertions) ·
 `npm audit --omit=dev` 0 vulnerabilities.
 
+**Refresh (2026-10-28, no new audit performed).** The tree has since advanced to contract **v29**
+with **147 methods** and **15 routes**; `npm test` is **2,182 checks (32 suites + 5 gates)**, `npm run build`
+PASS, layering 126 files / 0 DOM sinks, `check-routes` 15/15 with 259 defined classes. The v29
+change is the owner-directed shared transaction-review pipeline; its verification record, including
+the fixes found during review, is `docs/TX_REVIEW_VERIFICATION.md`. That record adds **no** live-chain
+or browser evidence: the review card still has no real-browser pass (checklist §7), and no review
+has been confirmed against a funded Betanet account. The 2026-10-04 findings F-01…F-08 remain fixed;
+this refresh changes counts and adds a feature, not the audit conclusion.
+
 ## Mainnet-readiness gates — open (classified 2026-10-04)
 
 Classification basis: the accepted 2026-10-04 conformance audit (all findings F-01…F-08 fixed
@@ -29,7 +38,7 @@ Node test cannot close a browser item, a Betanet observation cannot prove Mainne
 a source audit is not an external audit. Full findings and remediation detail live in the dated
 records below.
 
-**A. Automated verified (deterministic, local — re-run green on 2026-10-04):**
+**A. Automated verified (deterministic, local — 2026-10-04 run; current counts in the refresh above):**
 
 - `npm run build` — PASS, no warnings; `dist/` regenerated from current source.
 - `npm test` — PASS: derivation goldens 16/16 (pinned 0.4.1), QR 15/15, layering 80 files /

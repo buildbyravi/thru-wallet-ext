@@ -1,6 +1,6 @@
 # Status and roadmap
 
-Single source of truth for the **shipped baseline**, what automated evidence proves, and the remaining work. Source baseline reviewed on branch `arena/01a10231-thru-wallet-ext` (2026-10-03). `src/`, `test/`, and `scripts/` remain authoritative.
+Single source of truth for the **shipped baseline**, what automated evidence proves, and the remaining work. Source baseline re-verified on `arena/0439c226-thru-wallet-ext` at contract v29 (2026-10-28). `src/`, `test/`, and `scripts/` remain authoritative.
 
 ## Shipped baseline
 
@@ -18,11 +18,12 @@ Companion docs: `docs/DOCS_INDEX.md` · `docs/PROJECT_LEDGER.md` · `CONTEXT.md`
 
 Every value-moving screen prepares a typed intent through `tx.prepareReview`, renders the ONE
 `TxReviewCard`, and submits through `submitReviewedReview` (confirm → optional password → the
-operation's existing signing handler). Features no longer own review rows, fee formatting, warning
+operation's existing signing method). Features no longer own review rows, fee formatting, warning
 copy or the password flow.
 
 - **Integrated:** Send (native + token transfer), Domain (register / purchase / renew / claim),
-  Faucet (claim). No UI route calls a signing method directly any more.
+  Faucet (claim). No UI route signs a value-moving transaction directly any more — the v12 JIT
+  `tx.registerAccount` activation call in Send is the only direct signing call, unchanged.
 - **Not integrated:** DeFi/DEX/launchpad — no UI surface ships while every `DEFI_*` flag is off, so
   there is nothing to migrate; their kinds do not exist and `tx.prepareReview` answers
   `supported:false` with the known-kinds list rather than a guessed review.
@@ -78,11 +79,11 @@ the precise unsupported and live-write boundaries.
 ### The frontend rebuild is DONE
 
 One stack. The migration flag and legacy tree are deleted, and there is no fallback path left.
-All 14 routes are real:
+All 15 routes are real:
 
 ```
 /welcome  /unlock  /dashboard  /accounts  /account  /add-account  /keyring
-/export   /send    /receive    /faucet    /history  /settings     /reset
+/export   /send    /receive    /faucet    /name     /history     /settings  /reset
 ```
 
 Structural properties now enforced by CI rather than by discipline:
@@ -103,23 +104,24 @@ Structural properties now enforced by CI rather than by discipline:
 
 ### Verified green
 
-Final deterministic verification on the Mainnet-readiness remediation (2026-10-03):
+Final deterministic verification on the current tree (contract v29, 2026-10-28):
 
 ```text
-npm test       PASS — derivation 16; QR 15; layering 80 files / 0 sinks; CSP pass;
-               routes 14/14; CSS nesting pass; launchpad quarantine 47;
-               contract v16 checks, storage migrations, DOM/lifecycle, vault,
-               Thru client, token/balance, History, registration, API-router,
+npm test       PASS — 2,182 checks (32 suites + 5 gates): derivation 16; QR 15; layering 126 files / 0 sinks;
+               CSP pass; routes 15/15 with 259 defined CSS classes; CSS nesting pass;
+               launchpad quarantine; contract 161/161; security-checks; DOM/refs;
+               route lifecycle 1,054/1,054; transaction review 83/83; storage migrations;
+               vault, Thru client, token/balance, History, registration, API-router,
                pending concurrency, signing/network lock, and auto-lock suites pass.
-npm run build  PASS — generated dist/ from the current source.
+npm run build  PASS — generated dist/ from the current source, no warnings.
 ```
 
 These results are deterministic/local. They do not close the browser or live-chain checks below.
 
-Re-verified on the 2026-10-04 production-rules conformance audit (branch
-`arena/01a10602-thru-wallet-ext`): same suites green with the current counts — contract 80/80,
-route lifecycle 1017/1017, security-checks 20, DOM/refs 130/130 — plus the new fee-provenance
-regression (`test-api-router.mjs [13]`). See `docs/AUDIT_REPORT.md`.
+Historical baselines, kept for provenance: the Mainnet-readiness remediation (2026-10-03) and the
+2026-10-04 production-rules conformance audit (`arena/01a10602-thru-wallet-ext`, contract 80/80,
+route lifecycle 1017/1017). Those counts describe the tree at their date, not this one. See
+`docs/AUDIT_REPORT.md`.
 
 ### Recent security hardening
 
@@ -165,7 +167,7 @@ documentation remediation — wallet core first; no DEX/launchpad/prediction wor
 5. **Transaction/signing race testing + MV3 suspension/restart** — network switch during SDK signing, concurrent pending-record writes, worker suspension mid-registration/Send, bridge-timeout unknown-outcome messaging; deterministic interleaving tests exist, real MV3 scheduling does not.
 6. **Token transfer live verification** — `scripts/verify-token-transfer.mjs`: recipient-owner acceptance and the actual token-program fee.
 7. **Explorer/block-time verification** — current feed availability/latency, the `/tx/` explorer route, and whether any authoritative charged-fee source exists.
-8. **Final dependency/security review** — re-run `npm audit --omit=dev`, review advisories for `@thru/*` and `esbuild`, re-verify the 0.4.1 pins before any store release. **Architecture is frozen here** (standing rule in `AGENTS.md`): no refactor without a measurable security, correctness, performance, or maintainability benefit and a proving test.
+8. **Final dependency/security review** — re-run `npm audit --omit=dev`, review advisories for `@thru/*` and `esbuild`, re-verify the 0.4.2 pins before any store release. **Architecture is frozen here** (standing rule in `AGENTS.md`): no refactor without a measurable security, correctness, performance, or maintainability benefit and a proving test.
 9. **External security review/audit** — required before any mainnet-readiness claim; none has been performed.
 10. **Mainnet-specific configuration + verification** — re-measure the fee on mainnet (its `baseFeeUnits` is deliberately null), verify program deployments and explorer routing, add the RPC origin to `connect-src`, and enable deliberately; a Betanet observation cannot prove mainnet behavior.
 
@@ -230,7 +232,8 @@ What was removed, and what deliberately was not:
 
 This was the largest remaining test gap: `check-routes.mjs` proves a route is *reachable* and its
 classes are *defined*; nothing proved it *mounts*. All three requirements are now asserted, for all
-14 routes, in no-vault / locked / unlocked states (904 checks in the current audited run):
+15 routes, in no-vault / locked / unlocked states (**1,054 checks** in the current run, including
+the reviewed Send/Name/Faucet flows):
 
 1. mount through the real Router, guards, bridge and kit, and assert no throw plus the landing path
    the guard actually specifies;
@@ -356,7 +359,7 @@ the probe.
 Completed in the 2026-09-18 audit pass: `@thru/programs` and `@thru/sdk` were exact-pinned at
 `0.3.16`, and derivation imports from the SDK's public `@thru/sdk/crypto` subpath rather than
 the deprecated standalone crypto package. Both pins have since advanced deliberately and remain
-exact: `0.4.1` today, with derivation vectors verified unchanged against that pin
+exact: `0.4.2` today, with derivation vectors verified unchanged against that pin
 (`test/test-derivation.mjs`). Golden addresses have never changed; `npm ci` is the CI install
 gate.
 

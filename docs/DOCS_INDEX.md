@@ -1,6 +1,6 @@
 # Documentation index
 
-Date: 2026-10-05
+Date: 2026-10-05; refreshed 2026-10-28 (contract v29, shared transaction review).
 Purpose: map the maintained documentation and point readers to the implementation and verification sources of truth. Documentation summarizes the code; it does not override it.
 
 ---
@@ -20,8 +20,18 @@ Purpose: map the maintained documentation and point readers to the implementatio
 1. `docs/ARCHITECTURE.md` — implemented dependency, signing, storage, and verification boundaries.
 2. `docs/DECISIONS.md` — durable decisions, rejected alternatives, trade-offs, and consequences.
 3. `docs/MODULE_BOUNDARIES.md` — current core boundaries and clearly labelled, unshipped feature-module target.
-2. `docs/MANUAL_SMOKE_CHECKLIST.md` — real-Chrome checks for popup and side panel; this is a runbook, not automated evidence.
-3. `test/test-route-lifecycle.mjs` and `scripts/check-routes.mjs` — deterministic route, lifecycle, reachability, and CSS-class guards.
+4. `docs/MANUAL_SMOKE_CHECKLIST.md` — real-Chrome checks for popup and side panel; this is a runbook, not automated evidence.
+5. `test/test-route-lifecycle.mjs` and `scripts/check-routes.mjs` — deterministic route, lifecycle, reachability, and CSS-class guards.
+
+### For transaction review or signing-surface work
+
+1. `docs/TX_REVIEW_VERIFICATION.md` — what v29 is, the Rabby study, the claim-by-claim verdict, and the
+   defects found and fixed while reviewing it.
+2. `docs/ARCHITECTURE.md` — the review/signing boundary and its authorities.
+3. `src/shared/tx-review/` and `src/background/services/review/` — the contract, decoders, kinds and
+   store; `src/ui/domain/tx-review/` — the one card and the one confirm path.
+4. `test/test-tx-review.mjs` and `scripts/preview-tx-review.html` — deterministic coverage plus the
+   human layout harness.
 
 ### For security work
 

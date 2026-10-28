@@ -23,7 +23,8 @@
       rows that operation actually has;
     - the blocked sends and the unknown instruction render a disabled confirm, and the
       unknown case shows raw data behind a disclosure;
-    - at 408px nothing is clipped, long addresses wrap, and the raw-data block scrolls
+    - at the 408px stress width (the real popup is 400px) nothing is clipped, long addresses
+      wrap, and the raw-data block scrolls
       horizontally instead of pushing the card wider than the popup;
     - keyboard: Tab reaches the acknowledgement checkbox and the raw-data toggle, Enter/Space
       toggles them, and both show a visible focus ring.
@@ -46,7 +47,8 @@
   .harness-col { display: flex; flex-direction: column; gap: 8px; }
   .harness-label { font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
   .harness-sub { font-size: 12px; opacity: .7; }
-  /* The popup viewport, reproduced: 408 x 600, card scrolling inside it. */
+  /* Popup-sized viewport, 408x600: a 8px-wider stress case than the shipped 400px
+     (--popup-width in src/popup/styles/tokens.css), with the card scrolling inside it. */
   .viewport {
     width: 408px; height: 600px; overflow-y: auto; overflow-x: hidden;
     border: 1px solid #888; border-radius: 12px; padding: 12px; box-sizing: border-box;

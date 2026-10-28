@@ -249,18 +249,21 @@ monolith comparison is not evidence of duplicate code in the shipped route stack
 > **Lesson:** when deduplicating, compare behavior before deleting either implementation. The old
 > versions differed; preserve the required behavior in the shared current component and its tests.
 
-## 6. Open verification gaps — as of 2026-09-26
+## 6. Open verification gaps — refreshed 2026-10-28
 
 Automated coverage is materially stronger than the original audit: `scripts/check-routes.mjs`
-checks route reachability/CSS classes; `test/test-route-lifecycle.mjs` mounts all 14 routes through
-the real Router/guards/bridge and checks secret hygiene, listeners, focus-trap behavior, Send and
-History flows; focused suites cover registration, history cache/block-time, network scoping, the API
-router, and contract invariants. These tests use deterministic fixtures/DOM shims and do not close
+checks route reachability/CSS classes; `test/test-route-lifecycle.mjs` mounts all 15 routes through
+the real Router/guards/bridge and checks secret hygiene, listeners, focus-trap behavior, the reviewed
+Send/Name/Faucet flows and History; `test/test-tx-review.mjs` covers the review pipeline; focused
+suites cover registration, history cache/block-time, network scoping, the API router, and contract
+invariants. These tests use deterministic fixtures/DOM shims and do not close
 the following items:
 
 | Boundary | Still open |
 | --- | --- |
 | Real Chrome | Popup/side-panel layout and focus at narrow/wide sizes, QR rendering, clipboard prompt, actual mutual exclusion/toolbar mode, and MV3 worker eviction/restart. Use `docs/MANUAL_SMOKE_CHECKLIST.md`. |
+| Review card in a browser | The v29 card has DOM-level tests and a static fixture harness (`scripts/preview-tx-review.html`), but no real-browser pass at 400px or in the side panel. Checklist §7 lists the specific checks (simple-transfer hierarchy, fee honesty, no simulated balance, blocking warnings, single-use confirm, timeout wording). |
+| Transaction simulation | Not available on the current Thru backend: `tx.simulate` returns `{supported:false}`. Reviews therefore show no post-transaction balances. Enabling it requires a trustworthy dry-run RPC boundary, not a UI change. |
 | Live v12 registration | Creation-time registration and Send JIT for an owned absent recipient on a live enabled network; include offline-vs-absent and exact target signer checks. |
 | Live token transfer | Recipient-owner acceptance when the recipient has never registered, and the actual token-program fee (`scripts/verify-token-transfer.mjs`). |
 | Send/pending races | A network switch after the final preflight while SDK signing is in progress, and concurrent pending-record read/modify/write operations (`docs/SEND_PATH_AUDIT.md`). |
