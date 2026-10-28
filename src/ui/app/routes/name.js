@@ -70,6 +70,7 @@ export function NameRoute({ back }) {
   const providerReads = new Map();
   const mintReads = new Map();
   let destroyed = false;
+  const abortController = new AbortController();
 
   function track(c) {
     if (c) owned.push(c);
@@ -804,15 +805,12 @@ export function NameRoute({ back }) {
           discardReview(prepared.reviewId);
           sheet.close();
         });
-        sheet.d.on(confirm.el, 'click', async () => {
+        sheet.d.on(confirm.el, 'click', () => {
           if (sheet.closed || destroyed || !card.isConnected || submissionInFlight) return;
           const acknowledgements = reviewCard.acknowledgements;
-          confirm.el.disabled = true;
-          cancel.el.disabled = true;
-          confirm.el.textContent = 'Submitting…';
-          const progressEl = h('div', { class: 'name-confirm-progress hint', text: 'Submitting transaction…' });
-          sheet.card.appendChild(progressEl);
-          await submitReviewed(prepared, acknowledgements, kind, state.name, sheet, progressEl, confirm.el, cancel.el);
+          // Close the review trap before opening password authentication or submitting.
+          sheet.close();
+          void submitReviewed(prepared, acknowledgements, kind, state.name);
         });
 
         sheet.card.appendChild(h('div', { class: 'screen-actions' }, [confirm.el, cancel.el]));
@@ -820,17 +818,19 @@ export function NameRoute({ back }) {
       })();
     });
 
-    async function submitReviewed(prepared, acknowledgements, kind, nameText, sheet = null, progressEl = null, confirmBtn = null, cancelBtn = null) {
+    async function submitReviewed(prepared, acknowledgements, kind, nameText) {
       submissionInFlight = true;
-      setListMutationLocked();
+      setListMutationLocked(true);
       for (const control of transactionControls) control.disabled = true;
-      setStatus('Submitting transaction…', '');
+      const opName = kind === 'domain-renew' ? 'Renewal' : 'Registration';
+      setStatus(`Submitting ${opName.toLowerCase()} transaction…`, '');
+      banner.set(`Submitting ${opName.toLowerCase()} for ${nameText}.${currentTld()} to Thru L1… Waiting for confirmation.`, 'info');
       const review = prepared.review;
       try {
-        if (progressEl) progressEl.textContent = 'Awaiting on-chain confirmation…';
         const outcome = await submitReviewedReview({
           review,
           acknowledgements,
+          signal: abortController.signal,
           passwordTitle: 'Confirm transaction',
           passwordBody: `Enter your password to sign for ${nameText}.${currentTld()}.`,
           confirmLabel: 'Confirm and sign',
@@ -838,22 +838,12 @@ export function NameRoute({ back }) {
         if (destroyed || !card.isConnected) return;
         if (outcome.status === 'cancelled') {
           setStatus('Transaction cancelled', '');
-          if (sheet && !sheet.closed) {
-            progressEl?.remove();
-            if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = 'Confirm and sign'; }
-            if (cancelBtn) cancelBtn.disabled = false;
-          }
+          banner.set('');
           return;
         }
-        if (sheet && !sheet.closed) {
-          if (progressEl) {
-            progressEl.textContent = 'Confirmed on-chain!';
-            progressEl.classList.add('name-status-ok');
-          }
-          setTimeout(() => { sheet?.close(); }, 600);
-        }
         toast('Transaction confirmed');
-        setStatus(`${nameText}.${currentTld()} · ${kind === 'domain-renew' ? 'Renewal' : 'Registration'} confirmed`, 'ok');
+        banner.set(`${nameText}.${currentTld()} · ${opName} confirmed on-chain!`, 'ok');
+        setStatus(`${nameText}.${currentTld()} · ${opName} confirmed`, 'ok');
         ctaBtn.classList.add('hidden');
         entry.completed = true;
         entry.quote = null;
@@ -861,15 +851,8 @@ export function NameRoute({ back }) {
       } catch (err) {
         if (destroyed || !card.isConnected) return;
         const classified = classifyReviewError(err);
-        if (sheet && !sheet.closed) {
-          progressEl?.remove();
-          if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = 'Confirm and sign'; }
-          if (cancelBtn) cancelBtn.disabled = false;
-          banner.set(classified.message || err?.message || 'Transaction failed.');
-          sheet.close();
-        }
         if (classified.kind === 'uncertain') {
-          setStatus('Confirmation pending. Check the outcome before trying again.', 'warn');
+          setStatus('Confirmation unavailable. Check the outcome before trying again.', 'warn');
           entry.outcomeUnknown = true;
           entry.recheckRequired = true;
           leaseState = null;
@@ -885,7 +868,7 @@ export function NameRoute({ back }) {
         }
       } finally {
         submissionInFlight = false;
-        setListMutationUnlocked();
+        setListMutationLocked(false);
         for (const control of transactionControls) control.disabled = false;
       }
     }
@@ -1028,6 +1011,7 @@ export function NameRoute({ back }) {
     el,
     destroy() {
       destroyed = true;
+      abortController.abort();
       clearBody();
       header.destroy();
       banner.destroy();

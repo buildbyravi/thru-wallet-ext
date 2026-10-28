@@ -1641,6 +1641,13 @@ form > .btn.text {
   grid-template-columns: 1fr 1fr;
   gap: var(--sp-2);
 }
+.name-confirm-progress {
+  padding: var(--sp-2) var(--sp-3);
+  text-align: center;
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface-elevated, rgba(255, 255, 255, 0.04));
+}
 .name-domain-list {
   min-width: 0;
 }

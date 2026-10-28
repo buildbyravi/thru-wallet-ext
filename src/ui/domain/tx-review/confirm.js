@@ -52,6 +52,7 @@ const SIGNING_FAILURE_CODES = new Set([
  *   review          the envelope rendered to the user
  *   acknowledgements  the acknowledgement ids the user ticked
  *   passwordTitle / passwordBody / confirmLabel  copy for the re-auth prompt
+ *   signal          optional route-lifecycle AbortSignal
  * @returns {Promise<{ status: 'submitted', result: any }
  *   | { status: 'cancelled' }>}
  * @throws the background's coded error (see classifyReviewError)
@@ -62,7 +63,9 @@ export async function submitReviewedReview({
   passwordTitle = 'Confirm transaction',
   passwordBody = 'Re-enter your wallet password to sign and broadcast this transaction.',
   confirmLabel = null,
+  signal = null,
 } = {}) {
+  if (signal?.aborted) return { status: 'cancelled' };
   if (!review?.reviewId || !review?.bindingHash) {
     throw Object.assign(new Error('This review is missing its binding. Review the transaction again.'), {
       code: 'REVIEW_NOT_FOUND',
@@ -81,6 +84,8 @@ export async function submitReviewedReview({
     if (error && typeof error === 'object') error.phase = 'confirm';
     throw error;
   }
+  if (signal?.aborted) return { status: 'cancelled' };
+
   const { submit, submitPolicy } = confirmed ?? {};
   if (!submit?.method) {
     throw Object.assign(new Error('This review cannot be signed.'), { code: 'NOT_EXECUTABLE' });
@@ -104,14 +109,27 @@ export async function submitReviewedReview({
     return { status: 'submitted', result: await guardedSend() };
   }
 
-  const result = await requirePassword({
+  const outcome = await requirePassword({
     title: passwordTitle,
     body: passwordBody,
     confirmLabel: confirmLabel || review.operation?.confirmLabel || 'Confirm',
-    verify: (password) => guardedSend(password),
+    signal,
+    verify: async (password) => {
+      try {
+        return { result: await guardedSend(password) };
+      } catch (error) {
+        // Only authentication errors stay in the password dialog. A submitted or stale
+        // transaction must return to the route, never become a password retry.
+        if (['AUTH_REQUIRED', 'AUTH_FAILED', 'AUTH_LOCKED_OUT', 'INVALID_PASSWORD'].includes(error?.code)) {
+          throw error;
+        }
+        return { error };
+      }
+    },
   });
-  if (result == null) return { status: 'cancelled' };
-  return { status: 'submitted', result };
+  if (outcome == null) return { status: 'cancelled' };
+  if (outcome.error) throw outcome.error;
+  return { status: 'submitted', result: outcome.result };
 }
 
 /**

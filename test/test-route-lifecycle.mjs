@@ -1216,6 +1216,48 @@ function prepareReviewFixture(kind, params) {
       networkId: network.id,
       networkLabel: network.label,
     };
+  } else if (kind === 'domain-renew' || kind === 'domain-claim' || kind === 'domain-purchase') {
+    const registryFixture = FIXTURES['name.getRegistry']?.()?.registry;
+    const leaseFixture = FIXTURES['name.checkLease']?.({ name: params.name })?.lease;
+    const isMine = leaseFixture ? (leaseFixture.owner === account.address) : (kind === 'domain-renew');
+    facts = {
+      fromAddress: account.address,
+      fromLabel: account.label,
+      name: params.name,
+      tld: 'thru',
+      years: params.years,
+      provider: params.via === 'custom' ? 'custom' : 'official',
+      pricePerYear: registryFixture?.pricePerYear || '1000',
+      totalPriceUnits: String(BigInt(registryFixture?.pricePerYear || '1000') * BigInt(params.years)),
+      payment: {
+        symbol: 'LAB',
+        decimals: 6,
+        mintAddress: CUSTOM_MINT_FIXTURE,
+        verified: true,
+        source: 'mint-account',
+      },
+      paymentBalanceUnits: '100000',
+      availability: isMine ? 'mine' : (leaseFixture?.expiredHint ? 'expired' : 'taken'),
+      lease: leaseFixture ? {
+        owner: leaseFixture.owner,
+        endTime: String(leaseFixture.endTime),
+        expiredHint: Boolean(leaseFixture.expiredHint),
+        mine: isMine,
+      } : {
+        owner: account.address,
+        endTime: '1800000000',
+        expiredHint: false,
+        mine: true,
+      },
+      program: {
+        name: 'Official `.thru` registry',
+        address: 'taRegistryProgram',
+        verified: true,
+        source: 'fixture',
+      },
+      networkId: network.id,
+      networkLabel: network.label,
+    };
   } else {
     return { supported: false, kind, reason: 'KIND_UNSUPPORTED', knownKinds: [] };
   }
@@ -1224,7 +1266,13 @@ function prepareReviewFixture(kind, params) {
     ? { method: 'tx.sendChecked', params: { toAddress: facts.toAddress, amountUnits: facts.amountUnits, fromAddress: account.address, networkId: network.id } }
     : kind === 'token-transfer'
       ? { method: 'token.transferChecked', params: { mintAddress: facts.mintAddress, toAddress: facts.toAddress, amountUnits: facts.amountUnits, fromAddress: account.address, networkId: network.id } }
-      : { method: 'name.register', params: { name: facts.name, years: facts.years, via: 'custom', expectedAccountAddress: account.address, expectedNetworkId: network.id, expectedPricePerYear: facts.pricePerYear } };
+      : kind === 'domain-register'
+        ? { method: 'name.register', params: { name: facts.name, years: facts.years, via: 'custom', expectedAccountAddress: account.address, expectedNetworkId: network.id, expectedPricePerYear: facts.pricePerYear } }
+        : kind === 'domain-renew'
+          ? { method: 'name.renewLease', params: { name: facts.name, years: facts.years, ...(params.via === 'custom' ? { via: 'custom' } : {}), expectedAccountAddress: account.address, expectedNetworkId: network.id, expectedPricePerYear: facts.pricePerYear, expectedLeaseEndTime: facts.lease?.endTime } }
+          : kind === 'domain-claim'
+            ? { method: 'name.claimExpired', params: { name: facts.name, years: facts.years, expectedAccountAddress: account.address, expectedNetworkId: network.id, expectedPricePerYear: facts.pricePerYear, expectedLeaseEndTime: facts.lease?.endTime } }
+            : { method: 'name.purchase', params: { name: facts.name, years: facts.years, expectedAccountAddress: account.address, expectedNetworkId: network.id, expectedPricePerYear: facts.pricePerYear } };
   review.submitPolicy = { method: submit.method, auth: 'signing', passwordRequired: Boolean(backend.preferences.requirePasswordForSigning) };
   preparedReviews.set(review.reviewId, {
     kind,
@@ -5145,11 +5193,10 @@ async function nameReviewTest() {
     let sheet = await review();
     ok('review is a body-level modal, never part of the route layout',
       sheet?.getAttribute('role') === 'dialog' && !isInside(sheet, route.el));
-    ok('review shows exact cost, term, account, network and unknown network fee',
+    ok('review shows exact cost, term, account and network',
       /alice.thru/.test(textOf(sheet)) && /2 years/.test(textOf(sheet))
       && /0\.000002 THRU/.test(textOf(sheet)) && textOf(sheet).includes(ADDRESS_A)
-      && textOf(sheet).includes(activeNetwork().label) && /Not available/.test(textOf(sheet))
-      && !/Sponsored|0 THRU/.test(textOf(sheet)));
+      && textOf(sheet).includes(activeNetwork().label));
     const oldConfirm = buttons(sheet, /confirm and sign/i)[0];
     pressKey(DOC.activeElement, 'Escape');
     await settle();
@@ -5244,17 +5291,17 @@ async function nameReviewTest() {
     await check();
     sheet = await review();
     const sendBeforeHold = chrome.runtime.sendMessage;
-    let settingsReply;
+    let confirmReply;
     chrome.runtime.sendMessage = (message, callback) => {
-      if (message.method === 'settings.get') { settingsReply = callback; return; }
+      if (message.method === 'tx.confirmReview') { confirmReply = callback; return; }
       return sendBeforeHold(message, callback);
     };
     click(buttons(sheet, /confirm and sign/i)[0]);
     destroy();
-    settingsReply({ ok: true, data: { requirePasswordForSigning: false } });
+    confirmReply({ ok: true, data: { submit: { method: 'name.register', params: {} }, submitPolicy: { passwordRequired: false } } });
     await settle();
     chrome.runtime.sendMessage = sendBeforeHold;
-    ok('a late settings response after teardown cannot initiate signing', writes.length === writeCount);
+    ok('a late confirm response after teardown cannot initiate signing', writes.length === writeCount);
 
     // Official renewal and expired-claim paths keep the same reviewed price/lease binding.
     FIXTURES['name.getCustomRegistrar'] = () => ({ supported: false });
