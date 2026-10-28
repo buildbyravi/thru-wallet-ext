@@ -92,7 +92,7 @@ No launchpad, DEX, swap, or prediction UI is shipped. The old `src/launchpad/` t
 ### v12 registration and History behavior
 
 - Account/keyring creation paths make a best-effort registration attempt for each newly added account on the selected network. Retries are bounded (one initial attempt plus at most three exponential retries); lock, account removal, network change, or a permanent refusal stops the retry. Offline failure does not block local account creation.
-- Dashboard may call the existing active-account creation path after a successful live absence check. Send uses `tx.registerAccount` only after an absence check for a recipient the unlocked vault owns. It never registers an arbitrary contact or external address.
+- Dashboard and Send both activate an absent owned account through `tx.registerAccount` (Dashboard for the active account, Send after a successful live absence check). Send uses `tx.registerAccount` only after an absence check for a recipient the unlocked vault owns. It never registers an arbitrary contact or external address.
 - Registration signs with the target account's own key; its transaction declares fee `0n` and nonce `0n`. It is still a signed broadcast and is not evidence that network/privacy effects are zero. There is no periodic signer.
 - Send JIT activation remains pending until the background confirms registration. Review then displays the matched recipient label and the full address. The label is presentation only; the address remains the authorization fact.
 - History paints a storage-only cache scoped by network and address before its RPC feed/pending reconciliation completes. Known block times carry `timestampSource: 'block'`; only an actual local submission time for the wallet's own transaction may be used as a fallback. Otherwise the card shows `Block <slot>` rather than a fabricated date. The UI is a flat stream without day headers and has no per-card fee line.
@@ -108,7 +108,7 @@ No launchpad, DEX, swap, or prediction UI is shipped. The old `src/launchpad/` t
 | Decoders | `native-send`, `token-transfer`, `domain-register`, `domain-purchase`, `domain-renew`, `domain-claim`, `faucet-claim`, `raw` (display-only) |
 | Submit map | `src/background/services/review/kinds.js` — every kind names an EXISTING signing method (method + params, called by the confirm helper); `raw` has `submit: null` |
 | Storage | `tx_reviews`, network-scoped, capped at 40 records, TTL evaluated on read |
-| UI | one card (`src/ui/domain/tx-review/review-card.js`) and one confirm helper (`confirm.js`) |
+| UI | one card (`src/ui/domain/tx-review/review-card.js`) and one confirm helper (`confirm.js`); `test-tx-review.mjs` [14] fails the suite if any `bridge.send('…')` literal under `src/ui/` names an `auth:'signing'` method |
 | Integrated routes | Send (native + token), Domain (register/purchase/renew/claim), Faucet (claim) |
 | Not integrated | DeFi/DEX/launchpad: no UI surface ships (all flags off) and no backend execute path is reachable |
 
@@ -116,7 +116,7 @@ No launchpad, DEX, swap, or prediction UI is shipped. The old `src/launchpad/` t
 
 | Area | Current state and evidence |
 | --- | --- |
-| `npm test` | PASS on the 2026-10-28 tree: **2,182 checks across 32 suites plus 5 build gates**, exit 0. Includes derivation and QR vectors, layering 126 files/0 DOM sinks, CSP, routes 15/15 with 259 defined CSS classes, CSS nesting, launchpad quarantine, contract 161/161, DOM/refs, route lifecycle 1,054/1,054, the transaction review suite 83/83, plus storage-migrations, vault, Thru client, token/balance, History, registration, and API-router suites. Use the final test output for any subsequent refresh. |
+| `npm test` | PASS on the 2026-10-28 tree: **2,193 checks across 32 suites plus 5 build gates**, exit 0. Includes derivation and QR vectors, layering 126 files/0 DOM sinks, CSP, routes 15/15 with 259 defined CSS classes, CSS nesting, launchpad quarantine, contract 161/161, DOM/refs, route lifecycle 1,059/1,059, the transaction review suite 89/89, plus storage-migrations, vault, Thru client, token/balance, History, registration, and API-router suites. Use the final test output for any subsequent refresh. |
 | `npm run build` | PASS on the 2026-10-28 tree; `build.mjs` regenerated `dist/` from current source with no warnings. |
 | Contract | v29, 147 methods (81 wallet-core + 43 gated-off DeFi M0 surface + the v19–v29 additive slices). v16 deliberately retired unbound legacy send methods after zero shipped callers. v29 adds `tx.prepareReview` / `tx.confirmReview` / `tx.discardReview`, all `unlocked` and none of them signing. |
 | Transaction review | One shared pipeline (`src/shared/tx-review/*`, `services/review-service.js`, `ui/domain/tx-review/*`) behind Send (native + token), Domain (register/purchase/renew/claim) and Faucet (claim). Decoders: native-send, token-transfer, domain-register, domain-purchase, domain-renew, domain-claim, faucet-claim, raw. Unknown intents render explicit technical details and have no submit policy. Simulation is unsupported (`tx.simulate` → `supported:false`), so no post-tx balance is ever shown. |

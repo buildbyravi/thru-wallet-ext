@@ -346,7 +346,7 @@ routes for those surfaces. Verify exact controls against `src/ui/app/routes/acco
 
 Signing requires an unlocked wallet. Password re-authentication is **off by default**; the user may enable it in Settings through password-gated `settings.setSecurity`. Secret export, password-gated keyring operations, and security-setting changes require their declared password policy. `wallet.reset` always requires explicit confirmation and additionally requires the password when the wallet is unlocked; other account operations follow their declared contract auth.
 
-**Contract v12 owned-account activation:** `tx.registerAccount({ address })` is `auth: 'unlocked'` and is restricted in the background to the exact address in the unlocked vault. Creation/addition paths make a bounded best-effort attempt for the account just created; Send invokes it JIT only after a successful absence check for a selected/typed owned recipient. The target account self-signs with its own key and pays the declared account-creation fee of `0n` (nonce `0n`, `stateUnits` `1` — the activation requirement; `chainId` is taken from the node at build time). A zero declared fee does not mean a broadcast has no network/privacy effects. There is no periodic signer, and the sender never registers an external contact. Checked value-moving methods (`tx.sendChecked` / `token.transferChecked`) remain under `auth: 'signing'`.
+**Contract v12 owned-account activation:** `tx.registerAccount({ address })` is `auth: 'unlocked'` and is restricted in the background to the exact address in the unlocked vault. Creation/addition paths make a bounded best-effort attempt for the account just created; Dashboard invokes it for the active account after an absence check; Send invokes it JIT only after a successful absence check for a selected/typed owned recipient. Nothing calls the older signing-gated `tx.autoCreateAccount`. The target account self-signs with its own key and pays the declared account-creation fee of `0n` (nonce `0n`, `stateUnits` `1` — the activation requirement; `chainId` is taken from the node at build time). A zero declared fee does not mean a broadcast has no network/privacy effects. There is no periodic signer, and the sender never registers an external contact. Checked value-moving methods (`tx.sendChecked` / `token.transferChecked`) remain under `auth: 'signing'`.
 
 ### Send — a reviewed flow, never a one-click form
 
@@ -648,7 +648,8 @@ Run `npm test` and `npm run build` on the final tree. The current test command i
   block-time, account registration, and API-router integration;
 - the transaction-review pipeline: registry↔kind parity, every decoder, malformed/unknown input,
   amount and fee formatting, review binding/TTL/account/network refusals, acknowledgements, the
-  single-use confirm, and the shared error-code registry (`test/test-tx-review.mjs`).
+  single-use confirm, the shared error-code registry, and the "no signing-gated method literal in
+  `src/ui/`" scan (`test/test-tx-review.mjs`).
 
 `test/test-route-lifecycle.mjs` mounts all 15 routes through the real Router, guards, bridge, and
 kit using the repository's DOM shim. It asserts route behavior, secret hygiene, teardown, focus

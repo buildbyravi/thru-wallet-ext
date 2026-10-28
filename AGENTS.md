@@ -246,10 +246,11 @@ is red. Never weaken or skip a test to make it pass.
     `tx.prepareReview` → `src/ui/domain/tx-review/review-card.js` → `tx.confirmReview` (which
     re-validates and returns the submit instructions for the operation's existing signing method)
     → `confirm.js`, the only confirm→auth→submit step. Do not add a feature-owned signing screen, fee formatter, warning copy or password
-    flow, and do not call a signing method from a route. The only signing-capable literal in
-    `src/ui/` today is the v12 `tx.registerAccount` activation call; a source scan for direct
-    signing calls must stay at zero (re-run it when adding a route — it is a review step, not yet a
-    build gate). To support a new operation, add a decoder
+    flow, and do not call a signing method from a route. `test/test-tx-review.mjs` [14] enforces
+    this: it scans every `src/ui/**/*.js` for `bridge.send('<method>')` literals and fails if any
+    names an `auth:'signing'` method (or a method absent from the manifest). The only non-review
+    call the UI makes itself is the v12 `tx.registerAccount` activation, which is `auth:'unlocked'`
+    by design. Dashboard used to fail this rule with `tx.autoCreateAccount`; do not reintroduce it. To support a new operation, add a decoder
     (`src/shared/tx-review/decoders/`), register it, and add a kind spec in
     `src/background/services/review/kinds.js` naming the EXISTING submit method. An undecodable
     transaction decodes as explicit unknown with raw details and `submit: null` — never guess a

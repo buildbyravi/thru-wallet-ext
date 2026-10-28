@@ -262,7 +262,7 @@ the following items:
 | Boundary | Still open |
 | --- | --- |
 | Real Chrome | Popup/side-panel layout and focus at narrow/wide sizes, QR rendering, clipboard prompt, actual mutual exclusion/toolbar mode, and MV3 worker eviction/restart. Use `docs/MANUAL_SMOKE_CHECKLIST.md`. |
-| Review card in a browser | The v29 card has DOM-level tests and a static fixture harness (`scripts/preview-tx-review.html`), but no real-browser pass at 400px or in the side panel. Checklist §7 lists the specific checks (simple-transfer hierarchy, fee honesty, no simulated balance, blocking warnings, single-use confirm, timeout wording). |
+| Review card in a browser | The v29 card has DOM-level tests and a static fixture harness (`scripts/preview-tx-review.html`), but no real-browser pass at 400px or in the side panel (Dashboard/Send activation and the reviewed flows are DOM-shim only). Checklist §7 lists the specific checks (simple-transfer hierarchy, fee honesty, no simulated balance, blocking warnings, single-use confirm, timeout wording). |
 | Transaction simulation | Not available on the current Thru backend: `tx.simulate` returns `{supported:false}`. Reviews therefore show no post-transaction balances. Enabling it requires a trustworthy dry-run RPC boundary, not a UI change. |
 | Live v12 registration | Creation-time registration and Send JIT for an owned absent recipient on a live enabled network; include offline-vs-absent and exact target signer checks. |
 | Live token transfer | Recipient-owner acceptance when the recipient has never registered, and the actual token-program fee (`scripts/verify-token-transfer.mjs`). |
@@ -361,3 +361,36 @@ the review: retrying from the same reviewed facts is safe and avoids a needless 
 
 > **Lesson:** "the downstream guard will catch it" is a reason a bug is survivable, not a reason to
 > leave the upstream hole open.
+
+## 10. Dashboard activated accounts through a signing-gated method — FIXED in source/tests
+
+Found by the new "no UI file names a signing method" scan added in `test/test-tx-review.mjs` [14],
+prompted by a second independent review asking whether any direct signing call remained.
+
+`routes/dashboard.js` fired `tx.autoCreateAccount` (declared `auth: 'signing'`) whenever a live
+balance read reported `exists: false` for the active account. Two problems, one of them user-facing:
+
+1. **It bypassed the v12 activation policy.** Every other activation path — account/keyring creation,
+   Send's JIT path — goes through `tx.registerAccount`, which is `auth: 'unlocked'` precisely
+   because it proves vault ownership, signs with the *target* account's own key, re-checks the
+   network immediately before signing, and declares fee `0n`. The Dashboard path called the older
+   method that signs with whatever the active account is.
+2. **It could never succeed for a user who enabled per-sign password re-auth.** The Dashboard call is
+   fire-and-forget from a background refresh (`.catch(() => {})`). A `signing` method behind the
+   opt-in needs a password argument, and no screen was asking for one, so the call failed silently
+   and the account simply stayed unregistered — with no message anywhere.
+
+Fix: Dashboard now calls `bridge.send('tx.registerAccount', { address: account.address })`, the same
+narrow exception the rest of the wallet uses. `tx.autoCreateAccount` remains in the contract
+(append-only) but has zero UI callers.
+
+Guards: `test/test-tx-review.mjs` [14] scans every `src/ui/**/*.js` for `bridge.send('…')` literals
+(comments stripped), fails on any `auth:'signing'` or unknown method, asserts the sanctioned literals
+are present so the scan cannot pass vacuously, and asserts `tx.autoCreateAccount` has no caller.
+`test/test-route-lifecycle.mjs` mounts Dashboard with `exists:false` and asserts the call is
+`tx.registerAccount`, targets the active address, passes only `{address}` (no password), and never
+touches `tx.autoCreateAccount`.
+
+> **Lesson:** "documented as allowed" is not the same as "reaches the one sanctioned implementation".
+> A capability that is convenient to call directly will be called directly; make the direct call
+> fail in a test, not in a user's wallet.

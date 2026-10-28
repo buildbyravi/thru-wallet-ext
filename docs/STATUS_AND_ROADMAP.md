@@ -22,8 +22,9 @@ operation's existing signing method). Features no longer own review rows, fee fo
 copy or the password flow.
 
 - **Integrated:** Send (native + token transfer), Domain (register / purchase / renew / claim),
-  Faucet (claim). No UI route signs a value-moving transaction directly any more — the v12 JIT
-  `tx.registerAccount` activation call in Send is the only direct signing call, unchanged.
+  Faucet (claim). No UI file names a signing-gated method any more: Dashboard and Send activate
+  through the v12 `tx.registerAccount` path, and `test/test-tx-review.mjs` [14] fails the suite if a
+  `bridge.send('…')` literal in `src/ui/` is `auth:'signing'`.
 - **Not integrated:** DeFi/DEX/launchpad — no UI surface ships while every `DEFI_*` flag is off, so
   there is nothing to migrate; their kinds do not exist and `tx.prepareReview` answers
   `supported:false` with the known-kinds list rather than a guessed review.
@@ -36,10 +37,15 @@ copy or the password flow.
 - **Error surface:** `model.js` owns `REVIEW_ERROR_CODES` / `REVIEW_RECHECK_CODES` and the derived
   `STALE_REVIEW_CODES`; `test-tx-review.mjs` scans the background and fails if a thrown code is
   registered in neither the model nor the contract.
+- **No second signing path:** `test-tx-review.mjs` [14] scans every `src/ui/**/*.js` for
+  `bridge.send('…')` literals and fails on any `auth:'signing'` method. It found one — Dashboard's
+  `tx.autoCreateAccount` — which is now migrated to `tx.registerAccount`; see `docs/DEFECT_LOG.md` §10.
+- **Completion report and independent-review response:** `docs/TX_REVIEW_VERIFICATION.md` §9 (the
+  owner-required report) and §10 (a second AI review checked claim-by-claim against the code).
 
-**TESTED:** `test/test-tx-review.mjs` (83 checks: registry parity, every decoder, malformed and
+**TESTED:** `test/test-tx-review.mjs` (89 checks: registry parity, every decoder, malformed and
 unknown input, amount/fee formatting, binding/TTL/account/network refusals, acknowledgements,
-blocking, discard, code registry) and `test/test-route-lifecycle.mjs` (1,054 checks, including the
+blocking, discard, code registry, the UI signing-literal scan) and `test/test-route-lifecycle.mjs` (1,059 checks, including the
 Send, Domain and Faucet review flows driven through the real routes). **BUILD:** `npm run build`
 passes, including the layering, CSP, route/CSS and contract gates. **UNVERIFIED:** real-browser
 layout and live-chain behaviour — no browser binary and no network writes were available; the
@@ -107,10 +113,10 @@ Structural properties now enforced by CI rather than by discipline:
 Final deterministic verification on the current tree (contract v29, 2026-10-28):
 
 ```text
-npm test       PASS — 2,182 checks (32 suites + 5 gates): derivation 16; QR 15; layering 126 files / 0 sinks;
+npm test       PASS — 2,193 checks (32 suites + 5 gates): derivation 16; QR 15; layering 126 files / 0 sinks;
                CSP pass; routes 15/15 with 259 defined CSS classes; CSS nesting pass;
                launchpad quarantine; contract 161/161; security-checks; DOM/refs;
-               route lifecycle 1,054/1,054; transaction review 83/83; storage migrations;
+               route lifecycle 1,059/1,059; transaction review 89/89; storage migrations;
                vault, Thru client, token/balance, History, registration, API-router,
                pending concurrency, signing/network lock, and auto-lock suites pass.
 npm run build  PASS — generated dist/ from the current source, no warnings.
@@ -232,7 +238,7 @@ What was removed, and what deliberately was not:
 
 This was the largest remaining test gap: `check-routes.mjs` proves a route is *reachable* and its
 classes are *defined*; nothing proved it *mounts*. All three requirements are now asserted, for all
-15 routes, in no-vault / locked / unlocked states (**1,054 checks** in the current run, including
+15 routes, in no-vault / locked / unlocked states (**1,059 checks** in the current run, including
 the reviewed Send/Name/Faucet flows):
 
 1. mount through the real Router, guards, bridge and kit, and assert no throw plus the landing path

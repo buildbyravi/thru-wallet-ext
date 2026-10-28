@@ -76,15 +76,15 @@ The popup entry `src/popup/popup.js` is a boot stub. The removed legacy screens 
 | `test/test-launchpad-quarantine.mjs` | Deleted launchpad/DEX/prediction surface remains out of source and `dist/` (66 checks). |
 | `test/test-contract.mjs` | Manifest/router/UI agreement and security invariants, v29 / 147 methods (161 checks). |
 | `test/test-ui-dom.mjs` | DOM safety and reference codec. |
-| `test/test-route-lifecycle.mjs` | All 15 routes through Router/guards/bridge, teardown, secrets, focus, Send/Domain/Faucet review flows, History, panel behavior (1,054 checks). |
-| `test/test-tx-review.mjs` | The review pipeline: registry↔kind parity, every decoder, malformed and unknown input, amount/fee formatting, binding/TTL/account/network refusals, acknowledgements, blocking, discard, the central error-code registry (83 checks). |
+| `test/test-route-lifecycle.mjs` | All 15 routes through Router/guards/bridge, teardown, secrets, focus, Send/Domain/Faucet review flows, Dashboard activation, History, panel behavior (1,059 checks). |
+| `test/test-tx-review.mjs` | The review pipeline: registry↔kind parity, every decoder, malformed and unknown input, amount/fee formatting, binding/TTL/account/network refusals, acknowledgements, blocking, discard, the central error-code registry, and the UI signing-literal scan (89 checks). |
 | `test/test-vault.mjs`, `test/test-thru-client.mjs` | Vault/SDK integration, instruction and decoder behavior. |
 | `test/test-token-balances.mjs`, `test/test-balance-network.mjs` | Token denomination, proven-zero/unknown, network-scoped reads/caches. |
 | `test/test-history-cache.mjs`, `test/test-history-block-time.mjs` | Cache-first History, timestamp provenance, network/slot isolation, races, paging. |
 | `test/test-registration.mjs` | Owned-account registration policy and bounded retries with deterministic SDK fixtures. |
 | `test/test-api-router.mjs` | Auth, context, serialization, background dispatch, and send/registration integration. |
 
-The suite is **2,182 checks across 32 test suites plus 5 build gates** (2026-10-28). Use the final test output for any subsequent refresh. They are deterministic/local evidence only. Real-browser and live-chain checks are separate.
+The suite is **2,193 checks across 32 test suites plus 5 build gates** (2026-10-28). Use the final test output for any subsequent refresh. They are deterministic/local evidence only. Real-browser and live-chain checks are separate.
 
 Visual harness: `scripts/preview-tx-review.html` renders the real `TxReviewCard` with the real built
 `dist/popup.css` for seven fixtures (`scripts/preview-tx-review.fixtures.js`), served by
@@ -147,7 +147,7 @@ Network/program configuration. Betanet is enabled; Localnet, Testnet and Mainnet
 | `services/desktop-service.js` | 20 | `desktop.open`; no Desktop page exists, answers `{enabled:false}` |
 | `services/icon-service.js` | 28 | Keeps the plain toolbar icon in sync with lock state |
 
-Registration is not a background sweep: creation/addition makes a bounded best-effort attempt for the newly added account; Send has a targeted JIT path for an owned recipient; Dashboard may use the existing active-account creation path after a successful absence check. Every registration is a real signed broadcast, even though the transaction declares zero fee.
+Registration is not a background sweep: creation/addition makes a bounded best-effort attempt for the newly added account; Send has a targeted JIT path for an owned recipient; Dashboard activates the active account through the same `tx.registerAccount` path after a successful absence check (never the signing-gated `tx.autoCreateAccount`). Every registration is a real signed broadcast, even though the transaction declares zero fee.
 
 ## 6. `src/shared/` — both sides
 
@@ -234,7 +234,7 @@ Open work not settled by automated tests/builds: real popup/side-panel layout, f
 4. **Do not ship a control before its destination route exists.** `scripts/check-routes.mjs` enforces route reachability.
 5. **A test can assert a bug.** Verify expectations against the source/protocol rather than preserving an old fixture by habit.
 6. **Faucet and Send units differ.** Historical Alphanet evidence (the pre-betanet testnet) says faucet input is raw base units; Send is human-scale THRU. Do not generalize that observation to token fees.
-7. **Account existence is network-specific.** Creation attempts registration for new owned accounts; Send may JIT-activate an absent owned recipient. An external recipient must activate itself, and an offline lookup is not proof of absence.
+7. **Account existence is network-specific.** Creation attempts registration for new owned accounts; Dashboard and Send activate through the same v12 `tx.registerAccount` path (never `tx.autoCreateAccount`, which is signing-gated). An external recipient must activate itself, and an offline lookup is not proof of absence.
 8. **Never hand-roll a program instruction** where the pinned official Thru bindings provide it.
 9. **`chrome.storage.session` holds unlocked session material.** Browser persistence/eviction behavior is a manual verification boundary.
 10. **A feature must not re-derive review confirmability.** `TxReviewCard` fires `onChange({ canConfirm })` from its constructor; a caller that instead listens for DOM `change` events or recreates the validation duplicates the component and gets it wrong. Declare the confirm control first, let the card drive it.

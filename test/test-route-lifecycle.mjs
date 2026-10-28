@@ -5096,6 +5096,59 @@ async function offlineBalanceConsumersTest() {
   }
 }
 
+// ---- Dashboard activation goes through the v12 owned-address path -----------
+
+/**
+ * Regression for a direct signing call from the UI: Dashboard used to fire
+ * `tx.autoCreateAccount` (auth: 'signing') for an unregistered active account. That bypassed
+ * the one review/signing boundary AND silently failed whenever the user enabled per-sign
+ * password re-auth, because a background refresh cannot answer a password prompt. The v12
+ * `tx.registerAccount` path is unlocked-only, proves the vault owns the address, and signs with
+ * that account's own key.
+ */
+async function dashboardActivationTest() {
+  section('dashboard activation: owned-address path, never a signing-gated direct call');
+  const original = {
+    info: FIXTURES['tx.getAccountInfo'],
+    register: FIXTURES['tx.registerAccount'],
+  };
+  const activationArgs = [];
+  try {
+    resetBackend(SCENARIOS[2]);
+    resetDom();
+    chromeLog.calls.length = 0;
+    FIXTURES['tx.getAccountInfo'] = () => ({ exists: false, balance: '0', stale: false });
+    FIXTURES['tx.registerAccount'] = (args) => {
+      activationArgs.push(args);
+      return { address: args?.address, networkId: 'betanet', exists: true, created: true,
+        signature: 'activation-signature' };
+    };
+    const dash = DashboardRoute({ navigate() {} });
+    DOC.body.appendChild(dash.el);
+    await settle();
+    const registerCall = chromeLog.calls.includes('tx.registerAccount');
+    const activationCall = chromeLog.calls.indexOf('tx.registerAccount');
+    ok('an unregistered active account is activated with tx.registerAccount',
+      registerCall, chromeLog.calls.slice(-12).join(','));
+    ok('Dashboard never calls the signing-gated tx.autoCreateAccount',
+      !chromeLog.calls.includes('tx.autoCreateAccount'),
+      chromeLog.calls.slice(-12).join(','));
+    ok('the activation targets the active account address, not an arbitrary one',
+      activationArgs.length === 1 && activationArgs[0]?.address === activeAccount().address,
+      JSON.stringify(activationArgs));
+    ok('the activation passes no password and no recipient-shaped field',
+      activationArgs.length === 1 && Object.keys(activationArgs[0]).join(',') === 'address',
+      JSON.stringify(activationArgs));
+    dash.destroy();
+    dash.el.remove();
+    ok('dashboard activation tears down without listeners on detached nodes',
+      detachedListeners().length === 0, JSON.stringify(detachedListeners().slice(0, 3)));
+  } finally {
+    FIXTURES['tx.getAccountInfo'] = original.info;
+    FIXTURES['tx.registerAccount'] = original.register;
+  }
+}
+
 // ---- Last key source: a spelled-out wipe, never a dead end ------------------
 
 /**
@@ -5257,6 +5310,7 @@ try {
   await ownRecipientRegistrationTest();
   await historyCacheFirstTest();
   await offlineBalanceConsumersTest();
+  await dashboardActivationTest();
   await panelExclusionTest();
   negativeControls();
 } finally {

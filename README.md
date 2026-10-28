@@ -24,8 +24,8 @@ Chrome MV3 self-custody wallet extension for the **Thru native Layer 1**. Built 
   `tx.prepareReview`, renders the single shared review card, and submits through
   `tx.confirmReview` → the operation's existing signing method. `confirmReview` never signs: it
   re-validates and returns the exact submit instructions, and the card's confirm helper calls that
-  method through the bridge (its `auth: 'signing'` policy still applies). No UI route picks up a
-  signing method on its own. A transaction the wallet cannot decode renders as an explicit unknown with raw data and
+  method through the bridge (its `auth: 'signing'` policy still applies). No UI file names a
+  signing-gated method at all — a source scan in `test/test-tx-review.mjs` enforces that. A transaction the wallet cannot decode renders as an explicit unknown with raw data and
   **cannot be signed**; there is no fabricated fee or post-transaction balance.
 - Reset and auto-lock changes are background-hardened in contract v6.
 - Contract v7 quarantines legacy custom networks at the background boundary: saved records stay listable/removable, but direct activation is permanently refused and a stale active selection self-heals to Betanet before RPC binding.
@@ -155,7 +155,7 @@ npm run build
 npm audit --omit=dev
 ```
 
-`npm test` runs the whole deterministic suite (2,182 checks across 32 test suites plus 5 build gates, as of 2026-10-28):
+`npm test` runs the whole deterministic suite (2,193 checks across 32 test suites plus 5 build gates, as of 2026-10-28):
 
 1. derivation and QR checks,
 2. layering and DOM-sink checks (all of `src/`),

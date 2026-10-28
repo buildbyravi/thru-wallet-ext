@@ -52,6 +52,13 @@ authorization and reviewed account/network context on prepare and again on confi
 signing-operation guard prevents active-network rebinding from operation entry through submission
 completion. Pending acceptance is recorded as `submitted`; it is never presented as confirmation.
 
+The only signing-adjacent call a UI file makes by name is the v12 activation path,
+`tx.registerAccount` (`auth:'unlocked'`, exact vault-owned address, zero declared fee, signed with
+that account's own key). Dashboard uses it for the active account and Send uses it JIT for an owned
+recipient. `test/test-tx-review.mjs` [14] scans `src/ui/**/*.js` for `bridge.send('…')` literals and
+fails on any `auth:'signing'` method, so the older `tx.autoCreateAccount` cannot come back through a
+route (it was removed from Dashboard; see `docs/DEFECT_LOG.md` §10).
+
 The review boundary is also a decoding boundary: `decoders/` produces explicit facts for known
 intents and an explicit unknown with raw data (and no submit policy) for everything else. A review
 service never guesses a friendly name for an instruction it cannot decode, and never fabricates a

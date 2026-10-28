@@ -21,7 +21,7 @@
 // network is touched and nothing here claims to be a live-chain result.
 
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 
 // ---- chrome.storage shim ---------------------------------------------------------------
 
@@ -709,6 +709,71 @@ console.log('[13] the review error surface is declared in exactly one place');
   }
   ok('a plain failure is not classified as stale',
     !stale.has('INVALID_INPUT') && !stale.has('INTERNAL') && !stale.has('UNSUPPORTED'));
+}
+
+console.log('[14] no UI file can reach a signing method on its own');
+{
+  // The pipeline is the only sanctioned route from a screen to a signature. That is a claim
+  // about source text, so assert it against source text: every literal `bridge.send('X')`
+  // under `src/ui/` must name a method whose declared auth is NOT 'signing'.
+  //
+  // The v12 activation exception is allowed to stay: `tx.registerAccount` is 'unlocked' by
+  // design (it proves vault ownership and self-signs a zero-fee activation), so it does not
+  // appear here. `tx.autoCreateAccount` IS 'signing' and must have zero UI callers — Dashboard
+  // used to call it and was moved onto the owned-address path.
+  //
+  // Dynamic dispatch (`bridge.send(submit.method, …)` in confirm.js) is the intended path and
+  // is invisible to this pattern on purpose; confirm.js is covered by [4] above.
+  const root = new URL('../src/ui/', import.meta.url);
+  const files = readdirSync(root, { recursive: true })
+    .map((entry) => String(entry))
+    .filter((entry) => entry.endsWith('.js'));
+  ok('the UI source was actually scanned', files.length > 40, `${files.length} files`);
+
+  // Strip comments before scanning: this repository documents its own history in comments,
+  // including the literal text `bridge.send('tx.send', …)` that describes a deleted bug. A
+  // guard that cannot tell code from commentary would fail on its own documentation.
+  const withoutComments = (source) => source
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .split('\n')
+    .filter((line) => {
+      const trimmed = line.trimStart();
+      return !trimmed.startsWith('//') && !trimmed.startsWith('*');
+    })
+    .join('\n');
+
+  const literals = new Map();
+  for (const file of files) {
+    const source = withoutComments(readFileSync(new URL(file, root), 'utf8'));
+    // Single, double or static template quotes: a guard that only sees one quote style is a
+    // guard a future route can walk around by accident.
+    for (const match of source.matchAll(/bridge\.send\(\s*(['"`])([^'"`$]+)\1/g)) {
+      const method = match[2];
+      // A template placeholder inside bridge.js's own error message is not a method name.
+      if (/[${}]/.test(method)) continue;
+      if (!literals.has(method)) literals.set(method, []);
+      literals.get(method).push(file);
+    }
+  }
+  ok('the scan found the UI method literals it expects', literals.size >= 3,
+    `${literals.size} distinct methods`);
+
+  const unknown = [...literals.keys()].filter((method) => !METHODS[method]);
+  ok('every method literal the UI sends is in the contract manifest', unknown.length === 0,
+    unknown.join(','));
+
+  const signing = [...literals.entries()]
+    .filter(([method]) => METHODS[method]?.auth === 'signing')
+    .map(([method, where]) => `${method} (${where.join(',')})`);
+  ok('no UI file calls a signing-gated method by name', signing.length === 0, signing.join(' | '));
+  ok("the legacy 'tx.autoCreateAccount' signing method has no UI caller",
+    !literals.has('tx.autoCreateAccount'));
+
+  // Positive control: the review trio and the v12 activation path ARE what the UI is allowed
+  // to name. If this ever empties out, the scan above would be passing vacuously.
+  const expected = ['tx.prepareReview', 'tx.confirmReview', 'tx.discardReview', 'tx.registerAccount'];
+  ok('the sanctioned literals are present in the UI', expected.every((m) => literals.has(m)),
+    expected.filter((m) => !literals.has(m)).join(','));
 }
 
 console.log(`\nAll tx-review checks passed: ${checks}/${checks}.`);
