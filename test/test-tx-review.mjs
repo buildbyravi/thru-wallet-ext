@@ -299,6 +299,29 @@ console.log('[2] decoders: token transfers');
     warningIds(noAccount).includes('source-token-account-missing'));
 }
 
+console.log('[2b] the name a recipient was resolved from reaches the review');
+{
+  // Audit D-2 (2026-10-28): the Send route learned to resolve `alice.thru` to an address and
+  // passed the name into tx.prepareReview, and both send kinds threw it away — so the card
+  // showed a bare address the user could not connect to what they typed.
+  const named = decode('native-send', nativeFacts({ recipientLabel: 'alice.thru' }));
+  const to = named.summary.find((row) => row.label === 'To');
+  ok('a name-resolved native send shows the name above the exact address',
+    to?.above === 'alice.thru' && to?.value === RECIPIENT, JSON.stringify(to));
+
+  const namedToken = decode('token-transfer', tokenFacts({ recipientLabel: 'alice.thru' }));
+  const toToken = namedToken.summary.find((row) => row.label === 'To');
+  ok('a name-resolved token transfer shows the name above the exact address',
+    toToken?.above === 'alice.thru' && toToken?.value === RECIPIENT);
+
+  // The decoder rendering it is only half the path; the background is what drops a param.
+  const kindsSource = readFileSync(new URL('../src/background/services/review/kinds.js', import.meta.url), 'utf8');
+  ok('both send kinds read the route-provided recipient name',
+    (kindsSource.match(/: resolvedRecipientLabel\(params\)/g) || []).length === 2);
+  ok('the recipient name is bounded and display-only (never a resolution source)',
+    /trimmed\.length > 120/.test(kindsSource) && !/recipientLabel.*lookupName/.test(kindsSource));
+}
+
 console.log('[3] decoders: domain writes');
 {
   const register = decode('domain-register', domainFacts());
@@ -333,6 +356,44 @@ console.log('[3] decoders: domain writes');
   ok('a renewal does not invent the new expiry',
     renew.summary.some((row) => row.label === 'New expiry'
       && /not computed here/.test(row.value)));
+
+  // Audit D-1 (2026-10-28): the custom-registrar renewal had no decoder branch, so it fell
+  // through to the registry rows and printed "2000 TOKEN" for 2,000 base units of THRU; the
+  // branch that was supposed to cover it lived in the PURCHASE decoder, crashed with a
+  // ReferenceError, and could never be reached by the background anyway.
+  const customRenewFacts = {
+    ...domainFacts(),
+    availability: { state: 'mine', readError: null },
+    lease: { owner: SENDER, endTime: '1795000000', expiredHint: false, mine: true },
+    instruction: { name: 'Renew domain lease', opcode: 2 },
+  };
+  const customRenew = decode('domain-renew', customRenewFacts);
+  model.assertReviewContent(customRenew);
+  ok('a custom-registrar renewal prices in native THRU, never the registry token',
+    customRenew.assets.outgoing[0].symbol === 'THRU'
+      && customRenew.assets.outgoing[0].decimals === 9
+      && customRenew.summary.some((row) => row.label === 'Total charge' && row.value === '0.000002 THRU')
+      && !customRenew.summary.some((row) => /TOKEN/.test(row.value)),
+    JSON.stringify(customRenew.summary));
+  ok('a custom-registrar renewal names the custom registrar, not the paid registry',
+    customRenew.protocol.name === 'Custom `.thru` registrar' && customRenew.protocol.verified === true,
+    customRenew.protocol.name);
+  ok('a custom-registrar renewal states that the debit is best-effort',
+    warningIds(customRenew).includes('quote-not-final')
+      && /best-effort/.test(customRenew.assets.outgoing[0].note || ''));
+
+  const poorRenew = decode('domain-renew', { ...customRenewFacts, nativeBalanceUnits: '1' });
+  ok('a custom-registrar renewal the account cannot pay for blocks signing',
+    model.stateFromWarnings(poorRenew.warnings) === 'blocked'
+      && warningIds(poorRenew).includes('insufficient-native'));
+
+  // A decoder must survive facts a different provider would produce: the ReferenceError above
+  // was inside a branch no test had ever executed, and it shipped.
+  const crossProvider = ['domain-purchase', 'domain-claim', 'domain-renew']
+    .map((kind) => decode(kind, { ...paidFacts(), provider: 'custom' }));
+  ok('no domain decoder throws, or names a currency it is not charging, for an unexpected provider',
+    crossProvider.every((content) => content.assets.outgoing.every((asset) => asset.symbol !== 'TOKEN')
+      && !content.summary.some((row) => row.label === 'Payment token')));
 
   const foreign = decode('domain-renew', paidFacts({
     lease: { owner: RECIPIENT, endTime: '1731536000', expiredHint: false, mine: false },
