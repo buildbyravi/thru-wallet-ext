@@ -58,11 +58,27 @@ export function decodeFaucetClaim({ facts }) {
     }
   }
 
-  if (!facts.accountExists) {
+  // Tri-state again: only an authoritative "does not exist" may promise an activation step.
+  if (facts.accountExists === false) {
     warnings.push(warn('account-activation', 'info',
       'Your account will be activated first',
       'A faucet claim from an account that does not exist on-chain activates it with the '
       + 'network\'s account-creation program first, then claims.'));
+  } else if (facts.accountExists == null) {
+    warnings.push(warn('account-state-unverified', 'warning',
+      'Account state could not be read',
+      'The chain did not answer whether this account already exists, so the wallet cannot say '
+      + 'whether the claim also activates it. The claim handler re-reads it before signing.'));
+  }
+
+  // F-07b: `targetMatchesFaucet:false` means the rate-limit policy this wallet just read
+  // belongs to a different faucet program. The recheck already refuses to confirm it, so the
+  // review must not present it as a normal claim either.
+  if (facts.limit?.supported && facts.limit.targetMatchesFaucet === false) {
+    warnings.push(warn('faucet-target-mismatch', 'danger',
+      'The faucet policy targets a different program',
+      'The rate-limit policy read for this network does not apply to the faucet program that '
+      + 'would be called, so the claim cannot be proven safe to sign.', { blocking: true }));
   }
 
   const rows = [

@@ -267,11 +267,20 @@ export function TxReviewCard({ review, onChange = null } = {}) {
     }
     if (fee.note) details.push(h('div', { class: 'hint', text: fee.note }));
     details.push(h('div', { class: 'hint', text: 'The amount actually charged is reported in Activity only after the chain answers.' }));
-    if (simulation.status !== 'supported') {
-      details.push(detailRow('Simulation', 'Not available'));
-      details.push(h('div', { class: 'hint', text: simulation.reason
-        || 'This wallet cannot dry-run the transaction, so it shows only what it can prove.' }));
-    }
+    // Four distinct states, four distinct words. "Failed" must never read as "unavailable":
+    // it is a blocking fact (the service adds the blocking warning; the card shows the same
+    // verdict here so the two surfaces cannot disagree).
+    const simulationLabel = {
+      supported: 'Succeeded',
+      failed: 'Failed — this transaction was rejected in simulation',
+      pending: 'Still running',
+      unavailable: 'Not available',
+    }[simulation.status] || 'Not available';
+    details.push(detailRow('Simulation', simulationLabel));
+    details.push(h('div', { class: 'hint', text: simulation.reason
+      || (simulation.status === 'supported'
+        ? `Reported by ${simulation.provenance || 'the node'}.`
+        : 'This wallet cannot dry-run the transaction, so it shows only what it can prove.') }));
 
     if (r.execution.raw) {
       const raw = h('div', { class: 'tx-review-raw monospace-block hidden', id: `tx-review-raw-${instanceId}` }, [

@@ -40,9 +40,11 @@ copy or the password flow.
 - **No second signing path:** `test-tx-review.mjs` [14] scans every `src/ui/**/*.js` for
   `bridge.send('…')` literals and fails on any `auth:'signing'` method. It found one — Dashboard's
   `tx.autoCreateAccount` — which is now migrated to `tx.registerAccount`; see `docs/DEFECT_LOG.md` §10.
-- **Completion report, independent-review response, simplification:** `docs/TX_REVIEW_VERIFICATION.md`
-  §9 (the owner-required report), §10 (a second AI review checked claim-by-claim against the code)
-  and §11 (the 2026-10-28 simplification to Rabby's before-sign shape).
+- **Completion report, review responses, simplification:** `docs/TX_REVIEW_VERIFICATION.md`
+  §9 (the owner-required report), §10 (a second AI review checked claim-by-claim against the code),
+  §11 (the 2026-10-28 simplification to Rabby's before-sign shape) and §12 (a third audit's
+  F-01…F-13 re-checked at HEAD; the still-true decoder/store/simulation findings are fixed there,
+  with `docs/DEFECT_LOG.md` §12 recording the defects and lessons).
 
 **TESTED:** `test/test-tx-review.mjs` (126 checks: registry parity, every decoder, malformed and
 unknown input, amount/fee formatting, binding/TTL/account/network refusals, acknowledgements,
@@ -115,10 +117,10 @@ Structural properties now enforced by CI rather than by discipline:
 Final deterministic verification on the current tree (contract v29, 2026-10-28):
 
 ```text
-npm test       PASS — 2,236 checks (32 suites + 5 gates): derivation 16; QR 15; layering 126 files / 0 sinks;
+npm test       PASS — 2,251 checks (32 suites + 5 gates): derivation 16; QR 15; layering 126 files / 0 sinks;
                CSP pass; routes 15/15 with 257 used CSS classes, all defined; CSS nesting pass;
                launchpad quarantine; contract 161/161; security-checks; DOM/refs;
-               route lifecycle 1,065/1,065; transaction review 126/126; storage migrations;
+               route lifecycle 1,065/1,065; transaction review 141/141; storage migrations;
                vault, Thru client, token/balance, History, registration, API-router,
                pending concurrency, signing/network lock, and auto-lock suites pass.
 npm run build  PASS — generated dist/ from the current source, no warnings.

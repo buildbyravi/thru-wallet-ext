@@ -17,7 +17,7 @@ The defects in §§1–4 are **historical**: their old paths and failure descrip
 explain the fixes, not to claim those paths still ship. §5 records resolved legacy duplication, not
 a current backlog. The current verification gaps are listed in §6; the popup/side-panel and History
 cross-network fixes in §§7–8 are implemented and locally tested, but their real-Chrome/live-RPC
-checks remain open. §9–§11 are v29 review fixes verified in source and the deterministic suite; none
+checks remain open. §9–§12 are v29 review fixes verified in source and the deterministic suite; none
 of them has a real-browser pass. Check `src/` before treating any historical symptom as current.
 
 ---
@@ -467,3 +467,90 @@ account rows that actually want ellipsis.
 > **Lesson:** a shared component's envelope is a data contract, not a layout. Every new fact does not
 > earn a section; the screen has to stay the size of the decision. And when replacing a screen users
 > already know, the old shape is the baseline to beat, not the thing to throw away.
+
+## 12. The review pipeline's truth-states, store and simulation gate — FIXED in source/tests
+
+Found by an external audit of `2e2178f`, re-checked finding-by-finding at the current head
+(`docs/TX_REVIEW_VERIFICATION.md` §12). Every item below was still true at `983724b`; all are fixed
+with a regression test in `test/test-tx-review.mjs`.
+
+### 12.1 An unreadable mint was reported as a proven absence — `READ` + `TEST`
+
+`review/kinds.js` deliberately keeps `mintExists: null` when `token.readMint` fails, but the decoder
+tested truthiness:
+
+```js
+if (!facts.mintExists) { /* "This mint does not exist on this network", blocking */ }
+```
+
+An RPC outage therefore became an authoritative chain statement, and the review blocked with a fact
+the wallet had not established. Fixed by branching on `=== false` (proven absent, blocking) versus
+`== null` (unreadable, warning; the token handler re-reads the mint before signing).
+
+> **Lesson:** a tri-state fact needs three branches. `!value` silently merges "unknown" into "no",
+> which is the one collapse this wallet's rules exist to prevent.
+
+### 12.2 A failed simulation changed nothing — `READ`
+
+`simulationBlock()` could return `status:'failed'`, but state came only from decoder warnings and the
+card rendered every non-`supported` state as "Simulation unavailable". A dry run that ran and failed
+is *proof the transaction cannot succeed*, so it must block — and "failed" must not read as "we
+couldn't check".
+
+Fix: `simulationWarning()` produces a blocking warning; the service folds it in before computing and
+persisting state; `confirmReview` refuses any record that is not `ready`; the card labels the four
+states distinctly. Dormant today (Thru has no dry-run RPC), which is why it survived: the only tests
+that could exercise it needed a seam that did not exist.
+
+> **Lesson:** a status enum that the UI renders but the gate ignores is decoration. If a state can
+> exist, decide what it means for signing, or delete the state.
+
+### 12.3 Concurrent prepares erased each other — `READ` + `TEST`
+
+`review/store.js` said "single-writer per network" in its header and then did plain
+read-modify-writes. Two prepares from popup and side panel could read the same list and the later
+write dropped the earlier record, so a visible review then answered `REVIEW_NOT_FOUND` for no reason
+the user could see. Fixed with the per-network promise queue `pending-tx-service` already uses.
+Negative control: restoring the old body makes the new put/put test lose a record and the suite fail.
+
+> **Lesson:** "single writer" is a property you enforce, not a comment you write. Any read-modify-write
+> over a shared array needs a queue before the second caller exists.
+
+### 12.4 The faucet review invented an activation and ignored a policy mismatch — `READ` + `TEST`
+
+`accountExists: state.exists === true` turned an unreadable account into "does not exist", so the
+review promised "Your account will be activated first" on no evidence. Separately, the facts carried
+`targetMatchesFaucet:false` (the rate-limit policy belongs to another program) and the decoder never
+showed it, although the confirm-time recheck refused to sign. Fixed: tri-state existence with an
+`account-state-unverified` warning, and a blocking `faucet-target-mismatch`.
+
+> **Lesson:** when a recheck refuses on a fact, the review must show that fact. Otherwise the button
+> is disabled for a reason the user never saw.
+
+### 12.5 The registrar treasury rendered as `unknown` — `READ` + `TEST`
+
+The facts builder emitted `treasurer: cfg.treasurer`; the decoder read `facts.treasury`. The real
+authoritative address was already in hand and the execution table said "unknown". One name is now
+used end-to-end, and a decoder test asserts the address reaches the account table.
+
+> **Lesson:** `?? 'unknown'` hides naming drift. A fallback that turns a missing field into a word
+> makes a type error look like a chain limitation.
+
+### 12.6 "Verified program" could be true with no address — `READ`
+
+Native and token decoders hard-coded `verified: true` while allowing the pinned program id to be
+`null`; the validator did not require the pair. Fixed in both decoders (blocking
+`program-unidentified` when the id is missing) and enforced structurally in `model.js` for the
+protocol and execution program, so no future decoder can repeat it.
+
+> **Lesson:** a trust label is a claim about a specific identifier. The validator is the right place
+> to make "verified without an address" unrepresentable.
+
+### 12.7 What the audit also raised, and why it is not in this section
+
+F-01 (the dormant `intent-service` lifecycle), F-02's general form (direct signing methods remain
+callable; no one-shot authorization), F-05's residual (background `confirmReview` is idempotent by
+design) and F-08 (the Domain lifecycle) are architecture decisions, not defects: each is recorded as
+open in `docs/TX_REVIEW_VERIFICATION.md` §12 rather than "fixed" here. One enforcement gap *was*
+closed on the way: `confirmReview` now refuses a review whose persisted state is not `ready`, so a
+blocked review is no longer confirmable merely because the UI would have disabled the button.

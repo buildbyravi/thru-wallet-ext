@@ -1,4 +1,4 @@
-// Prepared-review store (network-scoped, TTL-bounded, single-writer per network).
+// Prepared-review store (network-scoped, TTL-bounded, serialized per network).
 //
 // Why the background keeps the prepared review at all:
 //   - the review the user read must be the one that gets confirmed. The stored record IS that
@@ -17,6 +17,27 @@ import { TX_REVIEW_TTL_MS } from '../../../shared/tx-review/model.js';
 export const REVIEW_BASE_KEY = 'tx_reviews';
 export const REVIEW_SCHEMA_VERSION = 1;
 const MAX_RECORDS = 40;
+
+// Every read-modify-write is serialized per network. Popup and side panel can prepare reviews
+// at the same time, and `put` vs `remove` can interleave; without this queue the last storage
+// write silently erased the other record (audit F-06, 2026-10-28). Same pattern as
+// pending-tx-service's `pendingUpdates`, deliberately.
+const reviewUpdates = new Map();
+
+function updateAll(networkId, edit) {
+  const queueKey = String(networkId || 'active');
+  const prior = reviewUpdates.get(queueKey) || Promise.resolve();
+  const update = prior.catch(() => {}).then(async () => {
+    const list = await readAll(networkId);
+    const { next, value } = await edit(list);
+    if (next) await writeAll(networkId, next);
+    return value;
+  });
+  reviewUpdates.set(queueKey, update);
+  return update.finally(() => {
+    if (reviewUpdates.get(queueKey) === update) reviewUpdates.delete(queueKey);
+  });
+}
 
 function keyFor(networkId) {
   return scopedKey(REVIEW_BASE_KEY, networkId);
@@ -52,15 +73,15 @@ async function writeAll(networkId, records) {
  * @param {object} record
  */
 export async function put(networkId, record) {
-  const now = Date.now();
-  const all = (await readAll(networkId)).filter((entry) => (
-    entry?.reviewId !== record.reviewId
-    && Number(entry?.expiresAt) > now
-  ));
-  all.push(record);
-  const trimmed = all.slice(Math.max(0, all.length - MAX_RECORDS));
-  await writeAll(networkId, trimmed);
-  return record;
+  return updateAll(networkId, (list) => {
+    const now = Date.now();
+    const all = list.filter((entry) => (
+      entry?.reviewId !== record.reviewId
+      && Number(entry?.expiresAt) > now
+    ));
+    all.push(record);
+    return { next: all.slice(Math.max(0, all.length - MAX_RECORDS)), value: record };
+  });
 }
 
 /**
@@ -78,14 +99,15 @@ export async function get(networkId, reviewId) {
 
 /** Drop a record after a successful submission or an explicit cancel. */
 export async function remove(networkId, reviewId) {
-  const all = await readAll(networkId);
-  const next = all.filter((entry) => entry?.reviewId !== reviewId);
-  if (next.length !== all.length) await writeAll(networkId, next);
+  return updateAll(networkId, (list) => {
+    const next = list.filter((entry) => entry?.reviewId !== reviewId);
+    return { next: next.length !== list.length ? next : null, value: next.length !== list.length };
+  });
 }
 
 /** Test seam: clear one network's records without touching anything else. */
 export async function clear(networkId) {
-  await writeAll(networkId, []);
+  await updateAll(networkId, () => ({ next: [], value: true }));
 }
 
 export { TX_REVIEW_TTL_MS };

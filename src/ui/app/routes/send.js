@@ -781,7 +781,6 @@ export function SendRoute({ params, navigate, back }) {
   // What stays route-specific: the success screen and the error copy that depends on whether
   // the transfer was actually sent.
 
-  let preparedReview = null;
   let reviewSeq = 0;
 
   async function renderReview(to, amountText) {
@@ -830,7 +829,6 @@ export function SendRoute({ params, navigate, back }) {
       return;
     }
 
-    preparedReview = prepared;
     paintReview(prepared, snapshot, amountText);
   }
 
@@ -863,7 +861,6 @@ export function SendRoute({ params, navigate, back }) {
         // Cancelling drops the prepared review: it must not stay confirmable after the form
         // is edited, and it must not linger in storage for the whole TTL.
         discardReview(prepared.reviewId);
-        preparedReview = null;
         renderForm({ to: snapshot.to, amount: amountText });
       },
     }));
@@ -888,7 +885,6 @@ export function SendRoute({ params, navigate, back }) {
         confirmLabel: 'Sign & send',
       });
       if (outcome.status === 'cancelled' || destroyed) return;
-      preparedReview = null;
       renderSuccess(snapshot.to, outcome.result, snapshot);
     } catch (error) {
       if (destroyed) return;
@@ -899,7 +895,6 @@ export function SendRoute({ params, navigate, back }) {
       if (classified.kind === 'stale') {
         // The reviewed transaction no longer matches the chain. Show the form again with the
         // reason; the user must read a fresh review before anything is signed.
-        preparedReview = null;
         await load({ notice: classified.message });
       } else {
         banner.set(classified.message, classified.kind === 'uncertain' ? 'warning' : 'error');

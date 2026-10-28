@@ -187,6 +187,23 @@ const paidFacts = (overrides = {}) => ({
   ...overrides,
 });
 
+const claimFacts = {
+  fromAddress: SENDER,
+  fromLabel: 'Main account',
+  amountUnits: '10000',
+  capUnits: '10000',
+  accountExists: true,
+  limit: {
+    supported: true, paused: false, exhausted: false, remainingAmount: '10000',
+    window: '3600', resetAtUnixSec: null,
+  },
+  fee: { supported: false, reason: 'not reported' },
+  programAddress: asAddress(14),
+  vaultAddress: asAddress(15),
+  networkId: 'betanet',
+  networkLabel: 'Betanet',
+};
+
 const decode = (kind, facts) => registry.decodeReview(kind, { network: NETWORK, account: ACCOUNT, facts });
 const warningIds = (content) => content.warnings.map((warning) => warning.id);
 
@@ -257,8 +274,23 @@ console.log('[2] decoders: token transfers');
       && warningIds(unverified).includes('metadata-unverified')
       && model.stateFromWarnings(unverified.warnings) === 'ready');
 
+  const noProgram = decode('native-send', nativeFacts({ transferProgramId: null }));
+  ok('no pinned transfer program is not rendered as a verified program',
+    noProgram.protocol.verified === false
+      && warningIds(noProgram).includes('program-unidentified')
+      && model.stateFromWarnings(noProgram.warnings) === 'blocked');
+
   const absent = decode('token-transfer', tokenFacts({ mintExists: false }));
-  ok('an absent mint blocks signing', model.stateFromWarnings(absent.warnings) === 'blocked');
+  ok('a proven-absent mint blocks signing', model.stateFromWarnings(absent.warnings) === 'blocked');
+
+  // Audit F-03: an RPC failure is not proof of absence. The first version said "does not
+  // exist" for `mintExists: null`, turning an outage into an authoritative chain statement.
+  const unreadMint = decode('token-transfer', tokenFacts({ mintExists: null }));
+  ok('an unreadable mint is "could not verify", never "does not exist"',
+    warningIds(unreadMint).includes('mint-unverified')
+      && !warningIds(unreadMint).includes('mint-absent')
+      && model.stateFromWarnings(unreadMint.warnings) === 'ready',
+    unreadMint.warnings.map((w) => w.title).join(' | '));
 
   const noAccount = decode('token-transfer', tokenFacts({
     sourceTokenAccount: { address: asAddress(5), exists: false },
@@ -285,11 +317,17 @@ console.log('[3] decoders: domain writes');
   const poor = decode('domain-register', domainFacts({ nativeBalanceUnits: '1' }));
   ok('an unaffordable registration fee blocks signing', warningIds(poor).includes('insufficient-native'));
 
-  const purchase = decode('domain-purchase', paidFacts());
+  const purchase = decode('domain-purchase', paidFacts({ treasury: asAddress(17) }));
   ok('a purchase pays in the registry token with its own scale',
     purchase.assets.outgoing[0].symbol === 'USDX'
       && purchase.assets.outgoing[0].decimals === 6
       && purchase.assets.fee.amountUnits === '0');
+  // Audit F-10: kinds.js emitted `treasurer` while the decoder read `treasury`, so the real
+  // config address rendered as "unknown".
+  ok('the registry treasurer address reaches the execution accounts',
+    purchase.execution.accounts.some((entry) => entry.role === 'Treasury'
+      && entry.address === asAddress(17)),
+    JSON.stringify(purchase.execution.accounts));
 
   const renew = decode('domain-renew', paidFacts({ instruction: { name: 'Renew lease', opcode: 2 } }));
   ok('a renewal does not invent the new expiry',
@@ -340,6 +378,23 @@ console.log('[4] decoders: faucet claims and raw transactions');
   });
   ok('an exhausted faucet allowance blocks signing', warningIds(exhausted).includes('faucet-exhausted'));
 
+  // Audit F-07: unknown account state was rendered as "will be activated", and a rate-limit
+  // policy pointing at another program was silently ignored.
+  const unknownAccount = decode('faucet-claim', {
+    ...claimFacts, accountExists: null,
+  });
+  ok('an unreadable account state does not promise an activation step',
+    warningIds(unknownAccount).includes('account-state-unverified')
+      && !warningIds(unknownAccount).includes('account-activation')
+      && model.stateFromWarnings(unknownAccount.warnings) === 'ready');
+  const mismatch = decode('faucet-claim', {
+    ...claimFacts,
+    limit: { ...claimFacts.limit, targetMatchesFaucet: false, reason: 'the policy targets a different faucet program' },
+  });
+  ok('a faucet policy that targets another program blocks the claim',
+    warningIds(mismatch).includes('faucet-target-mismatch')
+      && model.stateFromWarnings(mismatch.warnings) === 'blocked');
+
   const raw = decode('raw', {
     programAddress: asAddress(16),
     programName: null,
@@ -388,6 +443,28 @@ console.log('[5] the wire validator rejects malformed reviews');
     ...content,
   };
   assert.throws(() => model.assertReview(envelope), /may only be null for a blocked review/);
+
+  // Audit F-11: "verified" is a claim about an address, so the pair is enforced structurally.
+  assert.throws(() => model.assertReviewContent({
+    ...content,
+    protocol: { ...content.protocol, address: null, verified: true },
+  }), /must be present when protocol\.verified is true/);
+  assert.throws(() => model.assertReviewContent({
+    ...content,
+    execution: { ...content.execution, program: { ...content.execution.program, address: null, verified: true } },
+  }), /must be present when execution\.program\.verified is true/);
+
+  // State and warnings must agree: "blocked" is only ever a proven fact, and a ready review
+  // cannot quietly carry a blocking warning (audit F-04's invariant).
+  const readyWithBlocking = {
+    ...envelope,
+    state: 'ready',
+    submitPolicy: { method: 'tx.sendChecked', auth: 'signing', passwordRequired: true },
+    warnings: [{ id: 'x', severity: 'danger', title: 'x', detail: '', blocking: true }],
+  };
+  assert.throws(() => model.assertReview(readyWithBlocking), /may not carry a blocking warning/);
+  assert.throws(() => model.assertReview({ ...envelope, state: 'blocked', warnings: [] }), /must carry at least one blocking warning/);
+
   ok('a malformed review is a programming error, not something the UI must survive');
 }
 
@@ -612,6 +689,15 @@ console.log('[11] blocking facts block, and unexplained transactions cannot be s
   ok('a blocked review still names the signing method it would use',
     blocked.data.review.submitPolicy.method === 'tx.sendChecked');
 
+  // Audit F-02/F-04: the disabled button is UI. The background gate must refuse a blocked
+  // review too, including one blocked by a failed simulation.
+  const blockedConfirm = await handleApiRequest({
+    method: 'tx.confirmReview',
+    params: { reviewId: blocked.data.reviewId, bindingHash: blocked.data.bindingHash },
+  });
+  ok('a blocked review cannot be confirmed even if the UI is bypassed',
+    blockedConfirm.error?.code === 'NOT_EXECUTABLE', JSON.stringify(blockedConfirm.error));
+
   setChain([[ACTIVE, 5_000_000_000n], [RECIPIENT, 0n]]);
   const raw = await handleApiRequest({
     method: 'tx.prepareReview',
@@ -807,22 +893,6 @@ console.log('[15] the review fits one screen (owner review, 2026-10-28)');
 
   // One table per operation, with a budget chosen from what the operation actually needs.
   // A decoder that starts appending "Network", "Program", "Registrar"… rows again fails here.
-  const claimFacts = {
-    fromAddress: SENDER,
-    fromLabel: 'Main account',
-    amountUnits: '10000',
-    capUnits: '10000',
-    accountExists: true,
-    limit: {
-      supported: true, paused: false, exhausted: false, remainingAmount: '10000',
-      window: '3600', resetAtUnixSec: null,
-    },
-    fee: { supported: false, reason: 'not reported' },
-    programAddress: asAddress(14),
-    vaultAddress: asAddress(15),
-    networkId: 'betanet',
-    networkLabel: 'Betanet',
-  };
   const rawFacts = {
     programAddress: asAddress(16),
     programName: null,
@@ -870,6 +940,60 @@ console.log('[15] the review fits one screen (owner review, 2026-10-28)');
       && rawReview.execution.raw?.data === 'deadbeef'
       && rawReview.operation.confirmLabel === null
       && model.stateFromWarnings(rawReview.warnings) === 'blocked');
+}
+
+console.log('[16] concurrency and the simulation verdict');
+{
+  // Audit F-06: put/put could read the same list and erase each other. The store now serializes
+  // every read-modify-write per network; these interleavings are the regression.
+  const net = 'storetest';
+  await reviewStore.clear(net);
+  const rec = (id, ttl = 60_000) => ({ reviewId: id, expiresAt: Date.now() + ttl });
+
+  await Promise.all([reviewStore.put(net, rec('a')), reviewStore.put(net, rec('b'))]);
+  const two = (await reviewStore.get(net, 'a')) && (await reviewStore.get(net, 'b'));
+  ok('two concurrent prepares both survive', Boolean(two),
+    JSON.stringify([await reviewStore.get(net, 'a'), await reviewStore.get(net, 'b')]).slice(0, 160));
+
+  await Promise.all([reviewStore.put(net, rec('c')), reviewStore.remove(net, 'a')]);
+  ok('a concurrent put and remove both apply',
+    Boolean(await reviewStore.get(net, 'c')) && (await reviewStore.get(net, 'a')) === null);
+
+  await reviewStore.clear(net);
+  await Promise.all(Array.from({ length: 45 }, (_, i) => reviewStore.put(net, rec(`r${i}`))));
+  const capped = [];
+  for (let i = 0; i < 45; i += 1) if (await reviewStore.get(net, `r${i}`)) capped.push(i);
+  ok('the cap keeps the 40 newest records under concurrent writes',
+    capped.length === 40 && capped.includes(44) && !capped.includes(0), capped.join(','));
+
+  await reviewStore.put(net, rec('expired', -1_000));
+  await reviewStore.put(net, rec('fresh'));
+  ok('expired records are pruned on the next write, not returned',
+    (await reviewStore.get(net, 'expired')) === null && Boolean(await reviewStore.get(net, 'fresh')));
+  await reviewStore.clear(net);
+
+  // Audit F-04: a simulation that RAN and failed must block, and must read differently from
+  // one the wallet could not run. Both halves are pure; the service folds them before state.
+  const { simulationWarning } = await import('../src/shared/tx-review/decoders/common.js');
+  const failed = simulationWarning({ status: 'failed', reason: 'node rejected the dry run' });
+  ok('a failed simulation is a blocking fact with the node reason',
+    failed?.blocking === true && /node rejected/.test(failed.detail) && failed.severity === 'danger');
+  const base = decode('native-send', nativeFacts());
+  ok('a failed simulation turns an otherwise ready review into blocked',
+    model.stateFromWarnings(base.warnings) === 'ready'
+      && model.stateFromWarnings([...base.warnings, failed]) === 'blocked');
+  ok('unavailable and pending simulations add no warning',
+    simulationWarning({ status: 'unavailable' }) === null
+      && simulationWarning({ status: 'pending' }) === null
+      && simulationWarning(null) === null);
+
+  const serviceSource = readFileSync(new URL('../src/background/services/review-service.js', import.meta.url), 'utf8');
+  ok('the service folds the simulation verdict in before computing and storing the state',
+    /simulationWarning\(simulation\)[\s\S]{0,300}const state =/.test(serviceSource)
+      && /\bstate,\s*\n\s*facts,/.test(serviceSource));
+  const cardSource = readFileSync(new URL('../src/ui/domain/tx-review/review-card.js', import.meta.url), 'utf8');
+  ok('the card words "failed" differently from "unavailable"',
+    /failed: 'Failed/.test(cardSource) && /unavailable: 'Not available'/.test(cardSource));
 }
 
 console.log(`\nAll tx-review checks passed: ${checks}/${checks}.`);

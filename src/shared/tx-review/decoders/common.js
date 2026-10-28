@@ -71,6 +71,21 @@ export function acknowledgement(id, label) {
 }
 
 /**
+ * A simulation that RAN and failed is proof the transaction would not succeed, so it belongs in
+ * the same vocabulary as every other blocking fact. `unavailable`/`pending` are not proof of
+ * anything and produce no warning. Kept here (not in the background only) so the review card,
+ * the service and the tests all describe the state with one sentence.
+ */
+export function simulationWarning(simulation) {
+  if (simulation?.status !== 'failed') return null;
+  return warn('simulation-failed', 'danger',
+    'Simulation failed',
+    `${simulation.reason || 'The node rejected the dry run.'} The wallet cannot prove this `
+    + 'transaction would succeed, so it will not sign it.',
+    { blocking: true });
+}
+
+/**
  * The fee block. A network whose fee has not been measured reports supported:false with the
  * reason; it never inherits another chain's number (see tx.estimateFee's provenance rule).
  */

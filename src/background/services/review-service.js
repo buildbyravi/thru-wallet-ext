@@ -32,6 +32,7 @@ import {
 } from '../../shared/tx-review/model.js';
 import '../../shared/tx-review/decoders/index.js';
 import { decodeReview, listDecoderKinds } from '../../shared/tx-review/registry.js';
+import { simulationWarning } from '../../shared/tx-review/decoders/common.js';
 import { getKind, listKinds } from './review/kinds.js';
 import * as store from './review/store.js';
 
@@ -167,7 +168,14 @@ export async function prepareReview({ kind, params = {} } = {}) {
     ? spec.submit(facts, { acknowledgements: content.acknowledgements.map((ack) => ack.id) })
     : null;
   const submitPolicy = submitPolicyFor(submit, prefs);
-  const state = submitPolicy ? stateFromWarnings(content.warnings) : 'blocked';
+
+  // Simulation is part of the state, not a decoration. A dry run that RAN and failed is proof
+  // the transaction cannot succeed, so it becomes a blocking warning before the state is
+  // computed; "unavailable" and "pending" add nothing. (Audit F-04, 2026-10-28.)
+  const simulation = await simulationBlock();
+  const simWarning = simulationWarning(simulation);
+  const warnings = simWarning ? [...content.warnings, simWarning] : [...content.warnings];
+  const state = submitPolicy && stateFromWarnings(warnings) === 'ready' ? 'ready' : 'blocked';
 
   const preparedAt = Date.now();
   const reviewId = reviewIdFor(network.id);
@@ -200,9 +208,9 @@ export async function prepareReview({ kind, params = {} } = {}) {
       balanceAfterNote: assets.balanceAfterNote,
     },
     execution: content.execution,
-    warnings: content.warnings,
+    warnings,
     acknowledgements: content.acknowledgements,
-    simulation: await simulationBlock(),
+    simulation,
     submitPolicy,
   };
 
@@ -214,6 +222,9 @@ export async function prepareReview({ kind, params = {} } = {}) {
     networkId: network.id,
     accountAddress: account.address,
     bindingHash,
+    // Persisted so confirm can refuse a review the wallet already knows cannot be signed
+    // (blocked decoders, failed simulation) without re-deriving decoder state from facts.
+    state,
     facts,
     params,
     method: submit?.method ?? null,
@@ -255,6 +266,13 @@ export async function confirmReview({ reviewId, bindingHash, acknowledgements = 
   if (record.bindingHash !== bindingHash) {
     throw coded(REVIEW_ERROR_CODES.BINDING_MISMATCH,
       'These transaction details do not match the review that was prepared.');
+  }
+
+  // A blocked review is not signable. The UI disables its button, but the background is the
+  // boundary that must hold even if a caller skips that screen.
+  if (record.state !== 'ready') {
+    throw coded(REVIEW_ERROR_CODES.NOT_EXECUTABLE,
+      'This review is not in a signable state. Review the transaction again.');
   }
 
   const account = await accountService.getActiveAccount();

@@ -24,7 +24,7 @@ This record answers three questions the owner asked in one pass:
   so `npm install` + `npm run build` were re-run before any verification.
 - Rabby was read from the real repository at `develop` (GitHub contents API, individual files —
   not screenshots, not marketing pages). Files named in §2 are the ones actually read.
-- Local gates: `npm run build`, `npm test` (2,236 checks after the §4, §10 and §11 fixes), `scripts/check-layering.mjs`,
+- Local gates: `npm run build`, `npm test` (2,251 checks after the §4, §10 and §11 fixes), `scripts/check-layering.mjs`,
   `scripts/check-routes.mjs`, `scripts/check-csp.mjs` via the build, plus the new browser harness
   in §5.
 - No browser binary exists in this sandbox, so **no automated screenshot or layout assertion is
@@ -107,7 +107,7 @@ are explicitly **not** copied.
 
 | # | Claim | Evidence | Verdict |
 | --- | --- | --- | --- |
-| 1 | One pipeline, no parallel lifecycle | `review-service.js:124,241,307`; kinds table `review/kinds.js:613–730`; Send `routes/send.js:787–915`; Domain `routes/name.js:556–700` | **Met for Send + Domain.** Faucet still calls a signing method directly (`routes/faucet.js:254`) — declared in the PR body, tracked in §5. |
+| 1 | One pipeline, no parallel lifecycle | `review-service.js`; `review/kinds.js`; Send `routes/send.js`; Domain `routes/name.js`; Faucet `routes/faucet.js` | **Met for every shipped value-moving route** (faucet migrated 2026-10-28). Two caveats are stated, not hidden: the pre-existing `intent-service`/`defi/*` lifecycle still exists behind the off `DEFI_INTENT` gate (§12 F-01), and the reviewed signing methods stay directly callable at the API boundary (§12 F-02). |
 | 2 | Append-only contract, v29 | `shared/contract/manifest.js` (`CONTRACT_VERSION = 29`, 3 methods, `since: 29`); `test/test-contract.mjs` 161/161 | Met. No existing method signature changed. |
 | 3 | The pipeline never signs | `prepareReview` reads facts + decodes; `confirmReview` returns the recorded `{method, params}`; submission runs through each operation's existing handler | Met. Verified by test section 8 ("confirming does not sign"). |
 | 4 | Unknown can never be signed | `registry.js` throws `REVIEW_KIND_UNSUPPORTED`; `raw` kind has `submit: null`; `review-service` forces `state:'blocked'` whenever `submitPolicy` is null; `assertReview` rejects a null policy on a `ready` review | Met, and covered by tests 11. |
@@ -117,7 +117,7 @@ are explicitly **not** copied.
 | 8 | Timeout ≠ failure | `confirm.js:104–150` tags `phase:'confirm'`/`'submit'` and `classifyReviewError` only reports `uncertain` after a submit-phase error | Met; the route-level wording is asserted in `test-route-lifecycle.mjs`. |
 | 9 | Revalidation before signing | `confirmReview` re-checks TTL, binding hash, active account/network, then the kind's recheck (fee/token/price/expiry/faucet) | Met; tests cover account switch, network switch, expiry, and each recheck family. |
 | 10 | No duplicated review UI | one component (`ui/domain/tx-review/review-card.js:96`), one confirm helper (`confirm.js:59`); both routes deleted their own rows, duplicate card and password flow | Met. `check-routes.mjs` reports every class defined; `check-layering.mjs` 0 violations, DOM sinks 0. |
-| 11 | Build + suite green | `npm run build` PASS; `npm test` exit 0, **2,236 checks** (incl. `test-tx-review.mjs` 126 and `test-route-lifecycle.mjs` 1,065) | Met; re-run after every fix in §4, §10 and §11, and again on the merged head. |
+| 11 | Build + suite green | `npm run build` PASS; `npm test` exit 0, **2,251 checks** (incl. `test-tx-review.mjs` 141 and `test-route-lifecycle.mjs` 1,065) | Met; re-run after every fix in §4, §10 and §11, and again on the merged head. |
 
 ---
 
@@ -202,12 +202,19 @@ Verified from source, not from documentation prose:
    value-moving; it is outside this claim.)
 2. **Token-transfer fee is unmeasured, not unknown.** The review says so rather than borrowing the
    native number. The improvement is measurement (`scripts/measure-fee.mjs` pattern), not UI.
-3. ~~**`tx.confirmReview` is not single-use.**~~ **Closed 2026-10-28:** a successful submit now
-   discards the review, so a replay inside the TTL fails with `REVIEW_NOT_FOUND` (classified stale).
-   A definite failure keeps the review, because retrying the same reviewed facts is safe.
-4. **A failed simulation would not block.** `stateFromWarnings` only reads warnings; with
-   `tx.simulate` permanently `{supported:false}` there is no way to produce or test a `failed`
-   simulation path, so it is documented rather than guessed at.
+3. **`tx.confirmReview` is not single-use in the background.** *Partially closed 2026-10-28:* a
+   successful submit discards the review from the UI helper, so a replay inside the TTL fails with
+   `REVIEW_NOT_FOUND` (classified stale), and a definite failure keeps the review because retrying
+   the same reviewed facts is safe. But `confirmReview` itself is deliberately idempotent — a
+   cancelled password dialog must not force a re-review — so an API caller that never submits can
+   confirm the same review repeatedly. Each confirmation only returns submit instructions, and the
+   signing handler's own guards still apply. A one-shot authorization capability is **open**
+   (§12 F-05); the claim is "the shipped UI cannot replay it", not "the backend is single-use".
+4. ~~**A failed simulation would not block.**~~ **Closed 2026-10-28:** `simulationWarning()` turns a
+   `status:'failed'` dry run into a blocking warning; the service computes state from it and persists
+   it, `confirmReview` refuses any record that is not `ready`, and the card words "failed" apart from
+   "not available". Still unexercised against a real dry-run RPC (none exists on Thru), so the seam
+   is covered by pure/model tests and a source assertion, not by a live failure.
 5. **No independent review of the custom registrar contract exists in this repo**, and its renew
    path is not wired. Anything that makes a contract call it must first clear the policy in the
    directive (§11–12): provenance, tests, and a testnet deployment check.
@@ -260,7 +267,7 @@ actually run.
 | Operations actually integrated | `native-send` → `tx.sendChecked`; `token-transfer` → `token.transferChecked`; `domain-register` → `name.register` (`via:'custom'`); `domain-purchase` → `name.purchase`; `domain-renew` → `name.renewLease`; `domain-claim` → `name.claimExpired`; `faucet-claim` → `tx.claimFaucet`; `raw` → **no** submit. Activation (Dashboard for the active account, Send for an owned recipient) goes through the v12 `tx.registerAccount`, not the review pipeline — it is an unlocked-only, zero-fee, self-signed activation, not a value-moving transfer. | `services/review/kinds.js`; route-level coverage in `test/test-route-lifecycle.mjs`. |
 | Decoders implemented vs unsupported | Implemented: native send, token transfer, domain register, domain purchase, domain renew, domain claim, faucet claim, raw/unknown (display-only). Unsupported **by design**: swap, AMM/LP add/remove, pool creation, token launch/migration/claim — the contract declares them behind `DEFI_*` flags that are all off, no handler can execute, and no kind exists, so `tx.prepareReview` answers `supported:false` with the known-kinds list. Arbitrary programs decode as `kind:'unknown'` with raw bytes and cannot be signed. | `registry.listDecoderKinds()` = `listKinds()`; `test/test-tx-review.mjs` [0] and [2]. |
 | Simulation availability and limits | Unavailable and said so: `tx.simulate` returns `{supported:false, changes:null, reason}` and every review carries `simulation.status:'unavailable'` with a null post-transaction balance (`assets.balanceAfter` is validator-enforced null). Deterministic facts (exact base-unit amount, fee provenance or its explicit reason, target program/instruction, warnings) are shown; nothing is interpolated. | `services/tx-service.js §simulate`; `model.js assertReview`; [1]/[3]. |
-| Tests and build results | `npm test`: **2,236 checks**, exit 0 — `test-tx-review.mjs` 126, `test-route-lifecycle.mjs` 1,065, `test-contract.mjs` 161, plus the rest of the suite. `npm run build`: PASS, layering 126 files / 0 DOM sinks, routes 15/15, 257 used CSS classes (all defined). | Local/deterministic only; no browser binary exists in this sandbox. |
+| Tests and build results | `npm test`: **2,251 checks**, exit 0 — `test-tx-review.mjs` 141, `test-route-lifecycle.mjs` 1,065, `test-contract.mjs` 161, plus the rest of the suite. `npm run build`: PASS, layering 126 files / 0 DOM sinks, routes 15/15, 257 used CSS classes (all defined). | Local/deterministic only; no browser binary exists in this sandbox. |
 | Browser verification evidence | **None claimed.** `scripts/preview-tx-review.html` renders the real component against the real `dist/popup.css` for seven fixtures and was served and HTTP-checked; the DOM shim has no layout engine, so this is a harness, not a layout proof. The human runbook is `docs/MANUAL_SMOKE_CHECKLIST.md` §7. | §5; §7 item 1. |
 | New guard added for "no direct signing from the UI" | `test/test-tx-review.mjs` [14] scans every `src/ui/**/*.js` for `bridge.send('<method>')` literals (comments stripped), fails if any names an `auth:'signing'` method or an unknown method, and asserts the sanctioned literals (review trio + `tx.registerAccount`) are present so the scan cannot pass vacuously. This is what found the Dashboard defect fixed in §10. | [14]; `test/test-route-lifecycle.mjs` "dashboard activation" checks. |
 | Remaining security/protocol blockers | (1) token-transfer network fee unmeasured and recipient-owner acceptance unproven; (2) charged network fee is not returned by the RPC detail path; (3) no simulation/dry-run RPC; (4) custom-lease renew has no bridge method; (5) real-browser layout/focus and MV3 suspension untested; (6) no external security audit; (7) no dapp provider surface exists, by design. | §7, `docs/BACKEND_GAPS.md`, `docs/STATUS_AND_ROADMAP.md` §2. |
@@ -274,7 +281,7 @@ were wrong about this tree. Both kinds are recorded here so the next reader does
 
 | External claim | Verdict | What the code actually does |
 | --- | --- | --- |
-| "PR backend contract is RIGHT (v29)… reuse it, do not build a parallel lifecycle" | **Agree** | `manifest.js` v29; `review-service.js`; `services/review/*`. No parallel lifecycle exists. |
+| "PR backend contract is RIGHT (v29)… reuse it, do not build a parallel lifecycle" | **Agree, with a correction** | `manifest.js` v29; `review-service.js`; `services/review/*`. No *shipped* route uses a second lifecycle, but the pre-existing `intent-service.js` + `defi/intent-store.js` + `dex-service.js` lifecycle still exists behind the `DEFI_INTENT` gate (off). §12 F-01 corrects this row: "no parallel lifecycle exists" was too strong. |
 | "PR frontend is HALF-DONE… per-route sheets (tx-card, tx-detail-sheet, send.js inline review) still exist" | **Wrong** | `tx-card.js` and `tx-detail-sheet.js` are **Activity/History** components (`docs/HISTORY_REDESIGN_PLAN.md` P1/P2), not review sheets. `routes/send.js`, `routes/name.js` and `routes/faucet.js` each call `tx.prepareReview` → `TxReviewCard` → `submitReviewedReview`; those three are the only files under `src/ui/` that call the review pipeline, and there is no `/send`-owned review markup left. |
 | "U-3 PARTIAL: shared component + risk banners missing" | **Wrong** | `ui/domain/tx-review/review-card.js` renders the review, a Warnings section, acknowledgements, and a disabled confirm when blocked. (At the time of this review that was eleven stacked sections; the 2026-10-28 owner review folded them into one table plus one disclosure — §11.) |
 | "U-8 PARTIAL: review-pipeline tests missing" | **Wrong** | `test/test-tx-review.mjs` (89 checks at the time of this review, 126 after §11: registry parity, every decoder, malformed/unknown input, formatting, binding/TTL/account/network, acknowledgements, discard, code registry, UI signing-literal scan, decoder row budget) + the Send/Domain/Faucet review flows inside `test/test-route-lifecycle.mjs`. |
@@ -357,7 +364,7 @@ and the simulation reason all still exist and are asserted in §11.3 (`[15]`).
 
 ### 11.4 Result
 
-`npm run build` PASS. `npm test` exit 0 — **2,236 checks**: `test-tx-review.mjs` 126/126,
+`npm run build` PASS. `npm test` exit 0 — **2,251 checks**: `test-tx-review.mjs` 141/141,
 `test-route-lifecycle.mjs` 1,065/1,065, contract 161/161, plus the rest of the suite. The CSS for the
 removed sections (`.tx-review-protocol*`, `.tx-review-section*`, `.tx-review-fee-note`) was deleted so
 the stylesheet has no dead review classes; `check-css-nesting.mjs` and the route/CSS gate still pass.
@@ -366,3 +373,51 @@ the stylesheet has no dead review classes; `check-css-nesting.mjs` and the route
 sandbox, so §11.1 describes the DOM the tests assert, not a rendered screenshot. The harness
 (`scripts/preview-tx-review.html`, seven fixtures) and `docs/MANUAL_SMOKE_CHECKLIST.md` §7 are how
 that check gets recorded.
+
+## 12. External audit of `2e2178f`, re-checked at `983724b` (2026-10-28)
+
+A third review audited the PR at `2e2178f` (29 files, +4,901/−289; `test-tx-review.mjs` 66 checks at
+that commit) and raised F-01…F-13 plus a requirement matrix. The branch has moved a long way since:
+`514ac33` (faucet migration, error-code registry, one formatter), `d8d807c` (Dashboard activation,
+the UI signing-literal scan), `1ef4be5` (documentation), and `9aacb5d`…`983724b` (the card
+simplification). Every finding was re-read against the current source; where the finding was still
+true, it was fixed in this pass with a regression test.
+
+Status key: **Fixed now** = changed in this pass, with a test below. **Fixed earlier** = closed by
+`514ac33`/`d8d807c`. **Partial** = the shipped path is closed but the general capability is not.
+**Open** = true today and deliberately out of this PR's scope, stated as such.
+
+| ID | Finding at `2e2178f` | Status at this HEAD | Evidence / guard |
+| --- | --- | --- | --- |
+| F-01 | A second lifecycle (`intent-service`/`intent-store`/`dex-service`) competes with the new review pipeline | **Open, reclassified** | The lifecycle exists and is dormant: every DeFi method is gated (build-time `DEFI_INTENT`, off) and `intent.submit` refuses `FEATURE_DISABLED`. No shipped route calls it; the review pipeline is the only live prepare/confirm path. Converging or deleting it is a follow-on decision, not something this PR can do without migrating a disabled feature. §10's "no parallel lifecycle exists" sentence is corrected above. |
+| F-02 | Review is not mandatory at the signing boundary | **Partial** | Faucet migrated (`514ac33`). Dashboard/Send activation moved to the unlocked v12 `tx.registerAccount`; `tx.autoCreateAccount` has no UI caller (`test-tx-review.mjs` [14] + the Dashboard route test). **New:** a review that is not `ready` is now refused by `tx.confirmReview` itself (`NOT_EXECUTABLE`), so the disabled button is no longer the only gate. Still open: `token.deploy` and the reviewed handlers remain directly callable, and there is no one-shot authorization capability. |
+| F-03 | An unreadable mint rendered as proven absence | **Fixed now** | `token-transfer.js` branches on `mintExists === false` (blocking) vs `== null` (`mint-unverified`, warning). Test: `[2] an unreadable mint is "could not verify", never "does not exist"`. |
+| F-04 | A failed simulation did not affect confirmability | **Fixed now** | `simulationWarning()` (blocking on `status:'failed'`), the service folds it in **before** computing and persisting `state`, `confirmReview` refuses non-`ready` records, and the card words "Failed" apart from "Not available". Tests: `[16]` (blocking fact, state flip, unavailable/pending add nothing, service ordering, card wording) and `[11]` (blocked review refused even when the UI is bypassed). Not exercised against a real dry-run RPC — none exists on Thru. |
+| F-05 | Reviews are replayable inside their TTL | **Partial, stated precisely** | A successful submit discards the review, so the shipped UI cannot replay it; `confirmReview` itself stays idempotent so a cancelled password dialog does not force a re-review. An API caller that never submits can confirm repeatedly; each confirmation only returns instructions and the signing handler's own guards apply. §7 item 3 now says exactly this instead of "closed". |
+| F-06 | Prepared-review storage can lose concurrent writes | **Fixed now** | `review/store.js` serializes every read-modify-write per network (`reviewUpdates`, the same pattern as `pending-tx-service`). Tests `[16]`: concurrent put/put, put/remove, and the 40-record cap under 45 concurrent writes. Negative control: reverting to the old read-modify-write makes put/put lose a record and the suite fail. |
+| F-07 | Faucet decoder invented an activation step and ignored a policy mismatch | **Fixed now** | `accountExists` keeps its tri-state (`true/false/null`); `null` produces `account-state-unverified` (warning, no activation claim). `targetMatchesFaucet === false` now produces a blocking `faucet-target-mismatch`, matching the recheck that already refused it. Tests: `[4]` (both cases). |
+| F-08 | The Domain lifecycle directive is not implemented (3 tabs, no domain record/merge model, no custom renewal) | **Open, out of scope** | `routes/name.js` still has Register / My Domains / Renew, and My Domains is a primary-name view. Documented as a separate workstream (§6, `docs/STATUS_AND_ROADMAP.md`); this PR only upgrades review for existing domain writes. |
+| F-09 | The verification report missed the parallel lifecycle and the decoder/store defects | **Addressed** | This section is the missing review; §10's wrong row and §7 items 3–4 are corrected above; `docs/DEFECT_LOG.md` §12 records the defects and their lessons. |
+| F-10 | `treasurer`/`treasury` mismatch rendered the registry treasury as `unknown` | **Fixed now** | `review/kinds.js` emits `treasury: cfg.treasurer`. Test: `[3] the registry treasurer address reaches the execution accounts`. |
+| F-11 | `verified: true` could be rendered without an address | **Fixed now** | Native/token decoders derive `verified` from the pinned id and raise a blocking `program-unidentified` when it is missing; `model.js` refuses `verified:true` without an address (protocol and execution program). Tests: `[1]` (no pinned program), `[5]` (both validator rules), plus the new state↔warning invariants. |
+| F-12 | Dead code and over-broad comments | **Fixed now (code), scoped (comments)** | `programIdentity()` and Send's write-only `preparedReview` are deleted. Kinds remain declared once in the pure decoder registry and once in the background spec, with `[0]`'s two-way consistency test; the card's comments now describe the one review *surface*, not a global monopoly. |
+| F-13 | Maintained docs still claimed SDK `0.4.1` | **Fixed earlier + now** | `1ef4be5` refreshed the docs to `0.4.2`; this pass also advances the derivation vector pin to `0.4.2` so `npm test` stops printing a version-drift warning, and records the reason in the vector comment. |
+
+Two audit-side corrections for the record: the audit's counts (29 files / 66 review checks / 4,901
+additions) describe `2e2178f`, not the PR head; and its §5 table lists the faucet as bypassing review,
+which `514ac33` had already changed before this pass.
+
+### 12.1 New invariants added with these fixes
+
+- `assertReview` refuses `state:'blocked'` without a blocking warning and `state:'ready'` with one.
+- `assertReview` refuses `protocol.verified`/`execution.program.verified` without an address.
+- `tx.confirmReview` refuses any stored record whose state is not `ready`.
+- The store's writes are serialized per network; `readAll` is only ever called inside that queue for
+  mutations.
+
+### 12.2 Gates
+
+`npm run build` PASS. `npm test` exit 0 — **2,251 checks** (`test-tx-review.mjs` 141/141,
+`test-route-lifecycle.mjs` 1,065/1,065, `test-contract.mjs` 161/161, derivation 16/16 with the 0.4.2
+pin and no warning). Still **UNVERIFIED** by this pass: a real failed simulation, real Chrome layout,
+and any live-chain behaviour.

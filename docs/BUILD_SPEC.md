@@ -401,8 +401,9 @@ re-implement any of them:
    balance, and never claims success. Warnings that matter are blocking: the confirm control stays
    disabled.
 4. **Authenticate → sign → reconcile** — `src/ui/domain/tx-review/confirm.js` calls
-   `tx.confirmReview`, which re-validates account/network/facts/TTL/acknowledgements and returns
-   the exact submit instructions without signing. The helper then calls that method through the
+   `tx.confirmReview`, which refuses a review whose persisted state is not `ready` (blocked by a
+   warning, or a simulation that ran and failed), re-validates account/network/facts/TTL/
+   acknowledgements, and returns the exact submit instructions without signing. The helper then calls that method through the
    bridge, so the operation's existing `auth: 'signing'` policy applies unchanged (session-only by
    default, password prompt only if the user opted in). The result is signature/receipt, definite
    failure (the review may be retried on the same facts), or unknown outcome after a timeout —
