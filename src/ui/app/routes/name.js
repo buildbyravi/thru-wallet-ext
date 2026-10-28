@@ -601,14 +601,20 @@ export function NameRoute({ back }) {
         } });
         reviewSheet = sheet;
 
-        const reviewCard = sheet.track(TxReviewCard({ review: prepared.review }));
+        // The card fires onChange from its own constructor, so the button it gates must
+        // exist first. Every confirmability decision stays inside the card: this route never
+        // re-derives validation from the review envelope itself.
+        let confirm = null;
+        const reviewCard = sheet.track(TxReviewCard({
+          review: prepared.review,
+          onChange: ({ canConfirm }) => confirm?.el && (confirm.el.disabled = !canConfirm),
+        }));
         sheet.card.appendChild(reviewCard.el);
 
         const cancel = sheet.track({
           el: h('button', { type: 'button', class: 'btn secondary', text: 'Cancel' }),
           destroy: () => {},
         });
-        let confirm = null;
         confirm = sheet.track({
           el: h('button', {
             type: 'button',
@@ -617,11 +623,6 @@ export function NameRoute({ back }) {
             disabled: !reviewCard.canConfirm(),
           }),
           destroy: () => {},
-        });
-        // The card's acknowledgements gate the confirm control; the sheet owns the listener
-        // so it is removed on close even if the sheet closes while a prompt is open.
-        sheet.d.on(reviewCard.el, 'change', () => {
-          confirm.el.disabled = !reviewCard.canConfirm();
         });
 
         sheet.d.on(cancel.el, 'click', () => {

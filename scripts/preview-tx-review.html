@@ -1,0 +1,147 @@
+<!doctype html>
+<!--
+  Browser harness for the SHARED transaction review card. NOT shipped — dev only, not
+  referenced by manifest.json and not copied into dist/ by build.mjs.
+
+  Why this exists: `npm test` runs against a DOM shim with no layout engine, so it can prove
+  behaviour (what is rendered, what is disabled, which acknowledgements gate the button) but
+  never that a human can read the thing. AGENTS.md hard rule 14 requires a real browser look
+  at every review screen; this page is that look, for every shape the decoders can produce.
+
+  It loads the REAL built stylesheet (../dist/popup.css) and the REAL component
+  (../src/ui/domain/tx-review/review-card.js), fed by the REAL decoders through the REAL wire
+  validator (../scripts/preview-tx-review.fixtures.js). Only the chain facts are fixtures:
+  no RPC is contacted and nothing here signs anything.
+
+  Usage:
+    npm run build
+    node scripts/serve-dist.mjs --root .      # or: python3 -m http.server 8000
+    open http://localhost:8000/scripts/preview-tx-review.html
+
+  What to look for:
+    - a simple transfer reads as a simple transfer; the domain/faucet sheets carry only the
+      rows that operation actually has;
+    - the blocked sends and the unknown instruction render a disabled confirm, and the
+      unknown case shows raw data behind a disclosure;
+    - at 408px nothing is clipped, long addresses wrap, and the raw-data block scrolls
+      horizontally instead of pushing the card wider than the popup;
+    - keyboard: Tab reaches the acknowledgement checkbox and the raw-data toggle, Enter/Space
+      toggles them, and both show a visible focus ring.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>transaction review card preview</title>
+<link rel="stylesheet" href="../dist/popup.css" />
+<style>
+  /* Harness chrome only — none of this describes the shipped card. */
+  body { width: auto; margin: 0; padding: 24px; font-family: system-ui, sans-serif; }
+  .harness-bar {
+    display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+    margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--border-subtle, #333);
+  }
+  .harness-bar button { padding: 6px 12px; border-radius: 8px; cursor: pointer; }
+  .harness-note { font-size: 12px; line-height: 1.5; opacity: .78; max-width: 62ch; }
+  .harness-grid { display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start; }
+  .harness-col { display: flex; flex-direction: column; gap: 8px; }
+  .harness-label { font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+  .harness-sub { font-size: 12px; opacity: .7; }
+  /* The popup viewport, reproduced: 408 x 600, card scrolling inside it. */
+  .viewport {
+    width: 408px; height: 600px; overflow-y: auto; overflow-x: hidden;
+    border: 1px solid #888; border-radius: 12px; padding: 12px; box-sizing: border-box;
+  }
+  .viewport.panel { width: 380px; }
+  .viewport.fullpage { width: 100%; max-width: 720px; height: 760px; }
+  .harness-actions { display: flex; gap: 8px; margin-top: 8px; }
+</style>
+</head>
+<body>
+
+<div class="harness-bar">
+  <button id="toggle-theme" type="button">Toggle dark</button>
+  <span class="harness-note">
+    Fixture facts, real decoders, real component, real <code>dist/popup.css</code>. No chain read,
+    no signing. Confirm buttons are inert here — their disabled state is the thing under test.
+  </span>
+</div>
+
+<div class="harness-grid" id="grid"></div>
+
+<script type="module">
+import { TxReviewCard } from '../src/ui/domain/tx-review/review-card.js';
+import { previewFixtures } from './preview-tx-review.fixtures.js';
+
+const grid = document.getElementById('grid');
+
+for (const fixture of previewFixtures()) {
+  const col = document.createElement('div');
+  col.className = 'harness-col';
+
+  const label = document.createElement('div');
+  label.className = 'harness-label';
+  label.textContent = fixture.title;
+  col.appendChild(label);
+
+  const sub = document.createElement('div');
+  sub.className = 'harness-sub';
+  sub.textContent = fixture.note;
+  col.appendChild(sub);
+
+  const viewport = document.createElement('div');
+  viewport.className = 'viewport';
+
+  const state = { canConfirm: false, acknowledgements: [] };
+  const card = TxReviewCard({
+    review: fixture.review,
+    onChange: (next) => {
+      Object.assign(state, next);
+      confirmBtn.disabled = !next.canConfirm;
+      status.textContent = next.canConfirm
+        ? 'confirm enabled'
+        : `confirm disabled${fixture.review.state === 'blocked' ? ' (blocked by the wallet)' : ''}`;
+    },
+  });
+  viewport.appendChild(card.el);
+
+  const actions = document.createElement('div');
+  actions.className = 'harness-actions';
+
+  const confirmBtn = document.createElement('button');
+  confirmBtn.className = 'btn primary';
+  confirmBtn.type = 'button';
+  confirmBtn.textContent = fixture.review.operation.confirmLabel || 'Confirm and sign';
+  confirmBtn.disabled = true;
+  confirmBtn.title = 'Inert in this harness; the disabled state is what matters.';
+
+  const status = document.createElement('span');
+  status.className = 'harness-sub';
+
+  actions.appendChild(confirmBtn);
+  actions.appendChild(status);
+  col.appendChild(viewport);
+  col.appendChild(actions);
+  grid.appendChild(col);
+}
+
+// A wide pane, because the same card has to work in the full-page tab.
+const wide = document.createElement('div');
+wide.className = 'harness-col';
+const wideLabel = document.createElement('div');
+wideLabel.className = 'harness-label';
+wideLabel.textContent = 'Full-page width (720px)';
+const wideViewport = document.createElement('div');
+wideViewport.className = 'viewport fullpage';
+wideViewport.appendChild(TxReviewCard({ review: previewFixtures()[3].review }).el);
+wide.appendChild(wideLabel);
+wide.appendChild(wideViewport);
+document.getElementById('grid').appendChild(wide);
+
+const root = document.documentElement;
+root.setAttribute('data-theme', 'dark');
+document.getElementById('toggle-theme').addEventListener('click', () => {
+  root.setAttribute('data-theme', root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+});
+</script>
+</body>
+</html>

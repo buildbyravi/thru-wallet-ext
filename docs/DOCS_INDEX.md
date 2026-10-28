@@ -99,6 +99,7 @@ authority documents", never "this is how the code works".
 | `docs/AUDIT_REPORT.md` | current audit conclusion, open mainnet-readiness gates, and the index of dated audit records |
 | `docs/audits/` | append-only dated audit records (2026-09-18, 2026-10-03, 2026-10-04); a new audit appends a file and refreshes `docs/AUDIT_REPORT.md`; records are never edited |
 | `docs/SEND_PATH_AUDIT.md` | Send path, registration, tests, residual risks — kept while Send race/live items are open |
+| `docs/TX_REVIEW_VERIFICATION.md` | v29 transaction-review verification: Rabby source findings, PR claim-by-claim check, fixed defects, open gaps, and the Domain capability facts it established |
 | `docs/HISTORY_REDESIGN_PLAN.md` | shipped flat History behavior and its open live checks |
 | `docs/DEFECT_LOG.md` | defect causes, fixes, guardrails, and residual verification gaps |
 | `docs/REDESIGN_TRIAGE.md` | triage of external UX suggestions — kept while the review is unresolved (3 of 4 suggestion sets pending) |
