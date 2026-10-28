@@ -5691,12 +5691,9 @@ try {
   await ownRecipientRegistrationTest();
   await historyCacheFirstTest();
   await offlineBalanceConsumersTest();
-<<<<<<< HEAD
   await nameReviewTest();
   await trackedDomainsTest();
-=======
   await dashboardActivationTest();
->>>>>>> origin/arena/0439c226-thru-wallet-ext
   await panelExclusionTest();
   negativeControls();
 } finally {

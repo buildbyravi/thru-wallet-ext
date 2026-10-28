@@ -129,14 +129,9 @@ export async function submitReviewedReview({
       }
     },
   });
-<<<<<<< HEAD
   if (outcome == null) return { status: 'cancelled' };
   if (outcome.error) throw outcome.error;
-  return { status: 'submitted', result: outcome.result };
-=======
-  if (result == null) return { status: 'cancelled' };
-  return settle(result);
->>>>>>> origin/arena/0439c226-thru-wallet-ext
+  return settle(outcome.result);
 }
 
 /**

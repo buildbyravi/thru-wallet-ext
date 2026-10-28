@@ -357,7 +357,7 @@ async function domainCustomRenewFacts(params, { account, network }) {
   }
   const check = await registrarService.checkCustomLease({ name });
   if (check.readError) {
-    throw coded('LEASE_READ_FAILED', check.readError);
+    throw coded('REVIEW_UNAVAILABLE', check.readError);
   }
   if (!check.leaseExists || !check.lease) {
     throw coded('LEASE_NOT_FOUND', `'${name}.${info.rootName}' has no active lease on-chain.`);

@@ -1549,22 +1549,6 @@ form > .btn.text {
 .name-confirm-sheet .detail-val {
   overflow-wrap: anywhere;
 }
-<<<<<<< HEAD
-.name-confirm-hero {
-  text-align: center;
-  padding: var(--sp-2) 0;
-}
-.name-confirm-title {
-  margin: 0;
-  font-size: var(--fs-xl);
-  line-height: 1.3;
-  overflow-wrap: anywhere;
-}
-.name-confirm-actions {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--sp-2);
-}
 .name-confirm-progress {
   padding: var(--sp-2) var(--sp-3);
   text-align: center;
@@ -1601,8 +1585,6 @@ form > .btn.text {
   justify-content: center;
   white-space: nowrap;
 }
-=======
->>>>>>> origin/arena/0439c226-thru-wallet-ext
 .name-stepper .name-step-btn {
   min-width: 32px;
   height: 32px;
@@ -1624,4 +1606,35 @@ form > .btn.text {
    continuous panel; the 1px hairline matches the grid's own `gap: 1px` seam. */
 .dashboard-services-grid {
   margin-top: 1px;
+}
+
+.name-queue-card {
+  margin-top: var(--sp-3);
+  padding: var(--sp-3);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface-elevated, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
+}
+.name-queue-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  padding: var(--sp-2) 0;
+  border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.05));
+}
+.name-queue-item:last-child {
+  border-bottom: none;
+}
+.name-queue-actions {
+  display: flex;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
+}
+.name-queue-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--sp-2) 0;
+  font-weight: 500;
 }
