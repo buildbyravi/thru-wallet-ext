@@ -15,7 +15,7 @@ Chrome MV3 self-custody wallet extension for the **Thru native Layer 1**. Built 
 
 - Single popup UI stack; no legacy popup fallback.
 - 15 popup routes: welcome, unlock, dashboard, accounts, account detail, add account, keyring, export, send, receive, faucet, domains (`/name`), history, settings, reset.
-- Contract version: **29**; **147** methods (81 wallet-core, 43 gated-off DeFi M0, plus the v19–v29 additive slices; `CONTRACT_VERSION` in `src/shared/contract/manifest.js` is authoritative).
+- Contract version: **30**; **152** methods (81 wallet-core, 43 gated-off DeFi M0, plus the v19–v29 additive slices; `CONTRACT_VERSION` in `src/shared/contract/manifest.js` is authoritative).
 - Value-moving methods use centralized `auth: 'signing'`, checked account/network context, and a
   network-mutation lock through submission. Session-only signing is the explicit default; users may
   enable per-sign password re-authentication, and changing that security setting is password-gated.
@@ -155,7 +155,7 @@ npm run build
 npm audit --omit=dev
 ```
 
-`npm test` runs the whole deterministic suite (2,253 checks across 32 test suites plus 5 build gates, as of 2026-10-28):
+`npm test` runs the whole deterministic suite (2,326 checks across 32 test suites plus 5 build gates, as of 2026-10-28):
 
 1. derivation and QR checks,
 2. layering and DOM-sink checks (all of `src/`),

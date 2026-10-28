@@ -80,7 +80,7 @@ future versions fail closed. Balance and History stores are rebuildable caches: 
 scoped, freshness-labelled, and discarded when chain identity evidence does not match. Schema changes
 must add old→new fixtures before shipping.
 
-Domain tracking (contract v29) is owned by `primary-name-service.js`, alongside primary
+Domain tracking (contract v30) is owned by `primary-name-service.js`, alongside primary
 aliases. `thru_registered_domains::<networkId>` stores `{version:1, revision, records}`;
 each candidate carries its account address, name/root/domain identity, last check status,
 and verification timestamps. The absent-registry v0 migration projects existing
