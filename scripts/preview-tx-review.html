@@ -149,7 +149,22 @@ const wideFixture = previewFixtures().find((f) => f.title.startsWith('Domain reg
 wideViewport.appendChild(TxReviewCard({ review: wideFixture.review }).el);
 wide.appendChild(wideLabel);
 wide.appendChild(wideViewport);
+
+// The side panel is a real MV3 surface and it is NARROWER than the popup (380 vs 400), so the
+// same card is rendered there too — the simple send, the shape most likely to be looked at in it.
+const panel = document.createElement('div');
+panel.className = 'harness-col';
+const panelLabel = document.createElement('div');
+panelLabel.className = 'harness-label';
+panelLabel.textContent = 'Side-panel width (380px)';
+const panelViewport = document.createElement('div');
+panelViewport.className = 'viewport panel';
+panelViewport.appendChild(TxReviewCard({ review: previewFixtures()[0].review }).el);
+panel.appendChild(panelLabel);
+panel.appendChild(panelViewport);
+
 document.getElementById('grid').appendChild(wide);
+document.getElementById('grid').appendChild(panel);
 
 const root = document.documentElement;
 root.setAttribute('data-theme', 'dark');

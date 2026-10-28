@@ -142,8 +142,9 @@ are explicitly **not** copied.
 
 `scripts/preview-tx-review.html` renders the **real** `TxReviewCard` with the **real**
 `dist/popup.css` and **real** decoder output (fixtures are chain facts only; each envelope is
-validated with `assertReview` before it is rendered). Eight shapes are shown at popup (408×600),
-side-panel (380) and full-page (720) widths: native send ready/blocked, token transfer with an
+validated with `assertReview` before it is rendered). Eight shapes are shown at popup width
+(408×600), and the card is also rendered at side-panel (380) and full-page (720) widths: native
+send ready/blocked, token transfer with an
 unverified mint and a duplicate acknowledgement, domain register, domain renew, faucet claim, an
 unknown instruction (display-only), and one **synthetic** simulation-rejected send (no Thru node can
 return that today — the fixture exists so the card's four simulation words cannot drift apart).
