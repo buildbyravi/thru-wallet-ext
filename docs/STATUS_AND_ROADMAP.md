@@ -14,7 +14,7 @@ Single source of truth for the **shipped baseline**, what automated evidence pro
 
 Companion docs: `docs/DOCS_INDEX.md` · `docs/PROJECT_LEDGER.md` · `CONTEXT.md` · `docs/MODULE_BOUNDARIES.md` · `docs/BACKEND_GAPS.md` · `docs/BUILD_SPEC.md` · `docs/MANUAL_SMOKE_CHECKLIST.md` · `docs/SEND_PATH_AUDIT.md`.
 
-## Transaction review pipeline (introduced in v29; the current contract is v30)
+## Transaction review pipeline (introduced in v29; the current contract is v31)
 
 Every value-moving screen prepares a typed intent through `tx.prepareReview`, renders the ONE
 `TxReviewCard`, and submits through `submitReviewedReview` (confirm → optional password → the
@@ -46,7 +46,7 @@ copy or the password flow.
   F-01…F-13 re-checked at HEAD; the still-true decoder/store/simulation findings are fixed there,
   with `docs/DEFECT_LOG.md` §12 recording the defects and lessons).
 
-**TESTED:** `test/test-tx-review.mjs` (152 checks: registry parity, every decoder, malformed and
+**TESTED:** `test/test-tx-review.mjs` (154 checks: registry parity, every decoder, malformed and
 unknown input, amount/fee formatting, binding/TTL/account/network refusals, acknowledgements,
 blocking, discard, code registry, the UI signing-literal scan, [15] the one-screen/one-table
 budget for every decoder, and [2b] the name a recipient was resolved from reaching the card) and `test/test-route-lifecycle.mjs` (1,104 checks, including the
@@ -126,8 +126,9 @@ All mutations share a serialized, revision-checked store. Future schema versions
 Tests cover migration, concurrent imports, primary preservation, wrong owner/program,
 malformed bytes, offline state, late cache/live responses, untrack races and account changes.
 No expiry is guessed: Renew preselects the domain in the renewal-only flow. The official
-paid registry uses the existing checked renewal handler; custom renewal remains unavailable
-and is stated explicitly, with no registration/expired-claim fallback in the Renew view.
+paid registry uses the existing checked renewal handler; custom-registrar leases renew through
+`via:'custom'` (wired at v30, priced in native THRU — `docs/DEFECT_LOG.md` §13.1), with no
+registration/expired-claim fallback in the Renew view.
 The tracked list was also exercised in the real Chrome visual harness (400px light/dark,
 320px dark, online/offline, 64-character name): scrolling reaches the import controls, importing
 adds a third candidate, and offline ownership cannot enable Make primary. No live wallet was used.
@@ -138,6 +139,20 @@ callbacks after reset. Names already overwritten by the old single-alias store m
 `String(meta.owner)` produced `[object Object]` and falsely rejected ownership. Program-owner
 normalization is now centralized in the Thru adapter using `Pubkey.from(...).toThruFmt()`.
 Domain and registry tests use actual SDK objects and still reject wrong/malformed owners.
+
+**IMPLEMENTED / TESTED (contract v31, 2026-10-29)**: name-service text records are a live signing
+write — `name.setRecord` appends an `APPEND_RECORD` (opcode 2) instruction, fee `0n`, authority =
+fee payer = the active account, and it refuses before signing when the domain is absent, unreadable
+or owned by someone else. It is reviewed as kind `domain-record`: existence and ownership are
+three-state (an RPC failure says "could not be read", never "does not exist"), the recheck
+distinguishes readable/absent/transferred/unreadable, and the card is titled **Add domain record**
+because opcode 2 appends — an existing key keeps its old value, which the card states when it knows
+it. `name.reverseLookup` (unlocked, active-network-bound) resolves an address to a name only from
+this wallet's tracked registry and re-reads the domain to prove the owner matches; the label carries
+the record's own root (`.thru`/`.id`), and `NO_CANDIDATE` means "this wallet knows of none".
+**Not user-visible today:** no shipped screen offers domain records — the kind is reachable only
+through `tx.prepareReview` (`docs/DEFECT_LOG.md` §14, audit `docs/audits/2026-10-29-v31-audit.md`).
+**UNVERIFIED**: no Betanet write or read was performed for either v31 path.
 
 **UNVERIFIED**: actual extension popup/side-panel behavior with MV3 and a wallet-signed Betanet
 review/auth flow or renewal. The visual harness does not establish these, or charged network
@@ -175,13 +190,14 @@ Structural properties now enforced by CI rather than by discipline:
 
 ### Verified green
 
-Final deterministic verification on the current tree (contract v29, 2026-10-28):
+Final deterministic verification on the current tree (contract v31, 2026-10-29):
 
 ```text
-npm test       PASS — 2,326 checks (32 suites + 5 gates): derivation 16; QR 15; layering 126 files / 0 sinks;
+npm test       PASS — 2,405 checks (34 suites + 5 gates): derivation 16; QR 15; layering 127 files / 0 sinks;
                CSP pass; routes 15/15 with 262 used CSS classes, all defined; CSS nesting pass;
-               launchpad quarantine; contract 161/161; security-checks; DOM/refs;
-               route lifecycle 1,104/1,104; transaction review 152/152; storage migrations;
+               launchpad quarantine; contract 168/168; security-checks; DOM/refs;
+               route lifecycle 1,104/1,104; transaction review 154/154; name records 57;
+               name reverse 14; name service 67; storage migrations;
                vault, Thru client, token/balance, History, registration, API-router,
                pending concurrency, signing/network lock, and auto-lock suites pass.
 npm run build  PASS — generated dist/ from the current source, no warnings.
@@ -550,7 +566,9 @@ Each was earned by a defect in `docs/DEFECT_LOG.md`.
 
 Backend contract methods `name.lookup` / `name.checkAvailability` / `name.initRoot` / `name.register` /
 `name.setRecord` against the system name program (package-pinned address; recovered layouts with
-provenance recorded in `src/lib/name-service.js`). Reads are always-on truth asks; writes are gated
-(`FLAGS.NAME_SERVICE=false`) until `scripts/probe-name-service.mjs` verifies formats on the live chain.
+provenance recorded in `src/lib/name-service.js`). Reads are always-on truth asks. `name.register`
+has been a live write since v23 and `name.setRecord` since v31 (both `auth:'signing'`, both reached
+through the shared review pipeline); `name.initRoot` is the only write still gated behind
+`FLAGS.NAME_SERVICE=false`.
 Security model: self-signed, only under parents the signer owns — sponsorship flows are rejected by
 design.

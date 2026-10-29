@@ -6,6 +6,12 @@ Scope: PR #21 — "One shared transaction review pipeline (contract v29)", branc
 Class: **operational verification** (what was checked, how, and what remains unchecked). It does
 not claim a Rabby-audited design, a live-chain run, or a browser-layout sign-off.
 
+> **Counts in this record are the v29 measurement (2,326 checks, review 152/152, contract 161/161,
+> 126 layering files).** They are left as recorded. Current figures live in `docs/AUDIT_REPORT.md`
+> and `docs/STATUS_AND_ROADMAP.md`; on the v31 tree (2026-10-29) `npm test` is 2,405 checks with
+> review 154/154 and contract 168/168, and v31's own audit is
+> `docs/audits/2026-10-29-v31-audit.md`.
+
 This record answers three questions the owner asked in one pass:
 
 1. how Rabby actually builds approval/send/swap/dapp flows, and where it is over-built or

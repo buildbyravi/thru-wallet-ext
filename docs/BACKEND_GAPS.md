@@ -1,6 +1,6 @@
 # Backend capability inventory and open gaps
 
-**Status as of 2026-10-28:** the originally identified Tier A and Tier B capabilities are implemented. This file distinguishes shipped code from behavior that is still unsupported or requires live-chain verification. Contract **v30** has **152** methods (81 wallet-core + the 43-method gated-off DeFi M0 contract surface declared 2026-10-05 — handlers answer explicit unsupported/`FEATURE_DISABLED` states; no DeFi live evidence yet — plus the v19–v29 additive slices, v29 being the shared transaction-review trio); `src/shared/contract/manifest.js`, its router handlers, and tests are authoritative.
+**Status as of 2026-10-29:** the originally identified Tier A and Tier B capabilities are implemented. This file distinguishes shipped code from behavior that is still unsupported or requires live-chain verification. Contract **v31** has **153** methods (81 wallet-core + the 43-method gated-off DeFi M0 contract surface declared 2026-10-05 — handlers answer explicit unsupported/`FEATURE_DISABLED` states; no DeFi live evidence yet — plus the v19–v31 additive slices, v29 being the shared transaction-review trio and v31 the name-service record write plus reverse lookup); `src/shared/contract/manifest.js`, its router handlers, and tests are authoritative.
 
 | Tier | Meaning | Status |
 | --- | --- | --- |
@@ -76,6 +76,11 @@ payment behavior.
   owner; complete enumeration still requires parsing domain data, checking roots/ownership,
   and proving pagination completeness. The owner subsequently approved a tracked registry as
   a separate solution to disappearing names; it does not remove this full-discovery limitation.
+- No chain-wide reverse index exists either: `name.reverseLookup` (contract v31) resolves an
+  address only against the wallet's own tracked registry, then re-reads the domain forward to
+  prove the owner matches. `NO_CANDIDATE` therefore means "this wallet knows of no name for that
+  address", not that the address owns none. Records are also append-only (opcode 2
+  `APPEND_RECORD`), so a re-set key keeps its previous value and first-match readers keep seeing it.
 - `name.getCachedDomains`, `name.listDomains`, `name.trackDomain`, `name.setPrimaryDomain`
   and `name.untrackDomain` are unlocked-only metadata/read methods, not additional signing
   paths. Primary changes/imports require a fresh backend ownership check. Unsupported future

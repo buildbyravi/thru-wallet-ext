@@ -1,12 +1,12 @@
 # CONTEXT.md — file map for thru-wallet-ext
 
-Last source-backed update: 2026-10-28 (contract v30, shared transaction review + tracked domains). Line counts are a snapshot, not an implementation contract; verify `src/` before editing.
+Last source-backed update: 2026-10-29 (contract v31, name-service record write + reverse lookup on top of v30's tracked domains). Line counts are a snapshot, not an implementation contract; verify `src/` before editing.
 
 Read `AGENTS.md` first for repository rules, then `docs/STATUS_AND_ROADMAP.md` for the shipped baseline and open checks. `docs/DEFECT_LOG.md` preserves historical failures with explicit status labels.
 
 ## Shipped baseline at a glance
 
-- Contract **v30**: **152 methods** in `src/shared/contract/manifest.js` (81 wallet-core + 43 DeFi M0 surface whose flags are all off + the v19–v30 additive slices, v29 being the review pipeline and v30 the tracked-domain registry; machine schema in `src/shared/contract/defi-schema.js` for the DeFi half); **15** registered wallet routes.
+- Contract **v31**: **153 methods** in `src/shared/contract/manifest.js` (81 wallet-core + 43 DeFi M0 surface whose flags are all off + the v19–v31 additive slices, v29 being the review pipeline, v30 the tracked-domain registry and v31 the name-service record write + reverse lookup; machine schema in `src/shared/contract/defi-schema.js` for the DeFi half); **15** registered wallet routes.
 - **One transaction-review pipeline.** Every value-moving screen (native send, token transfer, domain register/purchase/renew/claim, faucet claim) prepares through `tx.prepareReview`, renders `src/ui/domain/tx-review/review-card.js`, and submits through `confirm.js` → `tx.confirmReview` → the operation's existing signing method. `confirmReview` never signs: it re-validates and returns the submit instructions, and it refuses any review whose persisted state is not `ready` (a blocking warning, or a simulation that ran and failed). No UI route signs a value-moving transaction directly (the v12 JIT `tx.registerAccount` activation call in `send.js` is the only direct signing call); an undecodable transaction renders as explicit unknown and cannot be signed.
 - Signing requires an unlocked wallet. Password re-authentication defaults off and is an explicit, password-gated Settings opt-in.
 - `tx.registerAccount` self-signs only for an exact vault-owned address. Account/keyring creation paths make bounded, best-effort registration attempts for new addresses. Send JIT-activates only a selected/typed owned recipient after an on-chain absence check; it never registers an external contact. Review waits for activation and shows the matched label above the full address.
@@ -74,7 +74,7 @@ The popup entry `src/popup/popup.js` is a boot stub. The removed legacy screens 
 | `scripts/check-css-nesting.mjs` | Flat-CSS guard. |
 | `scripts/check-panel-tiles.mjs` | Dashboard action/services tile size and grid consistency. |
 | `test/test-launchpad-quarantine.mjs` | Deleted launchpad/DEX/prediction surface remains out of source and `dist/` (66 checks). |
-| `test/test-contract.mjs` | Manifest/router/UI agreement and security invariants, v30 / 152 methods (161 checks). |
+| `test/test-contract.mjs` | Manifest/router/UI agreement and security invariants, v31 / 153 methods (168 checks). |
 | `test/test-ui-dom.mjs` | DOM safety and reference codec. |
 | `test/test-route-lifecycle.mjs` | All 15 routes through Router/guards/bridge, teardown, secrets, focus, Send/Domain/Faucet review flows, Dashboard activation, History, panel behavior (1,104 checks). |
 | `test/test-tx-review.mjs` | The review pipeline: registry↔kind parity, every decoder, malformed and unknown input, amount/fee formatting, binding/TTL/account/network refusals, acknowledgements, blocking, discard, the central error-code registry, and the UI signing-literal scan and the one-screen/compactness guards (143 checks). |
@@ -84,7 +84,7 @@ The popup entry `src/popup/popup.js` is a boot stub. The removed legacy screens 
 | `test/test-registration.mjs` | Owned-account registration policy and bounded retries with deterministic SDK fixtures. |
 | `test/test-api-router.mjs` | Auth, context, serialization, background dispatch, and send/registration integration. |
 
-The suite is **2,326 checks across 32 test suites plus 5 build gates** (2026-10-28). Use the final test output for any subsequent refresh. They are deterministic/local evidence only. Real-browser and live-chain checks are separate.
+The suite is **2,405 checks across 34 test suites plus 5 build gates** (2026-10-29). Use the final test output for any subsequent refresh. They are deterministic/local evidence only. Real-browser and live-chain checks are separate.
 
 Visual harness: `scripts/preview-tx-review.html` renders the real `TxReviewCard` with the real built
 `dist/popup.css` for eight fixtures (`scripts/preview-tx-review.fixtures.js`), served by
@@ -153,11 +153,11 @@ Registration is not a background sweep: creation/addition makes a bounded best-e
 
 ## 6. `src/shared/` — both sides
 
-No DOM or `chrome.*` access. Contract **v30** has **152 methods**. Security-policy exceptions are documented: v5 signing auth, v6 reset/auto-lock hardening, and v7 custom-network quarantine. v8–v15 add token, History/detail, checked-send, registration, cached-History, mint-read, and duplicate-check capabilities; v16 retires the unbound legacy send methods after zero shipped callers were confirmed; v17/v18 append the 43-method DeFi M0 surface (READ+LOCAL, PREPARE+EXECUTE), every feature behind build-time flags that are all false; v19 adds the gated name-service slice (`name.lookup` / `checkAvailability` / `initRoot` / `register` / `setRecord`); v20 backs the intent methods with a real native-send pipeline (still flag-off); v21 adds the wallet-local primary name; v22 the official `.thru` registrar (read + purchase/renew/claim); v23 makes `name.register` a real first-party self-signed write; v24 adds the faucet rate-limit read; v25 adds the custom registrar provider; v26 token auto-discovery; v27 the storage-only cached token balances; v28 reviewed price/expiry facts on the name writes; **v29 the shared review pipeline** (`tx.prepareReview` / `tx.confirmReview` / `tx.discardReview`, all `auth:'unlocked'`, none of which signs). Every version is a pure append.
+No DOM or `chrome.*` access. Contract **v31** has **153 methods**. Security-policy exceptions are documented: v5 signing auth, v6 reset/auto-lock hardening, and v7 custom-network quarantine. v8–v15 add token, History/detail, checked-send, registration, cached-History, mint-read, and duplicate-check capabilities; v16 retires the unbound legacy send methods after zero shipped callers were confirmed; v17/v18 append the 43-method DeFi M0 surface (READ+LOCAL, PREPARE+EXECUTE), every feature behind build-time flags that are all false; v19 adds the gated name-service slice (`name.lookup` / `checkAvailability` / `initRoot` / `register` / `setRecord`); v20 backs the intent methods with a real native-send pipeline (still flag-off); v21 adds the wallet-local primary name; v22 the official `.thru` registrar (read + purchase/renew/claim); v23 makes `name.register` a real first-party self-signed write; v24 adds the faucet rate-limit read; v25 adds the custom registrar provider; v26 token auto-discovery; v27 the storage-only cached token balances; v28 reviewed price/expiry facts on the name writes; **v29 the shared review pipeline** (`tx.prepareReview` / `tx.confirmReview` / `tx.discardReview`, all `auth:'unlocked'`, none of which signs); v30 the tracked-domain registry and `via:'custom'` renewal; **v31 the live name-service record write** (`name.setRecord`, `auth:'signing'`, reviewed as kind `domain-record`) plus `name.reverseLookup`. Every version is a pure append.
 
 | File | Lines | Purpose |
 | --- | ---: | --- |
-| `contract/manifest.js` | 1,229 | UI/background contract allowlist and method metadata |
+| `contract/manifest.js` | 1,308 | UI/background contract allowlist and method metadata |
 | `contract/defi-schema.js` | 456 | Machine-readable sibling schema for the 43-method DeFi M0 surface, kept coherent by `test/test-defi-m0.mjs` |
 | `format.js` | 98 | BigInt-safe amount formatting/parsing, including the one `formatAssetAmount` scale rule |
 | `refs.js` | 104 | Opaque account references and equality |

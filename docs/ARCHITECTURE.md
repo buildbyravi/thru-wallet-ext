@@ -60,7 +60,11 @@ fails on any `auth:'signing'` method, so the older `tx.autoCreateAccount` cannot
 route (it was removed from Dashboard; see `docs/DEFECT_LOG.md` §10).
 
 The review boundary is also a decoding boundary: `decoders/` produces explicit facts for known
-intents and an explicit unknown with raw data (and no submit policy) for everything else. A review
+intents (`native-send`, `token-transfer`, `domain-register`, `domain-purchase`, `domain-renew`,
+`domain-claim`, `domain-record`, `faucet-claim`) and an explicit unknown with raw data (and no
+submit policy) for everything else. Facts that assert something about the chain are three-state
+where the chain can fail to answer: `domain-record`'s existence/ownership are `null` when the read
+failed, and the card then says "could not be verified" instead of asserting an absence. A review
 service never guesses a friendly name for an instruction it cannot decode, and never fabricates a
 fee, balance change, or simulation result. `tx.simulate` answers `supported:false` on the current
 backend, so post-transaction balances are always unavailable by policy, not by omission.

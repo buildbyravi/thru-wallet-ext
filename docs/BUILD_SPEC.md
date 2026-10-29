@@ -41,7 +41,7 @@ Current shipped facts, cross-checked against `src/` on 2026-10-28 (see `docs/PRO
 | Area | Shipped state |
 | --- | --- |
 | UI stack | One popup/side-panel route stack; 15 registered routes. |
-| Contract | v30, 152 methods (81 wallet-core + 43 flag-off DeFi M0 + the v19–v29 additive slices); `src/shared/contract/manifest.js` is authoritative. |
+| Contract | v31, 153 methods (81 wallet-core + 43 flag-off DeFi M0 + the v19–v31 additive slices); `src/shared/contract/manifest.js` is authoritative. |
 | Signing | Signing requires an unlocked wallet. Password re-auth defaults off and is a password-gated Settings opt-in. |
 | Registration | v12 `tx.registerAccount` is unlocked-only and restricted to exact vault-owned accounts; it is used for bounded creation-time activation and Send JIT, never arbitrary contacts or periodic signing. |
 | Send | Review pins the source account/network through checked methods; an unregistered owned recipient must finish JIT activation before Review. |
@@ -200,8 +200,8 @@ value-moving send and cannot sign for an address outside the vault.
 
 **Contract v17–v29 additions:** v17/v18 append the 43-method DeFi M0 surface behind build-time
 flags that are all false; v19 appends the gated name-service slice (`name.lookup`,
-`checkAvailability`, `initRoot`, `register`, `setRecord` — `initRoot`/`setRecord` stay behind
-`NAME_SERVICE`); v20 backs the v18 intent methods with a real (still flag-off) native-send
+`checkAvailability`, `initRoot`, `register`, `setRecord` — `register` left the gate at v23 and
+`setRecord` at v31; only `initRoot` still sits behind `NAME_SERVICE`); v20 backs the v18 intent methods with a real (still flag-off) native-send
 pipeline, v21 the wallet-local primary name, v22 the official
 `.thru` registrar read/purchase/renew/claim, v23 a real first-party `name.register`, v24 the faucet
 rate-limit read, v25 the custom registrar provider, v26 token auto-discovery (the same drop briefly

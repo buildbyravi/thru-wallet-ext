@@ -11,14 +11,14 @@ Legend for how each was found:
 guardrail script caught it
 
 
-## Status convention — current as of 2026-10-28
+## Status convention — current as of 2026-10-29
 
 The defects in §§1–4 are **historical**: their old paths and failure descriptions are retained to
 explain the fixes, not to claim those paths still ship. §5 records resolved legacy duplication, not
 a current backlog. The current verification gaps are listed in §6; the popup/side-panel and History
 cross-network fixes in §§7–8 are implemented and locally tested, but their real-Chrome/live-RPC
-checks remain open. §9–§12 are v29 review fixes verified in source and the deterministic suite, and §13 audits the
-v30 domain merge; none of them has a real-browser pass. Check `src/` before treating any historical symptom as current.
+checks remain open. §9–§12 are v29 review fixes verified in source and the deterministic suite, §13 audits the
+v30 domain merge, and §14 audits the v31 record-write merge; none of them has a real-browser pass. Check `src/` before treating any historical symptom as current.
 
 ---
 
@@ -707,3 +707,104 @@ Current-state figures were one merge stale: v29/147 methods → v30/152, 2,253 �
 
 > **Lesson:** a "current state" line is a claim with a commit behind it. Re-read it against the
 > tree in the same pass that adds the feature, or it becomes the next audit's finding.
+
+## 14. The v31 record-write merge — audit of `4bd5ef9` (2026-10-29)
+
+Full findings, probe transcripts and fix evidence: `docs/audits/2026-10-29-v31-audit.md`.
+Summary: at the base commit `npm test` was 2,353 checks and green — while the new record write
+could not be confirmed by anyone. After this pass: build PASS, `npm test` 2,405 checks, exit 0.
+
+### 14.1 The confirm path threw on every attempt — `READ` + `PROBE`
+
+`domainRecordRecheck` read `record.binding.accountAddress`; the store writes `accountAddress` at the
+top level and never writes `binding`. The `TypeError` was caught and re-labelled
+`REVIEW_UNAVAILABLE`, so the only symptom a user would see was "the domain could not be read" on a
+domain they own — with no way to tell that the wallet, not the chain, was broken.
+
+Fixed by reading the field the store actually writes, and by splitting the four outcomes: readable
+and owned passes; an RPC failure is retryable `REVIEW_UNAVAILABLE`; an absent domain is
+`NAME_TAKEN`; a changed owner is `NOT_NAME_OWNER`; unparseable bytes are `REVIEW_UNAVAILABLE`.
+
+> **Lesson:** a blanket `catch` that produces one friendly message is a bug amplifier — it converts
+> "my code threw" into "the chain said no". Log the exception shape, or assert the codes.
+
+### 14.2 The live write was still declared `auth:'unlocked'` — `READ`
+
+`name.setRecord` is a real broadcast that had just been un-gated, and its contract entry still said
+`unlocked` and was absent from `TRANSACTION_METHODS`. A user who enabled per-signature re-auth would
+have signed it without the password, and the single-flight guard did not cover it. Fixed to
+`signing`, with the params the handler reads (`expectedNetworkId`, `expectedAccountAddress`,
+`password`) and membership in the signing guard. The test drives the real router: without the
+password the call is refused and `buildAndSign` is never reached.
+
+> **Lesson:** the auth level is part of the write's behaviour, not its metadata. Un-gating a write
+> means re-reading its whole entry, including the two lists it must appear in.
+
+### 14.3 A failed read was rendered as a proven negative — `READ` + `PROBE`
+
+`domainExists`/`isOwner` were booleans, so an RPC outage produced "Domain does not exist" *and*
+"You do not own this domain" — two blocking warnings asserting chain facts the wallet never read —
+and an account that failed to parse produced `isOwner:false`, i.e. a decode failure presented as
+proof of a foreign owner.
+
+Both fields are now three-state; unknown renders its own blocking warnings
+(`domain-unverified`, `owner-unverified`) that say the wallet could not prove the claim.
+
+> **Lesson:** a boolean fact cannot represent "I could not look". Wherever a review asserts
+> something about the chain, the third state has to exist in the facts bag before it can exist in
+> the UI.
+
+### 14.4 The account row printed an address as a role — `READ` + `PROBE`
+
+`accountRole(role, address)` was called as `accountRole(address, 'Domain account', {…})`: the
+rendered row was `{"role":"ta3vGKM…","address":"Domain account"}`, and the third argument that was
+supposed to annotate writability was discarded because the function takes two parameters.
+
+> **Lesson:** positional string parameters swap silently. A test that asserts the *pair* (role and
+> address separately) would have failed here; a test that asserts "a row exists" would not.
+
+### 14.5 Thirteen error codes were invisible to the contract — `READ`
+
+`coded('X')` in `name-service.js` produced fourteen codes, thirteen of which were undeclared in
+`ERROR_CODES`; the new signing path made several of them reachable. They are now declared, and
+`test-contract.mjs` scrapes the services for codes and fails if any is missing — a scan, not a list,
+so the next one cannot slip in.
+
+> **Lesson:** "the UI branches on codes" is only true for codes the contract declares. A code that
+> exists only as a string in a service is prose with a `throw` around it.
+
+### 14.6 The reverse read was open to a locked wallet and invented `.thru` — `READ`
+
+`name.reverseLookup` read wallet-local records under `auth:'none'`, accepted any `networkId` and
+appended `.thru` to every label — so a `.id` domain was shown to Send as `<name>.thru`. It is now
+`unlocked`, refuses a non-active network with `NETWORK_MISMATCH`, and qualifies the label with the
+record's own root (or reports `tld: null` rather than guessing). The `.id` case is pinned.
+
+> **Lesson:** a read that looks like a pure lookup was answering from storage. Its auth level and
+> its network binding have to be decided from *where the answer comes from*, not from whether it
+> writes.
+
+### 14.7 An append was described as a replace — `READ`
+
+Opcode 2 is `APPEND_RECORD`; setting an existing key adds a second record and leaves the first in
+place, which is what every `find()`-based reader keeps returning. The card said "Set domain record"
+and said nothing when the key already held another value. It now says **Add**, states that the
+operation appends, and raises a non-blocking warning naming the existing value when one is there.
+
+> **Lesson:** the operation's name is a claim about the chain. Read the opcode before writing the
+> verb.
+
+### 14.8 The tests could not reach the code they claimed to cover — `READ` + `TEST`
+
+`test-name-records.mjs` opened with a header claiming "setRecord authorization / error conditions"
+while nothing in the file called `setRecord`, `domainRecordFacts` or `domainRecordRecheck`. Every
+defect above shipped green.
+
+Fixed by driving the real modules against a stubbed SDK boundary: the three-state facts, all
+recheck outcomes, and `name.setRecord` through the API router (password gate with a proof that
+nothing was signed, network/account binding, absent and foreign domains, and a successful append
+with the signed request inspected). `test-name-reverse.mjs` gained the network-binding and `.id`
+cases.
+
+> **Lesson:** a header comment describing coverage is not coverage. If a suite names a function in
+> prose, the same file should call it.

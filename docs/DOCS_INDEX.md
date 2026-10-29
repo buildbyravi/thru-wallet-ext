@@ -1,6 +1,6 @@
 # Documentation index
 
-Date: 2026-10-05; refreshed 2026-10-28 (contract v30, shared transaction review + tracked domains).
+Date: 2026-10-05; refreshed 2026-10-29 (contract v31, shared transaction review + tracked domains + name-service record write and reverse lookup).
 Purpose: map the maintained documentation and point readers to the implementation and verification sources of truth. Documentation summarizes the code; it does not override it.
 
 ---
@@ -29,6 +29,9 @@ Purpose: map the maintained documentation and point readers to the implementatio
    defects found and fixed while reviewing it.
 2. `docs/audits/2026-10-28-sync-audit.md` — the audit of the v30 domain merge: what shipped, what
    was broken, and what is still open (`docs/DEFECT_LOG.md` §13).
+3. `docs/audits/2026-10-29-v31-audit.md` — the audit of the v31 record-write merge: the confirm
+   path that threw on every attempt, the signing method declared `unlocked`, the three-state facts,
+   and what remains open (`docs/DEFECT_LOG.md` §14).
 2. `docs/ARCHITECTURE.md` — the review/signing boundary and its authorities.
 3. `src/shared/tx-review/` and `src/background/services/review/` — the contract, decoders, kinds and
    store; `src/ui/domain/tx-review/` — the one card and the one confirm path.
