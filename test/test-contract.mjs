@@ -27,7 +27,23 @@ globalThis.chrome = {
 };
 
 const { METHODS, CONTRACT_VERSION, EVENTS, isKnownMethod, ERROR_CODES } = await import('../src/shared/contract/manifest.js');
-const { listHandlerNames, handleApiRequest } = await import('../src/background/api-router.js');
+const { listHandlerNames, handleApiRequest, isTransactionMethod } = await import('../src/background/api-router.js');
+
+// Every code a name-service handler can throw, scraped from source. A code that exists only as a
+// string inside a service is invisible to the UI, which is the failure mode audit E-5 named: the
+// v31 record write threw DOMAIN_UNREADABLE / REVIEW_ACCOUNT_CHANGED to callers that had no way
+// to see them declared. Kept as a scan rather than a list so a new code cannot slip in.
+function nameServiceCodes() {
+  const files = ['src/background/services/name-service.js', 'src/background/services/primary-name-service.js'];
+  const found = new Set();
+  for (const file of files) {
+    const src = readFileSync(new URL(`../${file}`, import.meta.url), 'utf8');
+    for (const re of [/coded\(\s*'([A-Z_]+)'/g, /errCode\(\s*'([A-Z_]+)'/g, /err\.code\s*=\s*'([A-Z_]+)'/g]) {
+      for (const m of src.matchAll(re)) found.add(m[1]);
+    }
+  }
+  return [...found].filter((code) => typeof ERROR_CODES[code] !== 'string').sort();
+}
 
 let failures = 0;
 let checks = 0;
@@ -162,6 +178,22 @@ const v31 = Object.entries(METHODS).filter(([, spec]) => spec.since === 31).map(
 ok('v31 appends exactly the reverse-lookup read',
   v31.length === 1 && v31[0] === 'name.reverseLookup',
   `got ${v31.join(', ')}`);
+// Audit E-2 (2026-10-29): setRecord started building and broadcasting a transaction while its
+// spec still said auth:'unlocked', which skipped the D-003 password policy for a user who
+// enabled it. A method that signs is auth:'signing', declares `password`, and is registered as a
+// signing-guard transaction — the same rule v23 applied to name.register.
+ok('name.setRecord is a signing method with a password slot',
+  METHODS['name.setRecord']?.auth === 'signing'
+    && METHODS['name.setRecord']?.params.includes('password'));
+ok('name.setRecord carries the review binding params the handler reads',
+  ['expectedNetworkId', 'expectedAccountAddress'].every((p) => METHODS['name.setRecord']?.params.includes(p))
+    && !METHODS['name.setRecord']?.params.includes('networkId'));
+ok('name.setRecord runs under the signing guard',
+  isTransactionMethod('name.setRecord'));
+ok('name.reverseLookup is an unlocked read, not an open one',
+  METHODS['name.reverseLookup']?.auth === 'unlocked');
+ok('every error code a name-service handler throws is declared in the contract',
+  nameServiceCodes().length === 0, nameServiceCodes().join(','));
 
 const v17 = Object.entries(METHODS).filter(([, spec]) => spec.since === 17).map(([name]) => name);
 const v18 = Object.entries(METHODS).filter(([, spec]) => spec.since === 18).map(([name]) => name);
@@ -176,9 +208,10 @@ ok('v21 appends exactly 3 primary-name methods, reads/lifecycle unlocked, nothin
 
 ok('v19 reads are open while v19 writes require an unlocked wallet',
   ['name.lookup', 'name.checkAvailability'].every((m) => METHODS[m].auth === 'none')
-  && ['name.initRoot', 'name.setRecord'].every((m) => METHODS[m].auth === 'unlocked')
-  // v23 exception: name.register tightened unlocked → signing (it is a live broadcast write).
-  && METHODS['name.register']?.auth === 'signing');
+  && METHODS['name.initRoot']?.auth === 'unlocked'
+  // v23 and v31 tightened the two writes that became live broadcasts (unlocked → signing).
+  && METHODS['name.register']?.auth === 'signing'
+  && METHODS['name.setRecord']?.auth === 'signing');
 
 // Registrar slice (v22, 2026-10-09): the official `.thru` paid-lease registry — two
 // parse-proofed reads and three self-signed registrar writes (signer = fee payer, fee 0n).

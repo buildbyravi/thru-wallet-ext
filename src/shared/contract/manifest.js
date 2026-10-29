@@ -106,8 +106,9 @@
 //   CLI names exactly zero payment accounts: NAME_SERVICE_PROGRAM_FEE = 0, so the write is
 //   free of registry pricing (chain-enforced if the parent authority differs — the revert is
 //   surfaced honestly). Auth tightens unlocked → signing, following the v5/v22 signing-auth
-//   precedent: it is a broadcast, on-chain, irreversible write. name.initRoot and
-//   name.setRecord stay gated (FLAGS.NAME_SERVICE remains false in this build). Also pure
+//   precedent: it is a broadcast, on-chain, irreversible write. name.initRoot stays gated
+//   (FLAGS.NAME_SERVICE remains false in this build); name.setRecord was ungated in v31 under
+//   the same rule. Also pure
 //   append: name.getCanonicalRoot (auth none) exposes the on-chain-proof canonical-root
 //   discovery that name.lookup already performs internally, so the UI can offer free
 //   registration beneath a root that actually exists on the running network.
@@ -465,10 +466,19 @@ export const METHODS = {
     auth: 'none',
     since: 23,
   },
+  // v31 (2026-10-29): setRecord is a REAL broadcast. It left the NAME_SERVICE gate in the same
+  // release that wired it, and it keeps the v5/v22/v23 rule that a method which builds and signs
+  // a transaction is `auth: 'signing'` and belongs to TRANSACTION_METHODS — otherwise a user who
+  // enabled per-signature password re-authentication would sign this write without it, and the
+  // single-flight guard would not cover it. The declared params are the ones the handler reads:
+  // `expectedNetworkId`/`expectedAccountAddress` are what bind the signed write to the review.
   'name.setRecord': {
-    params: ['name', 'rootAddress', 'key', 'value', 'networkId'],
-    returns: '{ signature } — append a key/value record to a domain the signer owns (gate: NAME_SERVICE)',
-    auth: 'unlocked',
+    params: ['name', 'rootAddress', 'key', 'value', 'expectedNetworkId', 'expectedAccountAddress', 'password'],
+    returns: '{ signature, domainAddress, rootAddress, key, value } — APPEND a key/value record '
+      + 'to a domain the signer owns. Opcode 2 is append: setting an existing key adds a second '
+      + 'record, it does not replace the first. Pending acceptance is tracked, never presented as '
+      + 'confirmation.',
+    auth: 'signing',
     since: 19,
   },
   // v21: primary-name UX slice (2026-10-09). LOCAL wallet-side records plus an always-on
@@ -516,11 +526,23 @@ export const METHODS = {
     returns: '{ untracked:boolean } - removes a local candidate, never an on-chain domain; primary must be unlinked first',
     auth: 'unlocked', since: 30,
   },
-  // v31: reverse domain lookup with live bidirectional ownership verification
+  // v31: reverse name lookup. CANDIDATES come from this wallet's own tracked-domain registry —
+  // it is not a chain-wide reverse index (the chain cannot enumerate names by owner; see
+  // docs/BACKEND_GAPS.md). `verified` means the domain account was re-read and its owner equals
+  // the requested address; `hasReverseRecord` reports whether the domain also carries an
+  // `addr` record for that address, which is the only bidirectional half the chain can prove.
+  // Read-only, but unlocked and active-network-bound like every other name.* read: an
+  // `auth: 'none'` read of wallet-local records is reachable while the wallet is locked.
   'name.reverseLookup': {
     params: ['address', 'networkId'],
-    returns: '{ resolved, name, verified, hasReverseRecord?, reason? } — reverse-resolves an address to its verified .thru domain',
-    auth: 'none',
+    returns: '{ resolved, name, tld, verified, hasReverseRecord?, domainAddress?, reason?, detail? } '
+      + '— reverse-resolves an address against tracked domains on the ACTIVE network '
+      + '(reason: INVALID_ADDRESS | NO_CANDIDATE | DOMAIN_NOT_FOUND | NOT_NAME_OWNER | '
+      + 'NETWORK_MISMATCH | LOOKUP_FAILED). NO_CANDIDATE means this wallet has no candidate, '
+      + 'not that the address owns no name. `name` is qualified with the record\'s own root '
+      + '(`tld`); a root that cannot be named yields the bare label and tld:null rather than a '
+      + 'guessed `.thru` suffix.',
+    auth: 'unlocked',
     since: 31,
   },
   // v22: official `.thru` registrar slice (2026-10-09, first-party formats). Reads answer
@@ -1214,6 +1236,29 @@ export const ERROR_CODES = {
   // contract is the one place a UI may look up what it can be handed (v29 append; prose only).
   REGISTRY_ABSENT: 'No supported `.thru` paid registry is readable on this network.',
   TCR_ABSENT: 'The custom `.thru` registrar is not present on this network.',
+  // Contract v31: the name-service write surface. These were coined in
+  // services/name-service.js and thrown to callers without ever appearing here, so a UI could
+  // only branch on prose. Declared now that a signing path (domain-record) reaches them.
+  INVALID_PARAMS: 'A name-service handler rejected a parameter before signing.',
+  NAME_NOT_FOUND: 'The name (or the domain account) does not exist on-chain.',
+  NAME_ROOT_UNKNOWN: 'No canonical name root could be discovered on this network.',
+  NAME_PARENT_AUTHORITY: 'Only the parent\'s on-chain authority may write beneath it.',
+  PARENT_UNKNOWN: 'The parent account does not parse as a name-service account.',
+  DOMAIN_UNREADABLE: 'The domain account exists but its bytes could not be decoded.',
+  RECORD_UPDATE_FAILED: 'The record write reverted on-chain; nothing was accepted.',
+  REGISTRATION_FAILED: 'The registration transaction failed on-chain.',
+  NAME_TAKEN: 'The name is already registered under that parent on-chain.',
+  NOT_NAME_OWNER: 'The signing account does not own this name on-chain.',
+  REVIEW_ACCOUNT_CHANGED: 'The active account changed after review; review the transaction again.',
+  REVIEW_NETWORK_CHANGED: 'The active network changed after review; review the transaction again.',
+  TX_RESULT_MISSING: 'No execution result arrived; the outcome is unknown, not failed.',
+  // v30/v31 tracked-domain registry (services/primary-name-service.js) — same rule: a UI
+  // branches on the code, so the code is declared here rather than only in a thrown message.
+  DOMAIN_CONTEXT_CHANGED: 'Account, network or wallet generation changed under a domain edit.',
+  DOMAIN_IS_PRIMARY: 'Unlink the primary name before removing it from the tracked list.',
+  NAME_UNREADABLE: 'Ownership could not be verified for this domain (unknown, not disproved).',
+  STORAGE_INVALID: 'A stored record failed its own validation guard.',
+  STORAGE_VERSION: 'A stored record uses a schema this build does not understand.',
 
   // ---- Contract v17/v18: DeFi surface (M0) ----------------------------------
   // Stable codes for the DeFi lifecycle. Every one is a first-class state the UI may branch

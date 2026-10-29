@@ -708,20 +708,41 @@ async function domainRecordFacts(params, { account, network }) {
   const rootAddress = params.rootAddress || await ns.rootRegistrarAddress('thru');
   const domainAddress = await ns.domainAccountAddress(rootAddress, name);
 
-  let domainExists = false;
-  let isOwner = false;
+  // Three states, never two (audit E-3, 2026-10-29). `domainExists`/`isOwner` are null when the
+  // answer is unknown — a failed RPC read is not a proven absence, and an account that exists but
+  // does not parse is not a proven non-ownership. The card has to be able to say "could not be
+  // verified" instead of asserting something about the chain that the wallet never read.
+  let domainExists = null;
+  let isOwner = null;
   let ownerAddress = null;
   let currentRecords = [];
 
   const domainInfo = await thruClient.getAccountInfo(domainAddress).catch(() => null);
-  if (domainInfo?.exists) {
-    domainExists = true;
+  if (domainInfo) {
+    domainExists = Boolean(domainInfo.exists);
+    if (domainInfo.exists) {
+      try {
+        const parsed = ns.parseDomainAccount(domainInfo.raw);
+        ownerAddress = parsed.owner ?? null;
+        isOwner = parsed.owner === account.address;
+        currentRecords = parsed.records || [];
+      } catch {
+        // Exists, but unreadable: ownership stays unproven (null), never "false".
+        isOwner = null;
+      }
+    }
+  }
+
+  // `.thru` is the default derivation, but the caller may name another root. Only then is one
+  // extra read worth it: a review that says "alice.thru" while writing under another root is a
+  // false label on the one field the user reads.
+  let tld = 'thru';
+  if (params.rootAddress) {
     try {
-      const parsed = ns.parseDomainAccount(domainInfo.raw);
-      ownerAddress = parsed.owner;
-      isOwner = parsed.owner === account.address;
-      currentRecords = parsed.records || [];
-    } catch {}
+      const rootInfo = await thruClient.getAccountInfo(rootAddress);
+      const parsedRoot = rootInfo?.exists ? ns.parseRootRegistrar(rootInfo.raw) : null;
+      if (parsedRoot?.name) tld = String(parsedRoot.name).toLowerCase();
+    } catch { /* keep the label the caller's default implies */ }
   }
 
   const existing = currentRecords.find((r) => r.key === key);
@@ -736,7 +757,7 @@ async function domainRecordFacts(params, { account, network }) {
     fromAddress: account.address,
     networkId: network.id,
     name,
-    tld: 'thru',
+    tld,
     key,
     value,
     rootAddress,
@@ -744,6 +765,9 @@ async function domainRecordFacts(params, { account, network }) {
     domainExists,
     isOwner,
     ownerAddress,
+    // The value already stored under this key, if any. The operation APPENDS, so the review has
+    // to be able to say that the old value survives (decoder warning `record-appends`).
+    existingValue: existing ? existing.value : null,
     unchanged,
     keyProblem,
     valueProblem,
@@ -757,19 +781,29 @@ async function domainRecordFacts(params, { account, network }) {
 }
 
 async function domainRecordRecheck(record) {
-  const { facts, binding } = record;
+  const { facts } = record;
+  // `record.binding` does not exist — the prepared record carries `accountAddress` (see
+  // store.put in review-service.js). Reading the wrong field made this throw a TypeError on
+  // EVERY confirm, which the catch below re-labelled as "ownership could not be verified"
+  // (audit E-1, 2026-10-29). The recheck now uses the field the store actually writes.
   const domainInfo = await thruClient.getAccountInfo(facts.domainAddress).catch(() => null);
-  if (!domainInfo?.exists) {
-    throw coded('NAME_TAKEN', `'${facts.name}.${facts.tld}' is no longer readable on-chain.`);
+  if (!domainInfo) {
+    // Unreadable is not "gone": a transient RPC failure must not tell the user their domain
+    // was taken. Retryable, and no signature was produced.
+    throw coded('REVIEW_UNAVAILABLE', 'The domain could not be read before signing.', true);
   }
+  if (!domainInfo.exists) {
+    throw coded('NAME_TAKEN', `'${facts.name}.${facts.tld}' is no longer on-chain.`);
+  }
+  let parsed;
   try {
-    const parsed = ns.parseDomainAccount(domainInfo.raw);
-    if (parsed.owner !== binding.accountAddress) {
-      throw coded('NOT_NAME_OWNER', `'${facts.name}.${facts.tld}' is no longer owned by the signing account.`);
-    }
+    parsed = ns.parseDomainAccount(domainInfo.raw);
   } catch (e) {
-    if (e.code) throw e;
-    throw coded('REVIEW_UNAVAILABLE', `Failed to verify domain ownership: ${e.message}`);
+    throw coded('REVIEW_UNAVAILABLE',
+      `The domain record could not be read before signing: ${e?.message ?? e}`, true);
+  }
+  if (parsed.owner !== record.accountAddress) {
+    throw coded('NOT_NAME_OWNER', `'${facts.name}.${facts.tld}' is no longer owned by the signing account.`);
   }
 }
 

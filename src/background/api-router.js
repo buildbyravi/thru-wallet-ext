@@ -51,6 +51,9 @@ const TRANSACTION_METHODS = new Set([
   'tx.claimFaucet', 'tx.sendChecked', 'tx.autoCreateAccount', 'tx.registerAccount',
   'token.deploy', 'token.transferChecked',
   'name.register', 'name.purchase', 'name.renewLease', 'name.claimExpired',
+  // v31: setRecord builds and broadcasts a name-service transaction. It was outside this set
+  // while it was a gated stub; the moment it started signing it had to join (audit E-2).
+  'name.setRecord',
   'intent.submit',
 ]);
 
@@ -199,7 +202,8 @@ const handlers = Object.assign(Object.create(null), {
   'tx.claimFaucet': ({ amountUnits }) => txService.claimFaucet(amountUnits),
   // ---- Name service (v19 reads / v23 register). Reads are always-on. name.register is a
   // live, self-signed, fee-0n write (first-party txn_tools.rs format: no payment accounts,
-  // NAME_SERVICE_PROGRAM_FEE = 0); initRoot/setRecord stay gated behind FLAGS.NAME_SERVICE.
+  // NAME_SERVICE_PROGRAM_FEE = 0); initRoot stays gated behind FLAGS.NAME_SERVICE, setRecord
+  // was ungated in v31 and signs like the other name writes.
   // The self-signing invariant rules out sponsored/foreign-authority flows — the chain's
   // own authority check is the arbiter, and its revert is surfaced honestly.
   'name.lookup': (params) => nameService.lookupName(params),

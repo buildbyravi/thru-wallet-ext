@@ -40,12 +40,12 @@ const BOB = asAddress(2);
 const THRU_ROOT = await ns.rootRegistrarAddress('thru');
 const DOMAIN_ALICE = await ns.domainAccountAddress(THRU_ROOT, 'alice');
 
-function buildDomainBytes({ owner, name, records = [] }) {
+function buildDomainBytes({ owner, name, records = [], parent = THRU_ROOT }) {
   const enc = new TextEncoder();
   const nb = enc.encode(name);
   const out = new Uint8Array(ns.NS_DOMAIN_HEADER + records.length * ns.NS_RECORD_SIZE);
   out[0] = ns.NS_KIND_DOMAIN;
-  out.set(Pubkey.from(THRU_ROOT).toBytes(), 0x01);
+  out.set(Pubkey.from(parent).toBytes(), 0x01);
   out.set(Pubkey.from(owner).toBytes(), 0x21);
   out.set(nb, 0x41);
   const dv = new DataView(out.buffer);
@@ -65,9 +65,19 @@ function buildDomainBytes({ owner, name, records = [] }) {
   return out;
 }
 
+const ID_ROOT = await ns.rootRegistrarAddress('id');
+const DOMAIN_BOB_ID = await ns.domainAccountAddress(ID_ROOT, 'bob-id');
+
 let currentDomainData = null;
+let idDomainData = null;
 const client = thruClient.getClient();
 client.accounts.get = async (address) => {
+  if (address === DOMAIN_BOB_ID && idDomainData) {
+    return {
+      meta: { balance: 1n, owner: Pubkey.from(ns.NAME_SERVICE_PROGRAM) },
+      data: idDomainData,
+    };
+  }
   if (address === DOMAIN_ALICE && currentDomainData) {
     return {
       meta: { balance: 1n, owner: Pubkey.from(ns.NAME_SERVICE_PROGRAM) },
@@ -126,6 +136,46 @@ console.log('[2] Reverse resolution with on-chain verification');
 
   const resMismatch = await primaryNameService.reverseLookup({ address: ALICE, networkId: 'betanet' });
   ok(resMismatch.resolved === false && resMismatch.reason === 'NOT_NAME_OWNER', 'detects owner mismatch and refuses to reverse-resolve');
+}
+
+console.log('[3] The read is bound to the active network, and NO_CANDIDATE stays honest');
+{
+  const { getActiveNetworkConfig } = await import('../src/background/services/network-service.js');
+  const active = await getActiveNetworkConfig();
+  const other = active.id === 'betanet' ? 'localnet' : 'betanet';
+
+  // Candidates come from THIS wallet's tracked domains, which are stored per network. A caller
+  // that names another network would otherwise read a registry the active screen never shows.
+  const crossNet = await primaryNameService.reverseLookup({ address: ALICE, networkId: other });
+  ok(crossNet.resolved === false && crossNet.reason === 'NETWORK_MISMATCH',
+    'a request for a non-active network is refused, not answered from the wrong registry');
+
+  const sameNet = await primaryNameService.reverseLookup({ address: ALICE, networkId: active.id });
+  ok(sameNet.reason !== 'NETWORK_MISMATCH', 'control: the active network id is accepted');
+
+  const unknown = await primaryNameService.reverseLookup({ address: asAddress(88) });
+  ok(unknown.resolved === false && unknown.reason === 'NO_CANDIDATE' && unknown.name === null,
+    'an address this wallet knows nothing about returns NO_CANDIDATE and no name');
+  ok(!JSON.stringify(unknown).includes('owns no'), 'the reason never claims the address owns no name');
+}
+
+console.log('[4] The reported TLD is the record\'s own root, never a hardcoded .thru');
+{
+  // The first version appended '.thru' to every unqualified label, so a `.id` domain was
+  // reported to the Send screen as `<name>.thru` — a wrong name on the one line the user reads
+  // before sending. The suffix now comes from the tracked record's root.
+  const primaryKey = scopedKey('thru_primary_names', 'betanet');
+  const existing = storage.get(primaryKey) || {};
+  storage.set(primaryKey, {
+    ...existing,
+    [BOB]: { name: 'bob-id', rootAddress: ID_ROOT, domainAddress: DOMAIN_BOB_ID, verifiedAt: Date.now() },
+  });
+  idDomainData = buildDomainBytes({ owner: BOB, name: 'bob-id', parent: ID_ROOT, records: [] });
+
+  const res = await primaryNameService.reverseLookup({ address: BOB });
+  ok(res.resolved === true && res.name === 'bob-id.id', `a .id record reports .id (got ${res.name})`);
+  ok(res.tld === 'id', 'the response names the root rather than implying one');
+  ok(!res.name.endsWith('.thru'), 'no .thru suffix is invented for another root');
 }
 
 console.log(`\nname-reverse test summary: ${pass} passed, ${fail} failed.`);

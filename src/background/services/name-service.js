@@ -15,9 +15,15 @@
 // authority (e.g. a closed foreign root), the transaction reverts on-chain and we surface
 // that honestly; we never sponsor or proxy another authority.
 //
-// initRoot / setRecord stay gated behind FLAGS.NAME_SERVICE (false in this build): initRoot
-// creates NEW roots (a namespace-level action — the answer to "are user-level roots allowed
-// here" is a live question for the running chain), and records are a separate responsibility.
+// name.setRecord is a REAL self-signed write as of contract v31 (2026-10-29): opcode 2 is the
+// first-party APPEND_RECORD (tn_name_service ABI), the write is authority = fee payer = the
+// active account, and it only lands on a domain that account provably owns. It is reached
+// through the shared review pipeline (kind `domain-record`), declared auth:'signing', and listed
+// in TRANSACTION_METHODS.
+//
+// name.initRoot stays gated behind FLAGS.NAME_SERVICE (false in this build): creating NEW roots
+// is a namespace-level action, and "are user-level roots allowed here" is still an open live
+// question for the running chain.
 import { FLAGS } from '../../shared/flags.js';
 import * as ns from '../../lib/name-service.js';
 import * as txService from './tx-service.js';

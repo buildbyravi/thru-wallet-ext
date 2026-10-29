@@ -280,19 +280,54 @@ export async function unlinkPrimaryName(params = {}) {
 
 
 /**
- * name.reverseLookup: reverse-resolves an address to its verified .thru domain.
- * Bidirectional verification:
- * 1. Checks if the address has a primary domain or tracked domain candidate.
- * 2. Checks on-chain whether the domain's owner matches the address.
- * 3. Inspects records for an 'addr' record matching the address for bidirectional proof.
+ * name.reverseLookup: resolve an address to a domain THIS WALLET tracks for it.
+ *
+ * What it is not: a chain-wide reverse index. The chain cannot enumerate names by owner (see
+ * docs/BACKEND_GAPS.md — the account-listing query returns RESOURCE_EXHAUSTED), so candidates
+ * come from this wallet's own `thru_registered_domains` / primary aliases. `NO_CANDIDATE` means
+ * "this wallet knows of no name for that address", never "that address owns no name".
+ *
+ * What it does prove: the candidate is re-read forward from the chain, and `verified: true`
+ * means the domain account's owner equals the requested address. `hasReverseRecord` separately
+ * reports whether the domain carries an `addr` record pointing back at that address — the only
+ * bidirectional half the chain can actually attest, and it is reported, not assumed.
  */
+/**
+ * The TLD a tracked record lives under, without inventing one. `view()` keeps the same two-root
+ * map for the tracked-domain list; a record under any other root is read best-effort from that
+ * root's registrar account, and when even that is unreadable the caller gets null — a bare label
+ * instead of a fabricated `.thru`.
+ */
+async function rootLabelFor(rootAddress) {
+  const [thruRoot, idRoot] = await Promise.all([
+    ns.rootRegistrarAddress('thru'),
+    ns.rootRegistrarAddress('id'),
+  ]);
+  if (rootAddress === thruRoot) return 'thru';
+  if (rootAddress === idRoot) return 'id';
+  try {
+    const info = await thruClient.getAccountInfo(rootAddress);
+    const parsed = info?.exists ? ns.parseRootRegistrar(info.raw) : null;
+    return parsed?.name ? String(parsed.name).toLowerCase() : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function reverseLookup({ address, networkId } = {}) {
   const target = String(address ?? '').trim();
   if (!thruClient.isValidThruAddress(target)) {
     return { resolved: false, name: null, verified: false, reason: 'INVALID_ADDRESS' };
   }
 
-  const netId = networkId || (await getActiveNetworkConfig()).id;
+  // A caller-chosen network id is checked against the active one rather than trusted: this reads
+  // wallet-local records, and every other name.* read is bound to the active network (contract
+  // v31). Reading another network's registry would answer a question the UI never asked.
+  const active = await getActiveNetworkConfig();
+  if (networkId && networkId !== active.id) {
+    return { resolved: false, name: null, verified: false, reason: 'NETWORK_MISMATCH' };
+  }
+  const netId = active.id;
   const state = await readState(netId);
 
   let candidate = state.primary[target] || null;
@@ -321,15 +356,24 @@ export async function reverseLookup({ address, networkId } = {}) {
     const addrRecord = records.find((r) => r.key === 'addr' && r.value === target);
     const hasReverseRecord = Boolean(addrRecord);
 
-    const displayName = candidate.name.includes('.') ? candidate.name : `${candidate.name}.thru`;
+    // The old code appended '.thru' to every unqualified label, so a domain tracked under the
+    // `.id` root was reported as `<name>.thru`. Qualify with the record's actual root, and when
+    // the root cannot be named, return the bare label with tld:null rather than a wrong suffix.
+    const tld = candidate.name.includes('.') ? null : await rootLabelFor(candidate.rootAddress);
+    const displayName = candidate.name.includes('.') ? candidate.name : (tld ? `${candidate.name}.${tld}` : candidate.name);
     return {
       resolved: true,
       name: displayName,
+      tld,
       verified: true,
       hasReverseRecord,
       domainAddress: candidate.domainAddress,
     };
   } catch (err) {
-    return { resolved: false, name: null, verified: false, reason: err?.message || 'LOOKUP_FAILED' };
+    // `reason` is a declared enumeration, not prose: a UI branches on it.
+    return {
+      resolved: false, name: null, verified: false,
+      reason: 'LOOKUP_FAILED', detail: err?.message ? String(err.message).slice(0, 200) : null,
+    };
   }
 }
