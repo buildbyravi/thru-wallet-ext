@@ -115,7 +115,7 @@ appears only inside Details.
 ## 4. Gates
 
 - `npm run build` — PASS.
-- `npm test` — PASS, exit 0: **2,469 checks**, 35 suites + 5 gates. Review suite 172/172, card
+- `npm test` — PASS, exit 0: **2,470 checks**, 35 suites + 5 gates. Review suite 173/173, card
   render suite 46/46, route lifecycle 1,104/1,104, contract 168/168.
 - `scripts/check-layering.mjs` — 127 files, 0 violations, 0 DOM sinks.
 - `scripts/check-routes.mjs` — every navigated route exists, every registered route is reachable,

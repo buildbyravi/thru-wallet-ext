@@ -8,8 +8,8 @@ not claim a Rabby-audited design, a live-chain run, or a browser-layout sign-off
 
 > **Counts in this record are the v29 measurement (2,326 checks, review 152/152, contract 161/161,
 > 126 layering files).** They are left as recorded. Current figures live in `docs/AUDIT_REPORT.md`
-> and `docs/STATUS_AND_ROADMAP.md`; on the v31 tree (2026-10-30) `npm test` is 2,469 checks with
-> review 172/172, card render 46/46 and contract 168/168; v31's own audit is
+> and `docs/STATUS_AND_ROADMAP.md`; on the v31 tree (2026-10-30) `npm test` is 2,470 checks with
+> review 173/173, card render 46/46 and contract 168/168; v31's own audit is
 > `docs/audits/2026-10-29-v31-audit.md` and the lifecycle audit is
 > `docs/audits/2026-10-30-review-lifecycle-audit.md` (§13 below).
 
@@ -485,8 +485,8 @@ Details without putting it on the surface.
 
 ### 13.3 Gates
 
-`npm run build` PASS. `npm test` exit 0 — **2,469 checks** (35 suites + 5 gates):
-`test-tx-review.mjs` 172/172, **`test-tx-review-card.mjs` 46/46** (new: renders every kind through
+`npm run build` PASS. `npm test` exit 0 — **2,470 checks** (35 suites + 5 gates):
+`test-tx-review.mjs` 173/173, **`test-tx-review-card.mjs` 46/46** (new: renders every kind through
 the registry into a DOM shim and asserts the visible text, the block budget, the forbidden-vocabulary
 scan and the simulation caveat's location), `test-route-lifecycle.mjs` 1,104/1,104,
 `test-contract.mjs` 168/168. `check-routes` passes with the three new classes defined.

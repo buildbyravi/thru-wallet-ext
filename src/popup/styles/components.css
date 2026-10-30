@@ -1328,46 +1328,6 @@ button.row { cursor: pointer; }
   padding: var(--sp-4);
 }
 
-.tx-review-eyebrow {
-  font-size: 10px;
-  font-weight: 700;
-  color: var(--text-3);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  margin-bottom: var(--sp-2);
-  display: block;
-}
-
-.balance-change-box {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px var(--sp-3);
-  border-radius: var(--radius-md);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-}
-
-.balance-change-box.negative {
-  border-color: var(--negative-border);
-  background: var(--negative-tint);
-}
-
-.balance-change-box.positive {
-  border-color: var(--positive-border);
-  background: var(--positive-tint);
-}
-
-.change-amount {
-  font-size: var(--fs-lg);
-  font-weight: 700;
-  color: var(--negative);
-}
-
-.balance-change-box.positive .change-amount {
-  color: var(--positive);
-}
-
 .change-tag {
   font-size: 11px;
   font-weight: 600;

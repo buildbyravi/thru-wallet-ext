@@ -1008,6 +1008,14 @@ console.log('[15] the review fits one screen (owner review, 2026-10-28)');
       && cardSource.includes("'Hide details'"));
   ok('the stacked section wrappers are gone', !cardSource.includes('tx-review-section')
     && !cardSource.includes('tx-review-protocol') && !cardSource.includes("'Balance after'"));
+  // The value boxes the first card drew (and their uppercase eyebrow) were replaced by the money
+  // table's rows. Their CSS went with them; a rule no markup can reach is the same dead weight the
+  // migration audit removed from `screens.css`.
+  const reviewCss = readFileSync(new URL('../src/popup/styles/components.css', import.meta.url), 'utf8');
+  ok('the money table did not bring the value boxes back',
+    !cardSource.includes('balance-change-box') && !cardSource.includes('tx-review-eyebrow')
+      && !reviewCss.includes('.balance-change-box') && !reviewCss.includes('.change-amount')
+      && !reviewCss.includes('.tx-review-eyebrow'));
   // Part 1 copy rules: the hedge is the word "about", never a "(estimated)" suffix (and never
   // the word "estimate" in the label position the directive called out).
   ok('a quoted fee is hedged with "about", never "(estimated)"',

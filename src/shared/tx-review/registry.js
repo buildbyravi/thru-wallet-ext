@@ -42,14 +42,6 @@ export function registerDecoder(kind, decode) {
   DECODERS.set(kind, decode);
 }
 
-export function hasDecoder(kind) {
-  return DECODERS.has(kind);
-}
-
-export function getDecoder(kind) {
-  return DECODERS.get(kind) ?? null;
-}
-
 /** Every registered kind, sorted — used by tests and by prepareReview's unsupported answer. */
 export function listDecoderKinds() {
   return [...DECODERS.keys()].sort();

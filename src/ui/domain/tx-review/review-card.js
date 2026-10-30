@@ -59,18 +59,6 @@ function movementAmount(asset, direction) {
   return `${direction === 'out' ? '\u2212' : '+'}${amount}`;
 }
 
-function movementBox(asset, direction) {
-  const negative = direction === 'out';
-  return h('div', { class: ['balance-change-box', negative ? 'negative' : 'positive'] }, [
-    h('div', { class: 'stack stack-1' }, [
-      h('span', { class: 'eyebrow', text: negative ? 'You pay' : 'You receive' }),
-      h('div', { class: 'change-amount', text: movementAmount(asset, direction) }),
-      ...(asset.name ? [h('div', { class: 'hint', text: asset.name })] : []),
-      ...(asset.note ? [h('div', { class: 'hint', text: asset.note })] : []),
-    ]),
-  ]);
-}
-
 // The one label/value table on the card. Same component the old Send review used, so the
 // screen the owner asked to get back is literally the same table, now decoder-driven.
 function detailTable(rows) {
