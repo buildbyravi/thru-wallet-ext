@@ -1443,16 +1443,58 @@ button.row { cursor: pointer; }
 }
 
 /* The shared review surface (src/ui/domain/tx-review) — one card for every operation type.
-   Order is fixed by the component and follows Rabby's before-sign shape: header (operation +
-   network) -> program identity -> value in/out -> one label/value table (facts + estimated
-   fee + total) -> warnings -> one collapsed advanced disclosure -> acknowledgements.
-   Everything technical lives behind that single disclosure; nothing is dropped. */
+   Order is fixed by the component: title (verb + amount) -> one context line (account ·
+   network) -> counterparty -> money (pay or receive, network fee, total) -> at most two
+   warnings -> one collapsed Details disclosure -> acknowledgements. Everything technical lives
+   behind that single disclosure; nothing is dropped. */
 
 .tx-review-head {
   display: flex;
-  align-items: flex-start;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* "Main account · Betanet test network": six badges became one quiet line (v1.5.0). */
+.tx-review-context {
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+  line-height: 1.4;
+}
+
+/* The counterparty: a name when the wallet has one, a shortened address beside it, and the
+   whole address behind the button. Never a 46-character address in the money table. */
+.tx-review-counterparty {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+.tx-review-counterparty-main {
+  display: flex;
+  align-items: baseline;
   justify-content: space-between;
-  gap: var(--sp-3);
+  gap: var(--sp-2);
+  width: 100%;
+  padding: var(--sp-2) 0;
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tx-review-counterparty-main:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.tx-review-counterparty-label {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--text-1);
+  overflow-wrap: anywhere;
 }
 
 .tx-review-title {

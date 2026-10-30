@@ -11,7 +11,7 @@
 // recipient could not be checked, the other blocks signing because the chain will reject it.
 
 import {
-  displayAmount, movement, row, warn, acknowledgement, feeBlock, instruction, accountRole,
+  displayAmount, movement, warn, acknowledgement, feeBlock, instruction, accountRole,
   executionBlock,
 } from './common.js';
 
@@ -81,24 +81,23 @@ export function decodeNativeSend({ facts }) {
   return {
     operation: {
       id: NATIVE_SEND_KIND,
-      name: 'Send THRU',
-      summary: `Send ${displayAmount(facts.amountUnits, 9, 'THRU')} to the recipient below.`,
+      // The title carries the verb and the amount (v1.5 card): it is the one line a user reads.
+      name: `Send ${displayAmount(facts.amountUnits, 9, 'THRU')}`,
+      summary: '',
       confirmLabel: 'Sign & send',
       decode: 'decoded',
     },
     protocol: {
-      name: 'Thru EOA transfer program',
+      name: 'Thru transfer program',
       address: transferProgramId,
       verified: Boolean(transferProgramId),
-      source: transferProgramId
-        ? 'Pinned program address for the active network (src/lib/networks.js)'
-        : 'No pinned program address for the active network',
     },
-    summary: [
-      row('From', facts.fromAddress, { above: facts.fromLabel ?? null, mono: true }),
-      row('To', facts.toAddress, { above: facts.recipientLabel ?? null, mono: true }),
-      row('Amount', displayAmount(facts.amountUnits, 9, 'THRU'), { mono: true }),
-    ],
+    // The recipient moved out of the table and onto their own line: a name when the wallet has
+    // one, otherwise the shortened address (Details carries the whole one).
+    counterparty: { address: facts.toAddress, ...(facts.recipientLabel ? { label: facts.recipientLabel } : {}) },
+    // Money lives in `assets` only. The old table repeated the same amount three times
+    // ("You pay", "Amount", "Total") — the owner's screenshots were right about that.
+    summary: [],
     assets: {
       outgoing: [movement({
         symbol: 'THRU',
@@ -114,21 +113,20 @@ export function decodeNativeSend({ facts }) {
         reserveUnits: facts.fee?.supported ? facts.fee.reserveUnits : null,
         source: facts.fee?.supported ? (facts.fee.source ?? 'unknown') : null,
         note: facts.fee?.supported
-          ? 'Declared network fee for this chain; the charge is reported only after the chain answers.'
-          : (facts.fee?.reason || 'No fee measurement exists on this network.'),
+          ? 'Set by the network. What was actually charged appears in Activity after confirmation.'
+          : (facts.fee?.reason || 'No fee measurement is available for this network.'),
       }),
       balanceAfter: null,
-      balanceAfterNote: 'Thru has no verified dry-run, so no post-transaction balance is shown.',
+      balanceAfterNote: 'This network cannot preview a transaction, so the balance afterwards is not shown.',
     },
     execution: executionBlock({
       program: {
-        name: 'Thru EOA transfer program',
+        name: 'Thru transfer program',
         address: transferProgramId,
         verified: Boolean(transferProgramId),
       },
-      instructions: [instruction('Transfer (EOA program instruction 1)', {
-        note: '16 bytes: instruction tag, amount, source and destination account indices. '
-          + 'The signed bytes are produced at signing time.',
+      instructions: [instruction('Transfer funds', {
+        note: 'The amount, your account and the recipient are fixed when you sign.',
       })],
       accounts: [
         accountRole('Source', facts.fromAddress),

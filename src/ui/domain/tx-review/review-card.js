@@ -90,45 +90,69 @@ function detailRow(label, value, { mono = false } = {}) {
   ]);
 }
 
-// "Network fee" on its own line, Rabby-style: the number the wallet was quoted, marked as an
-// estimate, or the word that says there is no quote.
-function feeRow(fee) {
-  // "Supported" without a number is still no quote: the label may never imply an amount the
-  // wallet does not have.
+// A 46-character address in a table row pushes everything else out of the eye's path. The card
+// shows first-six/last-four and keeps the whole address in Details (and behind the counterparty's
+// tap-to-expand), which is enough to recognise an address without turning the card into a wall.
+function shortAddress(address) {
+  const text = String(address ?? '');
+  if (text.length <= 14) return text;
+  return `${text.slice(0, 6)}\u2026${text.slice(-4)}`;
+}
+
+// "Network fee" on its own line: the quoted number with the honest hedging word in front of it
+// ("about"), or the words that say there is no quote. The old copy appended an "estimated"
+// suffix, which reads as a caveat on a number the wallet is quietly unsure about; "about" says
+// the same thing in the place a person actually reads.
+function feeRow(fee, assets) {
   const quoted = fee.supported && fee.amountUnits != null;
+  if (!quoted) {
+    // A token transfer pays the network fee in THRU even though the asset is the token, so
+    // saying only "not confirmed" hides which currency is missing.
+    const paidInOther = assets.outgoing[0] && assets.outgoing[0].symbol !== fee.symbol;
+    return { label: 'Network fee', value: paidInOther ? 'not confirmed (paid in THRU)' : 'not confirmed' };
+  }
+  // A declared zero is a fact worth stating plainly; "about 0 THRU" reads like a rounding.
+  if (String(fee.amountUnits) === '0') return { label: 'Network fee', value: 'none' };
   return {
     label: 'Network fee',
-    value: quoted ? `${amountText(fee.amountUnits, fee.decimals, fee.symbol)} (estimated)` : 'Not quoted',
-    mono: quoted,
+    value: `about ${amountText(fee.amountUnits, fee.decimals, fee.symbol)}`,
+    mono: true,
   };
 }
 
+/** One row per asset leaving or arriving. The sign is part of the amount, never inferred. */
+function movementRows(assets) {
+  return [
+    ...assets.outgoing.map((asset) => ({
+      label: 'You pay', value: movementAmount(asset, 'out'), mono: true, tone: 'negative',
+    })),
+    ...assets.incoming.map((asset) => ({
+      label: 'You receive', value: movementAmount(asset, 'in'), mono: true,
+    })),
+  ];
+}
+
+// The context line replaces six header badges: who is signing, on which network, said once.
+function contextLine(review) {
+  const account = review.account?.label || 'Active account';
+  const network = review.network?.label || 'this network';
+  return `${account} \u00b7 ${network}${review.network?.isTestnet ? ' test network' : ''}`;
+}
+
 // Total is only arithmetic the wallet can actually do: one outgoing asset, an asset-denominated
-// quote. Anything else keeps the amount and the fee visibly separate.
+// quote in the same currency. Otherwise there is no total — "25 LAB + fee (not quoted)" is a sum
+// the wallet cannot perform dressed up as one.
 function totalRow(assets) {
   const [out] = assets.outgoing;
   if (assets.outgoing.length !== 1) return null;
   const fee = assets.fee;
-  if (fee.supported && fee.amountUnits != null && fee.symbol === out.symbol) {
-    try {
-      const units = (BigInt(out.amountUnits) + BigInt(fee.amountUnits)).toString();
-      return { label: 'Total', value: amountText(units, out.decimals, out.symbol), mono: true };
-    } catch {
-      return null;
-    }
+  if (!fee.supported || fee.amountUnits == null || fee.symbol !== out.symbol) return null;
+  try {
+    const units = (BigInt(out.amountUnits) + BigInt(fee.amountUnits)).toString();
+    return { label: 'Total', value: amountText(units, out.decimals, out.symbol), mono: true };
+  } catch {
+    return null;
   }
-  if (fee.supported && fee.amountUnits != null) {
-    return {
-      label: 'Total',
-      value: `${amountText(out.amountUnits, out.decimals, out.symbol)} + ${amountText(fee.amountUnits, fee.decimals, fee.symbol)} fee`,
-      mono: true,
-    };
-  }
-  return {
-    label: 'Total',
-    value: `${amountText(out.amountUnits, out.decimals, out.symbol)} + fee (not quoted)`,
-    mono: true,
-  };
 }
 
 // The acknowledgement checkbox pairs a label with an input by id. Ids must be unique per
@@ -178,109 +202,123 @@ export function TxReviewCard({ review, onChange = null } = {}) {
     const known = r.operation.decode === 'decoded';
     const fee = r.assets.fee;
 
-    // ---- header: what this is, on which chain ---------------------------------------
+    // ---- title, context, counterparty -----------------------------------------------
+    // What am I doing (the title carries the verb AND the amount), on whose account and which
+    // network (one line, not six badges), and to whom. Nothing technical above the fold.
     el.appendChild(h('div', { class: 'tx-review-head' }, [
-      h('div', { class: 'stack stack-1' }, [
-        h('span', { class: 'tx-review-eyebrow', text: known ? 'Transaction' : 'Unrecognized transaction' }),
-        h('h2', { class: 'tx-review-title', text: r.operation.name }),
-      ]),
-      h('div', { class: 'tx-review-badges' }, [
-        badge(r.network.label),
-        ...(r.network.isTestnet ? [badge('Testnet')] : []),
-        badge(known ? 'Decoded' : 'Not decoded'),
-      ]),
+      h('h2', { class: 'tx-review-title', text: r.operation.name }),
+      h('div', { class: 'tx-review-context', text: contextLine(r) }),
     ]));
 
-    // ---- program identity, one line --------------------------------------------------
-    // Rabby's header tells you which site you are talking to. The Thru equivalent is the
-    // program the transaction calls, with the wallet's own verdict on whether that address is
-    // one it can vouch for. The address itself moved into the advanced details.
-    if (r.protocol) {
-      el.appendChild(h('div', { class: 'tx-review-origin' }, [
-        h('span', { class: 'tx-review-origin-icon' }, icon(r.protocol.verified ? 'shield' : 'warning', 16)),
-        h('div', { class: 'tx-review-origin-copy' }, [
-          h('span', { class: 'tx-review-origin-name', text: r.protocol.name }),
-          // The signing account by LABEL, not by address: the address is already a fact row on
-          // every send (From) and on every other operation it is in the advanced details. Printing
-          // it twice was the kind of duplication the owner's "too long" review was about.
-          h('span', { class: 'hint', text: `Signing with ${r.account.label || 'the active account'}` }),
-        ]),
-        badge(r.protocol.verified ? 'Verified program' : 'Unverified program'),
-      ]));
-    }
-
-    // ---- an undecoded transaction says so, in words, before anything else ------------
-    if (!known && r.operation.summary) {
+    // One sentence of plain language. For a decoded operation it explains the decision
+    // ("No registration fee on the test registrar…"); for an undecoded one it is the warning
+    // that the wallet cannot tell what the transaction does.
+    if (r.operation.summary) {
       el.appendChild(h('p', { class: 'tx-review-sub muted', text: r.operation.summary }));
     }
 
-    // ---- value in / value out --------------------------------------------------------
-    if (r.assets.outgoing.length || r.assets.incoming.length) {
-      el.appendChild(h('div', { class: 'stack stack-2' }, [
-        ...r.assets.outgoing.map((asset) => movementBox(asset, 'out')),
-        ...r.assets.incoming.map((asset) => movementBox(asset, 'in')),
-      ]));
-      // Post-transaction balances stay unknown: Thru has no verified dry-run, and printing a
-      // number here would be the same fabrication as inventing a simulated success.
-      el.appendChild(h('div', { class: 'hint', text: r.assets.balanceAfterNote }));
+    if (r.counterparty?.address) {
+      const full = h('div', { class: 'tx-review-address mono hidden', text: r.counterparty.address });
+      const label = h('button', {
+        type: 'button',
+        class: 'tx-review-counterparty-main',
+        'aria-expanded': 'false',
+        title: 'Show the full address',
+      }, [
+        h('span', { class: 'tx-review-counterparty-label', text: `To ${r.counterparty.label || shortAddress(r.counterparty.address)}` }),
+        ...(r.counterparty.label
+          ? [h('span', { class: 'hint mono', text: shortAddress(r.counterparty.address) })]
+          : []),
+      ]);
+      d.on(label, 'click', () => {
+        const open = full.classList.contains('hidden');
+        full.classList.toggle('hidden', !open);
+        label.setAttribute('aria-expanded', String(open));
+        label.title = open ? 'Hide the full address' : 'Show the full address';
+      });
+      el.appendChild(h('div', { class: 'tx-review-counterparty' }, [label, full]));
     }
 
-    // ---- the facts, in one table -----------------------------------------------------
-    const rows = [...r.summary];
-    rows.push(feeRow(fee));
+    // ---- the money, and nothing else --------------------------------------------------
+    // At most three rows: what leaves (or arrives), what the network charges for it, and the
+    // total only when the wallet can actually add them up. Everything else — including a
+    // registrar price that is not provably collected — stays out of this table.
+    const movement = movementRows(r.assets);
+    const moneyRows = [...movement, feeRow(fee, r.assets)];
     const total = totalRow(r.assets);
-    if (total) rows.push(total);
-    el.appendChild(detailTable(rows));
+    if (total && total.value !== moneyRows[0]?.value) moneyRows.push(total);
+    // An undecodable transaction has no amount and no provable fee: a table of two "unknown"
+    // rows teaches the user nothing, so there is no money table at all.
+    const moneyKnown = movement.length > 0 || (fee.supported && fee.amountUnits != null);
+    if (moneyKnown && moneyRows.length) el.appendChild(detailTable(moneyRows));
 
-    // ---- warnings --------------------------------------------------------------------
-    if (r.warnings.length) {
-      el.appendChild(h('div', { class: 'stack stack-2' }, r.warnings.map(warningBlock)));
+    // Facts that are not money and not the title: current/new expiry, previous owner, and the
+    // operation's own remainder. Deliberately a second, short table rather than mixed into the
+    // money rows, so "what leaves my account" is never bracketed by dates.
+    if (r.summary.length) el.appendChild(detailTable(r.summary));
+
+    // ---- warnings: only what changes the decision ---------------------------------------
+    // Two at most, each a short bold line and one sentence. The rest are still on the card,
+    // inside Details, so nothing is hidden — only folded.
+    const blocking = r.warnings.filter((w) => w.blocking || w.severity === 'danger');
+    const advisory = r.warnings.filter((w) => !(w.blocking || w.severity === 'danger'));
+    const onCard = [...blocking, ...advisory.filter((w) => w.severity === 'warning')].slice(0, 2);
+    const folded = r.warnings.filter((w) => !onCard.includes(w));
+    if (onCard.length) el.appendChild(h('div', { class: 'stack stack-2' }, onCard.map(warningBlock)));
+
+    // A program the wallet cannot vouch for is the one trust message that belongs above the
+    // fold: it is the difference between a known operation and an arbitrary one. An UNDECODED
+    // transaction already says so in its own blocking warning, so this does not repeat it.
+    if (r.protocol && r.protocol.verified === false && r.operation.decode === 'decoded') {
+      el.appendChild(warningBlock({
+        severity: 'warning',
+        title: 'Unrecognised program',
+        detail: 'This wallet cannot confirm which program this is. Only continue if you started '
+          + 'this transaction yourself.',
+      }));
     }
 
     // ---- one disclosure for everything technical --------------------------------------
-    // Nothing is hidden from the user, only folded: program address + provenance,
-    // instructions, account roles, fee provenance, raw bytes, and why no balance is predicted.
+    // Still complete, still honest, and out of the way: program, instruction, accounts, fee
+    // basis, simulation, and every caveat that was not decision-relevant. No repository paths
+    // and no decision-record ids — a user cannot act on either.
     const details = [];
     if (r.execution.program) {
       details.push(detailRow('Program', r.execution.program.name));
       if (r.execution.program.address) {
         details.push(h('div', { class: 'mono tx-review-address', text: r.execution.program.address }));
       }
-      if (r.execution.program.source) {
-        details.push(h('div', { class: 'hint', text: r.execution.program.source }));
-      }
     }
-    if (r.protocol?.source && r.protocol.source !== r.execution.program?.source) {
-      details.push(detailRow('Program provenance', r.protocol.source));
-    }
+    if (r.protocol?.trustNote) details.push(h('div', { class: 'hint', text: r.protocol.trustNote }));
     for (const instruction of r.execution.instructions) {
-      details.push(detailRow(instruction.decoded ? 'Instruction' : 'Instruction (undecoded)', instruction.name));
+      details.push(detailRow('Instruction', instruction.name));
       if (instruction.note) details.push(h('div', { class: 'hint', text: instruction.note }));
     }
     for (const account of r.execution.accounts) {
       details.push(detailRow(account.role, account.address, { mono: true }));
     }
-    if (fee.source) details.push(detailRow('Fee provenance', fee.source));
-    if (fee.supported && fee.reserveUnits) {
-      details.push(detailRow('Reserve kept back',
-        amountText(fee.reserveUnits, fee.decimals, fee.symbol), { mono: true }));
-    }
     if (fee.note) details.push(h('div', { class: 'hint', text: fee.note }));
-    details.push(h('div', { class: 'hint', text: 'The amount actually charged is reported in Activity only after the chain answers.' }));
+    details.push(h('div', { class: 'hint', text: r.assets.balanceAfterNote }));
     // Four distinct states, four distinct words. "Failed" must never read as "unavailable":
     // it is a blocking fact (the service adds the blocking warning; the card shows the same
     // verdict here so the two surfaces cannot disagree).
     const simulationLabel = {
       supported: 'Succeeded',
-      failed: 'Failed — this transaction was rejected in simulation',
+      failed: 'Failed — the network rejected this transaction in a preview',
       pending: 'Still running',
       unavailable: 'Not available',
     }[simulation.status] || 'Not available';
     details.push(detailRow('Simulation', simulationLabel));
     details.push(h('div', { class: 'hint', text: simulation.reason
       || (simulation.status === 'supported'
-        ? `Reported by ${simulation.provenance || 'the node'}.`
-        : 'This wallet cannot dry-run the transaction, so it shows only what it can prove.') }));
+        ? 'Reported by the network.'
+        : 'This network cannot preview a transaction, so the wallet shows only what it can prove.') }));
+    if (folded.length) {
+      details.push(detailRow('Also noted', `${folded.length} more ${folded.length === 1 ? 'note' : 'notes'}`));
+      for (const warning of folded) {
+        details.push(h('div', { class: 'hint', text: `${warning.title} — ${warning.detail}` }));
+      }
+    }
 
     if (r.execution.raw) {
       const raw = h('div', { class: 'tx-review-raw monospace-block hidden', id: `tx-review-raw-${instanceId}` }, [
@@ -299,23 +337,29 @@ export function TxReviewCard({ review, onChange = null } = {}) {
         rawToggle.setAttribute('aria-expanded', String(open));
         rawToggle.textContent = open ? 'Hide raw data' : 'Show raw data';
       });
-      details.push(detailRow('Raw instruction data', r.execution.raw.format.toUpperCase()));
       details.push(rawToggle, raw);
     }
 
     if (details.length) {
-      const panel = h('div', { class: ['stack', 'stack-2', 'tx-review-details', known ? 'hidden' : null].filter(Boolean), id: `tx-review-advanced-${instanceId}` }, details);
+      // Known operations fold their details (they have a decision to make above them). An
+      // UNDECODED transaction opens them: there the details ARE the review, and hiding the only
+      // facts that exist behind a tap would be the opposite of honest.
+      const openByDefault = !known;
+      const panel = h('div', {
+        class: ['stack', 'stack-2', 'tx-review-details', openByDefault ? null : 'hidden'].filter(Boolean),
+        id: `tx-review-advanced-${instanceId}`,
+      }, details);
       const toggle = h('button', {
         type: 'button',
         class: 'tx-review-disclosure-toggle',
-        'aria-expanded': String(!known),
+        'aria-expanded': String(openByDefault),
         'aria-controls': `tx-review-advanced-${instanceId}`,
-      }, known ? 'Advanced details' : 'Hide advanced details');
+      }, openByDefault ? 'Hide details' : 'Details');
       d.on(toggle, 'click', () => {
         const open = panel.classList.contains('hidden');
         panel.classList.toggle('hidden', !open);
         toggle.setAttribute('aria-expanded', String(open));
-        toggle.textContent = open ? 'Hide advanced details' : 'Advanced details';
+        toggle.textContent = open ? 'Hide details' : 'Details';
       });
       el.appendChild(h('div', { class: 'stack stack-2' }, [toggle, panel]));
     }

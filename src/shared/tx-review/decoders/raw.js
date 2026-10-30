@@ -19,39 +19,30 @@ import { row, warn, executionBlock, accountRole } from './common.js';
 export const RAW_KIND = 'raw';
 
 export function decodeRawTransaction({ facts }) {
+  // One blocking statement, short enough to read on the card. The program's own identity is in
+  // Details; a second warning saying the same thing twice made the card look louder, not safer.
   const warnings = [
     warn('undecoded-transaction', 'danger',
-      'This transaction cannot be decoded',
-      'The wallet has no decoder for this program or instruction, so it cannot describe what '
-      + 'the transaction would do. Nothing below is a guarantee. Do not approve a transaction '
-      + 'you cannot explain.', { blocking: true }),
+      'This transaction cannot be read',
+      'The wallet cannot tell what this does. Do not approve it unless you started it.', { blocking: true }),
   ];
-  if (facts.programVerified === false) {
-    warnings.push(warn('unverified-program', 'warning',
-      'Program is not a pinned first-party deployment',
-      facts.programNote || 'The program address does not match any address this wallet trusts.'));
-  }
 
-  const rows = [
-    row('Program', facts.programAddress ?? 'unknown', { mono: true }),
-    row('Instruction data', facts.dataHex ? `${facts.dataHex.length} hex characters` : 'not supplied'),
-  ];
+  const rows = [];
   if (facts.note) rows.push(row('Note', String(facts.note)));
 
   return {
     operation: {
       id: RAW_KIND,
-      name: 'Unrecognized transaction',
-      summary: 'A transaction this wallet cannot decode. Only raw details are available.',
+      name: 'Unrecognised transaction',
+      summary: 'This wallet cannot tell what this does. Only sign if you started it yourself.',
       confirmLabel: null,
       decode: 'unknown',
     },
     protocol: facts.programAddress
       ? {
-        name: facts.programName || 'Unrecognized program',
+        name: facts.programName || 'Unrecognised program',
         address: facts.programAddress,
         verified: facts.programVerified === true,
-        source: facts.programNote ?? 'Caller-supplied program address; not matched to a pinned deployment.',
       }
       : null,
     summary: rows,
@@ -65,30 +56,30 @@ export function decodeRawTransaction({ facts }) {
         amountUnits: null,
         reserveUnits: null,
         source: null,
-        note: 'The wallet cannot decode this transaction, so it cannot describe its fee.',
+        note: 'The wallet cannot read this transaction, so it cannot say what it costs.',
       },
       balanceAfter: null,
-      balanceAfterNote: 'The wallet cannot decode this transaction, so it cannot describe its effects.',
+      balanceAfterNote: 'The wallet cannot read this transaction, so it cannot say what changes afterwards.',
     },
     execution: executionBlock({
       program: facts.programAddress
         ? {
-          name: facts.programName || 'Unrecognized program',
+          name: facts.programName || 'Unrecognised program',
           address: facts.programAddress,
           verified: facts.programVerified === true,
         }
         : null,
       instructions: [{
-        name: 'Undecoded instruction',
+        name: 'Unrecognised instruction',
         decoded: false,
-        note: facts.note || 'No instruction layout is known for this program.',
+        note: facts.note || 'The wallet does not know how to read this program\'s data.',
       }],
       accounts: (facts.accounts ?? []).map((entry) => accountRole(entry.role || 'Account', entry.address)),
       raw: facts.dataHex
         ? {
           format: 'hex',
           data: String(facts.dataHex),
-          note: 'Uninterpreted instruction data, exactly as supplied.',
+          note: 'The transaction data, exactly as given.',
         }
         : null,
     }),

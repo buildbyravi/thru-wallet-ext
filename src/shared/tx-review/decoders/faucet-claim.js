@@ -81,10 +81,9 @@ export function decodeFaucetClaim({ facts }) {
       + 'would be called, so the claim cannot be proven safe to sign.', { blocking: true }));
   }
 
-  const rows = [
-    row('To', facts.fromAddress, { above: facts.fromLabel ?? null, mono: true }),
-    row('Amount', amount, { mono: true }),
-  ];
+  // Only the rate-limit remainder is a fact about this transaction that is not money; the
+  // recipient is the counterparty line and the amount is in the title and the money table.
+  const rows = [];
   const window = windowLabel(facts.limit);
   if (facts.limit?.supported && facts.limit.remainingAmount != null) {
     rows.push(row('Remaining this window',
@@ -95,8 +94,8 @@ export function decodeFaucetClaim({ facts }) {
   return {
     operation: {
       id: FAUCET_CLAIM_KIND,
-      name: 'Claim from faucet',
-      summary: `Request ${amount} from the ${facts.networkLabel || 'network'} faucet.`,
+      name: `Claim ${amount} from the faucet`,
+      summary: '',
       confirmLabel: 'Claim',
       decode: 'decoded',
     },
@@ -104,7 +103,10 @@ export function decodeFaucetClaim({ facts }) {
       name: 'Thru faucet program',
       address: facts.programAddress ?? null,
       verified: Boolean(facts.programAddress),
-      source: 'Pinned faucet program address for the active network (src/lib/networks.js)',
+    },
+    counterparty: {
+      address: facts.fromAddress,
+      label: facts.fromLabel || 'your account',
     },
     summary: rows,
     assets: {
@@ -123,12 +125,12 @@ export function decodeFaucetClaim({ facts }) {
         reserveUnits: null,
         source: facts.fee?.supported ? (facts.fee.source ?? 'unknown') : null,
         note: facts.fee?.supported
-          ? 'Declared by the faucet transaction header.'
+          ? 'Set by the network. What was actually charged appears in Activity after confirmation.'
           : (facts.fee?.reason
-            || 'The faucet claim path does not report a charged fee, so none is shown.'),
+            || 'The faucet claim path does not report a fee, so none is shown.'),
       }),
       balanceAfter: null,
-      balanceAfterNote: 'Thru has no verified dry-run, so no post-transaction balance is shown.',
+      balanceAfterNote: 'This network cannot preview a transaction, so the balance afterwards is not shown.',
     },
     execution: executionBlock({
       program: {
@@ -136,9 +138,8 @@ export function decodeFaucetClaim({ facts }) {
         address: facts.programAddress ?? null,
         verified: Boolean(facts.programAddress),
       },
-      instructions: [instruction('Faucet withdraw (faucet program instruction 1)', {
-        note: '16 bytes: instruction tag, amount and the destination account index. Paying out '
-          + 'is subject to the on-chain rate-limit policy.',
+      instructions: [instruction('Faucet payout', {
+        note: 'The network pays the amount shown to your account, subject to its rate limit.',
       })],
       accounts: [
         accountRole('Faucet vault', facts.vaultAddress ?? 'pinned program vault'),

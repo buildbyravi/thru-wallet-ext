@@ -4719,20 +4719,21 @@ async function progressiveSendTest() {
   click(buttons(tokenRoute.el, /^review$/i)[0]);
   await settle();
 
-  // Owner review (2026-10-28): Send goes back to the previous-main shape — one fact table,
-  // the value moving above it, technical detail folded. Asserted on the rendered DOM.
+  // Owner review (2026-10-28 → v1.5.0): the send review is the previous-main shape — what you
+  // pay, what it costs, the total, everything else folded. The 2026-10-29 audit of the rendered
+  // card replaced the From/To/Amount table rows with a counterparty line and a signed amount, so
+  // the assertions moved with the shape instead of being deleted: the money is still all present,
+  // exactly once, and the technical detail is still folded.
   const tokenCard = tokenRoute.el.querySelector('.tx-review-card');
-  ok('the send review is one table of From/To/Amount/fee/total, not a stack of sections',
+  ok('the send review is a money table plus a folded Details, not a stack of sections',
     tokenCard?.querySelectorAll('.detail-table').length === 1
       && tokenCard.querySelectorAll('.tx-review-section').length === 0
-      && /From/.test(tokenCard.textContent) && /To/.test(tokenCard.textContent)
-      && /Amount/.test(tokenCard.textContent) && /Network fee/.test(tokenCard.textContent)
-      && /Total/.test(tokenCard.textContent),
+      && /You pay/.test(tokenCard.textContent) && /Network fee/.test(tokenCard.textContent)
+      && !/\bFrom\b/.test(tokenCard.textContent) && !/\bAmount\b/.test(tokenCard.textContent),
     tokenCard?.textContent?.slice(0, 240));
   ok('the send review states the outgoing value and labels an unmeasured fee honestly',
     /\u22121 SMK/.test(tokenCard?.textContent || '')
-      && /Not quoted/.test(tokenCard?.textContent || '')
-      && /Thru token program/.test(tokenCard?.textContent || '')
+      && /not confirmed \(paid in THRU\)/.test(tokenCard?.textContent || '')
       && tokenCard?.querySelector('.tx-review-details')?.classList.contains('hidden') === true,
     tokenCard?.textContent?.slice(0, 240));
 
@@ -4808,7 +4809,7 @@ async function faucetReviewTest() {
       && !chromeLog.calls.includes('tx.claimFaucet'),
     JSON.stringify(prepared.map((p) => [p.kind, p.params])));
   ok('the review sheet renders the canonical card, not a bespoke confirm list',
-    Boolean(DOC.querySelector('.tx-review-card')) && /Claim from faucet|Claim THRU/i.test(
+    Boolean(DOC.querySelector('.tx-review-card')) && /Claim .* from the faucet/i.test(
       DOC.querySelector('.tx-review-card')?.textContent || ''),
     DOC.querySelector('.tx-review-card')?.textContent?.slice(0, 160));
 
@@ -4819,22 +4820,32 @@ async function faucetReviewTest() {
   ok('the card states the incoming value with an exact, signed amount',
     /\+0\.00001 THRU/.test(cardEl?.textContent || ''),
     cardEl?.textContent?.slice(0, 200));
-  ok('the card carries one fact table and no stacked sections',
-    cardEl?.querySelectorAll('.detail-table').length === 1
-      && cardEl?.querySelectorAll('.tx-review-section').length === 0);
+  // A faucet claim has no non-money facts, so it renders exactly one table: the money.
+  // v1.5.0 splits the tables: money first (you receive / network fee), then the operation's
+  // non-money facts (the faucet's remaining allowance). Never a third, never stacked sections.
+  ok('the card carries the money table plus at most one facts table, and no stacked sections',
+    cardEl?.querySelectorAll('.detail-table').length >= 1
+      && cardEl?.querySelectorAll('.detail-table').length <= 2
+      && cardEl?.querySelectorAll('.tx-review-section').length === 0
+      && /You receive/.test(cardEl.querySelector('.detail-table').textContent),
+    `${cardEl?.querySelectorAll('.detail-table').length} tables`);
   ok('the technical detail starts folded for a decoded review',
     cardEl?.querySelector('.tx-review-details')?.classList.contains('hidden') === true);
   const advancedToggle = [...(cardEl?.querySelectorAll('button') || [])]
-    .find((btn) => btn.textContent === 'Advanced details');
+    .find((btn) => btn.textContent === 'Details');
   click(advancedToggle);
   await settle();
-  ok('opening the disclosure shows the program, the fee note and the simulation status',
+  // The fee note is only a fee note when a fee was actually reported; when the faucet path
+  // reports none, Details must carry that refusal instead of a number. Both are honest, so the
+  // assertion accepts either and still requires the balance caveat next to them.
+  ok('opening the disclosure shows the program, the fee basis and the simulation status',
     prepared.length === 1
       && !cardEl.querySelector('.tx-review-details').classList.contains('hidden')
       && /Program/.test(cardEl.querySelector('.tx-review-details').textContent)
-      && /reported in Activity/.test(cardEl.querySelector('.tx-review-details').textContent)
+      && /(Activity|does not report a charged fee)/.test(cardEl.querySelector('.tx-review-details').textContent)
+      && /balance afterwards is not shown/.test(cardEl.querySelector('.tx-review-details').textContent)
       && /Simulation/.test(cardEl.querySelector('.tx-review-details').textContent)
-      && advancedToggle.textContent === 'Hide advanced details',
+      && advancedToggle.textContent === 'Hide details',
     JSON.stringify({
       prepared: prepared.length,
       hidden: cardEl.querySelector('.tx-review-details').classList.contains('hidden'),
@@ -4989,12 +5000,14 @@ async function ownRecipientRegistrationTest() {
         && activeAccount().address === ADDRESS_A);
     click(buttons(route.el, /^review$/i)[0]);
     await settle();
-    const toRow = [...route.el.querySelectorAll('.detail-row')]
-      .find((node) => textOf(node).startsWith('To'));
-    ok('review shows the own-account label ABOVE the FULL address',
+    // v1.5.0: the counterparty line prints "To <label>" with the shortened address beside it,
+    // and the whole address is one tap away plus always in Details. The label-before-address
+    // ordering (the point of the original assertion) is preserved on that line.
+    const toRow = route.el.querySelector('.tx-review-counterparty');
+    ok('review shows the own-account label with the address behind it',
       Boolean(toRow) && /Spending/.test(textOf(toRow))
-        && textOf(toRow).includes(ADDRESS_B)
-        && textOf(toRow).indexOf('Spending') < textOf(toRow).indexOf(ADDRESS_B),
+        && textOf(toRow).indexOf('Spending') < textOf(toRow).indexOf('ta')
+        && textOf(route.el).includes(ADDRESS_B),
       textOf(toRow).slice(0, 190));
 
     click(buttons(route.el, /^edit$/i)[0]);
@@ -5010,12 +5023,11 @@ async function ownRecipientRegistrationTest() {
     await settle();
     click(buttons(route.el, /^review$/i)[0]);
     await settle();
-    const contactRow = [...route.el.querySelectorAll('.detail-row')]
-      .find((node) => textOf(node).startsWith('To'));
-    ok('a saved contact also shows its name above the full destination address',
+    const contactRow = route.el.querySelector('.tx-review-counterparty');
+    ok('a saved contact also shows its name with the full destination address available',
       Boolean(contactRow) && textOf(contactRow).includes('Coffee shop')
-        && textOf(contactRow).includes(contact)
-        && textOf(contactRow).indexOf('Coffee shop') < textOf(contactRow).indexOf(contact));
+        && textOf(contactRow).indexOf('Coffee shop') < textOf(contactRow).indexOf('ta')
+        && textOf(route.el).includes(contact));
 
     click(buttons(route.el, /^edit$/i)[0]);
     type(route.el.querySelector('input[placeholder="ta…"]'), ADDRESS_B);
@@ -5443,10 +5455,13 @@ async function nameReviewTest() {
     let sheet = await review();
     ok('review is a body-level modal, never part of the route layout',
       sheet?.getAttribute('role') === 'dialog' && !isInside(sheet, route.el));
-    ok('review shows exact cost, term, account and network',
-      /alice.thru/.test(textOf(sheet)) && /2 years/.test(textOf(sheet))
-      && /0\.000002 THRU/.test(textOf(sheet)) && textOf(sheet).includes(ADDRESS_A)
-      && textOf(sheet).includes(activeNetwork().label));
+    // v1.5.0: the custom registrar's fee is not collected, so the card promises no price and
+    // says so; the term moved into the title, and the network is named once in the context line.
+    ok('review shows the name, term, account and network',
+      /alice\.thru/.test(textOf(sheet)) && /2 years/.test(textOf(sheet))
+      && /No registration fee/.test(textOf(sheet)) && textOf(sheet).includes(ADDRESS_A)
+      && textOf(sheet).includes(activeNetwork().label),
+      textOf(sheet).slice(0, 240));
     const oldConfirm = buttons(sheet, /confirm and sign/i)[0];
     pressKey(DOC.activeElement, 'Escape');
     await settle();

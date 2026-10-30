@@ -190,6 +190,18 @@ export function assertReviewContent(content, path = 'content') {
       bad(`${path}.protocol.address`, 'must be present when protocol.verified is true');
     }
     optionalString(protocol.source, `${path}.protocol.source`, { max: MAX_TEXT });
+    // A plain-language line about who runs the program, shown only in Details (v1.5 review UI).
+    // The wallet's own registrar is the case that motivated it: "Unverified program" on a
+    // program the wallet itself deploys tells the user nothing they can act on.
+    optionalString(protocol.trustNote, `${path}.protocol.trustNote`, { max: MAX_TEXT });
+  }
+
+  // Who the transaction is with, when there is one. Optional because a domain registration has
+  // no counterparty; when present it gets its own line above the money rather than a table row.
+  if (content.counterparty != null) {
+    const counterparty = requireObject(content.counterparty, `${path}.counterparty`);
+    requireString(counterparty.address, `${path}.counterparty.address`, { max: 128 });
+    optionalString(counterparty.label, `${path}.counterparty.label`, { max: 64 });
   }
 
   requireArray(content.summary, `${path}.summary`).forEach((row, index) => {

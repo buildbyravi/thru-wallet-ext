@@ -214,8 +214,12 @@ console.log('[1] decoders: exact amounts, honest warnings');
   ok('a clean native send decodes with no warnings and a decoded state',
     content.warnings.length === 0 && content.operation.decode === 'decoded');
   ok('the outgoing amount is the exact base-unit string', content.assets.outgoing[0].amountUnits === '100000000');
-  ok('the recipient address is shown in full, never only a nickname',
-    content.summary.some((row) => row.value === RECIPIENT));
+  // The card shows a shortened address on the counterparty line and the whole one behind it,
+  // so the assertion is about the DATA carrying the full address, in the place the card reads
+  // it from, plus the account table that always prints it in full.
+  ok('the recipient address is carried in full, never only a nickname',
+    content.counterparty?.address === RECIPIENT
+      && content.execution.accounts.some((account) => account.address === RECIPIENT));
   ok('no post-transaction balance is fabricated', content.assets.balanceAfter === null);
   ok('the fee keeps its provenance', content.assets.fee.source === 'measured');
   ok('the state stays ready', model.stateFromWarnings(content.warnings) === 'ready');
@@ -257,9 +261,12 @@ console.log('[2] decoders: token transfers');
 {
   const content = decode('token-transfer', tokenFacts());
   model.assertReviewContent(content);
-  ok('a token transfer shows the mint, ticker and exact amount',
-    content.summary.some((row) => row.value === MINT)
-      && content.assets.outgoing[0].symbol === 'SMK');
+  // The mint is a fact about the token, not about this transfer: it moved from a table row to
+  // the outgoing asset (which carries it in Details) and the ticker stays in the title.
+  ok('a token transfer carries the mint, ticker and exact amount',
+    content.assets.outgoing[0].mintAddress === MINT
+      && content.assets.outgoing[0].symbol === 'SMK'
+      && content.assets.outgoing[0].amountUnits === '1000000');
 
   const firstTime = decode('token-transfer', tokenFacts({
     recipientTokenAccount: { address: asAddress(6), exists: false },
@@ -304,15 +311,21 @@ console.log('[2b] the name a recipient was resolved from reaches the review');
   // Audit D-2 (2026-10-28): the Send route learned to resolve `alice.thru` to an address and
   // passed the name into tx.prepareReview, and both send kinds threw it away — so the card
   // showed a bare address the user could not connect to what they typed.
+  // The name and the exact address now travel together in `counterparty` (v1.5 card): the card
+  // prints the name with the shortened address beside it and the whole address behind a tap.
   const named = decode('native-send', nativeFacts({ recipientLabel: 'alice.thru' }));
-  const to = named.summary.find((row) => row.label === 'To');
-  ok('a name-resolved native send shows the name above the exact address',
-    to?.above === 'alice.thru' && to?.value === RECIPIENT, JSON.stringify(to));
+  ok('a name-resolved native send carries the name AND the exact address',
+    named.counterparty?.label === 'alice.thru' && named.counterparty?.address === RECIPIENT,
+    JSON.stringify(named.counterparty));
 
   const namedToken = decode('token-transfer', tokenFacts({ recipientLabel: 'alice.thru' }));
-  const toToken = namedToken.summary.find((row) => row.label === 'To');
-  ok('a name-resolved token transfer shows the name above the exact address',
-    toToken?.above === 'alice.thru' && toToken?.value === RECIPIENT);
+  ok('a name-resolved token transfer carries the name AND the exact address',
+    namedToken.counterparty?.label === 'alice.thru' && namedToken.counterparty?.address === RECIPIENT);
+
+  // Negative control: no label means no invented one.
+  const unnamed = decode('native-send', nativeFacts({ recipientLabel: null }));
+  ok('without a name the counterparty carries the address alone',
+    unnamed.counterparty?.address === RECIPIENT && unnamed.counterparty?.label === undefined);
 
   // The decoder rendering it is only half the path; the background is what drops a param.
   const kindsSource = readFileSync(new URL('../src/background/services/review/kinds.js', import.meta.url), 'utf8');
@@ -326,9 +339,19 @@ console.log('[3] decoders: domain writes');
 {
   const register = decode('domain-register', domainFacts());
   model.assertReviewContent(register);
-  ok('registration quotes the chain-read price and totals exactly',
-    register.summary.some((row) => row.label === 'Total charge' && row.value === '0.000002 THRU')
-      && register.assets.outgoing[0].amountUnits === '2000');
+  // v1.5.0 (owner directive, Part 2.2): the custom registrar's fee is NOT collected by the
+  // deployed program, so the card promises no charge at all. The old assertion required a
+  // "Total charge" row and an outgoing THRU movement — exactly the promise that is not kept.
+  ok('a custom-registration card promises no registration fee',
+    register.assets.outgoing.length === 0
+      && !register.summary.some((row) => /total/i.test(row.label))
+      && /No registration fee/.test(register.operation.summary),
+    JSON.stringify({ rows: register.summary, out: register.assets.outgoing }));
+  ok('the title carries the name and the duration', register.operation.name === 'Register alice.thru for 2 years',
+    register.operation.name);
+  ok('the registrar is named in Details without a repository path',
+    /Thru Wallet team/.test(register.protocol.trustNote || '')
+      && !/src\/|docs\//.test(JSON.stringify(register)));
 
   const taken = decode('domain-register', domainFacts({ availability: { state: 'taken', readError: null } }));
   ok('a taken name blocks signing', model.stateFromWarnings(taken.warnings) === 'blocked');
@@ -337,8 +360,12 @@ console.log('[3] decoders: domain writes');
   ok('an unverifiable name blocks signing (never defaults to available)',
     model.stateFromWarnings(unknown.warnings) === 'blocked');
 
+  // The deployed custom registrar does not collect its fee, so a low balance is no longer a
+  // proven blocker here. The handler does check it, and the card says so without pricing it.
   const poor = decode('domain-register', domainFacts({ nativeBalanceUnits: '1' }));
-  ok('an unaffordable registration fee blocks signing', warningIds(poor).includes('insufficient-native'));
+  ok('a low balance is disclosed without inventing a fee that is not charged',
+    warningIds(poor).includes('registrar-balance-check')
+      && model.stateFromWarnings(poor.warnings) === 'ready');
 
   const purchase = decode('domain-purchase', paidFacts({ treasury: asAddress(17) }));
   ok('a purchase pays in the registry token with its own scale',
@@ -355,7 +382,7 @@ console.log('[3] decoders: domain writes');
   const renew = decode('domain-renew', paidFacts({ instruction: { name: 'Renew lease', opcode: 2 } }));
   ok('a renewal does not invent the new expiry',
     renew.summary.some((row) => row.label === 'New expiry'
-      && /not computed here/.test(row.value)));
+      && /after the network confirms/.test(row.value)), JSON.stringify(renew.summary));
 
   // Audit D-1 (2026-10-28): the custom-registrar renewal had no decoder branch, so it fell
   // through to the registry rows and printed "2000 TOKEN" for 2,000 base units of THRU; the
@@ -369,23 +396,23 @@ console.log('[3] decoders: domain writes');
   };
   const customRenew = decode('domain-renew', customRenewFacts);
   model.assertReviewContent(customRenew);
-  ok('a custom-registrar renewal prices in native THRU, never the registry token',
-    customRenew.assets.outgoing[0].symbol === 'THRU'
-      && customRenew.assets.outgoing[0].decimals === 9
-      && customRenew.summary.some((row) => row.label === 'Total charge' && row.value === '0.000002 THRU')
-      && !customRenew.summary.some((row) => /TOKEN/.test(row.value)),
-    JSON.stringify(customRenew.summary));
+  // Part 2.2: no price, no "you pay" row, and no "best-effort" hedge for a fee the deployed
+  // program never collects. The renewal says the same things a registration does.
+  ok('a custom-registrar renewal promises no fee and names no token',
+    customRenew.assets.outgoing.length === 0
+      && !/TOKEN|THRU fee/.test(JSON.stringify(customRenew.summary))
+      && /No registration fee/.test(customRenew.operation.summary),
+    JSON.stringify({ out: customRenew.assets.outgoing, rows: customRenew.summary }));
   ok('a custom-registrar renewal names the custom registrar, not the paid registry',
     customRenew.protocol.name === 'Custom `.thru` registrar' && customRenew.protocol.verified === true,
     customRenew.protocol.name);
-  ok('a custom-registrar renewal states that the debit is best-effort',
-    warningIds(customRenew).includes('quote-not-final')
-      && /best-effort/.test(customRenew.assets.outgoing[0].note || ''));
+  ok('a custom-registrar renewal replaces the old best-effort hedge with a plain statement',
+    !warningIds(customRenew).includes('quote-not-final'));
 
   const poorRenew = decode('domain-renew', { ...customRenewFacts, nativeBalanceUnits: '1' });
-  ok('a custom-registrar renewal the account cannot pay for blocks signing',
-    model.stateFromWarnings(poorRenew.warnings) === 'blocked'
-      && warningIds(poorRenew).includes('insufficient-native'));
+  ok('a custom-registrar renewal with a low balance informs instead of inventing a debt',
+    model.stateFromWarnings(poorRenew.warnings) === 'ready'
+      && warningIds(poorRenew).includes('registrar-balance-check'));
 
   // A decoder must survive facts a different provider would produce: the ReferenceError above
   // was inside a branch no test had ever executed, and it shipped.
@@ -501,7 +528,7 @@ console.log('[4] decoders: faucet claims and raw transactions');
   });
   ok('an undecodable transaction is labelled unknown, not given a friendly name',
     raw.operation.decode === 'unknown'
-      && raw.operation.name === 'Unrecognized transaction'
+      && raw.operation.name === 'Unrecognised transaction'
       && raw.operation.confirmLabel === null);
   ok('an undecodable transaction blocks and cannot claim safety',
     model.stateFromWarnings(raw.warnings) === 'blocked'
@@ -967,22 +994,30 @@ console.log('[15] the review fits one screen (owner review, 2026-10-28)');
   // not screenshots — this repository has no browser engine in CI.
   const cardSource = readFileSync(new URL('../src/ui/domain/tx-review/review-card.js', import.meta.url), 'utf8');
   const callCount = (source, name) => (source.match(new RegExp(`\\b${name}\\(`, 'g')) || []).length;
-  ok('the card renders exactly one label/value table', callCount(cardSource, 'detailTable') === 2,
-    `${callCount(cardSource, 'detailTable')} sites (definition + one call expected)`);
+  // v1.5.0 split the single table in two on purpose: money (at most three rows: you pay, the
+  // network fee, the total) and the operation's own non-money facts (expiry, previous owner).
+  // Mixing a date between "you pay" and "network fee" was what made the domain card unreadable.
+  ok('the card renders exactly two label/value tables — money, then non-money facts',
+    callCount(cardSource, 'detailTable') === 3,
+    `${callCount(cardSource, 'detailTable')} sites (definition + two calls expected)`);
   // Two disclosure buttons exist by construction: the advanced panel and, inside it, the raw
   // bytes. Never a third top-level section.
-  ok('the card keeps exactly one advanced disclosure plus the raw toggle',
+  ok('the card keeps exactly one details disclosure plus the raw toggle',
     (cardSource.match(/class: 'tx-review-disclosure-toggle'/g) || []).length === 2
-      && cardSource.includes("'Advanced details'")
-      && cardSource.includes("'Hide advanced details'"));
+      && cardSource.includes("'Details'")
+      && cardSource.includes("'Hide details'"));
   ok('the stacked section wrappers are gone', !cardSource.includes('tx-review-section')
     && !cardSource.includes('tx-review-protocol') && !cardSource.includes("'Balance after'"));
-  ok('the card marks a fee quote as an estimate', cardSource.includes("(estimated)"));
+  // Part 1 copy rules: the hedge is the word "about", never a "(estimated)" suffix (and never
+  // the word "estimate" in the label position the directive called out).
+  ok('a quoted fee is hedged with "about", never "(estimated)"',
+    cardSource.includes('`about ${amountText') && !cardSource.includes('(estimated)'));
   // `.detail-address` ellipsizes; a review address must wrap so the user can read all of it.
   ok('no review address is rendered with the ellipsizing class',
     cardSource.includes("'mono tx-review-address'") && !cardSource.includes("'mono detail-address'"));
   ok('an unknown transaction opens its details instead of folding them',
-    /String\(!known\)/.test(cardSource) && /known \? 'hidden' : null/.test(cardSource));
+    /const openByDefault = !known/.test(cardSource)
+      && /openByDefault \? null : 'hidden'/.test(cardSource));
 
   // One table per operation, with a budget chosen from what the operation actually needs.
   // A decoder that starts appending "Network", "Program", "Registrar"… rows again fails here.

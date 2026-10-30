@@ -73,8 +73,8 @@ export function decodeDomainRecord({ facts }) {
   return {
     operation: {
       id: DOMAIN_RECORD_KIND,
-      name: 'Add domain record',
-      summary: `Append a '${facts.key}' record to '${facts.name}.${facts.tld}'.`,
+      name: `Add a ${facts.key} record to ${facts.name}.${facts.tld}`,
+      summary: 'The name service adds records. An existing value with this key stays on the account.',
       confirmLabel: 'Confirm and sign',
       decode: 'decoded',
     },
@@ -100,7 +100,7 @@ export function decodeDomainRecord({ facts }) {
         note: 'Name service record operations declare a 0 network fee in the transaction header.',
       }),
       balanceAfter: null,
-      balanceAfterNote: 'Thru has no verified dry-run, so no post-transaction balance is shown.',
+      balanceAfterNote: 'This network cannot preview a transaction, so the balance afterwards is not shown.',
     },
     warnings,
     acknowledgements: [],

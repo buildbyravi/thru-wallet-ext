@@ -271,7 +271,8 @@ console.log('[4] domainRecordFacts: existence and ownership are three-state');
   // The card must not present APPEND opcode 2 as a replace, and must block on unknown.
   const card = decodeReview('domain-record', { network: { id: NET, label: 'Betanet', environment: 'testnet' },
     account: { address: ME, label: 'Main' }, facts: diff });
-  ok(card.operation.name === 'Add domain record', 'the operation says ADD, not SET');
+  ok(/^Add a .* record to /.test(card.operation.name), 'the operation says ADD, not SET',
+    card.operation.name);
   ok(card.warnings.some((w) => w.id === 'record-appends' && !w.blocking),
     'an existing key raises the append notice without blocking');
 

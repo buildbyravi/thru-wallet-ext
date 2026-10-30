@@ -16,7 +16,7 @@
 //      false means the symbol/decimals shown are not chain truth.
 
 import {
-  displayAmount, movement, row, warn, acknowledgement, feeBlock, instruction, accountRole,
+  displayAmount, movement, warn, acknowledgement, feeBlock, instruction, accountRole,
   executionBlock,
 } from './common.js';
 
@@ -113,17 +113,10 @@ export function decodeTokenTransfer({ facts }) {
     acknowledgements.push(acknowledgement('duplicate-transfer', 'I want to send this duplicate transfer anyway'));
   }
 
-  const summary = [
-    row('From', facts.fromAddress, { above: facts.fromLabel ?? null, mono: true }),
-    row('To', facts.toAddress, { above: facts.recipientLabel ?? null, mono: true }),
-    row('Amount', displayAmount(facts.amountUnits, decimals, symbol), { mono: true }),
-    // No "Token" row: the title says "Send SMK" and the value box already names the asset. The
-    // mint address stays because it is the only unambiguous identity of a token on Thru.
-    row('Mint', facts.mintAddress, { mono: true }),
-  ];
-  if (createsRecipientAccount) {
-    summary.push(row('Recipient token account', 'Created by this send (extra fee)'));
-  }
+  // Money lives in `assets`; the title carries the amount; the recipient gets their own line.
+  // The mint address used to sit here as the only unambiguous identity of the token, which is a
+  // fact about the token, not about this transaction — it is in Details with the accounts.
+  const summary = [];
 
   const accounts = [
     accountRole('Source owner', facts.fromAddress),
@@ -142,8 +135,8 @@ export function decodeTokenTransfer({ facts }) {
   return {
     operation: {
       id: TOKEN_TRANSFER_KIND,
-      name: `Send ${symbol}`,
-      summary: `Send ${displayAmount(facts.amountUnits, decimals, symbol)} to the recipient below.`,
+      name: `Send ${displayAmount(facts.amountUnits, decimals, symbol)}`,
+      summary: '',
       confirmLabel: 'Sign & send',
       decode: 'decoded',
     },
@@ -151,10 +144,8 @@ export function decodeTokenTransfer({ facts }) {
       name: 'Thru token program',
       address: tokenProgramId,
       verified: Boolean(tokenProgramId),
-      source: tokenProgramId
-        ? 'Pinned program address for the active network (src/lib/networks.js)'
-        : 'No pinned token-program address for the active network',
     },
+    counterparty: { address: facts.toAddress, ...(facts.recipientLabel ? { label: facts.recipientLabel } : {}) },
     summary,
     assets: {
       outgoing: [movement({
@@ -175,11 +166,11 @@ export function decodeTokenTransfer({ facts }) {
         reserveUnits: facts.fee?.supported ? facts.fee.reserveUnits : null,
         source: facts.fee?.supported ? (facts.fee.source ?? 'unknown') : null,
         note: facts.fee?.supported
-          ? 'Declared network fee for this chain; the charge is reported only after the chain answers.'
-          : (facts.fee?.reason || 'No measured fee exists for token transfers on this network.'),
+          ? 'Set by the network. What was actually charged appears in Activity after confirmation.'
+          : (facts.fee?.reason || 'No fee measurement exists for token transfers on this network.'),
       }),
       balanceAfter: null,
-      balanceAfterNote: 'Thru has no verified dry-run, so no post-transaction balance is shown.',
+      balanceAfterNote: 'This network cannot preview a transaction, so the balance afterwards is not shown.',
     },
     execution: executionBlock({
       program: {
@@ -194,7 +185,7 @@ export function decodeTokenTransfer({ facts }) {
           })]
           : []),
         instruction('Transfer tokens', {
-          note: 'Moves exact base units from your token account to the recipient\'s.',
+          note: 'Moves the exact amount from your token account to the recipient\'s.',
         }),
       ],
       accounts,

@@ -1,0 +1,273 @@
+#!/usr/bin/env node
+// The review card, rendered and read back as text.
+//
+// `test-tx-review.mjs` asserts the CONTENT a decoder produces. This file asserts what the CARD
+// does with it, because the v1.5.0 audit's findings were all about the rendered surface: six
+// header badges before the amount, the same amount three times, two totals on a domain card, a
+// platform caveat on every transaction, full 46-character addresses in the table, "Decoded" next
+// to "(undecoded)", and repository paths in user-visible copy.
+//
+// It renders the real `TxReviewCard` into a small DOM shim (test/fixtures/dom-shim.mjs) and reads
+// the text back. That proves copy, order, counts and wording. It cannot prove layout, wrapping or
+// scrolling — no browser engine exists in this sandbox, and nothing here claims a browser pass.
+
+import { installDom, textLines } from './fixtures/dom-shim.mjs';
+
+installDom();
+
+await import('../src/shared/tx-review/decoders/index.js');
+const { decodeReview } = await import('../src/shared/tx-review/registry.js');
+const { TxReviewCard } = await import('../src/ui/domain/tx-review/review-card.js');
+const model = await import('../src/shared/tx-review/model.js');
+
+let pass = 0;
+let fail = 0;
+function ok(cond, msg, detail = '') {
+  if (cond) { pass += 1; console.log(`  ok - ${msg}`); } else {
+    fail += 1;
+    console.error(`  FAIL - ${msg}${detail ? `\n         ${detail}` : ''}`);
+  }
+}
+
+const NETWORK = { id: 'betanet', label: 'Betanet', environment: 'testnet', isTestnet: true };
+const ACCOUNT = { address: 'taAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEg', label: 'Main account' };
+const RECIPIENT = 'ta3vGKMRuvOar_THzkfdEMsYx9Hxm1pU1fT_N3hhCGzLiN';
+const THRU_PROGRAM = 'taThruTransferProgramAddress11111111111111111';
+const MINT = 'taMintAccountAddressForTheToken11111111111111111';
+
+const reviewFor = (kind, facts) => ({
+  reviewId: 'betanet_r_card', kind, networkId: 'betanet', accountAddress: ACCOUNT.address,
+  bindingHash: 'binding', state: 'ready', preparedAt: Date.now(), expiresAt: Date.now() + 120_000,
+  submitPolicy: { method: 'tx.sendChecked', auth: 'signing', passwordRequired: false },
+  simulation: { status: 'unavailable', reason: '', provenance: 'tx.simulate' },
+  network: NETWORK,
+  account: ACCOUNT,
+  ...(() => {
+    const content = decodeReview(kind, { network: NETWORK, account: ACCOUNT, facts });
+    // The background computes `state` from the warnings; the card only reads it. Reproduce that
+    // here rather than hard-coding "ready", or a blocked card would look confirmable in the test.
+    return { ...content, state: model.stateFromWarnings(content.warnings) };
+  })(),
+});
+
+/** Everything a user can read without tapping: hidden subtrees are excluded. */
+function visibleLines(node, out = []) {
+  if (node.classList?.contains('hidden')) return out;
+  if (node._text != null && node._text.trim() !== '') out.push(node._text.trim());
+  for (const child of node.childNodes || []) visibleLines(child, out);
+  return out;
+}
+
+const card = (kind, facts) => TxReviewCard({ review: reviewFor(kind, facts) });
+const once = (lines, text) => lines.filter((line) => line === text).length;
+
+const sendFacts = {
+  fromAddress: ACCOUNT.address,
+  fromLabel: 'Main account',
+  toAddress: RECIPIENT,
+  recipientLabel: null,
+  amountUnits: '1500000',
+  recipient: { exists: true },
+  balanceUnits: '50000000',
+  fee: { supported: true, feeUnits: '1000', reserveUnits: '0', source: 'measured' },
+  duplicate: null,
+  transferProgramId: THRU_PROGRAM,
+};
+
+console.log('[1] a decoded send: title, context, counterparty, then three money rows');
+{
+  const lines = visibleLines(card('native-send', sendFacts).el);
+  ok(lines[0] === 'Send 0.0015 THRU', 'the title is the verb and the amount', lines[0]);
+  ok(lines[1] === 'Main account · Betanet test network',
+    'the second line is the account and the network, said once', lines[1]);
+  ok(!lines.some((line) => /^(Testnet|Decoded|Verified program)$/.test(line)),
+    'no Testnet / Decoded / Verified-program badges');
+  ok(lines.includes('To Main account') || lines.some((line) => line.startsWith('To ')),
+    'the counterparty gets its own line');
+  ok(!lines.includes('Transaction'), 'the word "Transaction" is not a heading');
+  ok(!lines.some((line) => line === 'From'), 'no From row repeating the signing account');
+  ok(lines.includes('You pay') && lines.includes('Network fee') && lines.includes('Total'),
+    'money rows are You pay / Network fee / Total');
+  ok(once(lines, 'Total') === 1, 'exactly one total', `${once(lines, 'Total')}`);
+  ok(lines.includes('about 0.000001 THRU'), 'the fee is hedged with "about"', JSON.stringify(lines));
+  ok(!lines.some((line) => /estimated/i.test(line)), 'no "(estimated)" suffix');
+  ok(!lines.includes('You receive'), 'an outgoing-only send shows no incoming row');
+  // The amount appears in the title and in "You pay"; a third copy is the defect.
+  ok(once(lines, '−0.0015 THRU') === 1, 'the outgoing amount appears exactly once as an amount');
+}
+
+console.log('[2] the full address is one tap away, never in the table');
+{
+  const c = card('native-send', sendFacts);
+  const visible = visibleLines(c.el);
+  ok(!visible.some((line) => line.includes(RECIPIENT)),
+    'the 46-character address is not printed in the open card');
+  // Details always carries the whole address, so it is never unavailable.
+  ok(c.el.textContent.includes(RECIPIENT), 'the whole address is still present in the card');
+  const toggle = c.el.querySelector('.tx-review-counterparty-main');
+  ok(toggle !== null, 'the counterparty line is tappable');
+  toggle.click();
+  ok(visibleLines(c.el).some((line) => line.includes(RECIPIENT)),
+    'tapping it reveals the full address');
+}
+
+console.log('[3] a token send: the fee is named in the right currency');
+{
+  const lines = visibleLines(card('token-transfer', {
+    fromAddress: ACCOUNT.address,
+    toAddress: RECIPIENT,
+    amountUnits: '25000000000',
+    symbol: 'LAB',
+    decimals: 9,
+    name: 'Lab token',
+    mintAddress: MINT,
+    metadataVerified: true,
+    recipient: { exists: true },
+    sourceTokenAccount: { address: 'taSourceTokenAccount11111111111111111111111111', exists: true },
+    recipientTokenAccount: { address: 'taDestTokenAccount11111111111111111111111111111', exists: true },
+    balanceUnits: '90000000000',
+    fee: { supported: false, reason: 'No fee measurement exists for token transfers.' },
+    duplicate: null,
+    tokenProgramId: 'taTokenProgram1111111111111111111111111111111',
+  }).el);
+  ok(lines[0] === 'Send 25 LAB', 'the title carries the token amount', lines[0]);
+  ok(lines.includes('You pay') && lines.includes('−25 LAB'), 'the exact token amount leaves');
+  ok(lines.includes('not confirmed (paid in THRU)'),
+    'an unmeasured token fee says which currency it is paid in', JSON.stringify(lines));
+  ok(!lines.includes('Total'), 'no total is invented from a fee that was never quoted');
+}
+
+console.log('[4] a faucet claim: what arrives, and the rate limit');
+{
+  const lines = visibleLines(card('faucet-claim', {
+    fromAddress: ACCOUNT.address,
+    fromLabel: 'Main account',
+    amountUnits: '500000000',
+    capUnits: '500000000',
+    fee: { supported: true, feeUnits: '1000', reserveUnits: '0', source: 'measured' },
+    programAddress: 'taFaucetProgram111111111111111111111111111111',
+    networkLabel: 'Betanet',
+    accountExists: true,
+    limit: { supported: true, remainingAmount: '500000000', rule: { windowLabel: '24h' } },
+  }).el);
+  ok(lines[0] === 'Claim 0.5 THRU from the faucet', 'the title says what arrives', lines[0]);
+  ok(lines.includes('You receive') && lines.includes('+0.5 THRU'), 'the incoming amount is signed');
+  ok(!lines.includes('You pay'), 'a faucet claim has nothing to pay');
+}
+
+console.log('[5] domain cards: no invented price, one total at most');
+{
+  const register = visibleLines(card('domain-register', {
+    fromAddress: ACCOUNT.address,
+    name: 'vault',
+    tld: 'thru',
+    years: 2,
+    pricePerYear: '1000',
+    totalPriceUnits: '2000',
+    configAddress: 'taRegistrarConfig111111111111111111111111111111',
+    treasury: 'taTreasury11111111111111111111111111111111111',
+    nativeBalanceUnits: '5000000',
+    availability: { state: 'available' },
+    feeReserveUnits: '0',
+    instruction: { name: 'Register domain', opcode: 7 },
+    program: { name: 'Thru custom registrar', address: 'taRegistrarProgram1111111111111111111111111111', verified: true },
+  }).el);
+  ok(register[0] === 'Register vault.thru for 2 years', 'the title carries the name and duration', register[0]);
+  ok(register.includes('No registration fee on the test registrar. You pay only the network fee.'),
+    'the card states the fee rule in one sentence');
+  ok(!register.some((line) => /^(Total charge|Total price|Price per year)$/.test(line)),
+    'no registrar price and no second total');
+  ok(register.includes('Network fee') && register.includes('none'),
+    'the only money row is the network fee, and it is declared zero');
+  ok(!register.some((line) => /best-effort|base units|declared/i.test(line)),
+    'no "best-effort" / "base units" / "declared" in the card', JSON.stringify(register));
+}
+
+console.log('[6] an unrecognised transaction is explicit, and cannot be signed');
+{
+  const c = TxReviewCard({
+    review: {
+      ...reviewFor('raw', { programAddress: 'taUnknownProgram1111111111111111111111111111111', dataHex: 'deadbeef' }),
+      submitPolicy: null,
+    },
+  });
+  const lines = visibleLines(c.el);
+  ok(lines[0] === 'Unrecognised transaction', 'the title says it is unrecognised', lines[0]);
+  ok(lines.some((line) => /cannot tell what this does/.test(line)), 'the card says it cannot tell');
+  ok(lines.some((line) => /Do not approve it unless you started it/.test(line)),
+    'the blocking warning gives the rule');
+  ok(!lines.includes('Total') && !lines.includes('You pay'), 'no money rows are invented');
+  ok(c.canConfirm() === false, 'confirming is impossible');
+}
+
+console.log('[7] the forbidden vocabulary, scanned over every rendered card');
+{
+  // The rule from the directive: no file path, file name, decision-record id, and none of the
+  // internal words that made the old card read like a debug dump. Scanned over RENDERED text for
+  // every kind, so a decoder that grows a new string is covered automatically.
+  const FORBIDDEN = [
+    /src\//, /docs\//, /DECISIONS/, /\.md\b/, /\.js\b/,
+    /provenance/i, /\bdecoded\b/i, /undecoded/i, /\bEOA\b/, /instruction tag/i,
+    /base units/i, /\breserve\b/i, /\bdeclared\b/i, /best-effort/i, /\bbinding\b/i,
+  ];
+  const cards = {
+    'native-send': sendFacts,
+    'domain-register': {
+      fromAddress: ACCOUNT.address, name: 'vault', tld: 'thru', years: 1, pricePerYear: '1000',
+      totalPriceUnits: '1000', nativeBalanceUnits: '5000000', availability: { state: 'available' },
+      feeReserveUnits: '0', program: { name: 'Thru custom registrar', address: 'taReg', verified: true },
+    },
+    'faucet-claim': {
+      fromAddress: ACCOUNT.address, amountUnits: '1000', programAddress: 'taFaucet',
+      fee: { supported: true, feeUnits: '0' }, networkLabel: 'Betanet', accountExists: true,
+    },
+    raw: { programAddress: 'taUnknown', dataHex: '00' },
+  };
+  for (const [kind, facts] of Object.entries(cards)) {
+    const text = visibleLines(card(kind, facts).el).join('\n');
+    const hits = FORBIDDEN.filter((re) => re.test(text)).map(String);
+    ok(hits.length === 0, `${kind}: no forbidden word or path reaches the user`, hits.join(' '));
+  }
+  // The same rule applied to the whole card including Details, minus the program address that
+  // legitimately starts with "ta".
+  const whole = card('native-send', sendFacts).el.textContent;
+  ok(!/src\/|docs\/|DECISIONS/.test(whole), 'no repository path anywhere, including Details');
+}
+
+console.log('[8] the card stays short enough to read on one screen');
+{
+  // The budget is on visible top-level blocks, not on text length: title, context, counterparty,
+  // one money table, warnings (max 2), and the Details toggle.
+  for (const [kind, facts] of Object.entries({
+    'native-send': sendFacts,
+    'domain-register': {
+      fromAddress: ACCOUNT.address, name: 'vault', tld: 'thru', years: 1, totalPriceUnits: '1000',
+      nativeBalanceUnits: '5000000', availability: { state: 'available' }, feeReserveUnits: '0',
+      program: { name: 'Thru custom registrar', address: 'taReg', verified: true },
+    },
+    'faucet-claim': {
+      fromAddress: ACCOUNT.address, amountUnits: '1000', programAddress: 'taFaucet',
+      fee: { supported: true, feeUnits: '0' }, networkLabel: 'Betanet', accountExists: true,
+    },
+  })) {
+    const c = card(kind, facts);
+    const blocks = c.el.children.filter((child) => !child.classList.contains('hidden'));
+    ok(blocks.length <= 10, `${kind}: the open card has at most ten blocks`, `${blocks.length}`);
+    const warnings = c.review.warnings;
+    const shown = blocks.filter((block) => block.querySelector('.risk-copy') !== null).length;
+    ok(shown <= 2, `${kind}: at most two warnings on the card`, `${shown} of ${warnings.length}`);
+  }
+}
+
+console.log('[9] the simulation caveat is stated once, in Details');
+{
+  const c = card('native-send', sendFacts);
+  const visible = visibleLines(c.el);
+  ok(!visible.some((line) => /preview a transaction/.test(line)),
+    'the platform caveat is not on the open card');
+  ok(c.el.textContent.includes('This network cannot preview a transaction'),
+    'it is still stated, once, inside Details');
+}
+
+console.log(`\ncard render checks: ${pass} passed, ${fail} failed.`);
+process.exit(fail === 0 ? 0 : 1);
