@@ -168,17 +168,15 @@ export function FaucetRoute({ navigate, back }) {
   function renderForm() {
     clearBody();
 
+    const claimUnits = capUnits > 0n ? capUnits : 10000n;
+    const fixedThru = formatThru(claimUnits);
+
     const amount = track(Field({
-      label: 'Amount in base units',
+      label: 'Claim amount',
       type: 'text',
-      inputMode: 'numeric',
-      value: capUnits.toString(),
-      // Explicit about the unit, because Send takes whole THRU and this takes base units. That
-      // difference is the single most confusing thing in the wallet, and it is now verified:
-      // claiming 10000 credits exactly 10000 base units.
-      hint: `Whole numbers only, up to ${capUnits} base units per claim `
-        + `(${formatThru(capUnits)} THRU). This field is NOT in THRU.`,
-      onInput: () => amount.setError(''),
+      readonly: true,
+      value: `${fixedThru} THRU`,
+      hint: `Fixed claim of ${fixedThru} THRU per request. Claiming is free and does not need a balance.`,
     }));
 
     const claimBtn = track(Button({
@@ -186,7 +184,7 @@ export function FaucetRoute({ navigate, back }) {
       variant: 'primary',
       iconName: 'faucet',
       busyLabel: 'Claiming…',
-      onClick: () => claim(amount, claimBtn),
+      onClick: () => claim(claimUnits, claimBtn),
     }));
     claimBtnEl = claimBtn;
 
@@ -227,31 +225,28 @@ export function FaucetRoute({ navigate, back }) {
   let destroyed = false;
   let reviewSheet = null;
 
-  async function claim(amountField, claimBtn) {
+  async function claim(amountOrUnits, claimBtn) {
     if (claiming || submitting || reviewSheet) return;
     claiming = true;
     claimBtn?.update({ disabled: true });
     banner.clear();
-    const raw = amountField.value.trim();
 
-    // Integer-only, compared as BigInt against a BigInt cap. The legacy screen mixed parseInt
-    // with Number(cap) comparisons.
-    let units = null;
-    const reject = (message) => {
-      amountField.setError(message);
+    const units = typeof amountOrUnits === 'bigint'
+      ? amountOrUnits
+      : (typeof amountOrUnits === 'object' && amountOrUnits?.value
+        ? (capUnits > 0n ? capUnits : 10000n)
+        : (capUnits > 0n ? capUnits : 10000n));
+
+    if (units <= 0n) {
+      banner.set('Enter an amount greater than zero.');
       claiming = false;
       claimBtn?.update({ disabled: false });
-    };
-    if (!/^\d+$/.test(raw)) { reject('Enter a whole number of base units.'); return; }
-    try {
-      units = BigInt(raw);
-    } catch {
-      reject('Enter a whole number of base units.');
       return;
     }
-    if (units <= 0n) { reject('Enter an amount greater than zero.'); return; }
-    if (units > capUnits) {
-      reject(`The most this faucet gives per claim is ${capUnits} base units.`);
+    if (capUnits > 0n && units > capUnits) {
+      banner.set(`The most this faucet gives per claim is ${formatThru(capUnits)} THRU.`);
+      claiming = false;
+      claimBtn?.update({ disabled: false });
       return;
     }
 
@@ -382,7 +377,7 @@ export function FaucetRoute({ navigate, back }) {
       h('div', { class: 'row-flex' }, [
         icon('check', 16),
         h('strong', { text: delta != null && delta > 0n
-          ? `Received ${delta} base units (${formatThru(delta)} THRU)`
+          ? `Received ${formatThru(delta)} THRU`
           : 'Claim submitted' }),
       ]),
       h('p', { class: 'hint', text: delta != null && delta > 0n
@@ -392,9 +387,8 @@ export function FaucetRoute({ navigate, back }) {
     ]));
 
     if (delta != null && delta !== requested && delta > 0n) {
-      // Worth surfacing: it would mean the unit interpretation is not what we think.
       banner.set(
-        `Asked for ${requested} base units but received ${delta}. Please report this — it would `
+        `Expected ${formatThru(requested)} THRU but received ${formatThru(delta)} THRU. Please report this — it would `
         + 'mean the faucet amount unit differs from what the wallet assumes.',
         'warning',
       );
