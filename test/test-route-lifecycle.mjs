@@ -4963,8 +4963,6 @@ async function faucetReviewTest() {
     prepared.length === 1
       && !cardEl.querySelector('.tx-review-details').classList.contains('hidden')
       && /Program/.test(cardEl.querySelector('.tx-review-details').textContent)
-      && /(Activity|does not report a charged fee)/.test(cardEl.querySelector('.tx-review-details').textContent)
-      && /balance afterwards is not shown/.test(cardEl.querySelector('.tx-review-details').textContent)
       && /Simulation/.test(cardEl.querySelector('.tx-review-details').textContent)
       && advancedToggle.textContent === 'Hide details',
     JSON.stringify({

@@ -294,7 +294,6 @@ export function TxReviewCard({ review, onChange = null } = {}) {
     if (r.protocol?.trustNote) details.push(h('div', { class: 'hint', text: r.protocol.trustNote }));
     for (const instruction of r.execution.instructions) {
       details.push(detailRow('Instruction', instruction.name));
-      if (instruction.note) details.push(h('div', { class: 'hint', text: instruction.note }));
     }
     // The instruction's account list repeats addresses already stated on this card — source is
     // the signer, destination is the counterparty. Printing them again (Source, Destination) is
@@ -304,8 +303,6 @@ export function TxReviewCard({ review, onChange = null } = {}) {
       if (stated.has(account.address)) continue;
       details.push(detailRow(account.role, account.address, { mono: true }));
     }
-    if (fee.note) details.push(h('div', { class: 'hint', text: fee.note }));
-    details.push(h('div', { class: 'hint', text: r.assets.balanceAfterNote }));
     // Four distinct states, four distinct words. "Failed" must never read as "unavailable":
     // it is a blocking fact (the service adds the blocking warning; the card shows the same
     // verdict here so the two surfaces cannot disagree).
@@ -316,10 +313,6 @@ export function TxReviewCard({ review, onChange = null } = {}) {
       unavailable: 'Not available',
     }[simulation.status] || 'Not available';
     details.push(detailRow('Simulation', simulationLabel));
-    details.push(h('div', { class: 'hint', text: simulation.reason
-      || (simulation.status === 'supported'
-        ? 'Reported by the network.'
-        : 'This network cannot preview a transaction, so the wallet shows only what it can prove.') }));
     if (folded.length) {
       details.push(detailRow('Also noted', `${folded.length} more ${folded.length === 1 ? 'note' : 'notes'}`));
       for (const warning of folded) {

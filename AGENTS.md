@@ -258,6 +258,12 @@ is red. Never weaken or skip a test to make it pass.
     is unavailable (`tx.simulate` → `supported:false`), so never render a post-transaction
     balance or a simulated-success state. A review is single-use: a successful confirm discards
     it, so a replay is `REVIEW_NOT_FOUND` (stale), not a second broadcast.
+17. **No repetitive explanatory/disclaimer essays on review screens or in the UI.** State facts
+    cleanly, concisely, and objectively (e.g. `Simulation: Not available`, `Program: Thru transfer program`,
+    `Fee: 0.00000001 THRU`) without patronizing explanations, preaching, or disclaimer essays. Do not insert
+    paragraphs justifying why dry-run is unverified, why post-transaction balance is not shown, that signing
+    is irreversible/fixed, or that actual fees appear in Activity after confirmation. Present verifiable data,
+    not essays.
 
 ## Stop and ask instead of guessing
 

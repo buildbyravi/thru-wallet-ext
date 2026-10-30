@@ -328,14 +328,18 @@ console.log('[8] the card stays short enough to read on one screen');
   }
 }
 
-console.log('[9] the simulation caveat is stated once, in Details');
+console.log('[9] no disclaimer essays in Details');
 {
   const c = card('native-send', sendFacts);
-  const visible = visibleLines(c.el);
-  ok(!visible.some((line) => /preview a transaction/.test(line)),
-    'the platform caveat is not on the open card');
-  ok(c.el.textContent.includes('This network cannot preview a transaction'),
-    'it is still stated, once, inside Details');
+  const text = c.el.textContent;
+  ok(!text.includes('This network cannot preview a transaction'),
+    'balance-after disclaimer essay is removed from Details');
+  ok(!text.includes('Transaction simulation requires a dry-run RPC'),
+    'simulation disclaimer essay is removed from Details');
+  ok(!text.includes('The amount, your account and the recipient are fixed'),
+    'instruction disclaimer essay is removed from Details');
+  ok(!text.includes('Set by the network. What was actually charged'),
+    'fee disclaimer essay is removed from Details');
 }
 
 console.log(`\ncard render checks: ${pass} passed, ${fail} failed.`);

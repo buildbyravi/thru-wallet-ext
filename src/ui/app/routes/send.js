@@ -556,8 +556,17 @@ export function SendRoute({ params, navigate, back }) {
       }
 
       const targetAddr = result.resolvedAddress || addr;
-      const namePrefix = result.resolvedAddress
-        ? `Resolved to ${truncateAddress(result.resolvedAddress)} · ` : '';
+      const ownDest = accounts.find((a) => a.address === targetAddr && a.address !== account?.address);
+      if (ownDest && !recipientState.resolvedName) {
+        recipientState.resolvedName = ownDest.label;
+      }
+      const contactDest = contacts.find((c) => c.address === targetAddr);
+      if (contactDest && !recipientState.resolvedName) {
+        recipientState.resolvedName = contactDest.label;
+      }
+      const namePrefix = recipientState.resolvedName
+        ? `${recipientState.resolvedName} (${truncateAddress(targetAddr)}) · `
+        : (result.resolvedAddress ? `Resolved to ${truncateAddress(result.resolvedAddress)} · ` : '');
       // A reverse lookup is a LABEL, not a check: the address is already validated. Awaiting it
       // here put a chain read on the path that gates Review, so a stalled lookup held the form
       // closed for the bridge's whole timeout. It now lands whenever it lands, and only decorates
@@ -834,8 +843,17 @@ export function SendRoute({ params, navigate, back }) {
     retryBlocked = false;
 
     const seq = ++reviewSeq;
+    const targetAddress = recipientState?.resolvedAddress || to;
+    const destAccount = accounts.find((a) => a.address === targetAddress);
+    const destContact = contacts.find((c) => c.address === targetAddress);
+    const destLabel = recipientState?.resolvedName
+      || destAccount?.label
+      || destContact?.label
+      || recipientState?.reverseName
+      || null;
+
     const snapshot = {
-      to,
+      to: targetAddress,
       fromAddress: account.address,
       network: { id: network.id, label: network.label, explorerUrl: network.explorerUrl },
       asset: { ...asset },
@@ -846,18 +864,17 @@ export function SendRoute({ params, navigate, back }) {
     body.appendChild(Spinner({ label: 'Preparing review…' }).el);
 
     const kind = snapshot.asset.isNative ? 'native-send' : 'token-transfer';
-    const recLabel = recipientState?.resolvedName || recipientState?.reverseName;
     const reviewParams = snapshot.asset.isNative
       ? {
-        toAddress: to,
+        toAddress: targetAddress,
         amountUnits: snapshot.amountUnits.toString(),
-        ...(recLabel ? { recipientLabel: recLabel } : {}),
+        ...(destLabel ? { recipientLabel: destLabel } : {}),
       }
       : {
         mintAddress: snapshot.asset.mintAddress,
-        toAddress: to,
+        toAddress: targetAddress,
         amountUnits: snapshot.amountUnits.toString(),
-        ...(recLabel ? { recipientLabel: recLabel } : {}),
+        ...(destLabel ? { recipientLabel: destLabel } : {}),
       };
 
     let prepared;
