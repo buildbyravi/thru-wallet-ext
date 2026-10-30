@@ -203,9 +203,13 @@ export function toast(input = {}) {
         dismiss();
         return;
       }
-      if (state.action && next.action !== undefined) {
+      // Rebuild the action slot whenever the action is REPLACED or CLEARED. Testing the new value
+      // (`next.action !== undefined`) rather than the merged one is what makes
+      // `update({ action: null })` remove a button that is already on screen.
+      if (next.action !== undefined) {
         clear(actionSlot);
-        actionSlot.appendChild(buildAction());
+        const node = buildAction();
+        if (node) actionSlot.appendChild(node);
       }
       paint();
       arm();
@@ -256,7 +260,7 @@ export function toast(input = {}) {
 
   live.add(handle);
   root.appendChild(el);
-  requestAnimationFrame(() => el.classList.add('open'));
+  requestAnimationFrame(() => { if (!gone) el.classList.add('open'); });
   arm();
 
   return handle;

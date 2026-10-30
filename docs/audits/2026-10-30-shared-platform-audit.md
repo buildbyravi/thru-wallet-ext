@@ -173,12 +173,12 @@ produces an empty message and the component refuses to render one.
 
 | Commit | Scope |
 | --- | --- |
-| `05f1134` | The notification foundation and the Domain migration: blank-message guard, string shorthand, `pending` + `handle.update()`, `key` dedupe, `dismissAllToasts()` wired to lock/account/network, `Banner` success tone, the three Domain call sites, `test/test-toast.mjs` (89 checks) |
+| `05f1134` | The notification foundation and the Domain migration: blank-message guard, string shorthand, `pending` + `handle.update()`, `key` dedupe, `dismissAllToasts()` wired to lock/account/network, `Banner` success tone, the three Domain call sites, `test/test-toast.mjs` (92 checks) |
 | `8072dd8` | One truncation primitive (`shortenMiddle`/`shortAddress`, `truncateAddress` as an alias), six call sites migrated with their existing widths, `test/test-shared-platform.mjs` (45 checks) |
 | (docs) | This record, `docs/DECISIONS.md` D-018, `docs/ARCHITECTURE.md` "Shared UI platform", `docs/DEFECT_LOG.md` §16, `CONTEXT.md` file map, `docs/AUDIT_REPORT.md` refresh, and the stale `06_MODULAR_REUSE_AUDIT.md` citation in `kit/sheet.js` |
 
-State after the pass: `npm run build` exit 0; `npm test` exit 0 — **2,615** `ok -` checks, 0 failures
-(37 suites + 5 gates), `test-toast.mjs` 89/89, `test-shared-platform.mjs` 45/45,
+State after the pass: `npm run build` exit 0; `npm test` exit 0 — **2,618** `ok -` checks, 0 failures
+(37 suites + 5 gates), `test-toast.mjs` 92/92, `test-shared-platform.mjs` 45/45,
 `test-route-lifecycle.mjs` 1,113/1,113, `test-tx-review.mjs` 175/175, `test-tx-review-card.mjs` 46/46.
 
 The Domain screen is the migrated feature, as the directive asked: its three notifications are

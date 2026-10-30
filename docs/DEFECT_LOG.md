@@ -935,7 +935,7 @@ gained `pending` + in-place `update()`, `key` dedupe and real teardown (lock / a
 `Banner` resolves one tone vocabulary with a `.notice.success` rule; the three Domain call sites pass
 a tone and a message; six truncation copies became one (`shortenMiddle`/`shortAddress`).
 
-**Guards.** `test/test-toast.mjs` (89 checks: blank/malformed payloads, the exact defect call shape,
+**Guards.** `test/test-toast.mjs` (92 checks: blank/malformed payloads, the exact defect call shape,
 all five tones, durations, dismissal, pause-on-hover, dedupe, stacking cap, pending→verdict, timer
 and listener teardown, a11y, and a no-argument source scan). `test/test-shared-platform.mjs` (45
 checks: one truncation in the display layer, two clipboard writes by design, one toast host, one tone

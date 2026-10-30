@@ -317,7 +317,7 @@ turns a call-site typo into a UI defect that looks like a styling bug for weeks.
 (success screen, inline notice panel) is a screen, not a toast. `pending` on a banner is deliberately
 unsupported: a banner has no resolution mechanism, so it must never claim progress it cannot end.
 
-**Consequences.** `test/test-toast.mjs` pins the component (89 checks); `test/test-shared-platform.mjs`
+**Consequences.** `test/test-toast.mjs` pins the component (92 checks); `test/test-shared-platform.mjs`
 pins the ownership (45 checks: one truncation, two clipboard writes, one toast host, one tone set,
 kit-only imports). A toast that renders no message, a second truncation in the display layer, or a
 feature-owned toast element now fails `npm test`.

@@ -294,6 +294,15 @@ section('5] pending resolves in place and can never become blank');
   advance(160);
   eq('updating into a blank toast dismisses it instead of leaving an empty bar', toasts().length, 0);
 
+  // An action can be replaced AND cleared in place; a stale "Undo" must never outlive its offer.
+  reset();
+  const withAction = toast({ tone: 'info', title: 'Removed', action: { label: 'Undo', onClick() {} } });
+  ok('an action renders as one button', lastToast().querySelector('.toast-action') !== null);
+  withAction.update({ action: { label: 'View', onClick() {} } });
+  eq('replacing the action swaps the label', bodyText(lastToast().querySelector('.toast-action')), 'View');
+  withAction.update({ action: null });
+  eq('clearing the action removes the button', lastToast().querySelector('.toast-action'), null);
+
   reset();
   const fourth = toast({ tone: 'info', title: 'Finite' });
   fourth.dismiss();
