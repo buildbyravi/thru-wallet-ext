@@ -436,15 +436,20 @@ console.log('[3] decoders: domain writes');
     lease: { owner: SENDER, endTime: '1795000000', expiredHint: false, mine: true },
     instruction: { name: 'Renew domain lease', opcode: 2 },
   };
+  const freeRenewFacts = { ...customRenewFacts, totalPriceUnits: '0', pricePerYear: '0' };
+  const freeRenew = decode('domain-renew', freeRenewFacts);
+  model.assertReviewContent(freeRenew);
+  ok('a zero-fee custom-registrar renewal states no renewal fee',
+    /No renewal fee/.test(freeRenew.operation.summary));
+
   const customRenew = decode('domain-renew', customRenewFacts);
   model.assertReviewContent(customRenew);
-  // Part 2.2: no price, no "you pay" row, and no "best-effort" hedge for a fee the deployed
-  // program never collects. The renewal says the same things a registration does.
-  ok('a custom-registrar renewal promises no fee and names no token',
+  // Defect 1: when fee is unenforced, summary is empty so it does not contradict the fee warning.
+  ok('an unenforced custom-registrar renewal has empty summary and names no token',
     customRenew.assets.outgoing.length === 0
       && !/TOKEN|THRU fee/.test(JSON.stringify(customRenew.summary))
-      && /No registration fee/.test(customRenew.operation.summary),
-    JSON.stringify({ out: customRenew.assets.outgoing, rows: customRenew.summary }));
+      && customRenew.operation.summary === '',
+    JSON.stringify({ out: customRenew.assets.outgoing, summary: customRenew.operation.summary }));
   ok('a custom-registrar renewal names the custom registrar, not the paid registry',
     customRenew.protocol.name === 'Custom `.thru` registrar' && customRenew.protocol.verified === true,
     customRenew.protocol.name);

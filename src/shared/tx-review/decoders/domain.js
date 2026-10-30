@@ -383,6 +383,12 @@ export function decodeDomainRenew({ facts }) {
   // fell through to the registry rows and printed "2000 TOKEN" for 2,000 base units of THRU
   // (audit D-1); asking the purchase decoder for it crashed outright.
   if (facts.provider === 'custom') {
+    const charge = registrarCharge(facts);
+    const summary = charge.charged
+      ? `The registrar program collects ${displayAmount(charge.declared, 9, 'THRU')} for this term.`
+      : charge.free
+        ? 'No renewal fee on this registrar. You pay only the network fee.'
+        : '';
     return paidRegistryBlock({
       facts,
       extraWarnings: warnings,
@@ -390,7 +396,7 @@ export function decodeDomainRenew({ facts }) {
         id: DOMAIN_RENEW_KIND,
         name: `Renew ${facts.name}.${facts.tld} for ${Number(facts.years)} `
           + `${Number(facts.years) === 1 ? 'year' : 'years'}`,
-        summary: 'No registration fee on the test registrar. You pay only the network fee.',
+        summary,
         confirmLabel: 'Confirm and sign',
         decode: 'decoded',
       },

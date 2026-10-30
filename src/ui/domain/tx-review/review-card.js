@@ -138,7 +138,9 @@ function totalRow(assets) {
   const fee = assets.fee;
   if (!fee.supported || fee.amountUnits == null || fee.symbol !== out.symbol) return null;
   try {
-    const units = (BigInt(out.amountUnits) + BigInt(fee.amountUnits)).toString();
+    const feeBig = BigInt(fee.amountUnits);
+    if (feeBig <= 0n) return null;
+    const units = (BigInt(out.amountUnits) + feeBig).toString();
     return { label: 'Total', value: amountText(units, out.decimals, out.symbol), mono: true };
   } catch {
     return null;

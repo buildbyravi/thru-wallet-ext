@@ -68,6 +68,7 @@ function envelope(kind, facts, { submittable = true, simulation = null } = {}) {
     network: BETANET,
     account: ACCOUNT,
     protocol: content.protocol ?? null,
+    counterparty: content.counterparty ?? null,
     operation: content.operation,
     summary: content.summary,
     assets: {

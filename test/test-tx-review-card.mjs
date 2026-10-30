@@ -101,6 +101,18 @@ console.log('[1] a decoded send: title, context, counterparty, then three money 
   ok(once(lines, '−0.0015 THRU') === 1, 'the outgoing amount appears exactly once as an amount');
 }
 
+console.log('[1b] zero network fee omits the duplicate Total row');
+{
+  const zeroFeeCard = card('native-send', {
+    ...sendFacts,
+    fee: { ...sendFacts.fee, amountUnits: '0', feeUnits: '0' },
+  });
+  const lines = visibleLines(zeroFeeCard.el);
+  ok(lines.includes('You pay') && lines.includes('Network fee'), 'has You pay and Network fee');
+  ok(lines.includes('none'), 'fee row displays none');
+  ok(!lines.includes('Total'), 'duplicate Total row is omitted when fee is zero', JSON.stringify(lines));
+}
+
 console.log('[2] the recipient address is evidence, so it is never shortened or hidden');
 {
   const c = card('native-send', sendFacts);

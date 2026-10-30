@@ -847,6 +847,7 @@ export function SendRoute({ params, navigate, back }) {
     const destAccount = accounts.find((a) => a.address === targetAddress);
     const destContact = contacts.find((c) => c.address === targetAddress);
     const destLabel = recipientState?.resolvedName
+      || (typeof to === 'string' && to.includes('.') ? to.trim().toLowerCase() : null)
       || destAccount?.label
       || destContact?.label
       || recipientState?.reverseName
