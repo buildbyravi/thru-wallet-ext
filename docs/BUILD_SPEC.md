@@ -198,7 +198,7 @@ migrated to the checked counterparts — the same documented-security-break prec
 The v12 registration method is an intentionally narrow unlocked-only exception; it is not a
 value-moving send and cannot sign for an address outside the vault.
 
-**Contract v17–v29 additions:** v17/v18 append the 43-method DeFi M0 surface behind build-time
+**Contract v17–v29 additions and the v31 exception:** v17/v18 append the 43-method DeFi M0 surface behind build-time
 flags that are all false; v19 appends the gated name-service slice (`name.lookup`,
 `checkAvailability`, `initRoot`, `register`, `setRecord` — `register` left the gate at v23 and
 `setRecord` at v31; only `initRoot` still sits behind `NAME_SERVICE`); v20 backs the v18 intent methods with a real (still flag-off) native-send
@@ -211,6 +211,17 @@ and **v29 the shared transaction-review pipeline** (`tx.prepareReview`, `tx.conf
 three v29 methods are `auth: 'unlocked'` and none of them signs: `confirmReview` re-validates and
 returns the exact submit instructions, and the UI then calls the operation's existing
 `auth: 'signing'` method, which keeps its own policy. Every one of these is a pure append.
+
+**Contract v31 exception — `name.setRecord`.** v31 changed one existing method in place rather
+than appending a replacement, and the change is recorded here for the same reason v5–v7, v12 and v16
+are: silence about a security-relevant edit is worse than the edit. `name.setRecord` moved from
+`auth: 'unlocked'` to `auth: 'signing'` and from `{ networkId }` to
+`{ expectedNetworkId, expectedAccountAddress, password }`, because the v31 record write builds,
+signs and broadcasts — an unlocked read-shaped declaration would have skipped both the password
+policy and the signing guard. The method name, the opcode and the append semantics are unchanged. The
+old `networkId` parameter is no longer read: it had never bound anything, and the binding is now
+`expectedNetworkId` + `expectedAccountAddress` (+ `password` under the signing guard), which
+`test-name-records.mjs` drives through the real router.
 
 **R3 — Layering is enforced by a script, not by discipline.** `scripts/check-layering.mjs` scans
 static imports against the shipped background/UI/kit/shared boundaries and fails on a prohibited

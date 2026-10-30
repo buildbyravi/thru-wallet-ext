@@ -146,3 +146,98 @@ The open owner decisions in `docs/DEFECT_LOG.md` §13 (text records for release,
 wording, the release version) and the open verification gaps (browser pass, live Betanet name and
 faucet paths) are unchanged. No DeFi flag was touched; every DeFi path is still off and still
 answers `supported:false`.
+
+## 7. Follow-up commit `5f004ad` (same day) — reviewer list closed, fewer words on the card
+
+`976f2f3` deleted the helpers and CSS the copy rewrite orphaned (`hasDecoder`/`getDecoder`,
+`movementBox`, `.balance-change-box*`, `.change-amount`, `.tx-review-eyebrow`) and added the `[15]`
+guard that fails if a helper comes back. `5f004ad` then closed the rest of the PR #21 reviewer
+list after re-checking every item at HEAD, and folded in the owner's 2026-10-28 copy direction.
+
+### 7a. Reviewer items, re-checked one by one
+
+The 33 CodeRabbit inline comments on this PR were re-verified against the tree at `5f004ad`. The
+numbers below are their order in the pull request; "fixed" means the code or document at that path
+now says the opposite of what the reviewer found, not that a reply was posted.
+
+| # | At | Finding | State |
+| --- | --- | --- | --- |
+| 1 | `scripts/preview-tx-review.html:115` | `onChange` touched `confirmBtn`/`status` before their declarations, so the harness page threw | fixed — bindings declared before the card is constructed |
+| 2 | `scripts/serve-dist.mjs:54` | `--root .` served the whole checkout on `0.0.0.0` | fixed — loopback default, `--host` is the explicit opt-in |
+| 3 | `review-service.js:254` | `acknowledgements` was the one nested param the router does not type-check; a non-iterable reached `new Set(...)` and surfaced as `METHOD_ERROR` | fixed — `INVALID_INPUT` unless it is an array of strings |
+| 4 | `review-service.js:298` | a blocked review was blocked only by the disabled button | fixed — `record.state !== 'ready'` → `NOT_EXECUTABLE` in `confirmReview` |
+| 5 | `review/kinds.js:359` | paid-registry labels were validated with the custom registrar's lowercase/3-character rules | fixed — `requireRegistryLabel` uses `registrar.purchaseNameProblem`, keeps the typed case |
+| 6 | `review/store.js:85` | read-modify-write was not serialized per network | **open** |
+| 7 | `decoders/token-transfer.js:28` | a mint ticker of `THRU` produced a review indistinguishable from a native send | fixed — `symbol-impersonation` warning, mint address stays visible |
+| 8 | `decoders/token-transfer.js:36` | an unreadable mint was reported as a missing mint | fixed — only `=== false` blocks; `null` warns without blocking |
+| 9 | `routes/name.js:774` | re-entry while `tx.prepareReview` was pending | fixed (F-5) |
+| 10 | `routes/send.js:872` | a superseded prepare could paint over the form the user had gone back to | fixed — `reviewSeq` + held review discarded on leaving the step |
+| 11 | `routes/send.js:905` | `Banner` compared a new tone against the tone it was *constructed* with, so a warning's classes stuck and a later error rendered as a warning | fixed in `kit/feedback.js` — tracks the tone currently shown |
+| 12 | `confirm.js:114` | `requirePassword` folds every submit error into the password dialog, so `SERVICE_TIMEOUT`/`uncertain` never reach `classifyReviewError` | **open** |
+| 13 | `CONTEXT.md:10` | stale contract counts | fixed (v31 / 153) |
+| 14 | `MANUAL_SMOKE_CHECKLIST.md:347` | run-record references pointed at §7 | fixed — no `§7` reference remains |
+| 15 | `TX_REVIEW_VERIFICATION.md:218` | §3 still claimed Faucet signs directly | fixed — "no UI route calls a signing method directly any more", with the v12 activation precision note |
+| 16 | `routes/faucet.js:335` | no in-flight guard between sheet close and settle | fixed — `submitting` + `destroyed` |
+| 17 | `contracts/thru-custom-registrar/src/processor.rs:330` | registrar fee is debited best-effort | **open** — contract decision, not a wallet claim |
+| 18 | `BACKEND_GAPS.md:85` | stale "custom lease renewal unavailable" | fixed |
+| 19 | `GLOBAL_SMART_CONTRACT_POLICY.md:92` | the no-bypass rule did not name the owned-account activation exception | fixed — stated exception for the v12 `tx.registerAccount` path |
+| 20 | `STATUS_AND_ROADMAP.md:19` | unresolved merge markers | fixed — none remain |
+| 21 | `scripts/defi-evidence/…json:14` | a skipped Initialize recorded `vmError: 0` | fixed — `vmError: null`, `initializeState: "skipped"`, and the deploy script emits it |
+| 22 | `name-service.js:67` | `alice.id` refused | fixed — suffix peeled before the label rule |
+| 23 | `decoders/domain.js:325` | a custom-registrar renewal fell through to the registry rows ("2000 TOKEN" for THRU) | fixed — `provider === 'custom'` branch |
+| 24 | `routes/name.js:400` | `queueBtn` was created hidden and never shown | fixed — control deleted |
+| 25 | `routes/name.js:1058` | the queue submitted prepared reviews with no card | fixed — queue deleted |
+| 26 | `STATUS_AND_ROADMAP.md:82` | roadmap described the queue as live source | fixed — records the deletion and the owner decision |
+| 27 | `primary-name-service.js:296` | `reverseLookup` could check network A's record against network B's chain | fixed — `NETWORK_MISMATCH` |
+| 28 | `review/kinds.js:720` | the displayed domain was not bound to the root used for submission | fixed — `tld` from the root, else `null` |
+| 29 | `decoders/domain-record.js:99` | `accountRole`'s arguments were swapped | fixed — `accountRole('Domain account (written)', facts.domainAddress)` |
+| 30 | `routes/send.js:538` | reverse lookup sat on the path that gates Review | fixed — fire-and-forget, still generation-guarded |
+| 31 | `routes/send.js:544` | a stale lookup could overwrite a newer recipient's status | fixed — `stale()` checked before every write |
+| 32 | `BUILD_SPEC.md:204` | the v31 in-place `name.setRecord` change had no documented exception | fixed — "Contract v17–v29 additions and the v31 exception" section |
+| 33 | `review/kinds.js:796` | an absent domain was reported as `NAME_TAKEN` | fixed — `NAME_NOT_FOUND` added and listed in `STALE_REVIEW_CODES` |
+
+Three remain open (#6, #12, #17) and each is a decision, not a typing error: storage locking, the
+password dialog's error boundary, and whether the registrar contract should refuse rather than
+best-effort a fee debit.
+
+`#22` is the interesting one: `lookupName` used to validate the typed string before deciding which
+namespace it belonged to, so a two-character root (`id`) was measured against a rule that only
+applies to labels *under* a root. The fix peels a known suffix first, validates the label, and — for
+a caller that supplies both a suffix and a `rootAddress` — refuses (`INVALID_PARAMS`) when the two
+name different namespaces. `#28` follows from the same mistake on the review side: a label inherited
+from the caller is not proof of the namespace, so `domainRecordFacts` now derives it from the root
+account that will actually be written to and leaves it `null` when it cannot, with the decoder
+printing the bare name and a `tld-unverified` warning.
+
+### 7b. Copy pass
+
+Every `warn(...)` call in the decoders supplies a title and a detail — 49/49, checked by a scanner
+during this pass rather than by eye; the earlier note that "the decoders are all title and no body"
+was a grep artefact (the decoders pass the detail positionally, so a search for `detail:` finds
+nothing). What did change:
+
+- handler-internal phrasing is gone from user copy ("the handler re-reads it before signing" → "the
+  wallet checks the balance again before signing");
+- a transfer or claim whose counterparty IS the signing account reads `To your account` instead of
+  echoing the account's own name back as if it were somebody else;
+- the fee is stated once: the `fee-unmeasured` warning duplicated what the money table already says
+  ("not confirmed (paid in THRU)"), so the warning was removed and the test now asserts the row,
+  not the echo;
+- `Details` gained a `From` row — the address the signature will come from.
+
+### 7c. Still open, and why
+
+| Item | State |
+| --- | --- |
+| #12 (`requirePassword` internals), #17, #19, #32 | open; each needs a decision about the auth prompt's internals, not a copy change |
+| #13/#14 | `MANUAL_SMOKE_CHECKLIST` still cross-references §7 where §8 is meant |
+| #24 | moot after `826045a` (the queue it described is deleted) |
+| R3 (single-use status scoping), R4 (ledger v31/153 sync) | outside this PR's diff, still open |
+| Owner decisions (a)–(e) | unchanged: text records vs `name.setRecord`, plain-card scope, test-registrar wording, release version + docs-consistency script, notifications root cause |
+
+### 7d. Gates after `5f004ad`
+
+`npm run build` exit 0. `npm test` exit 0 — **2,481** `ok -` checks (35 suites + 5 gates);
+`test-tx-review.mjs` 175, `test-tx-review-card.mjs` 46, `test-name-records.mjs` 57,
+`test-route-lifecycle.mjs` 1,113, `test-contract.mjs` 168. Still UNVERIFIED: browser/pixel layout and
+every live-chain behaviour.

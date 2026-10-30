@@ -90,5 +90,6 @@ No on-chain contract or contract-dependent wallet feature may be activated for M
 ## 6. Integration With Wallet Architecture
 
 - **No Bypass of the Review Pipeline**: All transactions must route through `tx.prepareReview` -> `TxReviewCard` -> `tx.confirmReview` -> signing service. No UI component may bypass the review card or create independent signing sessions.
+  - **Stated exception — owned-account activation.** `tx.registerAccount` is a direct, unlocked signing call made by Dashboard and Send for an address the vault already owns (the v12 JIT activation path); it is self-signing only for an exact vault-owned address and is not a value-moving transaction. It is the only such call: no UI route signs a transfer, register/purchase/renew/claim, faucet claim or record write directly (`docs/TX_REVIEW_VERIFICATION.md` §3).
 - **Deterministic Scoping**: Contract addresses and program configs are strictly network-scoped. Switching networks purges and invalidates stale contract state.
 - **BigInt Arithmetic Only**: All monetary and balance calculations must use integer string base units. No `parseFloat()` or floating-point arithmetic.

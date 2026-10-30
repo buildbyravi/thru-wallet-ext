@@ -75,11 +75,13 @@ the shared 9-decimal definition; paid-registry token decimals come from the on-c
   evidence. The card therefore states that the debit is best-effort and is not a guarantee
   (`quote-not-final`). Whether the program should refuse instead is an open contract decision,
   not a wallet claim — §13.3.
-- **The batch registration queue is in source but unreachable.** A queue and a
-  "Register N names" loop were added in `55703d0`, but the control that reveals them is never
-  un-hidden, and that loop submits prepared reviews without rendering the review card. If the
-  queue is meant to ship it needs a review gate per item; until then it is dead code with a
-  signing loop in it — §13.4.
+- **The batch registration queue is gone (removed 2026-10-30).** A queue and a "Register N names"
+  loop were added in `55703d0`; the control that revealed them was created with the `hidden` class
+  and never un-hidden, and the loop submitted prepared reviews without rendering the review card.
+  The 2026-10-30 lifecycle audit deleted the control, the handler, the queue state and its orphaned
+  CSS rather than leave a hidden signing loop one CSS rule away from running. Batch registration is
+  an owner decision, not an in-flight feature: if it returns it needs a review gate per item —
+  §13.4.
 
 **TESTED**: the Domain focused suites and the project suite cover formatting, validation,
 eligibility, reviewed account/network/price/expiry facts, unknown submission outcomes, and
@@ -193,10 +195,10 @@ Structural properties now enforced by CI rather than by discipline:
 Final deterministic verification on the current tree (contract v31, 2026-10-30):
 
 ```text
-npm test       PASS — 2,470 checks (35 suites + 5 gates): derivation 16; QR 15; layering 127 files / 0 sinks;
+npm test       PASS — 2,481 checks (35 suites + 5 gates): derivation 16; QR 15; layering 127 files / 0 sinks;
                CSP pass; routes 15/15 with the full used CSS class set defined; CSS nesting pass;
                launchpad quarantine; contract 168/168; security-checks; DOM/refs;
-               route lifecycle 1,104/1,104; transaction review 173/173; review card render 46/46;
+               route lifecycle 1,113/1,113; transaction review 175/175; review card render 46/46;
                name records 57; name reverse 14; name service 67; storage migrations;
                vault, Thru client, token/balance, History, registration, API-router,
                pending concurrency, signing/network lock, and auto-lock suites pass.
