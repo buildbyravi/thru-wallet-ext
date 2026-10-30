@@ -184,6 +184,14 @@ State after the pass: `npm run build` exit 0; `npm test` exit 0 — **2,618** `o
 The Domain screen is the migrated feature, as the directive asked: its three notifications are
 events on the shared surface with a tone, a message and a dedupe key; its success banner uses the
 success state instead of a silently-dropped `'ok'`; its address shortening is the shared helper.
+
+Its registration/renewal submission now also uses the lifecycle states, which is why `pending`
+exists at all: the toast opens as `pending` ("Submitting…", spinner, no expiry) and is resolved in
+place by the outcome that actually happened — `success` ("confirmed", only when the handler
+returned an execution result), `warning` ("Outcome unknown — check Activity") when the RPC answer
+was lost, and dismissed (leaving the persistent banner to carry the reason) on cancellation, a
+stale review or a refusal. The pending bar is also dismissed if the route is torn down mid-submit,
+so an unresolvable spinner cannot outlive its screen.
 Send, Activity, the token drawer, the review card and the domain-record decoder adopt the same
 helper in the same change, with their existing widths preserved.
 

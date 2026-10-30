@@ -859,6 +859,16 @@ export function NameRoute({ back }) {
       const opName = kind === 'domain-renew' ? 'Renewal' : 'Registration';
       setStatus(`Submitting ${opName.toLowerCase()} transaction…`, '');
       banner.set(`Submitting ${opName.toLowerCase()} for ${nameText}.${currentTld()} to Thru L1… Waiting for confirmation.`, 'info');
+      // The toast follows the real lifecycle: it opens as `pending` (spinner, never expires) and is
+      // resolved IN PLACE by whichever outcome actually happened. A signature is not a
+      // confirmation, and a lost RPC answer is not a failure, so the three outcomes get three
+      // different verdicts — and only the confirmed one says "confirmed".
+      const submitToast = toast({
+        tone: 'pending',
+        key: 'name-submit',
+        title: `Submitting ${opName.toLowerCase()}…`,
+        message: `${nameText}.${currentTld()} · waiting for the network`,
+      });
       const review = prepared.review;
       try {
         const outcome = await submitReviewedReview({
@@ -869,8 +879,12 @@ export function NameRoute({ back }) {
           passwordBody: `Enter your password to sign for ${nameText}.${currentTld()}.`,
           confirmLabel: 'Confirm and sign',
         });
-        if (destroyed || !card.isConnected) return;
+        // The route is gone: retire the pending bar rather than leave an unresolvable spinner in
+        // the shared toast host. A "confirmed" toast for a screen that no longer exists is the
+        // same class of stale claim the review lifecycle audit removed.
+        if (destroyed || !card.isConnected) { submitToast.dismiss(); return; }
         if (outcome.status === 'cancelled') {
+          submitToast.dismiss();
           setStatus('Transaction cancelled', '');
           banner.set('');
           return;
@@ -890,9 +904,17 @@ export function NameRoute({ back }) {
         entry.quote = null;
         // Do NOT automatically set primary domain per user rule
       } catch (err) {
-        if (destroyed || !card.isConnected) return;
+        if (destroyed || !card.isConnected) { submitToast.dismiss(); return; }
         const classified = classifyReviewError(err);
         if (classified.kind === 'uncertain') {
+          // NOT a failure: the request may have been broadcast. The toast says what is known and
+          // tells the user where to look, and the CTA becomes "Check outcome".
+          toast({
+            tone: 'warning',
+            key: 'name-submit',
+            title: 'Outcome unknown',
+            message: 'The network did not answer. Check Activity before trying again.',
+          });
           setStatus('Confirmation unavailable. Check the outcome before trying again.', 'warn');
           entry.outcomeUnknown = true;
           entry.recheckRequired = true;
@@ -900,10 +922,14 @@ export function NameRoute({ back }) {
           ctaBtn.classList.remove('hidden');
           ctaLabel().textContent = 'Check outcome';
         } else if (classified.kind === 'stale') {
+          submitToast.dismiss();
           banner.set('Transaction details changed. Review the updated details before signing.');
           leaseState = null;
           await load();
         } else {
+          // A REFUSED or failed submission is a real failure. The banner carries the reason and
+          // stays; the pending toast is retired rather than turned into a second copy of it.
+          submitToast.dismiss();
           banner.set(classified.message);
           setStatus(classified.message, 'bad');
         }
