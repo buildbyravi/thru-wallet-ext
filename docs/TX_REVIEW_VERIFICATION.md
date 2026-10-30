@@ -9,7 +9,7 @@ not claim a Rabby-audited design, a live-chain run, or a browser-layout sign-off
 > **Counts in this record are the v29 measurement (2,326 checks, review 152/152, contract 161/161,
 > 126 layering files).** They are left as recorded. Current figures live in `docs/AUDIT_REPORT.md`
 > and `docs/STATUS_AND_ROADMAP.md`; on the v31 tree (2026-10-30) `npm test` is 2,481 checks with
-> review 175/175, card render 51/51 and contract 168/168; v31's own audit is
+> review 175/175, card render 52/52 and contract 168/168; v31's own audit is
 > `docs/audits/2026-10-29-v31-audit.md` and the lifecycle audit is
 > `docs/audits/2026-10-30-review-lifecycle-audit.md` (§13 below).
 

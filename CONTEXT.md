@@ -89,7 +89,7 @@ The popup entry `src/popup/popup.js` is a boot stub. The removed legacy screens 
 | `test/test-registration.mjs` | Owned-account registration policy and bounded retries with deterministic SDK fixtures. |
 | `test/test-api-router.mjs` | Auth, context, serialization, background dispatch, and send/registration integration. |
 
-The suite is **2,625 checks across 37 test suites plus 5 build gates** (2026-10-30). Use the final test output for any subsequent refresh. They are deterministic/local evidence only. Real-browser and live-chain checks are separate.
+The suite is **2,626 checks across 37 test suites plus 5 build gates** (2026-10-30). Use the final test output for any subsequent refresh. They are deterministic/local evidence only. Real-browser and live-chain checks are separate.
 
 Visual harnesses: `scripts/preview-tx-review.html` renders the real `TxReviewCard` with the real built
 `dist/popup.css` for eight fixtures (`scripts/preview-tx-review.fixtures.js`), and

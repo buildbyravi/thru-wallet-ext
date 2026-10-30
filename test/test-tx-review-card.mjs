@@ -201,6 +201,11 @@ console.log('[6] an unrecognised transaction is explicit, and cannot be signed')
     'the blocking warning states that signing is unavailable, not when it is acceptable');
   ok(!lines.some((line) => /you started it|approve it unless/i.test(line)),
     'no line invites a user to approve an unknown transaction');
+  // One card, one statement: the operation summary states the limit, the blocking warning states
+  // the consequence. The same sentence twice reads as shouting, not as emphasis.
+  ok(new Set(lines.filter((line) => /cannot explain this transaction|Signing is unavailable/.test(line))).size === 2
+    && lines.filter((line) => /cannot explain this transaction/.test(line)).length === 1,
+    'the limit and the consequence are each stated once, not repeated');
   ok(!lines.includes('Total') && !lines.includes('You pay'), 'no money rows are invented');
   ok(c.canConfirm() === false, 'confirming is impossible');
 }

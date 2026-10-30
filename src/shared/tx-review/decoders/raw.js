@@ -24,7 +24,7 @@ export function decodeRawTransaction({ facts }) {
   const warnings = [
     warn('undecoded-transaction', 'danger',
       'This transaction cannot be read',
-      'This wallet cannot explain this transaction. Signing is unavailable.', { blocking: true }),
+      'Signing is unavailable: the wallet cannot verify what this does.', { blocking: true }),
   ];
 
   const rows = [];
@@ -37,7 +37,7 @@ export function decodeRawTransaction({ facts }) {
       // Never an instruction to sign. There is no path from this card to a signature: the state
       // is blocked, `confirmLabel` is null and the background refuses an unknown intent. Copy
       // must not imply that a careful user could approve it anyway.
-      summary: 'This wallet cannot explain this transaction. Signing is unavailable.',
+      summary: 'This wallet cannot explain this transaction.',
       confirmLabel: null,
       decode: 'unknown',
     },
