@@ -898,3 +898,56 @@ queue is absent from the route and the stylesheet, asserts the faucet submit par
 declaration, and proves the scan can pass with a live `chrome.runtime.sendMessage` stub and a
 positive control. [18] drives both faucet refusals through the real router. `test-route-lifecycle.mjs`
 pins the single sheet and the discarded-after-signature rule.
+
+## 16. The Domain notification bar was a toast with no message — FIXED in source/tests; browser look OPEN (2026-10-30)
+
+**Report.** The owner reported an oversized, nearly empty black notification bar on the Domain
+screen and asked for the shared platform behind it, not a CSS patch.
+
+**Root cause — `READ` + probe.** Three Domain call sites passed a bare string to a props API:
+`toast('Transaction confirmed')` (`routes/name.js:867`), `toast('Primary name updated')` (`:912`),
+and the track/untrack ternary at `:257` (`'Domain imported'` / `'Removed from this wallet'` /
+`'Primary name updated'`). The
+string destructured into the defaulted parameter object, so `title` and `message` were both `''`,
+and the component still built and appended a full-width `.toast`: near-black `--ink` background,
+20px icon chip, empty `.toast-body`, close button, `position: fixed` across the popup width. About
+42px of full-width chrome around nothing, floating over the connection footer. Rendering the real
+component through the DOM shim printed the tree and a `textContent` of `""` — the message area was
+empty because there was no message, and the height was the component's own padding plus affordances
+that are present even when there is nothing to read.
+
+**Why it shipped.** Two structural gaps, both of which are now closed:
+
+1. `toast()` rendered a container with no title and no message. It never had a guard, so a call-site
+   mistake degraded into chrome instead of failing.
+2. **Nothing tested the notification component.** `grep -rn "toast" test/` returned exactly one
+   hit: a `dismissAllToasts()` cleanup line in the route-lifecycle suite. A green suite was never
+   evidence about the toast.
+
+The same pass found the related inconsistencies the incident implied: `dismissAllToasts()` existed
+with **no production caller**, so a toast outlived route changes, account changes and even a lock;
+there was no `pending` state, so in-flight work could only be a banner; `Banner` accepted any tone
+string and silently painted unknown ones neutral (`'ok'` → grey, on a "confirmed on-chain" banner);
+and address truncation existed in six implementations with three widths.
+
+**Fix.** `toast()` accepts a string as the title and renders **nothing** for a payload with no text;
+gained `pending` + in-place `update()`, `key` dedupe and real teardown (lock / account / network);
+`Banner` resolves one tone vocabulary with a `.notice.success` rule; the three Domain call sites pass
+a tone and a message; six truncation copies became one (`shortenMiddle`/`shortAddress`).
+
+**Guards.** `test/test-toast.mjs` (89 checks: blank/malformed payloads, the exact defect call shape,
+all five tones, durations, dismissal, pause-on-hover, dedupe, stacking cap, pending→verdict, timer
+and listener teardown, a11y, and a no-argument source scan). `test/test-shared-platform.mjs` (45
+checks: one truncation in the display layer, two clipboard writes by design, one toast host, one tone
+vocabulary, kit-only imports), each scanner carrying a positive control.
+
+> **Lesson:** a component that renders chrome when it has nothing to say turns a call-site typo into
+> a "styling bug" that survives review. Make the empty state impossible to render, and test the
+> component — not just the screens that happen to use it.
+
+> **Lesson:** an exported teardown function with no production caller is a missing call, not a
+> spare API. `dismissAllToasts()` read as "handled" for as long as it existed.
+
+**Still open.** A real-browser look at the fixed bar (the harness is `scripts/preview-toast.html`:
+400×600 and 380×600 frames, real component, real stylesheet). No browser binary exists in this
+environment, so the bar's height is a stylesheet-derived claim, not a measurement.

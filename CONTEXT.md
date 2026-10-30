@@ -32,6 +32,9 @@ Read `AGENTS.md` first for repository rules, then `docs/STATUS_AND_ROADMAP.md` f
 | Change enabled networks/program configuration | `src/lib/networks.js`, then network service/CSP together |
 | Decide whether data is network-scoped | `src/shared/network-scope.js` |
 | Change amount parsing/formatting | `src/shared/format.js` |
+| Change how an address/mint/signature is shortened | `src/shared/format.js` (`shortenMiddle`/`shortAddress`; `truncateAddress` is an alias) |
+| Change a notification (toast) or a screen banner | `src/ui/kit/toast.js` (events) / `src/ui/kit/feedback.js` (persistent state) |
+| Change copy-to-clipboard behavior | `src/ui/kit/button.js` (`CopyButton`); Receive owns its in-place "Copied" affordance |
 | Change opaque account URL references | `src/shared/refs.js` |
 | Change History cache/time behavior | `src/background/services/history-service.js`, `tx-service.js`, `src/ui/app/routes/history.js` |
 | Change Send activation/form | `src/ui/app/routes/send.js`, registration service, contract/router |
@@ -76,19 +79,24 @@ The popup entry `src/popup/popup.js` is a boot stub. The removed legacy screens 
 | `test/test-launchpad-quarantine.mjs` | Deleted launchpad/DEX/prediction surface remains out of source and `dist/` (66 checks). |
 | `test/test-contract.mjs` | Manifest/router/UI agreement and security invariants, v31 / 153 methods (168 checks). |
 | `test/test-ui-dom.mjs` | DOM safety and reference codec. |
-| `test/test-route-lifecycle.mjs` | All 15 routes through Router/guards/bridge, teardown, secrets, focus, Send/Domain/Faucet review flows, Dashboard activation, History, panel behavior (1,104 checks). |
-| `test/test-tx-review.mjs` | The review pipeline: registry↔kind parity, every decoder, malformed and unknown input, amount/fee formatting, binding/TTL/account/network refusals, acknowledgements, blocking, discard, the central error-code registry, and the UI signing-literal scan and the one-screen/compactness guards (143 checks). |
+| `test/test-route-lifecycle.mjs` | All 15 routes through Router/guards/bridge, teardown, secrets, focus, Send/Domain/Faucet review flows, Dashboard activation, History, panel behavior (1,113 checks). |
+| `test/test-toast.mjs` | The notification surface: blank/malformed payloads render nothing, the string-call defect shape, five tones, durations, dismissal, pause-on-hover, key dedupe, stacking cap, pending→verdict in place, timer/listener teardown, a11y, no-argument source scan (89 checks). |
+| `test/test-shared-platform.mjs` | Shared-platform ownership: one truncation primitive (length invariant), `truncateAddress` as an alias, no second truncation in the display layer, two clipboard writes by design, one toast host, one tone vocabulary, kit-only notification imports (45 checks, each scanner with a positive control). |
+| `test/test-tx-review.mjs` | The review pipeline: registry↔kind parity, every decoder, malformed and unknown input, amount/fee formatting, binding/TTL/account/network refusals, acknowledgements, blocking, discard, the central error-code registry, and the UI signing-literal scan and the one-screen/compactness guards (175 checks). |
 | `test/test-vault.mjs`, `test/test-thru-client.mjs` | Vault/SDK integration, instruction and decoder behavior. |
 | `test/test-token-balances.mjs`, `test/test-balance-network.mjs` | Token denomination, proven-zero/unknown, network-scoped reads/caches. |
 | `test/test-history-cache.mjs`, `test/test-history-block-time.mjs` | Cache-first History, timestamp provenance, network/slot isolation, races, paging. |
 | `test/test-registration.mjs` | Owned-account registration policy and bounded retries with deterministic SDK fixtures. |
 | `test/test-api-router.mjs` | Auth, context, serialization, background dispatch, and send/registration integration. |
 
-The suite is **2,481 checks across 35 test suites plus 5 build gates** (2026-10-30). Use the final test output for any subsequent refresh. They are deterministic/local evidence only. Real-browser and live-chain checks are separate.
+The suite is **2,615 checks across 37 test suites plus 5 build gates** (2026-10-30). Use the final test output for any subsequent refresh. They are deterministic/local evidence only. Real-browser and live-chain checks are separate.
 
-Visual harness: `scripts/preview-tx-review.html` renders the real `TxReviewCard` with the real built
-`dist/popup.css` for eight fixtures (`scripts/preview-tx-review.fixtures.js`), served by
-`node scripts/serve-dist.mjs --root . --port 8000`. It is a layout aid, not a test: there is no
+Visual harnesses: `scripts/preview-tx-review.html` renders the real `TxReviewCard` with the real built
+`dist/popup.css` for eight fixtures (`scripts/preview-tx-review.fixtures.js`), and
+`scripts/preview-toast.html` renders the real `toast()` inside a 400×600 popup frame and a 380×600
+side-panel frame (`scripts/preview-toast-frame.html`), with one button per notification state and one
+that proves a blank payload renders nothing. Both are served by
+`node scripts/serve-dist.mjs --root . --port 8000`. They are layout aids, not tests: there is no
 browser binary in CI, so no layout assertion is automated. One fixture is SYNTHETIC (a simulation
 rejection — Thru has no dry-run RPC, so no node returns one today); it exists to keep the card's
 four simulation words honest. The human runbook is

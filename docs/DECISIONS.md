@@ -281,3 +281,43 @@ formatting, binding/TTL/account/network refusals and the central error-code regi
 `test/test-route-lifecycle.mjs` drives the migrated Send, Name and Faucet routes through the real
 card. DeFi/DEX/launchpad kinds are deliberately absent while their flags are off, and
 `tx.prepareReview` answers `supported:false` with the known-kinds list instead of guessing.
+
+## D-018 — One notification surface: toast for events, Banner for state (2026-10-30)
+
+**Context.** The Domain screen shipped an oversized, nearly empty black bar. It was not a CSS
+defect: three call sites wrote `toast('Transaction confirmed')` against a props API, the string
+destructured into defaults, and the component rendered a full-width `.toast` with an empty message
+body. The component had no guard against being asked to render nothing, and no test covered it — the
+only `toast(` in `test/` was a cleanup call. Alongside it, address truncation existed in six
+implementations with three different widths, and `Banner` accepted any tone string while silently
+rendering unknown ones as neutral, so a confirmed registration was painted as a grey box.
+
+**Decision.** Two notification components, one owner each, one vocabulary between them:
+
+- **`toast()` (`src/ui/kit/toast.js`) is for EVENTS.** success · info · warning · error · pending.
+  A toast always carries a message: a bare string means the title, and a payload with no text renders
+  **nothing** and returns an inert handle. `pending` never expires and is resolved in place with
+  `handle.update({...})`, so a submission shows one bar that changes verdict. `key` dedupes repeated
+  events. `dismissAllToasts()` is called by the app shell on lock, account change and network change,
+  because a message quoting a domain, amount or address must not outlive the state it described.
+- **`Banner()` (`src/ui/kit/feedback.js`) is for PERSISTENT STATE** on a screen. Same four settled
+  tones, `ok` accepted as a synonym for `success`, unknown tones resolve to neutral rather than
+  silently inheriting whatever class the element already had.
+- **Address shortening has one implementation** (`shortenMiddle`/`shortAddress` in
+  `src/shared/format.js`); `truncateAddress` remains as a documented alias. Display-layer copies are
+  a build failure (`test/test-shared-platform.mjs`).
+
+**Why.** A wallet's feedback is a safety surface: "confirmed", "failed", "still submitting" are
+claims about money. Having one component per job means the claim vocabulary, the dismissal rules and
+the honesty rules are enforced once, and a new feature cannot invent a third bar. The blank-toast
+guard exists because the alternative — a component that renders chrome when it has nothing to say —
+turns a call-site typo into a UI defect that looks like a styling bug for weeks.
+
+**Trade-offs.** Features cannot style their own notification; a genuinely different presentation
+(success screen, inline notice panel) is a screen, not a toast. `pending` on a banner is deliberately
+unsupported: a banner has no resolution mechanism, so it must never claim progress it cannot end.
+
+**Consequences.** `test/test-toast.mjs` pins the component (89 checks); `test/test-shared-platform.mjs`
+pins the ownership (45 checks: one truncation, two clipboard writes, one toast host, one tone set,
+kit-only imports). A toast that renders no message, a second truncation in the display layer, or a
+feature-owned toast element now fails `npm test`.

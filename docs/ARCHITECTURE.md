@@ -35,6 +35,31 @@ The UI cannot import the vault, backend services, network implementation, or RPC
 | Persistent user preferences | `src/background/services/preferences-service.js` |
 | Submitted transaction lifecycle | `src/background/services/pending-tx-service.js` |
 | UI DOM construction | `src/ui/kit/dom.js` |
+| Event notifications (transient) | `src/ui/kit/toast.js` |
+| Persistent screen state / banners | `src/ui/kit/feedback.js` (`Banner`, `Empty`, `Spinner`) |
+| Address / identifier shortening | `src/shared/format.js` (`shortenMiddle`, `shortAddress`) |
+| Copy-to-clipboard | `src/ui/kit/button.js` (`CopyButton`) |
+
+### Shared UI platform — how a feature consumes it
+
+A route composes screens out of `src/ui/kit/*` and `src/ui/domain/*`; it does not build these
+primitives itself. The rules that the test suite enforces (`test/test-shared-platform.mjs`):
+
+- **Events go to `toast()`.** A toast always carries a message — a string argument is the title, and
+  a payload with no text renders nothing at all. `pending` is for in-flight work and is resolved in
+  place with `handle.update({...})`; `key` makes a repeated event update its own bar. Never build a
+  toast element, a toast host, or a second notification bar in a feature.
+- **Persistent state goes to `Banner()`.** `error` · `warning` · `info` · `success` (`ok` is a
+  synonym). An empty banner renders nothing.
+- **Never truncate a string by hand.** `shortenMiddle(value, {head, tail})` / `shortAddress(value)`
+  in `src/shared/format.js`; it guarantees the result is never longer than the input, and the caller
+  keeps the full value for `title`/`aria-label` and for anything that is compared or sent.
+- **Copying uses `CopyButton`.** The one exception is the Receive address box, which swaps its own
+  label to "Copied" and therefore owns its affordance; both surface a failure instead of failing
+  silently.
+- **Never render a claim the wallet cannot support.** "Submitting", "submitted", "confirmed" and
+  "outcome unknown" are distinct states, and a notification must not collapse a timeout into
+  "failed" or a signature into "confirmed".
 
 ## Signing and transaction boundary
 

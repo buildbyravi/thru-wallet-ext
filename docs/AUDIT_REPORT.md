@@ -21,8 +21,18 @@ Baseline evidence (re-run green 2026-10-04): `npm run build` PASS · `npm test` 
 (derivation 16/16, contract 80/80, lifecycle 1017/1017, 1647 assertions) ·
 `npm audit --omit=dev` 0 vulnerabilities.
 
+**Refresh (2026-10-30, shared-platform pass).** The Domain "empty black notification bar" was a
+`toast()` called with a bare string: the component rendered chrome with an empty message body and
+had no tests at all. Fixed at source (`docs/audits/2026-10-30-shared-platform-audit.md`,
+`docs/DEFECT_LOG.md` §16): `toast()` now refuses to render without a message, gained a `pending`
+state with in-place resolution, key dedupe and real teardown (lock/account/network), `Banner`
+resolves one tone vocabulary, and six address-truncation copies became one shared primitive.
+New guards: `test/test-toast.mjs` (89) and `test/test-shared-platform.mjs` (45, each scanner with a
+positive control). A real-browser look at the fixed bar is still **UNVERIFIED**; the harness is
+`scripts/preview-toast.html`.
+
 **Refresh (2026-10-30).** The tree is at contract **v31** with **153 methods** and **15 routes**;
-`npm test` is **2,481 checks (35 suites + 5 gates)**, `npm run build` PASS, layering 127 files /
+`npm test` is **2,615 checks (37 suites + 5 gates)**, `npm run build` PASS, layering 127 files /
 0 DOM sinks, `check-routes` 15/15 with the full used-class set defined. The 2026-10-30 lifecycle
 audit (`docs/audits/2026-10-30-review-lifecycle-audit.md`) fixed four pre-sign defects — a hidden
 Domain queue that submitted reviews without a card, a faucet claim that re-derived its account at

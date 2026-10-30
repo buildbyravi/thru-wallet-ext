@@ -168,3 +168,43 @@ Deferred, with reasons (recorded so they are not mistaken for oversights):
 No browser pass, no popup-dimension verification, no live-chain behaviour. The Domain bar's *height*
 is derived from the stylesheet, not measured on screen. "Fixed" below means the call site no longer
 produces an empty message and the component refuses to render one.
+
+## 8. What shipped (same day, three commits)
+
+| Commit | Scope |
+| --- | --- |
+| `05f1134` | The notification foundation and the Domain migration: blank-message guard, string shorthand, `pending` + `handle.update()`, `key` dedupe, `dismissAllToasts()` wired to lock/account/network, `Banner` success tone, the three Domain call sites, `test/test-toast.mjs` (89 checks) |
+| `8072dd8` | One truncation primitive (`shortenMiddle`/`shortAddress`, `truncateAddress` as an alias), six call sites migrated with their existing widths, `test/test-shared-platform.mjs` (45 checks) |
+| (docs) | This record, `docs/DECISIONS.md` D-018, `docs/ARCHITECTURE.md` "Shared UI platform", `docs/DEFECT_LOG.md` §16, `CONTEXT.md` file map, `docs/AUDIT_REPORT.md` refresh, and the stale `06_MODULAR_REUSE_AUDIT.md` citation in `kit/sheet.js` |
+
+State after the pass: `npm run build` exit 0; `npm test` exit 0 — **2,615** `ok -` checks, 0 failures
+(37 suites + 5 gates), `test-toast.mjs` 89/89, `test-shared-platform.mjs` 45/45,
+`test-route-lifecycle.mjs` 1,113/1,113, `test-tx-review.mjs` 175/175, `test-tx-review-card.mjs` 46/46.
+
+The Domain screen is the migrated feature, as the directive asked: its three notifications are
+events on the shared surface with a tone, a message and a dedupe key; its success banner uses the
+success state instead of a silently-dropped `'ok'`; its address shortening is the shared helper.
+Send, Activity, the token drawer, the review card and the domain-record decoder adopt the same
+helper in the same change, with their existing widths preserved.
+
+### 8a. Still duplicated, with the reason
+
+| Duplicate | Where | Why it remains |
+| --- | --- | --- |
+| Bottom-sheet scaffold | `domain/password-prompt.js:131`, `domain/tx-detail-sheet.js:263` build `.modal-overlay` + `focusTrap` by hand | Overlay layout is unverifiable without a browser (Hard rule 14), and one of the two is the password prompt. Migrating them blind would be an unverified layout change to a security surface. |
+| Clipboard write | `routes/receive.js:111` beside `kit/button.js:155` | The Receive box swaps its own label to "Copied"; it is an affordance, not a button, and both surface failure. |
+| Clipboard read (paste) | `routes/send.js:354`, `domain/token-drawer.js:245` | One API call each; a wrapper would add indirection without removing a behaviour difference. |
+| Diagnostic truncation in background errors | 24 `slice(0, 12)…` sites in `services/` (dex, name) | Thrown-error text, not a rendered row. The display layer is guarded; the background sweep is a separate, test-visible change. |
+| Error taxonomies | `classifyReviewError` (vault/auth/review) vs `classifyFaucetError` (faucet rate limit) | Different backends and different vocabularies. Merging them would be merging what only looks similar. |
+
+### 8b. Verification status — precise
+
+- **IMPLEMENTED + TESTED**: the blank-toast guard, string shorthand, five tones, in-place resolution,
+  key dedupe, teardown wiring, the tone vocabulary, the truncation primitive and every migrated call
+  site, plus all guards. Proven by the two new deterministic suites and the existing 35.
+- **UNVERIFIED**: the bar's rendered height and placement in a real popup, and any pixel claim about
+  the new `pending` styling. No browser binary exists in this environment. `scripts/preview-toast.html`
+  is the harness for that look (400×600 and 380×600 frames, real component, real stylesheet), and it
+  has been served successfully but not opened by an agent.
+- **NOT CLAIMED**: that every feature uses the shared platform. §8a lists the known exceptions, and
+  the guards only cover notifications, truncation, clipboard writes and kit-only imports.
