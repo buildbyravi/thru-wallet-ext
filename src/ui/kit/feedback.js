@@ -8,6 +8,10 @@ import { icon } from './icon.js';
  * @param {{ tone?: 'error'|'warning'|'info', message?: string }} props
  */
 export function Banner({ tone = 'error', message = '' } = {}) {
+  // The tone the banner is currently SHOWING, not the one it was constructed with. Comparing
+  // against the constructor argument made the first warning sticky: a later error never reset
+  // the classes, because 'error' === 'error' for a banner that was painted as a warning.
+  let currentTone = tone;
   const toneClass = tone === 'error' ? 'error' : ['notice', tone === 'warning' ? 'warning' : ''].filter(Boolean);
   const textEl = h('span', { text: message });
   const el = h('div', {
@@ -21,11 +25,12 @@ export function Banner({ tone = 'error', message = '' } = {}) {
     set(nextMessage, nextTone) {
       textEl.textContent = nextMessage ? String(nextMessage) : '';
       el.classList.toggle('hidden', !nextMessage);
-      if (nextTone && nextTone !== tone) {
+      if (nextTone && nextTone !== currentTone) {
         el.classList.remove('error', 'notice', 'warning');
         if (nextTone === 'error') el.classList.add('error');
         else el.classList.add('notice', nextTone === 'warning' ? 'warning' : '');
         el.setAttribute('role', nextTone === 'error' ? 'alert' : 'status');
+        currentTone = nextTone;
       }
     },
     clear() {

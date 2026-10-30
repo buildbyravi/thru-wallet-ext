@@ -27,13 +27,23 @@ export function decodeTokenTransfer({ facts }) {
   const acknowledgements = [];
   const symbol = facts.symbol || 'TOKEN';
   const decimals = Number.isInteger(facts.decimals) ? facts.decimals : 0;
+  // The ticker is creator-controlled, so a mint can call itself THRU. On the money table that
+  // is indistinguishable from the native currency, which is exactly what an impersonation
+  // wants. Say it in words, first, and keep the mint address in Details as the fingerprint.
+  if (String(symbol).trim().toUpperCase() === 'THRU') {
+    warnings.push(warn('symbol-impersonation', 'warning',
+      'This token is not native THRU',
+      'The token calls itself THRU, but it is a minted token, not the network currency. The mint '
+      + 'address in Details is the token this transfer actually moves.'));
+  }
+
   // Same invariant as the native send: "verified" must name the pinned program it verified.
   const tokenProgramId = facts.tokenProgramId ?? null;
   if (!tokenProgramId) {
     warnings.push(warn('program-unidentified', 'danger',
       'The token program is not pinned for this network',
-      'The wallet has no verified token-program address for the active network, so it cannot '
-      + 'say which program this transfer calls.', { blocking: true }));
+      'This network has no known token program, so the wallet cannot check what this '
+      + 'transaction would run.', { blocking: true }));
   }
 
   // Tri-state on purpose: an RPC failure is NOT proof that the mint is absent. `null` is
@@ -41,31 +51,29 @@ export function decodeTokenTransfer({ facts }) {
   if (facts.mintExists === false) {
     warnings.push(warn('mint-absent', 'danger',
       'This mint does not exist on this network',
-      'The token program has no account at the mint address, so a transfer cannot be built '
-      + 'against it.', { blocking: true }));
+      'There is no token at that address on this network.', { blocking: true }));
   } else if (facts.mintExists == null) {
     warnings.push(warn('mint-unverified', 'warning',
       'The mint account could not be read',
-      'The chain did not answer for this mint, so the wallet cannot prove the transfer would '
-      + 'succeed. The token path re-reads the mint before signing and refuses an absent one.'));
+      'The token could not be read just now. The wallet checks it again before signing.'));
   }
 
   if (!facts.metadataVerified) {
     warnings.push(warn('metadata-unverified', 'warning',
       'Token metadata is not verified on-chain',
-      'The symbol and decimals shown come from this wallet\'s local registry, not from a mint '
-      + 'read. Base-unit amounts are still exact, but the display scale may be wrong.'));
+      'The name and decimal places shown are this wallet\'s own record, not a reading from '
+      + 'the token, so the amount could be displayed at the wrong scale.'));
   }
 
   if (facts.recipient?.exists === false) {
     warnings.push(warn('recipient-not-activated', 'danger',
       'Recipient is not activated on this network',
-      'The recipient account must exist on-chain before a token account can be created for it.',
+      'The recipient has to be active on this network before it can hold this token.',
       { blocking: true }));
   } else if (facts.recipient?.exists == null) {
     warnings.push(warn('recipient-unverified', 'warning',
       'Recipient could not be verified',
-      'The chain did not answer the recipient lookup. The token path re-checks it before signing.'));
+      'The recipient could not be checked just now. The wallet checks again before signing.'));
   }
 
   if (facts.sourceTokenAccount?.exists === false) {
@@ -95,12 +103,6 @@ export function decodeTokenTransfer({ facts }) {
       + 'transfer. That is a separate, irreversible on-chain transaction with its own fee.'));
     acknowledgements.push(acknowledgement('recipient-token-account-created',
       'I understand two transactions are submitted and the account creation cannot be undone'));
-  }
-
-  if (!facts.fee?.supported) {
-    warnings.push(warn('fee-unmeasured', 'warning',
-      'Network fee is not measured for this path',
-      facts.fee?.reason || 'No measured fee exists for token transfers on this network.'));
   }
 
   if (facts.duplicate?.isDuplicate) {

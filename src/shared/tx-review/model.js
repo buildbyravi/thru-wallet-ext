@@ -68,6 +68,9 @@ export const REVIEW_RECHECK_CODES = Object.freeze({
   REVIEW_INTERNAL: 'REVIEW_INTERNAL',
   // Registrar refusals that mean "the thing you reviewed is not there any more".
   NAME_TAKEN: 'NAME_TAKEN',
+  // What the write itself answers when the domain is gone. `NAME_TAKEN` means the opposite
+  // thing, so using it for an absent domain told the user their name had been taken.
+  NAME_NOT_FOUND: 'NAME_NOT_FOUND',
   LEASE_NOT_FOUND: 'LEASE_NOT_FOUND',
   LEASE_NOT_EXPIRED: 'LEASE_NOT_EXPIRED',
   NOT_NAME_OWNER: 'NOT_NAME_OWNER',
@@ -93,6 +96,7 @@ export const STALE_REVIEW_CODES = Object.freeze([
   REVIEW_RECHECK_CODES.REVIEW_FAUCET_CHANGED,
   REVIEW_RECHECK_CODES.REVIEW_UNAVAILABLE,
   REVIEW_RECHECK_CODES.NAME_TAKEN,
+  REVIEW_RECHECK_CODES.NAME_NOT_FOUND,
   REVIEW_RECHECK_CODES.LEASE_NOT_FOUND,
   REVIEW_RECHECK_CODES.LEASE_NOT_EXPIRED,
   REVIEW_RECHECK_CODES.NOT_NAME_OWNER,

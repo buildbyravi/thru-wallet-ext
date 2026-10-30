@@ -220,10 +220,15 @@ export function FaucetRoute({ navigate, back }) {
   }
 
   let claiming = false;
+  // The window between "review sheet closed" and "submit settled" used to be unguarded: the
+  // claim button was re-enabled before the sheet opened and nothing blocked a second claim once
+  // it closed, so two submissions could overlap and a late one could paint a torn-down route.
+  let submitting = false;
+  let destroyed = false;
   let reviewSheet = null;
 
   async function claim(amountField, claimBtn) {
-    if (claiming || reviewSheet) return;
+    if (claiming || submitting || reviewSheet) return;
     claiming = true;
     claimBtn?.update({ disabled: true });
     banner.clear();
@@ -324,6 +329,9 @@ export function FaucetRoute({ navigate, back }) {
   }
 
   async function submitReviewed(prepared, acknowledgements, units) {
+    if (submitting) return;
+    submitting = true;
+    claimBtnEl?.update({ disabled: true });
     banner.clear();
     const before = await bridge
       .send('tx.getAccountInfo', { address: account.address })
@@ -338,9 +346,10 @@ export function FaucetRoute({ navigate, back }) {
         passwordBody: 'Re-enter your wallet password to sign this faucet claim.',
         confirmLabel: 'Claim on-chain',
       });
-      if (outcome.status === 'cancelled') return;
+      if (outcome.status === 'cancelled' || destroyed) return;
       await renderSuccess(outcome.result, before, units);
     } catch (error) {
+      if (destroyed) return;
       const classified = classifyReviewError(error, {
         uncertainMessage: 'Could not confirm whether this claim was submitted. Check Activity '
           + 'before trying again.',
@@ -349,6 +358,9 @@ export function FaucetRoute({ navigate, back }) {
       // A failed claim often CONSUMES the failed window slot or proves the window exhausted
       // — refresh the on-chain limit state so the note reflects what the chain now says.
       void refreshLimit();
+    } finally {
+      submitting = false;
+      if (!destroyed) claimBtnEl?.update({ disabled: false });
     }
   }
 
@@ -455,6 +467,7 @@ export function FaucetRoute({ navigate, back }) {
   return {
     el,
     destroy() {
+      destroyed = true;
       lifecycle.abort();
       reviewSheet?.destroy();
       reviewSheet = null;

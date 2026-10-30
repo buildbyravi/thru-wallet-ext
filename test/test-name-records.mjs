@@ -243,7 +243,10 @@ console.log('[4] domainRecordFacts: existence and ownership are three-state');
   const facts = await spec.facts({ name: 'alice', rootAddress: ROOT, key: 'twitter', value: '@alice' },
     { account: { address: ME }, network: { id: NET } });
   ok(facts.domainExists === true && facts.isOwner === true, 'a readable owned domain reads true/true');
-  ok(facts.tld === 'thru', 'the default root label is thru when no root account parses');
+  // Reviewer #28: an unreadable, unrecognised root is not labelled `.thru` any more. The
+  // fake root here parses as nothing and is not a derived known root, so the label is null and
+  // the decoder says the namespace is unverified instead of guessing one.
+  ok(facts.tld === null, 'an unverifiable root is left unlabelled instead of being called .thru');
 
   mode = 'unreadable';
   const down = await spec.facts({ name: 'alice', rootAddress: ROOT, key: 'twitter', value: '@alice' },
@@ -313,7 +316,9 @@ console.log('[5] domainRecordRecheck: four outcomes, and no signature on any ref
 
   mode = 'missing';
   const goneErr = await spec.recheck(record).then(() => null, (e) => e);
-  ok(goneErr?.code === 'NAME_TAKEN', 'a domain that is genuinely gone is NAME_TAKEN');
+  // `name.setRecord` answers NAME_NOT_FOUND for the same state; the review gate must not use
+  // NAME_TAKEN ("already registered") to describe an absent domain (reviewer #33).
+  ok(goneErr?.code === 'NAME_NOT_FOUND', 'a domain that is genuinely gone is NAME_NOT_FOUND');
 
   mode = 'foreign';
   const stolenErr = await spec.recheck(record).then(() => null, (e) => e);

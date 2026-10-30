@@ -182,7 +182,10 @@ const existingCfg = await thruClient.getAccountInfo(configAddress).catch(() => n
 let signature = null;
 let streamResult = null;
 let streamError = null;
-let vmError = 0;
+// null, not 0: a skipped Initialize never ran the VM, and 0 is the VM's success code. The
+// evidence file must not report an observation that was never made.
+let vmError = null;
+let initializeState = 'skipped';
 
 if (existingCfg?.exists) {
   console.log('  (config account already exists — skipping Initialize transaction)');
@@ -223,6 +226,7 @@ if (existingCfg?.exists) {
     if (update?.error) streamError = update.error;
   }
   step(!!signature && !streamError, 'Initialize broadcast', signature ?? String(streamError ?? 'no signature'));
+  initializeState = 'executed';
   vmError = Number(streamResult?.vmError ?? -1);
   step(vmError === 0, 'Initialize executed (vmError 0)',
     streamResult ? `vmError=${streamResult.vmError} userErrorCode=${streamResult.userErrorCode ?? 0}` : 'stream ended without an execution result (timeout) — check the explorer before re-running');
@@ -257,6 +261,7 @@ const evidence = {
   feePerYearBaseUnits: FEE_PER_YEAR.toString(),
   treasury: TREASURY,
   initializeSignature: signature,
+  initializeState,
   vmError,
   executionResult: streamResult,
 };

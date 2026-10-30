@@ -4770,11 +4770,102 @@ async function progressiveSendTest() {
     /Could not confirm whether this transfer was submitted/.test(textOf(uncertain.el))
       && /Check Activity and the explorer/.test(textOf(uncertain.el))
       && !/wallet service did not respond/.test(textOf(uncertain.el)));
+  // Reviewer #5 (major): the message alone was not the contract. `finally` re-enabled Confirm
+  // because the card still held its acknowledgements, so the same review could be submitted
+  // again after a timeout — a second transfer if the first one had broadcast.
+  const blockedConfirm = buttons(uncertain.el, /sign & send/i)[0];
+  ok('an uncertain outcome keeps Confirm disabled instead of inviting a retry',
+    blockedConfirm?.disabled === true,
+    `disabled=${blockedConfirm?.disabled}`);
+  const sendsBefore = chromeLog.calls.filter((c) => c === 'tx.sendChecked').length;
+  click(blockedConfirm);
+  await settle();
+  ok('clicking the blocked Confirm cannot resubmit the same review',
+    chromeLog.calls.filter((c) => c === 'tx.sendChecked').length === sendsBefore);
   uncertain.destroy();
   FIXTURES['tx.sendChecked'] = realCheckedSend;
   await settle();
   ok('uncertain-outcome view leaves no detached listeners', detachedListeners().length === 0);
   uncertain.el.remove();
+}
+
+// ---- Reviewer #10: leaving the review step must invalidate it ---------------------------
+
+async function reviewStepInvalidationTest() {
+  section('send: going back from a review cancels the preparation instead of being repainted');
+
+  // Hold `tx.prepareReview` at the real bridge seam so the user can act while it is in flight.
+  // Installed AFTER resetBackend, which rebuilds the chrome stub.
+  const held = [];
+  let restore = () => {};
+  const flush = () => {
+    restore();
+    for (const item of held.splice(0)) {
+      item.callback({ ok: false, error: { code: 'NETWORK_ERROR', message: 'Test finished', retryable: true } });
+    }
+  };
+
+  try {
+    resetBackend(SCENARIOS[2]);
+    resetDom();
+    const original = chrome.runtime.sendMessage;
+    chrome.runtime.sendMessage = (message, callback) => {
+      if (message?.method !== 'tx.prepareReview') return original(message, callback);
+      chromeLog.calls.push(message.method);
+      held.push({ message, callback });
+      return undefined;
+    };
+    restore = () => { chrome.runtime.sendMessage = original; };
+    const route = SendRoute({ params: {}, navigate() {}, back() {} });
+    DOC.body.appendChild(route.el);
+    await settle();
+    type(route.el.querySelector('input[placeholder="0.0"]'), '0.001');
+    type(route.el.querySelector('input[placeholder="ta…"]'),
+      'ta1validrecipient00000000000000000000000000000000000000000');
+    await sleep(450);
+    await settle();
+    click(buttons(route.el, /^review$/i)[0]);
+    await settle();
+    ok('the review step waits for the preparation', held.length === 1,
+      `held=${held.length} ${chromeLog.calls.slice(-6).join(',')}`);
+
+    // The header back arrow is the step back: it must take the user to the form, not wait.
+    const backBtn = [...route.el.querySelectorAll('button')]
+      .find((node) => node.getAttribute('title') === 'Back');
+    click(backBtn);
+    await settle();
+    ok('back returns to the form while the preparation is still in flight',
+      Boolean(route.el.querySelector('input[placeholder="ta…"]')));
+
+    // The late reply must not paint a review over the form the user just returned to.
+    const pending = held.shift();
+    pending.callback({ ok: true, data: FIXTURES['tx.prepareReview'](pending.message.params) });
+    await settle();
+    ok('a preparation that resolves after Back cannot repaint the review screen',
+      !route.el.querySelector('.tx-review-card')
+        && Boolean(route.el.querySelector('input[placeholder="ta…"]')),
+      textOf(route.el).slice(0, 160));
+
+    // A review the user actually saw is discarded when they leave it, not left in storage.
+    click(buttons(route.el, /^review$/i)[0]);
+    await settle();
+    const second = held.shift();
+    second.callback({ ok: true, data: FIXTURES['tx.prepareReview'](second.message.params) });
+    await settle();
+    ok('the review is rendered before the discard check',
+      Boolean(route.el.querySelector('.tx-review-card')));
+    const callsBefore = chromeLog.calls.filter((c) => c === 'tx.discardReview').length;
+    click([...route.el.querySelectorAll('button')].find((n) => n.getAttribute('title') === 'Back'));
+    await settle();
+    ok('leaving a rendered review discards it instead of leaving it confirmable',
+      chromeLog.calls.filter((c) => c === 'tx.discardReview').length === callsBefore + 1
+        && !route.el.querySelector('.tx-review-card'),
+      chromeLog.calls.slice(-6).join(','));
+    route.destroy();
+    await settle();
+  } finally {
+    flush();
+  }
 }
 
 // ---- v29: the faucet claim is a reviewed transaction, not a direct signing call --------
@@ -4901,6 +4992,42 @@ async function faucetReviewTest() {
   pausedRoute.el.remove();
 
   // A timeout during submission is an UNKNOWN outcome, never a failure message.
+  // Reviewer #16: the window between "sheet closed" and "submit settled" must be guarded —
+  // a second claim during a slow submit used to open a second review over the same account.
+  resetBackend(SCENARIOS[2]);
+  resetDom();
+  const inFlightHeld = [];
+  const inFlightOriginal = chrome.runtime.sendMessage;
+  const realClaimData = FIXTURES['tx.claimFaucet']({ amountUnits: '10000' });
+  chrome.runtime.sendMessage = (message, callback) => {
+    if (message?.method !== 'tx.claimFaucet') return inFlightOriginal(message, callback);
+    chromeLog.calls.push(message.method);
+    inFlightHeld.push({ message, callback });
+    return undefined;
+  };
+  const inFlightRoute = FaucetRoute({ params: {}, navigate() {}, back() {} });
+  DOC.body.appendChild(inFlightRoute.el);
+  await settle();
+  click(buttons(inFlightRoute.el, /claim on-chain/i)[0]);
+  await settle();
+  click(buttons(DOC.body, /^claim$/i)[0]);
+  await settle();
+  const busyClaim = buttons(inFlightRoute.el, /claim on-chain|claiming/i)[0];
+  ok('a submitted claim disables the claim control until it settles',
+    inFlightHeld.length === 1 && busyClaim?.disabled === true,
+    `held=${inFlightHeld.length} disabled=${busyClaim?.disabled}`);
+  const preparesBefore = chromeLog.calls.filter((c) => c === 'tx.prepareReview').length;
+  click(busyClaim);
+  await settle();
+  ok('a second click during submission cannot start another claim',
+    chromeLog.calls.filter((c) => c === 'tx.prepareReview').length === preparesBefore,
+    `${preparesBefore} -> ${chromeLog.calls.filter((c) => c === 'tx.prepareReview').length}; tail ${chromeLog.calls.slice(-8).join(',')}; disabled=${busyClaim?.disabled}`);
+  for (const item of inFlightHeld.splice(0)) item.callback({ ok: true, data: realClaimData });
+  await settle();
+  inFlightRoute.destroy();
+  chrome.runtime.sendMessage = inFlightOriginal;
+  inFlightRoute.el.remove();
+
   resetBackend(SCENARIOS[2]);
   resetDom();
   const realClaim = FIXTURES['tx.claimFaucet'];
@@ -5751,6 +5878,7 @@ try {
   await lastSourceRemovalTest();
   await navigationTest();
   await progressiveSendTest();
+  await reviewStepInvalidationTest();
   await faucetReviewTest();
   await ownRecipientRegistrationTest();
   await historyCacheFirstTest();

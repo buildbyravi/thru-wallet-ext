@@ -11,6 +11,7 @@
   "feePerYearBaseUnits": "1000",
   "treasury": "taShrn6v-TM_h81ZjmDZLifdhLRlDMfIw_EAIaNKIIdPX-",
   "initializeSignature": null,
-  "vmError": 0,
-  "executionResult": null
+  "vmError": null,
+  "executionResult": null,
+  "initializeState": "skipped"
 }

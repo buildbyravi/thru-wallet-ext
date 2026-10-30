@@ -39,8 +39,7 @@ export function decodeFaucetClaim({ facts }) {
       'Faucet remaining allowance could not be read',
       facts.limit?.reason
         ? `The on-chain rate-limit policy answered: ${facts.limit.reason}.`
-        : 'The rate-limit policy is unavailable, so the remaining allowance is unknown. The '
-          + 'faucet still enforces it on-chain.'));
+        : 'The wallet could not read how much is left in this window.'));
   } else {
     if (facts.limit.paused) {
       warnings.push(warn('faucet-paused', 'danger',
@@ -62,13 +61,11 @@ export function decodeFaucetClaim({ facts }) {
   if (facts.accountExists === false) {
     warnings.push(warn('account-activation', 'info',
       'Your account will be activated first',
-      'A faucet claim from an account that does not exist on-chain activates it with the '
-      + 'network\'s account-creation program first, then claims.'));
+      'This account is new on this network, so the claim also creates it.'));
   } else if (facts.accountExists == null) {
     warnings.push(warn('account-state-unverified', 'warning',
       'Account state could not be read',
-      'The chain did not answer whether this account already exists, so the wallet cannot say '
-      + 'whether the claim also activates it. The claim handler re-reads it before signing.'));
+      'The wallet could not tell whether this account already exists, so it may also create it.'));
   }
 
   // F-07b: `targetMatchesFaucet:false` means the rate-limit policy this wallet just read
@@ -77,8 +74,8 @@ export function decodeFaucetClaim({ facts }) {
   if (facts.limit?.supported && facts.limit.targetMatchesFaucet === false) {
     warnings.push(warn('faucet-target-mismatch', 'danger',
       'The faucet policy targets a different program',
-      'The rate-limit policy read for this network does not apply to the faucet program that '
-      + 'would be called, so the claim cannot be proven safe to sign.', { blocking: true }));
+      'The allowance the wallet read belongs to a different faucet, so it cannot promise this '
+      + 'claim fits.', { blocking: true }));
   }
 
   // Only the rate-limit remainder is a fact about this transaction that is not money; the

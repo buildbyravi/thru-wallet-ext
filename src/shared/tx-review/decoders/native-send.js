@@ -25,8 +25,8 @@ export function decodeNativeSend({ facts }) {
   if (!transferProgramId) {
     warnings.push(warn('program-unidentified', 'danger',
       'The transfer program is not pinned for this network',
-      'The wallet has no verified program address for the active network, so it cannot say '
-      + 'which program this transfer calls. Refusing to sign is the only safe answer.',
+      'This network has no known transfer program, so the wallet cannot check what this '
+      + 'transaction would run.',
       { blocking: true }));
   }
   const acknowledgements = [];
@@ -40,32 +40,21 @@ export function decodeNativeSend({ facts }) {
   if (facts.recipient?.exists === false) {
     warnings.push(warn('recipient-not-activated', 'danger',
       'Recipient is not activated on this network',
-      'A Thru account must already exist on-chain before it can receive a transfer. The '
-      + 'recipient has to activate it first; this wallet cannot do that for someone else, and '
-      + 'the chain reverts the transfer.', { blocking: true }));
+      'The recipient has to be active on this network before it can receive anything.', { blocking: true }));
   } else if (facts.recipient?.exists == null) {
     warnings.push(warn('recipient-unverified', 'warning',
       'Recipient could not be verified',
-      'The chain did not answer the recipient lookup. The wallet re-checks it before signing '
-      + 'and refuses a recipient that does not exist.'));
+      'The recipient could not be checked just now. The wallet checks again before signing.'));
   }
 
   if (facts.balanceUnits == null) {
     warnings.push(warn('balance-unknown', 'warning',
       'Balance could not be read',
-      'The amount is not checked against a live balance here. The send path re-reads the '
-      + 'balance and refuses an amount above it.'));
+      'The wallet could not read the balance, so it checks again before signing.'));
   } else if (BigInt(facts.balanceUnits) < BigInt(facts.amountUnits)) {
     warnings.push(warn('insufficient-balance', 'danger',
       'Amount is higher than the balance',
-      'The account holds less than the amount plus the network fee, so the chain would reject '
-      + 'this transfer.', { blocking: true }));
-  }
-
-  if (!facts.fee?.supported) {
-    warnings.push(warn('fee-unmeasured', 'warning',
-      'Network fee is not measured on this network',
-      facts.fee?.reason || 'No fee measurement exists for this chain, so no number is shown.'));
+      'There is not enough in the account to cover the amount and the network fee.', { blocking: true }));
   }
 
   if (facts.duplicate?.isDuplicate) {

@@ -228,7 +228,7 @@ function paidRegistryBlock({ facts, operation, rows, instructions, extraWarnings
   } else if (facts.paymentBalanceUnits == null) {
     warnings.push(warn('payment-balance-unknown', 'warning',
       'Payment token balance could not be read',
-      'The handler re-reads it before signing and refuses an amount above the balance.'));
+      'The wallet checks the balance again before signing.'));
   }
 
   return {
@@ -312,8 +312,7 @@ export function decodeDomainRenew({ facts }) {
   if (facts.lease?.endTime == null) {
     warnings.push(warn('expiry-unknown', 'warning',
       'Current expiry could not be read',
-      'The handler re-reads the lease before signing. Without it, the wallet cannot show the '
-      + 'start of the extension window.'));
+      'The wallet checks the lease again before signing.'));
   }
   // A custom-registrar renewal is the same intent through a different program: native THRU
   // instead of the registry token, and a registrar the wallet can name. Until 2026-10-28 this

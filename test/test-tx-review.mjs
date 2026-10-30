@@ -243,10 +243,13 @@ console.log('[1] decoders: exact amounts, honest warnings');
   const unmeasured = decode('native-send', nativeFacts({
     fee: { supported: false, feeUnits: null, reserveUnits: null, source: null, reason: 'not measured here' },
   }));
-  ok('an unmeasured fee is an explicit unsupported fee, never a zero',
+  // The money table says "not confirmed (paid in THRU)" on its own. A second warning saying
+  // the same thing was pure duplication, so the fee is now stated once, in the row that owns it.
+  ok('an unmeasured fee is an explicit unsupported fee, never a zero, and is said once',
     unmeasured.assets.fee.supported === false
       && unmeasured.assets.fee.amountUnits === null
-      && warningIds(unmeasured).includes('fee-unmeasured'));
+      && !warningIds(unmeasured).includes('fee-unmeasured')
+      && Boolean(unmeasured.assets.fee.note));
 
   const duplicate = decode('native-send', nativeFacts({
     duplicate: { isDuplicate: true, isPending: false, elapsedMs: 12_000 },
@@ -274,6 +277,14 @@ console.log('[2] decoders: token transfers');
   ok('a first-time recipient exposes the second transaction and requires an acknowledgement',
     warningIds(firstTime).includes('recipient-token-account-created')
       && firstTime.acknowledgements.some((ack) => ack.id === 'recipient-token-account-created'));
+
+  const impersonating = decode('token-transfer', tokenFacts({ symbol: 'THRU', name: 'Thru (fake)' }));
+  ok('a token ticker that claims to be native THRU is called out, not rendered as a native send',
+    warningIds(impersonating).includes('symbol-impersonation')
+      && impersonating.assets.outgoing[0].mintAddress === MINT
+      && /not native THRU/i.test(impersonating.warnings
+        .find((w) => w.id === 'symbol-impersonation')?.title ?? ''),
+    JSON.stringify(warningIds(impersonating)));
 
   const unverified = decode('token-transfer', tokenFacts({ metadataVerified: false }));
   ok('unverified token metadata is marked, not silently trusted',
@@ -909,7 +920,7 @@ console.log('[13] the review error surface is declared in exactly one place');
   const stale = new Set(model.STALE_REVIEW_CODES);
   for (const code of ['REVIEW_FEE_CHANGED', 'REVIEW_TOKEN_CHANGED', 'REVIEW_PRICE_CHANGED',
     'REVIEW_EXPIRY_CHANGED', 'REVIEW_REGISTRAR_CHANGED', 'REVIEW_FAUCET_CHANGED',
-    'NAME_TAKEN', 'LEASE_NOT_FOUND', 'LEASE_NOT_EXPIRED', 'NOT_NAME_OWNER',
+    'NAME_TAKEN', 'NAME_NOT_FOUND', 'LEASE_NOT_FOUND', 'LEASE_NOT_EXPIRED', 'NOT_NAME_OWNER',
     'REVIEW_NOT_FOUND', 'REVIEW_EXPIRED', 'BINDING_MISMATCH', 'REVIEW_CONTEXT_CHANGED']) {
     ok(`'${code}' forces a re-read before signing`, stale.has(code));
   }

@@ -51,6 +51,18 @@ function requireLabel(value, field) {
   return name;
 }
 
+// The paid registry is a different program with different rules: it accepts any 1..64 bytes of
+// printable ASCII, so `a`, `ab` and `MiX_9` are valid purchases that the custom registrar's
+// lowercase/3-character rule would have rejected before the review was even built. Validate a
+// paid label with the validator that owns the paid path, and keep the typed case (the chain is
+// case-sensitive and the review must show the name that will be bought).
+function requireRegistryLabel(value, field) {
+  const name = String(value ?? '').trim();
+  const problem = registrar.purchaseNameProblem(name);
+  if (problem) throw coded('INVALID_INPUT', `${field}: ${problem}`);
+  return name;
+}
+
 function requireYears(value, field = 'years') {
   const years = Number(value);
   const problem = customRegistrar.yearsProblem(years);
@@ -457,7 +469,7 @@ const REGISTRY_PROGRAM = Object.freeze({
 });
 
 async function registryWriteFacts(params, { account, mode }) {
-  const name = requireLabel(params.name, 'name');
+  const name = requireRegistryLabel(params.name, 'name');
   const years = requireYears(params.years);
 
   const registry = await registrarService.getRegistry();
@@ -733,16 +745,32 @@ async function domainRecordFacts(params, { account, network }) {
     }
   }
 
-  // `.thru` is the default derivation, but the caller may name another root. Only then is one
-  // extra read worth it: a review that says "alice.thru" while writing under another root is a
-  // false label on the one field the user reads.
+  // `.thru` is the default derivation, but the caller may name another root. The review has to
+  // name the namespace the WRITE uses: this used to fall back to `.thru` whenever the supplied
+  // root did not parse, so a signature could write under one root while the one string the user
+  // reads said `.thru` (reviewer #28). Now the label is the root's own name, the derived name of
+  // a known root, or nothing at all — never a guess.
   let tld = 'thru';
   if (params.rootAddress) {
+    const rootInfo = await thruClient.getAccountInfo(rootAddress).catch(() => null);
+    let parsedRoot = null;
     try {
-      const rootInfo = await thruClient.getAccountInfo(rootAddress);
-      const parsedRoot = rootInfo?.exists ? ns.parseRootRegistrar(rootInfo.raw) : null;
-      if (parsedRoot?.name) tld = String(parsedRoot.name).toLowerCase();
-    } catch { /* keep the label the caller's default implies */ }
+      parsedRoot = rootInfo?.exists ? ns.parseRootRegistrar(rootInfo.raw) : null;
+    } catch {
+      parsedRoot = null;
+    }
+    const readName = String(parsedRoot?.name ?? '').replace(/^\.+/, '').toLowerCase();
+    if (readName) {
+      tld = readName;
+    } else {
+      // A root account the wallet can DERIVE but not read is still a known namespace; the
+      // derivation is official and the two roots are pinned. Anything else stays unlabelled.
+      const known = [
+        { name: 'thru', address: await ns.rootRegistrarAddress('thru') },
+        { name: 'id', address: await ns.rootRegistrarAddress('id') },
+      ].find((entry) => entry.address === rootAddress);
+      tld = known ? known.name : null;
+    }
   }
 
   const existing = currentRecords.find((r) => r.key === key);
@@ -793,7 +821,7 @@ async function domainRecordRecheck(record) {
     throw coded('REVIEW_UNAVAILABLE', 'The domain could not be read before signing.', true);
   }
   if (!domainInfo.exists) {
-    throw coded('NAME_TAKEN', `'${facts.name}.${facts.tld}' is no longer on-chain.`);
+    throw coded('NAME_NOT_FOUND', `'${facts.name}.${facts.tld}' is no longer on-chain.`);
   }
   let parsed;
   try {

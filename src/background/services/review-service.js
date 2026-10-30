@@ -252,6 +252,12 @@ export async function prepareReview({ kind, params = {} } = {}) {
 export async function confirmReview({ reviewId, bindingHash, acknowledgements = [] } = {}) {
   if (typeof reviewId !== 'string' || !reviewId) throw coded('INVALID_INPUT', 'reviewId is required');
   if (typeof bindingHash !== 'string' || !bindingHash) throw coded('INVALID_INPUT', 'bindingHash is required');
+  // The nested value is the one part of `params` handleApiRequest does not type-check. A
+  // non-iterable used to reach `new Set(accepted)` and surface as METHOD_ERROR — the caller's
+  // mistake reported as the wallet's. It also flowed unchecked into every kind's submit.
+  if (!Array.isArray(acknowledgements) || !acknowledgements.every((id) => typeof id === 'string')) {
+    throw coded('INVALID_INPUT', 'acknowledgements must be an array of strings');
+  }
 
   const network = await getActiveNetworkConfig();
   const record = await store.get(network.id, reviewId);

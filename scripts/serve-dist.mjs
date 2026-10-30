@@ -4,6 +4,7 @@
 //   node scripts/serve-dist.mjs --root .        # serves the repo, so the harnesses under
 //                                               # scripts/ can import src/ modules directly
 //   node scripts/serve-dist.mjs --port 8000
+//   node scripts/serve-dist.mjs --root . --host 0.0.0.0   # explicit LAN opt-in
 //
 // The `--root .` mode exists for scripts/preview-tx-review.html, which imports the REAL
 // component and the REAL decoders out of src/ (plain ES modules, no bundler needed) instead
@@ -22,6 +23,10 @@ const repoRoot = new URL('..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)
 const requestedRoot = flag('root');
 const root = requestedRoot ? resolve(requestedRoot) : join(repoRoot, 'dist');
 const port = Number(flag('port', requestedRoot ? 8000 : 4173));
+// Loopback by default. `--root .` serves the repository, .git included, over plain HTTP; binding
+// that to every interface published the checkout to the whole network for a harness that only
+// ever needs localhost. A LAN preview is an explicit opt-in, not the default.
+const host = flag('host', '127.0.0.1');
 const defaultPath = requestedRoot ? '/scripts/preview-tx-review.html' : '/popup.html';
 
 const types = {
@@ -49,6 +54,6 @@ createServer(async (req, res) => {
     res.writeHead(404);
     res.end('not found');
   }
-}).listen(port, '0.0.0.0', () => {
-  console.log(`serving ${root} on http://0.0.0.0:${port} (open ${defaultPath})`);
+}).listen(port, host, () => {
+  console.log(`serving ${root} on http://${host}:${port} (open ${defaultPath})`);
 });

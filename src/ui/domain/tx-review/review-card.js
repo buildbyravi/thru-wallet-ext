@@ -213,7 +213,14 @@ export function TxReviewCard({ review, onChange = null } = {}) {
         'aria-expanded': 'false',
         title: 'Show the full address',
       }, [
-        h('span', { class: 'tx-review-counterparty-label', text: `To ${r.counterparty.label || shortAddress(r.counterparty.address)}` }),
+        h('span', {
+          class: 'tx-review-counterparty-label',
+          // A faucet claim pays the account that is signing. "To Active account" reads like a
+          // transfer to someone else, so the one case where the counterparty IS the user says so.
+          text: `To ${r.counterparty.address === r.account?.address
+            ? 'your account'
+            : (r.counterparty.label || shortAddress(r.counterparty.address))}`,
+        }),
         ...(r.counterparty.label
           ? [h('span', { class: 'hint mono', text: shortAddress(r.counterparty.address) })]
           : []),
@@ -271,6 +278,9 @@ export function TxReviewCard({ review, onChange = null } = {}) {
     // basis, simulation, and every caveat that was not decision-relevant. No repository paths
     // and no decision-record ids — a user cannot act on either.
     const details = [];
+    // Who is signing, in full. The context line carries the account's name; this is the address
+    // the signature will come from, which is the one fact a name cannot stand in for.
+    if (r.account?.address) details.push(detailRow('From', r.account.address, { mono: true }));
     if (r.execution.program) {
       details.push(detailRow('Program', r.execution.program.name));
       if (r.execution.program.address) {

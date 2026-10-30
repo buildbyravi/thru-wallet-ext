@@ -7,6 +7,17 @@ export const DOMAIN_RECORD_KIND = 'domain-record';
 
 export function decodeDomainRecord({ facts }) {
   const warnings = [];
+  // `tld` is null when the caller supplied a root account the wallet could neither read as a
+  // root registrar nor recognise as a derived known root. Printing `.thru` there would be a
+  // guess about the namespace the signature writes into (reviewer #28).
+  const domain = facts.tld ? `${facts.name}.${facts.tld}` : String(facts.name ?? '');
+
+  if (!facts.tld) {
+    warnings.push(warn('tld-unverified', 'warning',
+      'Namespace not verified',
+      'The wallet could not confirm which namespace this domain belongs to, so the review shows '
+      + 'the name without a suffix. The root account being written to is in Details.'));
+  }
 
   // Three states each (audit E-3, 2026-10-29): a failed read must never render as a proven
   // absence or a proven foreign owner. "Could not be verified" blocks too — a record write
@@ -14,22 +25,22 @@ export function decodeDomainRecord({ facts }) {
   if (facts.domainExists === false) {
     warnings.push(warn('domain-absent', 'danger',
       'Domain does not exist',
-      `'${facts.name}.${facts.tld}' is not registered on-chain.`,
+      `'${domain}' is not registered on-chain.`,
       { blocking: true }));
   } else if (facts.domainExists == null) {
     warnings.push(warn('domain-unverified', 'danger',
       'The domain could not be read',
-      `The chain did not answer the lookup for '${facts.name}.${facts.tld}', so the wallet cannot `
+      `The chain did not answer the lookup for '${domain}', so the wallet cannot `
       + 'prove the record write would land on a domain you own.', { blocking: true }));
   } else if (facts.isOwner === false) {
     warnings.push(warn('not-name-owner', 'danger',
       'You do not own this domain',
-      `Only the domain owner (${facts.ownerAddress ? `${facts.ownerAddress.slice(0, 12)}…` : 'another account'}) can set records on '${facts.name}.${facts.tld}'.`,
+      `Only the domain owner (${facts.ownerAddress ? `${facts.ownerAddress.slice(0, 12)}…` : 'another account'}) can set records on '${domain}'.`,
       { blocking: true }));
   } else if (facts.isOwner == null) {
     warnings.push(warn('owner-unverified', 'danger',
       'Ownership could not be verified',
-      `'${facts.name}.${facts.tld}' exists but its owner could not be read, so the wallet cannot `
+      `'${domain}' exists but its owner could not be read, so the wallet cannot `
       + 'prove this write is yours to make.', { blocking: true }));
   }
 
@@ -54,12 +65,12 @@ export function decodeDomainRecord({ facts }) {
   if (facts.unchanged) {
     warnings.push(warn('record-unchanged', 'info',
       'Record value is already set',
-      `'${facts.key}' on '${facts.name}.${facts.tld}' is already '${facts.value}'. Submitting `
+      `'${facts.key}' on '${domain}' is already '${facts.value}'. Submitting `
       + 'appends the same pair again.'));
   } else if (facts.existingValue != null) {
     warnings.push(warn('record-appends', 'warning',
       'A record with this key already exists',
-      `'${facts.name}.${facts.tld}' already has '${facts.key}' = '${facts.existingValue}'. `
+      `'${domain}' already has '${facts.key}' = '${facts.existingValue}'. `
       + 'The name service APPENDS records, so the old value stays on the account and readers '
       + 'that take the first match will keep showing it.'));
   }
@@ -73,7 +84,7 @@ export function decodeDomainRecord({ facts }) {
   return {
     operation: {
       id: DOMAIN_RECORD_KIND,
-      name: `Add a ${facts.key} record to ${facts.name}.${facts.tld}`,
+      name: `Add a ${facts.key} record to ${domain}`,
       summary: 'The name service adds records. An existing value with this key stays on the account.',
       confirmLabel: 'Confirm and sign',
       decode: 'decoded',
@@ -85,7 +96,7 @@ export function decodeDomainRecord({ facts }) {
       source: progSrc,
     },
     summary: [
-      row('Domain', `${facts.name}.${facts.tld}`, { mono: true }),
+      row('Domain', `${domain}`, { mono: true }),
       row('Record Key', String(facts.key ?? ''), { mono: true }),
       row('Record Value', String(facts.value ?? ''), { mono: true }),
     ],
@@ -114,7 +125,7 @@ export function decodeDomainRecord({ facts }) {
       instructions: [
         instruction('APPEND_RECORD (name-service opcode 2)', {
           decoded: true,
-          note: `Append key '${facts.key}' with value '${facts.value}' to '${facts.name}.${facts.tld}'`,
+          note: `Append key '${facts.key}' with value '${facts.value}' to '${domain}'`,
         }),
       ],
       // accountRole(role, address) — two arguments. The first version passed the address as the

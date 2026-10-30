@@ -68,35 +68,74 @@ function requireAddress(value, field) {
 
 /** name.lookup: resolve a dotted name under an explicit root registrar address (blank root
  *  → auto-discovered canonical root, proven on-chain; NAME_ROOT_UNKNOWN when none exists). */
+// Root names come off the chain with a leading dot on some roots (`.id`), and without one on
+// others. Suffix handling has to agree with the bytes either way.
+function normalizeRootName(value) {
+  return String(value ?? '').trim().toLowerCase().replace(/^\.+/, '');
+}
+
+// The community `.id` namespace is derived, not discovered. Discovery returns the official
+// `.thru` root whenever both exist, so a user who typed `alice.id` would be read against the
+// wrong namespace — or refused, because `id` is shorter than the name-service's 3-character
+// label minimum (reviewer #22: that minimum is a rule for labels UNDER a root, not for the
+// root suffix the user typed).
+const KNOWN_ROOT_SUFFIXES = Object.freeze(['thru', 'id']);
+
 export async function lookupName({ name, rootAddress } = {}) {
-  let cleanName = String(name ?? '').trim().toLowerCase();
-  requireValidName(cleanName);
-  await getActiveNetworkConfig();
-  let root = String(rootAddress ?? '').trim();
-  let rootName = 'thru';
-  if (!root) {
-    const discovered = await discoverDefaultRoot();
-    if (!discovered?.supported) {
-      const err = new Error(discovered?.reason ?? 'no canonical name root on this network');
-      err.code = 'NAME_ROOT_UNKNOWN';
-      throw err;
+  const typed = String(name ?? '').trim().toLowerCase();
+  let cleanName = typed;
+  let suffix = null;
+  for (const known of KNOWN_ROOT_SUFFIXES) {
+    if (cleanName.length > known.length + 1 && cleanName.endsWith('.' + known)) {
+      suffix = known;
+      cleanName = cleanName.slice(0, -(known.length + 1));
+      break;
     }
-    root = discovered.rootAddress;
-    rootName = String(discovered.name || 'thru').toLowerCase();
-  } else {
-    requireAddress(root, 'rootAddress');
-    try {
-      const info = await thruClient.getAccountInfo(root);
-      if (info?.exists) {
-        const parsed = parseRootRegistrar(info.raw);
-        if (parsed?.name) rootName = String(parsed.name).toLowerCase();
+  }
+
+  // Validate the LABEL, after peeling the suffix. A name the paid registry accepts but the
+  // name-service label rules do not (`MiX_9`) is still readable — it just needs the registrar
+  // address derivation instead of the dotted-chain walk.
+  const labelProblem = ns.nameProblem(cleanName);
+  const readsAsRegistrarLabel = Boolean(labelProblem) && !purchaseNameProblem(cleanName);
+  if (labelProblem && !readsAsRegistrarLabel) {
+    const err = new Error(`invalid name: ${labelProblem}`);
+    err.code = 'INVALID_PARAMS';
+    throw err;
+  }
+  await getActiveNetworkConfig();
+
+  const supplied = String(rootAddress ?? '').trim();
+  if (supplied) {
+    requireAddress(supplied, 'rootAddress');
+    if (suffix) {
+      // The caller named both a namespace and a root account; they must be the same namespace,
+      // or the wallet would read one root while the screen says the other.
+      const parsed = await thruClient.getAccountInfo(supplied)
+        .then((info) => (info?.exists ? parseRootRegistrar(info.raw) : null))
+        .catch(() => null);
+      const suppliedName = normalizeRootName(parsed?.name);
+      if (suppliedName && suppliedName !== suffix) {
+        const err = new Error(`rootAddress is the .${suppliedName} root, but the name asks for .${suffix}`);
+        err.code = 'INVALID_PARAMS';
+        throw err;
       }
-    } catch {}
+    }
+    return readName(cleanName, supplied, thruClient.getClient(), readsAsRegistrarLabel);
   }
-  if (cleanName.endsWith('.' + rootName)) {
-    cleanName = cleanName.slice(0, -(rootName.length + 1));
+
+  if (suffix) {
+    return readName(cleanName, await ns.rootRegistrarAddress(suffix), thruClient.getClient(),
+      readsAsRegistrarLabel);
   }
-  return readName(cleanName, root, thruClient.getClient());
+
+  const discovered = await discoverDefaultRoot();
+  if (!discovered?.supported) {
+    const err = new Error(discovered?.reason ?? 'no canonical name root on this network');
+    err.code = 'NAME_ROOT_UNKNOWN';
+    throw err;
+  }
+  return readName(cleanName, discovered.rootAddress, thruClient.getClient(), readsAsRegistrarLabel);
 }
 
 // Internal tracked-domain read: paid .thru labels have a wider official alphabet than

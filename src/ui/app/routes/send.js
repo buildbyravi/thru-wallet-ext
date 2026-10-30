@@ -118,6 +118,17 @@ export function SendRoute({ params, navigate, back }) {
   // the form itself.
   let subView = null;
 
+  // Review-step state. Declared before the render functions that use it (renderForm invalidates
+  // an in-flight preparation), so a later reorder cannot put a call inside the TDZ.
+  let reviewSeq = 0;
+  // The review this screen is holding, so leaving the step (or the route) can discard it instead
+  // of leaving it confirmable in the store until its TTL.
+  let preparedReview = null;
+  // Set when a submission's outcome is UNKNOWN (a timeout after the request left). The same
+  // review must not be submitted again: if the first one broadcast, the retry is a second
+  // transfer. Only a fresh review clears it.
+  let retryBlocked = false;
+
   function handleBack() {
     if (submitting) return;
     if (subView) {
@@ -242,6 +253,15 @@ export function SendRoute({ params, navigate, back }) {
   function renderForm(prefill = {}) {
     // Base state: leaving from here exits the route.
     subView = null;
+    // Leaving the review step must also invalidate it. Bumping the generation makes any prepare
+    // still in flight a no-op, and the held review is discarded rather than left in storage
+    // (reviewer #10: the stale paint replaced the form the user had just gone back to).
+    reviewSeq += 1;
+    retryBlocked = false;
+    if (preparedReview) {
+      discardReview(preparedReview.reviewId);
+      preparedReview = null;
+    }
     formState = { to: prefill.to ?? formState.to, amount: prefill.amount ?? formState.amount };
     clearBody();
     recipientState = null; // a picker choice/reopened form must never reuse the previous address's proof
@@ -536,15 +556,23 @@ export function SendRoute({ params, navigate, back }) {
       }
 
       const targetAddr = result.resolvedAddress || addr;
-      let namePrefix = result.resolvedAddress ? `Resolved to ${truncateAddress(result.resolvedAddress)} · ` : '';
+      const namePrefix = result.resolvedAddress
+        ? `Resolved to ${truncateAddress(result.resolvedAddress)} · ` : '';
+      // A reverse lookup is a LABEL, not a check: the address is already validated. Awaiting it
+      // here put a chain read on the path that gates Review, so a stalled lookup held the form
+      // closed for the bridge's whole timeout. It now lands whenever it lands, and only decorates
+      // a status that still describes the address in the field (`stale()` is the recipient
+      // generation, so an old lookup can no longer overwrite a newer recipient's status).
       if (!result.resolvedAddress) {
-        try {
-          const rev = await bridge.send('name.reverseLookup', { address: targetAddr });
-          if (!stale() && rev?.resolved && rev?.name) {
+        void bridge.send('name.reverseLookup', { address: targetAddr })
+          .then((rev) => {
+            if (stale() || !rev?.resolved || !rev?.name || !recipientState) return;
             recipientState.reverseName = rev.name;
-            namePrefix = `${rev.name} (${truncateAddress(targetAddr)}) · `;
-          }
-        } catch {}
+            if (!statusEl.textContent.startsWith(rev.name)) {
+              statusEl.textContent = `${rev.name} (${truncateAddress(targetAddr)}) · ${statusEl.textContent}`;
+            }
+          })
+          .catch(() => {});
       }
 
       statusEl.textContent = `${namePrefix}Checking the recipient…`;
@@ -798,13 +826,12 @@ export function SendRoute({ params, navigate, back }) {
   // What stays route-specific: the success screen and the error copy that depends on whether
   // the transfer was actually sent.
 
-  let reviewSeq = 0;
-
   async function renderReview(to, amountText) {
     clearBody();
     subView = 'review';
     header.setTitle('Confirm send');
     banner.clear();
+    retryBlocked = false;
 
     const seq = ++reviewSeq;
     const snapshot = {
@@ -852,6 +879,7 @@ export function SendRoute({ params, navigate, back }) {
       return;
     }
 
+    preparedReview = prepared;
     paintReview(prepared, snapshot, amountText);
   }
 
@@ -862,7 +890,7 @@ export function SendRoute({ params, navigate, back }) {
     let confirmBtn = null;
     const card = track(TxReviewCard({
       review: prepared.review,
-      onChange: ({ canConfirm }) => confirmBtn?.update({ disabled: !canConfirm }),
+      onChange: ({ canConfirm }) => confirmBtn?.update({ disabled: retryBlocked || !canConfirm }),
     }));
     body.appendChild(card.el);
 
@@ -872,7 +900,10 @@ export function SendRoute({ params, navigate, back }) {
       iconName: 'send',
       busyLabel: 'Sending…',
       disabled: !card.canConfirm(),
-      onClick: () => signPrepared(prepared, card, snapshot, confirmBtn, editBtn),
+      onClick: () => {
+        if (retryBlocked) return;
+        signPrepared(prepared, card, snapshot, confirmBtn, editBtn);
+      },
     }));
 
     let editBtn = null;
@@ -881,9 +912,7 @@ export function SendRoute({ params, navigate, back }) {
       variant: 'text',
       onClick: async () => {
         if (submitting) return;
-        // Cancelling drops the prepared review: it must not stay confirmable after the form
-        // is edited, and it must not linger in storage for the whole TTL.
-        discardReview(prepared.reviewId);
+        // renderForm drops the prepared review (see its header) — one discard path, not two.
         renderForm({ to: snapshot.to, amount: amountText });
       },
     }));
@@ -911,6 +940,7 @@ export function SendRoute({ params, navigate, back }) {
         confirmLabel: 'Sign & send',
       });
       if (outcome.status === 'cancelled' || destroyed) return;
+      preparedReview = null; // the background consumed it on submit
       renderSuccess(snapshot.to, outcome.result, snapshot);
     } catch (error) {
       if (destroyed) return;
@@ -922,13 +952,18 @@ export function SendRoute({ params, navigate, back }) {
         // The reviewed transaction no longer matches the chain. Show the form again with the
         // reason; the user must read a fresh review before anything is signed.
         await load({ notice: classified.message });
+      } else if (classified.kind === 'uncertain') {
+        // Bar the retry, not just the button: the review below still has its acknowledgements,
+        // so a re-enabled Confirm would re-submit the same transaction and could send twice.
+        retryBlocked = true;
+        banner.set(classified.message, 'warning');
       } else {
-        banner.set(classified.message, classified.kind === 'uncertain' ? 'warning' : 'error');
+        banner.set(classified.message, 'error');
       }
     } finally {
       submitting = false;
       if (!destroyed) {
-        confirmBtn?.update({ disabled: !card?.canConfirm?.() });
+        confirmBtn?.update({ disabled: retryBlocked || !card?.canConfirm?.() });
         editBtn?.update({ disabled: false });
       }
     }
@@ -1223,6 +1258,11 @@ export function SendRoute({ params, navigate, back }) {
     destroy() {
       destroyed = true;
       loadSeq += 1;
+      reviewSeq += 1;
+      if (preparedReview) {
+        discardReview(preparedReview.reviewId);
+        preparedReview = null;
+      }
       lifecycle.abort();
       clearBody();
       header.destroy();
