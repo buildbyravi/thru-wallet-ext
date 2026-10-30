@@ -9,7 +9,7 @@ not claim a Rabby-audited design, a live-chain run, or a browser-layout sign-off
 > **Counts in this record are the v29 measurement (2,326 checks, review 152/152, contract 161/161,
 > 126 layering files).** They are left as recorded. Current figures live in `docs/AUDIT_REPORT.md`
 > and `docs/STATUS_AND_ROADMAP.md`; on the v31 tree (2026-10-30) `npm test` is 2,481 checks with
-> review 175/175, card render 46/46 and contract 168/168; v31's own audit is
+> review 175/175, card render 51/51 and contract 168/168; v31's own audit is
 > `docs/audits/2026-10-29-v31-audit.md` and the lifecycle audit is
 > `docs/audits/2026-10-30-review-lifecycle-audit.md` (§13 below).
 
@@ -462,8 +462,11 @@ not change.
 4. **Money table** — `You pay` / `You receive` (signed, exact), `Network fee`
    (`about X` | `not confirmed (paid in THRU)` | `none`), and `Total` only when the two sides share a
    symbol and can be added. Nothing is invented when they cannot.
-5. **At most two warnings**, one sentence each. An undecoded transaction has exactly one blocking
-   warning ("This transaction cannot be read"); Details opens by default for it.
+5. **Two warning rules, and the first outranks the second.** (a) Every BLOCKING warning is always
+   on the card, unfolded and uncounted — it is the reason Confirm is unavailable, so a row budget
+   can never hide it. (b) ADVISORY warnings are capped at two on the card, one sentence each, and
+   the rest fold into Details, where they stay readable. An undecoded transaction has exactly one
+   blocking warning ("This transaction cannot be read"); Details opens by default for it.
 6. **One `Details` disclosure**, closed by default for decoded reviews — program and trust note,
    instructions, accounts, fee basis, the balance caveat, the four-state simulation line, folded
    notes, and the raw toggle.

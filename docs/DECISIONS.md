@@ -228,6 +228,13 @@ through the shared review kind `domain-record`; `name.register` was ungated at c
 
 **Why now.** Owner's observation that "register is working / maybe free on testnet" is correct per the re-read first-party sources (thru.org/docs/cli-reference/name-service-commands.md + `NAME_SERVICE_PROGRAM_FEE = 0` in the CLI). Betanet is the only live test network; a separate free "testnet" network was ruled out (owner, same day).
 
+> **Superseded claim (2026-10-30).** "Registration is free" is NOT established. The vendored
+> registrar (`contracts/thru-custom-registrar/src/processor.rs:238`, `:321`) attempts the fee
+> transfer and discards its result (`let _ =`), which proves only that registration can succeed
+> without collection. The zero-fee wording below is a release-scope claim pending artifact
+> verification and an explicit fee-release decision — see `DEFECT_LOG.md` §17C. Do not put
+> "free" in shipped copy on the strength of this entry.
+
 **Consequences.** Contract v23: `name.getCanonicalRoot` read appended (auth none), `name.register` auth tightened unlocked → signing (v5/v22 precedent: a broadcast key-signed write re-verifies the password when the signing-hardening setting is on) and its params gain `password`. UI `/name` picks the flow honestly: registry → paid `.tld` steps at the config price; no-registry + root → free Register CTA; neither → plain reason, nothing clickable. Chain total 139 (81 + 43 + 15 name.*).
 
 ## D-016 — Side-by-side custom registrar program: deploy once, initialize with config authority, open register (2026-10-24, owner-directed)

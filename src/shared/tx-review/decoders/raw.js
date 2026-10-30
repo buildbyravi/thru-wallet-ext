@@ -24,7 +24,7 @@ export function decodeRawTransaction({ facts }) {
   const warnings = [
     warn('undecoded-transaction', 'danger',
       'This transaction cannot be read',
-      'The wallet cannot tell what this does. Do not approve it unless you started it.', { blocking: true }),
+      'This wallet cannot explain this transaction. Signing is unavailable.', { blocking: true }),
   ];
 
   const rows = [];
@@ -34,7 +34,10 @@ export function decodeRawTransaction({ facts }) {
     operation: {
       id: RAW_KIND,
       name: 'Unrecognised transaction',
-      summary: 'This wallet cannot tell what this does. Only sign if you started it yourself.',
+      // Never an instruction to sign. There is no path from this card to a signature: the state
+      // is blocked, `confirmLabel` is null and the background refuses an unknown intent. Copy
+      // must not imply that a careful user could approve it anyway.
+      summary: 'This wallet cannot explain this transaction. Signing is unavailable.',
       confirmLabel: null,
       decode: 'unknown',
     },

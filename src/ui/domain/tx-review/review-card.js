@@ -252,23 +252,32 @@ export function TxReviewCard({ review, onChange = null } = {}) {
     if (r.summary.length) el.appendChild(detailTable(r.summary));
 
     // ---- warnings: only what changes the decision ---------------------------------------
-    // Two at most, each a short bold line and one sentence. The rest are still on the card,
-    // inside Details, so nothing is hidden — only folded.
+    // Short: a bold line and one sentence each. Two rules, and the first outranks the second:
+    //   * a BLOCKING warning is never folded. It is the reason Confirm is unavailable, so it has
+    //     to be readable without opening anything. A row budget must not outrank a safety fact.
+    //   * advisory warnings are capped at two and folded into Details, because they change
+    //     emphasis, not permission.
     const blocking = r.warnings.filter((w) => w.blocking || w.severity === 'danger');
     const advisory = r.warnings.filter((w) => !(w.blocking || w.severity === 'danger'));
-    const onCard = [...blocking, ...advisory.filter((w) => w.severity === 'warning')].slice(0, 2);
+    const onCard = [...blocking, ...advisory.filter((w) => w.severity === 'warning').slice(0, 2)];
     const folded = r.warnings.filter((w) => !onCard.includes(w));
     if (onCard.length) el.appendChild(h('div', { class: 'stack stack-2' }, onCard.map(warningBlock)));
 
-    // A program the wallet cannot vouch for is the one trust message that belongs above the
-    // fold: it is the difference between a known operation and an arbitrary one. An UNDECODED
+    // A program the wallet has no record of is the one trust message that belongs above the fold:
+    // it is the difference between a known operation and an arbitrary one. An UNDECODED
     // transaction already says so in its own blocking warning, so this does not repeat it.
+    //
+    // Identity, not audit. `verified` is a claim about a pinned address; it says nothing about
+    // whether anyone audited the program. "Unrecognised" must therefore not be softened into
+    // "trusted" (because a team runs it) nor hardened into "unaudited" — the two facts are
+    // separate, and `protocol.trustNote` in Details is where the wallet states provenance it
+    // actually knows.
     if (r.protocol && r.protocol.verified === false && r.operation.decode === 'decoded') {
       el.appendChild(warningBlock({
         severity: 'warning',
         title: 'Unrecognised program',
-        detail: 'This wallet cannot confirm which program this is. Only continue if you started '
-          + 'this transaction yourself.',
+        detail: 'This wallet has no record of this program address. Continue only if you '
+          + 'expected this operation.',
       }));
     }
 

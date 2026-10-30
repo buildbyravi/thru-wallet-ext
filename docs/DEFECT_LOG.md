@@ -951,3 +951,39 @@ vocabulary, kit-only imports), each scanner carrying a positive control.
 **Still open.** A real-browser look at the fixed bar (the harness is `scripts/preview-toast.html`:
 400×600 and 380×600 frames, real component, real stylesheet). No browser binary exists in this
 environment, so the bar's height is a stylesheet-derived claim, not a measurement.
+
+## 17. Three review fixes from the outside review (2026-10-30)
+
+External review of this branch raised seven points. Four were already handled by §16 and the
+shared-platform record (caller migration, blank-input hardening, `auth: 'signing'` on
+`name.setRecord`, narrow consistency checks). Three were real, and are fixed here.
+
+**A. "Only sign if you started it yourself" was an instruction the wallet cannot honour.**
+`src/shared/tx-review/decoders/raw.js` told the user when an unknown transaction was acceptable
+to approve. There is no path from that card to a signature (blocked state, `confirmLabel: null`,
+backend refusal), so the sentence described a choice the user does not have — and read as
+permission. Copy is now the limit, not a condition: "This wallet cannot explain this transaction.
+Signing is unavailable." The unverified-program note in `review-card.js` had the same shape and is
+now an identity statement ("no record of this program address") rather than a rule about when to
+proceed, which also keeps *identity* separate from *audit status*.
+
+**B. `slice(0, 2)` could fold a blocking warning.**
+`src/ui/domain/tx-review/review-card.js:259` capped the open-card warnings at two across blocking
+AND advisory. A review with three blockers showed two of them and hid the third inside Details —
+the disclosure a user has no reason to open when Confirm is already disabled. The cap now applies
+to advisory notes only; blocking warnings are always on the card, unfolded and uncounted. Pinned
+by a render test with three blockers and three advisories.
+
+**C. "Registration is free" rests on a probe that does not prove it.**
+`contracts/thru-custom-registrar/src/processor.rs:238` (`let _ = mgr.account_transfer(...)`) and
+`:321` attempt the fee transfer and discard the result. That proves registration *can* succeed
+without collection; it does not prove collection *cannot* occur, and a measured zero on one
+transaction would not prove it for the next. The `DECISIONS.md` entries that state registration is
+free predate that distinction and are release-scope claims, not established facts.
+
+> **Release gate:** before the wallet says "free" anywhere in shipped copy, verify the deployed
+> registrar artifact identity and its on-chain config, then decide the fee policy explicitly.
+> Until then the honest wording is "no charge reported", never "free".
+
+No shipped UI string currently promises "free" (checked across `src/`), so this is a documentation
+claim and a copy rule, not a live misstatement.

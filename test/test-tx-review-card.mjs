@@ -193,11 +193,48 @@ console.log('[6] an unrecognised transaction is explicit, and cannot be signed')
   });
   const lines = visibleLines(c.el);
   ok(lines[0] === 'Unrecognised transaction', 'the title says it is unrecognised', lines[0]);
-  ok(lines.some((line) => /cannot tell what this does/.test(line)), 'the card says it cannot tell');
-  ok(lines.some((line) => /Do not approve it unless you started it/.test(line)),
-    'the blocking warning gives the rule');
+  // The copy states the wallet's LIMIT, never a condition under which a user may approve an
+  // unknown transaction anyway. "Only sign if you started it yourself" reads as permission.
+  ok(lines.some((line) => /cannot explain this transaction/.test(line)),
+    'the card says it cannot explain the transaction');
+  ok(lines.some((line) => /Signing is unavailable/.test(line)),
+    'the blocking warning states that signing is unavailable, not when it is acceptable');
+  ok(!lines.some((line) => /you started it|approve it unless/i.test(line)),
+    'no line invites a user to approve an unknown transaction');
   ok(!lines.includes('Total') && !lines.includes('You pay'), 'no money rows are invented');
   ok(c.canConfirm() === false, 'confirming is impossible');
+}
+
+console.log('[6b] a third blocking warning is never folded away');
+{
+  // The card caps ADVISORY notes at two. A blocking warning is the reason Confirm is disabled,
+  // so it must stay readable without a disclosure. Regex on the source is not enough here —
+  // this renders a review with three blocking warnings and counts what is actually visible.
+  const base = reviewFor('raw', {
+    programAddress: 'taUnknownProgram1111111111111111111111111111111',
+    dataHex: 'deadbeef',
+  });
+  const blocked = {
+    ...base,
+    warnings: [
+      { code: 'a', severity: 'danger', title: 'First blocker', detail: 'one', blocking: true },
+      { code: 'b', severity: 'danger', title: 'Second blocker', detail: 'two', blocking: true },
+      { code: 'c', severity: 'danger', title: 'Third blocker', detail: 'three', blocking: true },
+      { code: 'd', severity: 'warning', title: 'Advisory one', detail: 'four' },
+      { code: 'e', severity: 'warning', title: 'Advisory two', detail: 'five' },
+      { code: 'f', severity: 'warning', title: 'Advisory three', detail: 'six' },
+    ],
+  };
+  const c = TxReviewCard({ review: blocked });
+  const lines = visibleLines(c.el);
+  ok(['First blocker', 'Second blocker', 'Third blocker'].every((t) => lines.includes(t)),
+    'every blocking warning is on the card',
+    JSON.stringify(lines.slice(0, 12)));
+  ok(lines.includes('Advisory one') && lines.includes('Advisory two'),
+    'the first two advisories are on the card');
+  ok(!lines.includes('Advisory three'),
+    'a third advisory is the one that folds, never a blocker');
+  ok(c.canConfirm() === false, 'and the review is still unconfirmable');
 }
 
 console.log('[7] the forbidden vocabulary, scanned over every rendered card');
