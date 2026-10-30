@@ -399,11 +399,22 @@ section('8] source guard: no argument-less toast calls');
   eq('control: the scanner finds the pattern it looks for', [...sample.matchAll(/(?<![\w.])toast\(\s*\)/g)].length, 1);
 
   // The shape that caused the original defect is LEGAL now (a string means "title"), which is
-  // why the invariant above is about emptiness rather than about strings. But the route that
-  // shipped it should still read as intent: a tone and a message, not an ambiguous bare string.
-  const called = readFileSync('src/ui/app/routes/name.js', 'utf8');
-  const bareStrings = [...called.matchAll(/(?<![\w.])toast\(\s*'/g)].length;
-  eq('the Domain route passes an explicit tone + message, not a bare string', bareStrings, 0);
+  // why the invariant above is about emptiness rather than about strings. But a bare string is
+  // still ambiguous at the call site — it says nothing about tone, dedupe or the surface that
+  // carries it — so the repository-wide rule is: pass an object.
+  const bare = [];
+  for (const file of files) {
+    if (file.endsWith('src/ui/kit/toast.js')) continue;
+    const source = readFileSync(file, 'utf8')
+      .split('\n')
+      .map((line) => (line.trimStart().startsWith('//') ? '' : line))
+      .join('\n');
+    for (const match of source.matchAll(/(?<![\w.])toast\(\s*['"`]/g)) {
+      bare.push(`${file}:${source.slice(0, match.index).split('\n').length}`);
+    }
+  }
+  eq('no call site passes a bare string to toast()', bare.length, 0);
+  if (bare.length) console.error(`         ${bare.join('\n         ')}`);
 }
 
 // =============================================================================================
