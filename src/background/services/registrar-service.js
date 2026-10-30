@@ -416,6 +416,12 @@ function tcrCoded(code, message, extra = {}) { return coded(code, message, extra
  * config account is absent/unparseable; otherwise the fully parsed config plus a
  * root-derivation cross-check (config.rootAddress == name-service derivation of rootName;
  * a mismatch is surfaced, never silently armed).
+ *
+ * Tiered pricing (2026-10-30): the config carries a per-YEAR price for each label length
+ * bucket — `fee3PerYear`, `fee4PerYear`, `fee5PlusPerYear` — plus `feePolicy`/`feeEnforced`.
+ * `feePerYear` is kept as the cheapest tier for older callers, but a quote for a NAME must go
+ * through `pricePerYearFor(info, label)`, because the tier depends on the label's length. A
+ * price is a CHARGE only when `feeEnforced` is true.
  */
 export async function getCustomRegistrar() {
   const network = await getActiveNetworkConfig(); // bind SDK to the active network first
@@ -452,7 +458,7 @@ export async function getCustomRegistrar() {
     rootName: cfg.rootName,
     rootMatchesNameService,
     // Pricing, as the config declares it. `feePerYear` remains the cheapest tier so older
-    // callers keep working, but a quote for a NAME must use `priceForName` — the tier depends
+    // callers keep working, but a quote for a NAME must use `pricePerYearFor(info, label)` — the tier depends
     // on the label's length.
     layout: cfg.layout,
     feePolicy: cfg.feePolicy,
