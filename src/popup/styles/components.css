@@ -244,6 +244,23 @@ textarea:focus {
   background: var(--surface-1);
 }
 
+/* A read-only field displays a fixed value (the faucet's per-claim amount). Without this it
+   is pixel-identical to an editable one: the same text cursor invites typing into a value the
+   user cannot change, and the focus ring promises an edit that will not happen. Flat surface,
+   muted ink, no focus emphasis, no hover lift — the value reads as data, not as an input. */
+input[readonly] {
+  background: var(--surface-2);
+  color: var(--text-2);
+  cursor: default;
+}
+
+input[readonly]:hover { border-color: var(--border); }
+
+input[readonly]:focus {
+  border-color: var(--border);
+  background: var(--surface-2);
+}
+
 input[aria-invalid="true"],
 textarea[aria-invalid="true"] {
   border-color: var(--negative-border);

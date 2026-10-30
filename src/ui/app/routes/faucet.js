@@ -31,6 +31,10 @@ import {
 import * as bridge from '../bridge.js';
 import { formatThru } from '../../../shared/format.js';
 
+// The display default, used only before the network tells us the faucet's own per-claim cap.
+// A claim submitted at this value would be a guess, so `claim()` refuses until the cap is known.
+const DEFAULT_CLAIM_UNITS = 10_000n;
+
 export function FaucetRoute({ navigate, back }) {
   const d = disposer();
   // Route lifetime for the review confirmation and its password dialog (see confirm.js:
@@ -168,7 +172,7 @@ export function FaucetRoute({ navigate, back }) {
   function renderForm() {
     clearBody();
 
-    const claimUnits = capUnits > 0n ? capUnits : 10000n;
+    const claimUnits = capUnits > 0n ? capUnits : DEFAULT_CLAIM_UNITS;
     const fixedThru = formatThru(claimUnits);
 
     const amount = track(Field({
@@ -225,30 +229,28 @@ export function FaucetRoute({ navigate, back }) {
   let destroyed = false;
   let reviewSheet = null;
 
-  async function claim(amountOrUnits, claimBtn) {
+  async function claim(renderedUnits, claimBtn) {
     if (claiming || submitting || reviewSheet) return;
+
+    // A fixed claim has no amount to choose: the amount IS the faucet's per-claim cap, read from
+    // the network. Before that read there is nothing honest to submit — DEFAULT_CLAIM_UNITS is a
+    // display value, not a fact about this faucet — so the claim waits instead of guessing.
+    if (capUnits <= 0n) {
+      banner.set('The faucet limit is not available yet. Re-check the limit, then claim.');
+      return;
+    }
+    // The cap can move while this screen is open. If it did, re-render and let the user read the
+    // new amount rather than sign something the read-only field does not show.
+    if (capUnits !== renderedUnits) {
+      banner.set(`The faucet cap changed to ${formatThru(capUnits)} THRU. Review the updated claim.`);
+      renderForm();
+      return;
+    }
+
     claiming = true;
     claimBtn?.update({ disabled: true });
     banner.clear();
-
-    const units = typeof amountOrUnits === 'bigint'
-      ? amountOrUnits
-      : (typeof amountOrUnits === 'object' && amountOrUnits?.value
-        ? (capUnits > 0n ? capUnits : 10000n)
-        : (capUnits > 0n ? capUnits : 10000n));
-
-    if (units <= 0n) {
-      banner.set('Enter an amount greater than zero.');
-      claiming = false;
-      claimBtn?.update({ disabled: false });
-      return;
-    }
-    if (capUnits > 0n && units > capUnits) {
-      banner.set(`The most this faucet gives per claim is ${formatThru(capUnits)} THRU.`);
-      claiming = false;
-      claimBtn?.update({ disabled: false });
-      return;
-    }
+    const units = capUnits;
 
     // The review pipeline reads the faucet policy, the account and the cap itself; this screen
     // only supplies the intent. No decoder ⇒ no signature (never a generic confirm screen).
@@ -443,7 +445,7 @@ export function FaucetRoute({ navigate, back }) {
         return;
       }
       // faucetMaxPerClaim crosses the port as a string, since JSON cannot carry BigInt.
-      capUnits = net.faucetMaxPerClaim != null ? BigInt(net.faucetMaxPerClaim) : 10_000n;
+      capUnits = net.faucetMaxPerClaim != null ? BigInt(net.faucetMaxPerClaim) : DEFAULT_CLAIM_UNITS;
       limitInfo = null;
       renderForm();
       // The limit readout is a separate chain read; it fills in under the form without

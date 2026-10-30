@@ -4892,6 +4892,19 @@ async function faucetReviewTest() {
     Boolean(claimBtn) && prepared.length === 0,
     `${route.el.textContent.slice(0, 120)}`);
 
+  // The claim amount is fixed by the faucet, so the field is a VALUE, not an input. It is
+  // read-only and shows the cap the network reported — never an editable box that silently
+  // sends a different number than the one on screen.
+  const amountInput = route.el.querySelector('input');
+  ok('the claim amount is a read-only field showing the faucet cap',
+    amountInput?.getAttribute('readonly') !== null
+      && amountInput?.value === '0.00001 THRU',
+    JSON.stringify({ readonly: amountInput?.getAttribute('readonly'), value: amountInput?.value }));
+  ok('the claim field carries no base-units jargon next to a THRU-denominated amount',
+    /Fixed claim of 0\.00001 THRU per request/.test(textOf(route.el))
+      && !/raw units/i.test(textOf(route.el)),
+    textOf(route.el).slice(0, 200));
+
   click(claimBtn);
   await settle();
   ok('claiming prepares a faucet-claim review instead of calling the signing method',

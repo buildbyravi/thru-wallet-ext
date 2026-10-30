@@ -181,10 +181,11 @@ Hashes are the ones on `arena/0439c226-thru-wallet-ext` after rebasing onto the 
 | `6cea7ab` | This record, `docs/DECISIONS.md` D-018, `docs/ARCHITECTURE.md` "Shared UI platform", `docs/DEFECT_LOG.md` §16, `CONTEXT.md` file map, `docs/AUDIT_REPORT.md` refresh, and the stale `06_MODULAR_REUSE_AUDIT.md` citation in `kit/sheet.js` |
 | `67475c7` | Two edges the first pass left: `update({ action: null })` now removes a button that is already on screen (the guard tested the merged state, so a stale "Undo" stayed clickable), and the entrance frame no longer re-opens a toast dismissed in that same frame. `test-toast.mjs` 89 → 92 |
 | `d6f3e3f` | The Domain submit path opens its toast as `pending` and resolves the same bar in place with the real outcome (confirmed / outcome-unknown / dismissed), including on route teardown |
+| (faucet audit) | Owner commit `46682e2` reviewed. Its read-only claim field had no styling, so the fixed amount was pixel-identical to an editable input; it now uses a flat surface with no focus/hover emphasis. Its `claim()` chose the amount through a ternary whose two non-BigInt branches were identical, so a field object would have been read as a cap fallback — the whole normalisation is gone, and `claim()` now refuses to submit before the network cap is known and re-renders if the cap moved while the screen was open. Two route checks pin the read-only field and its copy (`1,115`) |
 
-State after the pass: `npm run build` exit 0; `npm test` exit 0 — **2,618** `ok -` checks, 0 failures
+State after the pass: `npm run build` exit 0; `npm test` exit 0 — **2,620** `ok -` checks, 0 failures
 (37 suites + 5 gates), `test-toast.mjs` 92/92, `test-shared-platform.mjs` 45/45,
-`test-route-lifecycle.mjs` 1,113/1,113, `test-tx-review.mjs` 175/175, `test-tx-review-card.mjs` 46/46.
+`test-route-lifecycle.mjs` 1,115/1,115, `test-tx-review.mjs` 175/175, `test-tx-review-card.mjs` 46/46.
 
 The Domain screen is the migrated feature, as the directive asked: its three notifications are
 events on the shared surface with a tone, a message and a dedupe key; its success banner uses the
