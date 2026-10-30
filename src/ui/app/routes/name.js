@@ -254,7 +254,19 @@ export function NameRoute({ back }) {
         await bridge.send(method, { ...params, ...ctx });
         if (!current()) return;
         if (method === 'name.trackDomain') input.value = '';
-        toast(method === 'name.trackDomain' ? 'Domain imported' : method === 'name.untrackDomain' ? 'Removed from this wallet' : 'Primary name updated');
+        // One event = one toast, keyed so a double click resolves the same bar instead of
+        // stacking a second one. The untrack case says what did NOT happen: the domain is
+        // still on-chain, this wallet just stops tracking it.
+        toast({
+          tone: 'success',
+          key: 'domain-list-update',
+          title: method === 'name.trackDomain' ? 'Domain imported'
+            : method === 'name.untrackDomain' ? 'Removed from this wallet'
+              : 'Primary name updated',
+          message: method === 'name.untrackDomain'
+            ? 'This wallet no longer shows it. The domain itself is unchanged on-chain.'
+            : '',
+        });
         await refreshList();
       } catch (err) {
         if (current()) banner.set(err?.message || 'Could not update this domain.');
@@ -864,8 +876,15 @@ export function NameRoute({ back }) {
           banner.set('');
           return;
         }
-        toast('Transaction confirmed');
-        banner.set(`${nameText}.${currentTld()} · ${opName} confirmed on-chain!`, 'ok');
+        // The submit path resolved only after the handler returned an execution result, which
+        // is why this says "confirmed" and not "submitted" — same claim the banner makes.
+        toast({
+          tone: 'success',
+          key: 'name-submit',
+          title: `${nameText}.${currentTld()} ${opName.toLowerCase()} confirmed`,
+          message: 'The transaction executed on-chain. It is listed in Activity.',
+        });
+        banner.set(`${nameText}.${currentTld()} · ${opName} confirmed on-chain!`, 'success');
         setStatus(`${nameText}.${currentTld()} · ${opName} confirmed`, 'ok');
         ctaBtn.classList.add('hidden');
         entry.completed = true;
@@ -909,7 +928,12 @@ export function NameRoute({ back }) {
         const linked = await bridge.send('name.setPrimaryDomain', { domainAddress: imported.domainAddress, ...ctx });
         if (destroyed || !card.isConnected) return;
         primary = linked;
-        toast('Primary name updated');
+        toast({
+          tone: 'success',
+          key: 'name-primary',
+          title: 'Primary name updated',
+          message: `${leaseState.name} now resolves to this account.`,
+        });
         await load();
       } catch (err) {
         banner.set(err?.message || 'Could not verify that name on-chain.');

@@ -298,6 +298,9 @@ textarea[aria-invalid="true"] {
 
 .notice.warning { border-left-color: var(--gold); background: var(--gold-tint); }
 .notice.danger { border-left-color: var(--negative); background: var(--negative-tint); }
+/* Success is a real state, not a neutral one: a confirmed registration used to be painted with
+   the default accent rule because the route passed 'ok' and the component dropped it. */
+.notice.success { border-left-color: var(--positive); background: var(--positive-tint); }
 
 .divider {
   border: none;

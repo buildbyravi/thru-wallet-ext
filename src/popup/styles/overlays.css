@@ -45,6 +45,9 @@
 .toast-info    { border-left-color: var(--steel-300, #a4b3bc); }
 .toast-warning { border-left-color: var(--yellow-400, #ffad42); }
 .toast-error   { border-left-color: var(--brick-300, #ed787e); }
+/* Pending: work whose outcome is not known yet. It carries a spinner and never expires on its
+   own, so it must not read as a success or a failure. */
+.toast-pending { border-left-color: var(--steel-300, #a4b3bc); }
 .toast-icon {
   display: inline-flex;
   align-items: center;
@@ -59,6 +62,7 @@
 .toast-success .toast-icon { color: #3fbfae; }
 .toast-warning .toast-icon { color: var(--yellow-400, #ffad42); }
 .toast-error .toast-icon   { color: var(--brick-300, #ed787e); }
+.toast-pending .toast-icon { color: var(--steel-300, #a4b3bc); }
 .toast-body {
   flex: 1;
   min-width: 0;
