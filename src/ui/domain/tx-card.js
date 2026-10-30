@@ -19,7 +19,7 @@
 import { h, disposer } from '../kit/dom.js';
 import { icon } from '../kit/icon.js';
 import { CopyButton } from '../kit/button.js';
-import { formatThru, formatTokenAmount, truncateAddress } from '../../shared/format.js';
+import { formatThru, formatTokenAmount, truncateAddress, shortenMiddle } from '../../shared/format.js';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -121,8 +121,9 @@ function deltaFor(entry) {
 }
 
 function shortSignature(signature) {
-  const s = String(signature || '');
-  return s.length > 11 ? `${s.slice(0, 4)}…${s.slice(-4)}` : s;
+  // A signature is an opaque identifier like an address, so it uses the same shortening rule;
+  // only the widths differ (4…4 fits the Activity card's subtitle).
+  return shortenMiddle(signature, { head: 4, tail: 4 });
 }
 
 /**

@@ -34,7 +34,7 @@
 
 import { h, clear, disposer } from '../../kit/dom.js';
 import { icon } from '../../kit/icon.js';
-import { formatAssetAmount } from '../../../shared/format.js';
+import { formatAssetAmount, shortenMiddle } from '../../../shared/format.js';
 
 // The decoder's displayAmount and this card render the same fee/amount numbers through the same
 // shared formatter. "Unavailable" is a word, never a zero.
@@ -81,10 +81,9 @@ function detailRow(label, value, { mono = false } = {}) {
 // A 46-character address in a table row pushes everything else out of the eye's path. The card
 // shows first-six/last-four and keeps the whole address in Details (and behind the counterparty's
 // tap-to-expand), which is enough to recognise an address without turning the card into a wall.
+// The shortening itself is the shared one (src/shared/format.js) — only the widths are the card's.
 function shortAddress(address) {
-  const text = String(address ?? '');
-  if (text.length <= 14) return text;
-  return `${text.slice(0, 6)}\u2026${text.slice(-4)}`;
+  return shortenMiddle(address, { head: 6, tail: 4 });
 }
 
 // "Network fee" on its own line: the quoted number with the honest hedging word in front of it

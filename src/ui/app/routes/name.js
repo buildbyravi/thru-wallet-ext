@@ -19,13 +19,12 @@ import {
   submitReviewedReview, classifyReviewError, discardReview,
 } from '../../domain/tx-review/confirm.js';
 import * as bridge from '../bridge.js';
-import { formatTokenAmount } from '../../../shared/format.js';
+import { formatTokenAmount, shortAddress } from '../../../shared/format.js';
 import { NATIVE_TOKEN } from '../../../shared/tokens.js';
 import { availableThruProviders } from './name-providers.js';
 
 function truncateMiddle(value, chars = 10) {
-  const s = String(value ?? '');
-  return s.length <= chars * 2 + 2 ? s : `${s.slice(0, chars)}…${s.slice(-chars)}`;
+  return shortAddress(value, { head: chars, tail: chars });
 }
 
 function formatVerifiedAt(ms) {

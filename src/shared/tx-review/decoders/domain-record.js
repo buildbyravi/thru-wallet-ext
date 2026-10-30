@@ -2,6 +2,7 @@
 import {
   row, warn, feeBlock, instruction, accountRole, executionBlock,
 } from './common.js';
+import { shortenMiddle } from '../../format.js';
 
 export const DOMAIN_RECORD_KIND = 'domain-record';
 
@@ -35,7 +36,7 @@ export function decodeDomainRecord({ facts }) {
   } else if (facts.isOwner === false) {
     warnings.push(warn('not-name-owner', 'danger',
       'You do not own this domain',
-      `Only the domain owner (${facts.ownerAddress ? `${facts.ownerAddress.slice(0, 12)}…` : 'another account'}) can set records on '${domain}'.`,
+      `Only the domain owner (${facts.ownerAddress ? shortenMiddle(facts.ownerAddress, { head: 12, tail: 0 }) : 'another account'}) can set records on '${domain}'.`,
       { blocking: true }));
   } else if (facts.isOwner == null) {
     warnings.push(warn('owner-unverified', 'danger',
