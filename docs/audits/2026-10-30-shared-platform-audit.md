@@ -184,9 +184,9 @@ Hashes are the ones on `arena/0439c226-thru-wallet-ext` after rebasing onto the 
 | `65d994e` | The bare-string ban widened from "the Domain route" to every `.js` under `src/`: the shape that caused the defect could have reappeared in any feature. Green on the current tree. |
 | `8c65b35` | Owner commit `46682e2` reviewed. Its read-only claim field had no styling, so the fixed amount was pixel-identical to an editable input; it now uses a flat surface with no focus/hover emphasis. Its `claim()` chose the amount through a ternary whose two non-BigInt branches were identical, so a field object would have been read as a cap fallback — the whole normalisation is gone, and `claim()` now refuses to submit before the network cap is known and re-renders if the cap moved while the screen was open. Two route checks pin the read-only field and its copy (`1,115`) |
 
-State after the pass: `npm run build` exit 0; `npm test` exit 0 — **2,626** `ok -` checks, 0 failures
+State after the pass: `npm run build` exit 0; `npm test` exit 0 — **2,632** `ok -` checks, 0 failures
 (37 suites + 5 gates), `test-toast.mjs` 92/92, `test-shared-platform.mjs` 45/45,
-`test-route-lifecycle.mjs` 1,115/1,115, `test-tx-review.mjs` 175/175, `test-tx-review-card.mjs` 52/52.
+`test-route-lifecycle.mjs` 1,116/1,116, `test-tx-review.mjs` 175/175, `test-tx-review-card.mjs` 57/57.
 
 The Domain screen is the migrated feature, as the directive asked: its three notifications are
 events on the shared surface with a tone, a message and a dedupe key; its success banner uses the

@@ -361,7 +361,7 @@ Signing requires an unlocked wallet. Password re-authentication is **off by defa
 
 ### Send — a reviewed flow, never a one-click form
 
-Shipped path, at a high level: **draft → recipient/amount validation → review → Sign & send →
+Shipped path, at a high level: **draft → recipient/amount validation → review → Send →
 submission result**. The result may be a signature/receipt, a definite failure, or an **unknown**
 outcome after a bridge timeout; the UI does not claim on-chain confirmation merely because the
 network accepted the transaction. Transaction simulation is unsupported and is not a Send step.
@@ -372,7 +372,7 @@ when known, the **full** destination address, asset/amount, network, and fee/tot
 is actually supported: an unknown native fee remains `unknown`, token transfer fees are explicitly
 unmeasured, and a first-time token account creation discloses its additional THRU fee.
 
-The explicit Sign & send action uses the background `auth: 'signing'` policy. An unlocked session
+The explicit Send action uses the background `auth: 'signing'` policy. An unlocked session
 is sufficient by default; a password prompt appears only when the user enabled password re-auth in
 Settings. The background rechecks the reviewed source account and network before value-moving
 signing. See `src/ui/app/routes/send.js` and `src/background/services/tx-service.js` for exact behavior.

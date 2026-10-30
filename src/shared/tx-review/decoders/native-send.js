@@ -73,7 +73,7 @@ export function decodeNativeSend({ facts }) {
       // The title carries the verb and the amount (v1.5 card): it is the one line a user reads.
       name: `Send ${displayAmount(facts.amountUnits, 9, 'THRU')}`,
       summary: '',
-      confirmLabel: 'Sign & send',
+      confirmLabel: 'Send',
       decode: 'decoded',
     },
     protocol: {

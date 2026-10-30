@@ -79,7 +79,7 @@ The popup entry `src/popup/popup.js` is a boot stub. The removed legacy screens 
 | `test/test-launchpad-quarantine.mjs` | Deleted launchpad/DEX/prediction surface remains out of source and `dist/` (66 checks). |
 | `test/test-contract.mjs` | Manifest/router/UI agreement and security invariants, v31 / 153 methods (168 checks). |
 | `test/test-ui-dom.mjs` | DOM safety and reference codec. |
-| `test/test-route-lifecycle.mjs` | All 15 routes through Router/guards/bridge, teardown, secrets, focus, Send/Domain/Faucet review flows, Dashboard activation, History, panel behavior (1,115 checks). |
+| `test/test-route-lifecycle.mjs` | All 15 routes through Router/guards/bridge, teardown, secrets, focus, Send/Domain/Faucet review flows, Dashboard activation, History, panel behavior (1,116 checks). |
 | `test/test-toast.mjs` | The notification surface: blank/malformed payloads render nothing, the string-call defect shape, five tones, durations, dismissal, pause-on-hover, key dedupe, stacking cap, pending→verdict in place, timer/listener teardown, a11y, no-argument source scan (92 checks). |
 | `test/test-shared-platform.mjs` | Shared-platform ownership: one truncation primitive (length invariant), `truncateAddress` as an alias, no second truncation in the display layer, two clipboard writes by design, one toast host, one tone vocabulary, kit-only notification imports (45 checks, each scanner with a positive control). |
 | `test/test-tx-review.mjs` | The review pipeline: registry↔kind parity, every decoder, malformed and unknown input, amount/fee formatting, binding/TTL/account/network refusals, acknowledgements, blocking, discard, the central error-code registry, and the UI signing-literal scan and the one-screen/compactness guards (175 checks). |
@@ -89,7 +89,7 @@ The popup entry `src/popup/popup.js` is a boot stub. The removed legacy screens 
 | `test/test-registration.mjs` | Owned-account registration policy and bounded retries with deterministic SDK fixtures. |
 | `test/test-api-router.mjs` | Auth, context, serialization, background dispatch, and send/registration integration. |
 
-The suite is **2,626 checks across 37 test suites plus 5 build gates** (2026-10-30). Use the final test output for any subsequent refresh. They are deterministic/local evidence only. Real-browser and live-chain checks are separate.
+The suite is **2,632 checks across 37 test suites plus 5 build gates** (2026-10-30). Use the final test output for any subsequent refresh. They are deterministic/local evidence only. Real-browser and live-chain checks are separate.
 
 Visual harnesses: `scripts/preview-tx-review.html` renders the real `TxReviewCard` with the real built
 `dist/popup.css` for eight fixtures (`scripts/preview-tx-review.fixtures.js`), and

@@ -1432,33 +1432,14 @@ button.row { cursor: pointer; }
   line-height: 1.4;
 }
 
-/* The counterparty: a name when the wallet has one, a shortened address beside it, and the
-   whole address behind the button. Never a 46-character address in the money table. */
+/* The counterparty: the name (when the wallet has one) as the headline and the whole address
+   under it. Never a name alone, and never a shortened address standing in for evidence. */
 .tx-review-counterparty {
   display: flex;
   flex-direction: column;
   gap: var(--sp-1);
-}
-
-.tx-review-counterparty-main {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--sp-2);
-  width: 100%;
   padding: var(--sp-2) 0;
-  background: none;
-  border: 0;
   border-bottom: 1px solid var(--border);
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.tx-review-counterparty-main:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
 }
 
 .tx-review-counterparty-label {

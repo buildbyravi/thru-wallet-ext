@@ -894,10 +894,11 @@ export function SendRoute({ params, navigate, back }) {
     }));
     body.appendChild(card.el);
 
+    // One word, no glyph. The review above already says what will happen and to whom; an arrow
+    // icon on the confirm button was decoration competing with the amount for attention.
     confirmBtn = track(Button({
-      label: prepared.review.operation.confirmLabel || 'Sign & send',
+      label: prepared.review.operation.confirmLabel || 'Send',
       variant: 'accent',
-      iconName: 'send',
       busyLabel: 'Sending…',
       disabled: !card.canConfirm(),
       onClick: () => {
@@ -937,7 +938,7 @@ export function SendRoute({ params, navigate, back }) {
         signal: lifecycle.signal,
         passwordTitle: 'Confirm send',
         passwordBody: `Re-enter your password to sign and broadcast this ${symbol} transfer.`,
-        confirmLabel: 'Sign & send',
+        confirmLabel: 'Send',
       });
       if (outcome.status === 'cancelled' || destroyed) return;
       preparedReview = null; // the background consumed it on submit

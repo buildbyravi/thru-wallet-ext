@@ -78,12 +78,16 @@ console.log('[1] a decoded send: title, context, counterparty, then three money 
 {
   const lines = visibleLines(card('native-send', sendFacts).el);
   ok(lines[0] === 'Send 0.0015 THRU', 'the title is the verb and the amount', lines[0]);
-  ok(lines[1] === 'Main account · Betanet test network',
-    'the second line is the account and the network, said once', lines[1]);
+  ok(lines[1] === 'From Main account · Betanet test network',
+    'the second line names the SENDING account and the network, said once', lines[1]);
   ok(!lines.some((line) => /^(Testnet|Decoded|Verified program)$/.test(line)),
     'no Testnet / Decoded / Verified-program badges');
-  ok(lines.includes('To Main account') || lines.some((line) => line.startsWith('To ')),
+  // Owner decision (2026-10-30): the recipient is named AND shown in full on the open card.
+  // A label alone cannot be checked against the other wallet, so the address is not hidden
+  // behind a tap any more.
+  ok(lines.includes('To') || lines.some((line) => line.startsWith('To ')),
     'the counterparty gets its own line');
+  ok(lines.includes(RECIPIENT), 'the whole recipient address is on the open card', JSON.stringify(lines));
   ok(!lines.includes('Transaction'), 'the word "Transaction" is not a heading');
   ok(!lines.some((line) => line === 'From'), 'no From row repeating the signing account');
   ok(lines.includes('You pay') && lines.includes('Network fee') && lines.includes('Total'),
@@ -96,19 +100,39 @@ console.log('[1] a decoded send: title, context, counterparty, then three money 
   ok(once(lines, '−0.0015 THRU') === 1, 'the outgoing amount appears exactly once as an amount');
 }
 
-console.log('[2] the full address is one tap away, never in the table');
+console.log('[2] the recipient address is evidence, so it is never shortened or hidden');
 {
   const c = card('native-send', sendFacts);
   const visible = visibleLines(c.el);
-  ok(!visible.some((line) => line.includes(RECIPIENT)),
-    'the 46-character address is not printed in the open card');
-  // Details always carries the whole address, so it is never unavailable.
-  ok(c.el.textContent.includes(RECIPIENT), 'the whole address is still present in the card');
-  const toggle = c.el.querySelector('.tx-review-counterparty-main');
-  ok(toggle !== null, 'the counterparty line is tappable');
+  ok(visible.includes(RECIPIENT), 'the full address is printed on the open card');
+  // A shortened stand-in next to the label was the previous shape; with the whole address
+  // present it would be a second, weaker copy of the same fact.
+  ok(!visible.some((line) => line.includes('…') && !line.startsWith('Send ')),
+    'no ellipsised copy of the address sits beside it', JSON.stringify(visible));
+  ok(c.el.querySelector('.tx-review-counterparty-main') === null,
+    'there is no tap-to-reveal control, because nothing is hidden');
+  // A label is the headline when the wallet has one; without it the line still reads "To".
+  const named = card('native-send', { ...sendFacts, recipientLabel: 'Account 5' });
+  ok(visibleLines(named.el).includes('To Account 5'),
+    'a known recipient is named above the address', JSON.stringify(visibleLines(named.el)));
+}
+
+console.log('[2b] Details states each address once');
+{
+  // Owner review (2026-10-30): the expanded panel had become a wall of repeated addresses —
+  // the instruction's Source and Destination rows printed the signer and the recipient that
+  // the card already shows. Each address belongs on the card once.
+  const c = card('native-send', sendFacts);
+  const toggle = [...c.el.querySelectorAll('button')].find((b) => /details/i.test(b.textContent));
   toggle.click();
-  ok(visibleLines(c.el).some((line) => line.includes(RECIPIENT)),
-    'tapping it reveals the full address');
+  const text = c.el.textContent;
+  const count = (needle) => text.split(needle).length - 1;
+  ok(count(RECIPIENT) === 1, 'the recipient address is printed once, not also as a Source/Destination row',
+    `${count(RECIPIENT)} occurrences`);
+  ok(count(ACCOUNT.address) === 1, 'the signing address is printed once',
+    `${count(ACCOUNT.address)} occurrences`);
+  ok(text.includes('From · Main account'), 'the signing row names the account as well as the address');
+  ok(!/\bSource\b|\bDestination\b/.test(text), 'no instruction-account rows repeat them');
 }
 
 console.log('[3] a token send: the fee is named in the right currency');

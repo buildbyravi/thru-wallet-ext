@@ -9,7 +9,7 @@ not claim a Rabby-audited design, a live-chain run, or a browser-layout sign-off
 > **Counts in this record are the v29 measurement (2,326 checks, review 152/152, contract 161/161,
 > 126 layering files).** They are left as recorded. Current figures live in `docs/AUDIT_REPORT.md`
 > and `docs/STATUS_AND_ROADMAP.md`; on the v31 tree (2026-10-30) `npm test` is 2,481 checks with
-> review 175/175, card render 52/52 and contract 168/168; v31's own audit is
+> review 175/175, card render 57/57 and contract 168/168; v31's own audit is
 > `docs/audits/2026-10-29-v31-audit.md` and the lifecycle audit is
 > `docs/audits/2026-10-30-review-lifecycle-audit.md` (§13 below).
 
@@ -453,12 +453,16 @@ not change.
 1. **Title — the operation and the amount**, e.g. `Send 0.0015 THRU`, `Send 25 LAB`,
    `Claim 0.5 THRU from the faucet`, `Register vault.thru for 2 years`,
    `Add a url record to name.thru`, `Unrecognised transaction`.
-2. **One context line** — account and network (`Main account · Betanet test network`). The six
-   badges are gone: the decoded/not-decoded badge duplicated the warning, and the program badge
-   duplicated the Details line.
-3. **Counterparty line** — `To <name-or-short-address>` with the shortened address beside it; one
-   tap reveals the whole address, and Details always carries it. `content.counterparty`
-   (`{ address, label? }`) is the new optional field; the old From/To rows are gone from decoders.
+2. **One context line** — the SENDING account and the network, with the direction spelled out
+   (`From Main account · Betanet test network`). The six badges are gone: the decoded/not-decoded
+   badge duplicated the warning, and the program badge duplicated the Details line. Owner review
+   (2026-10-30): a bare account name did not say which side of the transfer it was on, and the old
+   Send screen's `FROM` row said so plainly.
+3. **Counterparty block** — `To <name>` when the wallet knows one, then **the whole address**, on
+   the card, with nothing to tap. A nickname or a shortened address cannot be checked against the
+   other wallet, so neither can stand in for the address on an irreversible send (main branch did
+   this too). `content.counterparty` (`{ address, label? }`) is the optional field; the old
+   From/To rows are gone from decoders.
 4. **Money table** — `You pay` / `You receive` (signed, exact), `Network fee`
    (`about X` | `not confirmed (paid in THRU)` | `none`), and `Total` only when the two sides share a
    symbol and can be added. Nothing is invented when they cannot.
@@ -467,9 +471,13 @@ not change.
    can never hide it. (b) ADVISORY warnings are capped at two on the card, one sentence each, and
    the rest fold into Details, where they stay readable. An undecoded transaction has exactly one
    blocking warning ("This transaction cannot be read"); Details opens by default for it.
-6. **One `Details` disclosure**, closed by default for decoded reviews — program and trust note,
-   instructions, accounts, fee basis, the balance caveat, the four-state simulation line, folded
-   notes, and the raw toggle.
+6. **One `Details` disclosure**, closed by default for decoded reviews — the signing account's
+   full address (under its name), program and trust note, instructions, fee basis, the balance
+   caveat, the four-state simulation line, folded notes, and the raw toggle. Owner review
+   (2026-10-30): the panel had become a wall of repeated 46-character strings, because the
+   instruction's account list printed the source and destination addresses that the card and the
+   counterparty block already state. Accounts whose address is already on the card are now
+   skipped, so each address appears once.
 7. **A short facts table below the disclosure** for the operation's non-money facts (faucet
    remaining allowance, expiry, term) — never a third money table.
 

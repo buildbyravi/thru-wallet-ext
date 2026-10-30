@@ -139,7 +139,7 @@ export function decodeTokenTransfer({ facts }) {
       id: TOKEN_TRANSFER_KIND,
       name: `Send ${displayAmount(facts.amountUnits, decimals, symbol)}`,
       summary: '',
-      confirmLabel: 'Sign & send',
+      confirmLabel: 'Send',
       decode: 'decoded',
     },
     protocol: {

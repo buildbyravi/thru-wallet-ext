@@ -4685,7 +4685,15 @@ async function progressiveSendTest() {
   await settle();
   click(buttons(switched.el, /^review$/i)[0]);
   await settle();
-  click(buttons(switched.el, /sign & send/i)[0]);
+  // Owner decision (2026-10-30): the confirm action is one word and carries no glyph, so the
+  // button cannot out-shout the amount it is about.
+  const sendBtn = buttons(switched.el, /^send$/i)[0];
+  ok('the send confirm button says exactly "Send" and carries no icon',
+    Boolean(sendBtn)
+      && sendBtn.textContent.trim() === 'Send'
+      && sendBtn.querySelector('.icon, svg') === null,
+    `${sendBtn?.textContent} icon=${Boolean(sendBtn?.querySelector('.icon, svg'))}`);
+  click(sendBtn);
   await settle();
   ok('native signing uses the checked method, with the reviewed account and network',
     chromeLog.calls.includes('tx.sendChecked')
@@ -4737,7 +4745,7 @@ async function progressiveSendTest() {
       && tokenCard?.querySelector('.tx-review-details')?.classList.contains('hidden') === true,
     tokenCard?.textContent?.slice(0, 240));
 
-  click(buttons(tokenRoute.el, /sign & send/i)[0]);
+  click(buttons(tokenRoute.el, /^send$/i)[0]);
   await settle();
   ok('token signing uses token.transferChecked, never a native send or legacy token method',
     chromeLog.calls.includes('token.transferChecked')
@@ -4764,7 +4772,7 @@ async function progressiveSendTest() {
   await settle();
   click(buttons(uncertain.el, /^review$/i)[0]);
   await settle();
-  click(buttons(uncertain.el, /sign & send/i)[0]);
+  click(buttons(uncertain.el, /^send$/i)[0]);
   await settle();
   ok('a signing timeout reports UNKNOWN outcome and warns against an immediate retry',
     /Could not confirm whether this transfer was submitted/.test(textOf(uncertain.el))
@@ -4773,7 +4781,7 @@ async function progressiveSendTest() {
   // Reviewer #5 (major): the message alone was not the contract. `finally` re-enabled Confirm
   // because the card still held its acknowledgements, so the same review could be submitted
   // again after a timeout — a second transfer if the first one had broadcast.
-  const blockedConfirm = buttons(uncertain.el, /sign & send/i)[0];
+  const blockedConfirm = buttons(uncertain.el, /^send$/i)[0];
   ok('an uncertain outcome keeps Confirm disabled instead of inviting a retry',
     blockedConfirm?.disabled === true,
     `disabled=${blockedConfirm?.disabled}`);

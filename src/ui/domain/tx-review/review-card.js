@@ -123,7 +123,10 @@ function movementRows(assets) {
 function contextLine(review) {
   const account = review.account?.label || 'Active account';
   const network = review.network?.label || 'this network';
-  return `${account} \u00b7 ${network}${review.network?.isTestnet ? ' test network' : ''}`;
+  // "From" is spelled out. The old Send review opened with a FROM Account row and the owner
+  // missed it: a bare account name could be the sender or the recipient, and on the one screen
+  // where that matters the wallet should not make the reader work it out.
+  return `From ${account} \u00b7 ${network}${review.network?.isTestnet ? ' test network' : ''}`;
 }
 
 // Total is only arithmetic the wallet can actually do: one outgoing asset, an asset-denominated
@@ -204,33 +207,20 @@ export function TxReviewCard({ review, onChange = null } = {}) {
       el.appendChild(h('p', { class: 'tx-review-sub muted', text: r.operation.summary }));
     }
 
+    // ---- who it goes to ----------------------------------------------------------------
+    // The WHOLE address, on the card, always. An earlier pass put it behind a tap; a nickname
+    // (or a shortened address) alone cannot authorise an irreversible send, because it cannot
+    // be compared against the address in the other wallet. The name is the headline, the
+    // address is the evidence, and both are visible without opening anything.
     if (r.counterparty?.address) {
-      const full = h('div', { class: 'tx-review-address mono hidden', text: r.counterparty.address });
-      const label = h('button', {
-        type: 'button',
-        class: 'tx-review-counterparty-main',
-        'aria-expanded': 'false',
-        title: 'Show the full address',
-      }, [
-        h('span', {
-          class: 'tx-review-counterparty-label',
-          // A faucet claim pays the account that is signing. "To Active account" reads like a
-          // transfer to someone else, so the one case where the counterparty IS the user says so.
-          text: `To ${r.counterparty.address === r.account?.address
-            ? 'your account'
-            : (r.counterparty.label || shortAddress(r.counterparty.address))}`,
-        }),
-        ...(r.counterparty.label
-          ? [h('span', { class: 'hint mono', text: shortAddress(r.counterparty.address) })]
-          : []),
-      ]);
-      d.on(label, 'click', () => {
-        const open = full.classList.contains('hidden');
-        full.classList.toggle('hidden', !open);
-        label.setAttribute('aria-expanded', String(open));
-        label.title = open ? 'Hide the full address' : 'Show the full address';
-      });
-      el.appendChild(h('div', { class: 'tx-review-counterparty' }, [label, full]));
+      const isSelf = r.counterparty.address === r.account?.address;
+      // A faucet claim pays the account that is signing, so "To your account" is the one case
+      // where the counterparty IS the user; saying "To Active account" would read as a transfer.
+      const name = isSelf ? 'your account' : r.counterparty.label;
+      el.appendChild(h('div', { class: 'tx-review-counterparty' }, [
+        h('div', { class: 'tx-review-counterparty-label', text: name ? `To ${name}` : 'To' }),
+        h('div', { class: 'tx-review-address mono', text: r.counterparty.address }),
+      ]));
     }
 
     // ---- the money, and nothing else --------------------------------------------------
@@ -286,9 +276,15 @@ export function TxReviewCard({ review, onChange = null } = {}) {
     // basis, simulation, and every caveat that was not decision-relevant. No repository paths
     // and no decision-record ids — a user cannot act on either.
     const details = [];
-    // Who is signing, in full. The context line carries the account's name; this is the address
-    // the signature will come from, which is the one fact a name cannot stand in for.
-    if (r.account?.address) details.push(detailRow('From', r.account.address, { mono: true }));
+    // Who is signing, in full — name AND address. The context line names the account; a name
+    // cannot stand in for the address the signature comes from, so both live here.
+    if (r.account?.address) {
+      details.push(detailRow(
+        r.account.label ? `From · ${r.account.label}` : 'From',
+        r.account.address,
+        { mono: true },
+      ));
+    }
     if (r.execution.program) {
       details.push(detailRow('Program', r.execution.program.name));
       if (r.execution.program.address) {
@@ -300,7 +296,12 @@ export function TxReviewCard({ review, onChange = null } = {}) {
       details.push(detailRow('Instruction', instruction.name));
       if (instruction.note) details.push(h('div', { class: 'hint', text: instruction.note }));
     }
+    // The instruction's account list repeats addresses already stated on this card — source is
+    // the signer, destination is the counterparty. Printing them again (Source, Destination) is
+    // what made this panel read as a wall of 46-character strings; only NEW addresses survive.
+    const stated = new Set([r.account?.address, r.counterparty?.address].filter(Boolean));
     for (const account of r.execution.accounts) {
+      if (stated.has(account.address)) continue;
       details.push(detailRow(account.role, account.address, { mono: true }));
     }
     if (fee.note) details.push(h('div', { class: 'hint', text: fee.note }));
