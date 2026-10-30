@@ -169,7 +169,7 @@ No browser pass, no popup-dimension verification, no live-chain behaviour. The D
 is derived from the stylesheet, not measured on screen. "Fixed" below means the call site no longer
 produces an empty message and the component refuses to render one.
 
-## 8. What shipped (same day, five commits)
+## 8. What shipped (same day, on top of the owner's `46682e2`)
 
 Hashes are the ones on `arena/0439c226-thru-wallet-ext` after rebasing onto the owner's `46682e2`
 (the pre-rebase equivalents were `05f1134`/`8072dd8`/`512ecdc`).
@@ -178,10 +178,11 @@ Hashes are the ones on `arena/0439c226-thru-wallet-ext` after rebasing onto the 
 | --- | --- |
 | `98a04d9` | The notification foundation and the Domain migration: blank-message guard, string shorthand, `pending` + `handle.update()`, `key` dedupe, `dismissAllToasts()` wired to lock/account/network, `Banner` success tone, the three Domain call sites, `test/test-toast.mjs` |
 | `d3843df` | One truncation primitive (`shortenMiddle`/`shortAddress`, `truncateAddress` as an alias), six call sites migrated with their existing widths, `test/test-shared-platform.mjs` (45 checks) |
-| `6cea7ab` | This record, `docs/DECISIONS.md` D-018, `docs/ARCHITECTURE.md` "Shared UI platform", `docs/DEFECT_LOG.md` §16, `CONTEXT.md` file map, `docs/AUDIT_REPORT.md` refresh, and the stale `06_MODULAR_REUSE_AUDIT.md` citation in `kit/sheet.js` |
+| `6cea7ab`, `8cd80f7` | This record, `docs/DECISIONS.md` D-018, `docs/ARCHITECTURE.md` "Shared UI platform", `docs/DEFECT_LOG.md` §16, `CONTEXT.md` file map, `docs/AUDIT_REPORT.md` refresh, and the stale `06_MODULAR_REUSE_AUDIT.md` citation in `kit/sheet.js` |
 | `67475c7` | Two edges the first pass left: `update({ action: null })` now removes a button that is already on screen (the guard tested the merged state, so a stale "Undo" stayed clickable), and the entrance frame no longer re-opens a toast dismissed in that same frame. `test-toast.mjs` 89 → 92 |
 | `d6f3e3f` | The Domain submit path opens its toast as `pending` and resolves the same bar in place with the real outcome (confirmed / outcome-unknown / dismissed), including on route teardown |
-| (faucet audit) | Owner commit `46682e2` reviewed. Its read-only claim field had no styling, so the fixed amount was pixel-identical to an editable input; it now uses a flat surface with no focus/hover emphasis. Its `claim()` chose the amount through a ternary whose two non-BigInt branches were identical, so a field object would have been read as a cap fallback — the whole normalisation is gone, and `claim()` now refuses to submit before the network cap is known and re-renders if the cap moved while the screen was open. Two route checks pin the read-only field and its copy (`1,115`) |
+| `65d994e` | The bare-string ban widened from "the Domain route" to every `.js` under `src/`: the shape that caused the defect could have reappeared in any feature. Green on the current tree. |
+| `8c65b35` | Owner commit `46682e2` reviewed. Its read-only claim field had no styling, so the fixed amount was pixel-identical to an editable input; it now uses a flat surface with no focus/hover emphasis. Its `claim()` chose the amount through a ternary whose two non-BigInt branches were identical, so a field object would have been read as a cap fallback — the whole normalisation is gone, and `claim()` now refuses to submit before the network cap is known and re-renders if the cap moved while the screen was open. Two route checks pin the read-only field and its copy (`1,115`) |
 
 State after the pass: `npm run build` exit 0; `npm test` exit 0 — **2,620** `ok -` checks, 0 failures
 (37 suites + 5 gates), `test-toast.mjs` 92/92, `test-shared-platform.mjs` 45/45,
