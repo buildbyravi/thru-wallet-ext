@@ -157,12 +157,29 @@ export async function getFaucetLimit() {
  * Perform a faucet claim for the active account.
  * @param {string|number|bigint} amountUnits
  */
-export async function claimFaucet(amountUnits) {
+export async function claimFaucet(amountUnits, expected = {}) {
   const feePayer = await vault.getActiveAccount();
   const rawUnits = BigInt(amountUnits);
   // Bind the network BEFORE the claim so a submission-time tracking hook records the chain
   // the claim was built for (same reason sendTransfer binds early).
   const network = await getActiveNetworkConfig();
+
+  // A review shows one account on one network. Re-reading the active values here and using
+  // whatever they happen to be is a silent rebind: with password re-auth open, another window
+  // can switch account or network and the claim then pays a different account than the one
+  // the user approved (v31 audit F-2, 2026-10-29). Send and the name writes already bind.
+  const expectedFrom = expected?.fromAddress ?? null;
+  const expectedNetwork = expected?.networkId ?? null;
+  if (expectedFrom && feePayer?.address !== expectedFrom) {
+    const error = new Error('The active account changed after this review. Review the claim again.');
+    error.code = 'REVIEW_ACCOUNT_CHANGED';
+    throw error;
+  }
+  if (expectedNetwork && network.id !== expectedNetwork) {
+    const error = new Error('The active network changed after this review. Review the claim again.');
+    error.code = 'REVIEW_NETWORK_CHANGED';
+    throw error;
+  }
   let trackedSignature = null;
   const trackSubmitted = (signature) => {
     if (!signature || trackedSignature === signature) return null;

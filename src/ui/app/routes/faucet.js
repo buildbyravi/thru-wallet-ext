@@ -33,6 +33,10 @@ import { formatThru } from '../../../shared/format.js';
 
 export function FaucetRoute({ navigate, back }) {
   const d = disposer();
+  // Route lifetime for the review confirmation and its password dialog (see confirm.js:
+  // the signal is required, so a torn-down route can never complete a signature).
+  const lifecycle = new AbortController();
+  d.add(() => lifecycle.abort());
   const owned = [];
   let account = null;
   let network = null;
@@ -329,6 +333,7 @@ export function FaucetRoute({ navigate, back }) {
       const outcome = await submitReviewedReview({
         review: prepared.review,
         acknowledgements,
+        signal: lifecycle.signal,
         passwordTitle: 'Confirm faucet claim',
         passwordBody: 'Re-enter your wallet password to sign this faucet claim.',
         confirmLabel: 'Claim on-chain',
@@ -450,6 +455,7 @@ export function FaucetRoute({ navigate, back }) {
   return {
     el,
     destroy() {
+      lifecycle.abort();
       reviewSheet?.destroy();
       reviewSheet = null;
       for (const c of owned) c.destroy?.();

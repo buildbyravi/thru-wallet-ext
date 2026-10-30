@@ -63,9 +63,14 @@ export function NameRoute({ back }) {
   let loadSeq = 0;
   let activeTab = 'register';
   let draft = { name: '', years: 1, quote: null };
-  const queuedRegistrations = [];
   let reviewSheet = null;
   let submissionInFlight = false;
+  // One preparation at a time, and one generation of it. The review sheet is created only
+  // AFTER the asynchronous prepare resolves, so a second click during a slow read used to open
+  // a second sheet, and editing the draft mid-read could open a superseded review
+  // (v31 audit F-5). `prepareSeq` is bumped by every edit and by each new preparation.
+  let preparingReview = false;
+  let prepareSeq = 0;
   const mutationControls = new Set();
   const transactionControls = new Set();
   const providerReads = new Map();
@@ -394,10 +399,8 @@ export function NameRoute({ back }) {
     const balanceLine = h('div', { class: 'name-balance hint hidden' });
     const ctaBtn = h('button', { type: 'button', class: 'btn primary hidden' }, [h('span', { text: 'Review registration' })]);
     const ctaLabel = () => ctaBtn.querySelector('span');
-    const queueBtn = h('button', { type: 'button', class: 'btn secondary hidden' }, [h('span', { text: 'Queue registration' })]);
     const linkBtn = h('button', { type: 'button', class: 'btn secondary hidden' }, [h('span', { text: 'Set as primary' })]);
     transactionControls.add(ctaBtn);
-    mutationControls.add(queueBtn);
     mutationControls.add(linkBtn);
 
     let years = Math.min(10, Math.max(1, Number(entry.years) || 1));
@@ -427,11 +430,12 @@ export function NameRoute({ back }) {
     bodyDisposer.on(plusBtn, 'click', () => setYears(+1));
 
     function hideActions() {
+      // A pending preparation no longer describes this draft.
+      prepareSeq += 1;
       yearsStepper.classList.add('hidden');
       priceLine.classList.add('hidden');
       balanceLine.classList.add('hidden');
       ctaBtn.classList.add('hidden');
-      queueBtn.classList.add('hidden');
       linkBtn.classList.add('hidden');
       reviewSheet?.close();
       ctaBtn.disabled = false;
@@ -710,6 +714,7 @@ export function NameRoute({ back }) {
       clearTimeout(checkTimer);
       // Invalidate an older request immediately, including the debounce window.
       checkSeq++;
+      prepareSeq += 1;
       leaseState = null;
       hideActions();
       if (name.length === 0) { setStatus('', ''); return; }
@@ -734,7 +739,7 @@ export function NameRoute({ back }) {
     });
 
     bodyDisposer.on(ctaBtn, 'click', () => {
-      if (destroyed || submissionInFlight || ctaBtn.disabled || reviewSheet) return;
+      if (destroyed || submissionInFlight || ctaBtn.disabled || reviewSheet || preparingReview) return;
       banner.set('');
       if (entry.recheckRequired) {
         entry.recheckRequired = false;
@@ -761,18 +766,28 @@ export function NameRoute({ back }) {
       const reviewedYears = years;
       const params = { name: state.name, years: reviewedYears, ...(isCustom ? { via: 'custom' } : {}) };
 
+      const generation = ++prepareSeq;
+      const stale = () => destroyed || !card.isConnected || generation !== prepareSeq;
+      preparingReview = true;
       void (async () => {
         setStatus('Preparing review…', '');
         let prepared;
         try {
           prepared = await bridge.send('tx.prepareReview', { kind, params });
         } catch (error) {
-          if (destroyed || !card.isConnected) return;
+          if (stale()) return;
           setStatus('', '');
           banner.set(error?.message || 'The review could not be prepared.');
           return;
+        } finally {
+          preparingReview = false;
         }
-        if (destroyed || !card.isConnected) return;
+        if (stale()) {
+          // The draft changed or the route is gone: drop the review instead of showing a
+          // sheet for a transaction the user is no longer looking at.
+          if (prepared?.reviewId) discardReview(prepared.reviewId);
+          return;
+        }
         setStatus('', '');
         if (!prepared?.supported) {
           banner.set('This wallet has no decoder for that transaction, so it cannot be signed.');
@@ -908,34 +923,8 @@ export function NameRoute({ back }) {
       priceLine,
       balanceLine,
       ctaBtn,
-      queueBtn,
       linkBtn,
     ];
-
-    bodyDisposer.on(queueBtn, 'click', () => {
-      if (destroyed || submissionInFlight || !leaseState) return;
-      const rawName = searchField.value?.trim?.() ?? '';
-      const canonical = rawName.toLowerCase();
-      if (!canonical) return;
-      if (queuedRegistrations.some((it) => it.name.toLowerCase() === canonical)) {
-        banner.set(`'${canonical}.${currentTld()}' is already in your registration list.`, 'warn');
-        return;
-      }
-      const priceYr = (provider === 'custom' ? customPricePerYear() : pricePerYear()).toString();
-      queuedRegistrations.push({
-        name: rawName,
-        years,
-        pricePerYear: priceYr,
-        provider,
-        tld: currentTld(),
-      });
-      banner.set(`Added '${rawName}.${currentTld()}' to registration list.`, 'ok');
-      searchField.value = '';
-      entry.name = '';
-      hideActions();
-      setStatus('', '');
-      render();
-    });
 
     for (const node of additions) cardInner.appendChild(node);
 
@@ -980,103 +969,10 @@ export function NameRoute({ back }) {
     body.appendChild(tabs);
     body.appendChild(panel);
 
-    
-    function renderQueue(host) {
-      const queueCard = h('div', { class: 'name-queue-card stack stack-2' });
-      queueCard.appendChild(h('div', { class: 'row-title', text: 'Prepared registrations' }));
-      for (let i = 0; i < queuedRegistrations.length; i++) {
-        const item = queuedRegistrations[i];
-        const costUnits = BigInt(item.pricePerYear) * BigInt(item.years);
-        const costFmt = formatTokenAmount(costUnits.toString(), 9) + ' THRU';
-        const itemMinus = h('button', { type: 'button', class: 'btn secondary name-step-btn', text: '-' });
-        const itemYears = h('span', { class: 'name-years mono', text: `${item.years}y` });
-        const itemPlus = h('button', { type: 'button', class: 'btn secondary name-step-btn', text: '+' });
-        const itemRemove = h('button', { type: 'button', class: 'btn text', text: 'Remove' });
-        itemMinus.disabled = submissionInFlight || item.years <= 1;
-        itemPlus.disabled = submissionInFlight || item.years >= 10;
-        itemRemove.disabled = submissionInFlight;
-        bodyDisposer.on(itemMinus, 'click', () => {
-          item.years = Math.max(1, item.years - 1);
-          render();
-        });
-        bodyDisposer.on(itemPlus, 'click', () => {
-          item.years = Math.min(10, item.years + 1);
-          render();
-        });
-        bodyDisposer.on(itemRemove, 'click', () => {
-          queuedRegistrations.splice(i, 1);
-          render();
-        });
-        const itemRow = h('div', { class: 'name-queue-item' }, [
-          h('div', { class: 'stack' }, [
-            h('span', { class: 'name-domain-title mono', text: `${item.name}.${item.tld}` }),
-            h('span', { class: 'hint', text: costFmt }),
-          ]),
-          h('div', { class: 'row-flex' }, [itemMinus, itemYears, itemPlus, itemRemove]),
-        ]);
-        queueCard.appendChild(itemRow);
-      }
-      const totalUnits = queuedRegistrations.reduce((acc, it) => acc + (BigInt(it.pricePerYear) * BigInt(it.years)), 0n);
-      const totalFmt = formatTokenAmount(totalUnits.toString(), 9) + ' THRU';
-      queueCard.appendChild(h('div', { class: 'name-queue-summary' }, [
-        h('span', { text: 'Total' }),
-        h('span', { class: 'mono', text: totalFmt }),
-      ]));
-      queueCard.appendChild(h('div', { class: 'hint muted', text: 'Registrations are executed sequentially on Thru L1.' }));
-      const registerAllBtn = h('button', { type: 'button', class: 'btn primary', text: `Register ${queuedRegistrations.length} names` });
-      registerAllBtn.disabled = submissionInFlight;
-      bodyDisposer.on(registerAllBtn, 'click', async () => {
-        if (submissionInFlight || destroyed) return;
-        submissionInFlight = true;
-        setListMutationLocked(true);
-        registerAllBtn.disabled = true;
-        banner.set(`Starting registration of ${queuedRegistrations.length} names…`, 'info');
-        let registeredCount = 0;
-        try {
-          while (queuedRegistrations.length > 0) {
-            const currentItem = queuedRegistrations[0];
-            const nameText = currentItem.name;
-            banner.set(`Registering ${registeredCount + 1} of ${registeredCount + queuedRegistrations.length}: ${nameText}.${currentItem.tld}…`, 'info');
-            const kind = currentItem.provider === 'custom' ? 'domain-register' : 'domain-purchase';
-            const params = { name: nameText, years: currentItem.years, ...(currentItem.provider === 'custom' ? { via: 'custom' } : {}) };
-            const prepared = await bridge.send('tx.prepareReview', { kind, params });
-            if (!prepared?.supported) throw new Error(`Registration not supported for ${nameText}`);
-            const outcome = await submitReviewedReview({
-              review: prepared.review,
-              signal: abortController.signal,
-              passwordTitle: 'Confirm registration',
-              passwordBody: `Enter your password to sign for ${nameText}.${currentItem.tld}.`,
-              confirmLabel: 'Confirm and sign',
-            });
-            if (outcome.status === 'cancelled') {
-              banner.set('Registration cancelled.', 'warn');
-              break;
-            }
-            queuedRegistrations.shift();
-            registeredCount++;
-            toast(`${nameText}.${currentItem.tld} registered!`);
-          }
-          if (registeredCount > 0) {
-            banner.set(`Successfully registered ${registeredCount} domain${registeredCount === 1 ? '' : 's'}.`, 'ok');
-          }
-        } catch (err) {
-          banner.set(`Batch halted: ${err?.message || 'Transaction failed.'}`);
-        } finally {
-          submissionInFlight = false;
-          setListMutationLocked(false);
-          render();
-        }
-      });
-      queueCard.appendChild(registerAllBtn);
-      host.appendChild(queueCard);
-    }
 
     if (activeTab === 'register') {
       panel.appendChild(h('div', { class: 'hint', text: 'Your name on Thru. Find, register or renew a .thru domain.' }));
       void renderSearchCard(panel, draft);
-      if (queuedRegistrations.length > 0) {
-        renderQueue(panel);
-      }
       const refresh = h('button', { type: 'button', class: 'btn text', text: 'Refresh availability' });
       mutationControls.add(refresh);
       refresh.disabled = submissionInFlight;
@@ -1113,7 +1009,6 @@ export function NameRoute({ back }) {
       account = nextAccount;
       if ((previousAddress && previousAddress !== account.address) || (previousNetwork && previousNetwork !== network.id)) {
         draft = { name: '', years: 1, quote: null };
-        queuedRegistrations.length = 0;
         primary = null;
       }
       render();

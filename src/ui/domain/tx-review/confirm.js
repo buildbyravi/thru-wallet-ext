@@ -44,10 +44,16 @@ export function discardReview(reviewId) {
  *   review          the envelope rendered to the user
  *   acknowledgements  the acknowledgement ids the user ticked
  *   passwordTitle / passwordBody / confirmLabel  copy for the re-auth prompt
- *   signal          optional route-lifecycle AbortSignal
+ *   signal          REQUIRED route-lifecycle AbortSignal
  * @returns {Promise<{ status: 'submitted', result: any }
  *   | { status: 'cancelled' }>}
  * @throws the background's coded error (see classifyReviewError)
+ *
+ * `signal` is required, not optional. A confirmation can sit in the password dialog for as long
+ * as the user takes, and the route that opened it can be torn down first (navigate away, popup
+ * closed, account switched). Checking `destroyed` after the await is too late: the password has
+ * already produced a signature. Two of the three call sites shipped without a signal, so the
+ * requirement is enforced here instead of being remembered per route (v31 audit F-3).
  */
 export async function submitReviewedReview({
   review,
@@ -57,7 +63,13 @@ export async function submitReviewedReview({
   confirmLabel = null,
   signal = null,
 } = {}) {
-  if (signal?.aborted) return { status: 'cancelled' };
+  if (!signal || typeof signal.addEventListener !== 'function') {
+    throw Object.assign(
+      new Error('A review submission needs a lifecycle signal. This is a programming error.'),
+      { code: 'INVALID_REQUEST' },
+    );
+  }
+  if (signal.aborted) return { status: 'cancelled' };
   if (!review?.reviewId || !review?.bindingHash) {
     throw Object.assign(new Error('This review is missing its binding. Review the transaction again.'), {
       code: 'REVIEW_NOT_FOUND',

@@ -1608,33 +1608,3 @@ form > .btn.text {
   margin-top: 1px;
 }
 
-.name-queue-card {
-  margin-top: var(--sp-3);
-  padding: var(--sp-3);
-  border-radius: var(--radius-md);
-  background: var(--bg-surface-elevated, rgba(255, 255, 255, 0.04));
-  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
-}
-.name-queue-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--sp-2);
-  padding: var(--sp-2) 0;
-  border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.05));
-}
-.name-queue-item:last-child {
-  border-bottom: none;
-}
-.name-queue-actions {
-  display: flex;
-  gap: var(--sp-2);
-  margin-top: var(--sp-2);
-}
-.name-queue-summary {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: var(--sp-2) 0;
-  font-weight: 500;
-}

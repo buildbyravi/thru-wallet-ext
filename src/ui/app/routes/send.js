@@ -43,6 +43,10 @@ import { safeAddressParam } from '../../../shared/refs.js';
 
 export function SendRoute({ params, navigate, back }) {
   const d = disposer();
+  // Route lifetime, for work that outlives a render: a pending review confirmation and its
+  // password dialog. Aborted in destroy() so nothing signs against a screen that is gone.
+  const lifecycle = new AbortController();
+  d.add(() => lifecycle.abort());
   const owned = [];
 
   let account = null;          // the sending account
@@ -899,6 +903,9 @@ export function SendRoute({ params, navigate, back }) {
       const outcome = await submitReviewedReview({
         review: prepared.review,
         acknowledgements: card.acknowledgements,
+        // Destroying this route (navigation, popup close, account switch) aborts a pending
+        // confirmation instead of letting a password dialog finish against a dead screen.
+        signal: lifecycle.signal,
         passwordTitle: 'Confirm send',
         passwordBody: `Re-enter your password to sign and broadcast this ${symbol} transfer.`,
         confirmLabel: 'Sign & send',
@@ -1216,6 +1223,7 @@ export function SendRoute({ params, navigate, back }) {
     destroy() {
       destroyed = true;
       loadSeq += 1;
+      lifecycle.abort();
       clearBody();
       header.destroy();
       banner.destroy();

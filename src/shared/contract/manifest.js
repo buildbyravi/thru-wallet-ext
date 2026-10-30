@@ -592,7 +592,10 @@ export const METHODS = {
     since: 24,
   },
   'tx.claimFaucet': {
-    params: ['amountUnits'],
+    // v31 (2026-10-29): `fromAddress`/`networkId` are the reviewed context. When present the
+    // handler refuses a claim whose active account or network no longer matches them
+    // (REVIEW_ACCOUNT_CHANGED / REVIEW_NETWORK_CHANGED) instead of rebinding silently.
+    params: ['amountUnits', 'fromAddress', 'networkId'],
     returns: '{ signature, blockHeight }',
     auth: 'unlocked',
     since: 1,

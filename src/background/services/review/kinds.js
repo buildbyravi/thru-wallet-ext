@@ -927,7 +927,13 @@ register('faucet-claim', {
   recheck: faucetClaimRecheck,
   submit: (facts) => ({
     method: 'tx.claimFaucet',
-    params: { amountUnits: facts.amountUnits },
+    // The reviewed account and network travel with the claim: the handler refuses a different
+    // active context instead of silently claiming into it (v31 audit F-2).
+    params: {
+      amountUnits: facts.amountUnits,
+      fromAddress: facts.fromAddress,
+      networkId: facts.networkId,
+    },
   }),
 });
 

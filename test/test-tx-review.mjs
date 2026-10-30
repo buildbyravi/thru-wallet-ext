@@ -1104,5 +1104,128 @@ console.log('[16] concurrency and the simulation verdict');
     /failed: 'Failed/.test(cardSource) && /unavailable: 'Not available'/.test(cardSource));
 }
 
+console.log('[17] the shared submit path is mandatory, and the batch bypass is gone');
+{
+  // ---- (a) every call site passes a lifecycle signal ------------------------------
+  // A confirmation can wait in the password dialog indefinitely while the route that opened it
+  // is destroyed. `signal` was optional and two of the three call sites shipped without one, so
+  // it is required in confirm.js and asserted here against the source of every caller
+  // (docs/DEFECT_LOG.md §15.3).
+  const uiRoot = new URL('../src/ui/', import.meta.url);
+  const uiFiles = readdirSync(uiRoot, { recursive: true }).map(String).filter((f) => f.endsWith('.js'));
+  const callSites = [];
+  for (const file of uiFiles) {
+    const source = readFileSync(new URL(file, uiRoot), 'utf8');
+    for (const match of source.matchAll(/(?<!function )submitReviewedReview\(\{/g)) {
+      const window = source.slice(match.index, match.index + 800);
+      callSites.push({ file, hasSignal: /\bsignal:\s*\S/.test(window) });
+    }
+  }
+  ok('the scan found every submitReviewedReview call site', callSites.length >= 3,
+    `${callSites.length} sites`);
+  const missing = callSites.filter((c) => !c.hasSignal).map((c) => c.file);
+  ok('every submitReviewedReview call passes a lifecycle signal', missing.length === 0,
+    missing.join(','));
+
+  // ---- (b) confirm.js refuses to run without one, and aborts before any signing ----
+  const sent = [];
+  globalThis.chrome.runtime = {
+    ...(globalThis.chrome.runtime || {}),
+    sendMessage: (message, callback) => {
+      sent.push(message.method);
+      callback({ ok: true, data: {} });
+    },
+  };
+  const { submitReviewedReview } = await import('../src/ui/domain/tx-review/confirm.js');
+  const review = { reviewId: 'r1', bindingHash: 'h1', operation: { confirmLabel: 'Sign' } };
+
+  let noSignal = null;
+  try {
+    await submitReviewedReview({ review });
+  } catch (error) {
+    noSignal = error;
+  }
+  ok('a submission without a lifecycle signal is refused, not silently allowed',
+    noSignal?.code === 'INVALID_REQUEST', noSignal?.message);
+  ok('the refusal happened before anything was sent to the background', sent.length === 0,
+    sent.join(','));
+
+  const controller = new AbortController();
+  controller.abort();
+  const abandoned = await submitReviewedReview({ review, signal: controller.signal });
+  ok('an already-aborted route returns cancelled without confirming',
+    abandoned.status === 'cancelled' && !sent.includes('tx.confirmReview'), sent.join(','));
+
+  // Positive control: with a live signal it does reach the background, so (b) is not vacuous.
+  let reached = null;
+  try {
+    await submitReviewedReview({ review, signal: new AbortController().signal });
+  } catch (error) {
+    reached = error;
+  }
+  ok('control: a live signal proceeds to tx.confirmReview',
+    sent.includes('tx.confirmReview'), `${sent.join(',')} ${reached?.message || ''}`);
+
+  // ---- (c) the batch registration bypass is deleted -------------------------------
+  // It called tx.prepareReview then submitReviewedReview in a loop without ever rendering the
+  // card (audit F-1). Its control was hidden and never revealed, so it was dead code with a
+  // signing loop in it. The removal is asserted so it cannot come back quietly.
+  const nameRoute = readFileSync(new URL('../src/ui/app/routes/name.js', import.meta.url), 'utf8');
+  ok('the registration queue is gone from the Domain route',
+    !/queuedRegistrations|renderQueue|queueBtn|registerAllBtn/.test(nameRoute));
+  ok('the Domain route no longer batches prepared reviews without a card',
+    !/Register \$\{[^}]*\} names/.test(nameRoute));
+  const css = readFileSync(new URL('../src/popup/styles/screens.css', import.meta.url), 'utf8');
+  ok('the batch queue CSS is gone too', !/\.name-queue-/.test(css));
+
+  // ---- (d) the faucet claim carries the reviewed account and network ---------------
+  const faucetKind = kindTable.getKind('faucet-claim');
+  const faucetSubmit = faucetKind.submit({
+    amountUnits: '500000', fromAddress: 'taAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEg',
+    networkId: 'betanet',
+  });
+  ok('the faucet review submits the account and network it displayed',
+    faucetSubmit.params.fromAddress === 'taAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEg'
+      && faucetSubmit.params.networkId === 'betanet', JSON.stringify(faucetSubmit.params));
+  ok('the contract declares the faucet binding params',
+    ['fromAddress', 'networkId'].every((p) => METHODS['tx.claimFaucet'].params.includes(p)));
+}
+
+console.log('[18] the faucet handler refuses a context that changed after review');
+{
+  // Audit F-2: the faucet claim re-read the active account and network at submit time and used
+  // whatever they were, so a switch made from another window during password re-auth could
+  // claim into a context the user never reviewed. Send and the name writes already bound;
+  // the claim now binds too and these are the refusals.
+  const { getActiveNetworkConfig } = await import('../src/background/services/network-service.js');
+  const active = await getActiveNetworkConfig();
+  const account = await handleApiRequest({ method: 'account.getActive' });
+  const me = account.data?.address;
+  ok('the suite has an unlocked active account to claim with', typeof me === 'string' && me.length > 0);
+
+  const wrongAccount = await handleApiRequest({
+    method: 'tx.claimFaucet',
+    params: { amountUnits: '500000', fromAddress: Pubkey.from(new Uint8Array(32).fill(77)).toThruFmt(), networkId: active.id },
+  });
+  ok('a changed active account is refused with REVIEW_ACCOUNT_CHANGED',
+    wrongAccount.ok === false && wrongAccount.error.code === 'REVIEW_ACCOUNT_CHANGED',
+    JSON.stringify(wrongAccount).slice(0, 160));
+
+  const wrongNetwork = await handleApiRequest({
+    method: 'tx.claimFaucet',
+    params: { amountUnits: '500000', fromAddress: me, networkId: `${active.id}-other` },
+  });
+  ok('a changed active network is refused with REVIEW_NETWORK_CHANGED',
+    wrongNetwork.ok === false && wrongNetwork.error.code === 'REVIEW_NETWORK_CHANGED',
+    JSON.stringify(wrongNetwork).slice(0, 160));
+
+  // Neither refusal may have produced a signature or a pending record.
+  const pendingList = await handleApiRequest({ method: 'tx.getPending' }).catch(() => ({ data: [] }));
+  const faucetPending = (pendingList.data?.items || pendingList.data || [])
+    .filter?.((entry) => entry?.kind === 'faucet') || [];
+  ok('neither refusal tracked a faucet submission', faucetPending.length === 0,
+    JSON.stringify(faucetPending).slice(0, 120));
+}
+
 console.log(`\nAll tx-review checks passed: ${checks}/${checks}.`);
 console.log('No network was contacted: the SDK account read was stubbed at the client boundary.');
