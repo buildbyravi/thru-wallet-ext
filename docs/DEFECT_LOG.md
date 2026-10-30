@@ -511,6 +511,38 @@ account rows that actually want ellipsis.
 > earn a section; the screen has to stay the size of the decision. And when replacing a screen users
 > already know, the old shape is the baseline to beat, not the thing to throw away.
 
+### 11.6 The card was shortened again, and the copy was made plain — 2026-10-30
+
+The owner read the §11 card and said the Send preview was still not the previous one, the Domain
+register preview was still too long, and the screen had to *say what the transaction is*. The
+second pass cut copy rather than rows, and changed what the title says:
+
+- **The title carries the operation and the amount.** `Send 0.0015 THRU`, `Claim 0.5 THRU from the
+  faucet`, `Register vault.thru for 2 years`, `Add a url record to name.thru`, `Unrecognised
+  transaction`. A user reading only the first line now knows the transaction.
+- **Six badges became one context line** (`Main account · Betanet`). The decoded/not-decoded badge,
+  the program badge and the testnet badge were all repeating something the card says elsewhere;
+  the unknown case says it in its warning, in one sentence.
+- **The From/To rows became a counterparty line.** Name when the wallet has one, shortened address
+  beside it, the whole address one tap away and always in Details. `content.counterparty` is the
+  optional field; the From/To rows are gone from the decoders.
+- **The money table is You pay / You receive / Network fee / Total.** `Total` prints only when the
+  two sides share a symbol and can be added; a zero fee reads `none`; an unmeasured fee keeps
+  "not confirmed (paid in THRU)". A second, short table carries the operation's non-money facts
+  (remaining faucet allowance, term, expiry) — never a third.
+- **Warnings are one sentence each, at most two.** A raw transaction now has exactly one blocking
+  warning ("This transaction cannot be read") instead of a stack, and Details opens by default
+  because the surface has nothing readable to show.
+- **The custom registrar promises no fee.** `processor.rs` performs the charge as
+  `let _ = mgr.account_transfer(..)` and the live treasury is unchanged, so the card cannot claim a
+  price; it says the registrar takes no fee and explains the contract behavior in Details
+  (`protocol.trustNote`). The low-balance case became an informational "checked before signing"
+  note, and a new expiry is labelled "shown after the network confirms".
+
+> **Lesson:** after a screen has been simplified structurally, the remaining problem is usually
+> vocabulary, not layout. "Program", "provenance", "base units" and "binding" are the wallet's words,
+> not the user's; a card that is honest but unreadable is still a card the user taps through blind.
+
 ## 12. The review pipeline's truth-states, store and simulation gate — FIXED in source/tests
 
 Found by an external audit of `2e2178f`, re-checked finding-by-finding at the current head
@@ -808,3 +840,61 @@ cases.
 
 > **Lesson:** a header comment describing coverage is not coverage. If a suite names a function in
 > prose, the same file should call it.
+
+## 15. The review lifecycle's bypasses — audit of `2c0aeed` (2026-10-30)
+
+Full findings and the fix evidence: `docs/audits/2026-10-30-review-lifecycle-audit.md`. The suite was
+green at the time of every one of these; each is a defect in the lifecycle *around* the happy path,
+not in a decoder.
+
+### 15.1 A hidden queue submitted reviews nobody had seen — `READ`
+
+The Domain route kept a registration queue whose only control (`Queue registration`) was built with
+the `hidden` class and never un-hidden, so it was unreachable — and it called `tx.prepareReview` and
+then `submitReviewedReview` in a loop without rendering a card. Unreachable plus one `classList`
+call away from signing is not dead code; it is a bypass with a locked door. The button, handler,
+queue, state, reset and orphaned `.name-queue-*` CSS are deleted. This conflicts with the status R-3
+gave the queue ("the owner's in-flight feature"); restoring it is an owner decision and needs a
+reviewed design, not a rescue.
+
+> **Lesson:** a feature that cannot be shown cannot be reviewed. If a control is never displayed,
+> the code behind it has no approval story and must not contain a signing loop.
+
+### 15.2 The faucet claim was bound to the ambient account — `READ`
+
+`tx.claimFaucet` took only an amount and re-read the active account and network at submit time. A
+switch made from another window while the password dialog was open would claim into an account the
+review never named — a defect the send path had already closed by passing what it displayed. The
+kind now submits `fromAddress`/`networkId`, the handler refuses a mismatch with
+`REVIEW_ACCOUNT_CHANGED` / `REVIEW_NETWORK_CHANGED`, and the contract declares both params.
+
+> **Lesson:** "the review showed it" is a claim about a snapshot. A signing method that re-derives
+> its context has no snapshot, so it can only sign something the user was not shown.
+
+### 15.3 `signal` was optional, so two of three routes passed none — `READ`
+
+`submitReviewedReview` accepted `signal = null`. Only the Domain route supplied one, so a Send or
+Faucet confirmation could finish signing after its route was destroyed; checking `destroyed` after
+the await is too late — the password has already produced a signature. The signal is now required,
+both routes own an `AbortController` aborted in `destroy()`, and a call-site scan fails if a future
+route forgets one.
+
+> **Lesson:** an optional safety parameter is a comment. If cancellation is required for correctness,
+> the function must refuse to run without it.
+
+### 15.4 The Domain sheet raced its own preparation — `READ`
+
+The sheet was created inside `await tx.prepareReview`, so a double click during a slow read opened
+two sheets, and an edit mid-read could show a review for the previous name. One in-flight flag plus
+one generation counter now discards a superseded response.
+
+> **Lesson:** if the review is rendered after an await, the code needs an identity for the request
+> that produced it, or a slow read becomes a wrong review.
+
+### 15.5 The guards added
+
+`test-tx-review.mjs` [17] scans every `submitReviewedReview({` call site for `signal:`, asserts the
+queue is absent from the route and the stylesheet, asserts the faucet submit params and the manifest
+declaration, and proves the scan can pass with a live `chrome.runtime.sendMessage` stub and a
+positive control. [18] drives both faucet refusals through the real router. `test-route-lifecycle.mjs`
+pins the single sheet and the discarded-after-signature rule.

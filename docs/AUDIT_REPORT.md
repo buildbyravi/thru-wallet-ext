@@ -21,9 +21,13 @@ Baseline evidence (re-run green 2026-10-04): `npm run build` PASS · `npm test` 
 (derivation 16/16, contract 80/80, lifecycle 1017/1017, 1647 assertions) ·
 `npm audit --omit=dev` 0 vulnerabilities.
 
-**Refresh (2026-10-29, no new audit performed).** The tree has since advanced to contract **v31**
-with **153 methods** and **15 routes**; `npm test` is **2,405 checks (34 suites + 5 gates)**, `npm run build`
-PASS, layering 127 files / 0 DOM sinks, `check-routes` 15/15 with 262 used classes, all defined. The v29
+**Refresh (2026-10-30).** The tree is at contract **v31** with **153 methods** and **15 routes**;
+`npm test` is **2,469 checks (35 suites + 5 gates)**, `npm run build` PASS, layering 127 files /
+0 DOM sinks, `check-routes` 15/15 with the full used-class set defined. The 2026-10-30 lifecycle
+audit (`docs/audits/2026-10-30-review-lifecycle-audit.md`) fixed four pre-sign defects — a hidden
+Domain queue that submitted reviews without a card, a faucet claim that re-derived its account at
+submit time, an optional abort signal that two routes never passed, and a Domain sheet that raced
+its own preparation — and the card copy was rewritten to the owner's v1.5.0 shape. The v29
 change is the owner-directed shared transaction-review pipeline; its verification record, including
 the fixes found during review, is `docs/TX_REVIEW_VERIFICATION.md`. v30 adds the tracked-domain
 registry and the custom-registrar renewal path, audited in `docs/audits/2026-10-28-sync-audit.md`;
@@ -105,6 +109,9 @@ external audit of this wallet exists; no claim of one may be made.
 
 | Date | Record | Scope |
 | --- | --- | --- |
+| 2026-10-30 | [`docs/audits/2026-10-30-review-lifecycle-audit.md`](audits/2026-10-30-review-lifecycle-audit.md) | Review lifecycle after v31: four pre-sign defects (hidden batch queue, unbound faucet claim, optional abort signal, Domain prepare race) plus the v1.5.0 card copy rewrite. |
+| 2026-10-29 | [`docs/audits/2026-10-29-v31-audit.md`](audits/2026-10-29-v31-audit.md) | The v31 record-write merge: confirm path, signing auth level, three-state reads, account rows, error codes, reverse lookup. |
+| 2026-10-28 | [`docs/audits/2026-10-28-sync-audit.md`](audits/2026-10-28-sync-audit.md) | The v30 domain merge audit. |
 | 2026-10-04 | [`docs/audits/2026-10-04-conformance.md`](audits/2026-10-04-conformance.md) | Production-rules conformance: baseline, findings F-01…F-08, remediation units U1–U5. |
 | 2026-10-03 | [`docs/audits/2026-10-03-mainnet-readiness.md`](audits/2026-10-03-mainnet-readiness.md) | Mainnet-readiness: findings MR-01…MR-07 and their source remediations. |
 | 2026-09-18 | [`docs/audits/2026-09-18-baseline.md`](audits/2026-09-18-baseline.md) | Baseline security audit: findings F-01…F-09 of the original review (historical; superseded states are labeled inside). |

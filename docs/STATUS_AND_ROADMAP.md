@@ -190,14 +190,14 @@ Structural properties now enforced by CI rather than by discipline:
 
 ### Verified green
 
-Final deterministic verification on the current tree (contract v31, 2026-10-29):
+Final deterministic verification on the current tree (contract v31, 2026-10-30):
 
 ```text
-npm test       PASS — 2,405 checks (34 suites + 5 gates): derivation 16; QR 15; layering 127 files / 0 sinks;
-               CSP pass; routes 15/15 with 262 used CSS classes, all defined; CSS nesting pass;
+npm test       PASS — 2,469 checks (35 suites + 5 gates): derivation 16; QR 15; layering 127 files / 0 sinks;
+               CSP pass; routes 15/15 with the full used CSS class set defined; CSS nesting pass;
                launchpad quarantine; contract 168/168; security-checks; DOM/refs;
-               route lifecycle 1,104/1,104; transaction review 154/154; name records 57;
-               name reverse 14; name service 67; storage migrations;
+               route lifecycle 1,104/1,104; transaction review 172/172; review card render 46/46;
+               name records 57; name reverse 14; name service 67; storage migrations;
                vault, Thru client, token/balance, History, registration, API-router,
                pending concurrency, signing/network lock, and auto-lock suites pass.
 npm run build  PASS — generated dist/ from the current source, no warnings.

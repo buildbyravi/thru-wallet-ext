@@ -8,9 +8,10 @@ not claim a Rabby-audited design, a live-chain run, or a browser-layout sign-off
 
 > **Counts in this record are the v29 measurement (2,326 checks, review 152/152, contract 161/161,
 > 126 layering files).** They are left as recorded. Current figures live in `docs/AUDIT_REPORT.md`
-> and `docs/STATUS_AND_ROADMAP.md`; on the v31 tree (2026-10-29) `npm test` is 2,405 checks with
-> review 154/154 and contract 168/168, and v31's own audit is
-> `docs/audits/2026-10-29-v31-audit.md`.
+> and `docs/STATUS_AND_ROADMAP.md`; on the v31 tree (2026-10-30) `npm test` is 2,469 checks with
+> review 172/172, card render 46/46 and contract 168/168; v31's own audit is
+> `docs/audits/2026-10-29-v31-audit.md` and the lifecycle audit is
+> `docs/audits/2026-10-30-review-lifecycle-audit.md` (§13 below).
 
 This record answers three questions the owner asked in one pass:
 
@@ -438,3 +439,58 @@ which `514ac33` had already changed before this pass.
 `test-route-lifecycle.mjs` 1,104/1,104, `test-contract.mjs` 161/161, derivation 16/16 with the 0.4.2
 pin and no warning). Still **UNVERIFIED** by this pass: a real failed simulation, real Chrome layout,
 and any live-chain behaviour.
+
+## 13. Second simplification pass (2026-10-30, v1.5.0 card copy)
+
+The owner read the §11 card and reported the same three problems one level down: Send still did not
+look like the previous `main` screen, the Domain register preview was still long, and the card did
+not say what the transaction *is*. §11 changed the structure; this pass changes the vocabulary and
+the first line. It supersedes §11.1's block list and §11.2's row table; the honesty rules of §11 do
+not change.
+
+### 13.1 What the card renders now
+
+1. **Title — the operation and the amount**, e.g. `Send 0.0015 THRU`, `Send 25 LAB`,
+   `Claim 0.5 THRU from the faucet`, `Register vault.thru for 2 years`,
+   `Add a url record to name.thru`, `Unrecognised transaction`.
+2. **One context line** — account and network (`Main account · Betanet test network`). The six
+   badges are gone: the decoded/not-decoded badge duplicated the warning, and the program badge
+   duplicated the Details line.
+3. **Counterparty line** — `To <name-or-short-address>` with the shortened address beside it; one
+   tap reveals the whole address, and Details always carries it. `content.counterparty`
+   (`{ address, label? }`) is the new optional field; the old From/To rows are gone from decoders.
+4. **Money table** — `You pay` / `You receive` (signed, exact), `Network fee`
+   (`about X` | `not confirmed (paid in THRU)` | `none`), and `Total` only when the two sides share a
+   symbol and can be added. Nothing is invented when they cannot.
+5. **At most two warnings**, one sentence each. An undecoded transaction has exactly one blocking
+   warning ("This transaction cannot be read"); Details opens by default for it.
+6. **One `Details` disclosure**, closed by default for decoded reviews — program and trust note,
+   instructions, accounts, fee basis, the balance caveat, the four-state simulation line, folded
+   notes, and the raw toggle.
+7. **A short facts table below the disclosure** for the operation's non-money facts (faucet
+   remaining allowance, expiry, term) — never a third money table.
+
+### 13.2 What the decoders stopped saying
+
+| Decoder | Change |
+| --- | --- |
+| `native-send` / `token-transfer` | title carries verb + amount; `counterparty` set; `summary` emptied (it repeated the title); warnings cut to one sentence |
+| `faucet-claim` | same, retaining only "Remaining this window" in `summary` |
+| `domain-record` | `Add a <key> record to <name>.<tld>`; generic balance note |
+| `raw` | US spelling; one blocking warning; Program/Instruction moved out of the body (the Details block renders them) |
+| `domain-*` | custom registrar register/renew show **no price** and no `quote-not-final`; `registrar-balance-check` is informational; expiry rows are `Current expiry` + `New expiry — shown after the network confirms` |
+
+`protocol.trustNote` is the new optional field that carries the registrar's contract behavior into
+Details without putting it on the surface.
+
+### 13.3 Gates
+
+`npm run build` PASS. `npm test` exit 0 — **2,469 checks** (35 suites + 5 gates):
+`test-tx-review.mjs` 172/172, **`test-tx-review-card.mjs` 46/46** (new: renders every kind through
+the registry into a DOM shim and asserts the visible text, the block budget, the forbidden-vocabulary
+scan and the simulation caveat's location), `test-route-lifecycle.mjs` 1,104/1,104,
+`test-contract.mjs` 168/168. `check-routes` passes with the three new classes defined.
+
+Still **UNVERIFIED**: a real-browser pass of this card at the 400 px popup and the side panel, and
+every live-chain behavior. The card tests render into `test/fixtures/dom-shim.mjs`, which is a text
+shim — it proves what the copy says, not how it fits.
