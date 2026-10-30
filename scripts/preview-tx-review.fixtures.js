@@ -93,6 +93,26 @@ function envelope(kind, facts, { submittable = true, simulation = null } = {}) {
 export function previewFixtures() {
   return [
     {
+      // The owner's own send (2026-10-30 review): Account 1 → Account 5 on Betanet, a second
+      // wallet account as the recipient. This is the shape the review asked about — the
+      // recipient's name and full address must both be readable without opening Details.
+      title: 'Native send · to another account of this wallet',
+      note: 'Recipient is named AND shown in full; Details repeats neither address.',
+      review: envelope('native-send', {
+        fromAddress: ACCOUNT.address,
+        fromLabel: ACCOUNT.label,
+        toAddress: OTHER,
+        recipientLabel: 'Account 5',
+        amountUnits: '48980',
+        selfSend: false,
+        balanceUnits: '4200000000',
+        recipient: { exists: true },
+        fee: FEE,
+        duplicate: null,
+        transferProgramId: 'taTRANSFERprogramaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      }),
+    },
+    {
       title: 'Native send · everything readable',
       note: 'Ready to sign. Fee is measured; no post-transaction balance is claimed.',
       review: envelope('native-send', {
