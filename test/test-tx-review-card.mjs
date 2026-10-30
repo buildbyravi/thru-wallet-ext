@@ -78,8 +78,9 @@ console.log('[1] a decoded send: title, context, counterparty, then three money 
 {
   const lines = visibleLines(card('native-send', sendFacts).el);
   ok(lines[0] === 'Send 0.0015 THRU', 'the title is the verb and the amount', lines[0]);
-  ok(lines[1] === 'From Main account · Betanet test network',
-    'the second line names the SENDING account and the network, said once', lines[1]);
+  ok(lines[1] === 'Betanet', 'the network badge displays the active network in a box', lines[1]);
+  ok(lines[2] === 'From Main account · Betanet test network',
+    'the context line names the SENDING account and network', lines[2]);
   ok(!lines.some((line) => /^(Testnet|Decoded|Verified program)$/.test(line)),
     'no Testnet / Decoded / Verified-program badges');
   // Owner decision (2026-10-30): the recipient is named AND shown in full on the open card.

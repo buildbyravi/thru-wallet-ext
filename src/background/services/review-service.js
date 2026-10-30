@@ -198,6 +198,7 @@ export async function prepareReview({ kind, params = {} } = {}) {
     network: publicNet,
     account: { address: account.address, label: account.label ?? null },
     protocol: content.protocol ?? null,
+    counterparty: content.counterparty ?? null,
     operation: content.operation,
     summary: content.summary,
     assets: {

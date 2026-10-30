@@ -195,8 +195,12 @@ export function TxReviewCard({ review, onChange = null } = {}) {
     // ---- title, context, counterparty -----------------------------------------------
     // What am I doing (the title carries the verb AND the amount), on whose account and which
     // network (one line, not six badges), and to whom. Nothing technical above the fold.
-    el.appendChild(h('div', { class: 'tx-review-head' }, [
+    const headTitle = h('div', { class: 'row-flex between align-center' }, [
       h('h2', { class: 'tx-review-title', text: r.operation.name }),
+      r.network?.label ? h('span', { class: 'badge', text: r.network.label }) : null,
+    ]);
+    el.appendChild(h('div', { class: 'tx-review-head' }, [
+      headTitle,
       h('div', { class: 'tx-review-context', text: contextLine(r) }),
     ]));
 

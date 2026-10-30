@@ -695,6 +695,8 @@ let prepared;
   model.assertReview(review);
   ok('the review names its network and signing account',
     review.network.id === 'betanet' && review.account.address === ACTIVE);
+  ok('the review carries the decoded counterparty for a send',
+    review.counterparty?.address === RECIPIENT);
   ok('the fee comes from the one fee source with provenance',
     review.assets.fee.supported === true
       && review.assets.fee.source === 'measured'
