@@ -1568,6 +1568,15 @@ const FIXTURES = {
     root: 'taNP1MFOO2shpn6ORofIGSNiQ-qJ9VE2lDkDwvUmgUmaQZ',
     rootName: 'thru',
     rootMatchesNameService: true,
+    // The deployed Betanet config is layout 1 (flat 1000/yr, best-effort collection). The
+    // tiers read equal to the flat fee, exactly as state.rs presents a layout-1 account.
+    layout: 1,
+    feePolicy: 0,
+    feePolicyName: 'best effort',
+    feeEnforced: false,
+    fee3PerYear: '1000',
+    fee4PerYear: '1000',
+    fee5PlusPerYear: '1000',
     feePerYear: '1000',
     treasury: 'taShrn6v-TM_h81ZjmDZLifdhLRlDMfIw_EAIaNKIIdPX-',
     admin: 'tabDLDL9EVZYhRnbgPr0HrQuIvv01AZm9vtV8yIX26KO2J',
@@ -5603,13 +5612,18 @@ async function nameReviewTest() {
     let sheet = await review();
     ok('review is a body-level modal, never part of the route layout',
       sheet?.getAttribute('role') === 'dialog' && !isInside(sheet, route.el));
-    // v1.5.0: the custom registrar's fee is not collected, so the card promises no price and
-    // says so; the term moved into the title, and the network is named once in the context line.
+    // The deployed config is best-effort at 1000/yr, so the card names the price AND says it is
+    // not enforced — it never calls it free, and never puts it in the money table. The term is
+    // in the title and the network is named once in the context line.
     ok('review shows the name, term, account and network',
       /alice\.thru/.test(textOf(sheet)) && /2 years/.test(textOf(sheet))
-      && /No registration fee/.test(textOf(sheet)) && textOf(sheet).includes(ADDRESS_A)
+      && textOf(sheet).includes(ADDRESS_A)
       && textOf(sheet).includes(activeNetwork().label),
       textOf(sheet).slice(0, 240));
+    ok('the review discloses the declared price as unenforced instead of promising it is free',
+      /0\.000001 THRU|not enforced/i.test(textOf(sheet))
+        && !/No registration fee/.test(textOf(sheet)),
+      textOf(sheet).slice(0, 300));
     const oldConfirm = buttons(sheet, /confirm and sign/i)[0];
     pressKey(DOC.activeElement, 'Escape');
     await settle();

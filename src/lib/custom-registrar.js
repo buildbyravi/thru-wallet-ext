@@ -40,12 +40,20 @@ export const TCR_OP_INITIALIZE = 0;
 export const TCR_OP_REGISTER = 1;
 export const TCR_OP_RENEW = 2;
 export const TCR_OP_UPDATE_CONFIG = 3;
+/** Tiered Initialize. A new tag, not a longer tag 0 — see instruction.rs. */
+export const TCR_OP_INITIALIZE_V2 = 4;
+/** The flat-fee Initialize. The program answers it with 0xD006 by name. */
+export const TCR_OP_INITIALIZE_LEGACY = 0;
 
 // ---- State layout pins (mirror state.rs exactly) ---------------------------------
-export const TCR_CONFIG_SIZE = 144;
+export const TCR_CONFIG_SIZE = 176;        // layout 2
+export const TCR_CONFIG_SIZE_V1 = 144;     // layout 1, still READ (and upgraded in place)
 export const TCR_LEASE_SIZE = 120;
 export const TCR_CONFIG_MAGIC = 0x31524354; // bytes "TCR1" little-endian
 export const TCR_LEASE_MAGIC = 0x31534c52;  // "RLS1"
+export const TCR_CONFIG_LAYOUT_V1 = 1;
+export const TCR_CONFIG_LAYOUT_V2 = 2;
+/** Lease layout never changed; kept for the lease parsers. */
 export const TCR_LAYOUT_VERSION = 1;
 export const TCR_YEAR_SECONDS = 31_536_000;
 
@@ -53,7 +61,23 @@ export const TCR_YEAR_SECONDS = 31_536_000;
 export const TCR_CFG = Object.freeze({
   magic: 0, version: 4, rootNameLen: 5, bump: 6,
   feePerYear: 8, admin: 16, treasury: 48, rootAddress: 80, rootName: 112,
+  fee3Char: 144, fee4Char: 152, fee5PlusChar: 160, feePolicy: 168,
 });
+
+/**
+ * Fee policy (config byte 168).
+ * - `bestEffort`: the charge is attempted and a refusal is ignored. A layout-1 config reads
+ *   as this, and so does any deployment that has not passed a live collection probe.
+ * - `strict`: a refused charge reverts the instruction (0xD206 / 0xD207).
+ * The wallet must never present a price as charged while the policy is best-effort.
+ */
+export const TCR_FEE_POLICY = Object.freeze({ bestEffort: 0, strict: 1 });
+
+export function feePolicyName(policy) {
+  if (Number(policy) === TCR_FEE_POLICY.strict) return 'strict';
+  if (Number(policy) === TCR_FEE_POLICY.bestEffort) return 'best effort';
+  return 'unknown';
+}
 // Lease field offsets
 export const TCR_LSE = Object.freeze({
   magic: 0, version: 4, labelLen: 5, expiresAt: 8, registeredAt: 16,
@@ -74,6 +98,8 @@ export const TCR_ERRORS = Object.freeze({
   0xd001: 'truncated instruction data', 0xd002: 'unknown instruction',
   0xd003: 'name too long', 0xd004: 'proof too long',
   0xd005: 'bad account index (reserved slot or role collision)',
+  0xd006: 'this build of the program only accepts the tiered Initialize (tag 4)',
+  0xd007: 'unknown fee policy (0 = best effort, 1 = strict)',
   0xd100: 'bad label (need 3–32 of [a-z0-9-], no edge hyphens)',
   0xd101: 'bad duration (1–10 years)', 0xd102: 'missing accounts',
   0xd103: 'not admin', 0xd104: 'already initialized',
@@ -86,6 +112,8 @@ export const TCR_ERRORS = Object.freeze({
   0xd200: 'config creation failed', 0xd201: 'lease creation failed',
   0xd202: 'fee transfer failed', 0xd203: 'root init CPI failed',
   0xd204: 'register CPI failed', 0xd205: 'state proof parse failed',
+  0xd206: 'the registrar fee could not be collected',
+  0xd207: 'not enough balance to pay the registrar fee',
 });
 
 export function describeTcrError(code) {
@@ -167,30 +195,98 @@ function addr(data, off) {
   return Pubkey.from(data.slice(off, off + 32)).toThruFmt();
 }
 
+/**
+ * Parse a config account. Accepts BOTH layouts:
+ *  - layout 1 (144 bytes, flat `fee_per_year`) — what the deployed program writes. Every
+ *    tier is reported as that flat fee and the policy as best-effort, which is exactly how
+ *    the deployed program behaves, so upgrading the program cannot change a displayed price.
+ *  - layout 2 (176 bytes) — the tiered schedule plus an explicit policy.
+ * `layout` in the result says which one was read; callers that show a price must also look at
+ * `feePolicy` before calling it a charge.
+ */
 export function parseTcrConfig(input) {
   const data = input instanceof Uint8Array ? input : new Uint8Array(input);
-  if (data.length !== TCR_CONFIG_SIZE) {
-    throw new CustomRegistrarDecodeError(`config account must be exactly ${TCR_CONFIG_SIZE} bytes`);
+  if (data.length !== TCR_CONFIG_SIZE && data.length !== TCR_CONFIG_SIZE_V1) {
+    throw new CustomRegistrarDecodeError(
+      `config account must be ${TCR_CONFIG_SIZE} bytes (layout 2) or ${TCR_CONFIG_SIZE_V1} (layout 1), got ${data.length}`,
+    );
   }
   const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
   if (Number(dv.getUint32(TCR_CFG.magic, true)) !== TCR_CONFIG_MAGIC) {
     throw new CustomRegistrarDecodeError('config magic mismatch (not a thru-custom-registrar config)');
   }
-  if (data[TCR_CFG.version] !== TCR_LAYOUT_VERSION) {
-    throw new CustomRegistrarDecodeError(`config version ${data[TCR_CFG.version]} unsupported (expect ${TCR_LAYOUT_VERSION})`);
+  const layout = data[TCR_CFG.version];
+  if (layout !== TCR_CONFIG_LAYOUT_V1 && layout !== TCR_CONFIG_LAYOUT_V2) {
+    throw new CustomRegistrarDecodeError(`config layout ${layout} unsupported (expect 1 or 2)`);
+  }
+  if (layout === TCR_CONFIG_LAYOUT_V2 && data.length !== TCR_CONFIG_SIZE) {
+    throw new CustomRegistrarDecodeError(`layout 2 config must be ${TCR_CONFIG_SIZE} bytes, got ${data.length}`);
+  }
+  if (layout === TCR_CONFIG_LAYOUT_V1 && data.length !== TCR_CONFIG_SIZE_V1) {
+    throw new CustomRegistrarDecodeError(`layout 1 config must be ${TCR_CONFIG_SIZE_V1} bytes, got ${data.length}`);
   }
   const rootNameLen = data[TCR_CFG.rootNameLen];
   if (rootNameLen === 0 || rootNameLen > 32) {
     throw new CustomRegistrarDecodeError(`config declares a ${rootNameLen}-byte root name (1–32 expected)`);
   }
+  const legacyFee = dv.getBigUint64(TCR_CFG.feePerYear, true);
+  let fee3;
+  let fee4;
+  let fee5plus;
+  let feePolicy;
+  if (layout === TCR_CONFIG_LAYOUT_V1) {
+    fee3 = legacyFee;
+    fee4 = legacyFee;
+    fee5plus = legacyFee;
+    feePolicy = TCR_FEE_POLICY.bestEffort;
+  } else {
+    feePolicy = data[TCR_CFG.feePolicy];
+    if (feePolicy !== TCR_FEE_POLICY.bestEffort && feePolicy !== TCR_FEE_POLICY.strict) {
+      throw new CustomRegistrarDecodeError(`config declares fee policy ${feePolicy} (0 or 1 expected)`);
+    }
+    fee3 = dv.getBigUint64(TCR_CFG.fee3Char, true);
+    fee4 = dv.getBigUint64(TCR_CFG.fee4Char, true);
+    fee5plus = dv.getBigUint64(TCR_CFG.fee5PlusChar, true);
+  }
   return {
+    layout,
     admin: addr(data, TCR_CFG.admin),
     treasury: addr(data, TCR_CFG.treasury),
-    feePerYear: dv.getBigUint64(TCR_CFG.feePerYear, true),
+    // Legacy alias: the cheapest tier. Kept so older call sites do not silently break, but
+    // a price for a SPECIFIC name must come from `tcrPricePerYear`, never from this.
+    feePerYear: layout === TCR_CONFIG_LAYOUT_V2 ? fee5plus : legacyFee,
+    fee3PerYear: fee3,
+    fee4PerYear: fee4,
+    fee5PlusPerYear: fee5plus,
+    feePolicy,
+    feePolicyName: feePolicyName(feePolicy),
     rootAddress: addr(data, TCR_CFG.rootAddress),
     rootName: String.fromCharCode(...data.slice(TCR_CFG.rootName, TCR_CFG.rootName + rootNameLen)),
     bump: data[TCR_CFG.bump],
   };
+}
+
+/**
+ * Price of ONE YEAR for a label, from either layout. Mirrors
+ * `RegistrarConfig::price_for_label`; an out-of-policy label is refused rather than priced
+ * at some default tier.
+ */
+export function tcrPricePerYear(config, label) {
+  const len = typeof label === 'number' ? label : String(label ?? '').length;
+  if (len === 3) return config.fee3PerYear;
+  if (len === 4) return config.fee4PerYear;
+  if (len >= 5 && len <= TCR_MAX_LABEL) return config.fee5PlusPerYear;
+  throw new Error(`cannot price a ${len}-character label (3–${TCR_MAX_LABEL})`);
+}
+
+/** price × years, with the same overflow rule the program uses (checked, never wrapped). */
+export function tcrTotalForTerm(config, label, years) {
+  const yp = yearsProblem(years);
+  if (yp) throw new Error(yp);
+  const perYear = tcrPricePerYear(config, label);
+  const total = perYear * BigInt(Number(years));
+  if (total > 0xffffffffffffffffn) throw new Error('fee overflows u64');
+  return total;
 }
 
 export function parseTcrLease(input) {
@@ -241,16 +337,31 @@ function resolvedIndex(indexOf, address, role, { allowZero = false } = {}) {
 }
 
 /**
- * INITIALIZE: [u32 0][u16 config_idx][u16 root_idx][u16 ns_idx]
- * [u64 fee_per_year][32 treasury][u32 root_name_len][root_name 32p]
+ * INITIALIZE (tag 4): [u32 4][u16 config_idx][u16 root_idx][u16 ns_idx]
+ * [u64 fee_3][u64 fee_4][u64 fee_5plus][u8 fee_policy]
+ * [32 treasury][u32 root_name_len][root_name 32p]
  * [32 config_seed][u32 config_proof_len][proof][u32 root_proof_len][proof]
+ *
+ * The flat-fee tag 0 is gone; a deploy script still building it gets 0xD006 from the program
+ * instead of installing a config whose price path cannot read its own tiers.
  */
 export function buildTcrInitializeInstructionData({
-  feePerYear, treasury, rootName, configSeed, configProof, rootProof,
+  fee3PerYear, fee4PerYear, fee5PlusPerYear, feePolicy,
+  treasury, rootName, configSeed, configProof, rootProof,
   indexOf, configAddress, rootAddress,
   nameServiceProgram = NAME_SERVICE_PROGRAM,
 }) {
-  if (typeof feePerYear !== 'bigint' || feePerYear < 0n) throw new Error('feePerYear must be a non-negative bigint of base units');
+  const fees = [
+    ['fee3PerYear', fee3PerYear], ['fee4PerYear', fee4PerYear], ['fee5PlusPerYear', fee5PlusPerYear],
+  ];
+  for (const [name, value] of fees) {
+    if (typeof value !== 'bigint' || value < 0n || value > 0xffffffffffffffffn) {
+      throw new Error(`${name} must be a non-negative u64 bigint of base units`);
+    }
+  }
+  if (Number(feePolicy) !== TCR_FEE_POLICY.bestEffort && Number(feePolicy) !== TCR_FEE_POLICY.strict) {
+    throw new Error('feePolicy must be TCR_FEE_POLICY.bestEffort (0) or .strict (1)');
+  }
   assertProof(configProof, 'configProof');
   assertProof(rootProof, 'rootProof');
   const idxConfig = resolvedIndex(indexOf, configAddress, 'config');
@@ -261,15 +372,18 @@ export function buildTcrInitializeInstructionData({
   const seed = configSeed instanceof Uint8Array && configSeed.length === 32
     ? configSeed
     : padded32(configSeed, 'config seed').buf;
-  const total = 4 + 6 + 8 + 32 + 4 + 32 + 32 + 4 + configProof.length + 4 + rootProof.length;
+  const total = 4 + 6 + 24 + 1 + 32 + 4 + 32 + 32 + 4 + configProof.length + 4 + rootProof.length;
   const out = new Uint8Array(total);
   const dv = new DataView(out.buffer);
   let w = 0;
-  dv.setUint32(w, TCR_OP_INITIALIZE, true); w += 4;
+  dv.setUint32(w, TCR_OP_INITIALIZE_V2, true); w += 4;
   dv.setUint16(w, idxConfig, true); w += 2;
   dv.setUint16(w, idxRoot, true); w += 2;
   dv.setUint16(w, idxNs, true); w += 2;
-  dv.setBigUint64(w, feePerYear, true); w += 8;
+  dv.setBigUint64(w, fee3PerYear, true); w += 8;
+  dv.setBigUint64(w, fee4PerYear, true); w += 8;
+  dv.setBigUint64(w, fee5PlusPerYear, true); w += 8;
+  out[w] = Number(feePolicy); w += 1;
   out.set(treasuryBytes, w); w += 32;
   dv.setUint32(w, nameBytes.length, true); w += 4;
   out.set(nameBuf, w); w += 32;
@@ -354,20 +468,46 @@ export function buildTcrRenewInstructionData({
 }
 
 /**
- * UPDATE_CONFIG: [u32 3][u16 config_idx][u8 mask][u64 new_fee][32 new_treasury]
- * mask bit0 = apply new_fee, bit1 = apply new_treasury.
+ * UPDATE_CONFIG (tag 3): [u32 3][u16 config_idx][u8 mask][32 new_treasury]
+ * [u64 new_fee_3][u64 new_fee_4][u64 new_fee_5plus][u8 new_fee_policy]
+ * mask bit0 = treasury, bit1 = fee_3, bit2 = fee_4, bit3 = fee_5plus, bit4 = fee_policy.
+ *
+ * The legacy `fee_per_year` is deliberately not settable: the program derives it from
+ * fee_5plus, so an admin cannot leave a layout-1 reader showing a price the tier will not
+ * charge.
  */
-export function buildTcrUpdateConfigInstructionData({ newFee = null, newTreasury = null, indexOf, configAddress }) {
-  if (newFee === null && newTreasury === null) throw new Error('nothing to update');
-  if (newFee !== null && (typeof newFee !== 'bigint' || newFee < 0n)) throw new Error('newFee must be a non-negative bigint');
+export function buildTcrUpdateConfigInstructionData({
+  newTreasury = null, newFee3 = null, newFee4 = null, newFee5Plus = null, newFeePolicy = null,
+  indexOf, configAddress,
+}) {
+  const u64Fields = [['newFee3', newFee3], ['newFee4', newFee4], ['newFee5Plus', newFee5Plus]];
+  for (const [name, value] of u64Fields) {
+    if (value !== null && (typeof value !== 'bigint' || value < 0n || value > 0xffffffffffffffffn)) {
+      throw new Error(`${name} must be a non-negative u64 bigint`);
+    }
+  }
+  if (newFeePolicy !== null
+    && Number(newFeePolicy) !== TCR_FEE_POLICY.bestEffort
+    && Number(newFeePolicy) !== TCR_FEE_POLICY.strict) {
+    throw new Error('newFeePolicy must be TCR_FEE_POLICY.bestEffort (0) or .strict (1)');
+  }
+  const mask = (newTreasury !== null ? 0x01 : 0)
+    | (newFee3 !== null ? 0x02 : 0)
+    | (newFee4 !== null ? 0x04 : 0)
+    | (newFee5Plus !== null ? 0x08 : 0)
+    | (newFeePolicy !== null ? 0x10 : 0);
+  if (mask === 0) throw new Error('nothing to update');
   const idxConfig = resolvedIndex(indexOf, configAddress, 'config');
-  const out = new Uint8Array(4 + 2 + 1 + 8 + 32);
+  const out = new Uint8Array(4 + 2 + 1 + 32 + 24 + 1);
   const dv = new DataView(out.buffer);
   dv.setUint32(0, TCR_OP_UPDATE_CONFIG, true);
   dv.setUint16(4, idxConfig, true);
-  out[6] = (newFee !== null ? 1 : 0) | (newTreasury !== null ? 2 : 0);
-  dv.setBigUint64(7, newFee ?? 0n, true);
-  out.set(newTreasury !== null ? Pubkey.from(newTreasury).toBytes() : new Uint8Array(32), 15);
+  out[6] = mask;
+  out.set(newTreasury !== null ? Pubkey.from(newTreasury).toBytes() : new Uint8Array(32), 7);
+  dv.setBigUint64(39, newFee3 ?? 0n, true);
+  dv.setBigUint64(47, newFee4 ?? 0n, true);
+  dv.setBigUint64(55, newFee5Plus ?? 0n, true);
+  out[63] = newFeePolicy !== null ? Number(newFeePolicy) : 0;
   return out;
 }
 
@@ -376,13 +516,18 @@ export function buildTcrUpdateConfigInstructionData({ newFee = null, newTreasury
 // indices through the SDK InstructionContext inside the instructionData callback.
 // `target` (the future domain owner) appears as an extra read-only entry only when it
 // differs from the fee payer/user; when equal, index 0 covers it (allowZero).
+// The FEE PAYER is listed writable on every instruction that transfers value out of it.
+// It is the transfer source (`account_transfer(0, …)`), and the deployed program's charge was
+// refused with syscall -10 `AccountNotWritable` — surfaced as 0xD20A — which is what this
+// prevents. Whether the VM accepts a program-initiated EOA debit even when writable is a
+// live-chain question; see DEPLOY in the contract README and docs/DEFECT_LOG.md §17C.
 export const TCR_ACCOUNT_LISTS = Object.freeze({
   initialize: { readWrite: ['config', 'root'], readOnly: ['nameServiceProgram'] },
   register: {
-    readWrite: ['treasury', 'root', 'domain', 'lease'],
+    readWrite: ['feePayer', 'treasury', 'root', 'domain', 'lease'],
     readOnly: ['config', 'nameServiceProgram', 'target?'],
   },
-  renew: { readWrite: ['treasury', 'lease'], readOnly: ['config'] },
+  renew: { readWrite: ['feePayer', 'treasury', 'lease'], readOnly: ['config'] },
   updateConfig: { readWrite: ['config'], readOnly: [] },
 });
 

@@ -197,8 +197,11 @@ console.log('[5] domain cards: no invented price, one total at most');
     program: { name: 'Thru custom registrar', address: 'taRegistrarProgram1111111111111111111111111111', verified: true },
   }).el);
   ok(register[0] === 'Register vault.thru for 2 years', 'the title carries the name and duration', register[0]);
-  ok(register.includes('No registration fee on the test registrar. You pay only the network fee.'),
-    'the card states the fee rule in one sentence');
+  // The deployed registrar declares a price but does not enforce collection, so the card says
+  // exactly that — it does not call the registration free, because a price is declared.
+  ok(register.some((line) => /Registrar fee is not enforced on-chain/.test(line)),
+    'the card states the fee rule in one sentence',
+    JSON.stringify(register));
   ok(!register.some((line) => /^(Total charge|Total price|Price per year)$/.test(line)),
     'no registrar price and no second total');
   ok(register.includes('Network fee') && register.includes('none'),

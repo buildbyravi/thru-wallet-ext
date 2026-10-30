@@ -237,7 +237,7 @@ through the shared review kind `domain-record`; `name.register` was ungated at c
 
 **Consequences.** Contract v23: `name.getCanonicalRoot` read appended (auth none), `name.register` auth tightened unlocked → signing (v5/v22 precedent: a broadcast key-signed write re-verifies the password when the signing-hardening setting is on) and its params gain `password`. UI `/name` picks the flow honestly: registry → paid `.tld` steps at the config price; no-registry + root → free Register CTA; neither → plain reason, nothing clickable. Chain total 139 (81 + 43 + 15 name.*).
 
-## D-016 — Side-by-side custom registrar program: deploy once, initialize with config authority, open register (2026-10-24, owner-directed)
+## D-016 — Side-by-side custom registrar program: deploy once, initialize with config authority, open register (2026-10-24, owner-directed; **amended by D-019** — the config is now 176 bytes, the fee is tiered, and Initialize is tag 4)
 
 **Decision.** Instead of waiting for an official `.thru`-flavored paid registry, the repo now carries `contracts/thru-custom-registrar/` — its own ThruVM/RISC-V name registrar (tags 0–3: Initialize / Register / Renew / UpdateConfig), provisioned on top of the OFFICIAL name-service program (`taNAMEqRNEDeMWp0cDYmMVdZyTZiF5NyGDR9zTwH42rWQG`, pinned bootstrap address) without changing any first-party program. Two unique accounts back it: a 144-byte `RegistrarConfig` (magic `TCR1`, admin, treasury, fee/year u64, padded root name, root address, bump) and a 120-byte `DomainLease` per registered label. Registration `fee_per_year × years` moves inside the program (`tn_transact`, no floats) into the config treasury. Initialize is one transaction that creates the config in-program AND CPIs the official name-service tag-0 with `authority = config` (InvokeAuthOne) so the registrar itself — not any EOA — owns the root going forward. Betanet fee intent 1000 base units/year; a mainnet price is deliberately NOT encoded — UpdateConfig carries it when decided. The account table convention was REVISED the same day after an owner's cross-check question: the published @thru/sdk@0.4.2 npm dist byte-sorts each readWrite/readOnly segment (normalizeAccountList → .sort(compareAccounts), proven by an execution sentinel in the test suite — descending inputs come back as indices [3,2]). The registrar ABI therefore carries u16 account-table indices inside the instruction data (the first-party txn_tools.rs convention), resolved client-side via the SDK's own InstructionContext; the program additionally cross-checks treasury/root/target pubkeys against stored identity so an index alone is never trusted. The config pseudo-label `TCR:config:v1` is deliberately not a valid registerable label so no lease can collide with the config address.
 
@@ -328,3 +328,50 @@ unsupported: a banner has no resolution mechanism, so it must never claim progre
 pins the ownership (45 checks: one truncation, two clipboard writes, one toast host, one tone set,
 kit-only imports). A toast that renders no message, a second truncation in the display layer, or a
 feature-owned toast element now fails `npm test`.
+
+## D-019 — Registrar fees are tiered, on-chain, and enforceable (2026-10-30, owner-directed)
+
+**Context.** D-016 shipped one flat `fee_per_year` and collected it with
+`let _ = mgr.account_transfer(0, treasury, total_fee)`. Two problems surfaced later: the price is a
+product decision that should differ by name length (a 3-character label is scarce, a 6-character
+one is not), and the discarded transfer result means the wallet could not honestly say whether a
+registration had been charged (`docs/DEFECT_LOG.md` §13.3, §17C — the only live observation is the
+VM's `-10 AccountNotWritable`, surfaced as `0xD20A`).
+
+**Decision.**
+
+- **Three per-year prices live in the config** — `fee_3_char`, `fee_4_char`, `fee_5plus_char` — plus
+  a `fee_policy`. All four are mutable through `UpdateConfig`, so a mainnet schedule is a config
+  transaction, not a new deployment. Betanet intent: 100 000 / 10 000 / 1 000 base units per year
+  (0.0001 / 0.00001 / 0.000001 THRU at 9 decimals). The wallet reads them from the chain; no price
+  is compiled into the UI, and a route that cannot read a config quotes nothing.
+- **The config layout is appended, never reshuffled.** Layout 2 is the deployed 144 bytes plus the
+  four new fields at offset 144 (176 bytes total). A live layout-1 config still parses and reads as
+  a flat schedule with the best-effort policy — i.e. exactly the behaviour it had — so deploying
+  the new program cannot change an existing registration's price by accident. `UpdateConfig`
+  resizes a layout-1 account in place (`account_resize`, guarded by `data.len()`), so upgrading the
+  schedule needs no re-initialisation and no loss of root authority.
+- **Enforcement is a config bit, not a wallet assumption.** `strict` reverts a refused charge
+  (`0xD206`; `0xD207` when the source cannot cover it); `best-effort` attempts the debit and ignores
+  the refusal (the deployed behaviour). Register and Renew share ONE `collect_fee()`, priced through
+  ONE `total_for_term()` with a checked multiply.
+- **The wallet reports the policy, never an assumption.** `feeEnforced = (policy === strict)`.
+  An unenforced non-zero price renders as unenforced (`registrar-fee-unenforced`), only an enforced
+  charge produces an outgoing THRU row, and an enforced charge the account cannot cover blocks the
+  review. "Free" is reserved for a zero price.
+
+**Why not make strict the default.** The directive is that a failed transfer must revert, and it
+does — under `strict`. But the only evidence about collection is that it has never succeeded, and
+the environment that discovered that (VM `-10`) is the same one that would now revert every
+registration. So the deploy script defaults to `best-effort` and refuses `--fee-policy strict`
+unless the operator passes `--collection-proven "<note>"`, an attestation that a treasury balance
+delta was observed after a real registration. `--probe-collection` records the balance for exactly
+that measurement. Switching to strict is a one-transaction `UpdateConfig` once the probe passes.
+
+**Consequences.** The contract's Rust has not been compiled in this environment (no `cargo`), so
+`contracts/thru-custom-registrar/thru-custom-registrar.bin` is stale and must be rebuilt before it
+is deployed; deployment is BLOCKED until then and until an RPC-reachable host runs
+`scripts/registrar/deploy-and-init.mjs` with the tier arguments. The JS ABI twin, the service
+pricing, the review decoder and the Name route are implemented and tested; whether the new
+artifact's charge actually lands, and whether `account_resize` works on a live layout-1 account,
+remain UNVERIFIED.

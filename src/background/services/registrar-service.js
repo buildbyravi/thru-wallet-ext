@@ -451,10 +451,41 @@ export async function getCustomRegistrar() {
     root: cfg.rootAddress,
     rootName: cfg.rootName,
     rootMatchesNameService,
-    feePerYear: cfg.feePerYear.toString(),
+    // Pricing, as the config declares it. `feePerYear` remains the cheapest tier so older
+    // callers keep working, but a quote for a NAME must use `priceForName` — the tier depends
+    // on the label's length.
+    layout: cfg.layout,
+    feePolicy: cfg.feePolicy,
+    feePolicyName: cfg.feePolicyName,
+    // A price is only a CHARGE when the program enforces collection. Best-effort means the
+    // program attempts the debit and ignores a refusal (what the deployed program does), so
+    // the UI must not promise it.
+    feeEnforced: cfg.feePolicy === tcr.TCR_FEE_POLICY.strict,
+    fee3PerYear: cfg.fee3PerYear.toString(),
+    fee4PerYear: cfg.fee4PerYear.toString(),
+    fee5PlusPerYear: cfg.fee5PlusPerYear.toString(),
+    feePerYear: cfg.fee5PlusPerYear.toString(),
     treasury: cfg.treasury,
     admin: cfg.admin,
   };
+}
+
+/**
+ * Price of ONE YEAR for a label, from a registrar info object. The tier is a property of the
+ * label's LENGTH (3 / 4 / 5+), decided by the program's own config, not by the UI.
+ */
+export function pricePerYearFor(info, label) {
+  const n = String(label ?? '');
+  if (n.length === 3) return BigInt(info.fee3PerYear);
+  if (n.length === 4) return BigInt(info.fee4PerYear);
+  if (n.length >= 5) return BigInt(info.fee5PlusPerYear);
+  throw tcrCoded('INVALID_NAME', `cannot price a ${n.length}-character label (3–${tcr.TCR_MAX_LABEL})`);
+}
+
+/** price × years for a label, checked against the declared schedule. */
+export function totalForTerm(info, label, years) {
+  const y = Number(years);
+  return pricePerYearFor(info, label) * BigInt(y);
 }
 
 /**
@@ -549,17 +580,18 @@ export async function registerCustom({ name, years, expectedNetworkId, expectedA
       `'${n}.${info.rootName}' cannot be registered: ${state}. Renew/claim through the custom registrar is not yet wired into the wallet — only Register was live-verified (2026-10-25). Nothing was broadcast.`);
   }
 
-  // Fee quote from the chain-read config (best-effort note: on unowned EOAs ThruVM skips
-  // the in-program debit — see the section comment; the quote is still what the program
-  // INTENDS to charge, and a native balance shortfall elsewhere reverts honestly).
-  const feePerYear = BigInt(info.feePerYear);
+  // Tiered quote from the chain-read config: the tier is the LABEL's length, decided by the
+  // program. `feeEnforced` says whether a refusal can be ignored by the program (best-effort)
+  // or reverts it (strict) — the message and the balance gate both follow it, because
+  // refusing a registration the program would happily accept is its own kind of lie.
+  const feePerYear = pricePerYearFor(info, n);
   const totalFee = feePerYear * BigInt(y);
 
   // The signer must exist on-chain (same reason claimFaucet JIT-activates).
   const payerInfo = await thruClient.getAccountInfo(feePayer.address);
   if (!payerInfo.exists) {
     await thruClient.createOnChainAccount(feePayer);
-  } else if (payerInfo.balance != null && payerInfo.balance < totalFee) {
+  } else if (info.feeEnforced && payerInfo.balance != null && payerInfo.balance < totalFee) {
     throw tcrCoded('INSUFFICIENT_FUNDS',
       `The registrar charges ${totalFee} base units (${feePerYear}/yr × ${y}y); your account holds ${payerInfo.balance}.`);
   }
@@ -592,7 +624,9 @@ export async function registerCustom({ name, years, expectedNetworkId, expectedA
       expiryAfter: 10_000,
     },
     accounts: {
-      readWrite: [info.treasury, info.root, domainAddress, leaseAddress],
+      // The FEE PAYER is listed writable: it is the transfer source (`account_transfer(0, …)`),
+      // and the deployed program's charge was refused with -10 AccountNotWritable (0xD20A).
+      readWrite: [feePayer.address, info.treasury, info.root, domainAddress, leaseAddress],
       readOnly: [info.configAddress, NAME_SERVICE_PROGRAM],
     },
     instructionData: ({ getAccountIndex }) => tcr.buildTcrRegisterInstructionData({
@@ -615,7 +649,7 @@ export async function registerCustom({ name, years, expectedNetworkId, expectedA
   return submitAndAwait(rawTransaction, {
     kind: 'name-custom-register',
     from: feePayer.address,
-    displayAmount: `${totalFee} base units (program fee, best-effort — see docs) — register '${n}.${info.rootName}' (${y}y) via the custom registrar`,
+    displayAmount: `${totalFee} base units (${info.feeEnforced ? 'registrar fee' : 'declared registrar fee, best-effort'}) — register '${n}.${info.rootName}' (${y}y) via the custom registrar`,
     errorNoun: 'custom registrar',
     describeError: (code) => tcr.describeTcrError(code),
     result: { name: n, domainAddress, rootAddress: info.root },
@@ -654,13 +688,13 @@ export async function renewCustom({ name, years, expectedNetworkId, expectedAcco
     throw tcrCoded('REVIEW_EXPIRY_CHANGED', 'The lease expiration changed after review. Check the domain again before renewing.');
   }
 
-  const feePerYear = BigInt(info.feePerYear);
+  const feePerYear = pricePerYearFor(info, n);
   const totalFee = feePerYear * BigInt(y);
 
   const payerInfo = await thruClient.getAccountInfo(feePayer.address);
   if (!payerInfo.exists) {
     await thruClient.createOnChainAccount(feePayer);
-  } else if (payerInfo.balance != null && payerInfo.balance < totalFee) {
+  } else if (info.feeEnforced && payerInfo.balance != null && payerInfo.balance < totalFee) {
     throw tcrCoded('INSUFFICIENT_FUNDS',
       `Renewal charges ${totalFee} base units (${feePerYear}/yr × ${y}y); your account holds ${payerInfo.balance}.`);
   }
@@ -680,7 +714,7 @@ export async function renewCustom({ name, years, expectedNetworkId, expectedAcco
       expiryAfter: 10_000,
     },
     accounts: {
-      readWrite: [info.treasury, leaseAddress],
+      readWrite: [feePayer.address, info.treasury, leaseAddress],
       readOnly: [info.configAddress],
     },
     instructionData: ({ getAccountIndex }) => tcr.buildTcrRenewInstructionData({
@@ -697,7 +731,7 @@ export async function renewCustom({ name, years, expectedNetworkId, expectedAcco
   return submitAndAwait(rawTransaction, {
     kind: 'name-custom-renew',
     from: feePayer.address,
-    displayAmount: `${totalFee} base units — renew '${n}.${info.rootName}' (${y}y) via custom registrar`,
+    displayAmount: `${totalFee} base units (${info.feeEnforced ? 'registrar fee' : 'declared registrar fee, best-effort'}) — renew '${n}.${info.rootName}' (${y}y) via custom registrar`,
     errorNoun: 'custom registrar',
     describeError: (code) => tcr.describeTcrError(code),
     result: { name: n, domainAddress, rootAddress: info.root },

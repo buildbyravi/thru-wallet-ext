@@ -99,6 +99,41 @@ fn now_epoch_seconds() -> u64 {
 }
 
 // ----------------------------------------------------------------------------------
+// Fee collection — ONE implementation, called by Register and Renew.
+// ----------------------------------------------------------------------------------
+/// Attempt `from idx 0 → treasury` and decide what a refusal means.
+///
+/// Why this is policy, not a bare `?`: the VM returned `-10 AccountNotWritable` on the
+/// deployed program (surfaced to the wallet as 0xD20A), and the transfer source is the
+/// FEE PAYER account, which the program does not own. If that is still true, an
+/// unconditional `?` here makes every registration revert. So the config carries the
+/// policy and the deploy flow proves collection before switching it to strict; see the
+/// README's DEPLOY section. Best-effort is the deployed behaviour and must not be
+/// presented to a user as a charge.
+fn collect_fee<const N: usize>(
+    mgr: &AccountManager<N>,
+    to_idx: u16,
+    amount: u64,
+    policy: u8,
+) -> Result<(), u64> {
+    if amount == 0 {
+        return Ok(());
+    }
+    let code = mgr.account_transfer(0, to_idx, amount);
+    match policy {
+        ix::FEE_POLICY_STRICT => match code {
+            SyscallCode::Success => Ok(()),
+            SyscallCode::InsufficientBalance => Err(E::ERR_INSUFFICIENT_FEE),
+            _ => Err(E::ERR_FEE_TRANSFER),
+        },
+        // FEE_POLICY_BEST_EFFORT (layout-1 configs and any deployment that has not passed
+        // the collection probe). The result is deliberately discarded — same behaviour as
+        // the deployed program, now an explicit mode instead of an accident.
+        _ => Ok(()),
+    }
+}
+
+// ----------------------------------------------------------------------------------
 // Initialize — admin == fee payer (idx 0).
 // ----------------------------------------------------------------------------------
 pub fn initialize<const N: usize>(
@@ -110,6 +145,9 @@ pub fn initialize<const N: usize>(
     if ix.root_name.is_empty() || ix.root_name.len() > ix::ROOT_NAME_BUF {
         return Err(ix::ERR_NAME_TOO_LONG);
     }
+    // An unknown policy is refused here as well as in `parse`, so a caller that built the
+    // struct directly cannot install a config the price path will not honour.
+    ix::validate_fee_policy(ix.fee_policy)?;
     let admin_pk = pubkey_at(0)?;
     let root_pk = pubkey_at(ix.root_idx)?;
 
@@ -132,11 +170,17 @@ pub fn initialize<const N: usize>(
         let record = RegistrarConfig {
             admin: admin_pk,
             treasury: ix.treasury,
-            fee_per_year: ix.fee_per_year,
+            // Derived mirror; `serialize` writes fee_5plus here whatever the struct says.
+            fee_per_year: ix.fee_5plus_char,
+            fee_3_char: ix.fee_3_char,
+            fee_4_char: ix.fee_4_char,
+            fee_5plus_char: ix.fee_5plus_char,
+            fee_policy: ix.fee_policy,
             root_address: root_pk,
             root_name,
             root_name_len: ix.root_name.len() as u8,
             bump: 0,
+            layout: state::CONFIG_LAYOUT_V2,
         };
         data[..state::CONFIG_SIZE].copy_from_slice(&record.serialize());
     }
@@ -200,12 +244,10 @@ pub fn register<const N: usize>(
     assert_virgin(ix.domain_idx, E::ERR_NAME_TAKEN)?;
     assert_virgin(ix.lease_idx, E::ERR_NAME_TAKEN)?;
 
-    // Overflow-checked fee (zero-float; if fee×years can't fit u64 we revert with a
-    // named code, never a silent wrap).
-    let total_fee = cfg
-        .fee_per_year
-        .checked_mul(ix.duration_years as u64)
-        .ok_or(E::ERR_FEE_OVERFLOW)?;
+    // Tiered price for THIS label, times the term. Checked: fee×years that cannot fit u64
+    // reverts with a named code, never a silent wrap. The tier comes from the config, so a
+    // price change is an UpdateConfig, not a redeploy.
+    let total_fee = cfg.total_for_term(ix.label.len(), ix.duration_years)?;
     let term_secs = state::YEAR_SECONDS
         .checked_mul(ix.duration_years as u64)
         .ok_or(E::ERR_FEE_OVERFLOW)?;
@@ -234,10 +276,10 @@ pub fn register<const N: usize>(
     }
 
     // INTERACTIONS 1/2 — collect the fee: user (idx 0, signer) → treasury.
-    // In ThruVM, a smart contract cannot directly debit an EOA's native balance without EOA ownership.
-    if total_fee > 0 {
-        let _ = mgr.account_transfer(0, ix.treasury_idx, total_fee);
-    }
+    // Strict policy reverts the whole instruction on a refusal (the lease created above is
+    // rolled back with it); best-effort keeps the historical behaviour. Both live in
+    // `collect_fee`, so Register and Renew cannot drift apart.
+    collect_fee(mgr, ix.treasury_idx, total_fee, cfg.fee_policy)?;
 
     // INTERACTIONS 2/2 — CPI into native name-service; authority = our config account,
     // owner = target (the shared table — CPI indices address the outer transaction).
@@ -297,6 +339,9 @@ pub fn renew<const N: usize>(
         return Err(E::ERR_LEASE_LABEL_MISMATCH);
     }
 
+    // Price BEFORE any mutation: an overflow or a bad label leaves the lease untouched.
+    let total_fee = cfg.total_for_term(ix.label.len(), ix.duration_years)?;
+
     // Rolling-extension semantics: never shorten an unexpired lease.
     let now_secs = now_epoch_seconds();
     let base = lease.expires_at.max(now_secs);
@@ -319,15 +364,9 @@ pub fn renew<const N: usize>(
     }
 
     // INTERACTIONS — fee (renewal policy: no CPI into name-service; the on-chain domain
-    // registration persists, our lease layer owns expiry bookkeeping).
-    let total_fee = cfg
-        .fee_per_year
-        .checked_mul(ix.duration_years as u64)
-        .ok_or(E::ERR_FEE_OVERFLOW)?;
-    // In ThruVM, a smart contract cannot directly debit an EOA's native balance without EOA ownership.
-    if total_fee > 0 {
-        let _ = mgr.account_transfer(0, ix.treasury_idx, total_fee);
-    }
+    // registration persists, our lease layer owns expiry bookkeeping). Same policy path
+    // as Register.
+    collect_fee(mgr, ix.treasury_idx, total_fee, cfg.fee_policy)?;
 
     let mut ev = [0u8; 8 + ix::LABEL_BUF];
     ev[..6].copy_from_slice(b"TCR:N:");
@@ -357,20 +396,48 @@ pub fn update_config<const N: usize>(
     if caller != cfg.admin {
         return Err(E::ERR_NOT_ADMIN);
     }
-    if let Some(f) = ix.new_fee {
-        cfg.fee_per_year = f;
-    }
     if let Some(t) = ix.new_treasury {
         cfg.treasury = t;
     }
+    if let Some(f) = ix.new_fee_3_char {
+        cfg.fee_3_char = f;
+    }
+    if let Some(f) = ix.new_fee_4_char {
+        cfg.fee_4_char = f;
+    }
+    if let Some(f) = ix.new_fee_5plus_char {
+        cfg.fee_5plus_char = f;
+    }
+    if let Some(p) = ix.new_fee_policy {
+        cfg.fee_policy = p;
+    }
+    if ix.new_fee_policy.is_some() {
+        ix::validate_fee_policy(cfg.fee_policy)?;
+    }
+    // The legacy mirror is DERIVED, never assigned: a layout-1 reader must never see a
+    // price that disagrees with the tier actually charged.
+    cfg.fee_per_year = cfg.fee_5plus_char;
 
     // EFFECTS
     if mgr.set_account_data_writable(ix.config_idx) != SyscallCode::Success {
         return Err(E::ERR_CONFIG_PARSE);
     }
+    // A layout-1 account holds 144 bytes; the v2 record is 176. Grow it in place so an
+    // existing deployment can adopt tiered pricing with one admin transaction instead of a
+    // new config account (which would mean a new root authority and a new root account).
+    if cfg.layout == state::CONFIG_LAYOUT_V1 {
+        if mgr.account_resize(ix.config_idx, state::CONFIG_SIZE as u64) != SyscallCode::Success {
+            return Err(E::ERR_CONFIG_PARSE);
+        }
+    }
     {
         let mut acc = mgr.get(ix.config_idx).map_err(|_| E::ERR_CONFIG_PARSE)?;
         let data = acc.data_mut().ok_or(E::ERR_CONFIG_PARSE)?;
+        // Never write past the account: if the resize did not take, fail loudly rather than
+        // panicking inside the VM (a panic is an opaque exit code, not a named error).
+        if data.len() < state::CONFIG_SIZE {
+            return Err(E::ERR_CONFIG_PARSE);
+        }
         data[..state::CONFIG_SIZE].copy_from_slice(&cfg.serialize());
     }
     let ev: &[u8] = b"TCR:C";

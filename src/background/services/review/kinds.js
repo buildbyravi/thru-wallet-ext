@@ -323,7 +323,8 @@ async function domainRegisterFacts(params, { account, network }) {
     : (check.domainExists || check.leaseExists) ? 'taken' : 'available';
 
   const [payer, fee] = await Promise.all([accountState(account.address), feeQuote()]);
-  const feePerYear = String(info.feePerYear);
+  // Tiered price for THIS label (3 / 4 / 5+ characters), from the program's own config.
+  const feePerYear = registrarService.pricePerYearFor(info, name).toString();
   const totalPriceUnits = (BigInt(feePerYear) * BigInt(years)).toString();
 
   return {
@@ -335,6 +336,10 @@ async function domainRegisterFacts(params, { account, network }) {
     provider: 'custom',
     pricePerYear: feePerYear,
     totalPriceUnits,
+    // Whether the program ENFORCES the charge. Best-effort means it attempts the debit and
+    // ignores a refusal, so the review must not present the price as money that will move.
+    feeEnforced: info.feeEnforced === true,
+    feePolicy: info.feePolicyName,
     nativeBalanceUnits: payer.balanceUnits,
     availability: { state: availability, readError: check.readError ?? null },
     root: info.root,
@@ -363,9 +368,17 @@ async function domainRegisterRecheck(record) {
     throw coded('REVIEW_REGISTRAR_CHANGED',
       'The custom registrar is no longer readable on this network. Review the registration again.');
   }
-  if (String(info.feePerYear) !== String(facts.pricePerYear)) {
+  // Compare the tier price for THIS label. Comparing `info.feePerYear` (the cheapest tier)
+  // would report a change on every 3- and 4-character name and block a correct review.
+  if (registrarService.pricePerYearFor(info, facts.name).toString() !== String(facts.pricePerYear)) {
     throw coded('REVIEW_PRICE_CHANGED',
       'The registrar price changed after review. Review the registration again.');
+  }
+  // A policy change between review and signature changes whether the price is money that
+  // moves; re-check it with the price.
+  if (Boolean(info.feeEnforced) !== Boolean(facts.feeEnforced)) {
+    throw coded('REVIEW_PRICE_CHANGED',
+      'The registrar fee policy changed after review. Review the registration again.');
   }
   const check = await registrarService.checkCustomLease({ name: facts.name });
   if (check.readError) {
@@ -398,7 +411,7 @@ async function domainCustomRenewFacts(params, { account, network }) {
   }
 
   const [payer, fee] = await Promise.all([accountState(account.address), feeQuote()]);
-  const feePerYear = String(info.feePerYear);
+  const feePerYear = registrarService.pricePerYearFor(info, name).toString();
   const totalPriceUnits = (BigInt(feePerYear) * BigInt(years)).toString();
 
   return {
@@ -410,6 +423,8 @@ async function domainCustomRenewFacts(params, { account, network }) {
     provider: 'custom',
     pricePerYear: feePerYear,
     totalPriceUnits,
+    feeEnforced: info.feeEnforced === true,
+    feePolicy: info.feePolicyName,
     nativeBalanceUnits: payer.balanceUnits,
     availability: { state: 'mine', readError: null },
     lease: {
@@ -441,8 +456,11 @@ async function domainCustomRenewRecheck(record) {
   if (!info.supported) {
     throw coded('REVIEW_REGISTRAR_CHANGED', 'The custom registrar is no longer readable on this network. Review the renewal again.');
   }
-  if (String(info.feePerYear) !== String(facts.pricePerYear)) {
+  if (registrarService.pricePerYearFor(info, facts.name).toString() !== String(facts.pricePerYear)) {
     throw coded('REVIEW_PRICE_CHANGED', 'The registrar price changed after review. Review the renewal again.');
+  }
+  if (Boolean(info.feeEnforced) !== Boolean(facts.feeEnforced)) {
+    throw coded('REVIEW_PRICE_CHANGED', 'The registrar fee policy changed after review. Review the renewal again.');
   }
   const check = await registrarService.checkCustomLease({ name: facts.name });
   if (check.readError) {

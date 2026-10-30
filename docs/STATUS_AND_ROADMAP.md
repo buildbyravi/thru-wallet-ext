@@ -46,11 +46,12 @@ copy or the password flow.
   F-01…F-13 re-checked at HEAD; the still-true decoder/store/simulation findings are fixed there,
   with `docs/DEFECT_LOG.md` §12 recording the defects and lessons).
 
-**TESTED:** `test/test-tx-review.mjs` (154 checks: registry parity, every decoder, malformed and
+**TESTED:** `test/test-tx-review.mjs` (180 checks: registry parity, every decoder, malformed and
 unknown input, amount/fee formatting, binding/TTL/account/network refusals, acknowledgements,
 blocking, discard, code registry, the UI signing-literal scan, [15] the one-screen/one-table
-budget for every decoder, and [2b] the name a recipient was resolved from reaching the card) and `test/test-route-lifecycle.mjs` (1,104 checks, including the
-Send, Domain and Faucet review flows driven through the real routes). **BUILD:** `npm run build`
+budget for every decoder, [2b] the name a recipient was resolved from reaching the card, and the
+registrar's enforced/unenforced/strict/free fee cases) and `test/test-route-lifecycle.mjs`
+(1,117 checks, including the Send, Domain and Faucet review flows driven through the real routes). **BUILD:** `npm run build`
 passes, including the layering, CSP, route/CSS and contract gates. **UNVERIFIED:** real-browser
 layout and live-chain behaviour — no browser binary and no network writes were available; the
 harness `scripts/preview-tx-review.html` is the recorded human runbook for the former.
@@ -69,12 +70,22 @@ the shared 9-decimal definition; paid-registry token decimals come from the on-c
   registrar is renewed with `name.renewLease` + `via:'custom'`; the review is the same
   `domain-renew` card, priced in native THRU (a 2026-10-28 audit found it rendering the payment
   token instead — `docs/DEFECT_LOG.md` §13.1).
-- **The registrar's fee is best-effort on chain.** `contracts/thru-custom-registrar` debits the
-  treasury with `let _ = account_transfer(..)`, so a charge that cannot be made does not fail the
-  registration; the error mapping added in `2f98b5a` (`0xd20a`, "fee transfer failed") is the
-  evidence. The card therefore states that the debit is best-effort and is not a guarantee
-  (`quote-not-final`). Whether the program should refuse instead is an open contract decision,
-  not a wallet claim — §13.3.
+- **The registrar's fee is tiered and stored on-chain (2026-10-30).** `contracts/thru-custom-registrar`
+  now carries three per-year prices (3 / 4 / 5+ characters) plus a `fee_policy` in its config, all
+  mutable through `UpdateConfig`, so the Betanet schedule (100 000 / 10 000 / 1 000 base units per
+  year) is a config value and a mainnet schedule is not a redeploy. The card, the service and the
+  route read those numbers from the chain; `name.js` prices by label length and shows the tier the
+  name actually falls in. A 144-byte (layout-1) config still parses and reads as the flat schedule
+  it always was — the new fields are *appended*, so the upgrade does not change anyone's price.
+- **Enforcement is declared on-chain, and the wallet only reports what it declares.**
+  `fee_policy = strict` makes a refused charge revert (`0xD206`; `0xD207` when the balance cannot
+  cover it); `best-effort` keeps the deployed behaviour of attempting the debit and ignoring the
+  refusal. The only live observation is that refusal — the VM's `-10 AccountNotWritable`, surfaced
+  as `0xD20A` — so best-effort is the default and `strict` is gated behind a measured treasury
+  delta (`--fee-policy strict --collection-proven "<note>"`). The card therefore shows an
+  *unenforced* price as unenforced (`registrar-fee-unenforced`) and reserves the outgoing THRU row
+  for an enforced charge; "no charge reported" is the wording, never "free". Deploying the new
+  artifact, and proving collection works, are both still open — `docs/DEFECT_LOG.md` §18.
 - **The batch registration queue is gone (removed 2026-10-30).** A queue and a "Register N names"
   loop were added in `55703d0`; the control that revealed them was created with the `hidden` class
   and never un-hidden, and the loop submitted prepared reviews without rendering the review card.
@@ -92,7 +103,9 @@ the evidence-pinned custom `.thru` registrar present at 1,000 native base units 
 transaction was sent during that probe. On 2026-10-27, one unique `.thru` registration through
 the real background API router returned an on-chain execution result, and a follow-up Betanet
 read confirmed the selected test account as lease owner. The handler quoted 1,000 base
-units/year; charged network fee was not returned.
+units/year; charged network fee was not returned. Both probes predate the tiered config (the
+deployed one is a layout-1, flat, best-effort config); the tiered layout and its prices are source
+only until a rebuilt artifact is deployed — `docs/DEFECT_LOG.md` §18.
 
 **TESTED (2026-10-27 UI audit)**: build and full `npm test` pass. Mounted route regressions
 cover exact review values, renewal/claim expiry binding, Escape/Cancel focus restoration,
@@ -195,11 +208,11 @@ Structural properties now enforced by CI rather than by discipline:
 Final deterministic verification on the current tree (contract v31, 2026-10-30):
 
 ```text
-npm test       PASS — 2,632 checks (37 suites + 5 gates): derivation 16; QR 15; layering 127 files / 0 sinks;
+npm test       PASS — 2,742 checks (37 suites + 5 gates): derivation 16; QR 15; layering 127 files / 0 sinks;
                CSP pass; routes 15/15 with the full used CSS class set defined; CSS nesting pass;
                launchpad quarantine; contract 168/168; security-checks; DOM/refs;
-               route lifecycle 1,116/1,116; transaction review 175/175; review card render 57/57;
-               toast 92/92; shared platform 45/45;
+               route lifecycle 1,117/1,117; transaction review 180/180; review card render 57/57;
+               toast 92/92; shared platform 45/45; custom registrar 59 + tiered-name 13;
                name records 57; name reverse 14; name service 67; storage migrations;
                vault, Thru client, token/balance, History, registration, API-router,
                pending concurrency, signing/network lock, and auto-lock suites pass.

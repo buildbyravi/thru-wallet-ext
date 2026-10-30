@@ -16,10 +16,41 @@
 //     default of "available".
 
 import {
-  movement, row, warn, feeBlock, instruction, accountRole, executionBlock,
+  movement, row, warn, feeBlock, instruction, accountRole, executionBlock, displayAmount,
 } from './common.js';
 
 const NATIVE = Object.freeze({ symbol: 'THRU', decimals: 9, mintAddress: null, verified: true });
+
+// ---------------------------------------------------------------------------------------
+// The custom registrar's price: DECLARED vs ENFORCED.
+// The program can run in two modes (config.fee_policy): best effort, where it attempts the
+// debit and ignores a refusal — which is what the deployed program does — and strict, where a
+// refused debit reverts the instruction. A price is only money that moves in strict mode, so
+// every surface that mentions it derives "charged" from this one place.
+// ---------------------------------------------------------------------------------------
+function registrarCharge(facts) {
+  const declared = facts.totalPriceUnits != null ? BigInt(facts.totalPriceUnits) : 0n;
+  const enforced = facts.feeEnforced === true;
+  return {
+    declared,
+    enforced,
+    charged: enforced && declared > 0n,
+    free: declared === 0n,
+  };
+}
+
+function registrarPriceMovement(facts, charge) {
+  return movement({
+    symbol: 'THRU',
+    name: 'Thru native token',
+    decimals: 9,
+    mintAddress: null,
+    amountUnits: charge.declared.toString(),
+    verified: true,
+    note: 'Paid to the registrar treasury by the program when this transaction executes.',
+  });
+}
+
 
 function paymentMovement(facts) {
   const payment = facts.payment ?? {};
@@ -138,16 +169,30 @@ export function decodeDomainRegister({ facts }) {
   const warnings = [];
   const unavailable = availabilityWarning(facts);
   if (unavailable) warnings.push(unavailable);
+  const charge = registrarCharge(facts);
 
-  // No registrar price: the deployed program does not collect one (customRegistrarTrustNote).
-  // The handler still refuses a balance below its configured fee — a divergence between the
-  // program and the wallet, recorded as docs/DEFECT_LOG.md §15.9 — so the card mentions the
-  // check without pricing it, and does not block on a fee it is not charging.
-  if (facts.nativeBalanceUnits != null && facts.totalPriceUnits != null
-      && BigInt(facts.nativeBalanceUnits) < BigInt(facts.totalPriceUnits)) {
+  if (charge.charged) {
+    // Enforced fee: the price is money the program takes. An account that cannot cover it
+    // reverts on-chain (0xD207), so it blocks here instead of failing later.
+    if (facts.nativeBalanceUnits != null && BigInt(facts.nativeBalanceUnits) < charge.declared) {
+      warnings.push(warn('registrar-fee-unpayable', 'danger',
+        'Not enough THRU for the registrar fee',
+        `This registration costs ${displayAmount(charge.declared, 9, 'THRU')} and the account `
+        + `holds ${displayAmount(BigInt(facts.nativeBalanceUnits), 9, 'THRU')}.`, { blocking: true }));
+    }
+  } else if (!charge.free && facts.nativeBalanceUnits != null
+      && BigInt(facts.nativeBalanceUnits) < charge.declared) {
+    // Declared but unenforced: the program attempts the debit and ignores a refusal, so a low
+    // balance is not a failure — it only means the fee will probably not be taken.
     warnings.push(warn('registrar-balance-check', 'info',
       'Your balance is checked before signing',
       customFeeCaveat()));
+  }
+  if (!charge.enforced && !charge.free) {
+    warnings.push(warn('registrar-fee-unenforced', 'warning',
+      'Registrar fee is not enforced on-chain',
+      `The registrar prices this name at ${displayAmount(charge.declared, 9, 'THRU')}, but its program `
+      + 'attempts the charge and ignores a refusal, so the amount may not be debited.'));
   }
 
   return {
@@ -155,7 +200,11 @@ export function decodeDomainRegister({ facts }) {
       id: DOMAIN_REGISTER_KIND,
       name: `Register ${facts.name}.${facts.tld} for ${Number(facts.years)} `
         + `${Number(facts.years) === 1 ? 'year' : 'years'}`,
-      summary: 'No registration fee on the test registrar. You pay only the network fee.',
+      summary: charge.charged
+        ? `The registrar program collects ${displayAmount(charge.declared, 9, 'THRU')} for this term.`
+        : charge.free
+          ? 'No registration fee on this registrar. You pay only the network fee.'
+          : '',
       confirmLabel: 'Confirm and sign',
       decode: 'decoded',
     },
@@ -173,8 +222,9 @@ export function decodeDomainRegister({ facts }) {
     // The title already says which name and how long, so the table does not say it twice.
     summary: [],
     assets: {
-      // No outgoing row: nothing is provably charged, so nothing is promised.
-      outgoing: [],
+      // An outgoing row appears ONLY when the program enforces collection; otherwise nothing
+      // is provably charged and nothing is promised.
+      outgoing: charge.charged ? [registrarPriceMovement(facts, charge)] : [],
       incoming: [],
       fee: registrarFee(facts),
       balanceAfter: null,
@@ -210,14 +260,26 @@ function paidRegistryBlock({ facts, operation, rows, instructions, extraWarnings
   const unavailable = availabilityWarning(facts);
   if (unavailable) warnings.push(unavailable);
 
+  const charge = native ? registrarCharge(facts) : null;
   if (native) {
-    // Same divergence as registration: the program does not collect the fee, the handler still
-    // checks for it. Inform, do not price, do not block.
-    if (facts.nativeBalanceUnits != null && facts.totalPriceUnits != null
-        && BigInt(facts.nativeBalanceUnits) < BigInt(facts.totalPriceUnits)) {
+    if (charge.charged) {
+      if (facts.nativeBalanceUnits != null && BigInt(facts.nativeBalanceUnits) < charge.declared) {
+        warnings.push(warn('registrar-fee-unpayable', 'danger',
+          'Not enough THRU for the registrar fee',
+          `This renewal costs ${displayAmount(charge.declared, 9, 'THRU')} and the account holds `
+          + `${displayAmount(BigInt(facts.nativeBalanceUnits), 9, 'THRU')}.`, { blocking: true }));
+      }
+    } else if (!charge.free && facts.nativeBalanceUnits != null
+        && BigInt(facts.nativeBalanceUnits) < charge.declared) {
       warnings.push(warn('registrar-balance-check', 'info',
         'Your balance is checked before signing',
         customFeeCaveat()));
+    }
+    if (!charge.enforced && !charge.free) {
+      warnings.push(warn('registrar-fee-unenforced', 'warning',
+        'Registrar fee is not enforced on-chain',
+        `The registrar prices this renewal at ${displayAmount(charge.declared, 9, 'THRU')}, but `
+        + 'its program attempts the charge and ignores a refusal, so the amount may not be debited.'));
     }
   } else if (facts.paymentBalanceUnits != null
       && BigInt(facts.paymentBalanceUnits) < BigInt(facts.totalPriceUnits)) {
@@ -246,9 +308,11 @@ function paidRegistryBlock({ facts, operation, rows, instructions, extraWarnings
     },
     summary: rows,
     assets: {
-      // A custom-registrar write has no provable charge, so it has no outgoing amount; the
-      // paid registry moves its own payment token, which the user really does spend.
-      outgoing: native ? [] : [paymentMovement(facts)],
+      // A custom-registrar write has an outgoing amount ONLY when the program enforces the
+      // charge; the paid registry moves its own payment token, which the user really spends.
+      outgoing: native
+        ? (charge.charged ? [registrarPriceMovement(facts, charge)] : [])
+        : [paymentMovement(facts)],
       incoming: [],
       fee: registrarFee(facts),
       balanceAfter: null,

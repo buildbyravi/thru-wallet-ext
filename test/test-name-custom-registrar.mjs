@@ -90,3 +90,39 @@ eq(tcr.describeTcrError(99999), 'unknown registrar error 99999', 'unrecognized c
 
 if (failures) { console.error(`\n${failures} failure(s)`); process.exit(1); }
 console.log('\nCustom-registrar evidence tests passed');
+
+// ---- tiered schedule: the three Betanet tiers, priced by label LENGTH ---------------------
+// Owner directive 2026-10-30: 3 chars = 0.0001 THRU/yr, 4 = 0.00001, 5+ = 0.000001
+// (base units below). These numbers come from the release plan, NOT from a live read — the
+// live read is what `getCustomRegistrar` does at runtime, and this test only pins the mapping
+// from a config of that shape to a price. A deployment that sets different values changes
+// what the wallet shows without changing this file.
+console.log('tiered pricing');
+{
+  const tiers = {
+    fee3PerYear: 100_000n, fee4PerYear: 10_000n, fee5PlusPerYear: 1_000n,
+    feePerYear: 1_000n, layout: 2, feeEnforced: true, feePolicy: 1,
+  };
+  eq(tcr.tcrPricePerYear(tiers, 'abc'), 100_000n, '3-char label → 0.0001 THRU/yr');
+  eq(tcr.tcrPricePerYear(tiers, 'abcd'), 10_000n, '4-char label → 0.00001 THRU/yr');
+  eq(tcr.tcrPricePerYear(tiers, 'abcde'), 1_000n, '5-char label → 0.000001 THRU/yr');
+  eq(tcr.tcrPricePerYear(tiers, 'a'.repeat(32)), 1_000n, '32-char label → 5+ tier');
+  eq(tcr.tcrTotalForTerm(tiers, 'abc', 3), 300_000n, '3-char × 3 years = 0.0003 THRU');
+  eq(tcr.tcrTotalForTerm(tiers, 'abcde', 10), 10_000n, '5-char × 10 years = 0.00001 THRU');
+
+  // A layout-1 config (what the deployed program wrote) prices flat, and must keep doing so.
+  const flat = { fee3PerYear: 1_000n, fee4PerYear: 1_000n, fee5PlusPerYear: 1_000n, feePerYear: 1_000n };
+  eq(tcr.tcrPricePerYear(flat, 'abc'), 1_000n, 'a layout-1 config prices a 3-char name at its flat fee');
+  eq(tcr.tcrPricePerYear(flat, 'abcdef'), 1_000n, 'and a 6-char name at the same flat fee');
+}
+
+// ---- the fee is only money when the program enforces it ----------------------------------
+console.log('fee enforcement vocabulary');
+{
+  eq(tcr.feePolicyName(tcr.TCR_FEE_POLICY.bestEffort), 'best effort', 'policy 0 is best effort');
+  eq(tcr.feePolicyName(tcr.TCR_FEE_POLICY.strict), 'strict', 'policy 1 is strict');
+  eq(tcr.TCR_ERRORS[0xd206], 'the registrar fee could not be collected', 'strict refusal has its own code');
+  eq(tcr.TCR_ERRORS[0xd207], 'not enough balance to pay the registrar fee', 'insufficient fee is distinguished');
+  // The two new codes must not collide with the VM-composite decoding space (0xD2xx | syscall).
+  ok(!(0xd206 in { 0xd226: 1 }) && 0xd206 !== 0xd20a, 'new codes do not shadow the live 0xD20A failure');
+}

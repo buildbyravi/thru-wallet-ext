@@ -18,7 +18,9 @@ explain the fixes, not to claim those paths still ship. §5 records resolved leg
 a current backlog. The current verification gaps are listed in §6; the popup/side-panel and History
 cross-network fixes in §§7–8 are implemented and locally tested, but their real-Chrome/live-RPC
 checks remain open. §9–§12 are v29 review fixes verified in source and the deterministic suite, §13 audits the
-v30 domain merge, and §14 audits the v31 record-write merge; none of them has a real-browser pass. Check `src/` before treating any historical symptom as current.
+v30 domain merge, §14 audits the v31 record-write merge, and §§15–18 are the 2026-10-30 lifecycle/notification
+work and the tiered registrar upgrade; none of them has a real-browser pass. Check `src/` before treating any
+historical symptom as current.
 
 ---
 
@@ -700,9 +702,12 @@ said "Charged by the registrar program itself, in THRU base units" and blocked a
 
 Corrected to what is provable: the movement note and the `quote-not-final` warning say the debit is
 best-effort and decided on-chain, and the insufficiency warning says the **wallet** will refuse
-(which is exactly what `registrar-service.js` does). **Open:** whether the program should fail the
-charge, use a writable treasury, or drop the price. Until then a shown price is a declared price,
-and the handler's balance refusal can block a renewal the program would perform for free.
+(which is exactly what `registrar-service.js` does). **Updated 2026-10-30 (§18):** the open
+question was decided by the owner — the charge must be enforceable and revert on failure — and the
+program now carries a `fee_policy` where `strict` does that. It is opt-in and ungated from
+`best-effort` only after a charge is proven to land, because the observed failure (`0xD20A`) means
+strict-enabling it blind would block every registration. The wallet derives `feeEnforced` from the
+on-chain policy, so the card, the service and the route all agree on whether a price is real.
 
 > **Lesson:** a review may describe the intent, but it may only promise what the deployed program
 > provably does. When the program swallows an error, "you will pay" is a fabrication.
@@ -987,3 +992,58 @@ free predate that distinction and are release-scope claims, not established fact
 
 No shipped UI string currently promises "free" (checked across `src/`), so this is a documentation
 claim and a copy rule, not a live misstatement.
+
+---
+
+## 18. The registrar fee becomes on-chain and tiered — IMPLEMENTED/TESTED in source; contract UNBUILT, deployment BLOCKED (2026-10-30)
+
+Owner directive: price registration by label length (3 / 4 / 5+ characters), keep the schedule
+on-chain so a mainnet price is a config change and not a redeploy, and make a refused charge
+**fail** the registration instead of being discarded (§13.3, §17C).
+
+**What changed**
+
+- `state.rs` grows the config to **layout 2 (176 B)** by *appending* `fee_3_char`, `fee_4_char`,
+  `fee_5plus_char`, `fee_policy` at offset 144. Bytes 0–143 are byte-identical to the deployed
+  layout, so a live 144-byte config still parses; it reads as a flat schedule (all tiers = the old
+  `fee_per_year`) with the best-effort policy, i.e. *the behaviour it already had*. `fee_per_year`
+  remains only as a derived mirror of `fee_5plus_char` so a layout-1 reader shows the cheapest tier
+  instead of zero. Nothing was shifted: `admin`, `treasury`, `root_address`, `root_name` keep their
+  offsets, because moving them would have made every deployed config unreadable.
+- `instruction.rs` adds tag **4** `InitializeV2` carrying the three tiers and the policy, and
+  reshapes `UpdateConfig` (mask `b0 treasury · b1 fee3 · b2 fee4 · b3 fee5plus · b4 policy`, 64
+  bytes). Tag **0** is a deliberate named refusal (`0xD006`) rather than a payload the parser
+  reinterprets — the failure mode we were avoiding is a stale builder writing `fee_per_year` into
+  the slot the new price path reads as `fee_3_char`.
+- `processor.rs` prices `Register` and `Renew` through one `cfg.total_for_term(label_len, years)`
+  (`checked_mul`, `ERR_OVERFLOW`) and collects through one `collect_fee()`.
+- `UpdateConfig` on a layout-1 account resizes it in place (`sys_account_resize` to 176) with a
+  `data.len()` guard, so an upgrade needs no re-initialisation and no lost root authority.
+
+**Why the policy flag exists instead of unconditional enforcement.** The directive is that a failed
+fee transfer must revert — and `FEE_POLICY_STRICT` does exactly that (`0xD206`, or `0xD207` when
+the balance cannot cover it). But the deployed program's charge has only ever been observed to
+*fail*: the VM answered `-10 AccountNotWritable`, surfaced to the wallet as `0xD20A`. Shipping
+strict as the default would therefore turn a best-effort registration into a guaranteed revert on
+the first real attempt, and we cannot test that here (no toolchain, no RPC). So:
+
+- `bestEffort` (0) keeps today's behaviour and is the default for layout-1 configs;
+- `strict` (1) is opt-in, and `scripts/registrar/deploy-and-init.mjs` **refuses** `--fee-policy
+  strict` without `--collection-proven "<note>"` — a human attestation that a treasury balance
+  delta was actually observed after a real registration;
+- `--probe-collection` records the treasury balance (before/after is the measurement).
+
+The wallet reads `feeEnforced = (policy === strict)` and never assumes a charge. A non-zero price
+with `bestEffort` renders as an unenforced price with the `registrar-fee-unenforced` warning —
+never as "free" — and only an enforced charge produces the outgoing THRU row in the review.
+
+> **Release gate (unchanged, now instrumented):** do not describe a registration as charged until
+> the deployed artifact is identity-checked, the on-chain config is read back, and a treasury delta
+> is observed. The evidence file `scripts/registrar/deploy-and-init.mjs` writes records exactly what
+> was measured and nothing else.
+
+**Status.** IMPLEMENTED + TESTED: the JS ABI twin, the service pricing, the review decoder, the
+Name route and their suites (build 0, full suite green). NOT COMPILED: the Rust side has not been
+through `cargo` (the environment has no toolchain), so `thru-custom-registrar.bin` in the repo is
+**stale** and must not be deployed. BLOCKED: contract build, Betanet deploy, whether
+`account_resize` works on a live layout-1 account, and whether a strict charge can actually land.

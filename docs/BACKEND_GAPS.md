@@ -90,12 +90,23 @@ payment behavior.
   renewal/claim handlers return unsupported there. The custom registrar is the live `.thru`
   offer: **registration and renewal are wired** (`domain-register`, and `domain-renew` with
   `via:'custom'`, contract v30); custom-lease **claim is not**.
-- **The custom registrar's fee is not guaranteed to be collected.** Its `renew`/`register`
-  instructions call `account_transfer` and discard the result (`let _ =`), so a charge that the
-  VM refuses does not fail the transaction. The review prices the declared fee in native THRU and
-  labels it best-effort (`quote-not-final`); the handlers still refuse to sign when the account
-  cannot cover it. Whether the program should fail the charge instead is an open contract
-  decision (`docs/DEFECT_LOG.md` §13.3).
+- **The custom registrar's fee is tiered by label length and stored on-chain (2026-10-30).**
+  The contract's config carries `fee_3_char` / `fee_4_char` / `fee_5plus_char` (per YEAR, base
+  units) plus a collection policy, all settable through `UpdateConfig` — so a mainnet price is a
+  config change, not a redeploy. Betanet intent: 3 chars = 100 000, 4 = 10 000, 5+ = 1 000 base
+  units (0.0001 / 0.00001 / 0.000001 THRU). The extension reads those numbers from the config; no
+  price is hardcoded in the UI. Layout: `docs/DEFECT_LOG.md` §18.
+- **Whether a charge is enforced is a property of the deployed config, not of the wallet.** The
+  program has a `fee_policy`: `best-effort` (0) attempts `account_transfer` and ignores a refusal
+  — the deployed behaviour — and `strict` (1) reverts (`0xD206`; `0xD207` when the source balance
+  cannot cover it). The wallet maps `feeEnforced = (policy === strict)` and never assumes a charge:
+  an unenforced non-zero price is shown as an unenforced price with a `registrar-fee-unenforced`
+  warning ("no charge reported" is the honest wording, never "free"), and only an enforced charge
+  adds an outgoing THRU row to the review. **Default is best-effort**, because the only live
+  observation is the transfer being refused (`-10 AccountNotWritable`, surfaced as `0xD20A`);
+  `--fee-policy strict` is gated in `scripts/registrar/deploy-and-init.mjs` behind
+  `--collection-proven`, a recorded treasury balance delta. Open: whether the new artifact's
+  charge actually lands (`docs/DEFECT_LOG.md` §18, §13.3).
 - `.id` supports name-service lookup and has no lease-renewal operation. The Domain route treats
   it as resolution-only. The lower-level generic name-service write remains self-signed and
   refuses a signer that is not the parsed root authority (`NAME_PARENT_AUTHORITY`); the Betanet

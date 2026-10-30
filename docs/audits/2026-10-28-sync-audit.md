@@ -130,6 +130,15 @@ card is a declared price, not a guaranteed debit — and the handler's balance r
 conservative but arguably wrong (it can block a renewal the program would happily perform for
 free). Recorded in `docs/DEFECT_LOG.md` §13.3.
 
+> **Resolution (2026-10-30).** The owner decided: the fee must be enforceable and fail closed, and
+> it is tiered by label length. `contracts/thru-custom-registrar` now stores three per-year prices
+> and a `fee_policy`; `strict` reverts on a refused charge (`0xD206` / `0xD207`) and `best-effort`
+> keeps the behaviour audited above. Because the only live evidence is that refusal (`0xD20A`),
+> strict is opt-in and gated in the deploy script behind a measured treasury delta, and the wallet
+> derives `feeEnforced` from the on-chain policy instead of assuming a charge. The finding above —
+> *a shown price is a declared price until collection is proven* — still stands for any config in
+> the best-effort state. See `docs/DEFECT_LOG.md` §18.
+
 ### D-4 — the batch registration queue is dead code with a signing loop in it
 
 `55703d0` ("multi-name registration queue") adds `queuedRegistrations`, `renderQueue()`, and a

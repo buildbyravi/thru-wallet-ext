@@ -156,6 +156,10 @@ const domainFacts = (overrides = {}) => ({
   provider: 'custom',
   pricePerYear: '1000',
   totalPriceUnits: '2000',
+  // The DEPLOYED program runs best-effort: it attempts the charge and ignores a refusal.
+  // Facts that describe a strict deployment set this to true explicitly.
+  feeEnforced: false,
+  feePolicy: 'best effort',
   nativeBalanceUnits: '5000000',
   availability: { state: 'available', readError: null },
   root: asAddress(9),
@@ -350,14 +354,41 @@ console.log('[3] decoders: domain writes');
 {
   const register = decode('domain-register', domainFacts());
   model.assertReviewContent(register);
-  // v1.5.0 (owner directive, Part 2.2): the custom registrar's fee is NOT collected by the
-  // deployed program, so the card promises no charge at all. The old assertion required a
-  // "Total charge" row and an outgoing THRU movement — exactly the promise that is not kept.
-  ok('a custom-registration card promises no registration fee',
+  // v1.5.0 (owner directive, Part 2.2): the deployed program does NOT collect its fee, so the
+  // card promises no charge. With tiered pricing the price is real but unenforced, so the card
+  // states the price AND states that it is not enforced — it does not call the registration
+  // free (that would be a different lie) and does not put it in the money table.
+  ok('an unenforced registrar price is never presented as money that moves',
     register.assets.outgoing.length === 0
-      && !register.summary.some((row) => /total/i.test(row.label))
-      && /No registration fee/.test(register.operation.summary),
+      && !register.summary.some((row) => /total/i.test(row.label)),
     JSON.stringify({ rows: register.summary, out: register.assets.outgoing }));
+  ok('an unenforced price is disclosed as unenforced, not as free',
+    warningIds(register).includes('registrar-fee-unenforced')
+      && !/No registration fee/.test(register.operation.summary),
+    register.operation.summary);
+
+  // A STRICT deployment is the case the tiered contract exists for: the price is charged.
+  const enforced = decode('domain-register', domainFacts({ feeEnforced: true, feePolicy: 'strict' }));
+  model.assertReviewContent(enforced);
+  ok('a strict registrar puts the term price in the money table',
+    enforced.assets.outgoing.length === 1
+      && enforced.assets.outgoing[0].amountUnits === '2000'
+      && enforced.assets.outgoing[0].symbol === 'THRU',
+    JSON.stringify(enforced.assets.outgoing));
+  ok('a strict registrar states the price plainly instead of promising it is free',
+    /collects/.test(enforced.operation.summary)
+      && !warningIds(enforced).includes('registrar-fee-unenforced'),
+    enforced.operation.summary);
+  const enforcedPoor = decode('domain-register', domainFacts({ feeEnforced: true, nativeBalanceUnits: '1' }));
+  ok('a balance that cannot cover an ENFORCED fee blocks signing',
+    warningIds(enforcedPoor).includes('registrar-fee-unpayable')
+      && model.stateFromWarnings(enforcedPoor.warnings) === 'blocked');
+
+  // A zero price is genuinely free, and says so.
+  const free = decode('domain-register', domainFacts({ totalPriceUnits: '0', pricePerYear: '0' }));
+  ok('a zero-priced registrar says the registration is free',
+    free.assets.outgoing.length === 0 && /No registration fee/.test(free.operation.summary),
+    free.operation.summary);
   ok('the title carries the name and the duration', register.operation.name === 'Register alice.thru for 2 years',
     register.operation.name);
   ok('the registrar is named in Details without a repository path',
@@ -371,8 +402,8 @@ console.log('[3] decoders: domain writes');
   ok('an unverifiable name blocks signing (never defaults to available)',
     model.stateFromWarnings(unknown.warnings) === 'blocked');
 
-  // The deployed custom registrar does not collect its fee, so a low balance is no longer a
-  // proven blocker here. The handler does check it, and the card says so without pricing it.
+  // Unenforced: a low balance is disclosed, not treated as a proven blocker — the program
+  // would still register the name.
   const poor = decode('domain-register', domainFacts({ nativeBalanceUnits: '1' }));
   ok('a low balance is disclosed without inventing a fee that is not charged',
     warningIds(poor).includes('registrar-balance-check')

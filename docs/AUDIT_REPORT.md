@@ -32,7 +32,7 @@ positive control). A real-browser look at the fixed bar is still **UNVERIFIED**;
 `scripts/preview-toast.html`.
 
 **Refresh (2026-10-30).** The tree is at contract **v31** with **153 methods** and **15 routes**;
-`npm test` is **2,632 checks (37 suites + 5 gates)**, `npm run build` PASS, layering 127 files /
+`npm test` is **2,742 checks (37 suites + 5 gates)**, `npm run build` PASS, layering 127 files /
 0 DOM sinks, `check-routes` 15/15 with the full used-class set defined. The 2026-10-30 lifecycle
 audit (`docs/audits/2026-10-30-review-lifecycle-audit.md`) fixed four pre-sign defects — a hidden
 Domain queue that submitted reviews without a card, a faucet claim that re-derived its account at

@@ -428,8 +428,22 @@ export function NameRoute({ back }) {
     function pricePerYear() { return BigInt(registry.registry.pricePerYear); }
     function baseCost() { return pricePerYear() * BigInt(years); }
     // Custom registrar fee: native base units, read from the on-chain config (raw BigInt).
-    function customPricePerYear() { return BigInt(custom.feePerYear); }
+    // The custom registrar prices by LABEL LENGTH (3 / 4 / 5+), from its own config. Fall back
+    // to the flat field only for an info object that predates the tiers (layout 1 reports the
+    // flat fee as every tier, so this cannot invent a price the chain does not declare).
+    function customPricePerYear(label = entry?.name || '') {
+      const info = custom;
+      const len = String(label).length;
+      const tier = len === 3 ? info.fee3PerYear
+        : len === 4 ? info.fee4PerYear
+          : len >= 5 ? info.fee5PlusPerYear
+            : null;
+      return BigInt(tier ?? custom.feePerYear);
+    }
     function customBaseCost() { return customPricePerYear() * BigInt(years); }
+    // Only a strict config actually charges; a best-effort one attempts the debit and ignores a
+    // refusal. The UI must not disable Review (or promise a price) on that basis alone.
+    function customFeeEnforced() { return custom.feeEnforced === true; }
 
     function setYears(delta) {
       years = Math.min(10, Math.max(1, years + delta));
@@ -470,13 +484,15 @@ export function NameRoute({ back }) {
         const cost = customBaseCost();
         entry.quote = { assetId: `${network?.id || 'active'}:${NATIVE_TOKEN.symbol}`, ticker: NATIVE_TOKEN.symbol, decimals: NATIVE_TOKEN.decimals, raw: cost };
         priceLine.classList.remove('hidden');
-        priceLine.textContent = `Registration quote: ${formatTokenAmount(cost, NATIVE_TOKEN.decimals)} ${NATIVE_TOKEN.symbol}`;
+        priceLine.textContent = `Registration quote: ${formatTokenAmount(cost, NATIVE_TOKEN.decimals)} ${NATIVE_TOKEN.symbol}`
+          + (customFeeEnforced() ? '' : ' · not enforced on-chain');
         balanceLine.classList.remove('hidden');
         if (nativeBalance?.exists && nativeBalance.balance != null) {
           const have = BigInt(nativeBalance.balance);
           const staleTag = nativeBalance.stale ? ' (cached)' : '';
-          balanceLine.textContent = `Balance: ${formatTokenAmount(have, NATIVE_TOKEN.decimals)} ${NATIVE_TOKEN.symbol}${staleTag}${have < cost ? ' · Insufficient balance' : ''}`;
-          ctaBtn.disabled = have < cost;
+          const short = customFeeEnforced() && have < cost;
+          balanceLine.textContent = `Balance: ${formatTokenAmount(have, NATIVE_TOKEN.decimals)} ${NATIVE_TOKEN.symbol}${staleTag}${short ? ' · Insufficient balance' : ''}`;
+          ctaBtn.disabled = short;
         } else if (nativeBalance && !nativeBalance.exists && !nativeBalance.stale) {
           balanceLine.textContent = 'This account needs activation before registration.';
           ctaBtn.disabled = true;
@@ -493,16 +509,19 @@ export function NameRoute({ back }) {
       }
       if (state.kind === 'custom-mine') {
         yearsStepper.classList.remove('hidden');
-        const cost = BigInt(custom.feePerYear || '1000') * BigInt(entry.years || 1);
+        const cost = customPricePerYear(entry.name)
+          * BigInt(entry.years || 1);
         entry.quote = { assetId: `${network?.id || 'active'}:${NATIVE_TOKEN.symbol}`, ticker: NATIVE_TOKEN.symbol, decimals: NATIVE_TOKEN.decimals, raw: cost };
         priceLine.classList.remove('hidden');
-        priceLine.textContent = `Renewal quote: ${formatTokenAmount(cost, NATIVE_TOKEN.decimals)} ${NATIVE_TOKEN.symbol}`;
+        priceLine.textContent = `Renewal quote: ${formatTokenAmount(cost, NATIVE_TOKEN.decimals)} ${NATIVE_TOKEN.symbol}`
+          + (customFeeEnforced() ? '' : ' · not enforced on-chain');
         balanceLine.classList.remove('hidden');
         if (nativeBalance?.exists && nativeBalance.balance != null) {
           const have = BigInt(nativeBalance.balance);
           const staleTag = nativeBalance.stale ? ' (cached)' : '';
-          balanceLine.textContent = `Balance: ${formatTokenAmount(have, NATIVE_TOKEN.decimals)} ${NATIVE_TOKEN.symbol}${staleTag}${have < cost ? ' · Insufficient balance' : ''}`;
-          ctaBtn.disabled = have < cost;
+          const short = customFeeEnforced() && have < cost;
+          balanceLine.textContent = `Balance: ${formatTokenAmount(have, NATIVE_TOKEN.decimals)} ${NATIVE_TOKEN.symbol}${staleTag}${short ? ' · Insufficient balance' : ''}`;
+          ctaBtn.disabled = short;
         } else if (nativeBalance && !nativeBalance.exists && !nativeBalance.stale) {
           balanceLine.textContent = 'This account needs activation before renewal.';
           ctaBtn.disabled = true;

@@ -79,17 +79,17 @@ The popup entry `src/popup/popup.js` is a boot stub. The removed legacy screens 
 | `test/test-launchpad-quarantine.mjs` | Deleted launchpad/DEX/prediction surface remains out of source and `dist/` (66 checks). |
 | `test/test-contract.mjs` | Manifest/router/UI agreement and security invariants, v31 / 153 methods (168 checks). |
 | `test/test-ui-dom.mjs` | DOM safety and reference codec. |
-| `test/test-route-lifecycle.mjs` | All 15 routes through Router/guards/bridge, teardown, secrets, focus, Send/Domain/Faucet review flows, Dashboard activation, History, panel behavior (1,116 checks). |
+| `test/test-route-lifecycle.mjs` | All 15 routes through Router/guards/bridge, teardown, secrets, focus, Send/Domain/Faucet review flows, Dashboard activation, History, panel behavior (1,117 checks). |
 | `test/test-toast.mjs` | The notification surface: blank/malformed payloads render nothing, the string-call defect shape, five tones, durations, dismissal, pause-on-hover, key dedupe, stacking cap, pending→verdict in place, timer/listener teardown, a11y, no-argument source scan (92 checks). |
 | `test/test-shared-platform.mjs` | Shared-platform ownership: one truncation primitive (length invariant), `truncateAddress` as an alias, no second truncation in the display layer, two clipboard writes by design, one toast host, one tone vocabulary, kit-only notification imports (45 checks, each scanner with a positive control). |
-| `test/test-tx-review.mjs` | The review pipeline: registry↔kind parity, every decoder, malformed and unknown input, amount/fee formatting, binding/TTL/account/network refusals, acknowledgements, blocking, discard, the central error-code registry, and the UI signing-literal scan and the one-screen/compactness guards (175 checks). |
+| `test/test-tx-review.mjs` | The review pipeline: registry↔kind parity, every decoder, malformed and unknown input, amount/fee formatting, binding/TTL/account/network refusals, acknowledgements, blocking, discard, the central error-code registry, and the UI signing-literal scan, the one-screen/compactness guards, and the registrar fee cases (180 checks). |
 | `test/test-vault.mjs`, `test/test-thru-client.mjs` | Vault/SDK integration, instruction and decoder behavior. |
 | `test/test-token-balances.mjs`, `test/test-balance-network.mjs` | Token denomination, proven-zero/unknown, network-scoped reads/caches. |
 | `test/test-history-cache.mjs`, `test/test-history-block-time.mjs` | Cache-first History, timestamp provenance, network/slot isolation, races, paging. |
 | `test/test-registration.mjs` | Owned-account registration policy and bounded retries with deterministic SDK fixtures. |
 | `test/test-api-router.mjs` | Auth, context, serialization, background dispatch, and send/registration integration. |
 
-The suite is **2,632 checks across 37 test suites plus 5 build gates** (2026-10-30). Use the final test output for any subsequent refresh. They are deterministic/local evidence only. Real-browser and live-chain checks are separate.
+The suite is **2,742 checks across 37 test suites plus 5 build gates** (2026-10-30). Use the final test output for any subsequent refresh. They are deterministic/local evidence only. Real-browser and live-chain checks are separate.
 
 Visual harnesses: `scripts/preview-tx-review.html` renders the real `TxReviewCard` with the real built
 `dist/popup.css` for eight fixtures (`scripts/preview-tx-review.fixtures.js`), and
@@ -123,11 +123,11 @@ Network/program configuration. Betanet is enabled; Localnet, Testnet and Mainnet
 | File | Lines | Purpose |
 | --- | ---: | --- |
 | `index.js` | 129 | Message listener, trusted session storage, auto-lock heartbeat, side-panel preference restore |
-| `api-router.js` | 500 | Contract allowlist, auth enforcement, dispatch, error/JSON normalization |
+| `api-router.js` | 532 | Contract allowlist, auth enforcement, dispatch, error/JSON normalization |
 | `services/wallet-service.js` | 207 | Wallet lifecycle, unlock backoff, export, creation registration |
 | `services/keyring-service.js` | 101 | Multi-seed operations and creation-bound registration |
 | `services/account-service.js` | 192 | Account/HD operations, preferences, registration for new accounts |
-| `services/tx-service.js` | 686 | Faucet, native/token sends, History/detail, validation, fee estimate |
+| `services/tx-service.js` | 742 | Faucet, native/token sends, History/detail, validation, fee estimate |
 | `services/token-service.js` | 555 | Token registry, deploy handler, derivation, visibility, balances, transfers |
 | `services/balance-service.js` | 218 | Batched/cached balances, network-scoped |
 | `services/pending-tx-service.js` | 386 | Submission/reconciliation state and badge, network-scoped |
@@ -139,12 +139,12 @@ Network/program configuration. Betanet is enabled; Localnet, Testnet and Mainnet
 | `services/auth-service.js` | 99 | Persisted unlock throttle/backoff |
 | `services/system-service.js` | 192 | Inactivity auto-lock, activity, diagnostics |
 | `services/event-service.js` | 67 | Background push events |
-| `services/review-service.js` | 344 | v29 review pipeline: `prepareReview` / `confirmReview` / `discardReview`; binding hash, TTL, rechecks. Never signs |
-| `services/review/kinds.js` | 727 | The ONLY kind → facts + recheck + existing-submit-method table (8 kinds) |
+| `services/review-service.js` | 350 | v29 review pipeline: `prepareReview` / `confirmReview` / `discardReview`; binding hash, TTL, rechecks. Never signs |
+| `services/review/kinds.js` | 1015 | The ONLY kind → facts + recheck + existing-submit-method table (8 kinds) |
 | `services/review/store.js` | 113 | Network-scoped prepared-review records (`tx_reviews`), schema v1, TTL on read, cap 40 |
-| `services/registrar-service.js` | 625 | Official `.thru` registry reads/writes and the custom-registrar provider |
-| `services/name-service.js` | 368 | Name-service lookups, availability, canonical root |
-| `services/primary-name-service.js` | 142 | Wallet-local, network-scoped primary name (links only after an owner match) |
+| `services/registrar-service.js` | 739 | Official `.thru` registry reads/writes and the custom-registrar provider, including tiered on-chain pricing (`pricePerYearFor` / `totalForTerm`) and the config's `fee_policy` |
+| `services/name-service.js` | 567 | Name-service lookups, availability, canonical root |
+| `services/primary-name-service.js` | 379 | Wallet-local, network-scoped primary name (links only after an owner match) |
 | `services/signing-guard.js` | 39 | Blocks network rebinding from operation entry through submission |
 | `services/send-context.js` | 25 | Checked-send account/network binding |
 | `services/dex-service.js` | 728 | DeFi M0 DEX surface (quotes/pools/prepared intents); refuses unless `DEFI_*` flags are on |
@@ -167,16 +167,16 @@ No DOM or `chrome.*` access. Contract **v31** has **153 methods**. Security-poli
 | --- | ---: | --- |
 | `contract/manifest.js` | 1,308 | UI/background contract allowlist and method metadata |
 | `contract/defi-schema.js` | 456 | Machine-readable sibling schema for the 43-method DeFi M0 surface, kept coherent by `test/test-defi-m0.mjs` |
-| `format.js` | 98 | BigInt-safe amount formatting/parsing, including the one `formatAssetAmount` scale rule |
+| `format.js` | 130 | BigInt-safe amount formatting/parsing, including the one `formatAssetAmount` scale rule |
 | `refs.js` | 104 | Opaque account references and equality |
-| `network-scope.js` | 103 | Network-scoped vs global storage keys (includes `tx_reviews`) |
+| `network-scope.js` | 104 | Network-scoped vs global storage keys (includes `tx_reviews`) |
 | `flags.js` | 72 | Build-time flags; every `DEFI_*` and `NAME_SERVICE` flag is false |
 | `autolock.js` | 36 | Shared auto-lock constants/helpers |
 | `side-panel.js` | 17 | Side-panel context marker/action |
 | `security-checks.js` | 184 | Shared password/security validation used by Settings and the router |
 | `tokens.js` | 13 | `NATIVE_TOKEN`: THRU, 9 decimals (the scale `format.js` and every decoder use) |
-| `tx-review/model.js` | 349 | The review wire contract, strict validator, TTL, and the ONE error-code registry |
-| `tx-review/registry.js` | 75 | Decoder registry; no fallback, duplicate registration throws |
+| `tx-review/model.js` | 365 | The review wire contract, strict validator, TTL, and the ONE error-code registry |
+| `tx-review/registry.js` | 67 | Decoder registry; no fallback, duplicate registration throws |
 | `tx-review/decoders/*` | 1,151 | `common`, `native-send`, `token-transfer`, `domain`, `faucet-claim`, `raw`, `index` — pure facts → content |
 
 Network-specific balances, pending transactions, token state, and History are kept separate by network where applicable. Vault keys, account labels, and contacts are global wallet/device state.
@@ -185,7 +185,7 @@ Network-specific balances, pending transactions, token state, and History are ke
 
 ### Kit and domain components
 
-`src/ui/kit/`: `dom.js` (285), `icon.js` (241), `button.js` (171), `field.js` (193), `feedback.js` (124), `focus-trap.js` (189), `help-tooltip.js` (68), `sheet.js` (117), `toast.js` (145).
+`src/ui/kit/`: `dom.js` (285), `icon.js` (241), `button.js` (171), `field.js` (194), `feedback.js` (144), `focus-trap.js` (189), `help-tooltip.js` (68), `sheet.js` (119), `toast.js` (287).
 
 `src/ui/domain/`: account-avatar (60), account-row (151), account-picker (155), asset-selector (136), balance-hero (111), current-connection (118), fresh-phrase (33), panel-item (57), password-prompt (153), seed-phrase-grid (160), token-avatar (49), token-row (123), token-drawer (483), tx-card (243), tx-detail-sheet (311), security-sheet (186), and `tx-review/`: `review-card.js` (380 — the one review surface) + `confirm.js` (148 — the one confirm→auth→submit path).
 
@@ -220,7 +220,7 @@ Route lifecycle tests use a DOM shim; they do not establish actual rendered geom
 | `popup.js` | 49 | Boot stub into `src/ui/app/boot.js` |
 | `popup.html` | 30 | Single `#app` shell |
 | `qr.js` | 130 | Canvas QR renderer |
-| `theme.js` | 48 | Theme selection/storage |
+| `theme.js` | 45 | Theme selection/storage |
 
 The manifest panel path uses `popup.html?thru_panel=1`. On popup boot, the close listener is registered before async theme/bootstrap work; the popup broadcasts for compatibility and uses Chrome's direct close API when available. The Dashboard button explicitly opens the panel; Settings' Side Panel Mode is a separate opt-in for toolbar behavior and is restored by the worker only when enabled. Actual browser interaction is still open in `docs/MANUAL_SMOKE_CHECKLIST.md`.
 
