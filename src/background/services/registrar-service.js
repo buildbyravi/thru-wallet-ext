@@ -423,7 +423,20 @@ function tcrCoded(code, message, extra = {}) { return coded(code, message, extra
  * through `pricePerYearFor(info, label)`, because the tier depends on the label's length. A
  * price is a CHARGE only when `feeEnforced` is true.
  */
-export async function getCustomRegistrar() {
+// In-memory cache for custom registrar config. The on-chain config (bytecode deployment,
+// fee schedule, treasury address) is static deployment data that does not change between
+// keystrokes; caching it for 15s avoids redundant sequential RPC calls during review preparation.
+let cachedCustomRegistrar = null;
+let cachedCustomRegistrarKey = null;
+let cachedCustomRegistrarExpiresAt = 0;
+
+export function clearCustomRegistrarCache() {
+  cachedCustomRegistrar = null;
+  cachedCustomRegistrarKey = null;
+  cachedCustomRegistrarExpiresAt = 0;
+}
+
+export async function getCustomRegistrar({ skipCache = false } = {}) {
   const network = await getActiveNetworkConfig(); // bind SDK to the active network first
   const program = network.customRegistrarProgram ?? null;
   if (!program) {
@@ -434,6 +447,12 @@ export async function getCustomRegistrar() {
       program: null,
     };
   }
+
+  const cacheKey = `${network.id}:${program}`;
+  if (!skipCache && cachedCustomRegistrar && cachedCustomRegistrarKey === cacheKey && Date.now() < cachedCustomRegistrarExpiresAt) {
+    return cachedCustomRegistrar;
+  }
+
   const configAddress = tcr.tcrConfigAddress(program);
   const read = await fetchAccountData(configAddress).catch((err) => {
     throw tcrCoded('TCR_CONFIG_UNREADABLE', `Could not read the custom registrar config: ${err?.message ?? err}`, { retryable: true });
@@ -449,7 +468,7 @@ export async function getCustomRegistrar() {
   }
   const derivedRoot = await rootRegistrarAddress(cfg.rootName);
   const rootMatchesNameService = derivedRoot === cfg.rootAddress;
-  return {
+  const result = {
     supported: true,
     networkId: network.id,
     program,
@@ -474,6 +493,11 @@ export async function getCustomRegistrar() {
     treasury: cfg.treasury,
     admin: cfg.admin,
   };
+
+  cachedCustomRegistrar = result;
+  cachedCustomRegistrarKey = cacheKey;
+  cachedCustomRegistrarExpiresAt = Date.now() + 15_000;
+  return result;
 }
 
 /**
@@ -503,8 +527,8 @@ export function totalForTerm(info, label, years) {
  *     a display hint only; the program's own judgement is authoritative at write time.
  *   - domain-existing-without-lease is a distinct truth ("another authority got there").
  */
-export async function checkCustomLease({ name } = {}) {
-  const info = await getCustomRegistrar();
+export async function checkCustomLease({ name, registrarInfo = null } = {}) {
+  const info = registrarInfo || await getCustomRegistrar();
   if (!info.supported) return info;
   const n = String(name ?? '').trim().toLowerCase();
   const prob = tcr.labelProblem(n);

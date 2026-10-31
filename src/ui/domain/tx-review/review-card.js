@@ -78,6 +78,17 @@ function detailRow(label, value, { mono = false } = {}) {
   ]);
 }
 
+/**
+ * Full addresses in Details get a 2-line block (label line 1, full address line 2)
+ * so long 46-character strings do not force horizontal squishing and collision.
+ */
+function detailAddressRow(label, address) {
+  return h('div', { class: 'tx-review-address-row' }, [
+    h('div', { class: 'tx-review-label', text: label }),
+    h('div', { class: 'mono tx-review-address', text: address }),
+  ]);
+}
+
 // A 46-character address in a table row pushes everything else out of the eye's path. The card
 // shows first-six/last-four and keeps the whole address in Details (and behind the counterparty's
 // tap-to-expand), which is enough to recognise an address without turning the card into a wall.
@@ -285,10 +296,9 @@ export function TxReviewCard({ review, onChange = null } = {}) {
     // Who is signing, in full — name AND address. The context line names the account; a name
     // cannot stand in for the address the signature comes from, so both live here.
     if (r.account?.address) {
-      details.push(detailRow(
+      details.push(detailAddressRow(
         r.account.label ? `From · ${r.account.label}` : 'From',
         r.account.address,
-        { mono: true },
       ));
     }
     if (r.execution.program) {
@@ -307,7 +317,7 @@ export function TxReviewCard({ review, onChange = null } = {}) {
     const stated = new Set([r.account?.address, r.counterparty?.address].filter(Boolean));
     for (const account of r.execution.accounts) {
       if (stated.has(account.address)) continue;
-      details.push(detailRow(account.role, account.address, { mono: true }));
+      details.push(detailAddressRow(account.role, account.address));
     }
     // Four distinct states, four distinct words. "Failed" must never read as "unavailable":
     // it is a blocking fact (the service adds the blocking warning; the card shows the same

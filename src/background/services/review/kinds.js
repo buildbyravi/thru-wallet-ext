@@ -182,18 +182,23 @@ async function nativeSendFacts(params, { account, network }) {
   const toAddress = requireAddress(params.toAddress, 'toAddress');
   const amountUnits = requireUnits(params.amountUnits, 'amountUnits');
 
-  const [recipient, sender, fee, duplicate] = await Promise.all([
+  const labelPromise = resolvedRecipientLabel(params)
+    ? Promise.resolve(resolvedRecipientLabel(params))
+    : labelFor(toAddress);
+
+  const [recipient, sender, fee, duplicate, recipientLabel] = await Promise.all([
     accountState(toAddress),
     accountState(account.address),
     feeQuote(),
     txService.checkDuplicate({ toAddress, amountUnits, fromAddress: account.address }).catch(() => null),
+    labelPromise,
   ]);
 
   return {
     fromAddress: account.address,
     fromLabel: account.label ?? null,
     toAddress,
-    recipientLabel: resolvedRecipientLabel(params) ?? await labelFor(toAddress),
+    recipientLabel: resolvedRecipientLabel(params) ?? recipientLabel,
     amountUnits,
     recipient: { exists: recipient.exists },
     balanceUnits: sender.balanceUnits,
@@ -229,7 +234,11 @@ async function tokenTransferFacts(params, { account, network }) {
   const toAddress = requireAddress(params.toAddress, 'toAddress');
   const amountUnits = requireUnits(params.amountUnits, 'amountUnits');
 
-  const [metadata, source, recipient, duplicate, recipientAccount] = await Promise.all([
+  const labelPromise = resolvedRecipientLabel(params)
+    ? Promise.resolve(resolvedRecipientLabel(params))
+    : labelFor(toAddress);
+
+  const [metadata, source, recipient, duplicate, recipientAccount, recipientLabel] = await Promise.all([
     tokenMetadata(mintAddress),
     thruClient.getTokenBalance(account.address, mintAddress).catch(() => null),
     accountState(toAddress),
@@ -247,13 +256,14 @@ async function tokenTransferFacts(params, { account, network }) {
         return { address: null, exists: null };
       }
     })(),
+    labelPromise,
   ]);
 
   return {
     fromAddress: account.address,
     fromLabel: account.label ?? null,
     toAddress,
-    recipientLabel: resolvedRecipientLabel(params) ?? await labelFor(toAddress),
+    recipientLabel: resolvedRecipientLabel(params) ?? recipientLabel,
     mintAddress,
     symbol: metadata.symbol,
     name: metadata.name,
@@ -317,12 +327,18 @@ async function domainRegisterFacts(params, { account, network }) {
   if (!info.supported) {
     throw coded('TCR_ABSENT', info.reason || 'The custom registrar is unavailable on this network.');
   }
-  const check = await registrarService.checkCustomLease({ name });
+
+  // Parallelize lease verification, payer balance read, and fee quote so preparation
+  // completes in one RPC round-trip instead of 3 sequential round-trips.
+  const [check, payer, fee] = await Promise.all([
+    registrarService.checkCustomLease({ name, registrarInfo: info }),
+    accountState(account.address),
+    feeQuote(),
+  ]);
   const availability = check.readError
     ? 'unknown'
     : (check.domainExists || check.leaseExists) ? 'taken' : 'available';
 
-  const [payer, fee] = await Promise.all([accountState(account.address), feeQuote()]);
   // Tiered price for THIS label (3 / 4 / 5+ characters), from the program's own config.
   const feePerYear = registrarService.pricePerYearFor(info, name).toString();
   const totalPriceUnits = (BigInt(feePerYear) * BigInt(years)).toString();
@@ -380,7 +396,7 @@ async function domainRegisterRecheck(record) {
     throw coded('REVIEW_PRICE_CHANGED',
       'The registrar fee policy changed after review. Review the registration again.');
   }
-  const check = await registrarService.checkCustomLease({ name: facts.name });
+  const check = await registrarService.checkCustomLease({ name: facts.name, registrarInfo: info });
   if (check.readError) {
     throw coded('REVIEW_UNAVAILABLE',
       'Availability could not be re-verified before signing.', true);
@@ -399,7 +415,11 @@ async function domainCustomRenewFacts(params, { account, network }) {
   if (!info.supported) {
     throw coded('TCR_ABSENT', info.reason || 'The custom registrar is unavailable on this network.');
   }
-  const check = await registrarService.checkCustomLease({ name });
+  const [check, payer, fee] = await Promise.all([
+    registrarService.checkCustomLease({ name, registrarInfo: info }),
+    accountState(account.address),
+    feeQuote(),
+  ]);
   if (check.readError) {
     throw coded('REVIEW_UNAVAILABLE', check.readError);
   }
@@ -410,7 +430,6 @@ async function domainCustomRenewFacts(params, { account, network }) {
     throw coded('NOT_NAME_OWNER', `'${name}.${info.rootName}' belongs to another account.`);
   }
 
-  const [payer, fee] = await Promise.all([accountState(account.address), feeQuote()]);
   const feePerYear = registrarService.pricePerYearFor(info, name).toString();
   const totalPriceUnits = (BigInt(feePerYear) * BigInt(years)).toString();
 
@@ -462,7 +481,7 @@ async function domainCustomRenewRecheck(record) {
   if (Boolean(info.feeEnforced) !== Boolean(facts.feeEnforced)) {
     throw coded('REVIEW_PRICE_CHANGED', 'The registrar fee policy changed after review. Review the renewal again.');
   }
-  const check = await registrarService.checkCustomLease({ name: facts.name });
+  const check = await registrarService.checkCustomLease({ name: facts.name, registrarInfo: info });
   if (check.readError) {
     throw coded('REVIEW_UNAVAILABLE', 'Lease could not be re-verified before signing.', true);
   }

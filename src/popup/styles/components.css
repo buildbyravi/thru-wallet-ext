@@ -1504,6 +1504,25 @@ button.row { cursor: pointer; }
   overflow-wrap: anywhere;
 }
 
+.tx-review-address-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 2px 0;
+}
+
+.tx-review-address-row .tx-review-label {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+
+.tx-review-address-row .tx-review-address {
+  font-size: var(--fs-xs);
+  color: var(--text-1);
+  word-break: break-all;
+  line-height: 1.4;
+}
+
 /* A review value is evidence, not a preview. `.detail-address` (used by account rows elsewhere)
    ellipsizes for compactness; a destination address in this card must never be clipped, so mono
    values wrap instead. A truncated recipient cannot be checked before an irreversible send. */

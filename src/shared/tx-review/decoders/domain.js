@@ -150,7 +150,7 @@ function registrarProgram(facts) {
  */
 function customRegistrarTrustNote() {
   return 'Name registrar run by the Thru Wallet team on this test network. '
-    + 'It does not charge a registration fee, and it has not been independently audited.';
+    + 'It has not been independently audited.';
 }
 
 /** Shown in Details for a custom-registrar write; never a price, never a "best-effort" hedge. */
