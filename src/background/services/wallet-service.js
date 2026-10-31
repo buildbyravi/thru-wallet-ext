@@ -211,18 +211,13 @@ export async function resetWallet({ confirmation, password } = {}) {
   await pending.clearAll();
 
   // Clear all wallet-associated persistent storage so no contacts, labels, caches,
-  // or tracked domains survive into a new wallet.
+  // reviews, intents, or tracked domains survive into a new wallet.
   try {
-    const all = await chrome.storage.local.get(null);
-    const keysToRemove = Object.keys(all || {}).filter((k) =>
-      k.startsWith('thru_') ||
-      k.startsWith('vault') ||
-      k === 'unlocked_session' ||
-      k === 'active_account_ref' ||
-      k === 'preferences'
-    );
-    if (keysToRemove.length) {
-      await chrome.storage.local.remove(keysToRemove);
+    if (typeof chrome.storage?.local?.clear === 'function') {
+      await chrome.storage.local.clear();
+    } else {
+      const all = await chrome.storage.local.get(null);
+      await chrome.storage.local.remove(Object.keys(all || {}));
     }
     await chrome.storage.session.clear().catch(() => {});
   } catch {

@@ -9,6 +9,7 @@
 pub mod cpi;
 pub mod errors;
 pub mod instruction;
+pub mod sha256;
 pub mod state;
 
 // The processor path pulls in syscalls/helpers that only exist in the on-chain target

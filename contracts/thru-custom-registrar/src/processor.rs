@@ -80,6 +80,22 @@ fn pubkey_at(idx: u16) -> Result<[u8; 32], u64> {
     Ok(get_txn().account_pubkey(idx).map_err(|_| E::ERR_MISSING_ACCOUNTS)?.0)
 }
 
+/// Derives the canonical config PDA for the currently executing program:
+/// PDA = sha256([program_pubkey (32 bytes), 0 (1 byte), CANONICAL_CONFIG_SEED (32 bytes)])
+#[inline]
+fn canonical_config_pda() -> Result<[u8; 32], u64> {
+    let shadow_stack = thru_core::get_shadow_stack();
+    let current_prog_idx = shadow_stack.current_program_acc_idx();
+    let program_pk = pubkey_at(current_prog_idx)?;
+
+    let mut input = [0u8; 65];
+    input[..32].copy_from_slice(&program_pk);
+    input[32] = 0; // non-ephemeral
+    input[33..].copy_from_slice(&cpi::CANONICAL_CONFIG_SEED);
+
+    Ok(crate::sha256::sha256(&input))
+}
+
 /// Check that an account is not yet created on-chain (virgin).
 /// In ThruVM, an uncreated account has version 0 in its metadata; once created, version == 1.
 #[inline]
@@ -159,6 +175,11 @@ pub fn initialize<const N: usize>(
     // Config seed must strictly be the canonical seed so no secondary rogue configs can be created
     if ix.config_seed != cpi::CANONICAL_CONFIG_SEED {
         return Err(E::ERR_WRONG_CONFIG_SEED);
+    }
+
+    // Config account must match the canonical PDA for this program
+    if pubkey_at(ix.config_idx)? != canonical_config_pda()? {
+        return Err(E::ERR_WRONG_CONFIG);
     }
 
     // Config must be virgin — double-Initialize would silently swap authority.
@@ -242,6 +263,10 @@ pub fn register<const N: usize>(
     // Account-table identity checks — a spoofed treasury/root must fail CHECKS, not CPI.
     if pubkey_at(ix.ns_idx)? != cpi::NAME_SERVICE_PROGRAM {
         return Err(E::ERR_WRONG_NAME_SERVICE_PROGRAM);
+    }
+    // Config must strictly match the canonical PDA for this program
+    if pubkey_at(ix.config_idx)? != canonical_config_pda()? {
+        return Err(E::ERR_WRONG_CONFIG);
     }
     if pubkey_at(ix.treasury_idx)? != cfg.treasury {
         return Err(E::ERR_WRONG_TREASURY);
@@ -337,6 +362,10 @@ pub fn renew<const N: usize>(
         }
         RegistrarConfig::parse(acc.data())?
     };
+    // Config must strictly match the canonical PDA for this program
+    if pubkey_at(ix.config_idx)? != canonical_config_pda()? {
+        return Err(E::ERR_WRONG_CONFIG);
+    }
     if pubkey_at(ix.treasury_idx)? != cfg.treasury {
         return Err(E::ERR_WRONG_TREASURY);
     }
@@ -406,6 +435,10 @@ pub fn update_config<const N: usize>(
         }
         RegistrarConfig::parse(acc.data())?
     };
+    // Config must strictly match the canonical PDA for this program
+    if pubkey_at(ix.config_idx)? != canonical_config_pda()? {
+        return Err(E::ERR_WRONG_CONFIG);
+    }
     if caller != cfg.admin {
         return Err(E::ERR_NOT_ADMIN);
     }
