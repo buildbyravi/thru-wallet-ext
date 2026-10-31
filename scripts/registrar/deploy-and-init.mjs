@@ -199,7 +199,7 @@ if (existing?.exists) {
 
 // ---------- 2. Initialize (config create + init-root CPI inside the program) --------------
 const {
-  buildTcrInitializeInstructionData, tcrConfigAddress, TCR_CONFIG_SEED_LABEL,
+  buildTcrInitializeInstructionData, buildTcrUpdateConfigInstructionData, tcrConfigAddress, TCR_CONFIG_SEED_LABEL,
 } = await import(toUrl(join(REPO_ROOT, 'src/lib/custom-registrar.js')));
 const nsLib = await import(toUrl(join(REPO_ROOT, 'src/lib/name-service.js')));
 
@@ -236,7 +236,56 @@ let vmError = null;
 let initializeState = 'skipped';
 
 if (existingCfg?.exists) {
-  console.log('  (config account already exists — skipping Initialize transaction)');
+  const { parseTcrConfig } = await import(toUrl(join(REPO_ROOT, 'src/lib/custom-registrar.js')));
+  const raw = existingCfg.raw?.data?.data ?? existingCfg.raw?.data ?? existingCfg.raw;
+  let currentCfg = null;
+  try { currentCfg = parseTcrConfig(raw); } catch { /* ignore */ }
+  const needsUpdate = !currentCfg
+    || currentCfg.layout !== 2
+    || currentCfg.fee3PerYear !== FEE_3
+    || currentCfg.fee4PerYear !== FEE_4
+    || currentCfg.fee5PlusPerYear !== FEE_5PLUS
+    || (currentCfg.feePolicy === 1) !== FEE_POLICY_STRICT
+    || (TREASURY && currentCfg.treasury !== TREASURY);
+
+  if (!needsUpdate) {
+    console.log('  (config account already exists and matches requested tiers — skipping UpdateConfig)');
+  } else {
+    console.log(`  (config account exists in layout ${currentCfg?.layout ?? 'unknown'} — sending UpdateConfig to set tiered schedule + resize)…`);
+    const { rawTransaction } = await client.transactions.buildAndSign({
+      feePayer: { publicKey: deployer.publicKey, privateKey: deployer.privateKey },
+      program: registrarProgramAddress,
+      header: { computeUnits: 2_000_000, memoryUnits: 32_768, stateUnits: 4, fee: 0n, startSlot: slot, expiryAfter: 10_000 },
+      accounts: {
+        readWrite: [configAddress],
+        readOnly: [],
+      },
+      instructionData: ({ getAccountIndex }) => buildTcrUpdateConfigInstructionData({
+        newFee3: FEE_3,
+        newFee4: FEE_4,
+        newFee5Plus: FEE_5PLUS,
+        newFeePolicy: FEE_POLICY_STRICT ? 1 : 0,
+        newTreasury: TREASURY,
+        indexOf: getAccountIndex,
+        configAddress,
+      }),
+    });
+    step(!!rawTransaction?.length, 'UpdateConfig built+signed');
+
+    for await (const update of client.transactions.sendAndTrack(rawTransaction)) {
+      if (update?.signature?.value && !signature) {
+        const { formatSignature } = await import(toUrl(join(REPO_ROOT, 'src/lib/registrar.js')));
+        signature = formatSignature(update.signature.value);
+      }
+      if (update?.executionResult) streamResult = update.executionResult;
+      if (update?.error) streamError = update.error;
+    }
+    step(!!signature && !streamError, 'UpdateConfig broadcast', signature ?? String(streamError ?? 'no signature'));
+    initializeState = 'updated';
+    vmError = Number(streamResult?.vmError ?? -1);
+    step(vmError === 0, 'UpdateConfig executed (vmError 0)',
+      streamResult ? `vmError=${streamResult.vmError} userErrorCode=${streamResult.userErrorCode ?? 0}` : 'stream ended without an execution result');
+  }
 } else {
   // Account lists per role (SDK byte-sorts them into the final table; the u16 indices
   // are resolved INSIDE the instructionData callback via the SDK's getAccountIndex —
