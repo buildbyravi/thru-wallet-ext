@@ -9,3 +9,5 @@ thru-wallet-deploy.txt
 .env
 target/
 .kilo/
+.rabby/
+.thru-web-profile.txt

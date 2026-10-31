@@ -1,8 +1,10 @@
 # THRU extension DeFi: BACKEND build prompt (background services, contract, optional server)
 
-Companion file: `thru-defi-frontend.md`. Both files carry the same PROJECT INPUTS block and the same SHARED CONTRACT block, so two different builders can work in parallel and still meet at the same interface. This file adds the backend spec.
+Prompt version 2.0.0 (2026-10-28), rewritten after the repo audit. Shared contract 2.0.0.
 
-Shared-block fingerprint (sha256 over the SHARED CONTRACT block, from its BEGIN line through its END line): `ca11b7bc900656e4580369ccc319d6c03ca86f2dd0c353f7cc560a671b3147e5`
+Companion file: `thru-defi-frontend.md`. Both files carry the same PROJECT INPUTS, BUILD STATE and SHARED CONTRACT blocks, so two different builders can work in parallel and still meet at the same interface. This file adds the backend spec.
+
+Shared-block fingerprint (sha256 over the SHARED CONTRACT block, from its BEGIN line through its END line): `fd6d1d7e47513cb1403f23dcc2a39b1961060d1ef46bbc4e93c2ab90e955cc8f`
 Both files must show the same fingerprint. If you edit the shared block in one file, make the identical edit in the other and treat this fingerprint as void.
 
 This prompt contains no code. It says what must be built, what each part depends on, and what must be proven before it ships.
@@ -15,9 +17,10 @@ This prompt contains no code. It says what must be built, what each part depends
 2. Fill PROJECT INPUTS in both files with the same answers. Blank means default.
 3. Input limit? Paste in this order: this header, PROJECT INPUTS, SHARED CONTRACT S0 to S4, S5 to S11, S12 to S14, then the backend spec one section at a time.
 4. **Gate 0 is a research task on a live test network.** Use a throwaway account on a test network only. Every chain fact the build depends on must trace to a recorded evidence entry. Answers from memory or from this prompt do not count.
-5. The backend delivers M0 (S13) first. The frontend is waiting on it.
+5. M0 is delivered. Each new slice repeats the M0 drop (S13) before the frontend builds against it.
 6. Relay change requests (CCRs, S0) between the two builders verbatim.
 7. Never give a model a real seed or a mainnet key.
+8. BUILD STATE records what is already built, what was observed on the network and what is known to be broken. When that changes, edit that block identically in both files. It is not fingerprinted.
 
 ## Role
 
@@ -28,6 +31,8 @@ You do not own: screens, copy, formatting, UI components, or the on-chain progra
 Thesis: chain state is authoritative. Anything that can reach a signature is read from the chain at prepare time. When the chain or a program cannot be verified, the answer is `supported: false` with a reason, never a guess.
 
 ## First reply (terse, in this order)
+
+Start with one line: the repo's current commit and `CONTRACT_VERSION`, and whether BUILD STATE is still accurate.
 
 1. **ASSUMPTIONS**: every default you applied.
 2. **REPO RECON**: the B1 recon list, confirmed or corrected. Map every path this prompt names to its current equivalent. List every conflict with this prompt, with `AGENTS.md`, and with guides 09 to 11 (B1).
@@ -72,15 +77,15 @@ Then build only the current gate and stop at its boundary with a report. Never h
 
 | ID | Decision | Default | Trade-off | Your answer |
 |---|---|---|---|---|
-| D1 | Program supply path | Official or verified programs only. No project-authored on-chain program in this workstream. | A curve program is a separate audited project. Waiting limits launchpad depth. | |
+| D1 | Program supply path | Official or verified programs only for DeFi. One exception on record: the custom `.thru` registrar (D-016), Betanet-only until it meets S16. | A curve program is a separate audited project. Waiting limits launchpad depth. | |
 | D2 | Market data source | Direct-chain for money-critical reads. A project read API for discovery and analytics if the dossier finds no official index. | The operator becomes a privacy, availability and trust dependency. | |
 | D3 | Image and metadata hosting | Project proxy and server-side pinning. Placeholders when absent. | Needs hosting and ops. The alternative is no images. | |
-| D4 | Desktop surface | A separate full-page tab (`desktop.html`, `src/desktop/`, its own esbuild entry, single instance), as `build.mjs` and the layering rules already anticipate. | The existing side panel is narrower and shares the popup page. A second page needs build, CSP and quarantine-test changes, which AGENTS.md says to confirm with the owner. | |
+| D4 | Desktop surface | A separate full-page tab (`desktop.html`, `src/desktop/`, its own esbuild entry, single instance), as `build.mjs` and the layering rules already anticipate. Not built yet. | The existing side panel is narrower and shares the popup page. A second page needs build, CSP and quarantine-test changes, which AGENTS.md says to confirm with the owner. | |
 | D5 | DeFi signing auth | Inherit the wallet's signing policy (`requirePasswordForSigning`, off by default in the code). Add step-up: the password is required regardless of that setting for the first use of a program, pool or asset by this account on this network, for any intent carrying a `high` warning, and for launch create, migrate and claim. A stricter-only user option (`defiAlwaysRequirePassword`) demands it for every DeFi signature. | Fewer prompts than password-per-swap, at the cost of relying on the review, the binding and the step-up classes. | |
 | D6 | Batch authorisation | Per-step auth. Batch auth only when every transaction is predetermined, hash-bound and short-lived. | Fewer prompts versus a larger blast radius. | |
 | D7 | Monetisation | None at launch. Any later fee is program-enforced and itemised. | Revenue is deferred. | |
 | D8 | USD for non-core assets | Never. Native THRU only. | Less familiar UX versus manipulation risk. | |
-| D9 | Contract versions | The next free `CONTRACT_VERSION` for reads, the one after for execution (the repo was at 15, so 16 and 17). | Two releases instead of one. | |
+| D9 | Contract versions | READ was delivered at 17 and EXEC at 18. The repo is at 28. Each new slice takes the next free version. | One release per slice. | |
 | D10 | Browser targets | Chromium (Chrome, Edge, Brave) first. | Firefox needs separate MV3 work. | |
 | D11 | Telemetry | None. Local diagnostics export instead. | Harder remote debugging. | |
 | D12 | Verified-list governance | Project-curated signed list with public criteria and a takedown and appeal path. | Operator conflict of interest and ongoing workload. | |
@@ -88,6 +93,17 @@ Then build only the current gate and stop at its boundary with a report. Never h
 | D14 | Custom RPC networks | DeFi disabled. | Power users lose features. | |
 | D15 | Charts | Built in-house on SVG or canvas through the DOM kit. No charting library. | AGENTS.md allows only first-party Thru packages as new dependencies. A library needs the owner to lift that rule explicitly. In-house charts cost build time. | |
 | D16 | Privacy posture | Treat any project server, feed fetch or image proxy as a change to `PRIVACY.md` and the store listing, made before it ships. | `PRIVACY.md` today promises no proxy, relay or backend server and zero telemetry. Without a server, discovery and images stay unsupported. | |
+| D17 | Product order | Launchpad backend first (owner directive 2026-10-26), built as "launchpad-lite": create a token, seed an AMM pool, list it. The swap UI stays withdrawn until you re-approve it. | Without a trade surface, a token created in the wallet cannot be bought in the wallet. | |
+| D18 | Liquidity and venues | The project seeds no liquidity. The only pools are user-created. The verified list starts empty. | A DEX with no liquidity is an empty shell. A seeded pool makes the project a market maker. | |
+| D19 | User content hosting and moderation | The project hosts no user images or descriptions in v1. Identicons and on-chain fields only. | Hosting user content creates legal duties: illegal-content scanning, takedown handling, copyright notices. | |
+| D20 | Mainnet gating | DeFi stays disabled on mainnet until S16 is met, independent audits are done, counsel has signed off, and P3 has passing evidence. | Delays mainnet. | |
+| D21 | Project fees and treasury | Zero. No fee is shown or collected until a program enforces it and evidence shows the balance delta. | No revenue at launch. | |
+| D22 | Test chain and CI | Record-and-replay fixtures in CI. Live probes run by the owner. A blocked probe is never green. Ask Thru for a local validator image. | Without a local chain, evidence depends on a testnet that resets and has faucet faults. | |
+| D23 | Key types for DeFi | Mnemonic accounts only. | Passkey and hardware accounts need their own signing UX and review. | |
+| D24 | dApp provider | None until Thru publishes an extension contract. | Without a provider the wallet is not usable from dApps. | |
+| D25 | Incident ownership | The owner holds the feed-signing and kill-switch keys, with a written rotation procedure and a named contact. | A single key holder is a single point of failure. | |
+| D26 | Dashboard entry | DeFi entries go in the dashboard's second services grid. The main six-tile grid stays frozen. | A tile in the main grid needs an owner decision and a guard change in the same commit. | |
+| D27 | Names and the custom registrar | Out of this workstream. Their signing paths still meet R20 and move onto the pipeline when next touched. The custom registrar stays Betanet-only until S16. | Two signing paths to maintain until then. | |
 
 **5. Starting limits.** These are proposals for the product owner, not facts. The backend seeds them and serves them through `program.capabilities`.
 
@@ -97,7 +113,7 @@ Then build only the current gate and stop at its boundary with a report. Never h
 | Prepared (unsigned) intent lifetime | 2 minutes | |
 | Default slippage | 50 bps for verified assets, 300 bps suggested for unverified or curve assets | |
 | Slippage warning above | 300 bps | |
-| Slippage hard cap | 2000 bps (higher only in Desktop advanced, with typed confirmation) | |
+| Slippage hard cap | 1000 bps, as the swap service enforces today (the capability matrix advertises 2000: fix, A6). Raise only deliberately, in Desktop advanced, with typed confirmation. | |
 | Price impact warning above | 500 bps | |
 | Price impact block above | 1500 bps | |
 | USD liquidity floor (no USD below this pool size) | to be set per network from observed liquidity | |
@@ -105,10 +121,67 @@ Then build only the current gate and stop at its boundary with a report. Never h
 | Minimum poll interval for display data | 5 seconds | |
 
 **6. Out of scope confirmation.** Everything in S14 stays out of v1 unless you write "include" next to it here: ______
+
+**7. Questions only you can answer.** The builders must not guess these. Each changes what gets built.
+1. Who is the operator, in which jurisdiction, and is running a token-creation and trading surface permitted there? (Counsel, before G3 is enabled and before any launch flow.)
+2. What does "successful" mean for the launchpad, in one measurable sentence? The order of work flipped twice in a day because this is unwritten.
+3. Who provides liquidity? Without pools there is nothing to trade. Will you seed, incentivise creators, or wait for an official venue?
+4. Who controls the AMM program's upgrade authority? Ask the Thru team. If it is one key, every swap trusts that key.
+5. When is mainnet, and will Betanet reset again? Registry, caches, drafts and pending intents all need a reset runbook.
+6. Will Thru provide a local validator and a fix for the account-creation fault that blocked token-transfer evidence? Until then P3 cannot pass.
+7. Where does DeFi enter the popup, given the frozen grid and the Swap tile that is a roadmap toast?
+8. Is the custom registrar kept and audited, or replaced by the official one? Who holds its admin key and treasury?
+9. What are the budget and dates for the independent audits (the extension, and any project-authored program)?
+10. Who holds the feed-signing and kill-switch keys, and who is on call?
+11. Must passkey or hardware accounts work with DeFi? Does interoperability with Thru's embedded wallet matter?
+12. Will you accept a small hosted service and the privacy-policy change it forces, or stay serverless and live with no discovery and no images?
+13. Is "Launchpad" the right name for a flow with no bonding curve? "Create token" promises less.
 <!-- END:PROJECT-INPUTS -->
 
-<!-- BEGIN:SHARED-CONTRACT v1.0.0 -->
-# SHARED CONTRACT v1.0.0 (identical in the frontend and backend prompts)
+<!-- BEGIN:BUILD-STATE -->
+# BUILD STATE (as of 2026-10-28, repo `main` at `1b9d096`; it is not fingerprinted, so refresh it identically in both files when facts move)
+
+This is what exists, what was observed on the network, and what is known to be broken. Treat it as the starting point. If recon disagrees, recon wins and you report the difference.
+
+**Versions.** Extension 1.4.1. `CONTRACT_VERSION` 28 (144 methods). `@thru/sdk` and `@thru/programs` 0.4.2, pinned exactly. Only `betanet` is enabled. Mainnet is not declared.
+
+| Slice | State |
+|---|---|
+| G0 dossier and registry seed | done |
+| M0 contract drop (READ at contract 17, EXEC at 18), fixtures in `test/fixtures/defi/`, drift tests | done |
+| G1 read-only backend | closed by owner sign-off 2026-10-07 |
+| G2-S0 intent pipeline for native send | landed 2026-10-09 behind `DEFI_INTENT`. P3 was waived by owner sign-off, not closed. |
+| G3 swap backend (pool reads, exact-in quotes, `dex-swap` intents) | landed. One live swap on Betanet on 2026-10-25. |
+| Swap UI | shipped 2026-10-26 and withdrawn the same day by owner directive. The backend stays. |
+| Desktop page | not built. No `desktop.html`, no manifest or CSP change. |
+| DeFi frontend | not started |
+| Every DeFi flag | false |
+
+Live but outside the DeFi scope: the name service and registrar (`name.*`, contract 19 to 25 and 28), the faucet limit (24) and cached balances (27).
+
+**Owner directives that bind both sides**
+1. 2026-10-26, "Option B": the launchpad backend is built first, and the swap UI stays withdrawn until the owner re-approves it. This exists only in a commit message. Put it in the decisions log.
+2. The dashboard's main grid is frozen at six tiles (`scripts/check-panel-tiles.mjs`) and its Swap tile is a roadmap toast. Ecosystem entries go in the second "services grid" (first entry: Domain).
+3. AGENTS.md rule 15: the UI never gates first paint on RPC. Every read a first paint needs has a cached counterpart.
+4. AGENTS.md rule 14: sheets, drawers and overlays are checked in a real browser or the visual harness. The repo reverted dashboard layout twice and the swap slice once. Enable a flag only on a recorded decision, with screenshots.
+
+**Observed on Betanet (dated evidence, not assumptions)**
+- The AMM program is deployed (deployment observed 2026-10-06). Its version, upgrade authority and who controls pool creation are unknown.
+- Pools derive from the sorted mint pair plus the fee tier. Init pool, add liquidity and an exact-in swap ran live on 2026-10-25 between two tokens the tester deployed. One quote: 987,158 out for 1,000,000 in against 100,000,000 and 100,000,000 reserves, which fits a fee of about 0.3%. That is one data point, not a parity vector.
+- No liquidity exists except pools testers create. The verified list is empty.
+- A swap needs the user's output token account to exist. The backend refuses with `TOKEN_ACCOUNT_MISSING`, so a buyer of a brand-new token cannot start.
+- Remove-liquidity is not verified live, so adding liquidity stays disabled by R2. Direct-pool launch needs it.
+- Simulation is unsupported (`tx.simulate` stub, docs negative).
+- No launch or curve program exists among the 18 bootstrap programs.
+- Token transfer (P3): FAIL 2026-10-06 to 2026-10-08 (an account-creation fault at the faucet rung) and BLOCKED_ENV on 2026-10-23. No passing evidence is on record.
+- The chain was reset on 2026-09-26.
+- The custom `.thru` registrar (D-016) is deployed on Betanet. Three live probes recorded the treasury at 0 before and after, so no fee was collected.
+
+**Known defects to fix first** (details, fixes and tests in the backend spec, B1): A1 registrar fee uncollected while the UI quotes it. A2 intent store not serialised. A3 ambiguous submit recorded as failed and re-armable. A4 native-send review claims simulation. A5 zero minimum output possible on tiny quotes. A6 advertised slippage cap 2000, enforced 1000. A7 twelve emitted error codes undeclared. A8 name-write parameters declared but ignored. A9 flags not frozen. A10 feed records have no rollback sequence. A11 status docs stale and directives unrecorded. A12 P3 waived but written as closed. A13 no create-token-account intent. A14 registrar program unaudited. A15 an evidence probe that cannot fail.
+<!-- END:BUILD-STATE -->
+
+<!-- BEGIN:SHARED-CONTRACT v2.0.0 -->
+# SHARED CONTRACT v2.0.0 (identical in the frontend and backend prompts)
 
 This block is the only agreement between the two builders. It contains no implementation code. Names in backticks are things to create, reuse or verify.
 
@@ -116,7 +189,7 @@ This block is the only agreement between the two builders. It contains no implem
 
 **Precedence.** This block overrides the role spec that follows it. Repo conventions win over both only where this block and the role spec are silent. Report every conflict in your first reply. Never resolve one silently.
 
-**Two version numbers.** The semantic version in the heading tracks the agreement between the two prompts. The extension's integer `CONTRACT_VERSION` tracks the runtime message contract. They move independently. The repo was at `CONTRACT_VERSION` 15 when this was written (confirm in recon). The read-only surface (groups R and L in S6) takes the next free version and the execution surface (groups P and X) the one after. "READ version" and "EXEC version" below mean those two. The repo's contract is append-only: never rename or reshape an existing method.
+**Two version numbers.** The semantic version in the heading tracks the agreement between the two prompts. The extension's integer `CONTRACT_VERSION` tracks the runtime message contract. They move independently. The READ surface (groups R and L in S6) was delivered at contract 17 and the EXEC surface (groups P and X) at 18. The repo was at 28 on 2026-10-28 (BUILD STATE). New slices take the next free version. The contract is append-only: never rename or reshape an existing method. Retirement follows the manifest's own rule: a documented exception, zero callers left, and a test that the method is gone.
 
 **Ownership.**
 
@@ -134,13 +207,17 @@ This block is the only agreement between the two builders. It contains no implem
 
 **Fail closed.** If a required method, capability or version is missing, the affected feature shows its unsupported state. It never guesses.
 
-**Paths are not the contract.** Paths and file names in this prompt reflect the repo as read at the time of writing (extension v1.4.1, contract 15, `@thru/*` 0.4.1). The rules attach to responsibilities, not filenames. If recon finds a moved module, a new framework or a different structure, follow the repo, map every path named here to its current equivalent in your first reply, and carry on. `AGENTS.md` binds both builders. Where this prompt conflicts with it, stop and raise a CCR or ask the human. Never override it.
+**Paths are not the contract.** Paths and file names in this prompt reflect the repo as read at the time of writing (extension v1.4.1, contract 28, `@thru/*` 0.4.2, as of 2026-10-28). The rules attach to responsibilities, not filenames. If recon finds a moved module, a new framework or a different structure, follow the repo, map every path named here to its current equivalent in your first reply, and carry on. `AGENTS.md` binds both builders. Where this prompt conflicts with it, stop and raise a CCR or ask the human. Never override it.
+
+**The delivered contract wins.** READ and EXEC are built and signed off. Where S5 to S11 differ from what was delivered, the delivered contract is the truth and S15 records the difference. Do not rename a delivered method to match this text. Raise a CCR to change the text, or to add what is missing.
+
+**Evidence over intention.** A status, price, fee, capability or gate is only as true as the evidence behind it (R19). Where docs, commit messages and code disagree, the code and the dated evidence win, and the disagreement is reported.
 
 ## S1. Ground truth
 
 **S1.1 Settled by the repo's own docs (treat as law).**
 - Thru is a native L1 with its own VM, transaction format, account model, Token Program, AMM direction, gRPC and gRPC-Web transport, and Explorer MCP. It is not EVM. External DEXs are UX references only. The UI never names one as a destination unless a verified integration exists.
-- Official first-party packages only (`@thru/sdk`, `@thru/programs`), pinned exactly (the repo pins 0.4.1). No other new runtime dependency, no framework, no build-system replacement. No hand-written instruction encoding. Byte goldens come from verified specs, never from regenerated output.
+- Official first-party packages only (`@thru/sdk`, `@thru/programs`), pinned exactly (the repo pins 0.4.2). No other new runtime dependency, no framework, no build-system replacement. No hand-written instruction encoding. Byte goldens come from verified specs, never from regenerated output.
 - Anything that signs goes through the background `signing` auth class. An unlocked wallet is required. Password re-authentication is the user setting `requirePasswordForSigning`, which the code defaults to off, although AGENTS.md rule 10 says "by default". The repo's own docs disagree, so recon reports the real default. DeFi adds its own step-up policy on top (D5).
 - The legacy launchpad is deleted and a quarantine test keeps it out. New work is isolated feature modules (`src/features/<name>`, `src/background/features/<name>`, own contract namespace, own tests, own storage keys, no sibling imports) per `docs/MODULE_BOUNDARIES.md`. Features never import the vault or the Thru client. The layering check and the DOM-sink ratchet (zero sinks across all of `src/`) cover every new path.
 - No fabricated quotes, charts or market state. `supported: false` with a reason is a first-class result. Never treat editable metadata as a protocol fact.
@@ -151,14 +228,14 @@ This block is the only agreement between the two builders. It contains no implem
 - The shipped popup is 400 by 600 px. An opt-in side panel shares the popup page. The extension declares no `host_permissions`. Its CSP allows `connect-src` only to enabled networks' RPC origins, and `img-src` only to self and data URLs. `PRIVACY.md` promises no proxy, relay, backend server or telemetry.
 - Source hierarchy: chain and program state, then official or project index, then third-party enrichment. Enrichment never decides a signature.
 
-**S1.2 Reported by public sources, NOT verified (hypotheses for Gate 0).** These came from package listings, repository mirrors and a third-party MCP server's README. thru.org sub-pages could not be retrieved when this was written, and Thru's own docs say they are evolving. Each line is a question.
+**S1.2 Reported by public sources, NOT verified (hypotheses for Gate 0).** These came from package listings, repository mirrors and a third-party MCP server's README. thru.org sub-pages could not be retrieved when this was written, and Thru's own docs say they are evolving. Each line is a question. BUILD STATE lists what has since been observed on Betanet, and a line is answered only as far as that evidence goes.
 - `@thru/programs` is described as typed clients for core programs: token, AMM, CLOB, oracle, multicall, passkey manager "and others". No launchpad or curve program was named in anything retrievable.
 - `@thru/indexer` (a backend indexing framework) and `@thru/replay` (historical replay) exist.
 - A transaction record reportedly exposes one fee payer, one invoked program, a fee, a nonce, a start slot, requested compute, state and memory units, and read-write and read-only account lists. If true, that implies a nonce model, a validity window, resource-based fees and possibly one program invocation per transaction. Each changes batching, concurrency and fee preview.
 - Public endpoints are reported as gRPC and gRPC-Web. A third-party README states there is no public indexer endpoint and no HTTP faucet.
 - Token program: mint creation takes ticker, decimals and authorities. Token-account derivation takes owner, mint, program and an optional seed, so several token accounts per owner and mint may exist.
-- Package names have changed over time. A third-party README calls the SDK proprietary-licensed, while npm metadata for the pinned 0.4.1 `@thru/sdk` and `@thru/programs` says Apache-2.0. Read the licence files (a backend dossier item).
-- The pinned `@thru/programs` 0.4.1 type declarations (package surface, not a live network) show: AMM builders (init pool, add and withdraw liquidity, exact-in swap), an exact-in quote helper, pool address derivation from a sorted mint pair plus a fee in basis points (so several pools per pair may exist), a pool metadata parser, structured AMM events (swap, mint, burn, pool init, sync), and constants for default and maximum fee and minimum liquidity. Swap, add and withdraw arguments carry minimum-output bounds, and zero explicitly disables a bound. Token builders cover initialise mint (decimals, mint authority, optional freeze authority, ticker, seed, state proof), initialise account, mint-to and transfer. No set-authority, burn, approve, freeze or close builder appears in the listing. The bootstrap package names managed programs for noop, faucet, name service, oracle, multicall, ABI manager, token, AMM, CLOB, registrar, wrapped THRU, passkey manager, NFT, uploader and compression, and a THRUSD mint under legacy CREDITS export names. No launch or curve program is among them. Perp bindings exist but are out of scope. Managed-program deployment and inspection helpers exist (manager, ABI manager, uploader, deploy).
+- Package names have changed over time. A third-party README calls the SDK proprietary-licensed, while npm metadata for the pinned `@thru/sdk` and `@thru/programs` (0.4.1 when read, 0.4.2 now) says Apache-2.0. Read the licence files (a backend dossier item).
+- The `@thru/programs` 0.4.1 type declarations (read when this was written; the repo has since pinned 0.4.2, so re-read them; package surface, not a live network) show: AMM builders (init pool, add and withdraw liquidity, exact-in swap), an exact-in quote helper, pool address derivation from a sorted mint pair plus a fee in basis points (so several pools per pair may exist), a pool metadata parser, structured AMM events (swap, mint, burn, pool init, sync), and constants for default and maximum fee and minimum liquidity. Swap, add and withdraw arguments carry minimum-output bounds, and zero explicitly disables a bound. Token builders cover initialise mint (decimals, mint authority, optional freeze authority, ticker, seed, state proof), initialise account, mint-to and transfer. No set-authority, burn, approve, freeze or close builder appears in the listing. The bootstrap package names managed programs for noop, faucet, name service, oracle, multicall, ABI manager, token, AMM, CLOB, registrar, wrapped THRU, passkey manager, NFT, uploader and compression, and a THRUSD mint under legacy CREDITS export names. No launch or curve program is among them. Perp bindings exist but are out of scope. Managed-program deployment and inspection helpers exist (manager, ABI manager, uploader, deploy).
 - Thru ships passkey-based embedded-wallet SDKs and a passkey-manager program. What dApps expect from an extension wallet is unknown.
 
 Everything not in S1.1 or S1.2 is unknown.
@@ -185,6 +262,14 @@ Everything not in S1.1 or S1.2 is unknown.
 - **R16 Reversible rollout [B, F honours].** Every capability sits behind a flag that defaults off and can be killed through a signed feed without a store release. DeFi flags are build-time constants with no URL or query override (the retired `?launchpad=1` pattern is banned).
 - **R17 No zero bounds [B].** The AMM bindings treat a zero minimum as "no protection". No built-in flow ever builds a swap, an add or a withdraw with a zero minimum bound.
 - **R18 Pin the context [B+F].** The reviewed account and network are pinned at prepare time and re-checked around signing (the existing checked-send pattern). A switch of either invalidates the intent. Signing uses the pinned network's client, not whichever network is active at that moment.
+- **R19 Falsifiable evidence [B].** Every verification probe can fail. "Skipped", "non-fatal", "blocked" and "unknown" are never green and never count toward a gate. A price, fee or capability shown to a user must trace to evidence that it was observed: a fee is shown only if a measured balance delta proves it was charged. (The registrar fee probe passed while the treasury stayed at zero.)
+- **R20 One signing guard [B].** Every method that signs or broadcasts (send, deploy, faucet, names, registrar, intents) is declared `signing` or documented as a narrow exception, sits in the transaction-guard set, and pins account and network. A test enumerates every handler that reaches a signing helper and asserts all three. A parameter the manifest declares must be enforced or removed.
+- **R21 Serialised stores [B].** Any store that does read-modify-write over async storage goes through a single-flight queue and has a concurrency test. A comment claiming atomicity is not evidence.
+- **R22 Ambiguity is not failure [B+F].** After a submit whose outcome is unproven, the state is `unknown`, the backend looks the signature up before any resubmission, and a re-prepare of an unproven intent is refused. The frontend never says "failed" without proof and never offers retry on `unknown`.
+- **R23 Declared limits equal enforced limits [B].** The capability matrix serves the limits the handlers enforce, read from one constant, and a test compares them.
+- **R24 Every emitted code is declared [B].** A test fails on any code a handler can emit that is missing from the manifest's error-code map.
+- **R25 Docs say what the code does [B+F].** Status docs, decision records and gate states change in the same change as the code. A script compares the contract version and method count in the status doc with the manifest. A directive that exists only in a commit message is not recorded.
+- **R26 Dark launch, then decide [F + owner].** A UI slice is built behind its flag, reviewed with screenshots in the visual harness, and enabled only on a recorded owner decision. Withdraw by flag, not by deleting the slice.
 
 ## S3. Surfaces and the split rule
 
@@ -205,7 +290,7 @@ pending intents, network health        launchpad: discover, create, manage
 | Routine swap between verified assets | Yes, quick | Yes, advanced (depth, route detail, chart beside) |
 | Swap into an unverified asset | No. Deep link to Desktop. | Yes, after the risk view and typed confirmation |
 | Sell or exit any held asset | Yes | Yes |
-| Launch discovery | Entry tile only (opens Desktop) | Full |
+| Launch discovery | Entry in the dashboard's services grid only (opens Desktop) | Full |
 | Token page: chart, trades, holders | Quick view | Full |
 | Create a launch | No | Yes |
 | Add or remove liquidity | No | Yes |
@@ -220,6 +305,8 @@ pending intents, network health        launchpad: discover, create, manage
 - **Naming.** This prompt calls the full-tab surface Desktop. The repo already reserves `desktop.html` and `src/desktop/` for it (`build.mjs`, `scripts/check-layering.mjs`). Existing popup routes use a leading slash (for example `/dashboard`), and Desktop routes follow that convention.
 - **Same behaviour, different layout.** Both surfaces call the same methods, render the same review component and use the same copy keys.
 - **Locked wallet.** Public reads may render. Any write path shows the unlock gate.
+- **Dashboard entry.** The dashboard's main six-tile grid is frozen by owner directive and a guard script. DeFi entries go in the services grid below it. A new tile needs an owner decision and a change to the guard in the same commit.
+- **Swap UI.** Withdrawn on 2026-10-26 (BUILD STATE). The popup swap row above is the target design, not a commitment, until the owner re-approves it.
 - **Feature off** means no route, no message handler, no nav item. The wallet behaves as before.
 - **Desktop routes** (register a route only when its capability is on): `wallet`, `swap`, `markets`, `markets/asset`, `pools`, `pools/pool`, `launchpad`, `launchpad/create`, `launchpad/review`, `launchpad/launch`, `my-launches`, `activity`, `risk`, `settings`, `diagnostics`, `learn`. Perps and predictions are not registered.
 
@@ -312,6 +399,7 @@ Existing methods stay untouched. The ones this contract relies on, by current na
 | `market.watchlistGet`, `market.watchlistAdd`, `market.watchlistRemove` | L | networkId, target | watchlist |
 | `desktop.open` | L | route, params (S3 whitelist) | ok |
 | `intent.prepareSend` | P | networkId, address, toAddress, mintAddress (absent for native THRU), amountUnits | `Review` |
+| `intent.prepareCreateAccount` | P | networkId, address, mintAddress | `Review` (to add by CCR, S15) |
 | `dex.quote` | P | networkId, address, inMintAddress, outMintAddress, amountUnits, amountMode (exact or max), slippageBps | `Quote` |
 | `dex.prepareSwap` | P | quoteId, clientRequestId | `Review` |
 | `dex.quoteLiquidity` | P | networkId, address, poolAddress, action (add or remove), amountOneUnits and amountTwoUnits (add) or lpAmountUnits (remove), slippageBps | `PoolQuote` |
@@ -320,7 +408,7 @@ Existing methods stay untouched. The ones this contract relies on, by current na
 | `launchpad.prepareCreate` | P | networkId, address, draft, clientRequestId | `Review` for step one. The intent carries every step. |
 | `launchpad.prepareMigrate` | P | networkId, address, ref, clientRequestId | `Review` |
 | `launchpad.prepareClaim` | P | networkId, address, ref, clientRequestId | `Review` |
-| `intent.reprepare` | P | intentId | `Review` (expired or changed payload) |
+| `intent.rePrepare` | P | intentId | `Review` (expired or changed payload) |
 | `intent.resume` | P | intentId | `Review` for the next step |
 | `intent.discard` | P | intentId | `Intent` (before signing only) |
 | `intent.stopWaiting` | P | intentId | `Intent` (after submit; implies nothing about the outcome) |
@@ -334,6 +422,7 @@ Notes
 - `amountMode: max` is resolved by the backend (balance minus fee, account-creation cost and reserve).
 - `intent.prepareSend` exists so the pipeline can be proven on the known-good send flow. The existing checked-send methods stay the default until parity tests pass.
 - Every new method is added to the manifest and the router in the same change. The contract test checks both directions.
+- Every read a first paint needs has a cached counterpart or answers cache-first with its `freshness` (AGENTS.md rule 15; `token.getCachedBalances` is the model).
 
 ## S7. Events and live data
 
@@ -341,7 +430,7 @@ New events are declared in the manifest's events map, camelCase like the existin
 
 | Event | Payload |
 |---|---|
-| `intentChanged` | intentId, state, stepIndex |
+| `intentChanged` | intentId, status, networkId (as delivered; `stepIndex` is a pending CCR, S15) |
 | `capabilitiesChanged` | networkId |
 | `feedChanged` | kinds |
 | existing, unchanged: `accountsChanged`, `lockStateChanged`, `networkChanged`, `balanceChanged`, `pendingTxChanged` | as today |
@@ -353,7 +442,7 @@ New events are declared in the manifest's events map, camelCase like the existin
 | State | Meaning | Next |
 |---|---|---|
 | `prepared` | Review produced. Nothing signed. Has `expiresAt`. | awaitingAuth, expired, discarded |
-| `expired` | The payload outlived its validity before signing. | prepared (via `intent.reprepare`), discarded |
+| `expired` | The payload outlived its validity before signing. | prepared (via `intent.rePrepare`), discarded |
 | `awaitingAuth` | Re-authentication started. | signing, rejected |
 | `signing` | Authenticated. Signing in progress. | submitted, failed |
 | `submitted` | Sent to the endpoint. Transaction id known. | confirming, failed, dropped, unknown |
@@ -376,11 +465,14 @@ Rules
 - Multi-step flows: each step is idempotent and detectable from chain state. Resume is decided from the chain, never from local records alone.
 - The backend never blindly resubmits after an ambiguous result. It checks the chain for the transaction first.
 - **Reconciliation** compares actual balance deltas with the review. Principal amounts are compared exactly. The fee is only declared in the chain's detail response and never reported as charged, so it is compared against the declared bound and labelled declared. `mismatch` is flagged to the user and logged locally.
+- **Delivered vocabulary.** The delivered store uses `prepared`, `waitingUser`, `waitingChain`, `submitted`, `failed`, `cancelled`, `expired`, `rejected`. S15 maps them. `unknown` and `needsAttention` do not exist yet and must be added before any multi-step flow or any resubmission path ships.
 - Step label keys are open-ended. Examples: createMint, createMetadata, initPool, addInitialLiquidity, initialBuy, createTokenAccount, swap, addLiquidity, removeLiquidity, migrate, claim, send.
 
 ## S9. Review and risk output
 
 **Severity** is one of: info, warn, high, block. **Facts** carry the verification tag (chain, inferred, indexed, list). The word "verified" is shown only for facts read from the chain, or for list membership that names the list.
+
+**Simulation honesty.** `simulation.supported` is true only when a simulation ran. A balance check, a decoder or a quote is not a simulation. Declared moves are labelled declared.
 
 **Interpretation of severity.** `block`: the action cannot proceed in a built-in flow and no override exists. `high`: requires a typed acknowledgement. `warn`: may require a checkbox. `info`: shown, no gate.
 
@@ -402,13 +494,13 @@ Rules
 - Market: `HIGH_PRICE_IMPACT`, `HIGH_SLIPPAGE`, `STALE_QUOTE`, `STALE_DATA`, `INDEX_CHAIN_MISMATCH`, `ACCOUNT_CREATION_REQUIRED`, `POOL_INIT_PRICE_DEVIATION`, `FIRST_DEPOSITOR`, `DESTINATION_POOL_PRE_EXISTING`, `NEAR_GRADUATION`, `WILL_GRADUATE`, `POOL_PAUSED`.
 - Platform: `FEED_STALE`, `FEED_UNAVAILABLE`, `KILL_SWITCH_ACTIVE`, plus the existing `NEW_ADDRESS`, `SELF_SEND`, `DUST`, `FEE_UNKNOWN` where the repo already emits them.
 
-**Error codes.** Existing and reused with their current meaning: `WALLET_LOCKED`, `AUTH_REQUIRED`, `AUTH_LOCKED_OUT`, `INVALID_REQUEST`, `UNKNOWN_METHOD`, `METHOD_ERROR`, `UNEXPECTED_ERROR`, `CUSTOM_NETWORK_DISABLED`, `SEND_CONTEXT_CHANGED` (send only). New: `USER_REJECTED`, `CONTEXT_CHANGED` (the DeFi equivalent of the send context code), `FEATURE_DISABLED`, `UNSUPPORTED`, `INVALID_INPUT`, `INSUFFICIENT_BALANCE`, `INSUFFICIENT_FEE_RESERVE`, `QUOTE_EXPIRED`, `BINDING_MISMATCH`, `INTENT_EXPIRED`, `INTENT_LOCKED`, `NONCE_CONFLICT`, `SIMULATION_FAILED`, `PROGRAM_ERROR` (with the program's own code in params), `SLIPPAGE_EXCEEDED`, `ACCOUNT_MISSING`, `ALREADY_EXISTS`, `RPC_UNAVAILABLE`, `TX_DROPPED`, `TX_REPLACED`, `NOT_READY`, `NOT_AUTHORIZED`, `NOTHING_TO_CLAIM`, `UPLOAD_REJECTED`, `RATE_LIMITED`, `UPSTREAM_UNAVAILABLE`, `VERSION_MISMATCH`, `INTERNAL`.
+**Error codes.** Existing and reused with their current meaning: `WALLET_LOCKED`, `AUTH_REQUIRED`, `AUTH_LOCKED_OUT`, `INVALID_REQUEST`, `UNKNOWN_METHOD`, `METHOD_ERROR`, `UNEXPECTED_ERROR`, `CUSTOM_NETWORK_DISABLED`, `SEND_CONTEXT_CHANGED` (send only). New: `USER_REJECTED`, `CONTEXT_CHANGED` (the DeFi equivalent of the send context code), `FEATURE_DISABLED`, `UNSUPPORTED`, `INVALID_INPUT`, `INSUFFICIENT_BALANCE`, `INSUFFICIENT_FEE_RESERVE`, `QUOTE_EXPIRED`, `BINDING_MISMATCH`, `INTENT_EXPIRED`, `INTENT_LOCKED`, `NONCE_CONFLICT`, `SIMULATION_FAILED`, `PROGRAM_ERROR` (with the program's own code in params), `SLIPPAGE_EXCEEDED`, `ACCOUNT_MISSING`, `ALREADY_EXISTS`, `RPC_UNAVAILABLE`, `TX_DROPPED`, `TX_REPLACED`, `NOT_READY`, `NOT_AUTHORIZED`, `NOTHING_TO_CLAIM`, `UPLOAD_REJECTED`, `RATE_LIMITED`, `UPSTREAM_UNAVAILABLE`, `VERSION_MISMATCH`, `INTERNAL`. Delivered but not yet declared in the manifest's error-code map: `INTENT_NOT_FOUND`, `PAIR_MISMATCH`, `POOL_UNAVAILABLE`, `SWAP_REVERTED`, `SWAP_STALE`, `TOKEN_ACCOUNT_MISSING`, `TX_RESULT_MISSING` and, for names, `INVALID_PARAMS`, `NAME_NOT_FOUND`, `NAME_ROOT_UNKNOWN`, `NAME_UNREADABLE`, `NOT_NAME_OWNER`. Declare them (R24).
 
 **Copy ownership.** The backend emits codes, params and `fallbackText`. The frontend owns every user-visible string and keeps a copy key for every code above.
 
 ## S11. Flags, settings and limits
 
-**Flags** live in the repo's flags module (`src/shared/flags.js`, confirm in recon), use its UPPER_SNAKE naming and default to false: `DEFI` (master), `DEFI_READ`, `DEFI_DESKTOP`, `DEFI_SWAP`, `DEFI_POOLS`, `DEFI_LAUNCH_MINT`, `DEFI_LAUNCH_DIRECT_POOL`, `DEFI_LAUNCH_CURVE`. They are build-time constants. There is no URL or query override and no storage override, because the repo's own history shows a flag-plus-query override shipping a deleted surface. A flag hides UI. It is not the security boundary: each backend handler also refuses when its capability is off (`FEATURE_DISABLED`), and the security boundary is the signing policy, the pinned context and the review binding. Per-network enablement is expressed in the capability matrix (flag AND registry AND feed).
+**Flags** live in the repo's flags module (`src/shared/flags.js`, confirm in recon), use its UPPER_SNAKE naming and default to false: `DEFI` (master), `DEFI_READ`, `DEFI_MARKET`, `DEFI_RISK`, `DEFI_FEED`, `DEFI_INTENT`, `DEFI_DEX`, `DEFI_LAUNCHPAD`, `DEFI_DESKTOP` (as delivered), plus `NAME_SERVICE`. The exported flags object is frozen. They are build-time constants. There is no URL or query override and no storage override, because the repo's own history shows a flag-plus-query override shipping a deleted surface. A flag hides UI. It is not the security boundary: each backend handler also refuses when its capability is off (`FEATURE_DISABLED`), and the security boundary is the signing policy, the pinned context and the review binding. Per-network enablement is expressed in the capability matrix (flag AND registry AND feed).
 
 **User settings** go through the existing validated preferences. New keys must be added to its defaults whitelist with range validation, in the repo's flat camelCase style: `defiSlippageBps`, `defiLoadImages` (default false), `defiShowUnverified` (default false), `defiNotifications` (default false, uses the already-declared notifications permission), `defiTosAcceptedVersion`, `defiRiskAckVersion`. `defiAlwaysRequirePassword` (default false) is a security field: it changes only through the password-gated security-settings method, never through the generic one.
 
@@ -426,9 +518,11 @@ Rules
 | **G5** Curve and creator economics | Curve, graduation, claims, only if the dossier allows | Lifecycle rail, migration flow, creator fee panel | Program facts verified live. A project-owned program needs an independent audit. |
 | **G6** Scale | Performance, runbooks, rollout controls | Polish, accessibility, budgets | Budgets met. Rollback rehearsed. |
 
+The order of work is the owner's decision (BUILD STATE, directive 1). The table lists dependencies, not priority.
+
 ## S13. Handoff bundle and Milestone M0 (contract-first drop)
 
-Before either side builds real behaviour, the backend delivers **M0**:
+M0 (delivered at contract 17 and 18, fixtures in `test/fixtures/defi/`) is the model for every later slice. Each new slice repeats it before the frontend builds against it. M0 contains:
 1. Manifest entries for every READ-version method and EXEC-version stubs, new events in the events map, new codes in the error-code map, and a machine-readable schema for each method's params and result. The manifest today lists only parameter names and a prose `returns`, so the schema goes in the repo's chosen place (extend the manifest or add a sibling file). The contract test passes in both directions.
 2. Every method has a handler. Anything not yet implemented returns `supported: false` with a real reason, or `FEATURE_DISABLED`.
 3. Fixtures for every method: success, each relevant unsupported reason, stale, offline and each error code it can raise.
@@ -442,7 +536,29 @@ The frontend builds against a fixture-backed bridge until M0 lands, then switche
 
 ## S14. Non-goals for v1
 
-Perps and CLOB trading UI (perp bindings exist in the pinned package but are out of scope) · prediction markets · limit orders and DCA · aggregator routing · cross-chain and bridging · NFTs · fiat valuation · social features (comments, profiles, server-side watchlists) · token taxes or reflection · AI or social launch-intent creation · copy trading · sponsored or gasless swaps · DeFi on custom networks · fiat ramps · push notifications · any dApp provider or `window.thru` and third-party request interception (the review component and risk service are built so it can be added later, once Thru publishes an extension-compatible contract).
+Perps and CLOB trading UI (perp bindings exist in the pinned package but are out of scope) · prediction markets · limit orders and DCA · aggregator routing · cross-chain and bridging · NFTs · fiat valuation · social features (comments, profiles, server-side watchlists) · token taxes or reflection · AI or social launch-intent creation · copy trading · sponsored or gasless swaps · DeFi on custom networks · fiat ramps · push notifications · any dApp provider or `window.thru` and third-party request interception (the review component and risk service are built so it can be added later, once Thru publishes an extension-compatible contract). Also out of scope until the owner decides: re-shipping the swap UI, and any project-authored on-chain program on mainnet before S16 is met.
+## S15. Reconciliation with the delivered contract (the delivered contract wins; amend this block to match, and never rename a delivered method)
+
+| Topic | Earlier text | Delivered | Resolution |
+|---|---|---|---|
+| Method name | `intent.reprepare` | `intent.rePrepare` | The delivered name is used throughout this block. |
+| `intentChanged` payload | intentId, state, stepIndex | intentId, status, networkId | The delivered payload stands. Add `stepIndex` by CCR before multi-step flows ship. |
+| Intent field name | `state` in S5 | `status` | The delivered name stands. |
+| Intent states | the sixteen states in S8 | `prepared`, `waitingUser`, `waitingChain`, `submitted`, `failed`, `cancelled`, `expired`, `rejected` | Mapping: `cancelled` is S8 `discarded`, `waitingChain` is `submitted` or `confirming`, `waitingUser` is `awaitingAuth`. `unknown`, `needsAttention`, `stopped`, `indexing`, `done`, `dropped` and `confirmed` are added by CCR before the paths that need them ship. The frontend renders any status it does not know neutrally. |
+| Flags | the S11 names of v1.0.0 | the nine delivered `DEFI_*` names plus `NAME_SERVICE` | The delivered names stand. |
+| Error codes | the S10 list | the S10 list, plus codes emitted but undeclared | Declare them (R24). |
+| Limits | `slippageMaxBps` 2000 advertised | 1000 enforced by the swap service | One constant (R23). Until fixed, the frontend uses the lower value. |
+| Authentication | `Review.authRequirement` | absent. `defiAlwaysRequirePassword` exists as a security field. Step-up is not implemented. | Implement before any DeFi flag is enabled (D5). |
+| Simulation label | `simulation.supported` is honest | the native-send review says `true`. The swap review says `false`, correctly. | Fix the native-send review (A4). |
+| Receive account | not covered | nothing creates the buyer's token account | Add `intent.prepareCreateAccount` by CCR (A13). |
+| Cached reads | not covered | `token.getCachedBalances` exists | Add cached counterparts for DeFi reads as screens need them (AGENTS.md rule 15). |
+
+## S16. Program trust policy (project-authored or third-party programs)
+
+1. Trust is a registry state, not a claim. A program that is not official and backed by dated evidence is `unverified`. The UI says who operates it and that it is not audited. A built-in flow may call an unverified program only on a non-mainnet network, and only behind a typed acknowledgement.
+2. A project-authored program, before any mainnet use, needs all of: an independent audit of the exact deployed bytes; a reproducible-build proof (build from pinned source and toolchain and match the deployed hash, since a committed binary is not a source of truth); a disclosed upgrade authority that is either revoked or held by a documented multisig with a timelock; initialisation in the same transaction as deployment, or a check against the upgrade authority, so that first-caller-wins is impossible; bounded and timelocked admin parameters (fees, treasury); a max-fee bound in every instruction that charges one; propagation of every error from a value-moving call (a discarded result is a defect); on-chain enforcement of any expiry or lease it advertises, or no such copy; and falsifiable evidence for every claim (R19).
+3. The wallet shows a fee only when evidence proves it was charged.
+4. When an official program replaces a project-authored one, migrate and retire the project one (D1).
 <!-- END:SHARED-CONTRACT -->
 
 ---
@@ -467,19 +583,41 @@ Perps and CLOB trading UI (perp bindings exist in the pinned package but are out
 - Introduce a second store or tracker. The intent store builds on the existing pending-transaction tracker (S8).
 - Build a swap, add or withdraw with a zero minimum bound. The bindings read zero as "no protection" (R17).
 - Add a query or storage override for a DeFi flag, or a dApp provider.
+- Report a gate, price, fee or capability as true without dated evidence that could have failed (R19), or write a waiver up as closure.
+- Leave a read-modify-write store unserialised (R21), or emit a code the manifest does not declare (R24).
 
 ## B1. Recon, preconditions and corrections
 
 Read `AGENTS.md`, `CONTEXT.md`, `docs/STATUS_AND_ROADMAP.md`, `docs/MODULE_BOUNDARIES.md`, `docs/BACKEND_GAPS.md`, `docs/SEND_PATH_AUDIT.md`, `docs/BUILD_SPEC.md` and `PRIVACY.md` first. Where the repo's own docs disagree, `docs/STATUS_AND_ROADMAP.md` wins on current engineering state, and the code wins over all of them.
 
-**Recon list** (state of the repo when this was written is in parentheses; confirm each): `CONTRACT_VERSION` and the manifest layout (version 15, 83 methods, append-only, auth classes none, unlocked, password, signing, an events map, an error-code map); the router, its auth check and its sync-read set (polled reads are exempt from the activity stamp that feeds auto-lock); the services directory (account, balance, history, keyring, network, pending-tx, preferences, registration, send-context, token, tx and others); how `src/lib/thru-client.js` is used and `src/lib/networks.js` (only `betanet` enabled; per-network program addresses taken from the pinned packages; measured native fee of 1 base unit and a reserve; CSP agreement enforced by `scripts/check-csp.mjs`); the preferences service (validated whitelist of keys, a security-field set changed only through the password-gated method); storage namespacing in `src/shared/network-scope.js`; the existing mint deploy path (`token.deploy` and its helpers; the studies report drift between `ticker` and `symbol` and a mint seed that must be 64 hex characters, so reconcile it before any launch work); the pending-tx service and `send-context`; `scripts/` probes and live-verification scripts (`measure-fee`, `verify-token-transfer`, `verify-live-e2e`, `verify-autoregister`, `probe-explorer-mcp`, `probe-oracle-feed` and others, which may already hold dossier evidence); `test/` and the `npm test` chain; `build.mjs`; and the manifest's permissions (storage, alarms, sidePanel, clipboardRead, notifications are declared today, no `host_permissions`).
+**Recon list** (state of the repo when this was written is in parentheses; confirm each): `CONTRACT_VERSION` and the manifest layout (version 28 on 2026-10-28, 144 methods, append-only, auth classes none, unlocked, password, signing, an events map, an error-code map); the router, its auth check and its sync-read set (polled reads are exempt from the activity stamp that feeds auto-lock); the services directory (account, balance, history, keyring, network, pending-tx, preferences, registration, send-context, token, tx and others); how `src/lib/thru-client.js` is used and `src/lib/networks.js` (only `betanet` enabled; per-network program addresses taken from the pinned packages; measured native fee of 1 base unit and a reserve; CSP agreement enforced by `scripts/check-csp.mjs`); the preferences service (validated whitelist of keys, a security-field set changed only through the password-gated method); storage namespacing in `src/shared/network-scope.js`; the existing mint deploy path (`token.deploy` and its helpers; the studies report drift between `ticker` and `symbol` and a mint seed that must be 64 hex characters, so reconcile it before any launch work); the pending-tx service and `send-context`; `scripts/` probes and live-verification scripts (`measure-fee`, `verify-token-transfer`, `verify-live-e2e`, `verify-autoregister`, `probe-explorer-mcp`, `probe-oracle-feed` and others, which may already hold dossier evidence); `test/` and the `npm test` chain; `build.mjs`; and the manifest's permissions (storage, alarms, sidePanel, clipboardRead, notifications are declared today, no `host_permissions`).
 
 **Preconditions (G2 and later are blocked until each is true; report status in the first reply)**
 - **P1** Backend-enforced signing policy is in place. In the repo it is: signing methods are declared `signing`, the wallet must be unlocked, `requirePasswordForSigning` (default off in the code, although AGENTS.md rule 10 says on by default; report the real default) turns on password checks, and changing it is itself password-gated. Confirm that D5's step-up can be layered on top without weakening any of it.
 - **P2** The legacy launchpad is gone and the quarantine test is green (true at the time of writing). The test is then rewritten deliberately (B16).
-- **P3** The token balance and transfer path is verified live and golden-tested (dossier Q13). The repo's docs list live token-transfer behaviour and the token-program fee as unmeasured (BACKEND_GAPS C1 and C2), so this is open today. Swaps are meaningless without it.
+- **P3** The token balance and transfer path is verified live and golden-tested (dossier Q13). **Not met on 2026-10-28.** Live runs FAILED from 2026-10-06 to 2026-10-08 (an account-creation fault at the faucet rung) and were BLOCKED_ENV on 2026-10-23. G2-S0 landed under an owner waiver. Record it as a waiver with its risk, never as closure (A12).
 - **P4** The DOM-sink ratchet and the layering check exist and cover new paths (true: zero sinks across all of `src/`; the layering rules already name `src/desktop/` and `src/features/`). Confirm the sibling-feature import ban exists, and add it if not.
 - **P5** The contract test runs in both directions inside the normal test command (true at the time of writing).
+
+**Fix-first list (from the 2026-10-27 audit of the repo; A1, A2, A3, A5 and A6 must be done before any DeFi flag is enabled).**
+
+| ID | Finding | Required change | Proof |
+|---|---|---|---|
+| A1 | The custom registrar's `register` discards the fee-transfer result, all three live probes show the treasury at 0 before and after, the probe passes either way, and the UI quotes a price. | Propagate the error or change the fee mechanism. Add a max-fee bound to the instruction. Make the probe fail on a wrong treasury delta. Until a fee is proven collected, remove the quoted price from the UI copy. | A probe that fails when no fee moved. A UI copy test. |
+| A2 | The intent store's `upsert` is an unserialised async read-modify-write, and two concurrent `intent.submit` calls both pass the status check. | A single-flight queue per network. | Concurrency tests for upsert and submit. |
+| A3 | A submit with no reply is recorded `failed` with `TX_DROPPED` and is resumable. Every other error becomes `PROGRAM_ERROR`. `intent.rePrepare` re-arms a `failed` intent. A test pins this. | An `unknown` state, a signature lookup before any resubmission, refusal to re-prepare an unproven intent, error classification by cause that keeps specific codes. Change the pinning test. | Ambiguity tests. |
+| A4 | The native-send review reports `simulation.supported: true`. Nothing was simulated. | `supported: false` with a reason, or label it a balance check. | A test that no review claims simulation unless simulate ran. |
+| A5 | `applySlippage` floors, so a tiny quote gives a zero minimum output. The bindings read zero as no protection. | Refuse with `ZERO_BOUND`. | A one-unit quote test. |
+| A6 | `program.capabilities` advertises `slippageMaxBps` 2000 while the swap service enforces 1000. | One constant feeds both. | A test comparing them. |
+| A7 | Twelve emitted error codes are not in the manifest's error-code map. | Declare them and add the emitted-versus-declared test (R24). | That test. |
+| A8 | Name-write parameters (`networkId` on `name.register`) are declared and ignored. `name.initRoot` and `name.setRecord` are `unlocked` stubs. | Enforce a pinned context or remove the parameter. Make the stubs `signing` before implementing them. Add the signing-method enumeration test (R20). | The enumeration test. |
+| A9 | The exported flags object is mutable. | Freeze it. | A mutation test. |
+| A10 | Signed feed records carry no sequence number, so an old valid record can be replayed until it expires. | A monotonic sequence per publisher, before any transport exists. | A replay test. |
+| A11 | `STATUS_AND_ROADMAP.md` says contract 18 and dates itself 2026-10-03. The "Option B" directive exists only in a commit message. | Refresh it, record the directives, add the docs-truth check (R25). | The check script. |
+| A12 | P3 was waived at G2 but is written as closed. | Passing evidence, or a signed waiver that states the risk. Never "closed". | The docs-truth check. |
+| A13 | A buyer of a brand-new token cannot swap: the output account must exist and nothing creates it. | `intent.prepareCreateAccount`, by CCR. | An intent script for create-then-swap. |
+| A14 | The custom registrar program is project-authored and unaudited, and fails S16 on several counts (B19). | Apply S16 and B19 before any mainnet use. | The S16 checklist. |
+| A15 | An evidence probe has a green branch for "skipped by VM". | Falsifiable probes only (R19). | The harness lint. |
 
 **Corrections to guides 09 to 11.** Those guides were written against an earlier snapshot. The repo is far past them (contract 15, not 7 or 8), and several methods they assume (`price.get`, `portfolio.summary`, `history.list`, `network.health`, `account.validate`, `tx.waitFor`, `featureflags.all`) do not exist. Treat the guides as superseded where they conflict with this prompt, mark them so in the repo's docs index, and apply these specific corrections:
 
@@ -543,6 +681,8 @@ Answer from the live test network and official docs. Record each answer as an ev
 - **Licences and names (Q25, Q26).** npm metadata for the pinned `@thru/sdk` and `@thru/programs` says Apache-2.0. A third-party README says proprietary. Read the licence files. Names and versions have changed before.
 - **Chain resets.** The repo records a managed-genesis reset on 2026-09-26 that replaced the old system-program scheme, and its history service already guards caches with a chain-identity check because a genesis swap can reuse the same managed addresses. Every registry record must be bound to the network's genesis identity (B3).
 
+**Dossier status at 2026-10-28.** The repo's dossier (`docs/defi/G0_DOSSIER.md`) was last edited before the 2026-10-25 live swap, so read it together with the dated files in `scripts/defi-evidence/`. Answered with evidence: Q5 (no simulation; docs negative), Q14 deployment (AMM deployed on Betanet, management unknown), Q16 in part (init, add and swap built and run; withdraw not yet), Q18 derivation (sorted pair plus fee tier), Q20 (no launch or curve program in the bootstrap set). Supported by one data point only: Q15 (fee and model) and Q19 (parity needs at least a dozen vectors). Treat everything else as open unless a passing, falsifiable evidence file says otherwise, in particular Q1 to Q4 for token and AMM transactions beyond "the output account must exist", Q6, Q7 from a worker, Q13 (P3), Q17 and Q22 to Q26.
+
 **Gate 0 produces**: the evidence entries; a registry seed and a capability matrix seed per network; the unsupported matrix (which features stay unsupported and why); the answered project inputs; and the reason mapping below.
 
 | Unsupported reason | Driven by |
@@ -596,6 +736,11 @@ Stages: intent, prepare, simulate where supported, decode and assess, review pay
 - **Pinned context (R18).** Pin the reviewed account and network at prepare time. Re-check them around signing and refuse with `CONTEXT_CHANGED` on any difference. Close the open race in the repo's send path (a network switch during the signing sequence, `docs/SEND_PATH_AUDIT.md`) for DeFi by signing and submitting through a client bound to the pinned network, not the globally active one.
 - **Step-up auth (D5).** Compute `authRequirement` for each review: the user's `requirePasswordForSigning` policy, plus step-up for the first use of a program, pool or asset by this account on this network, for any `high` warning, for launch create, migrate and claim, and when `defiAlwaysRequirePassword` is on. `intent.submit` enforces it server-side.
 - **Zero bounds.** The builders refuse to produce a zero minimum bound (R17). A zero bound found anywhere is a `ZERO_BOUND` block.
+- **Serialised writes (R21).** Put the intent store behind a single-flight queue. Test concurrent upserts and concurrent submits for the same intent.
+- **Ambiguity (R22).** After a submit with no proof either way, record `unknown`, look the signature up on the chain, and refuse `intent.rePrepare` until the earlier attempt is proven absent. Classify errors by cause and keep the specific code (`SEND_CONTEXT_CHANGED`, `WALLET_LOCKED`, `INSUFFICIENT_BALANCE`) instead of folding everything into `PROGRAM_ERROR` or `TX_DROPPED`.
+- **Honest review labels.** `simulation.supported` is true only when a simulation ran. The native-send review says true today (A4).
+- **One pipeline for every write (R12, R20).** Name, registrar, deploy and faucet writes are not on the pipeline today. Migrate them when next touched, or record an exemption with its reason in the decisions log. Until then each one pins account and network and sits in the guard set.
+- **Create-account intent.** Add `intent.prepareCreateAccount` by CCR so a buyer of a new token can start (A13).
 - **Concurrency.** If the nonce model needs it (Q2), serialise submissions per fee-payer account across all surfaces and detect collisions.
 - **Idempotency.** A lock per (network, account, action, asset or pool). `clientRequestId` returns the original result. `intent.submit` is idempotent per (intentId, bindingHash) and never signs twice.
 - **Multi-step flows** (launch, migrate, create-account-then-swap when not atomic): an explicit step machine. Each step is idempotent and detectable from chain state. `needsAttention` offers only safe actions: resume, view, abandon.
@@ -639,6 +784,9 @@ Methods: `dex.quote`, `dex.prepareSwap`.
 - **Quote contents**: `expectedOut`, `minOut`, `priceImpactBps` computed from reserves, pool fee, itemised costs (including account creation when the output account does not exist), venue and trust, `readAtSlot`, `expiresAt`.
 - **Slippage**: validate against `limits`. Return `HIGH_SLIPPAGE` above the warning level and refuse above the cap. Compute `minOut` from the quote and the slippage, and never pass a zero minimum to the builder (R17). The swap call has no deadline field, so time-bounding comes from the transaction's own validity window (Q2) and the quote's `expiresAt`. Ordering behaviour on Thru is unknown, so make no MEV-protection claims.
 - **Max** resolves to balance minus fee, account-creation cost and reserve.
+- **Minimum output must be positive (A5, R17).** `applySlippage` floors, so a tiny quote can round to zero, which the bindings treat as no protection. Refuse with `ZERO_BOUND`, and test with a one-unit quote.
+- **Limits come from one constant (A6, R23).** The cap the service enforces is the cap the capability matrix serves.
+- **Receive account (A13).** `TOKEN_ACCOUNT_MISSING` is the delivered behaviour. The fix is the create-account intent, as a separate reviewed step.
 - **Hard blocks** (returned as `block` warnings): locked wallet, unsupported or changed venue, stale quote or index-versus-chain disagreement, unsimulated when policy requires simulation, simulation shows value leaving a user-owned account other than the intended one, unknown writable accounts, destination account missing and not creatable atomically, pool paused or closed, price impact above the block threshold, insufficient fee reserve, a duplicate pending swap, a derived-address mismatch.
 - **Unverified entry**: if the output asset is unverified, `requiredAcks` includes a typed acknowledgement (the ticker plus the last characters of the mint).
 - The output token account must exist for the swap. When it does not, include its creation (Q4) as an itemised cost, as an atomic step only if Q1 allows it, and otherwise as its own reviewed step.
@@ -668,6 +816,8 @@ Methods: `dex.listPools`, `dex.getPool`, `dex.positions`, `dex.quoteLiquidity`, 
 Methods: `launchpad.templates`, `launchpad.validateDraft`, `launchpad.uploadImage`, `launchpad.prepareCreate`, `launchpad.prepareMigrate`, `launchpad.prepareClaim`, `launchpad.listMine`, `launchpad.list`, `launchpad.get`.
 
 Launch models, enabled strictly in this order: (1) mint-only, (2) direct AMM pool launch (mint, pool and initial liquidity), (3) bonding curve to AMM graduation, only if a curve or launch program is verified (Q20, Q21). Templates come from the signed registry.
+
+**Launchpad-lite (the owner's first target).** With no curve program, a launch is: deploy the mint (the existing deploy path), initialise a pool for the pair, add the creator's initial liquidity, and list the pool. The 2026-10-25 live evidence ran exactly that sequence on test tokens. Build it as one resumable multi-step intent. Two blockers come first: remove-liquidity must be verified live before add is enabled (R2), and the create-account step (A13). Discovery without a server comes from on-node program activity and AMM events (the dossier's Q9 and Q18 substrate). Prove it at the scale of a few hundred pools before promising a Markets screen.
 
 **Must add**
 - **Templates and validation.** `Template.fields` describes every advanced field with bounds and defaults, so new templates need no frontend change. `validateDraft` returns field issues, derived addresses (mint, pool, launch account), cost previews and the permanent and editable lists.
@@ -722,7 +872,7 @@ Launch models, enabled strictly in this order: (1) mint-only, (2) direct AMM poo
 
 **If not built**: discovery shows "unsupported", the launchpad reduces to own-launch management plus by-address token pages, and the product copy says so.
 
-**Trade-offs to record**: privacy (the operator sees interest and IPs), availability (a single point of failure), trust (ranking and lists), cost, and abuse protection (no client secrets, so rate limits are best-effort).
+**Trade-offs to record**: privacy (the operator sees interest and IPs), availability (a single point of failure), trust (ranking and lists), cost, and abuse protection (no client secrets, so rate limits are best-effort). **Hosting user content** (images, descriptions) creates legal duties: illegal-content scanning, takedown handling and copyright notices. D19 defaults to hosting none.
 
 ## B12. Contract implementation duties
 
@@ -731,6 +881,8 @@ Launch models, enabled strictly in this order: (1) mint-only, (2) direct AMM poo
 - Validate parameter types before touching a service. Return values are JSON-serialisable (the router already names the offending field when they are not). BigInt leaves as a string.
 - Declare only `intent.submit` as `signing`. Every other new method is `none` (reads, local data, prepare, manage). Prepare methods require nothing secret, but run behind `unlocked` where they touch account data.
 - Register every polled read in the sync-read set.
+- A test enumerates every handler that reaches a signing helper and asserts it is declared `signing` (or a documented exception), is in the transaction-guard set, and pins account and network (R20). A second test fails on any declared parameter the handler never reads, and on any emitted code missing from the error-code map (R24).
+- The capability matrix and the enforcing service read limits from one constant (R23). The exported flags object is frozen.
 - Existing methods, including `tx.simulate` and `tx.estimateFee`, are untouched. Preserve the v7 custom-network quarantine.
 - Feature handlers live under `src/background/features/dex` and `src/background/features/launchpad` (own handler map, own service, own storage keys). Shared services (`market`, `risk`, `program`, `feed`, `intent`, `desktop`) live with the core services. Neither feature imports the other. No feature imports the vault.
 - No secret, seed, key, address or amount in any log line.
@@ -758,6 +910,8 @@ All suites live in `test/` and join the `npm test` chain. Build and tests run be
 | Security | Layering (including the sibling-feature ban and no vault or Thru-client import from features). The DOM-sink ratchet at zero. CSP assertion and the extended CSP-versus-enabled-features check. No secret in logs or payloads. Cross-network cache leak. Preferences: new keys validated, `defiAlwaysRequirePassword` unreachable through the generic setter. A flag cannot be turned on by URL or storage. |
 | Platform | Chromium end to end with the extension loaded: popup and Desktop together, worker restart, storage quota exhaustion, offline. The repo's manual smoke checklist extended. |
 | Live verification scripts | One per feature under `scripts/`, in the style of the existing ones. Idempotent, throwaway accounts only, never run in CI. They emit evidence entries that the registry consumes. |
+| Audit-derived | Concurrency tests for the intent store and the pending tracker (R21). Ambiguous-submit tests: `unknown`, signature lookup, refusal to re-prepare (R22). A one-unit quote cannot produce a zero minimum. Declared limits equal enforced limits. Every emitted code is declared. Every signing handler is `signing`, guarded and pinned. The flags object is frozen. A replayed feed record is rejected. |
+| Evidence | The harness rejects a probe that has a green branch for skipped, non-fatal or blocked outcomes. Each row records expected and observed values. A fee shown to users needs a row with a measured balance delta (R19). |
 | Quarantine | The rewritten test (B16) passes, and fails when the legacy surface is restored. |
 
 ## B15. Operations (required before any production enable)
@@ -778,22 +932,31 @@ All suites live in `test/` and join the `npm test` chain. Build and tests run be
 - Update `PRIVACY.md`, `SECURITY.md`, `docs/MODULE_BOUNDARIES.md`, `docs/DOCS_INDEX.md`, `docs/STATUS_AND_ROADMAP.md`, `docs/BACKEND_GAPS.md` and `CONTEXT.md`. Restate the AGENTS.md rule: no unverified protocol behaviour. Mark guides 09 to 11 superseded in the docs index.
 - Create an evidence folder for registry verification artefacts and the live-verification scripts under `scripts/`.
 - Update the manifest description once swap or launch features exist, so the store listing and the extension agree.
+- Add a docs-truth script that compares the contract version and method count in the status doc and README with the manifest, and fails when they differ (R25). Refresh `STATUS_AND_ROADMAP.md`. Record the 2026-10-26 "Option B" directive and the dashboard directives in the decisions log.
+- Freeze the exported flags object and add the mutation test.
 
-## B17. Build order
+## B17. Build order (the owner's order: launchpad first, swap UI withdrawn)
 
-0. **Recon and preconditions** (P1 to P5). Confirm P3 or schedule its live token verification first.
-1. **Gate 0 dossier** on betanet with throwaway accounts. No feature code.
-2. **M0 contract drop** (S13): manifest, schema, stubs returning honest unsupported results, fixtures, presets, intent scripts, code inventory. The frontend is waiting on this.
-3. Registry, signed-feed verification, program-change watch, genesis binding, capability matrix.
-4. Market reads (direct-chain first), caches, polling model, sync-read registration.
-5. Risk facts and decoder on the existing send flow.
-6. Intent pipeline proven on the send flow behind a flag (`intent.prepareSend`), pinned context, step-up, reconciliation.
-7. Mint-only launch on the pipeline.
-8. Swap (exit path first), parity tests, hard blocks.
-9. Pools and liquidity, then direct-pool launch.
-10. Curve, graduation and claims, only if verified.
-11. Hardening, performance, runbooks, drills.
+0. Recon, BUILD STATE check, preconditions P1 to P5 stated honestly (P3 is a waiver).
+1. The fix-first list: A1, A2, A3, A5 and A6 before any flag is enabled, then the rest. Refresh the docs and record the directives (A11, A12).
+2. A falsifiable evidence harness (R19). Verify remove-liquidity live (R2). Get P3 passing, or record a signed waiver with its risk.
+3. Launchpad-lite: mint-only on the pipeline, the create-account intent (A13), then direct-pool launch as one resumable intent (B8). Token-page and `listMine` data from on-node events, with no server.
+4. The M0 drop for each new slice (S13): manifest, schema, fixtures, intent scripts, code inventory. The frontend builds against it.
+5. Re-enable swap only on an owner decision, with the pipeline fixes in place.
+6. Pools and liquidity management. Curve, graduation and claims only if a program exists.
+7. Hardening, performance, runbooks, drills, and the mainnet gates of D20 and S16.
 
 ## B18. Reply format
 
 Per reply: (1) findings and decisions, (2) design notes for the current gate (what, why, trade-offs), (3) module and file tree, (4) code per file from G1 onward, (5) tests run with results (build and test before and after), (6) open risks, blockers and CCRs, (7) the gate status line: done, blocked on a named Q or precondition, or waiting for sign-off. Do not narrate what code does. If a needed chain fact is not in the dossier, say so and build the honest unsupported state instead of guessing. Stop and ask on anything AGENTS.md lists.
+
+## B19. Project-authored programs and the registrar
+
+Apply S16 to every program the project authors. The custom `.thru` registrar (D-016) is the live case, and the audit found these, none of which is a reason to remove it from Betanet, all of which block mainnet:
+- `register` ignores the result of its fee transfer, and the in-code note says a program cannot debit an unowned EOA, so a fee may never be collectable that way (A1).
+- `Initialize` is first-caller-wins, so a watcher can take the admin role between deploy and init.
+- `UpdateConfig` lets the admin set fee and treasury with no cap or timelock, and `Register` carries no max-fee bound, so a fee raised between quote and execution is charged.
+- Leases never expire on-chain and nothing reclaims a name, so lease, renew and expiry copy must not promise otherwise.
+- The Rust host tests were written but not run in the authoring sandbox, and the JavaScript tests match source text and byte pins. Run the host tests and add behavioural ones.
+- A compiled binary is committed with no reproducible-build check, and the vendored core is pinned to a branch commit, not a release.
+- Until S16 is met, the wallet labels the flow "Operated by <operator>. Not audited." (D27).

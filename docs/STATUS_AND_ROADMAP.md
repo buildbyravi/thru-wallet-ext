@@ -1,10 +1,10 @@
 # Status and roadmap
 
-Single source of truth for the **shipped baseline**, what automated evidence proves, and the remaining work. Source baseline reviewed on branch `arena/01a10231-thru-wallet-ext` (2026-10-03). `src/`, `test/`, and `scripts/` remain authoritative.
+Single source of truth for the **shipped baseline**, what automated evidence proves, and the remaining work. Source baseline re-verified on `arena/0439c226-thru-wallet-ext` at contract v31 (2026-10-31). `src/`, `test/`, and `scripts/` remain authoritative.
 
 ## Shipped baseline
 
-- **Contract v18, 124 methods.** 81 wallet-core methods plus the 43-method DeFi M0 contract surface (v17 READ+LOCAL, v18 PREPARE+EXECUTE) — every DeFi method is declared, schema-validated, and gated behind build-time flags that are all off; reads answer explicit unsupported states and the only signing method (`intent.submit`) refuses `FEATURE_DISABLED`. v16 removed the retired unbound `tx.send` / `token.transfer` mutation paths after all shipped callers migrated to checked methods.
+- **Contract v31, 153 methods** (2026-10-31). `CONTRACT_VERSION` in `src/shared/contract/manifest.js` is authoritative; the historical M0 line is: 81 wallet-core methods plus the 43-method DeFi M0 contract surface (v17 READ+LOCAL, v18 PREPARE+EXECUTE) — every DeFi method is declared, schema-validated, and gated behind build-time flags that are all off; reads answer explicit unsupported states and the only signing method (`intent.submit`) refuses `FEATURE_DISABLED`. v16 removed the retired unbound `tx.send` / `token.transfer` mutation paths after all shipped callers migrated to checked methods. v29 adds the shared transaction-review pipeline described below and changes no existing method.
 - **Account activation.** Account/keyring creation paths make bounded, best-effort self-registration attempts for newly added accounts on the selected network. There is no periodic signer. Send checks an unregistered recipient and calls `tx.registerAccount` just in time only when that destination is an owned account. The target account signs for itself; arbitrary contacts are never registered.
 - **Send review.** The JIT activation must complete before Review enables. Review shows the matched recipient label above the full destination address; the label is display-only. Checked native/token methods bind the reviewed account and network at the background boundary.
 - **Signing preference.** Signing requires an unlocked wallet. Password re-authentication is **off by default** (`requirePasswordForSigning: false`); a user can explicitly enable it through the password-gated Settings path. The v12 registration exception remains narrowly unlocked-only.
@@ -14,16 +14,85 @@ Single source of truth for the **shipped baseline**, what automated evidence pro
 
 Companion docs: `docs/DOCS_INDEX.md` · `docs/PROJECT_LEDGER.md` · `CONTEXT.md` · `docs/MODULE_BOUNDARIES.md` · `docs/BACKEND_GAPS.md` · `docs/BUILD_SPEC.md` · `docs/MANUAL_SMOKE_CHECKLIST.md` · `docs/SEND_PATH_AUDIT.md`.
 
-## Domain route status (2026-10-27)
+## Transaction review pipeline (introduced in v29; the current contract is v31)
 
-The `/name` route has Register, My Domains, and Renew / Extend sections, per-name checks and
-quotes, explicit review before the existing `name.*` signing handlers, and independent
-single-name submissions. Register offers `.thru` only, automatically selecting the verified
+Every value-moving screen prepares a typed intent through `tx.prepareReview`, renders the ONE
+`TxReviewCard`, and submits through `submitReviewedReview` (confirm → optional password → the
+operation's existing signing method). Features no longer own review rows, fee formatting, warning
+copy or the password flow.
+
+- **Integrated:** Send (native + token transfer), Domain (register / purchase / renew / claim),
+  Faucet (claim). No UI file names a signing-gated method any more: Dashboard and Send activate
+  through the v12 `tx.registerAccount` path, and `test/test-tx-review.mjs` [14] fails the suite if a
+  `bridge.send('…')` literal in `src/ui/` is `auth:'signing'`.
+- **Not integrated:** DeFi/DEX/launchpad — no UI surface ships while every `DEFI_*` flag is off, so
+  there is nothing to migrate; their kinds do not exist and `tx.prepareReview` answers
+  `supported:false` with the known-kinds list rather than a guessed review.
+- **Honest states:** an operation with no decoder returns `supported:false`; a transaction decoded as
+  `unknown` renders with raw data and **no submit policy**, so it cannot be signed; a fee that was
+  never measured is shown as "not quoted" with its reason, never borrowed from another path;
+  `assets.balanceAfter` is validator-enforced `null` because Thru has no verified dry-run.
+- **Single use:** a successful submit discards its review, so the same `reviewId` cannot sign twice
+  inside its 120 s TTL. A definite failure keeps it (retrying reviewed facts is safe).
+- **Error surface:** `model.js` owns `REVIEW_ERROR_CODES` / `REVIEW_RECHECK_CODES` and the derived
+  `STALE_REVIEW_CODES`; `test-tx-review.mjs` scans the background and fails if a thrown code is
+  registered in neither the model nor the contract.
+- **No second signing path:** `test-tx-review.mjs` [14] scans every `src/ui/**/*.js` for
+  `bridge.send('…')` literals and fails on any `auth:'signing'` method. It found one — Dashboard's
+  `tx.autoCreateAccount` — which is now migrated to `tx.registerAccount`; see `docs/DEFECT_LOG.md` §10.
+- **Completion report, review responses, simplification:** `docs/TX_REVIEW_VERIFICATION.md`
+  §9 (the owner-required report), §10 (a second AI review checked claim-by-claim against the code),
+  §11 (the 2026-10-28 simplification to Rabby's before-sign shape) and §12 (a third audit's
+  F-01…F-13 re-checked at HEAD; the still-true decoder/store/simulation findings are fixed there,
+  with `docs/DEFECT_LOG.md` §12 recording the defects and lessons).
+
+**TESTED:** `test/test-tx-review.mjs` (180 checks: registry parity, every decoder, malformed and
+unknown input, amount/fee formatting, binding/TTL/account/network refusals, acknowledgements,
+blocking, discard, code registry, the UI signing-literal scan, [15] the one-screen/one-table
+budget for every decoder, [2b] the name a recipient was resolved from reaching the card, and the
+registrar's enforced/unenforced/strict/free fee cases) and `test/test-route-lifecycle.mjs`
+(1,117 checks, including the Send, Domain and Faucet review flows driven through the real routes). **BUILD:** `npm run build`
+passes, including the layering, CSP, route/CSS and contract gates. **UNVERIFIED:** real-browser
+layout and live-chain behaviour — no browser binary and no network writes were available; the
+harness `scripts/preview-tx-review.html` is the recorded human runbook for the former.
+
+## Domain route, tracked registry and custom renewal (2026-10-28)
+
+The `/name` route has two tabs — Register and My Domains — with a single-name search and quote,
+and a bottom-sheet review before the existing `name.*` signing handlers. Renewal is an action on a
+domain, not a third tab. Register offers `.thru` only, automatically selecting the verified
 deployed custom registrar first and the official paid registry only when that is the available
 `.thru` route. It does not query `.id` availability or offer `.id` minting; `.id` lookup and
-resolution remain available through name lookup. Registrar totals group only matching assets
-and use BigInt; they are quotes for separate transactions, not an atomic batch. Native THRU uses
+resolution remain available through name lookup. Quotes use BigInt. Native THRU uses
 the shared 9-decimal definition; paid-registry token decimals come from the on-chain mint.
+
+- **Custom-registrar renewal is wired (contract v30).** A `.thru` lease owned through the custom
+  registrar is renewed with `name.renewLease` + `via:'custom'`; the review is the same
+  `domain-renew` card, priced in native THRU (a 2026-10-28 audit found it rendering the payment
+  token instead — `docs/DEFECT_LOG.md` §13.1).
+- **The registrar's fee is tiered and stored on-chain (2026-10-30).** `contracts/thru-custom-registrar`
+  now carries three per-year prices (3 / 4 / 5+ characters) plus a `fee_policy` in its config, all
+  mutable through `UpdateConfig`, so the Betanet schedule (100 000 / 10 000 / 1 000 base units per
+  year) is a config value and a mainnet schedule is not a redeploy. The card, the service and the
+  route read those numbers from the chain; `name.js` prices by label length and shows the tier the
+  name actually falls in. A 144-byte (layout-1) config still parses and reads as the flat schedule
+  it always was — the new fields are *appended*, so the upgrade does not change anyone's price.
+- **Enforcement is declared on-chain, and the wallet only reports what it declares.**
+  `fee_policy = strict` makes a refused charge revert (`0xD206`; `0xD207` when the balance cannot
+  cover it); `best-effort` keeps the deployed behaviour of attempting the debit and ignoring the
+  refusal. The only live observation is that refusal — the VM's `-10 AccountNotWritable`, surfaced
+  as `0xD20A` — so best-effort is the default and `strict` is gated behind a measured treasury
+  delta (`--fee-policy strict --collection-proven "<note>"`). The card therefore shows an
+  *unenforced* price as unenforced (`registrar-fee-unenforced`) and reserves the outgoing THRU row
+  for an enforced charge; "no charge reported" is the wording, never "free". Deploying the new
+  artifact, and proving collection works, are both still open — `docs/DEFECT_LOG.md` §18.
+- **The batch registration queue is gone (removed 2026-10-30).** A queue and a "Register N names"
+  loop were added in `55703d0`; the control that revealed them was created with the `hidden` class
+  and never un-hidden, and the loop submitted prepared reviews without rendering the review card.
+  The 2026-10-30 lifecycle audit deleted the control, the handler, the queue state and its orphaned
+  CSS rather than leave a hidden signing loop one CSS rule away from running. Batch registration is
+  an owner decision, not an in-flight feature: if it returns it needs a review gate per item —
+  §13.4.
 
 **TESTED**: the Domain focused suites and the project suite cover formatting, validation,
 eligibility, reviewed account/network/price/expiry facts, unknown submission outcomes, and
@@ -34,12 +103,75 @@ the evidence-pinned custom `.thru` registrar present at 1,000 native base units 
 transaction was sent during that probe. On 2026-10-27, one unique `.thru` registration through
 the real background API router returned an on-chain execution result, and a follow-up Betanet
 read confirmed the selected test account as lease owner. The handler quoted 1,000 base
-units/year; charged network fee was not returned.
+units/year; charged network fee was not returned. Both probes predate the tiered config (the
+deployed one is a layout-1, flat, best-effort config); the tiered layout and its prices are source
+only until a rebuilt artifact is deployed — `docs/DEFECT_LOG.md` §18.
 
-**UNVERIFIED**: rendered popup / side-panel behavior in Chrome and a wallet-signed Betanet
-review/auth flow and renewal in the browser. The API-router registration verifies the backend
-write path, not the rendered review screen or charged network fee. See `docs/BACKEND_GAPS.md` for
-the precise unsupported and live-write boundaries.
+**TESTED (2026-10-27 UI audit)**: build and full `npm test` pass. Mounted route regressions
+cover exact review values, renewal/claim expiry binding, Escape/Cancel focus restoration,
+double-confirm suppression, edits invalidating review, stale availability during debounce,
+password retries versus unknown transaction outcomes, and teardown before signing. Route
+teardown aborts the password dialog and clears its input. The DOM shim now implements
+`isConnected`; previously the name route's post-read guards could silently skip hydration.
+
+**TESTED in real Chrome, isolated visual harness**: actual `NameRoute`/`Sheet` and built
+`dist/popup.css`, mocked bridge only, at 400x600 light/dark and 320x700/320x400 with a
+64-character paid-registry name. Screenshot inspection and geometry checks confirm no
+document/route-height increase on review, wrapping names, and scroll-reachable confirmation
+actions. No live wallet or signing was used. Harness/screenshots are session-local under
+`C:/Users/ravi/AppData/Local/Temp/kilo/domain-visual*` and `domain-*.png`.
+
+**BLOCKED**: full owned-domain discovery. The pinned SDK and official QueryService document
+paginated `ListAccounts`, but the live Betanet name-service-owner query returned
+`RESOURCE_EXHAUSTED: account listing database budget exceeded` on 2026-10-27. Complete
+enumeration/pagination has not been verified. This is not presented as complete discovery.
+
+**IMPLEMENTED / TESTED (owner-approved tracked registry, contract v29)**: My Domains now
+lists this wallet's tracked names, independently of the primary alias. Existing primary links
+migrate into versioned, account/network-scoped records; changing or unlinking primary retains
+all tracked names. Confirmed registration is retained in the backend even if the popup closes;
+a storage failure does not turn confirmation into a retryable transaction failure. Import,
+Make primary, Unlink primary, Remove from list and Renew reuse the existing bridge and
+registration/review flow. Imports are .thru-only and preserve the paid registrar's label case.
+
+`name.getCachedDomains` paints saved candidates immediately; `name.listDomains` verifies
+ownership with bounded concurrency. Cache/unknown records never enable ownership-dependent
+actions. Transferred/absent records remain visible, and a disproven primary alias is cleared.
+All mutations share a serialized, revision-checked store. Future schema versions fail closed.
+Tests cover migration, concurrent imports, primary preservation, wrong owner/program,
+malformed bytes, offline state, late cache/live responses, untrack races and account changes.
+No expiry is guessed: Renew preselects the domain in the renewal-only flow. The official
+paid registry uses the existing checked renewal handler; custom-registrar leases renew through
+`via:'custom'` (wired at v30, priced in native THRU — `docs/DEFECT_LOG.md` §13.1), with no
+registration/expired-claim fallback in the Renew view.
+The tracked list was also exercised in the real Chrome visual harness (400px light/dark,
+320px dark, online/offline, 64-character name): scrolling reaches the import controls, importing
+adds a third candidate, and offline ownership cannot enable Make primary. No live wallet was used.
+Wallet reset clears domain metadata on all networks; regression tests reject late refresh/save
+callbacks after reset. Names already overwritten by the old single-alias store must be imported.
+
+**Import correction (2026-10-27)**: live SDK account metadata carries `Pubkey` objects;
+`String(meta.owner)` produced `[object Object]` and falsely rejected ownership. Program-owner
+normalization is now centralized in the Thru adapter using `Pubkey.from(...).toThruFmt()`.
+Domain and registry tests use actual SDK objects and still reject wrong/malformed owners.
+
+**IMPLEMENTED / TESTED (contract v31, 2026-10-29)**: name-service text records are a live signing
+write — `name.setRecord` appends an `APPEND_RECORD` (opcode 2) instruction, fee `0n`, authority =
+fee payer = the active account, and it refuses before signing when the domain is absent, unreadable
+or owned by someone else. It is reviewed as kind `domain-record`: existence and ownership are
+three-state (an RPC failure says "could not be read", never "does not exist"), the recheck
+distinguishes readable/absent/transferred/unreadable, and the card is titled **Add domain record**
+because opcode 2 appends — an existing key keeps its old value, which the card states when it knows
+it. `name.reverseLookup` (unlocked, active-network-bound) resolves an address to a name only from
+this wallet's tracked registry and re-reads the domain to prove the owner matches; the label carries
+the record's own root (`.thru`/`.id`), and `NO_CANDIDATE` means "this wallet knows of none".
+**Not user-visible today:** no shipped screen offers domain records — the kind is reachable only
+through `tx.prepareReview` (`docs/DEFECT_LOG.md` §14, audit `docs/audits/2026-10-29-v31-audit.md`).
+**UNVERIFIED**: no Betanet write or read was performed for either v31 path.
+
+**UNVERIFIED**: actual extension popup/side-panel behavior with MV3 and a wallet-signed Betanet
+review/auth flow or renewal. The visual harness does not establish these, or charged network
+fees. See `docs/BACKEND_GAPS.md` for unsupported and live-write boundaries.
 
 ---
 
@@ -48,11 +180,11 @@ the precise unsupported and live-write boundaries.
 ### The frontend rebuild is DONE
 
 One stack. The migration flag and legacy tree are deleted, and there is no fallback path left.
-All 14 routes are real:
+All 15 routes are real:
 
 ```
 /welcome  /unlock  /dashboard  /accounts  /account  /add-account  /keyring
-/export   /send    /receive    /faucet    /history  /settings     /reset
+/export   /send    /receive    /faucet    /name     /history     /settings  /reset
 ```
 
 Structural properties now enforced by CI rather than by discipline:
@@ -73,23 +205,26 @@ Structural properties now enforced by CI rather than by discipline:
 
 ### Verified green
 
-Final deterministic verification on the Mainnet-readiness remediation (2026-10-03):
+Final deterministic verification on the current tree (contract v31, 2026-10-30):
 
 ```text
-npm test       PASS — derivation 16; QR 15; layering 80 files / 0 sinks; CSP pass;
-               routes 14/14; CSS nesting pass; launchpad quarantine 47;
-               contract v16 checks, storage migrations, DOM/lifecycle, vault,
-               Thru client, token/balance, History, registration, API-router,
+npm test       PASS — 2,742 checks (37 suites + 5 gates): derivation 16; QR 15; layering 127 files / 0 sinks;
+               CSP pass; routes 15/15 with the full used CSS class set defined; CSS nesting pass;
+               launchpad quarantine; contract 168/168; security-checks; DOM/refs;
+               route lifecycle 1,117/1,117; transaction review 180/180; review card render 57/57;
+               toast 92/92; shared platform 45/45; custom registrar 59 + tiered-name 13;
+               name records 57; name reverse 14; name service 67; storage migrations;
+               vault, Thru client, token/balance, History, registration, API-router,
                pending concurrency, signing/network lock, and auto-lock suites pass.
-npm run build  PASS — generated dist/ from the current source.
+npm run build  PASS — generated dist/ from the current source, no warnings.
 ```
 
 These results are deterministic/local. They do not close the browser or live-chain checks below.
 
-Re-verified on the 2026-10-04 production-rules conformance audit (branch
-`arena/01a10602-thru-wallet-ext`): same suites green with the current counts — contract 80/80,
-route lifecycle 1017/1017, security-checks 20, DOM/refs 130/130 — plus the new fee-provenance
-regression (`test-api-router.mjs [13]`). See `docs/AUDIT_REPORT.md`.
+Historical baselines, kept for provenance: the Mainnet-readiness remediation (2026-10-03) and the
+2026-10-04 production-rules conformance audit (`arena/01a10602-thru-wallet-ext`, contract 80/80,
+route lifecycle 1017/1017). Those counts describe the tree at their date, not this one. See
+`docs/AUDIT_REPORT.md`.
 
 ### Recent security hardening
 
@@ -135,7 +270,7 @@ documentation remediation — wallet core first; no DEX/launchpad/prediction wor
 5. **Transaction/signing race testing + MV3 suspension/restart** — network switch during SDK signing, concurrent pending-record writes, worker suspension mid-registration/Send, bridge-timeout unknown-outcome messaging; deterministic interleaving tests exist, real MV3 scheduling does not.
 6. **Token transfer live verification** — `scripts/verify-token-transfer.mjs`: recipient-owner acceptance and the actual token-program fee.
 7. **Explorer/block-time verification** — current feed availability/latency, the `/tx/` explorer route, and whether any authoritative charged-fee source exists.
-8. **Final dependency/security review** — re-run `npm audit --omit=dev`, review advisories for `@thru/*` and `esbuild`, re-verify the 0.4.1 pins before any store release. **Architecture is frozen here** (standing rule in `AGENTS.md`): no refactor without a measurable security, correctness, performance, or maintainability benefit and a proving test.
+8. **Final dependency/security review** — re-run `npm audit --omit=dev`, review advisories for `@thru/*` and `esbuild`, re-verify the 0.4.2 pins before any store release. **Architecture is frozen here** (standing rule in `AGENTS.md`): no refactor without a measurable security, correctness, performance, or maintainability benefit and a proving test.
 9. **External security review/audit** — required before any mainnet-readiness claim; none has been performed.
 10. **Mainnet-specific configuration + verification** — re-measure the fee on mainnet (its `baseFeeUnits` is deliberately null), verify program deployments and explorer routing, add the RPC origin to `connect-src`, and enable deliberately; a Betanet observation cannot prove mainnet behavior.
 
@@ -200,7 +335,8 @@ What was removed, and what deliberately was not:
 
 This was the largest remaining test gap: `check-routes.mjs` proves a route is *reachable* and its
 classes are *defined*; nothing proved it *mounts*. All three requirements are now asserted, for all
-14 routes, in no-vault / locked / unlocked states (904 checks in the current audited run):
+15 routes, in no-vault / locked / unlocked states (**1,104 checks** in the current run, including
+the reviewed Send/Name/Faucet flows):
 
 1. mount through the real Router, guards, bridge and kit, and assert no throw plus the landing path
    the guard actually specifies;
@@ -326,7 +462,7 @@ the probe.
 Completed in the 2026-09-18 audit pass: `@thru/programs` and `@thru/sdk` were exact-pinned at
 `0.3.16`, and derivation imports from the SDK's public `@thru/sdk/crypto` subpath rather than
 the deprecated standalone crypto package. Both pins have since advanced deliberately and remain
-exact: `0.4.1` today, with derivation vectors verified unchanged against that pin
+exact: `0.4.2` today, with derivation vectors verified unchanged against that pin
 (`test/test-derivation.mjs`). Golden addresses have never changed; `npm ci` is the CI install
 gate.
 
@@ -446,7 +582,9 @@ Each was earned by a defect in `docs/DEFECT_LOG.md`.
 
 Backend contract methods `name.lookup` / `name.checkAvailability` / `name.initRoot` / `name.register` /
 `name.setRecord` against the system name program (package-pinned address; recovered layouts with
-provenance recorded in `src/lib/name-service.js`). Reads are always-on truth asks; writes are gated
-(`FLAGS.NAME_SERVICE=false`) until `scripts/probe-name-service.mjs` verifies formats on the live chain.
+provenance recorded in `src/lib/name-service.js`). Reads are always-on truth asks. `name.register`
+has been a live write since v23 and `name.setRecord` since v31 (both `auth:'signing'`, both reached
+through the shared review pipeline); `name.initRoot` is the only write still gated behind
+`FLAGS.NAME_SERVICE=false`.
 Security model: self-signed, only under parents the signer owns — sponsorship flows are rejected by
 design.

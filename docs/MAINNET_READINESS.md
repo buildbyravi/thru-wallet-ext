@@ -4,6 +4,15 @@ Verdict per owner's checklist, each with where it is proven. The rule across all
 nothing hard-codes a network fact; every chain-specific answer comes from the network
 config, a scoped storage key, or a live chain read (never a guess).
 
+> **Refresh 2026-10-28.** The verdicts below still hold; only the pointers age. Specific line
+> numbers (e.g. `faucet.js:230`, `token-service.js:87`) refer to the 2026-10-09 tree — those files
+> have since grown and the faucet screen was rebuilt around the shared review card. Contract is
+> now **v31** (153 methods, 15 routes): a faucet claim and every name write now go through
+> `tx.prepareReview` → `tx.confirmReview`, which re-checks the bound account/network before
+> dispatching to the same signing method. Simulation remains unavailable on every network
+> (`tx.simulate` → `supported:false`), so no mainnet-readiness claim may imply simulated
+> previews. Mainnet is still declared-but-disabled with `baseFeeUnits: null`.
+
 ## 1. Testnet + mainnet as parallel networks — READY
 `src/lib/networks.js` is the single typed registry: `betanet` (live, enabled), `localnet`
 (disabled, local-only), `testnet` (declared+disabled — RPC/faucet positions unverified),

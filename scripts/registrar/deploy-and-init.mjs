@@ -5,8 +5,21 @@
 // probe lived with the same constraint and ran on the owner's machine).
 //
 //   THRU_SEED="word1 … word12" node scripts/registrar/deploy-and-init.mjs \
-//     --root thru --fee 1000 --treasury <ta…treasury address> \
+//     --root thru --fee-3 100000 --fee-4 10000 --fee-5plus 1000 \
+//     --fee-policy best-effort --treasury <ta…treasury address> \
 //     --bin contracts/thru-custom-registrar/target/riscv64imac-unknown-none-elf/release/thru-custom-registrar.bin
+//
+// TIERED FEES (2026-10-30): the config carries three per-year prices — 3 chars, 4 chars,
+// 5..=32 chars — plus a collection policy. Defaults are the Betanet intent
+// (100000 / 10000 / 1000 base units = 0.0001 / 0.00001 / 0.000001 THRU). They must be
+// monotone non-increasing; the script refuses a schedule where a shorter name costs less.
+//
+// `--fee-policy strict` makes a refused charge REVERT the registration. It is refused by this
+// script unless `--collection-proven "<note>"` is passed, because the deployed program's charge
+// has only ever failed (VM -10 AccountNotWritable, surfaced as 0xD20A). Measure with
+// `--probe-collection` (records the treasury balance) before and after a real registration,
+// then re-run with strict. `best-effort` keeps the old behaviour and must not be described to
+// users as a charge.
 //
 // EXPERIMENTS/CONVENTIONS FOLLOWED (all in-repo or first-party):
 //   * Live plumbing style: scripts/measure-fee.mjs (thru-client configureNetwork +
@@ -45,7 +58,25 @@ for (let i = 0; i < argv.length; i += 1) {
 }
 const NETWORK_ID = flags.get('network') ?? 'betanet';
 const ROOT_NAME = flags.get('root');
-const FEE_PER_YEAR = flags.has('fee') ? BigInt(flags.get('fee')) : null;
+// Tiered schedule (base units per YEAR). The Betanet intent from the 2026-10-30 release plan:
+// 3 chars = 0.0001 THRU, 4 = 0.00001, 5+ = 0.000001. Mainnet sets its own numbers; nothing in
+// the program or the wallet hardcodes these — they are config.
+const FEE_3 = flags.has('fee-3') ? BigInt(flags.get('fee-3')) : 100_000n;
+const FEE_4 = flags.has('fee-4') ? BigInt(flags.get('fee-4')) : 10_000n;
+const FEE_5PLUS = flags.has('fee-5plus') ? BigInt(flags.get('fee-5plus')) : 1_000n;
+// 0 = best effort (attempt the debit, ignore a refusal), 1 = strict (a refusal reverts).
+// Default is best effort ON PURPOSE: the deployed program's charge was refused by the VM with
+// -10 AccountNotWritable (0xD20A), so strict may make every registration revert. Run with
+// --probe-collection first; only then pass --fee-policy strict.
+const FEE_POLICY_FLAG = String(flags.get('fee-policy') ?? 'best-effort').toLowerCase();
+const FEE_POLICY_STRICT = FEE_POLICY_FLAG === 'strict';
+if (!['strict', 'best-effort', 'best_effort'].includes(FEE_POLICY_FLAG)) {
+  console.error(`\nFATAL: --fee-policy must be strict or best-effort (got ${FEE_POLICY_FLAG})`);
+  process.exit(1);
+}
+const PROBE_COLLECTION = flags.get('probe-collection') === 'true';
+const COLLECTION_PROVEN = flags.has('collection-proven');
+const COLLECTION_NOTE = flags.get('collection-proven') === 'true' ? '' : String(flags.get('collection-proven') ?? '');
 const TREASURY = flags.get('treasury');
 const BIN_PATH = flags.get('bin');
 const SEED = flags.get('seed') ?? 'thru-custom-registrar:v1';
@@ -60,8 +91,22 @@ function step(truth, label, detail = '') {
 }
 
 if (!ROOT_NAME) die('pass --root <root name> (e.g. --root thru)');
-if (FEE_PER_YEAR === null) die('pass --fee <base units per year> (Betanet intent: 1000)');
-if (FEE_PER_YEAR < 0n) die('--fee must be non-negative base units');
+for (const [flag, value] of [['--fee-3', FEE_3], ['--fee-4', FEE_4], ['--fee-5plus', FEE_5PLUS]]) {
+  if (value < 0n || value > 0xffffffffffffffffn) die(`${flag} must be a non-negative u64 of base units`);
+}
+// The schedule must be monotone non-increasing with length: a 4-character name cannot cost
+// more than a 3-character one. A typo here would be a live, wrong price.
+if (FEE_3 < FEE_4 || FEE_4 < FEE_5PLUS) {
+  die(`tier schedule is not monotone: 3=${FEE_3} 4=${FEE_4} 5+=${FEE_5PLUS} (want 3 >= 4 >= 5+)`);
+}
+// A strict policy makes a refused charge revert, and the only observation we have is that the
+// charge IS refused. Refuse to broadcast that configuration without a human attestation that a
+// treasury delta was measured — checked HERE, before anything is signed.
+if (FEE_POLICY_STRICT && !COLLECTION_PROVEN) {
+  die('--fee-policy strict needs --collection-proven "<note>": a registration whose treasury '
+    + 'balance delta you actually observed. Without it, an uncollectable fee would revert every '
+    + 'registration (the deployed program already fails with 0xD20A/-10). Use best-effort until then.');
+}
 if (!TREASURY) die('pass --treasury <ta…> — the fee destination; we never invent one');
 if (!BIN_PATH) die('pass --bin <compiled .bin> — see contracts/thru-custom-registrar/README.md');
 if (!existsSync(resolve(BIN_PATH))) die(`compiled artifact not found: ${resolve(BIN_PATH)}`);
@@ -78,7 +123,10 @@ if (!mnemonic) {
   } catch { /* ignore */ }
 }
 if (!mnemonic) die('THRU_SEED env var with the deployer mnemonic is required (never persisted)');
-step(true, 'inputs', `network=${NETWORK_ID} root=${ROOT_NAME} fee=${FEE_PER_YEAR} treasury=${TREASURY.slice(0, 10)}… path=${BIN_PATH}`);
+step(true, 'inputs', `network=${NETWORK_ID} root=${ROOT_NAME} tiers=${FEE_3}/${FEE_4}/${FEE_5PLUS} policy=${FEE_POLICY_STRICT ? 'strict' : 'best-effort'} treasury=${TREASURY.slice(0, 10)}… path=${BIN_PATH}`);
+if (FEE_POLICY_STRICT) {
+  console.log(`  info - strict enforcement attested: ${COLLECTION_NOTE || '(no note recorded)'}`);
+}
 
 // ---------- wallet plumbing --------------------------------------------------------------
 const { MnemonicGenerator, ThruHDWallet } = await import('@thru/sdk/crypto');
@@ -151,7 +199,7 @@ if (existing?.exists) {
 
 // ---------- 2. Initialize (config create + init-root CPI inside the program) --------------
 const {
-  buildTcrInitializeInstructionData, tcrConfigAddress, TCR_CONFIG_SEED_LABEL,
+  buildTcrInitializeInstructionData, buildTcrUpdateConfigInstructionData, tcrConfigAddress, TCR_CONFIG_SEED_LABEL,
 } = await import(toUrl(join(REPO_ROOT, 'src/lib/custom-registrar.js')));
 const nsLib = await import(toUrl(join(REPO_ROOT, 'src/lib/name-service.js')));
 
@@ -182,10 +230,62 @@ const existingCfg = await thruClient.getAccountInfo(configAddress).catch(() => n
 let signature = null;
 let streamResult = null;
 let streamError = null;
-let vmError = 0;
+// null, not 0: a skipped Initialize never ran the VM, and 0 is the VM's success code. The
+// evidence file must not report an observation that was never made.
+let vmError = null;
+let initializeState = 'skipped';
 
 if (existingCfg?.exists) {
-  console.log('  (config account already exists — skipping Initialize transaction)');
+  const { parseTcrConfig } = await import(toUrl(join(REPO_ROOT, 'src/lib/custom-registrar.js')));
+  const raw = existingCfg.raw?.data?.data ?? existingCfg.raw?.data ?? existingCfg.raw;
+  let currentCfg = null;
+  try { currentCfg = parseTcrConfig(raw); } catch { /* ignore */ }
+  const needsUpdate = !currentCfg
+    || currentCfg.layout !== 2
+    || currentCfg.fee3PerYear !== FEE_3
+    || currentCfg.fee4PerYear !== FEE_4
+    || currentCfg.fee5PlusPerYear !== FEE_5PLUS
+    || (currentCfg.feePolicy === 1) !== FEE_POLICY_STRICT
+    || (TREASURY && currentCfg.treasury !== TREASURY);
+
+  if (!needsUpdate) {
+    console.log('  (config account already exists and matches requested tiers — skipping UpdateConfig)');
+  } else {
+    console.log(`  (config account exists in layout ${currentCfg?.layout ?? 'unknown'} — sending UpdateConfig to set tiered schedule + resize)…`);
+    const { rawTransaction } = await client.transactions.buildAndSign({
+      feePayer: { publicKey: deployer.publicKey, privateKey: deployer.privateKey },
+      program: registrarProgramAddress,
+      header: { computeUnits: 2_000_000, memoryUnits: 32_768, stateUnits: 4, fee: 0n, startSlot: slot, expiryAfter: 10_000 },
+      accounts: {
+        readWrite: [configAddress],
+        readOnly: [],
+      },
+      instructionData: ({ getAccountIndex }) => buildTcrUpdateConfigInstructionData({
+        newFee3: FEE_3,
+        newFee4: FEE_4,
+        newFee5Plus: FEE_5PLUS,
+        newFeePolicy: FEE_POLICY_STRICT ? 1 : 0,
+        newTreasury: TREASURY,
+        indexOf: getAccountIndex,
+        configAddress,
+      }),
+    });
+    step(!!rawTransaction?.length, 'UpdateConfig built+signed');
+
+    for await (const update of client.transactions.sendAndTrack(rawTransaction)) {
+      if (update?.signature?.value && !signature) {
+        const { formatSignature } = await import(toUrl(join(REPO_ROOT, 'src/lib/registrar.js')));
+        signature = formatSignature(update.signature.value);
+      }
+      if (update?.executionResult) streamResult = update.executionResult;
+      if (update?.error) streamError = update.error;
+    }
+    step(!!signature && !streamError, 'UpdateConfig broadcast', signature ?? String(streamError ?? 'no signature'));
+    initializeState = 'updated';
+    vmError = Number(streamResult?.vmError ?? -1);
+    step(vmError === 0, 'UpdateConfig executed (vmError 0)',
+      streamResult ? `vmError=${streamResult.vmError} userErrorCode=${streamResult.userErrorCode ?? 0}` : 'stream ended without an execution result');
+  }
 } else {
   // Account lists per role (SDK byte-sorts them into the final table; the u16 indices
   // are resolved INSIDE the instructionData callback via the SDK's getAccountIndex —
@@ -200,7 +300,10 @@ if (existingCfg?.exists) {
       readOnly: [NS_PROGRAM],
     },
     instructionData: ({ getAccountIndex }) => buildTcrInitializeInstructionData({
-      feePerYear: FEE_PER_YEAR,
+      fee3PerYear: FEE_3,
+      fee4PerYear: FEE_4,
+      fee5PlusPerYear: FEE_5PLUS,
+      feePolicy: FEE_POLICY_STRICT ? 1 : 0,
       treasury: TREASURY,
       rootName: ROOT_NAME,
       configSeed,
@@ -223,6 +326,7 @@ if (existingCfg?.exists) {
     if (update?.error) streamError = update.error;
   }
   step(!!signature && !streamError, 'Initialize broadcast', signature ?? String(streamError ?? 'no signature'));
+  initializeState = 'executed';
   vmError = Number(streamResult?.vmError ?? -1);
   step(vmError === 0, 'Initialize executed (vmError 0)',
     streamResult ? `vmError=${streamResult.vmError} userErrorCode=${streamResult.userErrorCode ?? 0}` : 'stream ended without an execution result (timeout) — check the explorer before re-running');
@@ -238,11 +342,44 @@ try {
   const { parseTcrConfig } = await import(toUrl(join(REPO_ROOT, 'src/lib/custom-registrar.js')));
   const raw = cfgInfo.raw?.data?.data ?? cfgInfo.raw?.data ?? cfgInfo.raw;
   const parsed = parseTcrConfig(raw);
-  step(parsed.rootName === ROOT_NAME, 'config parses and names the root', JSON.stringify({ rootName: parsed.rootName, fee: parsed.feePerYear.toString(), treasury: parsed.treasury.slice(0, 12) }));
+  step(parsed.rootName === ROOT_NAME, 'config parses and names the root',
+    JSON.stringify({
+      rootName: parsed.rootName,
+      layout: parsed.layout,
+      tiers: [parsed.fee3PerYear, parsed.fee4PerYear, parsed.fee5PlusPerYear].map(String),
+      policy: parsed.feePolicyName,
+      treasury: parsed.treasury.slice(0, 12),
+    }));
+  // The deploy is only what the CHAIN says. Assert the values the run intended.
+  step(parsed.layout === 2, 'config is layout 2 (tiered)', `layout=${parsed.layout}`);
+  step(parsed.fee3PerYear === FEE_3 && parsed.fee4PerYear === FEE_4 && parsed.fee5PlusPerYear === FEE_5PLUS,
+    'the on-chain tiers equal the requested schedule',
+    `${parsed.fee3PerYear}/${parsed.fee4PerYear}/${parsed.fee5PlusPerYear} vs ${FEE_3}/${FEE_4}/${FEE_5PLUS}`);
+  step((parsed.feePolicy === 1) === FEE_POLICY_STRICT, 'the on-chain policy equals the requested policy',
+    parsed.feePolicyName);
 } catch (e) {
   step(false, 'config parses', e?.message ?? String(e));
 }
 
+// ---------- 3. Collection evidence (the gate for --fee-policy strict) --------------------
+// The program can ENFORCE its fee, but the deployed one never managed to collect it: the VM
+// answered the transfer with -10 AccountNotWritable (0xD20A). Turning `strict` on before
+// proving that a charge can land would make every registration revert, so:
+//   * --probe-collection reads the treasury balance and records it (run it before and after a
+//     real registration to get a delta — that is the measurement, not this script's opinion);
+//   * --collection-proven "<note>" is an explicit human attestation that such a delta was
+//     observed. It is recorded verbatim in the evidence file, attributed, and never inferred.
+let collectionProbe = { measured: false };
+if (PROBE_COLLECTION) {
+  const treasuryInfo = await thruClient.getAccountInfo(TREASURY).catch(() => null);
+  collectionProbe = {
+    measured: Boolean(treasuryInfo?.exists),
+    at: new Date().toISOString(),
+    treasuryExists: Boolean(treasuryInfo?.exists),
+    treasuryBalance: treasuryInfo?.balance != null ? String(treasuryInfo.balance) : null,
+  };
+  console.log(`  info - treasury ${TREASURY.slice(0, 12)}… exists=${collectionProbe.treasuryExists} balance=${collectionProbe.treasuryBalance ?? 'unreadable'}`);
+}
 mkdirSync(EVIDENCE_DIR, { recursive: true });
 const evidence = {
   date: new Date().toISOString(),
@@ -254,9 +391,14 @@ const evidence = {
   configAddress,
   rootAddress,
   rootName: ROOT_NAME,
-  feePerYearBaseUnits: FEE_PER_YEAR.toString(),
+  fee3PerYearBaseUnits: FEE_3.toString(),
+  fee4PerYearBaseUnits: FEE_4.toString(),
+  fee5PlusPerYearBaseUnits: FEE_5PLUS.toString(),
+  feePolicy: FEE_POLICY_STRICT ? 'strict' : 'best-effort',
+  collectionProbe,
   treasury: TREASURY,
   initializeSignature: signature,
+  initializeState,
   vmError,
   executionResult: streamResult,
 };

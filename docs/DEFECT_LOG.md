@@ -11,17 +11,63 @@ Legend for how each was found:
 guardrail script caught it
 
 
-## Status convention — current as of 2026-09-26
+## Status convention — current as of 2026-10-29
 
 The defects in §§1–4 are **historical**: their old paths and failure descriptions are retained to
 explain the fixes, not to claim those paths still ship. §5 records resolved legacy duplication, not
 a current backlog. The current verification gaps are listed in §6; the popup/side-panel and History
 cross-network fixes in §§7–8 are implemented and locally tested, but their real-Chrome/live-RPC
-checks remain open. Check `src/` before treating any historical symptom as current.
+checks remain open. §9–§12 are v29 review fixes verified in source and the deterministic suite, §13 audits the
+v30 domain merge, §14 audits the v31 record-write merge, and §§15–18 are the 2026-10-30 lifecycle/notification
+work and the tiered registrar upgrade; none of them has a real-browser pass. Check `src/` before treating any
+historical symptom as current.
 
 ---
 
+## Domain review audit (2026-10-27) - `READ`, `TEST`, browser harness
+
+**IMPLEMENTED / TESTED**: domain review expanded the page with an inline panel, and duplicated
+the form's live values at confirmation rather than binding the reviewed term/context. Review
+now uses the existing `Sheet`, with a captured quote, term, account, network and lease expiry.
+Cancel/Escape do not sign; changes invalidate review; close removes the same listeners.
+
+An old availability reply could arm a newly typed name during the 450ms debounce because its
+sequence was invalidated only when the next request started. Input now invalidates immediately,
+and teardown clears the debounce. The password helper previously retained transaction errors
+as authentication retries; the domain flow now keeps only authentication errors in that dialog
+and returns unknown/stale transaction errors to the route. An optional lifecycle abort closes
+the password prompt and clears secrets when leaving the route.
+
+The DOM shim lacked `isConnected`, so generic route-mount checks did not exercise the domain
+card's asynchronous hydration. That property and dedicated mounted domain regressions now run
+in the full suite. Build/full tests pass. Real Chrome screenshots using the actual route and
+built CSS confirm no height expansion and accessible scrolling at 400x600 and narrow/short
+320px sizes. This is not evidence of a live wallet signing flow.
+
 ## 1. The expensive ones
+
+### Domain import rejected SDK metadata owners (2026-10-27)
+
+**IMPLEMENTED / TESTED**: import returned "Ownership could not be verified" for valid domain
+accounts. The strict program-owner check coerced the SDK's `Pubkey` object with `String`,
+yielding `[object Object]` instead of its Thru address. Synthetic tests used strings and missed
+the runtime shape. The adapter now owns one `Pubkey.from(...).toThruFmt()` normalizer, reused
+by domain and registrar verification; tests exercise actual SDK objects, wrong program owners
+and malformed metadata. No ownership check was removed. The generic Manage action was also
+replaced with Renew, which opens a prefilled, renewal-only view; custom-registrar renewal is
+explicitly unavailable rather than falling through to registration or claiming another lease.
+
+### Additional registrations disappeared when primary changed (2026-10-27)
+
+**IMPLEMENTED / TESTED**: a single `thru_primary_names` alias was used as the entire domain
+list. Registering another name replaced that alias; unlinking removed the only discovery hint.
+Contract v29 separates the tracked inventory from primary selection within the same service.
+Versioned migration retains old aliases, confirmed handlers persist new candidates without a
+popup callback, and import verifies ownership before storage. Primary/untrack/refresh share
+one serialized revision guard. Cached candidates remain stale and cannot authorize actions.
+Regression tests cover the original two-domain loss, unlink, concurrent imports, ownership
+loss/offline state, future schemas and late refreshes. This is tracked inventory, not an index
+of all domains owned on-chain; names already lost from the old alias store must be imported.
 
 ### 1.1 BigInt at the message port — `BROWSER`
 
@@ -249,18 +295,21 @@ monolith comparison is not evidence of duplicate code in the shipped route stack
 > **Lesson:** when deduplicating, compare behavior before deleting either implementation. The old
 > versions differed; preserve the required behavior in the shared current component and its tests.
 
-## 6. Open verification gaps — as of 2026-09-26
+## 6. Open verification gaps — refreshed 2026-10-28
 
 Automated coverage is materially stronger than the original audit: `scripts/check-routes.mjs`
-checks route reachability/CSS classes; `test/test-route-lifecycle.mjs` mounts all 14 routes through
-the real Router/guards/bridge and checks secret hygiene, listeners, focus-trap behavior, Send and
-History flows; focused suites cover registration, history cache/block-time, network scoping, the API
-router, and contract invariants. These tests use deterministic fixtures/DOM shims and do not close
+checks route reachability/CSS classes; `test/test-route-lifecycle.mjs` mounts all 15 routes through
+the real Router/guards/bridge and checks secret hygiene, listeners, focus-trap behavior, the reviewed
+Send/Name/Faucet flows and History; `test/test-tx-review.mjs` covers the review pipeline; focused
+suites cover registration, history cache/block-time, network scoping, the API router, and contract
+invariants. These tests use deterministic fixtures/DOM shims and do not close
 the following items:
 
 | Boundary | Still open |
 | --- | --- |
 | Real Chrome | Popup/side-panel layout and focus at narrow/wide sizes, QR rendering, clipboard prompt, actual mutual exclusion/toolbar mode, and MV3 worker eviction/restart. Use `docs/MANUAL_SMOKE_CHECKLIST.md`. |
+| Review card in a browser | The v29 card has DOM-level tests and a static fixture harness (`scripts/preview-tx-review.html`), but no real-browser pass at 400px or in the side panel (Dashboard/Send activation and the reviewed flows are DOM-shim only). Checklist §7 lists the specific checks (simple-transfer hierarchy, fee honesty, no simulated balance, blocking warnings, single-use confirm, timeout wording). |
+| Transaction simulation | Not available on the current Thru backend: `tx.simulate` returns `{supported:false}`. Reviews therefore show no post-transaction balances. Enabling it requires a trustworthy dry-run RPC boundary, not a UI change. |
 | Live v12 registration | Creation-time registration and Send JIT for an owned absent recipient on a live enabled network; include offline-vs-absent and exact target signer checks. |
 | Live token transfer | Recipient-owner acceptance when the recipient has never registered, and the actual token-program fee (`scripts/verify-token-transfer.mjs`). |
 | Send/pending races | A network switch after the final preflight while SDK signing is in progress, and concurrent pending-record read/modify/write operations (`docs/SEND_PATH_AUDIT.md`). |
@@ -312,3 +361,689 @@ latency; keep that check open in `docs/MANUAL_SMOKE_CHECKLIST.md`.
 
 > **Lesson:** a block height is meaningful only together with its chain, and optional enrichment
 > RPCs should never run under the lock that protects unrelated cached accounts.
+
+## 9. The shared review card and its two integration seams — FIXED in source/tests
+
+Found while verifying the v29 transaction-review pipeline against Rabby's source and while building
+the browser harness (`scripts/preview-tx-review.html`). Neither was a pipeline bug; both were seams
+where a feature met the shared component.
+
+### 9.1 A feature can re-derive the card's decision and get it wrong — `READ` + `TEST`
+
+The Domain review sheet kept its confirm button enabled by listening for a DOM `change` event on the
+card element, and built that button *after* the card. `TxReviewCard` fires its documented
+`onChange({canConfirm})` from inside its constructor, so the sheet's handler ran before its own
+button existed, and afterwards depended on an event that only bubbles when an acknowledgement input
+changes. A review with no acknowledgements — a plain registration — therefore had one code path
+(render) and no path at all for "confirmability changed".
+
+Fix: every caller declares its confirm control first and passes `onChange`; the card remains the only
+place that decides confirmability. Send already did this; Domain now does, and the faucet route was
+written that way from the start.
+
+> **Lesson:** a shared component's callback contract is the contract. A caller that recreates the
+> decision from DOM events is not "using" the component, it is duplicating it.
+
+### 9.2 Acknowledgement ids were unique per review, not per document — `BROWSER HARNESS`
+
+The card rendered `id="tx-review-ack-<ackId>"`. One card per screen hid it. The harness mounts seven
+cards in one document, and the duplicated ids made a `<label for>` resolve to the first match — so a
+click on card 5 could tick card 3's checkbox. Accessibility and correctness both broken, silently.
+
+Fix: ids are namespaced by a per-instance counter (`tx-review-ack-<instance>-<ackId>`).
+
+> **Lesson:** "one at a time" is a runtime assumption, not a property of the markup. Ids belong to the
+> document, not to the component.
+
+### 9.3 A prepared review could be confirmed twice inside its TTL — `READ`
+
+`tx.confirmReview` did not consume the record, so the same `reviewId` could be confirmed repeatedly
+within 120 s. The handlers' own duplicate guards and the disabled-while-in-flight button were the
+only protection, which is a weaker claim than the pipeline advertises.
+
+Fix: a successful submit discards the review (`submitReviewedReview` → `tx.discardReview`), so a
+replay fails with `REVIEW_NOT_FOUND` and is classified stale. A *failed* submit deliberately keeps
+the review: retrying from the same reviewed facts is safe and avoids a needless re-read.
+
+> **Lesson:** "the downstream guard will catch it" is a reason a bug is survivable, not a reason to
+> leave the upstream hole open.
+
+## 10. Dashboard activated accounts through a signing-gated method — FIXED in source/tests
+
+Found by the new "no UI file names a signing method" scan added in `test/test-tx-review.mjs` [14],
+prompted by a second independent review asking whether any direct signing call remained.
+
+`routes/dashboard.js` fired `tx.autoCreateAccount` (declared `auth: 'signing'`) whenever a live
+balance read reported `exists: false` for the active account. Two problems, one of them user-facing:
+
+1. **It bypassed the v12 activation policy.** Every other activation path — account/keyring creation,
+   Send's JIT path — goes through `tx.registerAccount`, which is `auth: 'unlocked'` precisely
+   because it proves vault ownership, signs with the *target* account's own key, re-checks the
+   network immediately before signing, and declares fee `0n`. The Dashboard path called the older
+   method that signs with whatever the active account is.
+2. **It could never succeed for a user who enabled per-sign password re-auth.** The Dashboard call is
+   fire-and-forget from a background refresh (`.catch(() => {})`). A `signing` method behind the
+   opt-in needs a password argument, and no screen was asking for one, so the call failed silently
+   and the account simply stayed unregistered — with no message anywhere.
+
+Fix: Dashboard now calls `bridge.send('tx.registerAccount', { address: account.address })`, the same
+narrow exception the rest of the wallet uses. `tx.autoCreateAccount` remains in the contract
+(append-only) but has zero UI callers.
+
+Guards: `test/test-tx-review.mjs` [14] scans every `src/ui/**/*.js` for `bridge.send('…')` literals
+(comments stripped), fails on any `auth:'signing'` or unknown method, asserts the sanctioned literals
+are present so the scan cannot pass vacuously, and asserts `tx.autoCreateAccount` has no caller.
+`test/test-route-lifecycle.mjs` mounts Dashboard with `exists:false` and asserts the call is
+`tx.registerAccount`, targets the active address, passes only `{address}` (no password), and never
+touches `tx.autoCreateAccount`.
+
+> **Lesson:** "documented as allowed" is not the same as "reaches the one sanctioned implementation".
+> A capability that is convenient to call directly will be called directly; make the direct call
+> fail in a test, not in a user's wallet.
+
+## 11. The review surface was over-built — FIXED in source/tests
+
+Found by the owner reading the shipped screen, not by a test: "the send view changed too much — make
+it back like the previous one from main", "the Domain register preview is so long users get
+confused", with two of their own Rabby before-sign screenshots as the target shape.
+
+### 11.1 Symptom — `BROWSER` (owner)
+
+A native THRU send rendered **eleven** blocks: an eyebrow + title, a prose summary, a two-column
+"signing account / interaction" box with the program address and provenance, a "What you are doing"
+heading over a table, a "Balance change" heading over one large box plus a "Balance after: not
+available" row and its note, a "Network fee" heading over four rows (fee, reserve, provenance, note)
+and two more hints, a "Simulation unavailable" box, an "Execution details" heading over program +
+instruction + four account roles + a raw toggle, a "Warnings" heading, acknowledgements, and the
+blocked notice. A `.name` registration was longer still, because it has more facts.
+
+The facts were all true; the screen answered "what am I signing?" only after a scroll. The previous
+`main` Send screen had done the same job with one table, and Rabby's before-sign screen shows the
+value, one card and two taps of detail at 400 px.
+
+### 11.2 Root cause — `READ`
+
+Two defaults compounded:
+
+1. **Every decoder fact got a section of its own.** The card's contract said "render the envelope",
+   so each new fact (protocol provenance, simulation status, balance-after note, fee provenance,
+   reserve) was added as a visible block rather than folded into the facts the user needs to decide.
+   The envelope grew; the card grew one section per field, forever.
+2. **The old Send review's information architecture was treated as replaced rather than preserved.**
+   The single `detail-table` with From/To/Amount/fee/total was exactly the right shape for a transfer;
+   it was rebuilt from scratch as three sections, so the screen the owner recognised disappeared
+   instead of becoming the shared one.
+
+### 11.3 Fix
+
+`review-card.js` now renders one table (`detail-table`, the same component as old `main`) with the
+decoder's rows + `Network fee (estimated)`/`Not quoted` + `Total` when arithmetic is possible, above
+it one signed exact value box per movement, above that a one-line program identity, and **one closed
+`Advanced details` disclosure** holding program address/provenance, instructions, account roles, fee
+provenance/reserve/note, the simulation status and the raw toggle. Unknown reviews open that
+disclosure. Decoders dropped the redundant `Network` row (the header badge owns it), the registrar
+row (the protocol line owns it), and the per-year price when it duplicates the total.
+
+### 11.4 A clipped destination address, found while simplifying — `READ`
+
+The first card rendered mono summary values with the shared `.detail-address` class, which is
+`white-space: nowrap; text-overflow: ellipsis`. At the 400 px popup width a 44-character Thru address
+was therefore **visually truncated in the "To" row** of a send review — the destination the user is
+about to pay irreversibly. The full address existed in the DOM (and in `Advanced details`), so no test
+noticed; the old `main` screen deliberately rendered `to` with `word-break: break-all`.
+
+Fix: review values now use `.tx-review-address` (`word-break: break-all`, no ellipsis), so a long
+address wraps to a second line instead of being cut off. `.detail-address` stays for the compact
+account rows that actually want ellipsis.
+
+> **Lesson:** "the data is in the DOM" is not the same as "the user can read it". Any class borrowed
+> from a compact list can silently shorten the one string the decision depends on.
+
+### 11.5 Guards
+
+- `test-tx-review.mjs` [15] fails if the card grows a second table or a third top-level section, if
+  the old section classes return, if any decoder exceeds its row budget, or if any decoder repeats
+  the network in its rows. It also asserts the folded facts still exist in the envelope, so the next
+  simplification cannot become deletion.
+- `test-route-lifecycle.mjs` asserts the rendered DOM through the real Send and Faucet routes: one
+  table, no sections, disclosure closed by default, opening it reveals the program/fee note/simulation
+  without re-preparing the review, and an unmeasured fee prints `Not quoted` rather than a number.
+
+> **Lesson:** a shared component's envelope is a data contract, not a layout. Every new fact does not
+> earn a section; the screen has to stay the size of the decision. And when replacing a screen users
+> already know, the old shape is the baseline to beat, not the thing to throw away.
+
+### 11.6 The card was shortened again, and the copy was made plain — 2026-10-30
+
+The owner read the §11 card and said the Send preview was still not the previous one, the Domain
+register preview was still too long, and the screen had to *say what the transaction is*. The
+second pass cut copy rather than rows, and changed what the title says:
+
+- **The title carries the operation and the amount.** `Send 0.0015 THRU`, `Claim 0.5 THRU from the
+  faucet`, `Register vault.thru for 2 years`, `Add a url record to name.thru`, `Unrecognised
+  transaction`. A user reading only the first line now knows the transaction.
+- **Six badges became one context line** (`Main account · Betanet`). The decoded/not-decoded badge,
+  the program badge and the testnet badge were all repeating something the card says elsewhere;
+  the unknown case says it in its warning, in one sentence.
+- **The From/To rows became a counterparty line.** Name when the wallet has one, shortened address
+  beside it, the whole address one tap away and always in Details. `content.counterparty` is the
+  optional field; the From/To rows are gone from the decoders.
+- **The money table is You pay / You receive / Network fee / Total.** `Total` prints only when the
+  two sides share a symbol and can be added; a zero fee reads `none`; an unmeasured fee keeps
+  "not confirmed (paid in THRU)". A second, short table carries the operation's non-money facts
+  (remaining faucet allowance, term, expiry) — never a third.
+- **Warnings are one sentence each, at most two.** A raw transaction now has exactly one blocking
+  warning ("This transaction cannot be read") instead of a stack, and Details opens by default
+  because the surface has nothing readable to show.
+- **The custom registrar promises no fee.** `processor.rs` performs the charge as
+  `let _ = mgr.account_transfer(..)` and the live treasury is unchanged, so the card cannot claim a
+  price; it says the registrar takes no fee and explains the contract behavior in Details
+  (`protocol.trustNote`). The low-balance case became an informational "checked before signing"
+  note, and a new expiry is labelled "shown after the network confirms".
+
+> **Lesson:** after a screen has been simplified structurally, the remaining problem is usually
+> vocabulary, not layout. "Program", "provenance", "base units" and "binding" are the wallet's words,
+> not the user's; a card that is honest but unreadable is still a card the user taps through blind.
+
+## 12. The review pipeline's truth-states, store and simulation gate — FIXED in source/tests
+
+Found by an external audit of `2e2178f`, re-checked finding-by-finding at the current head
+(`docs/TX_REVIEW_VERIFICATION.md` §12). Every item below was still true at `983724b`; all are fixed
+with a regression test in `test/test-tx-review.mjs`.
+
+### 12.1 An unreadable mint was reported as a proven absence — `READ` + `TEST`
+
+`review/kinds.js` deliberately keeps `mintExists: null` when `token.readMint` fails, but the decoder
+tested truthiness:
+
+```js
+if (!facts.mintExists) { /* "This mint does not exist on this network", blocking */ }
+```
+
+An RPC outage therefore became an authoritative chain statement, and the review blocked with a fact
+the wallet had not established. Fixed by branching on `=== false` (proven absent, blocking) versus
+`== null` (unreadable, warning; the token handler re-reads the mint before signing).
+
+> **Lesson:** a tri-state fact needs three branches. `!value` silently merges "unknown" into "no",
+> which is the one collapse this wallet's rules exist to prevent.
+
+### 12.2 A failed simulation changed nothing — `READ`
+
+`simulationBlock()` could return `status:'failed'`, but state came only from decoder warnings and the
+card rendered every non-`supported` state as "Simulation unavailable". A dry run that ran and failed
+is *proof the transaction cannot succeed*, so it must block — and "failed" must not read as "we
+couldn't check".
+
+Fix: `simulationWarning()` produces a blocking warning; the service folds it in before computing and
+persisting state; `confirmReview` refuses any record that is not `ready`; the card labels the four
+states distinctly. Dormant today (Thru has no dry-run RPC), which is why it survived: the only tests
+that could exercise it needed a seam that did not exist.
+
+> **Lesson:** a status enum that the UI renders but the gate ignores is decoration. If a state can
+> exist, decide what it means for signing, or delete the state.
+
+### 12.3 Concurrent prepares erased each other — `READ` + `TEST`
+
+`review/store.js` said "single-writer per network" in its header and then did plain
+read-modify-writes. Two prepares from popup and side panel could read the same list and the later
+write dropped the earlier record, so a visible review then answered `REVIEW_NOT_FOUND` for no reason
+the user could see. Fixed with the per-network promise queue `pending-tx-service` already uses.
+Negative control: restoring the old body makes the new put/put test lose a record and the suite fail.
+
+> **Lesson:** "single writer" is a property you enforce, not a comment you write. Any read-modify-write
+> over a shared array needs a queue before the second caller exists.
+
+### 12.4 The faucet review invented an activation and ignored a policy mismatch — `READ` + `TEST`
+
+`accountExists: state.exists === true` turned an unreadable account into "does not exist", so the
+review promised "Your account will be activated first" on no evidence. Separately, the facts carried
+`targetMatchesFaucet:false` (the rate-limit policy belongs to another program) and the decoder never
+showed it, although the confirm-time recheck refused to sign. Fixed: tri-state existence with an
+`account-state-unverified` warning, and a blocking `faucet-target-mismatch`.
+
+> **Lesson:** when a recheck refuses on a fact, the review must show that fact. Otherwise the button
+> is disabled for a reason the user never saw.
+
+### 12.5 The registrar treasury rendered as `unknown` — `READ` + `TEST`
+
+The facts builder emitted `treasurer: cfg.treasurer`; the decoder read `facts.treasury`. The real
+authoritative address was already in hand and the execution table said "unknown". One name is now
+used end-to-end, and a decoder test asserts the address reaches the account table.
+
+> **Lesson:** `?? 'unknown'` hides naming drift. A fallback that turns a missing field into a word
+> makes a type error look like a chain limitation.
+
+### 12.6 "Verified program" could be true with no address — `READ`
+
+Native and token decoders hard-coded `verified: true` while allowing the pinned program id to be
+`null`; the validator did not require the pair. Fixed in both decoders (blocking
+`program-unidentified` when the id is missing) and enforced structurally in `model.js` for the
+protocol and execution program, so no future decoder can repeat it.
+
+> **Lesson:** a trust label is a claim about a specific identifier. The validator is the right place
+> to make "verified without an address" unrepresentable.
+
+### 12.7 What the audit also raised, and why it is not in this section
+
+F-01 (the dormant `intent-service` lifecycle), F-02's general form (direct signing methods remain
+callable; no one-shot authorization), F-05's residual (background `confirmReview` is idempotent by
+design) and F-08 (the Domain lifecycle) are architecture decisions, not defects: each is recorded as
+open in `docs/TX_REVIEW_VERIFICATION.md` §12 rather than "fixed" here. One enforcement gap *was*
+closed on the way: `confirmReview` now refuses a review whose persisted state is not `ready`, so a
+blocked review is no longer confirmable merely because the UI would have disabled the button.
+
+### 12.8 The evidence harness was broken, and one doc claimed it worked — `READ`
+
+`scripts/preview-tx-review.html` is dev-only, but it is the only place a human can see the real
+card against the real stylesheet, so it is the intended input to the browser checklist. It drew
+nothing: its inline script declared the confirm button and the status span *after* constructing the
+card, and `TxReviewCard` reports its initial confirmability synchronously from the constructor, so
+the first callback threw a `ReferenceError` (temporal dead zone) and the module stopped before
+appending the first card. `docs/TX_REVIEW_VERIFICATION.md` §5 had claimed the harness rendered the
+blocked and unknown cards with confirmation disabled; that sentence was removed and replaced with a
+dated correction, because the behaviour was only ever proven by the DOM-shim suite.
+
+Fix (`d45a085`): bindings declared before construction, the full-page pane selects its fixture by
+title instead of array index, and the fixture factory folds the node's simulation block in exactly
+as `review-service` does (`simulationWarning` → `state`), so a new synthetic simulation-rejected
+fixture is unsignable for the same reason the shipped review would be.
+
+> **Lesson:** a harness is part of the evidence, so it gets the same review as the component —
+> and a doc sentence about evidence is a claim that has to be re-checked when the evidence tool
+> changes. A page that serves 200 is not a page that rendered.
+
+---
+
+## 13. The v30 domain merge — audit of `3276245` (2026-10-28)
+
+Full findings, evidence and the commands that produced them: `docs/audits/2026-10-28-sync-audit.md`.
+Summary: `npm test` 2,326 checks, build PASS. D-1 and D-2 are fixed with negative controls; D-3,
+D-4 are reported and need an owner/contract decision; D-5, D-6 are documentation defects, fixed.
+
+### 13.1 A custom-registrar renewal rendered in the wrong currency — `READ` + `TEST`
+
+`domainCustomRenewFacts` emits native THRU facts with no `payment` block, and `decodeDomainRenew`
+had no `provider:'custom'` branch, so the registry rows formatted 2,000 base units with the
+payment-token fallback (`symbol 'TOKEN'`, `decimals 0`) and the card read **"Total price 2000
+TOKEN"**. The branch written for this case sat in `decodeDomainPurchase` — a kind whose facts are
+always `provider:'registry'`, so it was unreachable — and threw `ReferenceError: warnings is not
+defined` the moment it ran.
+
+Fix: one currency decision for the registrar family (`priceUnit`/`priceRow`/`totalRow`), a real
+custom branch in `decodeDomainRenew` (native THRU, custom registrar identity, best-effort quote
+warning, expiry still not computed), and deletion of the dead branch. `test-tx-review.mjs` `[3]`
+now asserts the currency, the protocol name, the warning, the low-balance block, and that no domain
+decoder throws or mislabels a currency for an unexpected provider.
+
+> **Lesson:** a decoder branch that the background cannot reach is untested code with a comment
+> around it. Drive every branch with the facts its kind actually emits — and with facts another
+> provider would emit, because that is how the unreachable branch was written in the first place.
+
+### 13.2 A name-resolved recipient lost its name before the review — `READ` + `TEST`
+
+The Send route learned to resolve `alice.thru` (contract v30) and passed `recipientLabel` into
+`tx.prepareReview`; both send kinds overwrote it with the address-book label, so the review showed
+a bare address the user could not connect to what they typed. The decoder already renders a label
+above the address — only the background dropped it.
+
+Fix: `resolvedRecipientLabel(params)`, bounded and display-only, used by both kinds. `[2b]` asserts
+the card shows the name above the exact reviewed address and that both kinds read it.
+
+> **Lesson:** when a route starts passing a new field, grep the consumer for it. A param nothing
+> reads is a silent no-op with a confident call site.
+
+### 13.3 The registrar fee is best-effort on chain, and the card claimed it would be taken — `READ`
+
+`processor.rs` performs the fee as `let _ = mgr.account_transfer(...)`, so a charge the VM refuses
+does not fail the registration; `describeTcrError` gained the `0xd20a` "fee transfer failed (account
+not writable)" mapping in the same merge, which is the live failure that motivated it. The review
+said "Charged by the registrar program itself, in THRU base units" and blocked a low balance with
+"so the program would reject it" — both false statements about the deployed program.
+
+Corrected to what is provable: the movement note and the `quote-not-final` warning say the debit is
+best-effort and decided on-chain, and the insufficiency warning says the **wallet** will refuse
+(which is exactly what `registrar-service.js` does). **Updated 2026-10-30 (§18):** the open
+question was decided by the owner — the charge must be enforceable and revert on failure — and the
+program now carries a `fee_policy` where `strict` does that. It is opt-in and ungated from
+`best-effort` only after a charge is proven to land, because the observed failure (`0xD20A`) means
+strict-enabling it blind would block every registration. The wallet derives `feeEnforced` from the
+on-chain policy, so the card, the service and the route all agree on whether a price is real.
+
+> **Lesson:** a review may describe the intent, but it may only promise what the deployed program
+> provably does. When the program swallows an error, "you will pay" is a fabrication.
+
+### 13.4 The batch registration queue is unreachable — and renders no review if reached — `READ`
+
+`55703d0` added a registration queue and a `Register N names` loop that prepares each review and
+calls `submitReviewedReview` **without rendering the review card**. The only control that starts it
+is created hidden and never un-hidden (`grep queueBtn.classList` → one `add('hidden')`), so the
+whole flow is dead code today. Revealed, it would be a feature-owned signing loop that shows a
+password prompt instead of a decoded review.
+
+Not changed here: it is the owner's in-flight feature and the fix is a product decision (delete it,
+or gate each item behind the card). Docs no longer claim multi-entry controls were deleted.
+
+> **Lesson:** dead code that can sign is not neutral. Either delete it in the same change that
+> orphans it, or leave a failing guard that says it must not be revealed as-is.
+
+### 13.5 Merge-conflict markers were committed — `READ`
+
+`docs/STATUS_AND_ROADMAP.md` shipped `<<<<<<< HEAD` / `=======` / `>>>>>>>` between the review and
+domain sections; both sides were kept (deduplicated) and the stale counts in them corrected. No
+test reads Markdown, so only a diff review catches this.
+
+> **Lesson:** `git diff --check` and a merge-conflict grep belong in the release checklist, not only
+> in a reviewer's head.
+
+### 13.6 Documentation contradicted the code — `READ`
+
+`docs/BACKEND_GAPS.md` said custom "lease renewal/claim is not wired" (renewal is wired; claim is
+not) and, with `STATUS_AND_ROADMAP.md`, that multi-entry controls were deleted (see 13.4).
+Current-state figures were one merge stale: v29/147 methods → v30/152, 2,253 → 2,326 checks,
+143 → 152 review checks, 1,065 → 1,104 lifecycle checks, 257 → 262 CSS classes.
+
+> **Lesson:** a "current state" line is a claim with a commit behind it. Re-read it against the
+> tree in the same pass that adds the feature, or it becomes the next audit's finding.
+
+## 14. The v31 record-write merge — audit of `4bd5ef9` (2026-10-29)
+
+Full findings, probe transcripts and fix evidence: `docs/audits/2026-10-29-v31-audit.md`.
+Summary: at the base commit `npm test` was 2,353 checks and green — while the new record write
+could not be confirmed by anyone. After this pass: build PASS, `npm test` 2,405 checks, exit 0.
+
+### 14.1 The confirm path threw on every attempt — `READ` + `PROBE`
+
+`domainRecordRecheck` read `record.binding.accountAddress`; the store writes `accountAddress` at the
+top level and never writes `binding`. The `TypeError` was caught and re-labelled
+`REVIEW_UNAVAILABLE`, so the only symptom a user would see was "the domain could not be read" on a
+domain they own — with no way to tell that the wallet, not the chain, was broken.
+
+Fixed by reading the field the store actually writes, and by splitting the four outcomes: readable
+and owned passes; an RPC failure is retryable `REVIEW_UNAVAILABLE`; an absent domain is
+`NAME_TAKEN`; a changed owner is `NOT_NAME_OWNER`; unparseable bytes are `REVIEW_UNAVAILABLE`.
+
+> **Lesson:** a blanket `catch` that produces one friendly message is a bug amplifier — it converts
+> "my code threw" into "the chain said no". Log the exception shape, or assert the codes.
+
+### 14.2 The live write was still declared `auth:'unlocked'` — `READ`
+
+`name.setRecord` is a real broadcast that had just been un-gated, and its contract entry still said
+`unlocked` and was absent from `TRANSACTION_METHODS`. A user who enabled per-signature re-auth would
+have signed it without the password, and the single-flight guard did not cover it. Fixed to
+`signing`, with the params the handler reads (`expectedNetworkId`, `expectedAccountAddress`,
+`password`) and membership in the signing guard. The test drives the real router: without the
+password the call is refused and `buildAndSign` is never reached.
+
+> **Lesson:** the auth level is part of the write's behaviour, not its metadata. Un-gating a write
+> means re-reading its whole entry, including the two lists it must appear in.
+
+### 14.3 A failed read was rendered as a proven negative — `READ` + `PROBE`
+
+`domainExists`/`isOwner` were booleans, so an RPC outage produced "Domain does not exist" *and*
+"You do not own this domain" — two blocking warnings asserting chain facts the wallet never read —
+and an account that failed to parse produced `isOwner:false`, i.e. a decode failure presented as
+proof of a foreign owner.
+
+Both fields are now three-state; unknown renders its own blocking warnings
+(`domain-unverified`, `owner-unverified`) that say the wallet could not prove the claim.
+
+> **Lesson:** a boolean fact cannot represent "I could not look". Wherever a review asserts
+> something about the chain, the third state has to exist in the facts bag before it can exist in
+> the UI.
+
+### 14.4 The account row printed an address as a role — `READ` + `PROBE`
+
+`accountRole(role, address)` was called as `accountRole(address, 'Domain account', {…})`: the
+rendered row was `{"role":"ta3vGKM…","address":"Domain account"}`, and the third argument that was
+supposed to annotate writability was discarded because the function takes two parameters.
+
+> **Lesson:** positional string parameters swap silently. A test that asserts the *pair* (role and
+> address separately) would have failed here; a test that asserts "a row exists" would not.
+
+### 14.5 Thirteen error codes were invisible to the contract — `READ`
+
+`coded('X')` in `name-service.js` produced fourteen codes, thirteen of which were undeclared in
+`ERROR_CODES`; the new signing path made several of them reachable. They are now declared, and
+`test-contract.mjs` scrapes the services for codes and fails if any is missing — a scan, not a list,
+so the next one cannot slip in.
+
+> **Lesson:** "the UI branches on codes" is only true for codes the contract declares. A code that
+> exists only as a string in a service is prose with a `throw` around it.
+
+### 14.6 The reverse read was open to a locked wallet and invented `.thru` — `READ`
+
+`name.reverseLookup` read wallet-local records under `auth:'none'`, accepted any `networkId` and
+appended `.thru` to every label — so a `.id` domain was shown to Send as `<name>.thru`. It is now
+`unlocked`, refuses a non-active network with `NETWORK_MISMATCH`, and qualifies the label with the
+record's own root (or reports `tld: null` rather than guessing). The `.id` case is pinned.
+
+> **Lesson:** a read that looks like a pure lookup was answering from storage. Its auth level and
+> its network binding have to be decided from *where the answer comes from*, not from whether it
+> writes.
+
+### 14.7 An append was described as a replace — `READ`
+
+Opcode 2 is `APPEND_RECORD`; setting an existing key adds a second record and leaves the first in
+place, which is what every `find()`-based reader keeps returning. The card said "Set domain record"
+and said nothing when the key already held another value. It now says **Add**, states that the
+operation appends, and raises a non-blocking warning naming the existing value when one is there.
+
+> **Lesson:** the operation's name is a claim about the chain. Read the opcode before writing the
+> verb.
+
+### 14.8 The tests could not reach the code they claimed to cover — `READ` + `TEST`
+
+`test-name-records.mjs` opened with a header claiming "setRecord authorization / error conditions"
+while nothing in the file called `setRecord`, `domainRecordFacts` or `domainRecordRecheck`. Every
+defect above shipped green.
+
+Fixed by driving the real modules against a stubbed SDK boundary: the three-state facts, all
+recheck outcomes, and `name.setRecord` through the API router (password gate with a proof that
+nothing was signed, network/account binding, absent and foreign domains, and a successful append
+with the signed request inspected). `test-name-reverse.mjs` gained the network-binding and `.id`
+cases.
+
+> **Lesson:** a header comment describing coverage is not coverage. If a suite names a function in
+> prose, the same file should call it.
+
+## 15. The review lifecycle's bypasses — audit of `2c0aeed` (2026-10-30)
+
+Full findings and the fix evidence: `docs/audits/2026-10-30-review-lifecycle-audit.md`. The suite was
+green at the time of every one of these; each is a defect in the lifecycle *around* the happy path,
+not in a decoder.
+
+### 15.1 A hidden queue submitted reviews nobody had seen — `READ`
+
+The Domain route kept a registration queue whose only control (`Queue registration`) was built with
+the `hidden` class and never un-hidden, so it was unreachable — and it called `tx.prepareReview` and
+then `submitReviewedReview` in a loop without rendering a card. Unreachable plus one `classList`
+call away from signing is not dead code; it is a bypass with a locked door. The button, handler,
+queue, state, reset and orphaned `.name-queue-*` CSS are deleted. This conflicts with the status R-3
+gave the queue ("the owner's in-flight feature"); restoring it is an owner decision and needs a
+reviewed design, not a rescue.
+
+> **Lesson:** a feature that cannot be shown cannot be reviewed. If a control is never displayed,
+> the code behind it has no approval story and must not contain a signing loop.
+
+### 15.2 The faucet claim was bound to the ambient account — `READ`
+
+`tx.claimFaucet` took only an amount and re-read the active account and network at submit time. A
+switch made from another window while the password dialog was open would claim into an account the
+review never named — a defect the send path had already closed by passing what it displayed. The
+kind now submits `fromAddress`/`networkId`, the handler refuses a mismatch with
+`REVIEW_ACCOUNT_CHANGED` / `REVIEW_NETWORK_CHANGED`, and the contract declares both params.
+
+> **Lesson:** "the review showed it" is a claim about a snapshot. A signing method that re-derives
+> its context has no snapshot, so it can only sign something the user was not shown.
+
+### 15.3 `signal` was optional, so two of three routes passed none — `READ`
+
+`submitReviewedReview` accepted `signal = null`. Only the Domain route supplied one, so a Send or
+Faucet confirmation could finish signing after its route was destroyed; checking `destroyed` after
+the await is too late — the password has already produced a signature. The signal is now required,
+both routes own an `AbortController` aborted in `destroy()`, and a call-site scan fails if a future
+route forgets one.
+
+> **Lesson:** an optional safety parameter is a comment. If cancellation is required for correctness,
+> the function must refuse to run without it.
+
+### 15.4 The Domain sheet raced its own preparation — `READ`
+
+The sheet was created inside `await tx.prepareReview`, so a double click during a slow read opened
+two sheets, and an edit mid-read could show a review for the previous name. One in-flight flag plus
+one generation counter now discards a superseded response.
+
+> **Lesson:** if the review is rendered after an await, the code needs an identity for the request
+> that produced it, or a slow read becomes a wrong review.
+
+### 15.5 The guards added
+
+`test-tx-review.mjs` [17] scans every `submitReviewedReview({` call site for `signal:`, asserts the
+queue is absent from the route and the stylesheet, asserts the faucet submit params and the manifest
+declaration, and proves the scan can pass with a live `chrome.runtime.sendMessage` stub and a
+positive control. [18] drives both faucet refusals through the real router. `test-route-lifecycle.mjs`
+pins the single sheet and the discarded-after-signature rule.
+
+## 16. The Domain notification bar was a toast with no message — FIXED in source/tests; browser look OPEN (2026-10-30)
+
+**Report.** The owner reported an oversized, nearly empty black notification bar on the Domain
+screen and asked for the shared platform behind it, not a CSS patch.
+
+**Root cause — `READ` + probe.** Three Domain call sites passed a bare string to a props API:
+`toast('Transaction confirmed')` (`routes/name.js:867`), `toast('Primary name updated')` (`:912`),
+and the track/untrack ternary at `:257` (`'Domain imported'` / `'Removed from this wallet'` /
+`'Primary name updated'`). The
+string destructured into the defaulted parameter object, so `title` and `message` were both `''`,
+and the component still built and appended a full-width `.toast`: near-black `--ink` background,
+20px icon chip, empty `.toast-body`, close button, `position: fixed` across the popup width. About
+42px of full-width chrome around nothing, floating over the connection footer. Rendering the real
+component through the DOM shim printed the tree and a `textContent` of `""` — the message area was
+empty because there was no message, and the height was the component's own padding plus affordances
+that are present even when there is nothing to read.
+
+**Why it shipped.** Two structural gaps, both of which are now closed:
+
+1. `toast()` rendered a container with no title and no message. It never had a guard, so a call-site
+   mistake degraded into chrome instead of failing.
+2. **Nothing tested the notification component.** `grep -rn "toast" test/` returned exactly one
+   hit: a `dismissAllToasts()` cleanup line in the route-lifecycle suite. A green suite was never
+   evidence about the toast.
+
+The same pass found the related inconsistencies the incident implied: `dismissAllToasts()` existed
+with **no production caller**, so a toast outlived route changes, account changes and even a lock;
+there was no `pending` state, so in-flight work could only be a banner; `Banner` accepted any tone
+string and silently painted unknown ones neutral (`'ok'` → grey, on a "confirmed on-chain" banner);
+and address truncation existed in six implementations with three widths.
+
+**Fix.** `toast()` accepts a string as the title and renders **nothing** for a payload with no text;
+gained `pending` + in-place `update()`, `key` dedupe and real teardown (lock / account / network);
+`Banner` resolves one tone vocabulary with a `.notice.success` rule; the three Domain call sites pass
+a tone and a message; six truncation copies became one (`shortenMiddle`/`shortAddress`).
+
+**Guards.** `test/test-toast.mjs` (92 checks: blank/malformed payloads, the exact defect call shape,
+all five tones, durations, dismissal, pause-on-hover, dedupe, stacking cap, pending→verdict, timer
+and listener teardown, a11y, and a no-argument source scan). `test/test-shared-platform.mjs` (45
+checks: one truncation in the display layer, two clipboard writes by design, one toast host, one tone
+vocabulary, kit-only imports), each scanner carrying a positive control.
+
+> **Lesson:** a component that renders chrome when it has nothing to say turns a call-site typo into
+> a "styling bug" that survives review. Make the empty state impossible to render, and test the
+> component — not just the screens that happen to use it.
+
+> **Lesson:** an exported teardown function with no production caller is a missing call, not a
+> spare API. `dismissAllToasts()` read as "handled" for as long as it existed.
+
+**Still open.** A real-browser look at the fixed bar (the harness is `scripts/preview-toast.html`:
+400×600 and 380×600 frames, real component, real stylesheet). No browser binary exists in this
+environment, so the bar's height is a stylesheet-derived claim, not a measurement.
+
+## 17. Three review fixes from the outside review (2026-10-30)
+
+External review of this branch raised seven points. Four were already handled by §16 and the
+shared-platform record (caller migration, blank-input hardening, `auth: 'signing'` on
+`name.setRecord`, narrow consistency checks). Three were real, and are fixed here.
+
+**A. "Only sign if you started it yourself" was an instruction the wallet cannot honour.**
+`src/shared/tx-review/decoders/raw.js` told the user when an unknown transaction was acceptable
+to approve. There is no path from that card to a signature (blocked state, `confirmLabel: null`,
+backend refusal), so the sentence described a choice the user does not have — and read as
+permission. Copy is now the limit, not a condition: "This wallet cannot explain this transaction.
+Signing is unavailable." The unverified-program note in `review-card.js` had the same shape and is
+now an identity statement ("no record of this program address") rather than a rule about when to
+proceed, which also keeps *identity* separate from *audit status*.
+
+**B. `slice(0, 2)` could fold a blocking warning.**
+`src/ui/domain/tx-review/review-card.js:259` capped the open-card warnings at two across blocking
+AND advisory. A review with three blockers showed two of them and hid the third inside Details —
+the disclosure a user has no reason to open when Confirm is already disabled. The cap now applies
+to advisory notes only; blocking warnings are always on the card, unfolded and uncounted. Pinned
+by a render test with three blockers and three advisories.
+
+**C. "Registration is free" rests on a probe that does not prove it.**
+`contracts/thru-custom-registrar/src/processor.rs:238` (`let _ = mgr.account_transfer(...)`) and
+`:321` attempt the fee transfer and discard the result. That proves registration *can* succeed
+without collection; it does not prove collection *cannot* occur, and a measured zero on one
+transaction would not prove it for the next. The `DECISIONS.md` entries that state registration is
+free predate that distinction and are release-scope claims, not established facts.
+
+> **Release gate:** before the wallet says "free" anywhere in shipped copy, verify the deployed
+> registrar artifact identity and its on-chain config, then decide the fee policy explicitly.
+> Until then the honest wording is "no charge reported", never "free".
+
+No shipped UI string currently promises "free" (checked across `src/`), so this is a documentation
+claim and a copy rule, not a live misstatement.
+
+---
+
+## 18. The registrar fee becomes on-chain and tiered — IMPLEMENTED/TESTED in source; contract UNBUILT, deployment BLOCKED (2026-10-30)
+
+Owner directive: price registration by label length (3 / 4 / 5+ characters), keep the schedule
+on-chain so a mainnet price is a config change and not a redeploy, and make a refused charge
+**fail** the registration instead of being discarded (§13.3, §17C).
+
+**What changed**
+
+- `state.rs` grows the config to **layout 2 (176 B)** by *appending* `fee_3_char`, `fee_4_char`,
+  `fee_5plus_char`, `fee_policy` at offset 144. Bytes 0–143 are byte-identical to the deployed
+  layout, so a live 144-byte config still parses; it reads as a flat schedule (all tiers = the old
+  `fee_per_year`) with the best-effort policy, i.e. *the behaviour it already had*. `fee_per_year`
+  remains only as a derived mirror of `fee_5plus_char` so a layout-1 reader shows the cheapest tier
+  instead of zero. Nothing was shifted: `admin`, `treasury`, `root_address`, `root_name` keep their
+  offsets, because moving them would have made every deployed config unreadable.
+- `instruction.rs` adds tag **4** `InitializeV2` carrying the three tiers and the policy, and
+  reshapes `UpdateConfig` (mask `b0 treasury · b1 fee3 · b2 fee4 · b3 fee5plus · b4 policy`, 64
+  bytes). Tag **0** is a deliberate named refusal (`0xD006`) rather than a payload the parser
+  reinterprets — the failure mode we were avoiding is a stale builder writing `fee_per_year` into
+  the slot the new price path reads as `fee_3_char`.
+- `processor.rs` prices `Register` and `Renew` through one `cfg.total_for_term(label_len, years)`
+  (`checked_mul`, `ERR_OVERFLOW`) and collects through one `collect_fee()`.
+- `UpdateConfig` on a layout-1 account resizes it in place (`sys_account_resize` to 176) with a
+  `data.len()` guard, so an upgrade needs no re-initialisation and no lost root authority.
+
+**Why the policy flag exists instead of unconditional enforcement.** The directive is that a failed
+fee transfer must revert — and `FEE_POLICY_STRICT` does exactly that (`0xD206`, or `0xD207` when
+the balance cannot cover it). But the deployed program's charge has only ever been observed to
+*fail*: the VM answered `-10 AccountNotWritable`, surfaced to the wallet as `0xD20A`. Shipping
+strict as the default would therefore turn a best-effort registration into a guaranteed revert on
+the first real attempt, and we cannot test that here (no toolchain, no RPC). So:
+
+- `bestEffort` (0) keeps today's behaviour and is the default for layout-1 configs;
+- `strict` (1) is opt-in, and `scripts/registrar/deploy-and-init.mjs` **refuses** `--fee-policy
+  strict` without `--collection-proven "<note>"` — a human attestation that a treasury balance
+  delta was actually observed after a real registration;
+- `--probe-collection` records the treasury balance (before/after is the measurement).
+
+The wallet reads `feeEnforced = (policy === strict)` and never assumes a charge. A non-zero price
+with `bestEffort` renders as an unenforced price with the `registrar-fee-unenforced` warning —
+never as "free" — and only an enforced charge produces the outgoing THRU row in the review.
+
+> **Release gate (unchanged, now instrumented):** do not describe a registration as charged until
+> the deployed artifact is identity-checked, the on-chain config is read back, and a treasury delta
+> is observed. The evidence file `scripts/registrar/deploy-and-init.mjs` writes records exactly what
+> was measured and nothing else.
+
+**Status.** IMPLEMENTED + TESTED: the JS ABI twin, the service pricing, the review decoder, the
+Name route and their suites (build 0, full suite green). NOT COMPILED: the Rust side has not been
+through `cargo` (the environment has no toolchain), so `thru-custom-registrar.bin` in the repo is
+**stale** and must not be deployed. BLOCKED: contract build, Betanet deploy, whether
+`account_resize` works on a live layout-1 account, and whether a strict charge can actually land.

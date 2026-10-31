@@ -244,6 +244,23 @@ textarea:focus {
   background: var(--surface-1);
 }
 
+/* A read-only field displays a fixed value (the faucet's per-claim amount). Without this it
+   is pixel-identical to an editable one: the same text cursor invites typing into a value the
+   user cannot change, and the focus ring promises an edit that will not happen. Flat surface,
+   muted ink, no focus emphasis, no hover lift — the value reads as data, not as an input. */
+input[readonly] {
+  background: var(--surface-2);
+  color: var(--text-2);
+  cursor: default;
+}
+
+input[readonly]:hover { border-color: var(--border); }
+
+input[readonly]:focus {
+  border-color: var(--border);
+  background: var(--surface-2);
+}
+
 input[aria-invalid="true"],
 textarea[aria-invalid="true"] {
   border-color: var(--negative-border);
@@ -298,6 +315,9 @@ textarea[aria-invalid="true"] {
 
 .notice.warning { border-left-color: var(--gold); background: var(--gold-tint); }
 .notice.danger { border-left-color: var(--negative); background: var(--negative-tint); }
+/* Success is a real state, not a neutral one: a confirmed registration used to be painted with
+   the default accent rule because the route passed 'ok' and the component dropped it. */
+.notice.success { border-left-color: var(--positive); background: var(--positive-tint); }
 
 .divider {
   border: none;
@@ -1328,55 +1348,6 @@ button.row { cursor: pointer; }
   padding: var(--sp-4);
 }
 
-.tx-review-eyebrow {
-  font-size: 10px;
-  font-weight: 700;
-  color: var(--text-3);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  margin-bottom: var(--sp-2);
-  display: block;
-}
-
-.balance-change-box {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px var(--sp-3);
-  border-radius: var(--radius-md);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-}
-
-.balance-change-box.negative {
-  border-color: var(--negative-border);
-  background: var(--negative-tint);
-}
-
-.balance-change-box.positive {
-  border-color: var(--positive-border);
-  background: var(--positive-tint);
-}
-
-.change-amount {
-  font-size: var(--fs-lg);
-  font-weight: 700;
-  color: var(--negative);
-}
-
-.balance-change-box.positive .change-amount {
-  color: var(--positive);
-}
-
-.change-tag {
-  font-size: 11px;
-  font-weight: 600;
-  padding: 2px 8px;
-  border-radius: 4px;
-  background: var(--surface-3);
-  color: var(--text-2);
-}
-
 .tx-review-details {
   display: flex;
   flex-direction: column;
@@ -1440,6 +1411,155 @@ button.row { cursor: pointer; }
 .risk-copy strong {
   color: var(--text-1);
   font-size: 11px;
+}
+
+/* The shared review surface (src/ui/domain/tx-review) — one card for every operation type.
+   Order is fixed by the component: title (verb + amount) -> one context line (account ·
+   network) -> counterparty -> money (pay or receive, network fee, total) -> at most two
+   warnings -> one collapsed Details disclosure -> acknowledgements. Everything technical lives
+   behind that single disclosure; nothing is dropped. */
+
+.tx-review-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* "Main account · Betanet test network": six badges became one quiet line (v1.5.0). */
+.tx-review-context {
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+  line-height: 1.4;
+}
+
+/* The counterparty: the name (when the wallet has one) as the headline and the whole address
+   under it. Never a name alone, and never a shortened address standing in for evidence. */
+.tx-review-counterparty {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  padding: var(--sp-2) 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.tx-review-counterparty-label {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--text-1);
+  overflow-wrap: anywhere;
+}
+
+.tx-review-title {
+  font-size: var(--fs-lg);
+  font-weight: 650;
+  color: var(--text-1);
+  margin: 0;
+  line-height: 1.25;
+}
+
+.tx-review-badges {
+  display: flex;
+  gap: var(--sp-1);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  max-width: 50%;
+}
+
+.tx-review-sub {
+  margin: 0;
+  font-size: var(--fs-sm);
+}
+
+/* Program identity: Rabby puts the site you are talking to above the transaction; the Thru
+   equivalent is the program, one line, with the wallet's own verified/unverified verdict. */
+.tx-review-origin {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+
+.tx-review-origin-icon {
+  display: flex;
+  align-items: center;
+  color: var(--text-2);
+  flex: 0 0 auto;
+}
+
+.tx-review-origin-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.tx-review-origin-name {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--text-1);
+  overflow-wrap: anywhere;
+}
+
+.tx-review-address-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 2px 0;
+}
+
+.tx-review-address-row .tx-review-label {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+
+.tx-review-address-row .tx-review-address {
+  font-size: var(--fs-xs);
+  color: var(--text-1);
+  word-break: break-all;
+  line-height: 1.4;
+}
+
+/* A review value is evidence, not a preview. `.detail-address` (used by account rows elsewhere)
+   ellipsizes for compactness; a destination address in this card must never be clipped, so mono
+   values wrap instead. A truncated recipient cannot be checked before an irreversible send. */
+.tx-review-address {
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+  word-break: break-all;
+}
+
+.tx-review-ack {
+  align-items: flex-start;
+}
+
+.tx-review-ack-label {
+  line-height: 1.4;
+}
+
+.tx-review-disclosure-toggle {
+  align-self: flex-start;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tx-review-disclosure-toggle:hover {
+  color: var(--accent-hover);
+}
+
+.tx-review-raw {
+  word-break: break-all;
+  font-size: var(--fs-xs);
+  white-space: pre-wrap;
 }
 
 /* ---- Rabby Dashboard Tabs ---- */

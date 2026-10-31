@@ -3,12 +3,31 @@
 import { h, disposer } from './dom.js';
 import { icon } from './icon.js';
 
+// The banner's tone vocabulary is the same four states the toast uses for events, minus
+// `pending` (a persistent "in progress" line belongs in the screen's own status text, not in a
+// banner that has no resolution mechanism). `'ok'` is accepted as a synonym for `'success'`
+// because the Domain route already passed it; before 2026-10-30 that silently fell through to
+// the neutral notice style, so a confirmed registration was painted as an unremarkable grey box.
+const TONE_ALIAS = { ok: 'success', success: 'success', error: 'error', warning: 'warning', info: 'info' };
+
+function bannerToneClass(tone) {
+  const resolved = TONE_ALIAS[tone] || 'info';
+  if (resolved === 'error') return 'error';
+  if (resolved === 'warning') return 'notice warning';
+  if (resolved === 'success') return 'notice success';
+  return 'notice';
+}
+
 /**
  * A dismissible-free inline banner for screen-level messages.
- * @param {{ tone?: 'error'|'warning'|'info', message?: string }} props
+ * @param {{ tone?: 'error'|'warning'|'info'|'success'|'ok', message?: string }} props
  */
 export function Banner({ tone = 'error', message = '' } = {}) {
-  const toneClass = tone === 'error' ? 'error' : ['notice', tone === 'warning' ? 'warning' : ''].filter(Boolean);
+  // The tone the banner is currently SHOWING, not the one it was constructed with. Comparing
+  // against the constructor argument made the first warning sticky: a later error never reset
+  // the classes, because 'error' === 'error' for a banner that was painted as a warning.
+  let currentTone = TONE_ALIAS[tone] || 'info';
+  const toneClass = bannerToneClass(tone);
   const textEl = h('span', { text: message });
   const el = h('div', {
     class: toneClass,
@@ -21,11 +40,12 @@ export function Banner({ tone = 'error', message = '' } = {}) {
     set(nextMessage, nextTone) {
       textEl.textContent = nextMessage ? String(nextMessage) : '';
       el.classList.toggle('hidden', !nextMessage);
-      if (nextTone && nextTone !== tone) {
-        el.classList.remove('error', 'notice', 'warning');
-        if (nextTone === 'error') el.classList.add('error');
-        else el.classList.add('notice', nextTone === 'warning' ? 'warning' : '');
-        el.setAttribute('role', nextTone === 'error' ? 'alert' : 'status');
+      const resolved = nextTone ? (TONE_ALIAS[nextTone] || 'info') : null;
+      if (resolved && resolved !== currentTone) {
+        el.classList.remove('error', 'notice', 'warning', 'success');
+        for (const cls of bannerToneClass(nextTone).split(' ')) el.classList.add(cls);
+        el.setAttribute('role', resolved === 'error' ? 'alert' : 'status');
+        currentTone = resolved;
       }
     },
     clear() {

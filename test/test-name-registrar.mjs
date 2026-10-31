@@ -99,6 +99,7 @@ function buildLeaseBytes(ownerAddress, name = NAME, start = 1_700_000_000n, end 
 
 // Mutable chain-world switchboard
 let configPresent = true;
+let registryOwner = Pubkey.from(reg.THRU_REGISTRAR_PROGRAM);
 let domainExists = false;
 let leaseState = 'absent'; // absent | unparseable | mine-active | other-active | other-expired
 const ENCODER = new TextEncoder();
@@ -115,7 +116,7 @@ const notFound = () => { const e = new Error('account not found'); e.code = 5; t
 client.accounts.get = async (address) => {
   if (address === CONFIG_ADDR) {
     if (!configPresent) return notFound();
-    return { meta: { balance: 1n }, data: buildConfigBytes() };
+    return { meta: { balance: 1n, owner: registryOwner }, data: buildConfigBytes() };
   }
   if (address === LEAF) {
     if (!domainExists) return notFound();
@@ -219,6 +220,15 @@ ok('lease derivation byte-exact: alice → ta06ZB32… (official CLI derive-leas
   assert.equal(res.data.registry.pricePerYear, '1000000');
   assert.equal(res.data.configAddress, CONFIG_ADDR);
   ok('name.getRegistry parses the live config (price, root, treasurer, mint)');
+
+  registryOwner = Pubkey.from(OTHER);
+  const wrongOwner = await handleApiRequest({ method: 'name.getRegistry' });
+  assert.equal(wrongOwner.data.supported, false);
+  registryOwner = {};
+  const malformedOwner = await handleApiRequest({ method: 'name.getRegistry' });
+  assert.equal(malformedOwner.data.supported, false);
+  registryOwner = Pubkey.from(reg.THRU_REGISTRAR_PROGRAM);
+  ok('wrong or malformed metadata owners cannot masquerade as the registrar program');
 
   configPresent = false;
   const gone = await handleApiRequest({ method: 'name.getRegistry' });

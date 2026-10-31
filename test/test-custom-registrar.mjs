@@ -21,14 +21,15 @@ const t = [];
 function ok(name, cond, detail = '') { t.push({ name, pass: !!cond, detail }); if (!cond) console.error(`FAIL ${name} ${detail}`); else console.log(`ok - ${name}`); }
 
 const {
-  TCR_OP_INITIALIZE, TCR_OP_REGISTER, TCR_OP_RENEW, TCR_OP_UPDATE_CONFIG,
-  TCR_CONFIG_SIZE, TCR_LEASE_SIZE, TCR_CONFIG_MAGIC, TCR_LEASE_MAGIC, TCR_LAYOUT_VERSION,
-  TCR_CFG, TCR_LSE, TCR_YEAR_SECONDS,
+  TCR_OP_INITIALIZE_LEGACY, TCR_OP_INITIALIZE_V2, TCR_OP_REGISTER, TCR_OP_RENEW, TCR_OP_UPDATE_CONFIG,
+  TCR_CONFIG_SIZE, TCR_CONFIG_SIZE_V1, TCR_CONFIG_LAYOUT_V1, TCR_CONFIG_LAYOUT_V2,
+  TCR_LEASE_SIZE, TCR_CONFIG_MAGIC, TCR_LEASE_MAGIC, TCR_LAYOUT_VERSION,
+  TCR_CFG, TCR_LSE, TCR_YEAR_SECONDS, TCR_FEE_POLICY,
   TCR_MIN_LABEL, TCR_MAX_LABEL, TCR_MAX_YEARS,
   TCR_ERRORS,
-  labelProblem, yearsProblem,
+  labelProblem, yearsProblem, feePolicyName,
   tcrLeaseAddress, tcrConfigAddress, TCR_CONFIG_SEED_LABEL,
-  parseTcrConfig, parseTcrLease,
+  parseTcrConfig, parseTcrLease, tcrPricePerYear, tcrTotalForTerm,
   buildTcrInitializeInstructionData, buildTcrRegisterInstructionData,
   buildTcrRenewInstructionData, buildTcrUpdateConfigInstructionData,
 } = await import('../src/lib/custom-registrar.js');
@@ -49,7 +50,6 @@ function indexResolver(table) {
   const bytes = table.map((a) => hex(Pubkey.from(a).toBytes()));
   return (address) => bytes.indexOf(hex(Pubkey.from(address).toBytes()));
 }
-const NS_PROG = 'taNAMEqRNEDeMWp0cDYmMVdZyTZiF5NyGDR9zTwH42rWQG';
 
 // ---- Mirror the Rust policy table ------------------------------------------------
 ok('min label 3 / max 32 (Rust instruction.rs)', TCR_MIN_LABEL === 3 && TCR_MAX_LABEL === 32);
@@ -81,14 +81,19 @@ ok('years 11 rejected', !!yearsProblem(11));
   // hands back the same positions the Rust legend test uses.
   const indexOf = indexResolver([table[0], table[1], table[2], table[3], table[4]]);
   const data = buildTcrInitializeInstructionData({
-    feePerYear: 1000n, treasury: PK_A, rootName: 'thru',
+    fee3PerYear: 100_000n, fee4PerYear: 10_000n, fee5PlusPerYear: 1_000n,
+    feePolicy: TCR_FEE_POLICY.strict,
+    treasury: PK_A, rootName: 'thru',
     configSeed: new Uint8Array(32).fill(0x07), configProof, rootProof,
     indexOf, configAddress: table[2], rootAddress: table[3], nameServiceProgram: table[4],
   });
   const want = [
-    '00000000',                                     // tag 0 LE
+    '04000000',                                     // tag 4 LE (tiered Initialize)
     '0200', '0300', '0400',                         // config_idx=2, root_idx=3, ns_idx=4
-    'e803000000000000',                             // fee 1000 LE
+    'a086010000000000',                             // fee_3   100000 LE
+    '1027000000000000',                             // fee_4    10000 LE
+    'e803000000000000',                             // fee_5+    1000 LE
+    '01',                                           // fee_policy = strict
     hex(new Uint8Array(32).fill(0x11)),             // treasury
     '04000000',                                     // root_name_len 4
     hex(new TextEncoder().encode('thru')) + '00'.repeat(28), // name padded 32
@@ -153,15 +158,30 @@ ok('years 11 rejected', !!yearsProblem(11));
 {
   const table = [PK_B, PK_A, Pubkey.from(new Uint8Array(32).fill(0x25)).toThruFmt()];
   const data = buildTcrUpdateConfigInstructionData({
-    newFee: 5000n, indexOf: indexResolver(table), configAddress: table[2],
+    newFee5Plus: 5000n, indexOf: indexResolver(table), configAddress: table[2],
   });
-  const want = ['03000000', '0200', '01', '8813000000000000', '00'.repeat(32)].join('');
-  ok('UpdateConfig (fee only) == golden bytes', hex(data) === want, hex(data) === want ? '' : `got ${hex(data)}`);
-  const both = buildTcrUpdateConfigInstructionData({ newFee: 1n, newTreasury: PK_A, indexOf: indexResolver(table), configAddress: table[2] });
-  ok('UpdateConfig mask 0x03 when both fields set', both[6] === 3 && both[15] === 0x11);
+  // [tag][config_idx][mask][treasury 32][fee3][fee4][fee5+][policy]
+  const want = [
+    '03000000', '0200', '08', '00'.repeat(32),
+    '00'.repeat(8), '00'.repeat(8), '8813000000000000', '00',
+  ].join('');
+  ok('UpdateConfig (fee_5plus only) == golden bytes', hex(data) === want, hex(data) === want ? '' : `got ${hex(data)}`);
+  const both = buildTcrUpdateConfigInstructionData({
+    newTreasury: PK_A, newFee3: 100_000n, newFeePolicy: TCR_FEE_POLICY.strict,
+    indexOf: indexResolver(table), configAddress: table[2],
+  });
+  ok('UpdateConfig mask 0x13 for treasury + fee_3 + policy', both[6] === 0x13, `${both[6]}`);
+  ok('UpdateConfig carries the treasury at offset 7 and the policy last',
+    both[7] === 0x11 && both[63] === TCR_FEE_POLICY.strict && both.length === 64,
+    `${both.length} bytes`);
   let threw = false;
   try { buildTcrUpdateConfigInstructionData({ indexOf: indexResolver(table), configAddress: table[2] }); } catch { threw = true; }
   ok('UpdateConfig empty refused', threw);
+  threw = false;
+  try {
+    buildTcrUpdateConfigInstructionData({ newFeePolicy: 5, indexOf: indexResolver(table), configAddress: table[2] });
+  } catch { threw = true; }
+  ok('UpdateConfig refuses an unknown fee policy', threw);
 }
 
 // ---- Builders refuse reserved indices (mirrors Rust check_idx hygiene) -----------
@@ -169,7 +189,7 @@ ok('years 11 rejected', !!yearsProblem(11));
   const bad = indexResolver([PK_B, PK_A, PK_B]); // config would resolve to 0 (fee payer)
   let threw = false;
   try {
-    buildTcrUpdateConfigInstructionData({ newFee: 1n, indexOf: bad, configAddress: PK_B });
+    buildTcrUpdateConfigInstructionData({ newFee3: 1n, indexOf: bad, configAddress: PK_B });
   } catch { threw = true; }
   ok('reserved index 0 refused for config', threw);
   const missing = indexResolver([PK_B, PK_A]); // treasury not in table
@@ -182,13 +202,17 @@ ok('years 11 rejected', !!yearsProblem(11));
 
 // ---- Golden: config state round trip ------------------------------------------------------------
 {
-  // Build config bytes by the RUST layout doc and parse them with JS:
+  // Build config bytes by the RUST layout doc and parse them with JS (layout 2):
   const cfg = new Uint8Array(TCR_CONFIG_SIZE);
   const dv = new DataView(cfg.buffer);
   dv.setUint32(TCR_CFG.magic, TCR_CONFIG_MAGIC, true);
-  cfg[TCR_CFG.version] = TCR_LAYOUT_VERSION;
+  cfg[TCR_CFG.version] = TCR_CONFIG_LAYOUT_V2;
   cfg[TCR_CFG.rootNameLen] = 4;
-  dv.setBigUint64(TCR_CFG.feePerYear, 1000n, true);
+  dv.setBigUint64(TCR_CFG.feePerYear, 1000n, true); // the derived legacy mirror
+  dv.setBigUint64(TCR_CFG.fee3Char, 100_000n, true);
+  dv.setBigUint64(TCR_CFG.fee4Char, 10_000n, true);
+  dv.setBigUint64(TCR_CFG.fee5PlusChar, 1_000n, true);
+  cfg[TCR_CFG.feePolicy] = TCR_FEE_POLICY.strict;
   cfg.set(new Uint8Array(32).fill(0x01), TCR_CFG.admin);
   cfg.set(new Uint8Array(32).fill(0x02), TCR_CFG.treasury);
   cfg.set(new Uint8Array(32).fill(0x03), TCR_CFG.rootAddress);
@@ -199,6 +223,11 @@ ok('years 11 rejected', !!yearsProblem(11));
     && parsed.admin === Pubkey.from(new Uint8Array(32).fill(0x01)).toThruFmt()
     && parsed.treasury === Pubkey.from(new Uint8Array(32).fill(0x02)).toThruFmt()
     && parsed.rootAddress === Pubkey.from(new Uint8Array(32).fill(0x03)).toThruFmt());
+  ok('layout 2 exposes the tier schedule and the policy',
+    parsed.layout === TCR_CONFIG_LAYOUT_V2
+      && parsed.fee3PerYear === 100_000n && parsed.fee4PerYear === 10_000n
+      && parsed.fee5PlusPerYear === 1_000n
+      && parsed.feePolicy === TCR_FEE_POLICY.strict && parsed.feePolicyName === 'strict');
   const bad = cfg.slice(); bad[0] ^= 1;
   let threw = false;
   try { parseTcrConfig(bad); } catch { threw = true; }
@@ -207,6 +236,64 @@ ok('years 11 rejected', !!yearsProblem(11));
   threw = false;
   try { parseTcrConfig(wrongSize); } catch { threw = true; }
   ok('config wrong size rejected', threw);
+  const badPolicy = cfg.slice(); badPolicy[TCR_CFG.feePolicy] = 9;
+  threw = false;
+  try { parseTcrConfig(badPolicy); } catch { threw = true; }
+  ok('config rejects an unknown fee policy instead of defaulting it', threw);
+}
+
+// ---- Layout 1 (the DEPLOYED config) still reads, as a flat schedule -----------------------------
+{
+  const v1 = new Uint8Array(TCR_CONFIG_SIZE_V1);
+  const dv = new DataView(v1.buffer);
+  dv.setUint32(TCR_CFG.magic, TCR_CONFIG_MAGIC, true);
+  v1[TCR_CFG.version] = TCR_CONFIG_LAYOUT_V1;
+  v1[TCR_CFG.rootNameLen] = 4;
+  dv.setBigUint64(TCR_CFG.feePerYear, 1000n, true);
+  v1.set(new Uint8Array(32).fill(0x01), TCR_CFG.admin);
+  v1.set(new Uint8Array(32).fill(0x02), TCR_CFG.treasury);
+  v1.set(new Uint8Array(32).fill(0x03), TCR_CFG.rootAddress);
+  v1.set(new TextEncoder().encode('thru'), TCR_CFG.rootName);
+  const parsed = parseTcrConfig(v1);
+  ok('a deployed layout-1 config still parses', parsed.layout === TCR_CONFIG_LAYOUT_V1);
+  ok('layout 1 prices every length at its flat fee',
+    tcrPricePerYear(parsed, 'abc') === 1000n
+      && tcrPricePerYear(parsed, 'abcd') === 1000n
+      && tcrPricePerYear(parsed, 'abcdef') === 1000n);
+  ok('layout 1 reports best-effort, because that is how the deployed program behaves',
+    parsed.feePolicy === TCR_FEE_POLICY.bestEffort && parsed.feePolicyName === 'best effort',
+    parsed.feePolicyName);
+}
+
+// ---- Tiered pricing, by label length -------------------------------------------------------------
+{
+  const cfgBytes = new Uint8Array(TCR_CONFIG_SIZE);
+  const dv = new DataView(cfgBytes.buffer);
+  dv.setUint32(TCR_CFG.magic, TCR_CONFIG_MAGIC, true);
+  cfgBytes[TCR_CFG.version] = TCR_CONFIG_LAYOUT_V2;
+  cfgBytes[TCR_CFG.rootNameLen] = 4;
+  dv.setBigUint64(TCR_CFG.fee3Char, 100_000n, true);
+  dv.setBigUint64(TCR_CFG.fee4Char, 10_000n, true);
+  dv.setBigUint64(TCR_CFG.fee5PlusChar, 1_000n, true);
+  cfgBytes[TCR_CFG.feePolicy] = TCR_FEE_POLICY.strict;
+  const cfg = parseTcrConfig(cfgBytes);
+  ok('3 characters costs the 3-char tier', tcrPricePerYear(cfg, 'abc') === 100_000n);
+  ok('4 characters costs the 4-char tier', tcrPricePerYear(cfg, 'abcd') === 10_000n);
+  ok('5 characters costs the 5+ tier', tcrPricePerYear(cfg, 'abcde') === 1_000n);
+  ok('32 characters still costs the 5+ tier', tcrPricePerYear(cfg, 'a'.repeat(32)) === 1_000n);
+  ok('term total multiplies the tier by the years', tcrTotalForTerm(cfg, 'abc', 3) === 300_000n);
+  let threw = false;
+  try { tcrPricePerYear(cfg, 'ab'); } catch { threw = true; }
+  ok('a 2-character label cannot be priced', threw);
+  threw = false;
+  try { tcrTotalForTerm(cfg, 'abc', 11); } catch { threw = true; }
+  ok('an out-of-policy term is refused', threw);
+  const huge = { fee3PerYear: 0xffffffffffffffffn, fee4PerYear: 0n, fee5PlusPerYear: 0n };
+  threw = false;
+  try { tcrTotalForTerm(huge, 'abc', 2); } catch { threw = true; }
+  ok('price x years that overflows u64 is refused, never wrapped', threw);
+  ok('fee policy names are the two known modes',
+    feePolicyName(0) === 'best effort' && feePolicyName(1) === 'strict' && feePolicyName(2) === 'unknown');
 }
 
 // ---- Golden: lease state round trip --------------------------------------------------------------
@@ -263,18 +350,44 @@ ok('years 11 rejected', !!yearsProblem(11));
 // ---- Instruction-source cross-pin: Rust tags == JS tags --------------------------------------------
 {
   const rustInstr = readFileSync(join(root, 'contracts/thru-custom-registrar/src/instruction.rs'), 'utf8');
-  const tags = Object.fromEntries([...rustInstr.matchAll(/pub const (TAG_[A-Z_]+): u32 = (\d+);/g)]
+  const tags = Object.fromEntries([...rustInstr.matchAll(/pub const (TAG_[A-Z0-9_]+): u32 = (\d+);/g)]
     .map((m) => [m[1], Number(m[2])]));
-  ok('tags agree', tags.TAG_INITIALIZE === TCR_OP_INITIALIZE
+  ok('tags agree', tags.TAG_INITIALIZE === TCR_OP_INITIALIZE_LEGACY
+    && tags.TAG_INITIALIZE_V2 === TCR_OP_INITIALIZE_V2
     && tags.TAG_REGISTER === TCR_OP_REGISTER
     && tags.TAG_RENEW === TCR_OP_RENEW
     && tags.TAG_UPDATE_CONFIG === TCR_OP_UPDATE_CONFIG,
     JSON.stringify(tags));
+  // The tiered Initialize must not reuse the flat-fee tag: an out-of-date deploy script then
+  // gets 0xD006 by name instead of having its flat fee read as fee_3_char.
+  ok('the tiered Initialize has its own tag', tags.TAG_INITIALIZE !== tags.TAG_INITIALIZE_V2);
+  // Fee-policy constants are shared vocabulary between the program and the wallet.
+  const rustPolicies = Object.fromEntries([...rustInstr.matchAll(/pub const (FEE_POLICY_[A-Z0-9_]+): u8 = (\d+);/g)]
+    .map((m) => [m[1], Number(m[2])]));
+  ok('fee policy values agree', rustPolicies.FEE_POLICY_BEST_EFFORT === TCR_FEE_POLICY.bestEffort
+    && rustPolicies.FEE_POLICY_STRICT === TCR_FEE_POLICY.strict, JSON.stringify(rustPolicies));
   const rustState = readFileSync(join(root, 'contracts/thru-custom-registrar/src/state.rs'), 'utf8');
   const sizes = Object.fromEntries([...rustState.matchAll(/pub const (CONFIG_SIZE|LEASE_SIZE): usize = (\d+);/g)]
     .map((m) => [m[1], Number(m[2])]));
   ok('sizes agree', sizes.CONFIG_SIZE === TCR_CONFIG_SIZE && sizes.LEASE_SIZE === TCR_LEASE_SIZE,
     JSON.stringify(sizes));
+  const sizesV1 = Object.fromEntries([...rustState.matchAll(/pub const (CONFIG_SIZE_V1): usize = (\d+);/g)]
+    .map((m) => [m[1], Number(m[2])]));
+  ok('the layout-1 size still matches what the deployed program wrote',
+    sizesV1.CONFIG_SIZE_V1 === TCR_CONFIG_SIZE_V1, JSON.stringify(sizesV1));
+  // Offsets are the whole ABI for state: pin every one of them against state.rs.
+  const offs = Object.fromEntries([...rustState.matchAll(/pub const OFF_CFG_([A-Z0-9_]+): usize = (\d+);/g)]
+    .map((m) => [m[1], Number(m[2])]));
+  const jsOffs = {
+    MAGIC: TCR_CFG.magic, VERSION: TCR_CFG.version, ROOT_NAME_LEN: TCR_CFG.rootNameLen,
+    BUMP: TCR_CFG.bump, FEE_PER_YEAR: TCR_CFG.feePerYear, ADMIN: TCR_CFG.admin,
+    TREASURY: TCR_CFG.treasury, ROOT_ADDRESS: TCR_CFG.rootAddress, ROOT_NAME: TCR_CFG.rootName,
+    FEE_3: TCR_CFG.fee3Char, FEE_4: TCR_CFG.fee4Char, FEE_5PLUS: TCR_CFG.fee5PlusChar,
+    FEE_POLICY: TCR_CFG.feePolicy,
+  };
+  const offMismatch = Object.entries(jsOffs).filter(([k, v]) => offs[k] !== v);
+  ok('every config offset agrees with state.rs', offMismatch.length === 0,
+    offMismatch.map(([k, v]) => `${k}: js=${v} rs=${offs[k]}`).join(' '));
 }
 
 // ---- SDK sort sentinel: the installed @thru/sdk MUST byte-sort its account segments ----------------

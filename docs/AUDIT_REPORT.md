@@ -21,6 +21,33 @@ Baseline evidence (re-run green 2026-10-04): `npm run build` PASS · `npm test` 
 (derivation 16/16, contract 80/80, lifecycle 1017/1017, 1647 assertions) ·
 `npm audit --omit=dev` 0 vulnerabilities.
 
+**Refresh (2026-10-30, shared-platform pass).** The Domain "empty black notification bar" was a
+`toast()` called with a bare string: the component rendered chrome with an empty message body and
+had no tests at all. Fixed at source (`docs/audits/2026-10-30-shared-platform-audit.md`,
+`docs/DEFECT_LOG.md` §16): `toast()` now refuses to render without a message, gained a `pending`
+state with in-place resolution, key dedupe and real teardown (lock/account/network), `Banner`
+resolves one tone vocabulary, and six address-truncation copies became one shared primitive.
+New guards: `test/test-toast.mjs` (92) and `test/test-shared-platform.mjs` (45, each scanner with a
+positive control). A real-browser look at the fixed bar is still **UNVERIFIED**; the harness is
+`scripts/preview-toast.html`.
+
+**Refresh (2026-10-30).** The tree is at contract **v31** with **153 methods** and **15 routes**;
+`npm test` is **2,742 checks (37 suites + 5 gates)**, `npm run build` PASS, layering 127 files /
+0 DOM sinks, `check-routes` 15/15 with the full used-class set defined. The 2026-10-30 lifecycle
+audit (`docs/audits/2026-10-30-review-lifecycle-audit.md`) fixed four pre-sign defects — a hidden
+Domain queue that submitted reviews without a card, a faucet claim that re-derived its account at
+submit time, an optional abort signal that two routes never passed, and a Domain sheet that raced
+its own preparation — and the card copy was rewritten to the owner's v1.5.0 shape. The v29
+change is the owner-directed shared transaction-review pipeline; its verification record, including
+the fixes found during review, is `docs/TX_REVIEW_VERIFICATION.md`. v30 adds the tracked-domain
+registry and the custom-registrar renewal path, audited in `docs/audits/2026-10-28-sync-audit.md`;
+v31 makes the name-service record write live and adds reverse name lookup, audited in
+`docs/audits/2026-10-29-v31-audit.md` — that audit found the write's confirm path threw on every
+attempt and fixed it. None of these records adds **live-chain** or browser evidence: the review card
+still has no real-browser pass (checklist §7), no review has been confirmed against a funded Betanet
+account, and the two v31 name paths are `UNVERIFIED` on the live chain. The 2026-10-04 findings F-01…F-08 remain fixed;
+this refresh changes counts and adds a feature, not the audit conclusion.
+
 ## Mainnet-readiness gates — open (classified 2026-10-04)
 
 Classification basis: the accepted 2026-10-04 conformance audit (all findings F-01…F-08 fixed
@@ -29,7 +56,7 @@ Node test cannot close a browser item, a Betanet observation cannot prove Mainne
 a source audit is not an external audit. Full findings and remediation detail live in the dated
 records below.
 
-**A. Automated verified (deterministic, local — re-run green on 2026-10-04):**
+**A. Automated verified (deterministic, local — 2026-10-04 run; current counts in the refresh above):**
 
 - `npm run build` — PASS, no warnings; `dist/` regenerated from current source.
 - `npm test` — PASS: derivation goldens 16/16 (pinned 0.4.1), QR 15/15, layering 80 files /
@@ -92,6 +119,9 @@ external audit of this wallet exists; no claim of one may be made.
 
 | Date | Record | Scope |
 | --- | --- | --- |
+| 2026-10-30 | [`docs/audits/2026-10-30-review-lifecycle-audit.md`](audits/2026-10-30-review-lifecycle-audit.md) | Review lifecycle after v31: four pre-sign defects (hidden batch queue, unbound faucet claim, optional abort signal, Domain prepare race) plus the v1.5.0 card copy rewrite. |
+| 2026-10-29 | [`docs/audits/2026-10-29-v31-audit.md`](audits/2026-10-29-v31-audit.md) | The v31 record-write merge: confirm path, signing auth level, three-state reads, account rows, error codes, reverse lookup. |
+| 2026-10-28 | [`docs/audits/2026-10-28-sync-audit.md`](audits/2026-10-28-sync-audit.md) | The v30 domain merge audit. |
 | 2026-10-04 | [`docs/audits/2026-10-04-conformance.md`](audits/2026-10-04-conformance.md) | Production-rules conformance: baseline, findings F-01…F-08, remediation units U1–U5. |
 | 2026-10-03 | [`docs/audits/2026-10-03-mainnet-readiness.md`](audits/2026-10-03-mainnet-readiness.md) | Mainnet-readiness: findings MR-01…MR-07 and their source remediations. |
 | 2026-09-18 | [`docs/audits/2026-09-18-baseline.md`](audits/2026-09-18-baseline.md) | Baseline security audit: findings F-01…F-09 of the original review (historical; superseded states are labeled inside). |

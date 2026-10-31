@@ -1,6 +1,6 @@
 # Documentation index
 
-Date: 2026-10-05
+Date: 2026-10-05; refreshed 2026-10-29 (contract v31, shared transaction review + tracked domains + name-service record write and reverse lookup).
 Purpose: map the maintained documentation and point readers to the implementation and verification sources of truth. Documentation summarizes the code; it does not override it.
 
 ---
@@ -20,8 +20,26 @@ Purpose: map the maintained documentation and point readers to the implementatio
 1. `docs/ARCHITECTURE.md` — implemented dependency, signing, storage, and verification boundaries.
 2. `docs/DECISIONS.md` — durable decisions, rejected alternatives, trade-offs, and consequences.
 3. `docs/MODULE_BOUNDARIES.md` — current core boundaries and clearly labelled, unshipped feature-module target.
-2. `docs/MANUAL_SMOKE_CHECKLIST.md` — real-Chrome checks for popup and side panel; this is a runbook, not automated evidence.
-3. `test/test-route-lifecycle.mjs` and `scripts/check-routes.mjs` — deterministic route, lifecycle, reachability, and CSS-class guards.
+4. `docs/MANUAL_SMOKE_CHECKLIST.md` — real-Chrome checks for popup and side panel; this is a runbook, not automated evidence.
+5. `test/test-route-lifecycle.mjs` and `scripts/check-routes.mjs` — deterministic route, lifecycle, reachability, and CSS-class guards.
+
+### For transaction review or signing-surface work
+
+1. `docs/TX_REVIEW_VERIFICATION.md` — what v29 is, the Rabby study, the claim-by-claim verdict, and the
+   defects found and fixed while reviewing it.
+2. `docs/audits/2026-10-28-sync-audit.md` — the audit of the v30 domain merge: what shipped, what
+   was broken, and what is still open (`docs/DEFECT_LOG.md` §13).
+3. `docs/audits/2026-10-29-v31-audit.md` — the audit of the v31 record-write merge: the confirm
+   path that threw on every attempt, the signing method declared `unlocked`, the three-state facts,
+   and what remains open (`docs/DEFECT_LOG.md` §14).
+4. `docs/audits/2026-10-30-review-lifecycle-audit.md` — the review lifecycle after v31: the hidden
+   batch queue, the unbound faucet claim, the optional abort signal, the Domain prepare race, and
+   the card copy rewrite (`docs/DEFECT_LOG.md` §11.6 and §15).
+5. `docs/ARCHITECTURE.md` — the review/signing boundary and its authorities.
+6. `src/shared/tx-review/` and `src/background/services/review/` — the contract, decoders, kinds and
+   store; `src/ui/domain/tx-review/` — the one card and the one confirm path.
+7. `test/test-tx-review.mjs`, `test/test-tx-review-card.mjs` and `scripts/preview-tx-review.html` —
+   deterministic coverage, the rendered-copy harness, and the human layout harness.
 
 ### For security work
 
@@ -90,6 +108,7 @@ authority documents", never "this is how the code works".
 | `docs/DECISIONS.md` | durable decisions D-001…D-011 with context, options, trade-offs, and consequences |
 | `docs/BACKEND_GAPS.md` | implemented backend capabilities and genuinely open/unsupported behavior |
 | `docs/MODULE_BOUNDARIES.md` | wallet-core layering; authority on future feature separation (its feature modules are proposals, not shipped code) |
+| `docs/GLOBAL_SMART_CONTRACT_POLICY.md` | smart contract inspection, reuse vs build hierarchy, and mainnet deployment gates |
 
 ### Operational verification — runbooks and records
 
@@ -97,8 +116,9 @@ authority documents", never "this is how the code works".
 | --- | --- |
 | `docs/MANUAL_SMOKE_CHECKLIST.md` | real-browser and live-chain runbook; not a test result |
 | `docs/AUDIT_REPORT.md` | current audit conclusion, open mainnet-readiness gates, and the index of dated audit records |
-| `docs/audits/` | append-only dated audit records (2026-09-18, 2026-10-03, 2026-10-04); a new audit appends a file and refreshes `docs/AUDIT_REPORT.md`; records are never edited |
+| `docs/audits/` | append-only dated audit records (2026-09-18, 2026-10-03, 2026-10-04, 2026-10-28, 2026-10-29, 2026-10-30); a new audit appends a file and refreshes `docs/AUDIT_REPORT.md`; records are never edited |
 | `docs/SEND_PATH_AUDIT.md` | Send path, registration, tests, residual risks — kept while Send race/live items are open |
+| `docs/TX_REVIEW_VERIFICATION.md` | v29 transaction-review verification: Rabby source findings, PR claim-by-claim check, fixed defects, open gaps, the Domain capability facts it established, the §9 completion report, §10's claim-by-claim response to a second independent review, §11's 2026-10-28 simplification to the one-table before-sign shape, and §12's finding-by-finding status of the external audit of `2e2178f` |
 | `docs/HISTORY_REDESIGN_PLAN.md` | shipped flat History behavior and its open live checks |
 | `docs/DEFECT_LOG.md` | defect causes, fixes, guardrails, and residual verification gaps |
 | `docs/REDESIGN_TRIAGE.md` | triage of external UX suggestions — kept while the review is unresolved (3 of 4 suggestion sets pending) |

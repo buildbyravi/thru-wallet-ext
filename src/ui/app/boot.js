@@ -12,6 +12,7 @@ import { installSidePanelExclusion } from './side-panel-exclusion.js';
 import { FLAGS } from '../../shared/flags.js';
 import { initTheme } from '../../popup/theme.js';
 import { UnlockRoute } from './routes/unlock.js';
+import { dismissAllToasts } from '../kit/toast.js';
 import { DashboardRoute } from './routes/dashboard.js';
 import { AccountsRoute } from './routes/accounts.js';
 import { AccountDetailRoute } from './routes/account-detail.js';
@@ -224,10 +225,21 @@ export async function boot({ root } = {}) {
   const offEvents = bridge.onEvents({
     lockStateChanged: ({ unlocked } = {}) => {
       guards.invalidate();
+      // Never leave a notification on screen over a locked wallet: a toast can quote a domain,
+      // an amount or an address, and "the wallet is locked" has to mean the screen is empty of
+      // wallet content. `dismissAllToasts()` was exported for exactly this since the toast
+      // shipped and had no production caller until 2026-10-30.
+      if (!unlocked) dismissAllToasts();
       if (!unlocked) router.navigate('/unlock', { replace: true });
     },
     accountsChanged: () => {
       guards.invalidate();
+      dismissAllToasts();
+    },
+    // A message produced on one network must not survive the switch: "confirmation" on Betanet
+    // is not a statement about any other chain.
+    networkChanged: () => {
+      dismissAllToasts();
     },
   });
   window.addEventListener('unload', offEvents, { once: true });

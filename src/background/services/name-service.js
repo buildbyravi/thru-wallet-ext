@@ -15,9 +15,15 @@
 // authority (e.g. a closed foreign root), the transaction reverts on-chain and we surface
 // that honestly; we never sponsor or proxy another authority.
 //
-// initRoot / setRecord stay gated behind FLAGS.NAME_SERVICE (false in this build): initRoot
-// creates NEW roots (a namespace-level action — the answer to "are user-level roots allowed
-// here" is a live question for the running chain), and records are a separate responsibility.
+// name.setRecord is a REAL self-signed write as of contract v31 (2026-10-29): opcode 2 is the
+// first-party APPEND_RECORD (tn_name_service ABI), the write is authority = fee payer = the
+// active account, and it only lands on a domain that account provably owns. It is reached
+// through the shared review pipeline (kind `domain-record`), declared auth:'signing', and listed
+// in TRANSACTION_METHODS.
+//
+// name.initRoot stays gated behind FLAGS.NAME_SERVICE (false in this build): creating NEW roots
+// is a namespace-level action, and "are user-level roots allowed here" is still an open live
+// question for the running chain.
 import { FLAGS } from '../../shared/flags.js';
 import * as ns from '../../lib/name-service.js';
 import * as txService from './tx-service.js';
@@ -25,7 +31,7 @@ import * as thruClient from '../../lib/thru-client.js';
 import * as vault from '../../lib/vault.js';
 import { getActiveNetworkConfig } from './network-service.js';
 import * as pending from './pending-tx-service.js';
-import { formatSignature } from '../../lib/registrar.js';
+import { formatSignature, purchaseNameProblem } from '../../lib/registrar.js';
 
 function featureDisabled() {
   const err = new Error(
@@ -62,32 +68,109 @@ function requireAddress(value, field) {
 
 /** name.lookup: resolve a dotted name under an explicit root registrar address (blank root
  *  → auto-discovered canonical root, proven on-chain; NAME_ROOT_UNKNOWN when none exists). */
+// Root names come off the chain with a leading dot on some roots (`.id`), and without one on
+// others. Suffix handling has to agree with the bytes either way.
+function normalizeRootName(value) {
+  return String(value ?? '').trim().toLowerCase().replace(/^\.+/, '');
+}
+
+// The community `.id` namespace is derived, not discovered. Discovery returns the official
+// `.thru` root whenever both exist, so a user who typed `alice.id` would be read against the
+// wrong namespace — or refused, because `id` is shorter than the name-service's 3-character
+// label minimum (reviewer #22: that minimum is a rule for labels UNDER a root, not for the
+// root suffix the user typed).
+const KNOWN_ROOT_SUFFIXES = Object.freeze(['thru', 'id']);
+
 export async function lookupName({ name, rootAddress } = {}) {
-  requireValidName(name);
-  await getActiveNetworkConfig();
-  let root = String(rootAddress ?? '').trim();
-  if (!root) {
-    const discovered = await discoverDefaultRoot();
-    if (!discovered?.supported) {
-      const err = new Error(discovered?.reason ?? 'no canonical name root on this network');
-      err.code = 'NAME_ROOT_UNKNOWN';
-      throw err;
+  const typed = String(name ?? '').trim().toLowerCase();
+  let cleanName = typed;
+  let suffix = null;
+  for (const known of KNOWN_ROOT_SUFFIXES) {
+    if (cleanName.length > known.length + 1 && cleanName.endsWith('.' + known)) {
+      suffix = known;
+      cleanName = cleanName.slice(0, -(known.length + 1));
+      break;
     }
-    root = discovered.rootAddress;
-  } else {
-    requireAddress(root, 'rootAddress');
   }
-  const chain = await ns.resolveNameChain(root, name);
+
+  // Validate the LABEL, after peeling the suffix. A name the paid registry accepts but the
+  // name-service label rules do not (`MiX_9`) is still readable — it just needs the registrar
+  // address derivation instead of the dotted-chain walk.
+  const labelProblem = ns.nameProblem(cleanName);
+  const readsAsRegistrarLabel = Boolean(labelProblem) && !purchaseNameProblem(cleanName);
+  if (labelProblem && !readsAsRegistrarLabel) {
+    const err = new Error(`invalid name: ${labelProblem}`);
+    err.code = 'INVALID_PARAMS';
+    throw err;
+  }
+  await getActiveNetworkConfig();
+
+  const supplied = String(rootAddress ?? '').trim();
+  if (supplied) {
+    requireAddress(supplied, 'rootAddress');
+    if (suffix) {
+      // The caller named both a namespace and a root account; they must be the same namespace,
+      // or the wallet would read one root while the screen says the other.
+      const parsed = await thruClient.getAccountInfo(supplied)
+        .then((info) => (info?.exists ? parseRootRegistrar(info.raw) : null))
+        .catch(() => null);
+      const suppliedName = normalizeRootName(parsed?.name);
+      if (suppliedName && suppliedName !== suffix) {
+        const err = new Error(`rootAddress is the .${suppliedName} root, but the name asks for .${suffix}`);
+        err.code = 'INVALID_PARAMS';
+        throw err;
+      }
+    }
+    return readName(cleanName, supplied, thruClient.getClient(), readsAsRegistrarLabel);
+  }
+
+  if (suffix) {
+    return readName(cleanName, await ns.rootRegistrarAddress(suffix), thruClient.getClient(),
+      readsAsRegistrarLabel);
+  }
+
+  const discovered = await discoverDefaultRoot();
+  if (!discovered?.supported) {
+    const err = new Error(discovered?.reason ?? 'no canonical name root on this network');
+    err.code = 'NAME_ROOT_UNKNOWN';
+    throw err;
+  }
+  return readName(cleanName, discovered.rootAddress, thruClient.getClient(), readsAsRegistrarLabel);
+}
+
+// Internal tracked-domain read: paid .thru labels have a wider official alphabet than
+// generic name-service labels. Keep that validator at the backend boundary, not in UI.
+export async function lookupTrackedName({ name, rootAddress }, boundClient) {
+  const thruRoot = await ns.rootRegistrarAddress('thru');
+  const registrarLabel = rootAddress === thruRoot && !String(name).includes('.');
+  const problem = registrarLabel ? purchaseNameProblem(name) : ns.nameProblem(name);
+  if (problem) throw coded('INVALID_PARAMS', `invalid name: ${problem}`);
+  requireAddress(rootAddress, 'rootAddress');
+  return readName(name, rootAddress, boundClient, registrarLabel, true);
+}
+
+async function readName(name, root, boundClient, registrarLabel = false, checked = false) {
+  const chain = registrarLabel
+    ? [await ns.domainAccountAddress(root, name), root]
+    : await ns.resolveNameChain(root, name);
   const leafAddress = chain[0];
   // Direct client read preserves domain bytes for owner decoding. Propagate RPC errors:
   // unreadable is unknown, never evidence that a name is available.
-  const info = await thruClient.getAccountInfo(leafAddress);
+  const info = await thruClient.getAccountInfo(leafAddress, boundClient);
   if (!info || !info.exists) {
     return { chain, leaf: { address: leafAddress, exists: false }, rootAddress: root, name };
   }
   let domain = null;
   try {
+    if (checked && thruClient.getAccountOwnerAddress(info.raw) !== ns.NAME_SERVICE_PROGRAM) {
+      throw new Error('Domain program ownership could not be verified.');
+    }
     const parsed = ns.parseDomainAccount(info.raw);
+    const expected = name.split('.')[0].toLowerCase();
+    if (checked && (parsed.parent !== chain[1] || parsed.name.toLowerCase() !== expected
+      || parsed.nameLen !== new TextEncoder().encode(parsed.name).length)) {
+      throw new Error('Domain identity does not match the requested name.');
+    }
     // Bridge-safe: registeredAt is a chain BigInt and cannot cross the message port as-is.
     domain = { ...parsed, registeredAt: parsed.registeredAt.toString() };
   } catch (e) {
@@ -329,7 +412,7 @@ export async function registerName({ name, parentAddress, expectedNetworkId, exp
       }
       if (update?.executionResult) {
         if (update.executionResult.vmError === 0) {
-          return { signature: formatted, domainAddress };
+          return { signature: formatted, domainAddress, rootAddress: parent };
         }
         const userCode = update.executionResult.userErrorCode ?? 0;
         throw coded(
@@ -346,23 +429,139 @@ export async function registerName({ name, parentAddress, expectedNetworkId, exp
   throw coded('TX_RESULT_MISSING', 'Registration transaction never returned an execution result (timed out?).', { retryable: true });
 }
 
-/** name.setRecord — gated (see header); appends a record on a domain the signer owns. */
-export async function setRecord({ name, rootAddress, key, value } = {}) {
-  requireValidName(name);
-  requireAddress(rootAddress, 'rootAddress');
-  if (!key || typeof key !== 'string') {
+/** name.setRecord: appends a key/value record on a domain the active account owns. */
+export async function setRecord({
+  name, rootAddress, key, value, expectedNetworkId, expectedAccountAddress,
+} = {}) {
+  let cleanName = String(name ?? '').trim();
+  if (!cleanName) {
+    const err = new Error('name is required');
+    err.code = 'INVALID_PARAMS';
+    throw err;
+  }
+  let root = String(rootAddress ?? '').trim();
+  let rootName = 'thru';
+  if (!root) {
+    const discovered = await discoverDefaultRoot();
+    if (!discovered?.supported) {
+      throw coded('NAME_ROOT_UNKNOWN', discovered?.reason ?? 'no canonical name root on this network');
+    }
+    root = discovered.rootAddress;
+    rootName = String(discovered.name || 'thru').toLowerCase();
+  } else {
+    requireAddress(root, 'rootAddress');
+    try {
+      const info = await thruClient.getAccountInfo(root);
+      if (info?.exists) {
+        const parsed = ns.parseRootRegistrar(ns.extractAccountData(info.raw));
+        if (parsed?.name) rootName = String(parsed.name).toLowerCase();
+      }
+    } catch {}
+  }
+  if (cleanName.endsWith('.' + rootName)) {
+    cleanName = cleanName.slice(0, -(rootName.length + 1));
+  }
+  requireValidName(cleanName);
+
+  if (typeof key !== 'string' || !key.trim()) {
     const err = new Error('key is required');
     err.code = 'INVALID_PARAMS';
     throw err;
   }
-  if (typeof value !== 'string') featureDisabledSoftValue(value);
-  featureDisabled();
-}
+  const cleanKey = key.trim();
+  const keyBytes = new TextEncoder().encode(cleanKey);
+  if (keyBytes.length > ns.NS_KEY_FIELD) {
+    const err = new Error(`key is too long (max ${ns.NS_KEY_FIELD} bytes)`);
+    err.code = 'INVALID_PARAMS';
+    throw err;
+  }
 
-function featureDisabledSoftValue(value) {
-  if (typeof value === 'undefined' || value === null) {
+  if (typeof value !== 'string') {
     const err = new Error('value is required');
     err.code = 'INVALID_PARAMS';
     throw err;
   }
+  const valueBytes = new TextEncoder().encode(value);
+  if (valueBytes.length > ns.NS_VALUE_FIELD) {
+    const err = new Error(`value is too long (max ${ns.NS_VALUE_FIELD} bytes)`);
+    err.code = 'INVALID_PARAMS';
+    throw err;
+  }
+
+  const network = await getActiveNetworkConfig();
+  if (expectedNetworkId && expectedNetworkId !== network.id) {
+    throw coded('REVIEW_NETWORK_CHANGED', 'The active network changed after review. Check the record again before signing.');
+  }
+
+  const feePayer = await vault.getActiveAccount();
+  if (expectedAccountAddress && expectedAccountAddress !== feePayer?.address) {
+    throw coded('REVIEW_ACCOUNT_CHANGED', 'The active account changed after review. Check the record again before signing.');
+  }
+
+  const domainAddress = await ns.domainAccountAddress(root, cleanName);
+  const domainInfo = await thruClient.getAccountInfo(domainAddress);
+  if (!domainInfo?.exists) {
+    throw coded('NAME_NOT_FOUND', `'${cleanName}.${rootName}' is not registered on-chain.`);
+  }
+
+  let parsedDomain = null;
+  try {
+    parsedDomain = ns.parseDomainAccount(domainInfo.raw);
+  } catch (e) {
+    throw coded('DOMAIN_UNREADABLE', `failed to read domain account for '${cleanName}.${rootName}': ${e?.message ?? e}`);
+  }
+
+  if (parsedDomain.owner !== feePayer.address) {
+    throw coded('NOT_NAME_OWNER', `your active account ${feePayer.address.slice(0, 12)}… does not own '${cleanName}.${rootName}'.`);
+  }
+
+  const client = thruClient.getClient();
+  const { rawTransaction } = await client.transactions.buildAndSign({
+    feePayer: { publicKey: feePayer.publicKey, privateKey: feePayer.privateKey },
+    program: ns.NAME_SERVICE_PROGRAM,
+    header: { computeUnits: 300_000, memoryUnits: 10_000, stateUnits: 1, fee: 0n },
+    accounts: {
+      readWrite: [domainAddress],
+    },
+    instructionData: ({ getAccountIndex }) => ns.buildAppendRecordInstructionData({
+      domainAddress,
+      key: cleanKey,
+      value,
+      indexOf: getAccountIndex,
+    }),
+  });
+
+  const displayLabel = `'${cleanKey}' on '${cleanName}.${rootName}'`;
+  let formatted = null;
+  try {
+    for await (const update of client.transactions.sendAndTrack(rawTransaction)) {
+      if (update?.signature?.value && formatted === null) {
+        formatted = formatSignature(update.signature.value);
+        const net = await getActiveNetworkConfig();
+        await pending.track({
+          signature: formatted,
+          kind: 'name-record',
+          from: feePayer.address,
+          to: domainAddress,
+          amountUnits: '0',
+          displayAmount: `set record ${displayLabel} (fee 0n)`,
+          networkId: net.id,
+        }).catch(() => null);
+      }
+      if (update?.executionResult) {
+        if (update.executionResult.vmError === 0) {
+          return { signature: formatted, domainAddress, rootAddress: root, key: cleanKey, value };
+        }
+        const userCode = update.executionResult.userErrorCode ?? 0;
+        throw coded(
+          'RECORD_UPDATE_FAILED',
+          `Record update reverted on-chain (vmError=${update.executionResult.vmError}${userCode ? `, code ${userCode}` : ''}).`,
+        );
+      }
+    }
+  } catch (err) {
+    if (err?.code === 'RECORD_UPDATE_FAILED') throw err;
+    throw coded('TX_RESULT_MISSING', `The record update submission could not be resolved${formatted ? ` (signature ${formatted})` : ''}. Check pending transactions before retrying.`, { retryable: true });
+  }
+  throw coded('TX_RESULT_MISSING', 'Record update transaction never returned an execution result (timed out?).', { retryable: true });
 }

@@ -14,17 +14,33 @@
 //     arrived" are different claims and only one of them is checkable.
 //   - Validation is integer-only via BigInt. The legacy screen used parseInt and Number()
 //     comparisons against a BigInt cap.
+//   - The claim goes through the SHARED transaction review (contract v29) like every other
+//     value-moving flow. This file used to call `tx.claimFaucet` directly, which made it the
+//     last screen in the wallet that could sign without the user reading a review.
 
 import { h, disposer } from '../../kit/dom.js';
 import { icon } from '../../kit/icon.js';
 import { Button } from '../../kit/button.js';
 import { Field } from '../../kit/field.js';
 import { PageHeader, Banner, Spinner } from '../../kit/feedback.js';
+import { Sheet } from '../../kit/sheet.js';
+import { TxReviewCard } from '../../domain/tx-review/review-card.js';
+import {
+  submitReviewedReview, classifyReviewError, discardReview,
+} from '../../domain/tx-review/confirm.js';
 import * as bridge from '../bridge.js';
 import { formatThru } from '../../../shared/format.js';
 
+// The display default, used only before the network tells us the faucet's own per-claim cap.
+// A claim submitted at this value would be a guess, so `claim()` refuses until the cap is known.
+const DEFAULT_CLAIM_UNITS = 10_000n;
+
 export function FaucetRoute({ navigate, back }) {
   const d = disposer();
+  // Route lifetime for the review confirmation and its password dialog (see confirm.js:
+  // the signal is required, so a torn-down route can never complete a signature).
+  const lifecycle = new AbortController();
+  d.add(() => lifecycle.abort());
   const owned = [];
   let account = null;
   let network = null;
@@ -156,17 +172,15 @@ export function FaucetRoute({ navigate, back }) {
   function renderForm() {
     clearBody();
 
+    const claimUnits = capUnits > 0n ? capUnits : DEFAULT_CLAIM_UNITS;
+    const fixedThru = formatThru(claimUnits);
+
     const amount = track(Field({
-      label: 'Amount in base units',
+      label: 'Claim amount',
       type: 'text',
-      inputMode: 'numeric',
-      value: capUnits.toString(),
-      // Explicit about the unit, because Send takes whole THRU and this takes base units. That
-      // difference is the single most confusing thing in the wallet, and it is now verified:
-      // claiming 10000 credits exactly 10000 base units.
-      hint: `Whole numbers only, up to ${capUnits} base units per claim `
-        + `(${formatThru(capUnits)} THRU). This field is NOT in THRU.`,
-      onInput: () => amount.setError(''),
+      readonly: true,
+      value: `${fixedThru} THRU`,
+      hint: `Fixed claim of ${fixedThru} THRU per request. Claiming is free and does not need a balance.`,
     }));
 
     const claimBtn = track(Button({
@@ -174,7 +188,7 @@ export function FaucetRoute({ navigate, back }) {
       variant: 'primary',
       iconName: 'faucet',
       busyLabel: 'Claiming…',
-      onClick: () => claim(amount, claimBtn),
+      onClick: () => claim(claimUnits, claimBtn),
     }));
     claimBtnEl = claimBtn;
 
@@ -208,61 +222,142 @@ export function FaucetRoute({ navigate, back }) {
   }
 
   let claiming = false;
-  async function claim(amountField, claimBtn) {
-    if (claiming) return;
+  // The window between "review sheet closed" and "submit settled" used to be unguarded: the
+  // claim button was re-enabled before the sheet opened and nothing blocked a second claim once
+  // it closed, so two submissions could overlap and a late one could paint a torn-down route.
+  let submitting = false;
+  let destroyed = false;
+  let reviewSheet = null;
+
+  async function claim(renderedUnits, claimBtn) {
+    if (claiming || submitting || reviewSheet) return;
+
+    // A fixed claim has no amount to choose: the amount IS the faucet's per-claim cap, read from
+    // the network. Before that read there is nothing honest to submit — DEFAULT_CLAIM_UNITS is a
+    // display value, not a fact about this faucet — so the claim waits instead of guessing.
+    if (capUnits <= 0n) {
+      banner.set('The faucet limit is not available yet. Re-check the limit, then claim.');
+      return;
+    }
+    // The cap can move while this screen is open. If it did, re-render and let the user read the
+    // new amount rather than sign something the read-only field does not show.
+    if (capUnits !== renderedUnits) {
+      banner.set(`The faucet cap changed to ${formatThru(capUnits)} THRU. Review the updated claim.`);
+      renderForm();
+      return;
+    }
+
     claiming = true;
     claimBtn?.update({ disabled: true });
     banner.clear();
-    const raw = amountField.value.trim();
+    const units = capUnits;
 
-    // Integer-only, compared as BigInt against a BigInt cap. The legacy screen mixed parseInt
-    // with Number(cap) comparisons.
-    if (!/^\d+$/.test(raw)) {
-      amountField.setError('Enter a whole number of base units.');
-      claiming = false;
-      claimBtn?.update({ disabled: false });
-      return;
-    }
-    let units;
+    // The review pipeline reads the faucet policy, the account and the cap itself; this screen
+    // only supplies the intent. No decoder ⇒ no signature (never a generic confirm screen).
+    let prepared;
     try {
-      units = BigInt(raw);
-    } catch {
-      amountField.setError('Enter a whole number of base units.');
+      prepared = await bridge.send('tx.prepareReview', {
+        kind: 'faucet-claim',
+        params: { amountUnits: units.toString() },
+      });
+    } catch (error) {
+      banner.set(error?.message || 'The faucet claim review could not be prepared.');
       claiming = false;
       claimBtn?.update({ disabled: false });
       return;
     }
-    if (units <= 0n) {
-      amountField.setError('Enter an amount greater than zero.');
-      claiming = false;
-      claimBtn?.update({ disabled: false });
-      return;
-    }
-    if (units > capUnits) {
-      amountField.setError(`The most this faucet gives per claim is ${capUnits} base units.`);
+    if (!prepared?.supported) {
+      banner.set('This wallet has no decoder for that transaction, so it cannot be signed.');
       claiming = false;
       claimBtn?.update({ disabled: false });
       return;
     }
 
+    claiming = false;
+    claimBtn?.update({ disabled: false });
+    openReview(prepared, units);
+  }
+
+  /** Show the canonical review for a prepared claim. Nothing here re-derives validation. */
+  function openReview(prepared, units) {
+    const sheet = Sheet({
+      label: 'Confirm faucet claim',
+      className: 'name-confirm-sheet',
+      onClose: () => { if (reviewSheet === sheet) reviewSheet = null; },
+    });
+    reviewSheet = sheet;
+
+    // onChange fires from the card's constructor, so the button it gates exists first.
+    let confirm = null;
+    const card = sheet.track(TxReviewCard({
+      review: prepared.review,
+      onChange: ({ canConfirm }) => confirm?.el && (confirm.el.disabled = !canConfirm),
+    }));
+    sheet.card.appendChild(card.el);
+
+    const cancel = sheet.track({
+      el: h('button', { type: 'button', class: 'btn secondary', text: 'Cancel' }),
+      destroy: () => {},
+    });
+    confirm = sheet.track({
+      el: h('button', {
+        type: 'button',
+        class: 'btn primary',
+        text: prepared.review.operation.confirmLabel || 'Claim',
+        disabled: !card.canConfirm(),
+      }),
+      destroy: () => {},
+    });
+
+    sheet.d.on(cancel.el, 'click', () => {
+      discardReview(prepared.reviewId);
+      sheet.close();
+    });
+    sheet.d.on(confirm.el, 'click', () => {
+      if (sheet.closed) return;
+      const acknowledgements = card.acknowledgements;
+      // Close the trap before authentication; every signed value comes from this review.
+      sheet.close();
+      void submitReviewed(prepared, acknowledgements, units);
+    });
+
+    sheet.card.appendChild(h('div', { class: 'screen-actions' }, [confirm.el, cancel.el]));
+    sheet.open();
+  }
+
+  async function submitReviewed(prepared, acknowledgements, units) {
+    if (submitting) return;
+    submitting = true;
+    claimBtnEl?.update({ disabled: true });
+    banner.clear();
     const before = await bridge
       .send('tx.getAccountInfo', { address: account.address })
-      .then((i) => BigInt(i.balance || '0'))
+      .then((info) => BigInt(info.balance || '0'))
       .catch(() => null);
-
     try {
-      const result = await bridge.send('tx.claimFaucet', { amountUnits: units.toString() });
-      if (!result) return;
-      await renderSuccess(result, before, units);
+      const outcome = await submitReviewedReview({
+        review: prepared.review,
+        acknowledgements,
+        signal: lifecycle.signal,
+        passwordTitle: 'Confirm faucet claim',
+        passwordBody: 'Re-enter your wallet password to sign this faucet claim.',
+        confirmLabel: 'Claim on-chain',
+      });
+      if (outcome.status === 'cancelled' || destroyed) return;
+      await renderSuccess(outcome.result, before, units);
     } catch (error) {
-      banner.set(error.message || 'The faucet claim failed.');
+      if (destroyed) return;
+      const classified = classifyReviewError(error, {
+        uncertainMessage: 'Could not confirm whether this claim was submitted. Check Activity '
+          + 'before trying again.',
+      });
+      banner.set(classified.message, classified.kind === 'uncertain' ? 'warning' : 'error');
       // A failed claim often CONSUMES the failed window slot or proves the window exhausted
-      // — refresh the on-chain limit state so the note under the form reflects what the
-      // chain now says, not what it said when the screen opened.
-      refreshLimit();
+      // — refresh the on-chain limit state so the note reflects what the chain now says.
+      void refreshLimit();
     } finally {
-      claiming = false;
-      claimBtn?.update({ disabled: false });
+      submitting = false;
+      if (!destroyed) claimBtnEl?.update({ disabled: false });
     }
   }
 
@@ -284,7 +379,7 @@ export function FaucetRoute({ navigate, back }) {
       h('div', { class: 'row-flex' }, [
         icon('check', 16),
         h('strong', { text: delta != null && delta > 0n
-          ? `Received ${delta} base units (${formatThru(delta)} THRU)`
+          ? `Received ${formatThru(delta)} THRU`
           : 'Claim submitted' }),
       ]),
       h('p', { class: 'hint', text: delta != null && delta > 0n
@@ -294,9 +389,8 @@ export function FaucetRoute({ navigate, back }) {
     ]));
 
     if (delta != null && delta !== requested && delta > 0n) {
-      // Worth surfacing: it would mean the unit interpretation is not what we think.
       banner.set(
-        `Asked for ${requested} base units but received ${delta}. Please report this — it would `
+        `Expected ${formatThru(requested)} THRU but received ${formatThru(delta)} THRU. Please report this — it would `
         + 'mean the faucet amount unit differs from what the wallet assumes.',
         'warning',
       );
@@ -351,7 +445,7 @@ export function FaucetRoute({ navigate, back }) {
         return;
       }
       // faucetMaxPerClaim crosses the port as a string, since JSON cannot carry BigInt.
-      capUnits = net.faucetMaxPerClaim != null ? BigInt(net.faucetMaxPerClaim) : 10_000n;
+      capUnits = net.faucetMaxPerClaim != null ? BigInt(net.faucetMaxPerClaim) : DEFAULT_CLAIM_UNITS;
       limitInfo = null;
       renderForm();
       // The limit readout is a separate chain read; it fills in under the form without
@@ -369,6 +463,10 @@ export function FaucetRoute({ navigate, back }) {
   return {
     el,
     destroy() {
+      destroyed = true;
+      lifecycle.abort();
+      reviewSheet?.destroy();
+      reviewSheet = null;
       for (const c of owned) c.destroy?.();
       owned.length = 0;
       header.destroy();
