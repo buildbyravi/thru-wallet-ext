@@ -21,7 +21,17 @@ const LABELS_SCHEMA_VERSION = 1;
 const VAULT_VERSION = 2;
 
 function toB64(bytes) {
-  return btoa(String.fromCharCode(...bytes));
+  const CHUNK_SIZE = 8192;
+  const len = bytes.length;
+  if (len <= CHUNK_SIZE) {
+    return btoa(String.fromCharCode(...bytes));
+  }
+  let binary = '';
+  for (let i = 0; i < len; i += CHUNK_SIZE) {
+    const chunk = bytes.subarray ? bytes.subarray(i, i + CHUNK_SIZE) : bytes.slice(i, i + CHUNK_SIZE);
+    binary += String.fromCharCode(...chunk);
+  }
+  return btoa(binary);
 }
 
 function fromB64(str) {

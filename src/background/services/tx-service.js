@@ -170,12 +170,12 @@ export async function claimFaucet(amountUnits, expected = {}) {
   // the user approved (v31 audit F-2, 2026-10-29). Send and the name writes already bind.
   const expectedFrom = expected?.fromAddress ?? null;
   const expectedNetwork = expected?.networkId ?? null;
-  if (expectedFrom && feePayer?.address !== expectedFrom) {
+  if (!expectedFrom || feePayer?.address !== expectedFrom) {
     const error = new Error('The active account changed after this review. Review the claim again.');
     error.code = 'REVIEW_ACCOUNT_CHANGED';
     throw error;
   }
-  if (expectedNetwork && network.id !== expectedNetwork) {
+  if (!expectedNetwork || network.id !== expectedNetwork) {
     const error = new Error('The active network changed after this review. Review the claim again.');
     error.code = 'REVIEW_NETWORK_CHANGED';
     throw error;

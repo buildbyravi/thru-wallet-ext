@@ -109,6 +109,7 @@ export const TCR_ERRORS = Object.freeze({
   0xd10b: 'no lease found', 0xd10c: 'lease label mismatch',
   0xd10d: 'target account missing from transaction', 0xd10e: 'fee math overflow',
   0xd10f: 'treasury index/pubkey mismatch',
+  0xd110: 'wrong name service program', 0xd111: 'wrong config seed',
   0xd200: 'config creation failed', 0xd201: 'lease creation failed',
   0xd202: 'fee transfer failed', 0xd203: 'root init CPI failed',
   0xd204: 'register CPI failed', 0xd205: 'state proof parse failed',

@@ -1521,6 +1521,7 @@ button.row { cursor: pointer; }
   color: var(--text-1);
   word-break: break-all;
   line-height: 1.4;
+  text-align: right;
 }
 
 /* A review value is evidence, not a preview. `.detail-address` (used by account rows elsewhere)

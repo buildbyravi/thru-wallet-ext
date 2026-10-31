@@ -29,6 +29,11 @@ export async function isUnlocked() {
  * @returns {Promise<{ mnemonic: string, address: string }>}
  */
 export async function createVault(password) {
+  if (await vault.hasVault()) {
+    const error = new Error('A wallet already exists on this device. Reset it first to replace it.');
+    error.code = 'VAULT_EXISTS';
+    throw error;
+  }
   const networkId = await getActiveNetworkId();
   const mnemonic = await vault.createVault(password);
   const active = await vault.getActiveAccount();
@@ -47,6 +52,11 @@ export async function createVault(password) {
  * @returns {Promise<{ address: string }>}
  */
 export async function importMnemonicVault(mnemonic, password) {
+  if (await vault.hasVault()) {
+    const error = new Error('A wallet already exists on this device. Reset it first to replace it.');
+    error.code = 'VAULT_EXISTS';
+    throw error;
+  }
   const networkId = await getActiveNetworkId();
   const result = await vault.importMnemonicVault(mnemonic, password);
   void registerCreatedAccount((await vault.getActiveAccount()).address, networkId);
@@ -60,6 +70,11 @@ export async function importMnemonicVault(mnemonic, password) {
  * @returns {Promise<{ address: string }>}
  */
 export async function importPrivateKeyVault(privateKeyHex, password) {
+  if (await vault.hasVault()) {
+    const error = new Error('A wallet already exists on this device. Reset it first to replace it.');
+    error.code = 'VAULT_EXISTS';
+    throw error;
+  }
   const networkId = await getActiveNetworkId();
   const result = await vault.importPrivateKeyVault(privateKeyHex, password);
   void registerCreatedAccount((await vault.getActiveAccount()).address, networkId);
@@ -107,10 +122,30 @@ export async function unlock(password) {
 
 /**
  * Re-verify the master password without changing lock state.
+ * Throttled using the same exponential backoff lockout as unlock, preventing brute-force guesses.
  * @param {string} password
  */
 export async function verifyPassword(password) {
-  return vault.verifyMasterPassword(password);
+  await auth.assertUnlockAllowed();
+  try {
+    const result = await vault.verifyMasterPassword(password);
+    await auth.recordSuccess();
+    return result;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/incorrect password/i.test(message)) {
+      const { retryInMs } = await auth.recordFailure();
+      if (retryInMs > 0) {
+        const seconds = Math.ceil(retryInMs / 1000);
+        const err = new Error(
+          `Incorrect password. Too many attempts — try again in ${seconds} second${seconds === 1 ? '' : 's'}.`,
+        );
+        err.code = 'AUTH_LOCKED_OUT';
+        throw err;
+      }
+    }
+    throw error;
+  }
 }
 
 /**
@@ -174,6 +209,25 @@ export async function resetWallet({ confirmation, password } = {}) {
   await auth.clearLockout();
   await balances.clearAllCaches();
   await pending.clearAll();
+
+  // Clear all wallet-associated persistent storage so no contacts, labels, caches,
+  // or tracked domains survive into a new wallet.
+  try {
+    const all = await chrome.storage.local.get(null);
+    const keysToRemove = Object.keys(all || {}).filter((k) =>
+      k.startsWith('thru_') ||
+      k.startsWith('vault') ||
+      k === 'unlocked_session' ||
+      k === 'active_account_ref' ||
+      k === 'preferences'
+    );
+    if (keysToRemove.length) {
+      await chrome.storage.local.remove(keysToRemove);
+    }
+    await chrome.storage.session.clear().catch(() => {});
+  } catch {
+    // ignore storage cleanup error
+  }
   emitLockStateChanged(false);
 }
 

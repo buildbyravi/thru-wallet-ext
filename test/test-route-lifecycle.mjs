@@ -1298,7 +1298,7 @@ function prepareReviewFixture(kind, params) {
   const submit = kind === 'native-send'
     ? { method: 'tx.sendChecked', params: { toAddress: facts.toAddress, amountUnits: facts.amountUnits, fromAddress: account.address, networkId: network.id } }
     : kind === 'faucet-claim'
-      ? { method: 'tx.claimFaucet', params: { amountUnits: facts.amountUnits } }
+      ? { method: 'tx.claimFaucet', params: { amountUnits: facts.amountUnits, fromAddress: account.address, networkId: network.id } }
     : kind === 'token-transfer'
       ? { method: 'token.transferChecked', params: { mintAddress: facts.mintAddress, toAddress: facts.toAddress, amountUnits: facts.amountUnits, fromAddress: account.address, networkId: network.id } }
       : kind === 'domain-register'

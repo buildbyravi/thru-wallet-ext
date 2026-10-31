@@ -151,6 +151,16 @@ pub fn initialize<const N: usize>(
     let admin_pk = pubkey_at(0)?;
     let root_pk = pubkey_at(ix.root_idx)?;
 
+    // Verify CPI target is strictly the canonical Name Service program
+    if pubkey_at(ix.ns_idx)? != cpi::NAME_SERVICE_PROGRAM {
+        return Err(E::ERR_WRONG_NAME_SERVICE_PROGRAM);
+    }
+
+    // Config seed must strictly be the canonical seed so no secondary rogue configs can be created
+    if ix.config_seed != cpi::CANONICAL_CONFIG_SEED {
+        return Err(E::ERR_WRONG_CONFIG_SEED);
+    }
+
     // Config must be virgin — double-Initialize would silently swap authority.
     assert_virgin(ix.config_idx, E::ERR_ALREADY_INITIALIZED)?;
 
@@ -230,6 +240,9 @@ pub fn register<const N: usize>(
     }; // borrow ends
 
     // Account-table identity checks — a spoofed treasury/root must fail CHECKS, not CPI.
+    if pubkey_at(ix.ns_idx)? != cpi::NAME_SERVICE_PROGRAM {
+        return Err(E::ERR_WRONG_NAME_SERVICE_PROGRAM);
+    }
     if pubkey_at(ix.treasury_idx)? != cfg.treasury {
         return Err(E::ERR_WRONG_TREASURY);
     }

@@ -25,6 +25,8 @@ pub const ERR_LEASE_LABEL_MISMATCH: u64 = 0xD10C;
 pub const ERR_TARGET_NOT_IN_TX: u64 = 0xD10D;
 pub const ERR_FEE_OVERFLOW: u64 = 0xD10E;
 pub const ERR_WRONG_TREASURY_INDEX: u64 = 0xD10F;
+pub const ERR_WRONG_NAME_SERVICE_PROGRAM: u64 = 0xD110;
+pub const ERR_WRONG_CONFIG_SEED: u64 = 0xD111;
 
 // ---- effects/interactions -----------------------------------------------------------
 pub const ERR_CREATE_CONFIG: u64 = 0xD200;
