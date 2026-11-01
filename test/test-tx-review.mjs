@@ -1161,9 +1161,16 @@ console.log('[15] the review fits one screen (owner review, 2026-10-28)');
   for (const [kind, review, max] of shapes) {
     ok(`${kind} keeps its fact table within ${max} rows`, review.summary.length <= max,
       `${review.summary.length} rows: ${review.summary.map((row) => row.label).join(', ')}`);
-    ok(`${kind} does not repeat the network (the header badge states it)`,
+    ok(`${kind} does not repeat the network (the context line states it)`,
       !review.summary.some((row) => row.label === 'Network'));
   }
+  // ...and the card itself must name it once. It said "Betanet" in a badge beside the title and
+  // again in the context line directly under it, which is not a fact repeated in a table but the
+  // same word printed twice above the fold.
+  ok('the card names the network once, in the context line',
+    cardSource.includes('`From ${account}')
+      && !/class: 'badge',\s*text: r\.network/.test(cardSource),
+    'a header badge beside the title duplicates the context line');
 
   // Simplification must not become deletion: every technical fact the first version showed
   // still exists in the envelope, because the card moves it behind the disclosure rather than
