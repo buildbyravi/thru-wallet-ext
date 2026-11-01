@@ -983,11 +983,23 @@ console.log('[14] no UI file can reach a signing method on its own');
   //
   // Dynamic dispatch (`bridge.send(submit.method, …)` in confirm.js) is the intended path and
   // is invisible to this pattern on purpose; confirm.js is covered by [4] above.
-  const root = new URL('../src/ui/', import.meta.url);
-  const files = readdirSync(root, { recursive: true })
-    .map((entry) => String(entry))
-    .filter((entry) => entry.endsWith('.js'));
+  // SCOPE (2026-11-01 audit): the scan used to cover `src/ui/` only. Every other place that can
+  // call the bridge — the popup shell, and `src/features/**` the moment a feature exists — was
+  // outside it, so a new feature could reach a signing method with a green suite. The scan now
+  // covers every UI-side directory, and `src/features/` is included even while it is empty so the
+  // FIRST feature is covered by construction rather than by remembering.
+  const roots = ['../src/ui/', '../src/popup/', '../src/features/'];
+  const files = roots.flatMap((dir) => {
+    try {
+      return readdirSync(new URL(dir, import.meta.url), { recursive: true })
+        .map((entry) => `${dir}${String(entry)}`)
+        .filter((entry) => entry.endsWith('.js'));
+    } catch {
+      return []; // src/features/ does not exist yet; that is not a failure
+    }
+  });
   ok('the UI source was actually scanned', files.length > 40, `${files.length} files`);
+  ok('the scan covers the popup shell as well as the UI', files.some((f) => f.includes('src/popup/')));
 
   // Strip comments before scanning: this repository documents its own history in comments,
   // including the literal text `bridge.send('tx.send', …)` that describes a deleted bug. A
@@ -1002,8 +1014,9 @@ console.log('[14] no UI file can reach a signing method on its own');
     .join('\n');
 
   const literals = new Map();
+  const dynamicSends = [];
   for (const file of files) {
-    const source = withoutComments(readFileSync(new URL(file, root), 'utf8'));
+    const source = withoutComments(readFileSync(new URL(file, import.meta.url), 'utf8'));
     // Single, double or static template quotes: a guard that only sees one quote style is a
     // guard a future route can walk around by accident.
     for (const match of source.matchAll(/bridge\.send\(\s*(['"`])([^'"`$]+)\1/g)) {
@@ -1012,6 +1025,13 @@ console.log('[14] no UI file can reach a signing method on its own');
       if (/[${}]/.test(method)) continue;
       if (!literals.has(method)) literals.set(method, []);
       literals.get(method).push(file);
+    }
+    // Anything `bridge.send(<expression>, …)` — a variable method name is invisible to the
+    // literal scan above, which is how `name.js`'s small `action(method, params)` helper could
+    // grow into a signing call without any test noticing. Record it, then require every one of
+    // them to be a known, non-signing dispatch.
+    for (const match of source.matchAll(/bridge\.send\(\s*([^'"\s][^,)]*)/g)) {
+      dynamicSends.push({ file, expression: match[1].trim() });
     }
   }
   ok('the scan found the UI method literals it expects', literals.size >= 3,
@@ -1033,6 +1053,41 @@ console.log('[14] no UI file can reach a signing method on its own');
   const expected = ['tx.prepareReview', 'tx.confirmReview', 'tx.discardReview', 'tx.registerAccount'];
   ok('the sanctioned literals are present in the UI', expected.every((m) => literals.has(m)),
     expected.filter((m) => !literals.has(m)).join(','));
+
+  // ---- dynamic dispatch: exactly two shapes are allowed, and neither can name a signing method --
+  //   1. confirm.js — `submit.method`, the method the BACKGROUND chose and re-validated;
+  //   2. the password helper's retry wrapper, which forwards a method it was handed.
+  // Everything else must be a small helper whose method arguments are literals the scan can read.
+  const ALLOWED_DYNAMIC = [
+    'src/ui/domain/tx-review/confirm.js',
+    'src/ui/app/routes/export.js',
+    'src/ui/app/routes/name.js',
+  ];
+  const unexpectedDynamic = dynamicSends
+    .filter(({ file }) => !ALLOWED_DYNAMIC.some((allowed) => file.endsWith(allowed)));
+  ok('dynamic bridge.send is confined to review/confirm, the password helper and name metadata',
+    unexpectedDynamic.length === 0,
+    unexpectedDynamic.map((d) => `${d.file}:${d.expression}`).join(' | '));
+
+  // name.js forwards `method` into that helper. Its call sites are literals; require every one of
+  // them to be a declared, non-signing method so the helper cannot become a signing path.
+  const nameSource = withoutComments(
+    readFileSync(new URL('../src/ui/app/routes/name.js', import.meta.url), 'utf8'),
+  );
+  const forwarded = [...nameSource.matchAll(/\baction\(\s*'([^']+)'/g)].map((m) => m[1]);
+  ok('the name.js dispatch helper is actually used (positive control)', forwarded.length >= 2,
+    `${forwarded.length}`);
+  ok('every method forwarded through it is a declared, non-signing method',
+    forwarded.every((m) => METHODS[m] && METHODS[m].auth !== 'signing'),
+    forwarded.filter((m) => !METHODS[m] || METHODS[m].auth === 'signing').join(','));
+
+  // Controls for the two new scans.
+  ok('control: a dynamic send outside the allowlist would be caught',
+    [{ file: 'src/ui/app/routes/new.js', expression: 'someMethod' }]
+      .filter(({ file }) => !ALLOWED_DYNAMIC.some((allowed) => file.endsWith(allowed))).length === 1);
+  // Same predicate the assertion above uses, on a method that IS signing: it must be flagged.
+  ok('control: a signing method forwarded through the helper would be caught',
+    ['tx.sendChecked'].filter((m) => !METHODS[m] || METHODS[m].auth === 'signing').length === 1);
 }
 
 console.log('[15] the review fits one screen (owner review, 2026-10-28)');

@@ -7,10 +7,18 @@ protocol-collected fee. Owner directive 2026-10-30: the fee is **tiered by label
 and stored on-chain (Betanet intent: 3 chars = 100 000, 4 = 10 000, 5+ = 1 000 base units
 per YEAR), with the whole schedule changeable at runtime via `UpdateConfig`.
 
-> **Nothing here is deployed.** The checked-in `thru-custom-registrar.bin` predates the tiered
-> layout and must be rebuilt before it can be deployed; the Rust in this directory has not been
-> compiled in this environment (no `cargo`). See "Deploy & initialize" and `docs/DEFECT_LOG.md`
-> §17C.
+> **State as of 2026-11-01 — read this before trusting anything below.**
+>
+> | | |
+> |---|---|
+> | Checked-in `.bin` | **33,714 bytes**, `sha256 f93c112b…35dd2`, built by the owner (`97cd33f`, `d4cd2ca`, `032c5f0`). It contains the tiered layout **and** the canonical-config-PDA enforcement. The Rust has not been compiled in the CI/sandbox that authored these docs (no `cargo`), so the source↔binary correspondence rests on the owner's build, not on a reproducible build here. |
+> | Deployed on Betanet | the **2026-10-31** build (30,000 bytes): tiered layout 2, `fee_policy = strict`, **without** the canonical-PDA check. Last deploy evidence: `scripts/defi-evidence/registrar-deploy-betanet-thru-1793443647724.json`. |
+> | So | **the chain is one build behind the repo.** Until the current `.bin` is deployed, `ERR_WRONG_CONFIG` (`0xD112`) cannot fire — and the strict-policy risk below is live on a program that never proved it can collect. |
+>
+> The first Register after the upgrade is the acceptance test. If the program address the VM executes
+> ever differed from the derivation this client computes, every Register fails with `0xD112`
+> (`ERR_WRONG_CONFIG`) — a loud, safe failure by design, but it means the upgrade must be followed by
+> one real registration, not just an Initialize.
 
 ```text
  user (signer, idx 0)
@@ -138,10 +146,14 @@ pinned `@thru/programs` deploy workflows — `scripts/registrar/deploy-and-init.
 It needs the owner host (live RPC is sandbox-blocked here):
 
 ```bash
-# 1) Rebuild the blob FIRST — the checked-in .bin is the pre-tiered layout:
+# 0) The checked-in .bin is already the current build (records the sha256 above). Rebuild it only
+#    if the source changed — and if you do, record the new sha256 in this file in the same commit.
 cargo build --release --bin thru-custom-registrar && rust-objcopy -O binary \
   target/riscv64imac-unknown-none-elf/release/thru-custom-registrar \
   thru-custom-registrar.bin
+
+# 0b) DEPLOY the new artifact (upgrade), then continue to step 1. Until this happens the chain
+#     runs the previous build; `deploy-and-init.mjs` only initializes/updates config.
 
 # 2) Deploy + initialize with the tiered schedule. Defaults are the Betanet intent;
 #    the policy starts at best-effort because strict can revert every registration
@@ -163,6 +175,17 @@ THRU_SEED="..." node scripts/registrar/deploy-and-init.mjs --root thru \
 The script asserts, from a re-read of the chain, that the layout is 2, that the three tiers
 equal the requested schedule, and that the policy matches. A deployment that silently kept the
 old config therefore fails the run instead of looking successful.
+
+**It also refuses to run on somebody else's config.** `Initialize` is permissionless: the config
+address is derived from the program, so the first caller to reach it wins — an attacker can create
+it with their own `admin` and `treasury` before us, and the program's canonical-PDA check cannot
+prevent the *first* writer. The script therefore parses the config after Initialize (or on the
+"already exists" path) and requires `admin == this deployer` and `treasury == the requested
+treasury`, failing loudly otherwise. `configAdmin` and `configOwnershipVerified` are recorded in the
+evidence file.
+
+**Acceptance test after any upgrade:** one real `Register`. A successful Initialize proves the
+config, not the pricing path or the collection path.
 
 Live-verification happens on the owner host (same machine, `npm run test:live`
 pattern); nothing about this program is presented in the wallet UI until that evidence

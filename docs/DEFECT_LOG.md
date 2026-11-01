@@ -1047,3 +1047,57 @@ Name route and their suites (build 0, full suite green). NOT COMPILED: the Rust 
 through `cargo` (the environment has no toolchain), so `thru-custom-registrar.bin` in the repo is
 **stale** and must not be deployed. BLOCKED: contract build, Betanet deploy, whether
 `account_resize` works on a live layout-1 account, and whether a strict charge can actually land.
+
+---
+
+## 19. The second outside audit (2026-11-01): what was real, what was already guarded
+
+An outside review of `1eee4d0` raised five items. Each is recorded with its verdict and evidence,
+because "the audit said X" is not the same as "X is true".
+
+**1. "The review is not enforced — `tx.sendChecked` with no review still reaches RPC."** `READ`.
+True, and stated: enforcement is the single `confirm.js` path plus the source scan in
+`test-tx-review.mjs` [14]. The background cannot prove a card was rendered. **What changed:** the
+scan was widened from `src/ui/**` (literal names only) to every UI-side directory including
+`src/features/`, and it now enumerates *dynamic* dispatch — a variable method name was invisible to
+it, and `name.js` forwards `method` through exactly such a helper. Falsified the new check by
+routing `name.setRecord` through that helper: it failed with the method name. **Not changed:** the
+enforcement point. Moving it into the background means reshaping eight public signatures (rule 4) or
+a hidden consent lease that no handler test can construct; the threat model does not justify it,
+because a caller who can reach the bridge can also run prepare → confirm → submit. Recorded in
+`docs/STATUS_AND_ROADMAP.md` as an invariant with its limits, and as an open design question.
+
+**2. "Not deployed: the binary grew 30,000 → 33,714 bytes but betanet still runs the old code."**
+`READ`, confirmed against the evidence directory. The last deploy record is
+`registrar-deploy-betanet-thru-1793443647724.json` (2026-10-31T10:47Z, `strict`,
+`collectionProbe.measured:false`); the checked-in `.bin` is 33,714 bytes with
+`sha256 f93c112b…35dd2` and was rebuilt twice afterwards (`d4cd2ca`, `032c5f0`). So the chain is one
+build behind, the canonical-PDA check (`0xD112`) cannot fire yet, and the **strict** policy is live
+on a program that has never been observed collecting. The contract README now opens with that table
+instead of the old "nothing here is deployed / the .bin is stale", which was correct in October and
+wrong by 2026-11-01.
+
+**3. "Auto-lock and browser restarts skip the review discard."** `READ`, and it was worse than
+described: the alarm called `vault.lock()` **directly**, so it bypassed `walletService.lock()`
+entirely, and the discard added on 2026-10-31 lived in the router's `wallet.lock` handler only.
+**Fixed:** the discard now lives inside `walletService.lock()`, the alarm goes through that same
+function, and worker startup discards when the wallet comes back locked. `test-review-lifecycle.mjs`
+covers the alarm path and fails the build if the worker entry ever imports `lock` from the vault
+again.
+
+**4. "First Initialize can still be front-run."** `READ`. The canonical-PDA check (`032c5f0`) stops a
+config at a *different* address from being used, but `Initialize` is permissionless, so the first
+writer of the canonical address can install a foreign `admin`/`treasury`. **Mitigated in the deploy
+script:** it now requires `admin == this deployer` and `treasury == the requested treasury` on the
+chain-read config and fails otherwise, recording `configAdmin`/`configOwnershipVerified` in the
+evidence. The remaining window (someone initializes between our read and our send) is closed only by
+re-running, which the script's failure makes obvious.
+
+**5. "Unchanged: strict fees never measured, no `max_fee`, signing password off by default, HTTP
+custom RPC vs CSP, send expiry."** All true and all already recorded: the first is §18's release
+gate; the second is a protocol capability this wallet does not have (the header carries a declared
+`fee`, not a ceiling) and inventing one would be fabrication; the third is D-003 (an owner decision,
+not a defect); the fourth is guarded — `localnet` is disabled and `check-csp.mjs` keeps a disabled
+network out of `connect-src`, and custom RPC is behind the v7 quarantine; the fifth is real and
+**open**: send transactions set no `expiryAfter`, so a signed-but-delayed broadcast has no on-chain
+deadline. Adding one is a protocol-behaviour change that needs one live probe first, not a guess.

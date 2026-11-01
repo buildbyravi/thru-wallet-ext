@@ -419,6 +419,24 @@ ok('years 11 rejected', !!yearsProblem(11));
     `got indices ${JSON.stringify(idxs)} for descending input`);
 }
 
+// ---- Deploy-script invariants (2026-11-01 audit) ----------------------------------------------
+// The deploy script is the only thing that can create the config, so its refusal conditions are
+// part of the security story. These are source assertions on the script, each with a control:
+// a check that would pass on any file is not a check.
+{
+  const { readFileSync } = await import('node:fs');
+  const deploy = readFileSync(new URL('../scripts/registrar/deploy-and-init.mjs', import.meta.url), 'utf8');
+  ok('the deploy script refuses to run on a config it does not administer',
+    /the on-chain config admin is THIS deployer/.test(deploy)
+      && /parsed\.admin === deployer\.address/.test(deploy));
+  ok('the deploy script refuses to run on a treasury it was not told to use',
+    /parsed\.treasury === TREASURY/.test(deploy));
+  ok('the deploy script will not enable strict without an attestation',
+    /--collection-proven/.test(deploy) && /FEE_POLICY_STRICT && !COLLECTION_PROVEN/.test(deploy));
+  ok('control: the same patterns do not match an unrelated file',
+    !/parsed\.admin === deployer\.address/.test('const x = 1;'));
+}
+
 const failed = t.filter((x) => !x.pass);
 console.log(failed.length === 0
   ? `\nAll custom-registrar client ABI tests passed (${t.length} checks).`

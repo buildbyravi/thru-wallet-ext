@@ -8,6 +8,7 @@ import * as pending from './pending-tx-service.js';
 import { emitLockStateChanged } from './event-service.js';
 import { registerCreatedAccount } from './registration-service.js';
 import { getActiveNetworkId } from './network-service.js';
+import * as reviewStore from './review/store.js';
 
 /**
  * Check whether an encrypted vault exists on device.
@@ -166,10 +167,33 @@ export async function removeLegacyBackup(password) {
 
 /**
  * Lock the wallet, destroying the session key in memory.
+ *
+ * Every lock path MUST come through here — the UI's `wallet.lock`, the auto-lock alarm, and
+ * anything added later. A lock ends the session the user's approval was given in, so prepared
+ * reviews are discarded with it (Hard rule 21). This used to live only in the router's
+ * `wallet.lock` handler, which meant the auto-lock alarm locked the vault and left a 120-second
+ * review sitting in storage for a wallet that had just been locked (2026-11-01 audit).
+ *
+ * A failure to clear must never block the lock itself: the vault lock is the security action, and
+ * it has already happened. The outcome is returned so a caller/test can see it rather than assume.
  */
 export async function lock() {
   await vault.lock();
+  const reviews = await discardPreparedReviews();
   emitLockStateChanged(false);
+  return reviews;
+}
+
+/**
+ * Drop every prepared review. The store is a leaf (shared modules only), so importing it here
+ * adds no service edge and cannot extend the known services cycle.
+ */
+async function discardPreparedReviews() {
+  try {
+    return await reviewStore.clearAll();
+  } catch (error) {
+    return { cleared: 0, error: String(error?.message ?? error) };
+  }
 }
 
 /**

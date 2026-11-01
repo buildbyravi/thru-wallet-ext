@@ -154,7 +154,36 @@ ok('the failure is REVIEW_NOT_FOUND, not a silent success',
 ok('a direct store read finds nothing either', (await store.get('betanet', 'review-4')) === null);
 
 // ---------------------------------------------------------------------------------------------
-section('[6] reset also clears (the other session boundary)');
+section('[6] the auto-lock alarm path clears too (not just the router handler)');
+// The alarm calls wallet-service.lock() directly, never the router. Before 2026-11-01 it called
+// vault.lock() and skipped the review discard entirely, which is how a locked wallet could still
+// hold a review for 120 seconds.
+await handleApiRequest({ method: 'wallet.unlock', params: { password: 'Password123!' } });
+await prepareFakeRecord('review-alarm');
+ok('a review exists before the alarm fires', reviewKeys().length === 1);
+const walletService = await import('../src/background/services/wallet-service.js');
+const lockResult = await walletService.lock();
+ok('locking through the wallet service discards the review',
+  reviewKeys().length === 0, reviewKeys().join(','));
+ok('the lock reports what it cleared', Number(lockResult?.cleared) >= 1, JSON.stringify(lockResult));
+ok('the vault really is locked afterwards',
+  (await handleApiRequest({ method: 'wallet.isUnlocked' })).data === false);
+
+// The guard that keeps it that way: no module may lock the vault directly except wallet-service.
+{
+  const { readFileSync } = await import('node:fs');
+  const entry = readFileSync(new URL('../src/background/index.js', import.meta.url), 'utf8');
+  const direct = /import\s*\{[^}]*\block\b[^}]*\}\s*from\s*'\.\.\/lib\/vault\.js'/.test(entry);
+  ok('the worker entry does not import lock() straight from the vault', !direct);
+  // Control: the same regex must catch the shape it is looking for.
+  const control = "import { lock } from '../lib/vault.js';";
+  ok('the scan catches a direct vault lock import',
+    /import\s*\{[^}]*\block\b[^}]*\}\s*from\s*'\.\.\/lib\/vault\.js'/.test(control));
+}
+
+// ---------------------------------------------------------------------------------------------
+section('[7] reset also clears (the other session boundary)');
+await handleApiRequest({ method: 'wallet.unlock', params: { password: 'Password123!' } });
 await prepareFakeRecord('review-6');
 ok('a review exists before the reset', reviewKeys().length === 1);
 const reset = await handleApiRequest({

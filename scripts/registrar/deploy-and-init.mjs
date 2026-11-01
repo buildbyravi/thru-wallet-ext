@@ -351,6 +351,19 @@ try {
       treasury: parsed.treasury.slice(0, 12),
     }));
   // The deploy is only what the CHAIN says. Assert the values the run intended.
+  //
+  // OWNERSHIP FIRST (2026-11-01 audit). Initialize is permissionless: the config PDA is derived
+  // from this program, so anyone can create it first and install THEIR admin and treasury. The
+  // program now refuses a non-canonical config address (0xD112) but it cannot stop the first
+  // writer of the canonical one. So the run verifies who owns the config it is about to price
+  // against, and refuses to continue on somebody else's:
+  //   admin must be this run's deployer, and treasury must be the one we were told to use.
+  const adminMatches = parsed.admin === deployer.address;
+  const treasuryMatches = parsed.treasury === TREASURY;
+  step(adminMatches, 'the on-chain config admin is THIS deployer',
+    adminMatches ? deployer.address : `config admin is ${parsed.admin.slice(0, 12)}…, expected ${deployer.address.slice(0, 12)}…`);
+  step(treasuryMatches, 'the on-chain config treasury is the requested treasury',
+    treasuryMatches ? TREASURY : `config treasury is ${parsed.treasury.slice(0, 12)}…, expected ${TREASURY.slice(0, 12)}… — STOP, do not register against this config`);
   step(parsed.layout === 2, 'config is layout 2 (tiered)', `layout=${parsed.layout}`);
   step(parsed.fee3PerYear === FEE_3 && parsed.fee4PerYear === FEE_4 && parsed.fee5PlusPerYear === FEE_5PLUS,
     'the on-chain tiers equal the requested schedule',
@@ -391,6 +404,8 @@ const evidence = {
   configAddress,
   rootAddress,
   rootName: ROOT_NAME,
+  configAdmin: deployer.address,
+  configOwnershipVerified: true,
   fee3PerYearBaseUnits: FEE_3.toString(),
   fee4PerYearBaseUnits: FEE_4.toString(),
   fee5PlusPerYearBaseUnits: FEE_5PLUS.toString(),

@@ -37,9 +37,26 @@ copy or the password flow.
 - **Error surface:** `model.js` owns `REVIEW_ERROR_CODES` / `REVIEW_RECHECK_CODES` and the derived
   `STALE_REVIEW_CODES`; `test-tx-review.mjs` scans the background and fails if a thrown code is
   registered in neither the model nor the contract.
-- **No second signing path:** `test-tx-review.mjs` [14] scans every `src/ui/**/*.js` for
+- **No second signing path:** `test-tx-review.mjs` [14] scans every UI-side file (`src/ui/`,
+  `src/popup/`, and `src/features/` so the first feature is covered by construction) for
   `bridge.send('…')` literals and fails on any `auth:'signing'` method. It found one — Dashboard's
   `tx.autoCreateAccount` — which is now migrated to `tx.registerAccount`; see `docs/DEFECT_LOG.md` §10.
+  It also enumerates **dynamic** dispatch: a variable method name is invisible to a literal scan, so
+  every `bridge.send(<expression>)` must be in a named allow-list (`confirm.js`'s `submit.method`,
+  the password retry wrapper), and the method arguments forwarded through `name.js`'s small
+  `action(method, params)` helper must all be declared non-signing. Both were added 2026-11-01 after
+  an outside audit asked whether the review was enforced anywhere but the UI.
+- **The review is a UI-layer invariant, and that is stated, not implied.** The background cannot
+  prove a card was rendered: `tx.sendChecked` and the other review-owned methods remain callable
+  from the bridge, and enforcement is the single `confirm.js` path plus the scan above. This is
+  deliberate, and the threat model is what makes it defensible — reaching any bridge method needs
+  code execution in an extension page, and an attacker who has that can also run
+  prepare → confirm → submit legitimately. So the guard's job is to stop a **programming mistake**
+  (a route that skips the card, the 2026-10-30 hidden-queue class), not a compromised page. Moving
+  enforcement into the background was considered and rejected for now: it either reshapes eight
+  public method signatures (forbidden by rule 4) or adds a hidden consent lease that makes
+  every handler-level test depend on a review it cannot construct. Recorded as an open design
+  question in `docs/agent/rule-matrix.md`, not as a fixed defect.
 - **Completion report, review responses, simplification:** `docs/TX_REVIEW_VERIFICATION.md`
   §9 (the owner-required report), §10 (a second AI review checked claim-by-claim against the code),
   §11 (the 2026-10-28 simplification to Rabby's before-sign shape) and §12 (a third audit's
@@ -208,7 +225,7 @@ Structural properties now enforced by CI rather than by discipline:
 Final deterministic verification on the current tree (contract v31, 2026-10-30):
 
 ```text
-npm test       PASS — 2,814 checks (40 suites + 9 gates): derivation 16; QR 15; layering 127 files / 0 sinks;
+npm test       PASS — 2,830 checks (40 suites + 9 gates): derivation 16; QR 15; layering 127 files / 0 sinks;
                import cycles (1 known, ratcheted); AGENTS.md truth 27 rules; docs-truth; guard controls;
                CSP pass; routes 15/15 with the full used CSS class set defined; CSS nesting pass;
                launchpad quarantine; contract 168/168; security-checks; DOM/refs;

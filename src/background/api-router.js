@@ -158,13 +158,9 @@ const handlers = Object.assign(Object.create(null), {
   'wallet.importMnemonic': ({ mnemonic, password }) => walletService.importMnemonicVault(mnemonic, password),
   'wallet.importPrivateKey': ({ privateKeyHex, password }) => walletService.importPrivateKeyVault(privateKeyHex, password),
   'wallet.unlock': ({ password }) => walletService.unlock(password),
-  // Locking discards every prepared review: the approval was for a wallet state the lock just
-  // ended, and a review that survives a lock is consent nobody can see (Hard rule 19).
-  'wallet.lock': async () => {
-    const result = await walletService.lock();
-    await reviewService.discardAllReviews();
-    return result;
-  },
+  // `walletService.lock()` discards prepared reviews itself, so every lock path (this one, the
+  // auto-lock alarm, a future caller) gets it from the single place that locks (Hard rule 21).
+  'wallet.lock': () => walletService.lock(),
   'wallet.reset': async ({ confirmation, password }) => {
     const result = await walletService.resetWallet({ confirmation, password });
     await primaryNameService.clearAllDomains();
