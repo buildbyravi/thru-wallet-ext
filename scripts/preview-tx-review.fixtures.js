@@ -188,7 +188,17 @@ export function previewFixtures() {
         availability: { state: 'available', readError: null },
         root: 'taROOTaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
         configAddress: 'taCONFIGaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-        program: 'ta2vDCBzzptN2qVZgz6PXsCp5cNB7Nef4yeQ3W-OqzZcfF',
+        // `program` is the FACTS shape (name/address/verified/source), not a bare address: the
+        // decoder reads `facts.program.verified` to decide whether the card may say the wallet
+        // recognises the program. A bare string here made the preview render "Unrecognised
+        // program" over the wallet's own pinned registrar — a fixture bug that read exactly like
+        // a product defect (2026-10-31 review).
+        program: {
+          name: 'Custom `.thru` registrar',
+          address: 'ta2vDCBzzptN2qVZgz6PXsCp5cNB7Nef4yeQ3W-OqzZcfF',
+          verified: true,
+          source: 'Evidence-pinned deployment (D-016); config root matches the name-service derivation',
+        },
         treasury: 'taTREASURYaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
         feeReserveUnits: '1000',
         feeNote: null,
@@ -212,7 +222,17 @@ export function previewFixtures() {
         availability: { state: 'mine', readError: null },
         root: 'taROOTaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
         configAddress: 'taCONFIGaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-        program: 'ta2vDCBzzptN2qVZgz6PXsCp5cNB7Nef4yeQ3W-OqzZcfF',
+        // `program` is the FACTS shape (name/address/verified/source), not a bare address: the
+        // decoder reads `facts.program.verified` to decide whether the card may say the wallet
+        // recognises the program. A bare string here made the preview render "Unrecognised
+        // program" over the wallet's own pinned registrar — a fixture bug that read exactly like
+        // a product defect (2026-10-31 review).
+        program: {
+          name: 'Custom `.thru` registrar',
+          address: 'ta2vDCBzzptN2qVZgz6PXsCp5cNB7Nef4yeQ3W-OqzZcfF',
+          verified: true,
+          source: 'Evidence-pinned deployment (D-016); config root matches the name-service derivation',
+        },
         treasury: 'taTREASURYaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
         feeReserveUnits: '1000',
         feeNote: null,
