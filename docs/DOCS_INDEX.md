@@ -9,7 +9,8 @@ Purpose: map the maintained documentation and point readers to the implementatio
 
 ### For any coding change
 
-1. `AGENTS.md` — repository rules, commands, security boundaries, and reporting format.
+1. `AGENTS.md` — repository rules, commands, security boundaries, and reporting format; on-demand
+detail (engineering directive, traps, rule full text, rule matrix) in `docs/agent/`.
 2. `docs/STATUS_AND_ROADMAP.md` — shipped baseline, verified results, and explicitly open checks.
 3. `docs/PROJECT_LEDGER.md` — contract/version identifiers and milestone summary.
 4. `CONTEXT.md` — current source tree and file map.
@@ -77,7 +78,7 @@ Start from the pinned dependencies and current `src/` implementation, then cross
 | File | Status | Owns | Notes |
 | --- | --- | --- | --- |
 | `README.md` | current overview | product summary, commands, architecture | Keep concise; link to maintained technical docs rather than duplicating roadmaps. |
-| `AGENTS.md` | current rules | coding rules, commands, secrets, testing, reporting | Keep short enough to load in every agent context. |
+| `AGENTS.md` | current rules | coding rules (1–17, each with its enforcing check), commands, secrets, testing, reporting; detail in `docs/agent/` | Keep short enough to load in every agent context; `scripts/check-agents.mjs` fails the build if a rule or a referenced file goes missing. |
 | `CONTEXT.md` | current source map | file-by-file map of the shipped tree | Counts are a dated snapshot; refresh them with the source or remove them. |
 | `SECURITY.md` | public policy | threat model, disclosure, high-level security architecture | User-facing; avoid internal planning noise. |
 | `PRIVACY.md` | public policy | local/RPC data behavior | Keep product-facing and non-speculative. |
