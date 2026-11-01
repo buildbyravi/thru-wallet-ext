@@ -49,8 +49,28 @@ rule 15, `test-toast.mjs:27` rule 14, `test-launchpad-quarantine.mjs:265` rule 6
 | 16 | One review pipeline; value-moving screens never sign | `docs/agent/rules-detail.md` §Rule 16 (verbatim) | `test-tx-review.mjs` [14], `test-tx-review-card.mjs` |
 | 17 | No essays on screens | `docs/agent/rules-detail.md` §Rule 17 (verbatim) | `test-tx-review-card.mjs` forbidden-term scan |
 
-Rules 18–21 were **not** part of the restructure. They are added in the second commit, one at a
-time, each after its check exists (see §5 of that commit's report).
+## 2b. Rules 18–27 — added with the checks that enforce them (second commit)
+
+Each one cites a failure that actually happened in this repository. A rule whose check did not
+exist yet was not written: it was written in the same commit as the check, and the check was
+watched rejecting a real broken tree before the commit.
+
+| # | Rule | Failure that justifies it | Check (and its control) |
+| --- | --- | --- | --- |
+| 18 | No import cycles | Five core transaction services form a cycle, twice hidden behind `await import(...)`; nothing looked | `scripts/check-cycles.mjs` — Tarjan over the esbuild-parsed graph; a **new** cycle failed on a hand-added `format ↔ refs` import, and a removed allowed cycle fails as stale |
+| 19 | Layer direction: `src/lib` is a leaf, feature internals are private | `src/lib/*` (20 adapters) had no direction rule; only `vault.js`/`thru-client.js` had a bespoke one | `scripts/check-layering.mjs` — `lib-is-a-leaf` caught a hand-added probe module in `src/lib/` that imported `../ui/app/boot.js` |
+| 20 | Every signing surface enumerated | `name.register` declared a `networkId` nothing read; `name.setRecord` shipped `auth:'unlocked'` while signing; v31's confirm path signed without the binding | `test/test-signing-surface.mjs` — found both dead params (`name.register.networkId`, `intent.submit.acknowledgements`) on its first real run |
+| 21 | Consent does not survive a session boundary | A prepared review lived 120 s and survived a lock; the lock refused the old review with `NOT_EXECUTABLE` only by luck of another check | `test/test-review-lifecycle.mjs` — removing the lock wiring produced 4 failures, including that wrong error code |
+| 22 | Evidence must be falsifiable | A deploy probe reported success on a skipped VM step; strict fee enforcement went live with `collectionProbe.measured: false` | `scripts/check-check-controls.mjs` — a new guard with no control fails; 4 legacy guards are listed as debt that may only shrink |
+| 23 | Record decisions and counts when they happen | The "launchpad first" directive existed only in a commit message; status docs lagged two contract versions, twice | `scripts/check-docs-truth.mjs` — a hand-edited `152 methods` failed against the code's 153 |
+| 24 | UI copy is plain words | Rule 17 forbade essays but allowed jargon, which is how the first review card came out confusing | `test/test-tx-review-card.mjs` (existing forbidden-term scan) |
+| 25 | Dark-launch, then decide | Swap shipped and was withdrawn within a day; the dashboard layout reverted twice | `test/test-release-flags.mjs` — pins every flag off, with a control that turns two on |
+| 26 | One notification API | The Domain empty toast: a bare string into a props API | `test/test-toast.mjs` (existing tree-wide ban) |
+| 27 | Size is a review trigger, not a rule | The review's own recommendation: 11 files >25 KB, 15 >500 lines, and the repo is otherwise small | `npm run report:size` — report only, deliberately not a gate |
+
+Two of these rules close a gap the review named directly: rule 23 is the "docs-truth script" and
+rule 20 is the "signing-surface enumeration". Both found real defects on their first run rather
+than confirming what the tree already did.
 
 ## 3. What the restructure deliberately did NOT do
 

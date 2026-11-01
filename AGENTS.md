@@ -139,6 +139,37 @@ non-interactive shell waiting for a GUI credential manager.
     justification paragraphs, no preaching, no jargon, no file paths, no decision ids. — *check:*
     `test/test-tx-review-card.mjs` (forbidden-term scan); full text in `docs/agent/rules-detail.md`.
 
+18. **No import cycles.** `src/` has exactly one known cycle (the five core transaction services)
+    and it may only shrink. — *check:* `scripts/check-cycles.mjs` (ratchet, both directions).
+19. **Layer direction is absolute.** `src/lib` is a leaf: it may not import UI, background or
+    feature code. A feature may use its own files or the shared kit, never another feature's
+    internals. — *check:* `scripts/check-layering.mjs` (`lib-is-a-leaf`,
+    `feature-internals-are-private`, each with a control).
+20. **Every signing surface is enumerated.** A handler that signs is `auth: 'signing'`, sits in
+    `TRANSACTION_METHODS`, and reads every parameter it declares. — *check:*
+    `test/test-signing-surface.mjs` (contract vs router vs review kinds, both directions).
+21. **Consent does not survive a session boundary.** Lock, account switch, network switch and reset
+    discard prepared reviews; confirm fails closed on anything discarded; a broadcast event is
+    never user consent. — *check:* `test/test-review-lifecycle.mjs`.
+22. **Evidence must be falsifiable.** A probe that cannot fail is not evidence, and “unmeasured”
+    never enables a user-visible price or claim. Every guard ships a negative control and reports
+    it. — *check:* `scripts/check-check-controls.mjs` (legacy debt is listed and may only shrink).
+23. **Record decisions and counts when they happen.** An owner directive lands in `DECISIONS.md` in
+    the same change; `DOCS_INDEX.md` owns where everything else goes. Counts in the maintained docs
+    must equal the code. — *check:* `scripts/check-docs-truth.mjs` (contract version, method count,
+    route count, every named test file). *review:* the decision entry itself.
+24. **UI copy is plain words.** No file paths, no decision ids, no developer terms on a screen; the
+    review card shows what, how much and what it costs, and only decision-changing warnings. —
+    *check:* `test/test-tx-review-card.mjs` (forbidden-term scan over the rendered card).
+25. **Dark-launch, then decide.** A UI slice is built behind its flag and enabled only on a
+    recorded decision; enabling one edits the flag test in the same commit. — *check:*
+    `test/test-release-flags.mjs`.
+26. **One notification API.** `toast()` takes props, never a bare string, and never renders without
+    text. — *check:* `test/test-toast.mjs` (tree-wide ban).
+27. **Size is a review trigger, not a rule.** A file over 500 lines or 25 KB is worth reading for
+    mixed responsibilities before the next change; never split it mechanically or to satisfy a
+    number. — *check:* none by design; `npm run report:size` is the report.
+
 ## Stop and ask instead of guessing
 
 Thru program semantics, transaction wire formats, fee units, token standards, signing behaviour,

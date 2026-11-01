@@ -760,8 +760,12 @@ console.log('[9] account, network and expiry changes invalidate a review');
     params: { reviewId: prepared.reviewId, bindingHash: prepared.bindingHash },
   });
   assert.equal(afterSwitch.ok, false);
-  ok('an account switch after review is refused',
-    afterSwitch.error?.code === 'REVIEW_CONTEXT_CHANGED', afterSwitch.error?.code);
+  // Hard rule 19 (2026-10-31): the switch now DISCARDS the prepared review, so the refusal is
+  // REVIEW_NOT_FOUND rather than REVIEW_CONTEXT_CHANGED. That is the stronger guarantee — the
+  // record the user approved no longer exists, instead of existing and being rejected on
+  // re-check. Both are refusals; this asserts the earlier one.
+  ok('an account switch after review discards it, so the confirm is refused',
+    afterSwitch.error?.code === 'REVIEW_NOT_FOUND', afterSwitch.error?.code);
   await handleApiRequest({ method: 'account.switch', params: { ref: FIRST_REF } });
 
   const fresh = await handleApiRequest({

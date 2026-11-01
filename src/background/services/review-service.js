@@ -336,6 +336,25 @@ export async function discardReview({ reviewId } = {}) {
   return { reviewId, discarded: true };
 }
 
+/**
+ * Drop every prepared review, on every network.
+ *
+ * Consent does not survive a session boundary (Hard rule 19): a lock, an account switch or a
+ * network switch means the user's approval was for a wallet state that no longer exists. The
+ * confirm path independently re-checks account, network and binding — this is the second lock,
+ * and the one that makes "the review I saw" impossible to submit after the wallet locked.
+ *
+ * Never throws: a failure to clear must not make a lock fail. It is reported, because a silent
+ * failure here is exactly the kind of thing that looks fine until it is not.
+ */
+export async function discardAllReviews() {
+  try {
+    return await store.clearAll();
+  } catch (error) {
+    return { cleared: 0, error: String(error?.message ?? error) };
+  }
+}
+
 /** Diagnostics for the platform: the decoder registry and the kind table must agree. */
 export function reviewCapabilities() {
   const decoders = listDecoderKinds();

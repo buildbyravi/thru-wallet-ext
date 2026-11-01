@@ -208,7 +208,8 @@ Structural properties now enforced by CI rather than by discipline:
 Final deterministic verification on the current tree (contract v31, 2026-10-30):
 
 ```text
-npm test       PASS — 2,742 checks (37 suites + 5 gates): derivation 16; QR 15; layering 127 files / 0 sinks;
+npm test       PASS — 2,814 checks (40 suites + 9 gates): derivation 16; QR 15; layering 127 files / 0 sinks;
+               import cycles (1 known, ratcheted); AGENTS.md truth 27 rules; docs-truth; guard controls;
                CSP pass; routes 15/15 with the full used CSS class set defined; CSS nesting pass;
                launchpad quarantine; contract 168/168; security-checks; DOM/refs;
                route lifecycle 1,117/1,117; transaction review 180/180; review card render 57/57;

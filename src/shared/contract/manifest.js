@@ -433,7 +433,11 @@ export const METHODS = {
     since: 19,
   },
   'name.register': {
-    params: ['name', 'parentAddress', 'networkId', 'password', 'via', 'years', 'expectedNetworkId', 'expectedAccountAddress', 'expectedPricePerYear'],
+    // `networkId` was declared here from v19 and read by nothing: the binding that matters is
+    // `expectedNetworkId`, which every caller through the review pipeline sends. A declared
+    // parameter that no code reads is a promise the wallet does not keep, so it is gone
+    // (test-signing-surface.mjs enumerates every signing method against its handlers).
+    params: ['name', 'parentAddress', 'password', 'via', 'years', 'expectedNetworkId', 'expectedAccountAddress', 'expectedPricePerYear'],
     returns: '{ signature, domainAddress, rootAddress, name?, trackingFailed? } — register a label under a parent root/domain; self-signed (authority = fee payer, the ONLY key). ' +
       'Protocol fee 0n — NAME_SERVICE_PROGRAM_FEE = 0 in the first-party CLI (txn_tools.rs, 2026-10-24); no payment token involved. ' +
       'parentAddress may be blank: the canonical root is then auto-discovered on-chain. ' +
@@ -1196,7 +1200,11 @@ export const METHODS = {
   // The ONLY DeFi signing method. Signing re-authentication follows the same policy as the
   // wallet-core signing methods (session-only default, password-gated opt-in).
   'intent.submit': {
-    params: ['intentId', 'bindingHash', 'acknowledgements', 'password'],
+    // `acknowledgements` was declared but never read by submitIntent: the v29 review pipeline
+    // owns acknowledgements (it re-checks them at confirm and passes them into the kind's submit),
+    // and this pre-v29 path never did. Accepting the field and ignoring it is worse than not
+    // offering it, so it is gone until the intent surface actually enforces it.
+    params: ['intentId', 'bindingHash', 'password'],
     returns: 'SubmissionResult { submitId, state, waitingReason, signature } — bindingHash mismatch '
       + 'refuses with BINDING_MISMATCH; USER_REJECTED never resets state by mistake',
     auth: 'signing',

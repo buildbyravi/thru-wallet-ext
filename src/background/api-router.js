@@ -158,7 +158,13 @@ const handlers = Object.assign(Object.create(null), {
   'wallet.importMnemonic': ({ mnemonic, password }) => walletService.importMnemonicVault(mnemonic, password),
   'wallet.importPrivateKey': ({ privateKeyHex, password }) => walletService.importPrivateKeyVault(privateKeyHex, password),
   'wallet.unlock': ({ password }) => walletService.unlock(password),
-  'wallet.lock': () => walletService.lock(),
+  // Locking discards every prepared review: the approval was for a wallet state the lock just
+  // ended, and a review that survives a lock is consent nobody can see (Hard rule 19).
+  'wallet.lock': async () => {
+    const result = await walletService.lock();
+    await reviewService.discardAllReviews();
+    return result;
+  },
   'wallet.reset': async ({ confirmation, password }) => {
     const result = await walletService.resetWallet({ confirmation, password });
     await primaryNameService.clearAllDomains();
@@ -184,7 +190,12 @@ const handlers = Object.assign(Object.create(null), {
   'account.getActive': () => accountService.getActiveAccount(),
   'account.getActiveRef': () => accountService.getActiveRef(),
   'account.list': ({ includeHidden, withBalances } = {}) => accountService.listAccounts({ includeHidden, withBalances }),
-  'account.switch': ({ ref }) => accountService.switchActiveAccount(ref),
+  // The review was bound to the account that asked for it; switching accounts discards it.
+  'account.switch': async ({ ref }) => {
+    const result = await accountService.switchActiveAccount(ref);
+    await reviewService.discardAllReviews();
+    return result;
+  },
   'account.addHd': ({ keyringId } = {}) => accountService.addHdAccount(keyringId),
   'account.addImported': ({ privateKeyHex, password, label }) => accountService.addImportedKey(privateKeyHex, password, label),
   'account.setLabel': ({ address, label }) => accountService.setAccountLabel(address, label),
@@ -301,7 +312,14 @@ const handlers = Object.assign(Object.create(null), {
   // toPublicNetwork strips BigInt fields, which JSON cannot serialize. Without it every
   // one of these fails at the message port with "Could not serialize message."
   'network.getActive': async () => networkService.toPublicNetwork(await networkService.getActiveNetworkConfig()),
-  'network.setActive': async ({ networkId }) => networkService.toPublicNetwork(await networkService.setActiveNetwork(networkId)),
+  // Same rule for the chain: a review prepared on one network cannot outlive the switch, even
+  // though the store is already keyed by network (that stops a cross-network confirm, not a
+  // return trip).
+  'network.setActive': async ({ networkId }) => {
+    const result = await networkService.setActiveNetwork(networkId);
+    await reviewService.discardAllReviews();
+    return networkService.toPublicNetwork(result);
+  },
   'network.list': async () => (await networkService.getAvailableNetworks()).map(networkService.toPublicNetwork),
   'network.upsertCustom': (params) => networkService.upsertCustomNetwork(params),
   'network.removeCustom': ({ networkId }) => networkService.removeCustomNetwork(networkId),

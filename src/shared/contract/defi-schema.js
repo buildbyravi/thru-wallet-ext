@@ -415,7 +415,10 @@ export const DEFI_METHODS = Object.freeze({
     group: 'X', gate: 'DEFI_INTENT', env: 'error', feature: null,
     // `password` is part of the auth:'signing' contract shape (re-verified server-side when the
     // user has opted into signing re-authentication), never stored or forwarded.
-    params: { intentId: 'id', bindingHash: 'id', acknowledgements: 'strings?', password: 'string?' },
+    // No `acknowledgements` here: the intent path never read it. The v29 review pipeline owns
+    // acknowledgements and re-checks them at confirm; this surface does not, so it must not
+    // advertise a field it would ignore (test-signing-surface.mjs checks contract vs handler).
+    params: { intentId: 'id', bindingHash: 'id', password: 'string?' },
     resultKeys: ['submitId', 'state', 'waitingReason', 'signature'],
     errors: ['FEATURE_DISABLED', 'INVALID_INPUT', 'BINDING_MISMATCH', 'INTENT_EXPIRED', 'INTENT_LOCKED', 'NONCE_CONFLICT', 'USER_REJECTED', 'INSUFFICIENT_FEE_RESERVE', 'INTENT_NOT_FOUND', 'NOT_READY', 'TX_DROPPED', 'PROGRAM_ERROR', 'DUPLICATE_SUBMISSION'],
   },

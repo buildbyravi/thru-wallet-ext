@@ -105,9 +105,28 @@ export async function remove(networkId, reviewId) {
   });
 }
 
-/** Test seam: clear one network's records without touching anything else. */
+/** Clear one network's records without touching anything else. */
 export async function clear(networkId) {
   await updateAll(networkId, () => ({ next: [], value: true }));
+}
+
+/**
+ * Drop EVERY prepared review on every network.
+ *
+ * Called when consent cannot be assumed to survive: a lock, an account switch, a network switch,
+ * a wallet reset. A prepared review is a user's "yes, do this" captured at a moment; the store is
+ * keyed by network but that only stops a cross-network confirm — it does not stop the same review
+ * from being confirmed after the wallet was locked and unlocked again. The confirm path re-checks
+ * account, network and binding, so this is defence in depth, not the only check (Hard rule 19).
+ *
+ * Removes keys rather than writing empty records, so nothing about what was reviewed survives.
+ */
+export async function clearAll() {
+  const all = await chrome.storage.local.get(null);
+  const keys = Object.keys(all || {}).filter((key) => key.startsWith(`${REVIEW_BASE_KEY}::`));
+  if (keys.length) await chrome.storage.local.remove(keys);
+  reviewUpdates.clear();
+  return { cleared: keys.length };
 }
 
 export { TX_REVIEW_TTL_MS };

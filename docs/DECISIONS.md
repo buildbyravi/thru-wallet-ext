@@ -375,3 +375,34 @@ is deployed; deployment is BLOCKED until then and until an RPC-reachable host ru
 pricing, the review decoder and the Name route are implemented and tested; whether the new
 artifact's charge actually lands, and whether `account_resize` works on a live layout-1 account,
 remain UNVERIFIED.
+
+## D-020 — Agent rules get checks, not more prose (2026-10-31)
+
+**Context.** `AGENTS.md` was 347 lines and agents still broke rules written in it: a signing
+method shipped as `auth:'unlocked'`, a `name.register` parameter was declared and never read, a
+prepared review survived a wallet lock, and the status docs lagged two contract versions twice. The
+review that measured this also measured the repo: 127 source files, 479 import edges, median 6.4 KB,
+and exactly **one** import cycle — across the five core transaction services, twice hidden behind
+`await import(...)`.
+
+**Decision.**
+
+- `AGENTS.md` is an **index plus the hard rules**: 27 rules, each one or two lines ending in the
+  gate that enforces it, or the word `review` when nothing mechanical can. Detail lives in
+  `docs/agent/` and is linked, not duplicated. Rule numbers are frozen — `src/` and `test/` cite
+  them.
+- A new rule ships **with its check**, in the same commit, and the check is watched failing on a
+  real broken tree first. Rules 18–27 exist because their checks now exist.
+- Checks are written in-repo, with no new dependency (`check-cycles` uses the already-pinned
+  esbuild parser; `check-docs-truth` reads the manifest and boot registry).
+- **Rejected:** moving to `core/domain/application/infrastructure` folders. The architecture is
+  frozen, `check-layering` already defines the boundaries, and no defect traces to folder layout.
+  **Rejected:** byte or line caps as a rule — size is a review trigger (`npm run report:size`),
+  because a build that fails on a line count teaches people to shuffle lines.
+
+**Consequences.** Four new guard scripts and three new suites run inside `npm test` (2,814 checks,
+9 guards). Two of them found real defects on their first run instead of confirming the tree:
+`test-signing-surface.mjs` reported `name.register.networkId` and `intent.submit.acknowledgements`
+as declared-but-unread (both removed from the contract), and `check-cycles.mjs` pinned the known
+cycle so it can only shrink. The cycle itself is deliberately NOT fixed here: it touches
+signing-adjacent services and belongs after the release, with its own tests.

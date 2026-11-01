@@ -102,6 +102,7 @@ authority documents", never "this is how the code works".
 | File | Owns |
 | --- | --- |
 | `docs/DOCS_INDEX.md` | this map, the class split, and which document to trust |
+| `docs/agent/` | the on-demand detail behind `AGENTS.md`: engineering directive, traps, rule full text, and the rule-preservation matrix |
 | `docs/STATUS_AND_ROADMAP.md` | shipped state, verification status, and open work — start here |
 | `docs/PROJECT_LEDGER.md` | contract identifiers, milestones, known unresolved work |
 | `docs/BUILD_SPEC.md` | product/security behavior, security policy, and test expectations |
