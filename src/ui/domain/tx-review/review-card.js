@@ -304,7 +304,7 @@ export function TxReviewCard({ review, onChange = null } = {}) {
     if (r.execution.program) {
       details.push(detailRow('Program', r.execution.program.name));
       if (r.execution.program.address) {
-        details.push(h('div', { class: 'mono tx-review-address', text: r.execution.program.address }));
+        details.push(h('div', { class: 'mono tx-review-address tx-review-program-address', text: r.execution.program.address }));
       }
     }
     if (r.protocol?.trustNote) details.push(h('div', { class: 'hint', text: r.protocol.trustNote }));

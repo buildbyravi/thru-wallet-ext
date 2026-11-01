@@ -1516,7 +1516,8 @@ button.row { cursor: pointer; }
   color: var(--text-3);
 }
 
-.tx-review-address-row .tx-review-address {
+.tx-review-address-row .tx-review-address,
+.tx-review-program-address {
   font-size: var(--fs-xs);
   color: var(--text-1);
   word-break: break-all;
