@@ -858,6 +858,42 @@ assert.deepEqual(thruClient.getConfiguredNetwork(), configuredBeforeRefusal,
   'rejection must not bind thru-client to the custom endpoint');
 console.log('  ok - direct custom activation is permanently refused with storage and RPC binding untouched');
 
+// N1b: the write side is refused too. `connect-src` in src/manifest.json allows only the Thru RPC
+// host, so a saved endpoint could never be reached — storing one produced a row that listed,
+// selected and then failed every call. Refusing at the service (not just hiding the form) is what
+// makes the quarantine honest.
+{
+  const before = JSON.stringify(storage.get('thru_custom_networks'));
+  const upsertHttp = await handleApiRequest({
+    method: 'network.upsertCustom',
+    params: { id: 'plain-http', name: 'Plain', rpcUrl: 'http://node.example/rpc', environment: 'devnet' },
+  });
+  assert.equal(upsertHttp.ok, false, 'a custom endpoint cannot be saved');
+  assert.equal(upsertHttp.error.code, 'CUSTOM_NETWORK_DISABLED');
+  assert.equal(upsertHttp.error.retryable, false);
+  assert.match(upsertHttp.error.message, /security policy allows[^]*Thru RPC host/i);
+  assert.match(upsertHttp.error.message, /can still be removed/i, 'the message says what still works');
+  assert.equal(JSON.stringify(storage.get('thru_custom_networks')), before,
+    'a refused upsert writes nothing');
+  // The same refusal for https: the problem is the CSP, not the scheme.
+  const upsertHttps = await handleApiRequest({
+    method: 'network.upsertCustom',
+    params: { id: 'secure-node', name: 'Secure', rpcUrl: 'https://node.example/rpc', environment: 'devnet' },
+  });
+  assert.equal(upsertHttps.error.code, 'CUSTOM_NETWORK_DISABLED');
+  // And a built-in id is still refused for the older, separate reason.
+  const shadow = await handleApiRequest({
+    method: 'network.upsertCustom',
+    params: { id: 'betanet', name: 'Hijack', rpcUrl: 'https://evil.example/rpc' },
+  });
+  assert.equal(shadow.error.code, 'METHOD_ERROR');
+  assert.match(shadow.error.message, /built-in network/i);
+  // Removal still works, so a legacy row is never stranded.
+  assert.equal((await handleApiRequest({ method: 'network.removeCustom', params: { networkId: LEGACY_CUSTOM_ID } })).ok, true);
+  storage.set('thru_custom_networks', [legacyCustom]);
+}
+console.log('  ok - custom RPC writes are refused with a reason, legacy rows can still be removed');
+
 // N2: legacy records remain visible for deletion and carry an explicit non-selectable contract.
 const listedNetworks = await handleApiRequest({ method: 'network.list' });
 assert.equal(listedNetworks.ok, true);
