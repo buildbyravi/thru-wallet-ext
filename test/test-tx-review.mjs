@@ -992,7 +992,7 @@ console.log('[14] no UI file can reach a signing method on its own');
   const files = roots.flatMap((dir) => {
     try {
       return readdirSync(new URL(dir, import.meta.url), { recursive: true })
-        .map((entry) => `${dir}${String(entry)}`)
+        .map((entry) => `${dir}${String(entry).replace(/\\/g, '/')}`)
         .filter((entry) => entry.endsWith('.js'));
     } catch {
       return []; // src/features/ does not exist yet; that is not a failure
