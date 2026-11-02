@@ -1238,6 +1238,7 @@ export const ERROR_CODES = {
   CUSTOM_NETWORK_DISABLED: 'Custom networks cannot be activated; choose a built-in network.',
   SEND_CONTEXT_CHANGED: 'Sending account or network no longer matches the reviewed transfer.',
   // Contract v29. Stable review-pipeline refusals; the UI branches on these, never on prose.
+  REVIEW_REQUIRED: 'A signing method was called without the consent a confirmed review mints.',
   REVIEW_NOT_FOUND: 'No prepared review with that id exists on the active network.',
   REVIEW_EXPIRED: 'The prepared review aged out; prepare and read a fresh one.',
   REVIEW_CONTEXT_CHANGED: 'The active account or network changed after the review.',

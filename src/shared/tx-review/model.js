@@ -45,6 +45,10 @@ export const REVIEW_ERROR_CODES = Object.freeze({
   REVIEW_CONTEXT_CHANGED: 'REVIEW_CONTEXT_CHANGED',
   ACKNOWLEDGEMENT_REQUIRED: 'ACKNOWLEDGEMENT_REQUIRED',
   NOT_EXECUTABLE: 'NOT_EXECUTABLE',
+  // Raised by the router, not by a kind: a signing method was called without a consent token
+  // from a confirm (docs/DEFECT_LOG.md §20). Distinct from NOT_EXECUTABLE, which means a review
+  // existed and could not be signed.
+  REVIEW_REQUIRED: 'REVIEW_REQUIRED',
 });
 
 /**

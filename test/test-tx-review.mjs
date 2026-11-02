@@ -57,6 +57,7 @@ const model = await import('../src/shared/tx-review/model.js');
 const registry = await import('../src/shared/tx-review/registry.js');
 const kindTable = await import('../src/background/services/review/kinds.js');
 const reviewStore = await import('../src/background/services/review/store.js');
+const { sendWithConsent } = await import('./fixtures/consent.mjs');
 const pending = await import('../src/background/services/pending-tx-service.js');
 const networksModule = await import('../src/lib/networks.js');
 
@@ -743,6 +744,11 @@ console.log('[8] tx.confirmReview is a revalidation gate');
       && confirmed.data.submit.params.amountUnits === '100000000'
       && confirmed.data.submit.params.fromAddress === ACTIVE
       && confirmed.data.submit.params.networkId === 'betanet');
+  // Contract v32: confirm mints the one-time token the router demands from every signing method.
+  // This is the real mint path, not a test helper: 32 bytes of hex, bound to this method.
+  ok('a confirmed review mints a 32-byte consent token',
+    /^[0-9a-f]{64}$/.test(confirmed.data.consentToken || ''),
+    String(confirmed.data.consentToken).slice(0, 12));
   ok('confirming does not sign and does not consume the review',
     !('signature' in confirmed.data.submit.params)
       && (await handleApiRequest({
@@ -1363,17 +1369,18 @@ console.log('[18] the faucet handler refuses a context that changed after review
   const me = account.data?.address;
   ok('the suite has an unlocked active account to claim with', typeof me === 'string' && me.length > 0);
 
-  const wrongAccount = await handleApiRequest({
-    method: 'tx.claimFaucet',
-    params: { amountUnits: '500000', fromAddress: Pubkey.from(new Uint8Array(32).fill(77)).toThruFmt(), networkId: active.id },
+  // Consent is minted for the ACTIVE context (what the router binds to). The refusals below are
+  // the handler's own review-binding checks, which run after consent — so the distinction this
+  // test measures is preserved rather than masked by REVIEW_REQUIRED.
+  const wrongAccount = await sendWithConsent(handleApiRequest, 'tx.claimFaucet', {
+    amountUnits: '500000', fromAddress: Pubkey.from(new Uint8Array(32).fill(77)).toThruFmt(), networkId: active.id,
   });
   ok('a changed active account is refused with REVIEW_ACCOUNT_CHANGED',
     wrongAccount.ok === false && wrongAccount.error.code === 'REVIEW_ACCOUNT_CHANGED',
     JSON.stringify(wrongAccount).slice(0, 160));
 
-  const wrongNetwork = await handleApiRequest({
-    method: 'tx.claimFaucet',
-    params: { amountUnits: '500000', fromAddress: me, networkId: `${active.id}-other` },
+  const wrongNetwork = await sendWithConsent(handleApiRequest, 'tx.claimFaucet', {
+    amountUnits: '500000', fromAddress: me, networkId: `${active.id}-other`,
   });
   ok('a changed active network is refused with REVIEW_NETWORK_CHANGED',
     wrongNetwork.ok === false && wrongNetwork.error.code === 'REVIEW_NETWORK_CHANGED',

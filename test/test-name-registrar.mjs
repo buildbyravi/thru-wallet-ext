@@ -44,6 +44,7 @@ globalThis.chrome = {
 };
 
 const { handleApiRequest } = await import('../src/background/api-router.js');
+const { sendWithConsent } = await import('./fixtures/consent.mjs');
 const { Pubkey } = await import('@thru/sdk');
 const reg = await import('../src/lib/registrar.js');
 const ns = await import('../src/lib/name-service.js');
@@ -234,7 +235,7 @@ ok('lease derivation byte-exact: alice → ta06ZB32… (official CLI derive-leas
   const gone = await handleApiRequest({ method: 'name.getRegistry' });
   assert.equal(gone.ok, true);
   assert.equal(gone.data.supported, false);
-  const buy = await handleApiRequest({ method: 'name.purchase', params: { name: NAME, years: 1, password: 'Password123!' } });
+  const buy = await sendWithConsent(handleApiRequest, 'name.purchase', { name: NAME, years: 1, password: 'Password123!' });
   assert.equal(buy.ok, false);
   assert.equal(buy.error.code, 'REGISTRY_ABSENT');
   ok('no config → supported:false read + REGISTRY_ABSENT signing refusal (no fabricated price)');
@@ -248,7 +249,7 @@ ok('lease derivation byte-exact: alice → ta06ZB32… (official CLI derive-leas
     ['account', { expectedNetworkId: 'betanet', expectedAccountAddress: OTHER, expectedPricePerYear: '1000000' }, 'REVIEW_ACCOUNT_CHANGED'],
     ['price', { expectedNetworkId: 'betanet', expectedAccountAddress: SENDER, expectedPricePerYear: '1000001' }, 'REVIEW_PRICE_CHANGED'],
   ]) {
-    const stale = await handleApiRequest({ method: 'name.purchase', params: { name: NAME, years: 1, ...params } });
+    const stale = await sendWithConsent(handleApiRequest, 'name.purchase', { name: NAME, years: 1, ...params });
     assert.equal(stale.ok, false);
     assert.equal(stale.error.code, code, `stale ${label} context is refused`);
   }
@@ -270,7 +271,9 @@ ok('lease derivation byte-exact: alice → ta06ZB32… (official CLI derive-leas
     return originalGet(address);
   };
   try {
-    const pendingPurchase = handleApiRequest({ method: 'name.purchase', params: { name: NAME, years: 1 } });
+    // The token is minted BEFORE the call so the request is already past the consent gate when
+    // the held registrar read is reached — the point of this test is the signing guard, not consent.
+    const pendingPurchase = sendWithConsent(handleApiRequest, 'name.purchase', { name: NAME, years: 1 });
     for (let i = 0; i < 500 && !releaseConfigRead; i += 1) await new Promise((resolve) => setTimeout(resolve, 2));
     assert.equal(typeof releaseConfigRead, 'function', 'purchase reached a held registrar read');
     const blocked = await handleApiRequest({ method: 'account.switch', params: { ref: {} } });
@@ -306,13 +309,13 @@ ok('lease derivation byte-exact: alice → ta06ZB32… (official CLI derive-leas
   leaseState = 'absent';
 
   domainExists = true;
-  const taken = await handleApiRequest({ method: 'name.purchase', params: { name: NAME, years: 1, password: 'Password123!' } });
+  const taken = await sendWithConsent(handleApiRequest, 'name.purchase', { name: NAME, years: 1, password: 'Password123!' });
   assert.equal(taken.ok, false);
   assert.equal(taken.error.code, 'NAME_TAKEN');
   domainExists = false;
 
   leaseState = 'other-expired';
-  const claimRoute = await handleApiRequest({ method: 'name.purchase', params: { name: NAME, years: 1, password: 'Password123!' } });
+  const claimRoute = await sendWithConsent(handleApiRequest, 'name.purchase', { name: NAME, years: 1, password: 'Password123!' });
   assert.equal(claimRoute.ok, false);
   assert.equal(claimRoute.error.code, 'LEASE_CLAIM_REQUIRED');
   leaseState = 'absent';
@@ -321,28 +324,28 @@ ok('lease derivation byte-exact: alice → ta06ZB32… (official CLI derive-leas
 
 // [6] renew/claim guards
 {
-  const missing = await handleApiRequest({ method: 'name.renewLease', params: { name: NAME, years: 1, password: 'Password123!' } });
+  const missing = await sendWithConsent(handleApiRequest, 'name.renewLease', { name: NAME, years: 1, password: 'Password123!' });
   assert.equal(missing.ok, false);
   assert.equal(missing.error.code, 'LEASE_NOT_FOUND');
 
   leaseState = 'other-active';
-  const foreign = await handleApiRequest({ method: 'name.renewLease', params: { name: NAME, years: 1, password: 'Password123!' } });
+  const foreign = await sendWithConsent(handleApiRequest, 'name.renewLease', { name: NAME, years: 1, password: 'Password123!' });
   assert.equal(foreign.ok, false);
   assert.equal(foreign.error.code, 'NOT_NAME_OWNER');
-  const notExpired = await handleApiRequest({ method: 'name.claimExpired', params: { name: NAME, years: 1, password: 'Password123!' } });
+  const notExpired = await sendWithConsent(handleApiRequest, 'name.claimExpired', { name: NAME, years: 1, password: 'Password123!' });
   assert.equal(notExpired.ok, false);
   assert.equal(notExpired.error.code, 'LEASE_NOT_EXPIRED');
 
   leaseState = 'mine-active';
-  const staleExpiry = await handleApiRequest({ method: 'name.renewLease', params: {
+  const staleExpiry = await sendWithConsent(handleApiRequest, 'name.renewLease', {
     name: NAME, years: 1, expectedNetworkId: 'betanet', expectedAccountAddress: SENDER,
     expectedPricePerYear: '1000000', expectedLeaseEndTime: '1',
-  } });
+  });
   assert.equal(staleExpiry.ok, false);
   assert.equal(staleExpiry.error.code, 'REVIEW_EXPIRY_CHANGED');
 
   leaseState = 'other-expired';
-  const badYears = await handleApiRequest({ method: 'name.claimExpired', params: { name: NAME, years: 0, password: 'Password123!' } });
+  const badYears = await sendWithConsent(handleApiRequest, 'name.claimExpired', { name: NAME, years: 0, password: 'Password123!' });
   assert.equal(badYears.ok, false);
   assert.equal(badYears.error.code, 'INVALID_YEARS');
   leaseState = 'absent';

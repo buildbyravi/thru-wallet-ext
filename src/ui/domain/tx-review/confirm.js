@@ -90,14 +90,25 @@ export async function submitReviewedReview({
   }
   if (signal?.aborted) return { status: 'cancelled' };
 
-  const { submit, submitPolicy } = confirmed ?? {};
+  const { submit, submitPolicy, consentToken } = confirmed ?? {};
   if (!submit?.method) {
     throw Object.assign(new Error('This review cannot be signed.'), { code: 'NOT_EXECUTABLE' });
   }
+  if (!consentToken) {
+    // The background refuses every signing method without one, so this is a contract breach,
+    // not a user-facing condition. Failing here beats a confusing REVIEW_REQUIRED from the call.
+    throw Object.assign(new Error('This review did not receive a signing confirmation.'), {
+      code: 'REVIEW_REQUIRED',
+    });
+  }
 
+  // The token is bound to this method and these params. `password` is added after the binding
+  // (the consent hash excludes it), so a password-gated submit spends the same token once.
   const send = (password) => bridge.send(
     submit.method,
-    password ? { ...submit.params, password } : { ...submit.params },
+    password
+      ? { ...submit.params, consentToken, password }
+      : { ...submit.params, consentToken },
   );
 
   const guardedSend = async (password) => {

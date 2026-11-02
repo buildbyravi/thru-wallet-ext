@@ -47,6 +47,7 @@ globalThis.chrome = {
 };
 
 const { handleApiRequest } = await import('../src/background/api-router.js');
+const { sendWithConsent } = await import('./fixtures/consent.mjs');
 const { SCOPED_KEYS } = await import('../src/shared/network-scope.js');
 const { Pubkey } = await import('@thru/sdk');
 const ns = await import('../src/lib/name-service.js');
@@ -188,14 +189,14 @@ thruParses = true;
 
 // Registration pins the same account/network context that the Review screen displayed.
 {
-  const staleNetwork = await handleApiRequest({ method: 'name.register', params: {
+  const staleNetwork = await sendWithConsent(handleApiRequest, 'name.register', {
     name: 'child', parentAddress: THRU_ROOT, expectedNetworkId: 'localnet', expectedAccountAddress: SENDER,
-  } });
+  })
   assert.equal(staleNetwork.ok, false);
   assert.equal(staleNetwork.error.code, 'REVIEW_NETWORK_CHANGED');
-  const staleAccount = await handleApiRequest({ method: 'name.register', params: {
+  const staleAccount = await sendWithConsent(handleApiRequest, 'name.register', {
     name: 'child', parentAddress: THRU_ROOT, expectedNetworkId: 'betanet', expectedAccountAddress: SOMEONE_ELSE,
-  } });
+  })
   assert.equal(staleAccount.ok, false);
   assert.equal(staleAccount.error.code, 'REVIEW_ACCOUNT_CHANGED');
   ok('owner-authorized name registration refuses a stale Review network or account');
@@ -209,9 +210,9 @@ thruParses = true;
   assert.equal(direct.data.leaf.domain.owner, SOMEONE_ELSE);
   assert.equal(direct.data.leaf.decodeError, undefined);
   ok('name.lookup parses the domain account owner from chain bytes (no permanent decodeError)');
-  const mintAttempt = await handleApiRequest({ method: 'name.register', params: {
+  const mintAttempt = await sendWithConsent(handleApiRequest, 'name.register', {
     name: 'child', parentAddress: ID_ROOT, expectedNetworkId: 'betanet', expectedAccountAddress: SENDER,
-  } });
+  })
   assert.equal(mintAttempt.ok, false);
   assert.equal(mintAttempt.error.code, 'NAME_PARENT_AUTHORITY');
   ok('.id lookup remains available while a non-authority signer cannot mint beneath its root');
@@ -258,9 +259,9 @@ leafOwner = SENDER;
     client.proofs.generate = async () => ({ proof: new Uint8Array([1]) });
     client.transactions.buildAndSign = async () => ({ rawTransaction: new Uint8Array([1]) });
     client.transactions.sendAndTrack = async function* () { throw new Error('network timeout'); };
-    const outcome = await handleApiRequest({ method: 'name.register', params: {
+    const outcome = await sendWithConsent(handleApiRequest, 'name.register', {
       name: 'child', parentAddress: LEAF_THRU, expectedNetworkId: 'betanet', expectedAccountAddress: SENDER,
-    } });
+    })
     assert.equal(outcome.ok, false);
     assert.equal(outcome.error.code, 'TX_RESULT_MISSING');
     assert.equal(outcome.error.retryable, true);
@@ -269,9 +270,9 @@ leafOwner = SENDER;
     client.transactions.sendAndTrack = async function* () {
       yield { signature: { value: new Uint8Array(64).fill(1) }, executionResult: { vmError: 0 } };
     };
-    const confirmed = await handleApiRequest({ method: 'name.register', params: {
+    const confirmed = await sendWithConsent(handleApiRequest, 'name.register', {
       name: 'child', parentAddress: LEAF_THRU, expectedNetworkId: 'betanet', expectedAccountAddress: SENDER,
-    } });
+    })
     assert.equal(confirmed.ok, true, JSON.stringify(confirmed.error));
     const saved = storage.get('thru_registered_domains::betanet').records.find(r => r.name === 'child');
     assert.equal(saved.accountAddress, SENDER);
@@ -285,9 +286,9 @@ leafOwner = SENDER;
         if ('thru_registered_domains::betanet' in values) throw new Error('quota exceeded');
         return originalSet(values);
       };
-      const confirmedUnsaved = await handleApiRequest({ method: 'name.register', params: {
+      const confirmedUnsaved = await sendWithConsent(handleApiRequest, 'name.register', {
         name: 'otherchild', parentAddress: LEAF_THRU, expectedNetworkId: 'betanet', expectedAccountAddress: SENDER,
-      } });
+      })
       assert.equal(confirmedUnsaved.ok, true);
       assert.equal(confirmedUnsaved.data.trackingFailed, true);
       assert(confirmedUnsaved.data.signature);

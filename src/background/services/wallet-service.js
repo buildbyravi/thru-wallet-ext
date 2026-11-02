@@ -9,6 +9,7 @@ import { emitLockStateChanged } from './event-service.js';
 import { registerCreatedAccount } from './registration-service.js';
 import { getActiveNetworkId } from './network-service.js';
 import * as reviewStore from './review/store.js';
+import { clearConsents } from './review/consent.js';
 
 /**
  * Check whether an encrypted vault exists on device.
@@ -185,14 +186,18 @@ export async function lock() {
 }
 
 /**
- * Drop every prepared review. The store is a leaf (shared modules only), so importing it here
- * adds no service edge and cannot extend the known services cycle.
+ * Drop every prepared review AND every consent token they minted. Both modules are leaves
+ * (shared modules only), so importing them here adds no service edge and cannot extend the known
+ * services cycle. Clearing one without the other would let a token minted before a lock be spent
+ * after it — the reviews would be gone but the approval would still be live.
  */
 async function discardPreparedReviews() {
+  const consents = clearConsents();
   try {
-    return await reviewStore.clearAll();
+    const result = await reviewStore.clearAll();
+    return { ...result, consents: consents.cleared };
   } catch (error) {
-    return { cleared: 0, error: String(error?.message ?? error) };
+    return { cleared: 0, consents: consents.cleared, error: String(error?.message ?? error) };
   }
 }
 

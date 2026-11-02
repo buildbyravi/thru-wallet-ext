@@ -35,6 +35,7 @@ import { decodeReview, listDecoderKinds } from '../../shared/tx-review/registry.
 import { simulationWarning } from '../../shared/tx-review/decoders/common.js';
 import { getKind, listKinds } from './review/kinds.js';
 import * as store from './review/store.js';
+import { mintConsent, clearConsents } from './review/consent.js';
 
 function coded(code, message, retryable = false) {
   const err = new Error(message);
@@ -318,11 +319,23 @@ export async function confirmReview({ reviewId, bindingHash, acknowledgements = 
   }
   const submitPolicy = submitPolicyFor(submit, prefs);
 
+  // The consent token is what turns "the UI was shown a card" into a precondition the background
+  // can enforce. It is bound to this exact method and these exact params, spent once, and dropped
+  // with the review on any session change (docs/DEFECT_LOG.md §20).
+  const consentToken = await mintConsent({
+    method: submit.method,
+    params: submit.params,
+    accountAddress: record.accountAddress,
+    networkId: record.networkId,
+    reviewId,
+  });
+
   return {
     reviewId,
     kind: record.kind,
     submit,
     submitPolicy,
+    consentToken,
     revalidatedAt: Date.now(),
     expiresAt: record.expiresAt,
   };
@@ -348,10 +361,14 @@ export async function discardReview({ reviewId } = {}) {
  * failure here is exactly the kind of thing that looks fine until it is not.
  */
 export async function discardAllReviews() {
+  // Tokens go with the reviews they came from. If this were skipped, a token minted before a lock
+  // would still be spendable after unlock — consent for a session that no longer exists.
+  const consents = clearConsents();
   try {
-    return await store.clearAll();
+    const result = await store.clearAll();
+    return { ...result, consents: consents.cleared };
   } catch (error) {
-    return { cleared: 0, error: String(error?.message ?? error) };
+    return { cleared: 0, consents: consents.cleared, error: String(error?.message ?? error) };
   }
 }
 

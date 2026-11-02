@@ -1810,6 +1810,10 @@ const FIXTURES = {
       kind: record.kind,
       submit: record.submit,
       submitPolicy: record.submitPolicy,
+      // The real background mints a one-time consent token here and refuses every signing method
+      // without it. This harness fakes the bridge, not the router, so it must carry the field —
+      // and the assertions below check that the UI actually forwards it.
+      consentToken: `ct_${reviewId}`,
       revalidatedAt: Date.now(),
       expiresAt: record.review.expiresAt,
     };

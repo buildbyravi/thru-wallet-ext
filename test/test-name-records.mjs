@@ -166,14 +166,25 @@ const prefsService = await import('../src/background/services/preferences-servic
 await import('../src/shared/tx-review/decoders/index.js');
 const { decodeReview } = await import('../src/shared/tx-review/registry.js');
 const model = await import('../src/shared/tx-review/model.js');
+const { consentFor } = await import('./fixtures/consent.mjs');
 
+// Signing methods need the consent token a `tx.confirmReview` mints (the router's background
+// gate). This suite exercises the handler, not the gate — the gate itself is measured in
+// test-review-consent.mjs — so a token is minted for the exact params, as confirm would.
+const GATED = new Set(['name.register', 'name.setRecord', 'name.purchase', 'name.renewLease',
+  'name.claimExpired', 'tx.sendChecked', 'tx.claimFaucet', 'token.transferChecked', 'token.deploy',
+  'tx.autoCreateAccount']);
+async function withConsent(method, params) {
+  if (!GATED.has(method) || params?.consentToken) return params;
+  return { ...params, consentToken: await consentFor(method, params) };
+}
 async function call(method, params = {}) {
-  const res = await handleApiRequest({ method, params });
+  const res = await handleApiRequest({ method, params: await withConsent(method, params) });
   if (!res.ok) throw new Error(`${method}: ${res.error.code} ${res.error.message}`);
   return res.data;
 }
 async function denied(method, params = {}) {
-  const res = await handleApiRequest({ method, params });
+  const res = await handleApiRequest({ method, params: await withConsent(method, params) });
   return res.ok ? null : res.error;
 }
 

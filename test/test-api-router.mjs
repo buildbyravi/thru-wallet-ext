@@ -1,5 +1,10 @@
 import assert from 'node:assert/strict';
 import { handleApiRequest } from '../src/background/api-router.js';
+// Signing methods are refused without the token a confirmed review mints (the router's own
+// gate). This suite measures everything that happens AFTER it — auth policy, local guards,
+// duplicate and race handling — so each call mints for its exact params. The gate itself is
+// measured with no helper in the loop in test-review-consent.mjs.
+import { consentFor, sendWithConsent } from './fixtures/consent.mjs';
 
 // Setup fake chrome storage
 const storage = new Map();
@@ -172,7 +177,7 @@ const sessionOnlyAuth = [
   }, /address you're sending from/i],
 ];
 for (const [method, params, pattern] of sessionOnlyAuth) {
-  const res = await handleApiRequest({ method, params });
+  const res = await sendWithConsent(handleApiRequest, method, params);
   assert.equal(res.ok, false, `${method} must fail on its local rules`);
   assert.notEqual(res.error.code, 'AUTH_REQUIRED', `${method} must pass auth with the session-only default`);
   assert.match(res.error.message, pattern, `${method} local guard message`);
@@ -181,9 +186,8 @@ for (const [method, params, pattern] of sessionOnlyAuth) {
 // With the gate OFF the password param is irrelevant to signing methods: the user
 // chose session-only, so a (wrong) password is neither verified nor used — the call
 // proceeds to the handler, which fails on its own local rules here.
-const passwordIgnoredWhileGateOff = await handleApiRequest({
-  method: 'tx.sendChecked',
-  params: { toAddress: res2.data.address, amountUnits: '1', password: 'wrong password', fromAddress: res2.data.address, networkId: 'betanet' },
+const passwordIgnoredWhileGateOff = await sendWithConsent(handleApiRequest, 'tx.sendChecked', {
+  toAddress: res2.data.address, amountUnits: '1', password: 'wrong password', fromAddress: res2.data.address, networkId: 'betanet',
 });
 assert.equal(passwordIgnoredWhileGateOff.ok, false);
 assert.notEqual(passwordIgnoredWhileGateOff.error.code, 'AUTH_REQUIRED');
@@ -209,9 +213,8 @@ const sessionOnlyWithPassword = await handleApiRequest({
 assert.equal(sessionOnlyWithPassword.ok, true);
 assert.equal(sessionOnlyWithPassword.data.requirePasswordForSigning, false);
 
-const sessionOnlySend = await handleApiRequest({
-  method: 'tx.sendChecked',
-  params: { toAddress: res2.data.address, amountUnits: '1', fromAddress: res2.data.address, networkId: 'betanet' },
+const sessionOnlySend = await sendWithConsent(handleApiRequest, 'tx.sendChecked', {
+  toAddress: res2.data.address, amountUnits: '1', fromAddress: res2.data.address, networkId: 'betanet',
 });
 assert.equal(sessionOnlySend.ok, false);
 assert.notEqual(sessionOnlySend.error.code, 'AUTH_REQUIRED');
@@ -233,7 +236,7 @@ const sessionOnlyTokenGuards = [
     /whole number of base units/i],
 ];
 for (const [params, pattern] of sessionOnlyTokenGuards) {
-  const res = await handleApiRequest({ method: 'token.transferChecked', params: { ...params, fromAddress: res2.data.address, networkId: 'betanet' } });
+  const res = await sendWithConsent(handleApiRequest, 'token.transferChecked', { ...params, fromAddress: res2.data.address, networkId: 'betanet' });
   assert.equal(res.ok, false, `token.transfer ${pattern} must fail`);
   assert.notEqual(res.error.code, 'AUTH_REQUIRED', `token.transfer ${pattern} must pass auth`);
   assert.match(res.error.message, pattern, `token.transfer guard message for ${pattern}`);
@@ -249,20 +252,20 @@ for (const [method, extra] of [
   ['token.transferChecked', { mintAddress: 'taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKqq' }],
 ]) {
   const params = { ...extra, toAddress: res2.data.address, amountUnits: '1' };
-  const missing = await handleApiRequest({ method, params });
+  const missing = await sendWithConsent(handleApiRequest, method, params);
   assert.equal(missing.error?.code, 'INVALID_REQUEST', `${method} requires a reviewed context`);
-  const wrongAccount = await handleApiRequest({ method, params: {
+  const wrongAccount = await sendWithConsent(handleApiRequest, method, {
     ...params, fromAddress: 'taEREREREREREREREREREREREREREREREREREREREREREg', networkId: 'betanet',
-  } });
+  });
   assert.equal(wrongAccount.error?.code, 'SEND_CONTEXT_CHANGED', `${method} must pin the source`);
   assert.equal(wrongAccount.error?.retryable, false);
-  const wrongNetwork = await handleApiRequest({ method, params: {
+  const wrongNetwork = await sendWithConsent(handleApiRequest, method, {
     ...params, fromAddress: res2.data.address, networkId: 'localnet',
-  } });
+  });
   assert.equal(wrongNetwork.error?.code, 'SEND_CONTEXT_CHANGED', `${method} must pin the chain`);
-  const correct = await handleApiRequest({ method, params: {
+  const correct = await sendWithConsent(handleApiRequest, method, {
     ...params, fromAddress: res2.data.address, networkId: 'betanet',
-  } });
+  });
   assert.equal(correct.ok, false);
   assert.match(correct.error.message, /address you're sending from/i,
     `${method} with correct context reaches the normal transfer guard`);
@@ -303,17 +306,17 @@ try {
       releaseRecipient = () => resolve({ meta: { balance: 100n } });
     });
   };
-  const pendingChecked = handleApiRequest({ method: 'tx.sendChecked', params: {
+  const pendingChecked = sendWithConsent(handleApiRequest, 'tx.sendChecked', {
     toAddress: accountsList[1].address,
     amountUnits: '1',
     fromAddress: res2.data.address,
     networkId: 'betanet',
-  } });
+  });
   await waitFor(() => typeof releaseRecipient === 'function', 'checked send to reach the held recipient RPC');
-  const doubleClick = await handleApiRequest({ method: 'tx.sendChecked', params: {
+  const doubleClick = await sendWithConsent(handleApiRequest, 'tx.sendChecked', {
     toAddress: accountsList[1].address, amountUnits: '1',
     fromAddress: res2.data.address, networkId: 'betanet',
-  } });
+  });
   assert.equal(doubleClick.error?.code, 'DUPLICATE_SUBMISSION',
     'a bridge timeout / second click cannot submit the same in-flight transfer twice');
   const blockedSwitch = await handleApiRequest({ method: 'network.setActive', params: { networkId: 'localnet' } });
@@ -360,10 +363,10 @@ try {
     yield { executionResult: { vmError: 0 }, signature: { value: new Uint8Array(64).fill(7) } };
   };
   let replied = false;
-  const request = handleApiRequest({ method: 'tx.sendChecked', params: {
+  const request = sendWithConsent(handleApiRequest, 'tx.sendChecked', {
     toAddress: accountsList[1].address, amountUnits: '1',
     fromAddress: res2.data.address, networkId: 'betanet',
-  } }).then((response) => { replied = true; return response; });
+  }).then((response) => { replied = true; return response; });
   await waitFor(() => typeof releasePostSendBalance === 'function',
     'the advisory balance refresh to start');
   await waitFor(() => replied, 'the signing response while the advisory balance RPC is blocked');
@@ -388,16 +391,13 @@ try {
   assert.equal(dupCheck.data.isDuplicate, true, 'repeated transfer is detected');
 
   // Attempting duplicate send without allowDuplicate throws DUPLICATE_SUBMISSION
-  const dupSend = await handleApiRequest({
-    method: 'tx.sendChecked',
-    params: {
+  const dupSend = await sendWithConsent(handleApiRequest, 'tx.sendChecked', {
       toAddress: accountsList[1].address,
       amountUnits: '1',
       fromAddress: res2.data.address,
       networkId: 'betanet',
       allowDuplicate: false,
-    },
-  });
+    });
   assert.equal(dupSend.ok, false);
   assert.equal(dupSend.error.code, 'DUPLICATE_SUBMISSION');
 
@@ -406,16 +406,13 @@ try {
   sdkForSend.accounts.get = () => Promise.resolve({ meta: { balance: 100n } });
 
   // Attempting duplicate send WITH allowDuplicate succeeds
-  const dupSendAllowed = await handleApiRequest({
-    method: 'tx.sendChecked',
-    params: {
+  const dupSendAllowed = await sendWithConsent(handleApiRequest, 'tx.sendChecked', {
       toAddress: accountsList[1].address,
       amountUnits: '1',
       fromAddress: res2.data.address,
       networkId: 'betanet',
       allowDuplicate: true,
-    },
-  });
+    });
   assert.equal(dupSendAllowed.ok, true, dupSendAllowed.error?.message);
 
 } finally {
@@ -457,12 +454,12 @@ try {
       signature: { value: new Uint8Array(64).fill(9) },
     };
   };
-  const slowSend = handleApiRequest({ method: 'tx.sendChecked', params: {
+  const slowSend = sendWithConsent(handleApiRequest, 'tx.sendChecked', {
     toAddress: accountsList[1].address,
     amountUnits: '1',
     fromAddress: res2.data.address,
     networkId: 'betanet',
-  } });
+  });
   await waitFor(() => {
     const list = storage.get('thru_pending_txs::betanet')?.records;
     return Array.isArray(list) && list.length > 0 && list[0].status === 'submitted';
