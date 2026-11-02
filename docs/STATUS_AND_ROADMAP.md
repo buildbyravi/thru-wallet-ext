@@ -281,6 +281,17 @@ Passing `npm test` or `npm run build` does not close any of these:
 **Current ordered next work (2026-10-04, confirmed by the owner after the conformance audit and
 documentation remediation — wallet core first; no DEX/launchpad/prediction work):**
 
+> **Release blockers still open (2026-11-01), in the owner's order.** (1) A live register **and**
+> renew with an observed treasury delta — until then no surface may say a registration was charged.
+> (2) `name.setRecord` is enabled at the handler but has never been exercised against the chain;
+> either disable it or probe it. (3) Release mechanics — wording and version are now **deferred by
+> the owner** (2026-11-01) and are recorded here so the tree does not quietly pick for them:
+> "Import domain" (`name.trackDomain`, read-only watching) and "Unlink" (`name.unlinkPrimary`,
+> deletes a local primary record, signs nothing) are **known to overstate what happens** and are
+> kept only until the owner picks replacement copy; the version stays **1.4.1** until blockers
+> (1)–(2) clear, so the number never points at a tree that cannot ship. A CHANGELOG entry is
+> written with that bump, not before it.
+
 1. ~~Keep D-003~~ — **DONE**: session-only signing default confirmed as a deliberate product/security decision; invariants and framing recorded in `docs/DECISIONS.md` D-003.
 2. ~~Make documentation exact~~ — **DONE**: cross-document truth sweep complete on the 11 shared facts.
 3. **Real Chrome manual smoke** — **IN PROGRESS (2026-10-04):** first partial run recorded — popup only, local build of current source; a native Betanet send to the tester's own account verified recipient acceptance, amount parsing, the Review fee, confirmation, and the History entry (`/send` popup cell ticked in `docs/MANUAL_SMOKE_CHECKLIST.md` §3, run record in §7; charged fee not captured). The side panel, both widths, and all other sections remain open.

@@ -1043,10 +1043,14 @@ never as "free" — and only an enforced charge produces the outgoing THRU row i
 > was measured and nothing else.
 
 **Status.** IMPLEMENTED + TESTED: the JS ABI twin, the service pricing, the review decoder, the
-Name route and their suites (build 0, full suite green). NOT COMPILED: the Rust side has not been
-through `cargo` (the environment has no toolchain), so `thru-custom-registrar.bin` in the repo is
-**stale** and must not be deployed. BLOCKED: contract build, Betanet deploy, whether
-`account_resize` works on a live layout-1 account, and whether a strict charge can actually land.
+Name route and their suites (build 0, full suite green). **The checked-in `.bin` is not stale** —
+`1b9d096` rebuilt it at 33,714 B (`sha256 f93c112b…35dd2`) and no contract source file has changed
+since, so repo source and repo artifact agree. What is *not* true is that this binary is what
+Betanet runs: the newest deploy evidence is the 30,000 B build from 2026-10-31, so the chain is one
+build behind and the canonical-PDA check is not live yet. **BLOCKED here:** deploying (no `cargo`, no
+RPC), whether `account_resize` works on a live layout-1 account, and whether a strict charge can
+actually land. This environment cannot compile the contract either, which is why the deploy is the
+owner's step and the script records only what it measured.
 
 ---
 
