@@ -1,245 +1,178 @@
 # AGENTS.md
 
-Rules for any agent working in `thru-wallet-ext`. Read this first, then `CONTEXT.md`.
+Rules for any agent working in `thru-wallet-ext`. Read this file, then `CONTEXT.md`.
+
+This file is an INDEX plus the hard rules. Detail lives in on-demand files so the rules stay short
+enough to be read every time:
+
+| File | Holds |
+| --- | --- |
+| `docs/agent/engineering-directive.md` | the full engineering directive, architecture/compatibility invariants, transaction & signing invariants, delivery and security-review rules |
+| `docs/agent/rules-detail.md` | the full text of hard rules 10, 14, 15, 16, 17 |
+| `docs/agent/traps.md` | the traps that cost real debugging time here |
+| `docs/agent/rule-matrix.md` | where every former section of this file went |
+
+**A rule without a check is a wish.** Each rule below names the gate that enforces it, or says
+`review` when nothing mechanical exists — that gap is deliberate information, not an omission.
 
 ## What this is
 
-Chrome MV3 self-custody wallet for the **Thru L1** blockchain. Alphanet was the earlier
-single-node network; Betanet is the current/final-testnet stage; Mainnet is the target. Vanilla ES
-modules bundled with esbuild. No framework. Real `@thru/sdk` (including its
-`@thru/sdk/crypto` subpath) + `@thru/programs`.
+Chrome MV3 self-custody wallet for the **Thru L1**. Alphanet was the earlier single-node network;
+Betanet is the current/final-testnet stage; Mainnet is the target. Vanilla ES modules bundled with
+esbuild. No framework. Real `@thru/sdk` (incl. its `@thru/sdk/crypto` subpath) + `@thru/programs`.
 
-## Mainnet-ready engineering directive
-
-This repository is production software now. Betanet is a deployment stage, not permission for
-temporary security, architecture, validation, protocol behavior, or storage. Engineer every private
-key, transaction, and persisted wallet state as though it already belongs to a Mainnet user.
-
-For every change: **preserve → understand → reuse → centralize → isolate → test → verify → ship →
-document → delete obsolete code**. Never copy → patch → duplicate → hide → “fix later.” Read the
-implementation, tests, defect history, current docs, dependency boundaries, and blast radius before
-editing. Search for equivalent names and behavior before adding any helper, service, component,
-validation, API call, CSS, transaction builder, or signing path. Implement the smallest correct
-change in the correct layer.
-
-Optimize for correctness, security, auditability, maintainability, deterministic behavior, upgrade
-safety, reuse, testability, and controlled blast radius—not for making one screen work quickly.
-Duplication is a security problem: address validation, amount parsing/formatting, network identity,
-account resolution, transaction preparation/validation, authorization, signing, password checks,
-asset/error normalization, storage schemas, and SDK adaptation each require one authoritative
-implementation. Reuse established security-sensitive wallet primitives; UI components must not
-reimplement them. Modularity means stable responsibilities and limited dependencies, not one file
-per function.
+Production software: engineer every key, transaction and persisted state as though it already
+belongs to a Mainnet user — Betanet is a deployment stage, not permission for temporary security,
+architecture or storage. Full text: `docs/agent/engineering-directive.md`.
 
 **Architecture freeze (2026-10-04):** the wallet core has converged — exact SDK pins with golden
-vectors, one UI/backend seam, network-scoped state, checked signing with the network-mutation
-lock, versioned storage, secret hygiene, strict CSP, launchpad quarantine, one UI stack, and
-route/lifecycle coverage. Do not accept an architectural refactor without a measurable security,
-correctness, performance, or maintainability benefit that names the failure it prevents, the
-duplication it removes, or the boundary it improves — and the test that proves it. The current
-priority is verification (real browser, live chain, races, external audit), not restructuring.
+vectors, one UI/backend seam, network-scoped state, checked signing with the network-mutation lock,
+versioned storage, secret hygiene, strict CSP, launchpad quarantine, one UI stack, route/lifecycle
+coverage. Do not accept an architectural refactor without a measurable security, correctness,
+performance or maintainability benefit that names the failure it prevents, the duplication it
+removes, or the boundary it improves — and the test that proves it. The priority is verification
+(real browser, live chain, races, external audit), not restructuring.
 
-Use these status terms precisely: **IMPLEMENTED, TESTED, VERIFIED AGAINST LIVE NETWORK,
-UNVERIFIED, PARTIALLY IMPLEMENTED, BLOCKED, PLANNED, DEPRECATED, SECURITY REVIEW REQUIRED,
-EXTERNAL AUDIT REQUIRED**. Never claim verification that did not occur or describe plans as shipped.
-Do not use “community build,” “prototype,” “testnet only,” “temporary implementation,” or “not for
-real funds” as an excuse or status unless factually necessary.
+## Status vocabulary
 
-### Architecture and compatibility invariants
+Use precisely: **IMPLEMENTED, TESTED, VERIFIED AGAINST LIVE NETWORK, UNVERIFIED, PARTIALLY
+IMPLEMENTED, BLOCKED, PLANNED, DEPRECATED, SECURITY REVIEW REQUIRED, EXTERNAL AUDIT REQUIRED.**
+Never claim verification that did not occur; never describe a plan as shipped. A green Node suite
+is never browser evidence and never live-chain evidence. Do not use “community build”,
+“prototype”, “testnet only”, “temporary implementation” or “not for real funds” as an excuse unless
+factually necessary.
 
-- Core wallet capabilities (vault/keyrings, accounts, networks, assets, balances, transactions,
-  signing, receive, history, settings, security) remain independent of optional products. Optional
-  features belong under `src/features/<feature>/` when that isolation provides real value and may
-  request wallet operations only through stable application interfaces. They never access private
-  keys, mnemonics, decrypted vaults, or encryption keys.
-- Dependency direction is UI → application/service interface → bridge → backend API contract →
-  backend services → Thru adapter/vault/RPC. UI never imports backend, crypto, vault, or raw RPC
-  implementation; backend never imports UI. Contain Thru SDK churn at the adapter/infrastructure
-  boundary. Never scatter SDK calls across UI/features or hand-roll crypto, derivation, program
-  addresses, instruction encoding, or protocol serialization when an official implementation exists.
-- Pin all Thru SDK/program dependencies exactly. An upgrade requires changelog/API review, full and
-  deterministic wallet/encoding/network/migration tests, bundle inspection, a recorded reason, and
-  before/after behavior comparison. If derivation or another golden vector changes unexpectedly,
-  stop and determine why; never merely update the expected value.
-- Protect golden vectors for mnemonic/key derivation, public keys, address encoding, amount
-  conversion, transaction encoding/decoding, and critical network identifiers. Unexpected drift
-  fails the build.
-- Treat backend APIs as compatibility boundaries. Prefer additive methods, migrate every caller,
-  prove zero references and tests, then deliberately remove legacy methods. Do not silently reshape
-  existing methods.
-- Version persisted vault, preferences, account metadata, address book, networks, token registry,
-  pending transactions, assets, and feature state. Every schema change requires an explicit
-  old → migration → new path with regression fixtures. Never assume an empty wallet or silently
-  reinterpret old data. Stop for clarification before changing storage semantics.
-- Identify networks with explicit stable identity—not display names—and scope balances, pending
-  transactions, history/cache, token metadata, assets, and network settings by network. Keys,
-  keyrings, wallets, and account labels may be global. Switching networks must never leak state.
+## Read before you touch
 
-### Transaction and signing invariants
-
-Transactions move explicitly through draft → validated → review → authenticated → signed → submitted
-→ pending → confirmed. Represent rejected, simulation-failed, submission-failed, timeout,
-network-error, and unknown distinctly. RPC acceptance is not confirmation. Before signing, verify the
-active account and network, recipient, amount, sufficient balance, authorization, and freshness where
-applicable. Prevent duplicate submission, replay, stale-account/network signing, and review-to-sign
-recipient or amount alteration.
-
-There is one authoritative signing path. DEX, Launchpad, Prediction, NFT, and future modules request
-signatures through wallet services and never access seeds/private keys or implement signing. Do not
-guess protocol wire formats, fee units, activation semantics, token standards, simulation, explorer
-routes, signing behavior, or provider standards; unsupported is safer than fabricated behavior.
-
-### Delivery, migration, and security review
-
-Migrate legacy UI by strangling one path at a time: replacement → behavior comparison → tests → route
-switch → verification → old-code deletion. A temporary compatibility layer must state its purpose,
-dependencies, exit condition, and deletion criteria. Once replacement is proven, delete old routes,
-handlers, markup, CSS, helpers, and compatibility code; Git is rollback.
-
-Before merge, explicitly review whether the change can expose secrets, bypass password/signing
-authorization, alter recipient/amount/derivation, mix network data, weaken CSP, enable XSS/replay or
-duplicate submission, persist secrets, or create another signing path. Add focused tests for every
-applicable risk. Diagnostics may record method, error category, network ID, timing, state transition,
-module, and appropriate transaction signatures; never log mnemonics, private keys, passwords,
-decrypted vaults, encryption keys, or raw secrets. Keep diagnostics local unless safe telemetry is
-deliberately designed.
-
-Do not weaken quality gates. Done means implemented in the correct layer, one source of truth,
-regression coverage, security review, successful build/full tests, reachability verification,
-real-browser checks where required, current documentation, and deletion of replaced legacy code.
-Keep commits small and logically isolated. Stop instead of guessing when product/protocol/network
-semantics are uncertain, an SDK invariant changes, a test would need weakening, a second source of
-truth/router/store/bridge is proposed, a security boundary is crossed, or persisted-wallet migration
-could be affected.
-
-## Documents
-
-| Read when | File |
+| If you touch | Read first |
 | --- | --- |
-| always — rules, commands, traps | `AGENTS.md` (this file) |
-| docs map / avoid stale context | `docs/DOCS_INDEX.md` |
-| past, present, future build tracking | `docs/PROJECT_LEDGER.md` |
-| "what's done, what's next?" | `docs/STATUS_AND_ROADMAP.md` — **start here for active work** |
-| "where is X?" | `CONTEXT.md` — file-by-file map with `file:line` refs |
-| stable dependency/storage/signing architecture | `docs/ARCHITECTURE.md` |
-| durable choices and trade-offs | `docs/DECISIONS.md` |
-| future feature separation / SDK-adapter boundaries | `docs/MODULE_BOUNDARIES.md` |
-| AI-agent/MCP safety | `llms.txt`; archived planning record: `docs/archive/MCP_AGENT_INTEGRATION.md` |
-| "has this broken before?" | `docs/DEFECT_LOG.md` — every defect, root cause and lesson |
-| product intent, security policy, QA matrix | `docs/BUILD_SPEC.md` |
-| backend capability tiers | `docs/BACKEND_GAPS.md` |
-| historical rebuild plan only | `docs/archive/UI_REBUILD_PLAN.md`, `docs/archive/UI_REBUILD_AGENT_PROMPT.md` |
-| archived, do not follow for current state | `docs/archive/` |
-| audit history + open readiness gates | `docs/AUDIT_REPORT.md` (index/current gates); dated records in `docs/audits/` |
+| anything | `docs/STATUS_AND_ROADMAP.md` (current state), `CONTEXT.md` (file map) |
+| architecture, a new module, a new store/router/bridge | `docs/ARCHITECTURE.md`, `docs/MODULE_BOUNDARIES.md`, `docs/agent/engineering-directive.md` |
+| signing, transactions, review | `docs/agent/rules-detail.md` (rules 10, 16), `docs/TX_REVIEW_VERIFICATION.md`, `docs/audits/2026-10-30-review-lifecycle-audit.md` |
+| storage, migration, persisted state | `docs/agent/engineering-directive.md`, `test/test-storage-migrations.mjs` |
+| layout, sheets, overlays, CSS | rule 14 (`docs/agent/rules-detail.md`), `docs/MANUAL_SMOKE_CHECKLIST.md`, `docs/DEFECT_LOG.md` §11 |
+| contracts, on-chain programs | `docs/GLOBAL_SMART_CONTRACT_POLICY.md`, `contracts/*/README.md` |
+| docs | `docs/DOCS_INDEX.md` — it owns the read order, the three document classes, and the anti-sprawl rules |
 
 Conflict resolution: `STATUS_AND_ROADMAP.md` wins on **current engineering state**;
-`PROJECT_LEDGER.md` wins on **phase/build tracking**; `MODULE_BOUNDARIES.md` wins on
-**future feature separation**; `BUILD_SPEC.md` wins on **product/security behaviour**;
-`CONTEXT.md` wins on **file facts**; `DOCS_INDEX.md` wins on **which doc to trust**.
-
-Documentation anti-sprawl rules (see `docs/DOCS_INDEX.md` §4 for the three classes — Authority,
-Operational verification, Historical/reference):
-
-1. Do not create a new top-level markdown document unless no existing authoritative document can
-   reasonably own the information. Update the owning document instead.
-2. When work is completed, update the authoritative document and freeze/archive the temporary
-   plan under `docs/archive/` — never write a new status document (`PLAN_V2`/`FINAL` variants
-   are the failure mode).
-3. A new audit appends a dated record under `docs/audits/` and refreshes the compact
-   `docs/AUDIT_REPORT.md` index; a dated record is never edited.
-4. Historical/reference documents explain why the system was designed this way — never how it
-   currently works. Verify current behavior against `src/` and the authority documents.
+`PROJECT_LEDGER.md` on **phase/build tracking**; `MODULE_BOUNDARIES.md` on **future feature
+separation**; `BUILD_SPEC.md` on **product/security behaviour**; `CONTEXT.md` on **file facts**;
+`DOCS_INDEX.md` on **which doc to trust**.
 
 ## Commands
 
 ```
 npm install
 npm run build      # node build.mjs -> dist/
-npm test           # guards (derivation, layering, CSP, routes, launchpad quarantine, contract, dom, route lifecycle) then vault, thru-client, api-router
-node scripts/git-push.mjs  # pushes to origin using GITHUB_TOKEN in .env (avoids GCM hanging in subshells)
+npm test           # guards (layering incl. cycles, CSP, routes, CSS, contract, docs truth, dom)
+                   # then the feature suites; see package.json for the exact chain
+node scripts/git-push.mjs   # push using GITHUB_TOKEN from .env
 ```
 
-All test suites live in `test/` (`test/test-*.mjs`); the `npm test` chain runs them by path.
+Suites live in `test/` (`test/test-*.mjs`); `npm test` runs them by path. Load `dist/` unpacked via
+`chrome://extensions` → Developer mode → Load unpacked.
 
-Load `dist/` unpacked via `chrome://extensions` -- Developer mode -- Load unpacked.
+Run `npm run build && npm test` **before and after** every change; never report success while either
+is red and never weaken or skip a test to make it pass.
 
-Run `npm run build && npm test` **before and after** every change. Never report success while either
-is red. Never weaken or skip a test to make it pass.
-
-**Git Push Invariant:** Always push using `node scripts/git-push.mjs`. The GitHub personal access token is stored in `.env` (`GITHUB_TOKEN`). Standard `git push` hangs in non-interactive agent subshells waiting for Windows GUI Git Credential Manager.
+**Git push invariant:** push with `node scripts/git-push.mjs`; a plain `git push` can hang in a
+non-interactive shell waiting for a GUI credential manager.
 
 ## Hard rules
 
-1. **Never edit `dist/`.** It is generated and gitignored. Edit `src/`.
-2. **`src/lib/vault.js` and `src/lib/thru-client.js` are sacred.** Crypto, keyrings, RPC shapes,
-   instruction layouts. Change only for a verified bug or a tested additive primitive, and only
-   with `test-vault.mjs` / `test-thru-client.mjs` passing.
+1. **Never edit `dist/`.** Generated and gitignored; edit `src/`. — *check:* `dist/` is in
+   `.gitignore` and rebuilt by `npm run build`.
+2. **`src/lib/vault.js` and `src/lib/thru-client.js` are sacred.** Change only for a verified bug
+   or a tested additive primitive. — *check:* `test/test-vault.mjs`, `test/test-thru-client.mjs`.
 3. **One seam between UI and backend:** `bridge.send(method, params)`. Only `src/ui/app/bridge.js`
-   may call `chrome.runtime.sendMessage` (the legacy `src/ui/bridge.js` is deleted); only
-   `src/background/services/event-service.js` may push events back. UI never imports
-   `src/background/**` or `src/lib/vault.js`.
+   may call `chrome.runtime.sendMessage`; only `src/background/services/event-service.js` pushes
+   events back. UI never imports `src/background/**` or `src/lib/vault.js`. — *check:*
+   `scripts/check-layering.mjs` (`single-seam`, `ui-must-not-import-background-or-vault`).
 4. **Backend API is append-only.** Add the method to `src/shared/contract/manifest.js` *and*
-   `api-router.js` -- `test-contract.mjs` checks both directions. Never rename or reshape an
-   existing method; add a new name and retire the old one after zero references remain.
-5. **No new dependencies except first-party Thru packages.** Use `@thru/sdk` (including its
-   `@thru/sdk/crypto` subpath) and verified `@thru/programs/*` surfaces instead of hand-written
-   protocol code. No React/Vue/Tailwind, no build-system change. Every Thru SDK/program version
-   must be pinned exactly.
-6. **Money is BigInt only.** Use `src/shared/format.js`. Never `parseFloat(x) * 1e9`.
-7. **All DOM is built with `src/ui/kit/dom.js` `h()`.** `innerHTML`, `insertAdjacentHTML` and
-   `outerHTML` anywhere in `src/**` (outside `src/popup/vendor/`) fail the build outright. The
-   injection ratchet is at 0 and must stay there -- it now covers the whole shipped runtime, not
-   just `src/ui/**`, because the one directory left outside it was where the sinks survived.
-8. **No inline `style=""` or `on*=""` attributes.** The CSP is `default-src 'none'` with no
-   `unsafe-inline`, so both are refused by the browser. CSSOM (`el.style.x = y`) and DOM
-   properties (`el.onerror = fn`) are fine.
-9. **Secrets never touch** URLs, `location.hash`, router params or history, `data-*` attributes,
-   `localStorage`, `sessionStorage`, `window`, or `console.*`. Clear them on lock, on navigate
-   away, and in `destroy()`. Use `src/shared/refs.js` to name an account in a URL.
+   `api-router.js`; never rename or reshape one; retire the old name after zero references. —
+   *check:* `test/test-contract.mjs` (both directions).
+5. **No new dependencies except first-party Thru packages**, pinned exactly; no build-system
+   change. — *check:* `test/test-derivation.mjs` (exact pins), `scripts/check-layering.mjs`
+   (`@thru/*` confined to `src/lib`). Adding a *new* dependency has no gate — ask first.
+6. **Money is BigInt only.** Use `src/shared/format.js`. Never `parseFloat(x) * 1e9`. —
+   *check:* `test/test-launchpad-quarantine.mjs` (float-parse scan), `test/test-tx-units.mjs`.
+7. **All DOM is built with `src/ui/kit/dom.js` `h()`.** `innerHTML` / `insertAdjacentHTML` /
+   `outerHTML` anywhere in `src/**` (outside `src/popup/vendor/`) fail the build; the ratchet is at
+   0 and must stay there. — *check:* `scripts/check-layering.mjs` (DOM-sink ratchet).
+8. **No inline `style=""` or `on*=""`.** The CSP is `default-src 'none'` with no `unsafe-inline`.
+   CSSOM (`el.style.x = y`) and DOM properties (`el.onerror = fn`) are fine. — *check:*
+   `scripts/check-csp.mjs` + the layering scan.
+9. **Secrets never touch** URLs, `location.hash`, router params, history, `data-*`,
+   `localStorage`, `sessionStorage`, `window` or `console.*`. Clear them on lock, on navigate away
+   and in `destroy()`. Use `src/shared/refs.js` to name an account in a URL. — *check:*
+   `test/test-route-lifecycle.mjs` (`findSecrets` scanner).
 10. **Password re-authentication is always required** before export, security-setting changes,
-    keyring add/rename/remove, and unlocked reset. Transaction signing requires an unlocked session
-    by default; the user may opt into per-sign password re-authentication, and changing that setting
-    in either direction is password-gated. This session-only default is an explicit product decision,
-    not permission for alternate signing paths: every value-moving method still uses centralized
-    `auth: 'signing'`, reviewed account/network binding, and the one signing service. Use
-    `requirePassword()` from `src/ui/domain/password-prompt.js` when the preference requires it.
-    **Narrow contract-v12 exception:**
-    `tx.registerAccount` is unlocked-only for a vault-owned address at account creation or when
-    selected as an unregistered own Send recipient. It still signs/broadcasts; never add a
-    periodic all-accounts signing loop or allow arbitrary recipient registration.
-    **Self-signing invariant:** resolve the *target's* keypair from the unlocked vault. Both
-    its public key and the public key derived from its private key must match the target address;
-    that same pair must be the fee payer in `createOnChainAccount`. Account 1 must never sign
-    Account 4's registration. The ONLY activation transaction is the native account-creation
-    program (the network's configured `accountCreateProgramId` — the NOOP program on 0.4.0+
-    chains — with fee `0n`, nonce `0n`, stateUnits `1`);
-    never claim the faucet or send a dummy/zero-value transfer to activate an account.
+    keyring add/rename/remove and unlocked reset. Signing is unlocked-by-default with an opt-in
+    per-sign password, and every value-moving method is still `auth: 'signing'` with reviewed
+    account/network binding through the ONE signing service. — *check:* `test/test-api-router.mjs`
+    (auth matrix); v12 exception + self-signing invariant in `docs/agent/rules-detail.md`.
 11. **Every component returns `{ el, update, destroy }`** and `destroy()` removes the *same*
-    handler references it added. Use `disposer()`; a fresh arrow passed to
-    `removeEventListener` removes nothing.
-12. **Delete the old copy in the same commit** as the replacement. This codebase is in its
-    current state because that rule was not followed.
-13. **Small commits.** Never mix a security fix + a UI redesign + a new feature.
-14. **Layout must be SEEN, not reasoned about.** Any change touching modal, sheet, drawer or
-    overlay layout must be visually validated in a real browser -- or in a visual harness that
-    loads the real built `dist/popup.css`, e.g. `scripts/preview-tx-sheet.html` -- before the PR
-    is opened. `npm test` runs on a hand-rolled DOM shim with **no layout engine**: it cannot
-    compute a height, resolve `max-height`, run the flexbox algorithm or read `scrollHeight`, so
-    it is structurally incapable of detecting flex shrinking, `overflow` clipping or a scroll
-    container that does not scroll. "The CSS reads correctly" is not evidence about layout, and
-    a green suite is not evidence about layout. This rule exists because a detail sheet shipped
-    that silently amputated its last two rows and drew no scrollbar -- it passed every automated
-    gate and two independent code audits, and was found by a user on a real popup
-    (`docs/DEFECT_LOG.md`).
-15. **The frontend never waits on a chain/RPC/backend read before its first paint.** The UI and
-    the service-worker backend are deliberately separate: a slow or dead network must never stall
-    the popup. Every route paints immediately from local state — chrome.storage caches (native
-    balances, token balances, history, swap pool snapshot, name-provider facts) or an explicit
-    "checking/unknown" placeholder — and live reads hydrate asynchronously and REPLACE the
-    placeholder; they never gate it. A route that shows only a spinner until an RPC resolves is
-    a defect of the same class as a crash. When you add a read, also add the cached counterpart
-    (`*.getCached*`), and label stale data instead of pretending it is fresh (2026-10-26 owner
-    directive).
+    handler references it added. Use `disposer()`. — *check:* `test/test-ui-dom.mjs`,
+    `test/test-route-lifecycle.mjs` (teardown).
+12. **Delete the old copy in the same commit** as the replacement. This codebase is in its current
+    state because that rule was not followed. — *check:* review.
+13. **Small commits.** Never mix a security fix + a UI redesign + a new feature. — *check:* review.
+14. **Layout must be SEEN, not reasoned about.** Modals/sheets/drawers/overlays are validated in a
+    real browser or a harness loading the real `dist/popup.css` before the PR opens. `npm test` has
+    **no layout engine**, so a green suite is not layout evidence. — *check:* none possible in
+    Node; `docs/MANUAL_SMOKE_CHECKLIST.md`, `scripts/preview-*.html`, full text in
+    `docs/agent/rules-detail.md`.
+15. **The frontend never waits on a chain/RPC/backend read before its first paint.** Paint from
+    local state or an explicit checking/unknown placeholder, then hydrate and replace; add the
+    cached counterpart with every new read and label stale data. — *check:*
+    `test/test-route-lifecycle.mjs` (routes paint with every bridge reply stalled).
+16. **A value-moving screen goes through the ONE review pipeline; it never signs.**
+    `tx.prepareReview` → `review-card.js` → `tx.confirmReview` → `confirm.js`. No feature-owned
+    signing screen, fee formatter, warning copy or password flow; a route never calls a signing
+    method. A review is single-use, bound to account/network, re-validated at confirm. An
+    undecodable transaction is explicit unknown with raw details and `submit: null` — never a
+    guessed name, never a submit policy, never signed. Simulation is unavailable, so never render a
+    post-transaction balance. — *check:* `test/test-tx-review.mjs` [14] (signing-literal scan,
+    registry parity), `test/test-tx-review-card.mjs`; full text in `docs/agent/rules-detail.md`.
+17. **No repetitive explanatory/disclaimer essays on review screens or anywhere in the UI.** State
+    facts cleanly and objectively (`Fee: 0.00000001 THRU`, `Program: Thru transfer program`) — no
+    justification paragraphs, no preaching, no jargon, no file paths, no decision ids. — *check:*
+    `test/test-tx-review-card.mjs` (forbidden-term scan); full text in `docs/agent/rules-detail.md`.
+
+18. **No import cycles.** `src/` has exactly one known cycle (the five core transaction services)
+    and it may only shrink. — *check:* `scripts/check-cycles.mjs` (ratchet, both directions).
+19. **Layer direction is absolute.** `src/lib` is a leaf: it may not import UI, background or
+    feature code. A feature may use its own files or the shared kit, never another feature's
+    internals. — *check:* `scripts/check-layering.mjs` (`lib-is-a-leaf`,
+    `feature-internals-are-private`, each with a control).
+20. **Every signing surface is enumerated.** A handler that signs is `auth: 'signing'`, sits in
+    `TRANSACTION_METHODS`, and reads every parameter it declares. — *check:*
+    `test/test-signing-surface.mjs` (contract vs router vs review kinds, both directions).
+21. **Consent does not survive a session boundary.** Lock, account switch, network switch and reset
+    discard prepared reviews; confirm fails closed on anything discarded; a broadcast event is
+    never user consent. — *check:* `test/test-review-lifecycle.mjs`.
+22. **Evidence must be falsifiable.** A probe that cannot fail is not evidence, and “unmeasured”
+    never enables a user-visible price or claim. Every guard ships a negative control and reports
+    it. — *check:* `scripts/check-check-controls.mjs` (legacy debt is listed and may only shrink).
+23. **Record decisions and counts when they happen.** An owner directive lands in `DECISIONS.md` in
+    the same change; `DOCS_INDEX.md` owns where everything else goes. Counts in the maintained docs
+    must equal the code. — *check:* `scripts/check-docs-truth.mjs` (contract version, method count,
+    route count, every named test file). *review:* the decision entry itself.
+24. **UI copy is plain words.** No file paths, no decision ids, no developer terms on a screen; the
+    review card shows what, how much and what it costs, and only decision-changing warnings. —
+    *check:* `test/test-tx-review-card.mjs` (forbidden-term scan over the rendered card).
+25. **Dark-launch, then decide.** A UI slice is built behind its flag and enabled only on a
+    recorded decision; enabling one edits the flag test in the same commit. — *check:*
+    `test/test-release-flags.mjs`.
+26. **One notification API.** `toast()` takes props, never a bare string, and never renders without
+    text. — *check:* `test/test-toast.mjs` (tree-wide ban).
+27. **Size is a review trigger, not a rule.** A file over 500 lines or 25 KB is worth reading for
+    mixed responsibilities before the next change; never split it mechanically or to satisfy a
+    number. — *check:* none by design; `npm run report:size` is the report.
+28. **A signature needs a confirmed review, proven in the background.** Every value-moving method
+    refuses without the one-time token `tx.confirmReview` mints; an exemption is one line in the
+    router with its reason. The token proves the review, never that a human saw it. — *check:*
+    `test/test-review-consent.mjs` (a fresh router, no helper, zero client touches).
 
 ## Stop and ask instead of guessing
 
@@ -248,57 +181,6 @@ explorer URL patterns, dApp provider standards. A product decision. A test that 
 weakening. Introducing a second router, a second store, or a second way of building DOM.
 
 **Do not fabricate protocol behaviour.** For a wallet, a wrong guess loses funds.
-
-## Traps that will waste your time
-
-**Reload the extension, not just the popup.** Chrome caches the service worker, so reopening the
-popup runs new UI against old backend code. Use the **Reload** button on the extension card.
-This made an already-fixed serialization bug appear to persist.
-
-**Money is BigInt internally and a STRING on the wire.** Chrome messaging serializes with JSON
-and `JSON.stringify` throws on BigInt, which Chrome reports only as `Could not serialize
-message.` `api-router.js` now names the offending method and field itself. If you see Chrome's
-bare version, the failure is in the **request** direction.
-
-**The build only WARNS on CSS syntax errors**, it does not fail. Check for `---- [WARNING]`.
-
-- **There is ONE UI stack.** The legacy `show()`/`#screen-*` tree is deleted. Screens are routes
-  in `src/ui/app/routes/`, registered in `src/ui/app/boot.js`.
-- **`src/background.js` is deleted.** The service worker is `src/background/index.js`.
-- **`src/launchpad/**` is deleted, not flagged.** The legacy Launchpad/DEX/Predictions page, its
-  `?launchpad=1` override, its dashboard banner and its `innerHTML`/fake-quote code are gone, and
-  `test-launchpad-quarantine.mjs` fails the build if any of it returns. Do not "temporarily"
-  re-enable it: a launchpad comes back as a new `src/features/launchpad/**` module per
-  `docs/MODULE_BOUNDARIES.md`, with that test updated deliberately in the same PR.
-- **`removeEventListener` with a fresh arrow function removes nothing.** This killed dashboard
-  buttons permanently after one navigation in the old stack. Always use `disposer()`.
-- **Do not ship a control before its destination route exists.** `scripts/check-routes.mjs`
-  fails the build on it, in both directions.
-- **A test can assert a bug.** `generateMintSeed` had a test demanding a 32-character seed when
-  the SDK requires 64 hex, which would have blocked the correct fix. Check what a test is
-  protecting before trusting it.
-- **Amount units differ by screen on purpose.** Faucet takes BASE UNITS; Send takes whole THRU.
-  Verified on alphanet (2026-09-26, same managed programs betanet runs): claiming 10000 credits credited exactly 10000 base units.
-- **A transfer recipient must already exist on-chain.** Accounts this wallet creates are
-  registered automatically; an external never-used address cannot receive.
-- **Never hand-roll a program instruction or address derivation.** `@thru/programs` ships them.
-  A hand-rolled mint derivation called a non-existent SDK method and threw for months.
-- **`chrome.storage.session` holds the unlocked session.** It survives a page reload but not an
-  extension reload. Run `system.diagnostics` before blaming auto-lock.
-- **Hand-maintained file lists rot.** `test-contract.mjs` walks directories for exactly this
-  reason -- its old static list stopped covering new files and let a phantom method through.
-- **`test-route-lifecycle.mjs` mounts every route, but not in a browser.** It drives the real
-  Router, guards, bridge and kit against a hand-rolled DOM shim with only
-  `chrome.runtime.sendMessage` mocked, in all three vault states, and asserts teardown, focus
-  trapping and secret hygiene. It cannot see layout, real focus rings, canvas output or the side
-  panel. Those are `docs/MANUAL_SMOKE_CHECKLIST.md`, and it is a required runbook, not a nicety.
-  jsdom is deliberately not a dependency (Hard rule: no new deps).
-- **A green suite says nothing about layout.** Following from the point above: the shim has no
-  layout engine, so `overflow`, `max-height`, flex shrinking and scrollability are all invisible
-  to it. Where an invariant CAN be expressed against the stylesheet text, assert it there --
-  `test-route-lifecycle.mjs` now checks that any flex-column scroll container pins its children
-  against `flex-shrink`, because that specific bug reached a user. Everything else needs eyes on
-  a browser (Hard rule 14).
 
 ## Reporting
 

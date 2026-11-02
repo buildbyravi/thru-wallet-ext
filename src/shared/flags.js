@@ -21,10 +21,10 @@ export const FLAGS = {
   DEBUG_ROUTING: false,
 
   // Name service (system name program) GATED write paths. Read paths (name.lookup,
-  // name.checkAvailability, name.getCanonicalRoot) are always-on truth asks; name.register is
-  // LIVE since contract v23 (2026-10-24) — its wire format is first-party (txn_tools.rs) and
-  // its fee is 0n by construction (no payment accounts in the official builder). initRoot and
-  // setRecord stay off below this flag. Build-time constant with NO query/storage override,
+  // name.checkAvailability, name.getCanonicalRoot, name.reverseLookup) are always-on truth
+  // asks; name.register is LIVE since contract v23 (2026-10-24) and name.setRecord since v31
+  // (2026-10-29) — both first-party wire formats with fee 0n by construction. initRoot is the
+  // only write still behind this flag. Build-time constant with NO query/storage override,
   // like the DEFI_* family.
   NAME_SERVICE: false,
 

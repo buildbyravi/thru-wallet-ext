@@ -22,6 +22,18 @@
 //! Account indices refer to the SHARED transaction account table — CPI on ThruVM passes
 //! the outer transaction's accounts to the invoked program (INVOKE syscall, 0x0A).
 
+/// Canonical pubkey of the native Name Service system program (taNAMEqRNEDeMWp0cDYmMVdZyTZiF5NyGDR9zTwH42rWQG).
+pub const NAME_SERVICE_PROGRAM: [u8; 32] = [
+    0x34, 0x03, 0x04, 0xa9, 0x13, 0x44, 0x0d, 0xe3, 0x16, 0xa7, 0x47, 0x03, 0x62, 0x63, 0x15, 0x75,
+    0x9c, 0x93, 0x66, 0x21, 0x79, 0x37, 0x21, 0x83, 0x47, 0xdc, 0xd3, 0xc0, 0x7e, 0x36, 0xad, 0x64,
+];
+
+/// The only allowed config seed for Initialize ("TCR:config:v1" zero-padded to 32 bytes).
+pub const CANONICAL_CONFIG_SEED: [u8; 32] = [
+    b'T', b'C', b'R', b':', b'c', b'o', b'n', b'f', b'i', b'g', b':', b'v', b'1',
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+];
+
 /// Name-service instruction selectifiers (txn_tools.rs:4488-4489).
 pub const NS_TAG_INIT_ROOT: u32 = 0;
 pub const NS_TAG_REGISTER_SUBDOMAIN: u32 = 1;

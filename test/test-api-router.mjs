@@ -1,5 +1,10 @@
 import assert from 'node:assert/strict';
 import { handleApiRequest } from '../src/background/api-router.js';
+// Signing methods are refused without the token a confirmed review mints (the router's own
+// gate). This suite measures everything that happens AFTER it — auth policy, local guards,
+// duplicate and race handling — so each call mints for its exact params. The gate itself is
+// measured with no helper in the loop in test-review-consent.mjs.
+import { consentFor, sendWithConsent } from './fixtures/consent.mjs';
 
 // Setup fake chrome storage
 const storage = new Map();
@@ -172,7 +177,7 @@ const sessionOnlyAuth = [
   }, /address you're sending from/i],
 ];
 for (const [method, params, pattern] of sessionOnlyAuth) {
-  const res = await handleApiRequest({ method, params });
+  const res = await sendWithConsent(handleApiRequest, method, params);
   assert.equal(res.ok, false, `${method} must fail on its local rules`);
   assert.notEqual(res.error.code, 'AUTH_REQUIRED', `${method} must pass auth with the session-only default`);
   assert.match(res.error.message, pattern, `${method} local guard message`);
@@ -181,9 +186,8 @@ for (const [method, params, pattern] of sessionOnlyAuth) {
 // With the gate OFF the password param is irrelevant to signing methods: the user
 // chose session-only, so a (wrong) password is neither verified nor used — the call
 // proceeds to the handler, which fails on its own local rules here.
-const passwordIgnoredWhileGateOff = await handleApiRequest({
-  method: 'tx.sendChecked',
-  params: { toAddress: res2.data.address, amountUnits: '1', password: 'wrong password', fromAddress: res2.data.address, networkId: 'betanet' },
+const passwordIgnoredWhileGateOff = await sendWithConsent(handleApiRequest, 'tx.sendChecked', {
+  toAddress: res2.data.address, amountUnits: '1', password: 'wrong password', fromAddress: res2.data.address, networkId: 'betanet',
 });
 assert.equal(passwordIgnoredWhileGateOff.ok, false);
 assert.notEqual(passwordIgnoredWhileGateOff.error.code, 'AUTH_REQUIRED');
@@ -209,9 +213,8 @@ const sessionOnlyWithPassword = await handleApiRequest({
 assert.equal(sessionOnlyWithPassword.ok, true);
 assert.equal(sessionOnlyWithPassword.data.requirePasswordForSigning, false);
 
-const sessionOnlySend = await handleApiRequest({
-  method: 'tx.sendChecked',
-  params: { toAddress: res2.data.address, amountUnits: '1', fromAddress: res2.data.address, networkId: 'betanet' },
+const sessionOnlySend = await sendWithConsent(handleApiRequest, 'tx.sendChecked', {
+  toAddress: res2.data.address, amountUnits: '1', fromAddress: res2.data.address, networkId: 'betanet',
 });
 assert.equal(sessionOnlySend.ok, false);
 assert.notEqual(sessionOnlySend.error.code, 'AUTH_REQUIRED');
@@ -233,7 +236,7 @@ const sessionOnlyTokenGuards = [
     /whole number of base units/i],
 ];
 for (const [params, pattern] of sessionOnlyTokenGuards) {
-  const res = await handleApiRequest({ method: 'token.transferChecked', params: { ...params, fromAddress: res2.data.address, networkId: 'betanet' } });
+  const res = await sendWithConsent(handleApiRequest, 'token.transferChecked', { ...params, fromAddress: res2.data.address, networkId: 'betanet' });
   assert.equal(res.ok, false, `token.transfer ${pattern} must fail`);
   assert.notEqual(res.error.code, 'AUTH_REQUIRED', `token.transfer ${pattern} must pass auth`);
   assert.match(res.error.message, pattern, `token.transfer guard message for ${pattern}`);
@@ -249,20 +252,20 @@ for (const [method, extra] of [
   ['token.transferChecked', { mintAddress: 'taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKqq' }],
 ]) {
   const params = { ...extra, toAddress: res2.data.address, amountUnits: '1' };
-  const missing = await handleApiRequest({ method, params });
+  const missing = await sendWithConsent(handleApiRequest, method, params);
   assert.equal(missing.error?.code, 'INVALID_REQUEST', `${method} requires a reviewed context`);
-  const wrongAccount = await handleApiRequest({ method, params: {
+  const wrongAccount = await sendWithConsent(handleApiRequest, method, {
     ...params, fromAddress: 'taEREREREREREREREREREREREREREREREREREREREREREg', networkId: 'betanet',
-  } });
+  });
   assert.equal(wrongAccount.error?.code, 'SEND_CONTEXT_CHANGED', `${method} must pin the source`);
   assert.equal(wrongAccount.error?.retryable, false);
-  const wrongNetwork = await handleApiRequest({ method, params: {
+  const wrongNetwork = await sendWithConsent(handleApiRequest, method, {
     ...params, fromAddress: res2.data.address, networkId: 'localnet',
-  } });
+  });
   assert.equal(wrongNetwork.error?.code, 'SEND_CONTEXT_CHANGED', `${method} must pin the chain`);
-  const correct = await handleApiRequest({ method, params: {
+  const correct = await sendWithConsent(handleApiRequest, method, {
     ...params, fromAddress: res2.data.address, networkId: 'betanet',
-  } });
+  });
   assert.equal(correct.ok, false);
   assert.match(correct.error.message, /address you're sending from/i,
     `${method} with correct context reaches the normal transfer guard`);
@@ -303,17 +306,17 @@ try {
       releaseRecipient = () => resolve({ meta: { balance: 100n } });
     });
   };
-  const pendingChecked = handleApiRequest({ method: 'tx.sendChecked', params: {
+  const pendingChecked = sendWithConsent(handleApiRequest, 'tx.sendChecked', {
     toAddress: accountsList[1].address,
     amountUnits: '1',
     fromAddress: res2.data.address,
     networkId: 'betanet',
-  } });
+  });
   await waitFor(() => typeof releaseRecipient === 'function', 'checked send to reach the held recipient RPC');
-  const doubleClick = await handleApiRequest({ method: 'tx.sendChecked', params: {
+  const doubleClick = await sendWithConsent(handleApiRequest, 'tx.sendChecked', {
     toAddress: accountsList[1].address, amountUnits: '1',
     fromAddress: res2.data.address, networkId: 'betanet',
-  } });
+  });
   assert.equal(doubleClick.error?.code, 'DUPLICATE_SUBMISSION',
     'a bridge timeout / second click cannot submit the same in-flight transfer twice');
   const blockedSwitch = await handleApiRequest({ method: 'network.setActive', params: { networkId: 'localnet' } });
@@ -360,10 +363,10 @@ try {
     yield { executionResult: { vmError: 0 }, signature: { value: new Uint8Array(64).fill(7) } };
   };
   let replied = false;
-  const request = handleApiRequest({ method: 'tx.sendChecked', params: {
+  const request = sendWithConsent(handleApiRequest, 'tx.sendChecked', {
     toAddress: accountsList[1].address, amountUnits: '1',
     fromAddress: res2.data.address, networkId: 'betanet',
-  } }).then((response) => { replied = true; return response; });
+  }).then((response) => { replied = true; return response; });
   await waitFor(() => typeof releasePostSendBalance === 'function',
     'the advisory balance refresh to start');
   await waitFor(() => replied, 'the signing response while the advisory balance RPC is blocked');
@@ -388,16 +391,13 @@ try {
   assert.equal(dupCheck.data.isDuplicate, true, 'repeated transfer is detected');
 
   // Attempting duplicate send without allowDuplicate throws DUPLICATE_SUBMISSION
-  const dupSend = await handleApiRequest({
-    method: 'tx.sendChecked',
-    params: {
+  const dupSend = await sendWithConsent(handleApiRequest, 'tx.sendChecked', {
       toAddress: accountsList[1].address,
       amountUnits: '1',
       fromAddress: res2.data.address,
       networkId: 'betanet',
       allowDuplicate: false,
-    },
-  });
+    });
   assert.equal(dupSend.ok, false);
   assert.equal(dupSend.error.code, 'DUPLICATE_SUBMISSION');
 
@@ -406,16 +406,13 @@ try {
   sdkForSend.accounts.get = () => Promise.resolve({ meta: { balance: 100n } });
 
   // Attempting duplicate send WITH allowDuplicate succeeds
-  const dupSendAllowed = await handleApiRequest({
-    method: 'tx.sendChecked',
-    params: {
+  const dupSendAllowed = await sendWithConsent(handleApiRequest, 'tx.sendChecked', {
       toAddress: accountsList[1].address,
       amountUnits: '1',
       fromAddress: res2.data.address,
       networkId: 'betanet',
       allowDuplicate: true,
-    },
-  });
+    });
   assert.equal(dupSendAllowed.ok, true, dupSendAllowed.error?.message);
 
 } finally {
@@ -441,7 +438,13 @@ const beforePendingTrack = sdkForPending.transactions.sendAndTrack;
 let releasePendingExec = null;
 try {
   sdkForPending.accounts.get = () => Promise.resolve({ meta: { balance: 100n } });
-  sdkForPending.transactions.buildAndSign = async () => ({ rawTransaction: new Uint8Array(1) });
+  // The built transaction object carries the header the record must remember. The real SDK
+  // returns it (Transaction has startSlot/expiryAfter); this stub does too so the plumbing from
+  // build -> onSubmitted -> pending record is measured, not assumed.
+  sdkForPending.transactions.buildAndSign = async () => ({
+    rawTransaction: new Uint8Array(1),
+    transaction: { startSlot: 4242n, expiryAfter: 1000 },
+  });
   sdkForPending.transactions.sendAndTrack = async function* () {
     // Submission accepted: the signature is public, executionResult is NOT there yet —
     // the real stream's progressive SendAndTrackTxnUpdate shape (status/consensusStatus/
@@ -457,16 +460,23 @@ try {
       signature: { value: new Uint8Array(64).fill(9) },
     };
   };
-  const slowSend = handleApiRequest({ method: 'tx.sendChecked', params: {
+  const slowSend = sendWithConsent(handleApiRequest, 'tx.sendChecked', {
     toAddress: accountsList[1].address,
     amountUnits: '1',
     fromAddress: res2.data.address,
     networkId: 'betanet',
-  } });
+  });
   await waitFor(() => {
     const list = storage.get('thru_pending_txs::betanet')?.records;
     return Array.isArray(list) && list.length > 0 && list[0].status === 'submitted';
   }, 'the pending record to land at submission, before executionResult');
+  {
+    // Every pending record now carries its own deadline. Without it, an unknown outcome can only
+    // be reported as "timed out?" — the message that invites a resend of something that may land.
+    const record = storage.get('thru_pending_txs::betanet').records[0];
+    assert.equal(record.startSlot, '4242', 'the pending record stores the built startSlot');
+    assert.equal(record.expiryAfter, 1000, 'the pending record stores the built expiryAfter');
+  }
   const dupCheckPending = await handleApiRequest({
     method: 'tx.checkDuplicate',
     params: {
@@ -847,6 +857,42 @@ assert.equal(storage.get('thru_active_network'), storedBeforeRefusal,
 assert.deepEqual(thruClient.getConfiguredNetwork(), configuredBeforeRefusal,
   'rejection must not bind thru-client to the custom endpoint');
 console.log('  ok - direct custom activation is permanently refused with storage and RPC binding untouched');
+
+// N1b: the write side is refused too. `connect-src` in src/manifest.json allows only the Thru RPC
+// host, so a saved endpoint could never be reached — storing one produced a row that listed,
+// selected and then failed every call. Refusing at the service (not just hiding the form) is what
+// makes the quarantine honest.
+{
+  const before = JSON.stringify(storage.get('thru_custom_networks'));
+  const upsertHttp = await handleApiRequest({
+    method: 'network.upsertCustom',
+    params: { id: 'plain-http', name: 'Plain', rpcUrl: 'http://node.example/rpc', environment: 'devnet' },
+  });
+  assert.equal(upsertHttp.ok, false, 'a custom endpoint cannot be saved');
+  assert.equal(upsertHttp.error.code, 'CUSTOM_NETWORK_DISABLED');
+  assert.equal(upsertHttp.error.retryable, false);
+  assert.match(upsertHttp.error.message, /security policy allows[^]*Thru RPC host/i);
+  assert.match(upsertHttp.error.message, /can still be removed/i, 'the message says what still works');
+  assert.equal(JSON.stringify(storage.get('thru_custom_networks')), before,
+    'a refused upsert writes nothing');
+  // The same refusal for https: the problem is the CSP, not the scheme.
+  const upsertHttps = await handleApiRequest({
+    method: 'network.upsertCustom',
+    params: { id: 'secure-node', name: 'Secure', rpcUrl: 'https://node.example/rpc', environment: 'devnet' },
+  });
+  assert.equal(upsertHttps.error.code, 'CUSTOM_NETWORK_DISABLED');
+  // And a built-in id is still refused for the older, separate reason.
+  const shadow = await handleApiRequest({
+    method: 'network.upsertCustom',
+    params: { id: 'betanet', name: 'Hijack', rpcUrl: 'https://evil.example/rpc' },
+  });
+  assert.equal(shadow.error.code, 'METHOD_ERROR');
+  assert.match(shadow.error.message, /built-in network/i);
+  // Removal still works, so a legacy row is never stranded.
+  assert.equal((await handleApiRequest({ method: 'network.removeCustom', params: { networkId: LEGACY_CUSTOM_ID } })).ok, true);
+  storage.set('thru_custom_networks', [legacyCustom]);
+}
+console.log('  ok - custom RPC writes are refused with a reason, legacy rows can still be removed');
 
 // N2: legacy records remain visible for deletion and carry an explicit non-selectable contract.
 const listedNetworks = await handleApiRequest({ method: 'network.list' });

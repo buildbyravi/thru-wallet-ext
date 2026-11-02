@@ -42,13 +42,14 @@ import { Field } from '../kit/field.js';
 import { Sheet } from '../kit/sheet.js';
 import { toast } from '../kit/toast.js';
 import { AssetRow } from './token-row.js';
-import { formatTokenAmount } from '../../shared/format.js';
+import { formatTokenAmount, shortAddress } from '../../shared/format.js';
 
 const STEP = Object.freeze({ IDLE: 'idle', CHECKING: 'checking', VERIFIED: 'verified', SAVING: 'saving' });
 
 function shortMint(mint) {
-  const s = String(mint || '');
-  return s.length > 14 ? `${s.slice(0, 6)}…${s.slice(-6)}` : s;
+  // Shared truncation (src/shared/format.js) — the drawer, Activity and the review card must
+  // shorten the same mint the same way.
+  return shortAddress(mint, { head: 6, tail: 6 });
 }
 
 /**

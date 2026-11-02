@@ -10,6 +10,8 @@ import {
   TRANSFER_PROGRAM_ID,
   ACCOUNT_CREATE_PROGRAM_ID,
   getClient,
+  getAccountInfo,
+  getAccountOwnerAddress,
 } from '../src/lib/thru-client.js';
 import { Transaction, keys, Signature } from '@thru/sdk';
 
@@ -29,6 +31,18 @@ function decode(data) {
 }
 
 console.log('\n[1] Faucet instruction encoding round-trips correctly');
+const boundRead = await getAccountInfo('bound-account', { accounts: { get: async address => {
+  assert(address === 'bound-account', 'bound account read uses the requested address');
+  return { meta: { balance: 7n } };
+} } });
+assert(boundRead.balance === 7n, 'an explicit captured RPC client is used instead of the mutable global binding');
+const metadataOwner = Pubkey.from(new Uint8Array(32).fill(0x43));
+const metadataAddress = metadataOwner.toThruFmt();
+assert(String(metadataOwner) === '[object Object]', 'SDK metadata Pubkey must not be compared through String coercion');
+assert(getAccountOwnerAddress({ meta: { owner: metadataOwner } }) === metadataAddress, 'SDK Pubkey owner normalizes to its exact Thru address');
+assert(getAccountOwnerAddress({ meta: { owner: metadataAddress } }) === metadataAddress, 'string owner metadata retains its exact address');
+assert(getAccountOwnerAddress({ meta: { owner: {} } }) === null, 'malformed owner metadata is unknown');
+assert(getAccountOwnerAddress({}) === null, 'absent owner metadata is unknown');
 const encoded = encodeFaucetInstructionData(0, 1, 1000n);
 assert(encoded.length === 16, 'instruction data is exactly 16 bytes');
 const decoded = decode(encoded);
@@ -588,9 +602,38 @@ console.log('\n[15] formatTokenAmount / parseTokenAmount convert exactly at any 
 
   for (let i = 0; i < buildAndSignMatches.length; i++) {
     const callBody = buildAndSignMatches[i][1];
-    const hasHeader = /header:\s*(?:units|\{\s*nonce:\s*0n,\s*\.\.\.units\s*\})/.test(callBody);
-    assert(hasHeader, `buildAndSign site #${i + 1} explicitly supplies header: units or ...units`);
+    // `{ ...units, expiryAfter: SEND_EXPIRY_SLOTS }` is the send shape: same explicit units, plus
+    // the slot deadline. Anything else must supply the units directly.
+    const hasHeader = /header:\s*(?:units|\{\s*nonce:\s*0n,\s*\.\.\.units\s*\}|\{\s*\.\.\.units,\s*expiryAfter:\s*SEND_EXPIRY_SLOTS\s*\})/.test(callBody);
+    assert(hasHeader, `buildAndSign site #${i + 1} explicitly supplies header units`);
   }
+}
+
+// Every wallet-signed send states its own deadline instead of inheriting the SDK's 100 slots
+// (~3s at betanet's busy rate). The failure this prevents is specific: a send that expires on the
+// way in reports an UNKNOWN outcome, and an unknown outcome invites the user to send again.
+{
+  console.log('\n[13] send, faucet and token transfer set an explicit expiry; the registrar keeps its own');
+  const { readFileSync } = await import('node:fs');
+  const clientSource = readFileSync('./src/lib/thru-client.js', 'utf8');
+  assert(/export const SEND_EXPIRY_SLOTS = 1000;/.test(clientSource),
+    'SEND_EXPIRY_SLOTS is 1,000 slots');
+  for (const fn of ['claimFaucet', 'sendTransfer', 'sendTokenTransfer']) {
+    const start = clientSource.indexOf(`export async function ${fn}(`);
+    assert(start > 0, `${fn} exists`);
+    const body = clientSource.slice(start, start + 4000);
+    assert(/header: \{ \.\.\.units, expiryAfter: SEND_EXPIRY_SLOTS \}/.test(body),
+      `${fn} builds its header with the explicit expiry`);
+    assert(/startSlot: String\(built\?\.startSlot/.test(body),
+      `${fn} reports the built startSlot to its caller`);
+  }
+  const registrar = readFileSync('./src/background/services/registrar-service.js', 'utf8');
+  assert(/expiryAfter: 10_000/.test(registrar), 'the registrar keeps its 10,000-slot window');
+  assert(!/SEND_EXPIRY_SLOTS/.test(registrar), 'the registrar does not inherit the send expiry');
+  // The pending record must be able to answer "may still land" later.
+  const pendingSource = readFileSync('./src/background/services/pending-tx-service.js', 'utf8');
+  assert(/startSlot: tx\.startSlot/.test(pendingSource) && /expiryAfter: Number\.isFinite/.test(pendingSource),
+    'pending records store the built startSlot and expiryAfter');
 }
 
 console.log('\nAll thru-client.js encoding checks passed.');

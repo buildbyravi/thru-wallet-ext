@@ -31,6 +31,7 @@ import * as feedService from './services/feed-service.js';
 import * as marketService from './services/market-service.js';
 import * as riskService from './services/risk-service.js';
 import * as intentService from './services/intent-service.js';
+import * as reviewService from './services/review-service.js';
 import * as nameService from './services/name-service.js';
 import * as primaryNameService from './services/primary-name-service.js';
 import * as registrarService from './services/registrar-service.js';
@@ -40,6 +41,7 @@ import { launchpadHandlers } from './features/launchpad/launchpad-handlers.js';
 import { isKnownMethod, getMethodSpec, CONTRACT_VERSION } from '../shared/contract/manifest.js';
 import { isDefiMethod, validateDefiParams } from '../shared/contract/defi-schema.js';
 import { beginSigningOperation } from './services/signing-guard.js';
+import { consumeConsent } from './services/review/consent.js';
 
 // Every operation in this set can build/sign/submit a transaction. The guard starts at the
 // application boundary, before a handler reads the active account/network, and prevents a second
@@ -50,7 +52,28 @@ const TRANSACTION_METHODS = new Set([
   'tx.claimFaucet', 'tx.sendChecked', 'tx.autoCreateAccount', 'tx.registerAccount',
   'token.deploy', 'token.transferChecked',
   'name.register', 'name.purchase', 'name.renewLease', 'name.claimExpired',
+  // v31: setRecord builds and broadcasts a name-service transaction. It was outside this set
+  // while it was a gated stub; the moment it started signing it had to join (audit E-2).
+  'name.setRecord',
   'intent.submit',
+]);
+
+// Signing methods that do NOT need a consent token, each with the reason it is safe.
+//
+// This list is the whole exception surface, and it is deliberately tiny: a method added to
+// TRANSACTION_METHODS is gated by default, so forgetting this file fails closed.
+const CONSENT_EXEMPT = new Map([
+  ['tx.registerAccount',
+    'Registers an address THIS wallet already owns, as an automatic prerequisite inside an '
+    + 'already-reviewed flow (send.js before a reviewed transfer; dashboard after account '
+    + 'creation). It takes no user-chosen parameter, so there is nothing for a review to show. '
+    + 'Residual: a script that can reach the bridge can spend registration fees on the user\'s '
+    + 'own accounts. No funds leave the wallet, and the amount is one creation fee.'],
+  ['intent.submit',
+    'Takes only { intentId, bindingHash }: every executed parameter comes from the intent record '
+    + 'the wallet itself prepared, and bindingHash must match it. A caller therefore cannot make '
+    + 'it execute anything it did not first prepare — the same property the review path has '
+    + '(a caller that can prepare can confirm too). Proven by test-review-consent.mjs.'],
 ]);
 
 // Methods the UI polls on its own schedule (background sync of pending tx state). A call to
@@ -72,6 +95,22 @@ const SYNC_READ_METHODS = new Set([
   'name.getRegistry', 'name.checkLease', 'name.getPaymentBalance',
   'name.getCustomRegistrar', 'name.checkCustomLease',
 ]);
+
+// Runs inside the existing transaction guard. Persistence survives popup teardown and
+// cannot turn an already confirmed registration into a retryable transaction failure.
+async function registerAndRemember(operation, params) {
+  const networkId = await networkService.getActiveNetworkId();
+  const accountAddress = (await accountService.getActiveAccount())?.address;
+  const remember = primaryNameService.registrationRecorder({ networkId, accountAddress });
+  const result = await operation(params);
+  try {
+    await remember({ name: result.name ?? params.name,
+      rootAddress: result.rootAddress, domainAddress: result.domainAddress });
+  } catch {
+    return { ...result, trackingFailed: true };
+  }
+  return result;
+}
 
 const handlers = Object.assign(Object.create(null), {
   // ---- System ------------------------------------------------------------
@@ -138,8 +177,14 @@ const handlers = Object.assign(Object.create(null), {
   'wallet.importMnemonic': ({ mnemonic, password }) => walletService.importMnemonicVault(mnemonic, password),
   'wallet.importPrivateKey': ({ privateKeyHex, password }) => walletService.importPrivateKeyVault(privateKeyHex, password),
   'wallet.unlock': ({ password }) => walletService.unlock(password),
+  // `walletService.lock()` discards prepared reviews itself, so every lock path (this one, the
+  // auto-lock alarm, a future caller) gets it from the single place that locks (Hard rule 21).
   'wallet.lock': () => walletService.lock(),
-  'wallet.reset': ({ confirmation, password }) => walletService.resetWallet({ confirmation, password }),
+  'wallet.reset': async ({ confirmation, password }) => {
+    const result = await walletService.resetWallet({ confirmation, password });
+    await primaryNameService.clearAllDomains();
+    return result;
+  },
   'wallet.hasSeed': () => walletService.hasSeed(),
   'wallet.exportSecret': ({ ref, password }) => walletService.exportSecret(ref, password),
   'wallet.exportPrivateKey': ({ ref, password }) => walletService.exportPrivateKey(ref, password),
@@ -160,7 +205,12 @@ const handlers = Object.assign(Object.create(null), {
   'account.getActive': () => accountService.getActiveAccount(),
   'account.getActiveRef': () => accountService.getActiveRef(),
   'account.list': ({ includeHidden, withBalances } = {}) => accountService.listAccounts({ includeHidden, withBalances }),
-  'account.switch': ({ ref }) => accountService.switchActiveAccount(ref),
+  // The review was bound to the account that asked for it; switching accounts discards it.
+  'account.switch': async ({ ref }) => {
+    const result = await accountService.switchActiveAccount(ref);
+    await reviewService.discardAllReviews();
+    return result;
+  },
   'account.addHd': ({ keyringId } = {}) => accountService.addHdAccount(keyringId),
   'account.addImported': ({ privateKeyHex, password, label }) => accountService.addImportedKey(privateKeyHex, password, label),
   'account.setLabel': ({ address, label }) => accountService.setAccountLabel(address, label),
@@ -175,10 +225,12 @@ const handlers = Object.assign(Object.create(null), {
   // ---- Transactions and RPC --------------------------------------------
   'tx.getAccountInfo': ({ address }) => txService.getAccountInfo(address),
   'tx.getFaucetLimit': () => txService.getFaucetLimit(),
-  'tx.claimFaucet': ({ amountUnits }) => txService.claimFaucet(amountUnits),
+  'tx.claimFaucet': ({ amountUnits, fromAddress, networkId }) =>
+    txService.claimFaucet(amountUnits, { fromAddress, networkId }),
   // ---- Name service (v19 reads / v23 register). Reads are always-on. name.register is a
   // live, self-signed, fee-0n write (first-party txn_tools.rs format: no payment accounts,
-  // NAME_SERVICE_PROGRAM_FEE = 0); initRoot/setRecord stay gated behind FLAGS.NAME_SERVICE.
+  // NAME_SERVICE_PROGRAM_FEE = 0); initRoot stays gated behind FLAGS.NAME_SERVICE, setRecord
+  // was ungated in v31 and signs like the other name writes.
   // The self-signing invariant rules out sponsored/foreign-authority flows — the chain's
   // own authority check is the arbiter, and its revert is surfaced honestly.
   'name.lookup': (params) => nameService.lookupName(params),
@@ -188,24 +240,31 @@ const handlers = Object.assign(Object.create(null), {
   // v25: the same method serves both registration paths. via='custom' switches to the
   // evidence-pinned custom registrar (self-signed, target = signer); any other/absent via
   // keeps the canonical name-service behaviour exactly as before.
-  'name.register': (params) => (
-    params?.via === 'custom' ? registrarService.registerCustom(params) : nameService.registerName(params)
-  ),
+  'name.register': (params) => registerAndRemember(
+    params?.via === 'custom' ? registrarService.registerCustom : nameService.registerName, params),
   'name.setRecord': (params) => nameService.setRecord(params),
   // v21 primary-name UX slice: get re-verifies the stored record against the chain (one live
   // read per call; a broken ownership record is dropped honestly, an unreadable node keeps the
   // last verified record rather than flapping it).
   'name.getPrimary': () => primaryNameService.verifyPrimaryName({}),
   'name.linkPrimary': (params) => primaryNameService.linkPrimaryName(params),
-  'name.unlinkPrimary': () => primaryNameService.unlinkPrimaryName({}),
+  'name.unlinkPrimary': (params) => primaryNameService.unlinkPrimaryName(params),
+  'name.getCachedDomains': (params) => primaryNameService.getCachedDomains(params),
+  'name.listDomains': (params) => primaryNameService.listDomains(params),
+  'name.trackDomain': (params) => primaryNameService.trackDomain(params),
+  'name.setPrimaryDomain': (params) => primaryNameService.setPrimaryDomain(params),
+  'name.untrackDomain': (params) => primaryNameService.untrackDomain(params),
+  'name.reverseLookup': (params) => primaryNameService.reverseLookup(params),
   // v22 official `.thru` registrar (first-party formats): reads are parse-proofed honesty,
   // writes are self-signed (signer = fee payer) registrar program calls at fee 0n.
   'name.getRegistry': () => registrarService.getRegistry(),
   'name.checkLease': (params) => registrarService.checkLease(params),
   'name.getPaymentBalance': () => registrarService.getPaymentBalance(),
-  'name.purchase': (params) => registrarService.purchaseDomain(params),
-  'name.renewLease': (params) => registrarService.renewLease(params),
-  'name.claimExpired': (params) => registrarService.claimExpiredDomain(params),
+  'name.purchase': (params) => registerAndRemember(registrarService.purchaseDomain, params),
+  'name.renewLease': (params) => (
+    params?.via === 'custom' ? registrarService.renewCustom(params) : registrarService.renewLease(params)
+  ),
+  'name.claimExpired': (params) => registerAndRemember(registrarService.claimExpiredDomain, params),
   // v25 custom registrar (contracts/thru-custom-registrar; evidence-pinned deployment):
   // candid reads mirror the v22 honesty contract — absence/mismatch is a declared state.
   'name.getCustomRegistrar': () => registrarService.getCustomRegistrar(),
@@ -232,6 +291,13 @@ const handlers = Object.assign(Object.create(null), {
   'tx.estimateFee': ({ toAddress, amountUnits }) => txService.estimateFee({ toAddress, amountUnits }),
   'tx.simulate': ({ toAddress, amountUnits }) => txService.simulate({ toAddress, amountUnits }),
   'tx.checkDuplicate': (params) => txService.checkDuplicate(params),
+
+  // ---- Contract v29: shared transaction review ---------------------------------
+  // Prepare/decode/review plus the confirm gate. None of these sign; the submit instructions
+  // they return name each operation's EXISTING signing method.
+  'tx.prepareReview': (params = {}) => reviewService.prepareReview(params),
+  'tx.confirmReview': (params = {}) => reviewService.confirmReview(params),
+  'tx.discardReview': (params = {}) => reviewService.discardReview(params),
 
   // ---- Tokens and launchpad --------------------------------------------
   'token.deploy': (params) => tokenService.deployToken(params),
@@ -261,7 +327,14 @@ const handlers = Object.assign(Object.create(null), {
   // toPublicNetwork strips BigInt fields, which JSON cannot serialize. Without it every
   // one of these fails at the message port with "Could not serialize message."
   'network.getActive': async () => networkService.toPublicNetwork(await networkService.getActiveNetworkConfig()),
-  'network.setActive': async ({ networkId }) => networkService.toPublicNetwork(await networkService.setActiveNetwork(networkId)),
+  // Same rule for the chain: a review prepared on one network cannot outlive the switch, even
+  // though the store is already keyed by network (that stops a cross-network confirm, not a
+  // return trip).
+  'network.setActive': async ({ networkId }) => {
+    const result = await networkService.setActiveNetwork(networkId);
+    await reviewService.discardAllReviews();
+    return networkService.toPublicNetwork(result);
+  },
   'network.list': async () => (await networkService.getAvailableNetworks()).map(networkService.toPublicNetwork),
   'network.upsertCustom': (params) => networkService.upsertCustomNetwork(params),
   'network.removeCustom': ({ networkId }) => networkService.removeCustomNetwork(networkId),
@@ -408,6 +481,54 @@ async function checkAuth(spec, params, method) {
   return null;
 }
 
+function stripConsentToken(params) {
+  if (!params || typeof params !== 'object' || !('consentToken' in params)) return params;
+  const { consentToken, ...rest } = params;
+  return rest;
+}
+
+const CONSENT_REFUSAL = {
+  missing: 'Signing needs a confirmed review. Review the transaction again.',
+  unknown: 'This confirmation is no longer valid. Review the transaction again.',
+  expired: 'This confirmation expired before it was signed. Review the transaction again.',
+  method: 'This confirmation was for a different action. Review the transaction again.',
+  params: 'These transaction details changed after the review. Review the transaction again.',
+  context: 'The account or network changed after the review. Review the transaction again.',
+};
+
+/**
+ * Require the consent a confirmed review mints, for every value-moving method.
+ *
+ * This is the background's own precondition, not a UI convention: without it, calling a signing
+ * method directly built, signed and broadcast with no review at all (the 2026-11-01 audit's
+ * finding 1). `retryable` is false — this is a definite refusal, never an unknown outcome, so the
+ * UI must say "review again", not "check the explorer".
+ *
+ * What it does not do: stop a caller that runs prepare -> confirm -> sign itself. No background
+ * service can distinguish a rendered card from a script; the threat model states that limit.
+ */
+async function requireConsent(method, params) {
+  if (!TRANSACTION_METHODS.has(method) || CONSENT_EXEMPT.has(method)) return null;
+  const account = await accountService.getActiveAccount();
+  const network = await networkService.getActiveNetworkConfig();
+  let outcome;
+  try {
+    outcome = await consumeConsent({
+      token: params?.consentToken,
+      method,
+      params,
+      accountAddress: account?.address ?? null,
+      networkId: network?.id ?? null,
+    });
+  } catch (error) {
+    // A broken token check must refuse, never fall through to signing.
+    console.error(`[api-router] consent check failed for ${method}:`, error);
+    return fail('REVIEW_REQUIRED', CONSENT_REFUSAL.unknown);
+  }
+  if (outcome.ok) return null;
+  return fail('REVIEW_REQUIRED', CONSENT_REFUSAL[outcome.reason] || CONSENT_REFUSAL.unknown);
+}
+
 /**
  * Handle an incoming API request from the UI bridge.
  * @param {Object} request - { id, method, params }
@@ -443,9 +564,17 @@ export async function handleApiRequest(request) {
   const authError = await checkAuth(spec, params, method);
   if (authError) return authError;
 
+  // Consent comes after auth (a locked wallet answers WALLET_LOCKED, not REVIEW_REQUIRED) and
+  // before the signing guard and the handler, so a refused call never reaches a service and never
+  // blocks an account switch. `consentToken` is stripped either way: no handler may see it, and
+  // no service may accidentally forward it into a transaction.
+  const consentError = await requireConsent(method, params);
+  if (consentError) return consentError;
+  const handlerParams = stripConsentToken(params);
+
   const releaseSigningOperation = TRANSACTION_METHODS.has(method) ? beginSigningOperation() : null;
   try {
-    const data = await handlers[method](params);
+    const data = await handlers[method](handlerParams);
     // Stamp only after a successful call so a locked-out unlock attempt cannot be used to
     // keep a session alive indefinitely. Background SYNC reads are exempt: the dashboard and
     // history screens poll these every second while a pending tx is on screen, and stamping

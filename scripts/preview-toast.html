@@ -1,0 +1,137 @@
+<!doctype html>
+<!--
+  Browser harness for the SHARED notification surface (`src/ui/kit/toast.js`). NOT shipped — dev
+  only, not referenced by manifest.json and not copied into dist/ by build.mjs.
+
+  WHY THIS EXISTS
+
+  `npm test` runs on a DOM shim with no layout engine. `test/test-toast.mjs` proves the blank-toast
+  defect cannot come back: a payload with no text renders nothing. It cannot prove what the toast
+  LOOKS like in a real popup — how tall the bar is, whether it covers the connection footer,
+  whether a two-line message wraps inside 400px, or whether the close button is reachable. AGENTS.md
+  hard rule 14 requires that look before a notification change ships, and the original defect was
+  reported from a screenshot, i.e. from exactly this layer.
+
+  Each frame is an <iframe> at the REAL popup size (400×600) and side-panel size (380×600), so the
+  host's `position: fixed` resolves against a viewport of that size, as it does in the extension.
+  Inside the frames: the real stylesheet (../dist/popup.css) and the real component
+  (../src/ui/kit/toast.js). No fixture markup, no mock component.
+
+  Usage:
+    npm run build
+    node scripts/serve-dist.mjs --root . --host 0.0.0.0     # this sandbox / LAN preview
+    # or: node scripts/serve-dist.mjs --root .              # loopback only
+    open http://localhost:8000/scripts/preview-toast.html
+
+  WHAT TO LOOK FOR (this is the checklist, not decoration)
+
+    1. THE FIXED DEFECT. "Transaction confirmed" — the Domain call that used to render an empty
+       bar — must show that sentence. Nothing on this page may produce a bar with no text.
+    2. HEIGHT. A one-line toast is a compact bar. The defect was ~42px of near-black chrome
+       wrapped around nothing.
+    3. PLACEMENT. Toasts sit at the bottom, ABOVE the connection footer. They must not cover the
+       footer's network control or the Send button.
+    4. STACKING. "Burst" fires four events; at most two remain visible and the oldest yields.
+    5. DEDUPE. Two "Primary name updated" events with the same key update one bar, not two.
+    6. PENDING. "Submitting…" has a spinner, stays until resolved, and turns into the verdict in
+       place — the bar does not stack or jump.
+    7. ERROR vs SUCCESS. An error is visually distinct (red rule + alert icon); a success must not
+       look like a warning.
+    8. BLANK GUARD. "Blank payloads" must render NOTHING. The verdict line under the buttons says
+       what the component reported.
+    9. KEYBOARD. Tab reaches the toast's action and close buttons; both show a focus ring. Escape
+       is NOT captured (a toast is not a dialog).
+   10. WIDTH. 400px is the real popup and 380px the side panel; the toast must fit both without
+       horizontal scrolling or clipped text.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>notification (toast) preview — 400px popup + 380px side panel</title>
+<style>
+  /* Harness chrome only. Nothing here styles the toast: the component is judged against the
+     shipped stylesheet alone, which is the point of the page. */
+  body { margin: 0; padding: 24px; background: #0f1214; color: #e8eef1;
+         font: 13px/1.5 ui-sans-serif, system-ui, sans-serif; }
+  h1 { font-size: 15px; margin: 0 0 4px; }
+  .harness-sub { color: #93a3ad; font-size: 12px; margin: 0 0 18px; max-width: 760px; }
+  .harness-row { display: flex; gap: 24px; align-items: flex-start; flex-wrap: wrap; }
+  .harness-col { display: flex; flex-direction: column; gap: 8px; }
+  .harness-label { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: #8b9aa4; }
+  iframe { border: 1px solid #2a343a; border-radius: 12px; background: #151b1e; display: block; }
+  .controls { display: flex; flex-direction: column; gap: 6px; width: 280px; }
+  .controls button { text-align: left; padding: 7px 10px; border-radius: 8px; cursor: pointer;
+                     background: #1d262b; color: #dbe5ea; border: 1px solid #2c383f; font: inherit; }
+  .controls button:hover { background: #24303a; }
+  .controls .danger { border-color: #5a2b2e; }
+  .controls .expect { color: #7f8f99; font-size: 11px; margin: -2px 0 4px; }
+  .verdict { min-height: 18px; font-size: 12px; color: #3fbfae; }
+  .verdict.bad { color: #ed787e; }
+  .note { color: #93a3ad; font-size: 11px; margin-top: 10px; }
+</style>
+</head>
+<body>
+<h1>Notification surface — the one toast every feature uses</h1>
+<p class="harness-sub">
+  Real component (<code>src/ui/kit/toast.js</code>), real stylesheet (<code>dist/popup.css</code>),
+  inside a 400×600 popup frame and a 380×600 side-panel frame. Each button fires the case in both
+  frames so the same state can be judged at both real widths.
+</p>
+
+<div class="harness-row">
+  <div class="harness-col">
+    <div class="harness-label">Popup (400 × 600)</div>
+    <iframe id="frame-popup" src="preview-toast-frame.html" width="400" height="600"
+            title="popup-sized toast frame"></iframe>
+  </div>
+  <div class="harness-col">
+    <div class="harness-label">Side panel (380 × 600)</div>
+    <iframe id="frame-panel" src="preview-toast-frame.html" width="380" height="600"
+            title="side-panel-sized toast frame"></iframe>
+  </div>
+
+  <div class="controls">
+    <button data-case="domain" class="danger">Domain: “Transaction confirmed” (the fixed defect)</button>
+    <span class="expect">Must show that sentence — before the fix this was an empty bar.</span>
+
+    <button data-case="success">Success</button>
+    <button data-case="info">Info</button>
+    <button data-case="warning">Warning</button>
+    <button data-case="error">Error (must look different from success)</button>
+    <button data-case="long">Long message (must wrap, not clip)</button>
+    <button data-case="action">With an action button</button>
+    <button data-case="pending">Pending → resolves in place</button>
+    <button data-case="dedupe">Repeated event (same key)</button>
+    <button data-case="burst">Burst (stacking cap)</button>
+    <button data-case="blank" class="danger">Blank payloads (must render NOTHING)</button>
+    <button data-case="clear">Clear all</button>
+
+    <div id="verdict" class="verdict"></div>
+    <p class="note">
+      Blank payloads call <code>toast('')</code>, <code>toast({})</code>, <code>toast({title:' '})</code>
+      and <code>toast(null)</code>. If any bar appears, the reported defect is back.
+    </p>
+  </div>
+</div>
+
+<script>
+  const frames = [...document.querySelectorAll('iframe')];
+  const verdict = document.getElementById('verdict');
+
+  for (const button of document.querySelectorAll('[data-case]')) {
+    button.addEventListener('click', () => {
+      for (const frame of frames) frame.contentWindow.postMessage({ type: 'toast-case', case: button.dataset.case }, '*');
+    });
+  }
+
+  window.addEventListener('message', (event) => {
+    const data = event.data;
+    if (!data || data.type !== 'toast-verdict') return;
+    if (data.case !== 'blank') { verdict.textContent = ''; verdict.className = 'verdict'; return; }
+    const bad = String(data.result || '').startsWith('REGRESSION');
+    verdict.textContent = `blank guard: ${data.result}`;
+    verdict.className = bad ? 'verdict bad' : 'verdict';
+  });
+</script>
+</body>
+</html>

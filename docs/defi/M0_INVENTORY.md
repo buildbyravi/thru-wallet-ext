@@ -4,6 +4,12 @@
 `89dc977` (contract surface) + `6314dcb` (fixtures/integrity gate) + docs commit.
 Gate spec: `thru-defi-backend.md` S13; corrections C-1..C-7 in `DECISIONS_G0.md` applied.
 
+> **State note (2026-10-28).** This file is the record of the M0 drop and is not edited
+> retroactively: the `v16 → v18` / `81 → 124` figures below describe 2026-10-05. The contract has
+> since advanced to **v29 / 147 methods / 15 routes** (see `docs/PROJECT_LEDGER.md` §1). The DeFi
+> flags remain OFF, so the gating conclusions here still hold; the DEX swap slice was briefly
+> enabled on 2026-10-25 live evidence and its UI was withdrawn by the owner on 2026-10-26.
+
 ## What M0 is (and is not)
 
 M0 is the **contract**, not the feature. The complete DeFi API surface is declared, validated,

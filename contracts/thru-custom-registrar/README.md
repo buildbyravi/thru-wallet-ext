@@ -3,8 +3,22 @@
 Side-by-side name registrar program for the Thru L1 (ThruVM / RISC-V), built to run
 next to the native name-service program — never replacing it. Owner directive
 2026-10-24: open public subdomain registration under our own namespace root with a
-protocol-collected fee (testnet: **1000 base units/year**; mainnet price decided later
-against the THRU market price, changed at runtime via `UpdateConfig`).
+protocol-collected fee. Owner directive 2026-10-30: the fee is **tiered by label length**
+and stored on-chain (Betanet intent: 3 chars = 100 000, 4 = 10 000, 5+ = 1 000 base units
+per YEAR), with the whole schedule changeable at runtime via `UpdateConfig`.
+
+> **State as of 2026-11-01 — read this before trusting anything below.**
+>
+> | | |
+> |---|---|
+> | Checked-in `.bin` | **33,714 bytes**, `sha256 f93c112b…35dd2`, built by the owner (`97cd33f`, `d4cd2ca`, `032c5f0`). It contains the tiered layout **and** the canonical-config-PDA enforcement. The Rust has not been compiled in the CI/sandbox that authored these docs (no `cargo`), so the source↔binary correspondence rests on the owner's build, not on a reproducible build here. |
+> | Deployed on Betanet | the **2026-10-31** build (30,000 bytes): tiered layout 2, `fee_policy = strict`, **without** the canonical-PDA check. Last deploy evidence: `scripts/defi-evidence/registrar-deploy-betanet-thru-1793443647724.json`. |
+> | So | **the chain is one build behind the repo.** Until the current `.bin` is deployed, `ERR_WRONG_CONFIG` (`0xD112`) cannot fire — and the strict-policy risk below is live on a program that never proved it can collect. |
+>
+> The first Register after the upgrade is the acceptance test. If the program address the VM executes
+> ever differed from the derivation this client computes, every Register fails with `0xD112`
+> (`ERR_WRONG_CONFIG`) — a loud, safe failure by design, but it means the upgrade must be followed by
+> one real registration, not just an Initialize.
 
 ```text
  user (signer, idx 0)
@@ -59,10 +73,11 @@ inside the `instructionData` callback (`scripts/registrar/*.mjs` shows exactly h
 
 | tag | ix           | body |
 |-----|--------------|------|
-| 0   | Initialize   | `u16 config_idx`, `u16 root_idx`, `u16 ns_idx`; `u64 fee_per_year`, `32 treasury`, `u32 root_name_len`, `root_name[32]` (zero-padded), `32 config_seed`, `u32 config_proof_len + proof`, `u32 root_proof_len + proof` (admin == fee payer idx 0) |
+| 0   | Initialize (SUPERSEDED) | the old flat-fee layout; **rejected with 0xD006** by name, so an out-of-date deploy client cannot install a config the price path cannot read |
+| 4   | InitializeV2 | `u16 config_idx`, `u16 root_idx`, `u16 ns_idx`; `u64 fee_3`, `u64 fee_4`, `u64 fee_5plus`, `u8 fee_policy`, `32 treasury`, `u32 root_name_len`, `root_name[32]` (zero-padded), `32 config_seed`, `u32 config_proof_len + proof`, `u32 root_proof_len + proof` (admin == fee payer idx 0) |
 | 1   | Register     | `u16 treasury_idx`, `u16 root_idx`, `u16 domain_idx`, `u16 lease_idx`, `u16 config_idx`, `u16 ns_idx`, `u16 target_idx` (may be 0 when the fee payer self-registers); `u16 duration_years`, `u32 label_len`, `label[32]`, `32 target_pubkey` (must equal accounts[target_idx].pubkey), `u32 domain_proof_len + proof`, `u32 lease_proof_len + proof` |
 | 2   | Renew        | `u16 treasury_idx`, `u16 lease_idx`, `u16 config_idx`; `u16 duration_years`, `u32 label_len`, `label[32]` |
-| 3   | UpdateConfig | `u16 config_idx`; `u8 mask` (bit0 fee, bit1 treasury), `u64 new_fee`, `32 new_treasury` |
+| 3   | UpdateConfig | `u16 config_idx`; `u8 mask` (bit0 treasury, bit1 fee_3, bit2 fee_4, bit3 fee_5plus, bit4 fee_policy), `32 new_treasury`, `u64 new_fee_3`, `u64 new_fee_4`, `u64 new_fee_5plus`, `u8 new_fee_policy` |
 
 Role sets per instruction (order in these lists is meaningless — the SDK sorts):
 
@@ -81,8 +96,20 @@ the values stored in the config account, and `accounts[target_idx]` must equal t
 
 State accounts (both owned by this program; magic discriminators `TCR1` / `RLS1`):
 
-- **RegistrarConfig** (144 B): `admin[32]`, `treasury[32]`, `fee_per_year u64`,
-  `root_address[32]`, `root_name[32]+len u8`, `bump u8`.
+- **RegistrarConfig** — two layouts, and the program reads both:
+  - **layout 1 (144 B)**, what the deployed program wrote: `admin[32]`, `treasury[32]`,
+    `fee_per_year u64`, `root_address[32]`, `root_name[32]+len u8`, `bump u8`. It reads as a
+    FLAT schedule (every tier = `fee_per_year`) with the best-effort policy, i.e. exactly the
+    behaviour it had — so shipping the new program does not change anyone's price.
+  - **layout 2 (176 B)** appends `fee_3_char u64`, `fee_4_char u64`, `fee_5plus_char u64`,
+    `fee_policy u8`. `fee_per_year` stays as a DERIVED mirror of `fee_5plus_char` so a
+    layout-1 reader shows the cheapest tier rather than zero. `UpdateConfig` grows a layout-1
+    account to 176 B in place (`account_resize`), so no re-initialisation is needed.
+- `fee_policy`: `0` best effort (the charge is attempted and a refusal is ignored — the
+  deployed behaviour), `1` strict (a refused charge reverts: `0xD206`, or `0xD207` when the
+  balance cannot cover it). **Strict is not the default anywhere**: the deployed program's
+  charge has only ever failed (VM `-10 AccountNotWritable`, surfaced as `0xD20A`), so it must
+  be switched on only after a charge is observed to land.
 - **DomainLease** (120 B): `owner[32]`, `resolver[32]`, `expires_at u64` (epoch s),
   `registered_at u64`, `label[32]+len u8`.
 
@@ -119,10 +146,46 @@ pinned `@thru/programs` deploy workflows — `scripts/registrar/deploy-and-init.
 It needs the owner host (live RPC is sandbox-blocked here):
 
 ```bash
+# 0) The checked-in .bin is already the current build (records the sha256 above). Rebuild it only
+#    if the source changed — and if you do, record the new sha256 in this file in the same commit.
+cargo build --release --bin thru-custom-registrar && rust-objcopy -O binary \
+  target/riscv64imac-unknown-none-elf/release/thru-custom-registrar \
+  thru-custom-registrar.bin
+
+# 0b) DEPLOY the new artifact (upgrade), then continue to step 1. Until this happens the chain
+#     runs the previous build; `deploy-and-init.mjs` only initializes/updates config.
+
+# 2) Deploy + initialize with the tiered schedule. Defaults are the Betanet intent;
+#    the policy starts at best-effort because strict can revert every registration
+#    until a charge is proven collectable (see below).
 THRU_SEED="..." node scripts/registrar/deploy-and-init.mjs \
-  --root thru --fee 1000 --treasury <OWNER_TREASURY_ADDRESS> \
+  --root thru --fee-3 100000 --fee-4 10000 --fee-5plus 1000 \
+  --fee-policy best-effort --treasury <OWNER_TREASURY_ADDRESS> \
   --bin contracts/thru-custom-registrar/target/riscv64imac-unknown-none-elf/release/thru-custom-registrar.bin
+
+# 3) Prove collection, then enforce it:
+#    a. --probe-collection prints and records the treasury balance;
+#    b. register one name for real (wallet or CLI);
+#    c. run the probe again and compare — a delta is the only evidence that counts;
+#    d. re-run with --fee-policy strict --collection-proven "<where you saw the delta>".
+THRU_SEED="..." node scripts/registrar/deploy-and-init.mjs --root thru \
+  --fee-policy strict --collection-proven "0.000001 THRU in treasury after tx <sig>" ...
 ```
+
+The script asserts, from a re-read of the chain, that the layout is 2, that the three tiers
+equal the requested schedule, and that the policy matches. A deployment that silently kept the
+old config therefore fails the run instead of looking successful.
+
+**It also refuses to run on somebody else's config.** `Initialize` is permissionless: the config
+address is derived from the program, so the first caller to reach it wins — an attacker can create
+it with their own `admin` and `treasury` before us, and the program's canonical-PDA check cannot
+prevent the *first* writer. The script therefore parses the config after Initialize (or on the
+"already exists" path) and requires `admin == this deployer` and `treasury == the requested
+treasury`, failing loudly otherwise. `configAdmin` and `configOwnershipVerified` are recorded in the
+evidence file.
+
+**Acceptance test after any upgrade:** one real `Register`. A successful Initialize proves the
+config, not the pricing path or the collection path.
 
 Live-verification happens on the owner host (same machine, `npm run test:live`
 pattern); nothing about this program is presented in the wallet UI until that evidence

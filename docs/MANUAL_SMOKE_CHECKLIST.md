@@ -1,6 +1,6 @@
 # Manual smoke checklist
 
-The automated suite includes `test/test-route-lifecycle.mjs`, which mounts all 14 routes in all
+The automated suite includes `test/test-route-lifecycle.mjs`, which mounts all 15 routes in all
 three vault states through the real Router, guards, bridge and kit and asserts route behavior,
 teardown, focus trapping and secret hygiene. `scripts/check-routes.mjs` checks route consistency
 and used CSS classes. These are specific deterministic checks, not a substitute for Chrome.
@@ -118,12 +118,12 @@ hash directly (`#/send`) where the UI has no link, so unmigrated or unreachable 
 | `/add-account` | HD preview renders; adding an account returns to `/accounts` | [ ] | [ ] |
 | `/keyring` | Source list, rename, backed-up state; `#/keyring?id=<id>` from Accounts | [ ] | [ ] |
 | `/export` | Password prompt before any secret; reveal shows the phrase; navigating away removes it (see §5) | [ ] | [ ] |
-| `/send` | Form appears after account/network metadata, without waiting for live balances or token reads; unknown/last-known balance is labelled and cannot unlock Max/Review; recipient validation, amount parsing, fee, confirmation and receipt work after verification | [x] | [ ] |
+| `/send` | Form appears after account/network metadata, without waiting for live balances or token reads; unknown/last-known balance is labelled and cannot unlock Max/Review; recipient validation, amount parsing, fee, confirmation and receipt work after verification. **Review is the shared v29 card** (header, amount, fee, warning, one confirm); Review stays disabled until the form is valid, and the card's confirm stays disabled while any blocking warning is shown | [x] | [ ] |
 | `/send` (token) | Pending reads say checking, failures say unknown (not zero); only a token with a verified positive balance and on-chain mint decimals is selectable; amount re-denominates correctly; review discloses recipient token-account init fee; MAX excludes broken values | [ ] | [ ] |
 | `/receive` | Address, QR renders in the raised Thru palette (gradient red tiles, slate finder eyes, ice paper) and scans from a phone; clicking the address box copies it, the box says \"Copied\", then returns to the address after ~1s | [ ] | [ ] |
 || `/faucet` | Claim state, disabled when already claimed, error when the network has no faucet; **rate-limit readout (v24)**: a "Faucet rate limit" note appears under the form with real per-rule usage and (unix-windowed) reset time when the policy is readable — pause/exhaustion disables the claim button, an exhausted window surfaces as a warning banner with reset time (verified vs the on-chain policy `BOOTSTRAP_FAUCET_RATE_LIMIT_POLICY_ADDRESS`, never fabricated), unknown/unreadable limit state stays silent and claiming stays possible | [ ] | [ ] |
 | `/history` | Cards form one flat stream without Today/Yesterday headers. A known block time appears as local-calendar `YYYY/MM/DD HH:mm` matching the detail sheet; a missing header falls back to `Block <slot>` (or an actual local submission time for an own send), not a made-up date. Same-numbered slots on two networks must not share dates. Entries, filter chips, "load more" appends instead of refetching; token sends appear as "Sent \<amount\> \<SYM\>", receipts as "Received …", mints as "Minted …", and a token-account init never appears as a THRU transfer; a confirmed send never appears BOTH in the list AND as a "Waiting for confirmation" Pending row | [ ] | [ ] |
-| `/name` | Domain screen mounts from the Domain tile in the services grid (same size as Send/Receive tiles) and is ENS-style: ONE hero search field — typing debounce-triggers a BACKGROUND on-chain availability check (typing never blocks); a linked name pre-fills the search and shows a compact badge at top (re-verify, unlink). With a `.thru` registry (paid flow): available → years stepper 1–10 + Register with live price (price/year × years from chain config + mint decimals); taken → owner + expiry; yours → renew armed; claimable → claim armed. WITHOUT a registry but WITH a canonical root on Betanet (today: `.id`): same debounced check via name lookup — available + **your account IS the root's authority** → "free" Register CTA armed (0n protocol fee, NO price/stepper); available but the root's authority is a DIFFERENT key (today: `.id` root is closed — live-verified 2026-10-24, chain reverts foreign signers with error 3) → plain "root is closed" state with the authority shown, NO Register CTA; taken → owner shown; yours → "Link as my name" armed; successful free register then links as primary best-effort. The search suffix (.thru/.id) comes from the chain, not a string constant. Neither registry nor root → plain reason, nothing clickable. Password sheet Cancel signs/broadcasts NOTHING (name.register is auth:signing since v23) **v25 custom registrar provider**: when the evidence-pinned deployment exists on the network (Betanet: `.thru` custom @1000 base units/yr) a provider toggle appears above the status line with one pill per offered route (`.thru — 1000 base units/yr` / `.id — free (0n)`); switching re-arms the card: placeholder/title/status copy follow the ACTIVE provider's root. Custom mode: available → years stepper 1–10 + Register armed with `years × feePerYear` quoted from the on-chain config (base units, treasury shown); taken → owner + expiry; yours → "Link as my name"; expired lease → honest "claim/renew not yet wired" with NO CTA (only Register is live-verified 2026-10-25); domain-existing-without-lease → honest taken-by-domain; config absent/unparseable or root-mismatch → provider tile omitted. Successful custom register links as primary best-effort; the write is `name.register (via=custom, years)` — still auth:signing, fee 0n header, the program charges its own fee to the config treasury (best-effort on native EOAs on Betanet — the quote line says so) | [ ] | [ ] |
+| `/name` | Domain screen mounts from the Domain tile in the services grid (same size as Send/Receive tiles) and is ENS-style: ONE hero search field — typing debounce-triggers a BACKGROUND on-chain availability check (typing never blocks); a linked name pre-fills the search and shows a compact badge at top (re-verify, unlink). With a `.thru` registry (paid flow): available → years stepper 1–10 + Register with live price (price/year × years from chain config + mint decimals); taken → owner + expiry; yours → renew armed; claimable → claim armed. WITHOUT a registry but WITH a canonical root on Betanet (today: `.id`): same debounced check via name lookup — available + **your account IS the root's authority** → "free" Register CTA armed (0n protocol fee, NO price/stepper); available but the root's authority is a DIFFERENT key (today: `.id` root is closed — live-verified 2026-10-24, chain reverts foreign signers with error 3) → plain "root is closed" state with the authority shown, NO Register CTA; taken → owner shown; yours → "Link as my name" armed; successful free register then links as primary best-effort. The search suffix (.thru/.id) comes from the chain, not a string constant. Neither registry nor root → plain reason, nothing clickable. Password sheet Cancel signs/broadcasts NOTHING (name.register is auth:signing since v23) **v25 custom registrar provider**: when the evidence-pinned deployment exists on the network (Betanet: `.thru` custom @1000 base units/yr) a provider toggle appears above the status line with one pill per offered route (`.thru — 1000 base units/yr` / `.id — free (0n)`); switching re-arms the card: placeholder/title/status copy follow the ACTIVE provider's root. Custom mode: available → years stepper 1–10 + Register armed with `years × price(label length)` quoted from the on-chain config — 3-char / 4-char / 5+-char tiers, never a UI constant (base units, treasury shown); when the config's `fee_policy` is best-effort the quote line is suffixed "· not enforced on-chain" and the CTA is NOT disabled by a shortfall (the wallet cannot promise a debit it cannot see), while a strict config disables the CTA on an insufficient balance; taken → owner + expiry; yours → "Link as my name"; expired lease → honest "claim/renew not yet wired" with NO CTA (only Register is live-verified 2026-10-25); domain-existing-without-lease → honest taken-by-domain; config absent/unparseable or root-mismatch → provider tile omitted. Successful custom register links as primary best-effort; the write is `name.register (via=custom, years)` — still auth:signing, fee 0n header, the program charges its own fee to the config treasury (enforcement follows the on-chain `fee_policy`; on the currently deployed best-effort config the quote line says the charge is not enforced) | [ ] | [ ] |
 | `/history` detail sheet (P2) | Tapping a card opens the sheet from the bottom; it shows the tapped transaction (not a neighbour), full signature copies to clipboard, the displayed explorer link opens in a new tab, and Escape/backdrop close it with focus returning to the card. **Live-chain checks remain open for the current path:** the optional block-time lookup/provenance and first-load latency must be checked on an enabled network; a prior Alphanet detail-sheet observation (2026-09-20) is historical evidence, not certification of the v12 cache/feed path or every RPC. A node may omit block time; in that case the list must use an actual own-send submission time or `Block <slot>`, never the current clock or another entry's date. Confirm the detail row says **"Fee (declared)"** and does not claim a charged fee. The list card has no per-card fee line. Verify the live explorer route before treating it as supported. | [ ] | [ ] |
 | `/history` detail sheet — overflow (REGRESSION) | Open a sheet with EVERY row present (status, amount, counterparty, network, block, block time, fee, program) and a signature long enough to wrap. The sheet must **scroll**, and the last row (`Program`) must be readable in full. No row may be sliced horizontally, and the fee note must not sit on top of a clipped row. This shipped broken once: flex children compressed instead of overflowing, so `.detail-table` clipped its own last rows and no scrollbar appeared — see `docs/DEFECT_LOG.md`. The DOM shim has no layout engine and **cannot** catch this; `scripts/preview-tx-sheet.html` renders both states side by side. | [ ] | [ ] |
 | `/history` detail sheet — keyboard | Tab reaches a card (visible focus ring), Enter AND Space both open it, Tab wraps inside the sheet without reaching the list behind it, Escape closes. Clicking the in-card copy button or explorer icon must NOT also open the sheet. | [ ] | [ ] |
@@ -298,7 +298,53 @@ wallet; never paste a real seed into DevTools or its command history:
 4. With a **1 min** window, sit on the send review screen and move the pointer occasionally:
    the wallet must NOT lock while you are actively using it (presence counts as activity).
 
-## 7. Recording the result
+## 7. The shared review card (v29) — never opened in a real browser
+
+Every value-moving screen now shows the SAME card (`src/ui/domain/tx-review/review-card.js`): Send,
+Send token, `/name` register/purchase/renew/claim, `/faucet` claim. There is no browser evidence for
+it yet — `scripts/preview-tx-review.html` renders eight fixtures against the real `dist/` CSS and the
+real component, but the shim has no layout engine. Run these with a funded Betanet account and an
+amount you are willing to send.
+
+- [ ] **Simple transfer must not look like DeFi.** On `/send`, the card shows exactly: the operation
+  name + network badge, a one-line program identity, one signed "You pay" box with the exact amount,
+  and ONE table — From, To (label when matched plus the FULL address), Amount, `Network fee
+  (estimated)` or `Not quoted`, and `Total` — followed by `Advanced details ›`. No prose summary, no
+  "balance after" row, no separate fee/simulation/execution sections. If any of those appear, treat
+  it as a defect against `docs/DEFECT_LOG.md` §11.
+- [ ] **Header identity.** Network pill says Betanet, the program line names the program and the
+  signing account, the account is the source account you selected, and a verified/matched recipient
+  label is visibly distinguished from the raw address.
+- [ ] **Fee honesty.** The fee row is labelled as an estimate or `Not quoted`; measured/assumed
+  provenance and the reserve appear under `Advanced details`. A token transfer says the fee is
+  unmeasured (it is never borrowed from the native path). Nothing shows a charged fee before it is
+  charged.
+- [ ] **Simulation is absent, not faked.** No post-transaction balance, no "simulated" success state,
+  and no balance-after row appears; `Advanced details` says `Simulation: Not available` with the
+  reason. If a balance is ever predicted, treat it as a defect.
+- [ ] **Expandable details.** The single disclosure is closed by default (open for an undecoded
+  transaction), expands with the keyboard (Enter/Space), shows the program address/provenance, the
+  decoded instruction, account roles, fee provenance, simulation status and the raw-bytes toggle, and
+  does not push the confirm button off-screen at 400px. Collapse returns focus to the disclosure
+  control.
+- [ ] **Warnings block.** Trigger a blocking state if one is reachable (e.g. a stale review after a
+  network switch in another trusted page): the confirm control is disabled, the reason is stated, and
+  Cancel is still available.
+- [ ] **Single-use confirm.** Confirm once and wait for the result: the card leaves the review state
+  and cannot be re-submitted. A second attempt on the same review must not broadcast twice.
+- [ ] **Failure keeps the review.** A definite broadcast/validation failure shows the error and leaves
+  the same reviewed facts on screen for a retry (no silent amount/recipient change).
+- [ ] **Timeout is unknown.** If the bridge times out, the UI says the outcome is unknown and does not
+  offer a retry that would double-send. Check History afterwards rather than assuming failure.
+- [ ] **Password re-auth.** With Settings → Signing → Require password ON, Confirm opens the password
+  prompt; Cancel there signs NOTHING and returns to the card. With it OFF, an unlocked wallet
+  confirms without a prompt (D-003 default unchanged).
+- [ ] **`/name` variants.** Register (custom registrar), purchase, renew and claim each show their own
+  facts (years, price, expiry) with no Send rows. A name action must never render as a transfer.
+- [ ] **Faucet.** Claim shows the reviewed claim facts; a paused/exhausted faucet disables claiming at
+  the form, before any review exists.
+
+## 8. Recording the result
 
 Copy this block into the PR description and fill it in. An unchecked box with a reason is far more
 useful than a silently skipped section.
@@ -306,7 +352,10 @@ useful than a silently skipped section.
 ```
 Manual smoke: <date>, Chrome <version>, build <git short sha>
   contexts: popup [ ] side panel [ ]    widths: narrow (<400px) [ ] wide (>=800px) [ ]
-  routes: 14/14 [ ]   redirects [ ]   keyboard/focus [ ]   secret hygiene [ ]
+  routes: 15/15 [ ]   redirects [ ]   keyboard/focus [ ]   secret hygiene [ ]
+  review card: simple-transfer [ ]   fee honesty [ ]   no-simulation [ ]   details/keyboard [ ]
+               blocking-warning [ ]   single-use [ ]   failure-retry [ ]   timeout-unknown [ ]
+               password [ ]   name variants [ ]   faucet [ ]
   browser: mutual exclusion [ ]   QR/layout [ ]   worker lifecycle [ ]
   live chain: v12 activation [ ]   token owner/fee [ ]   block time/latency [ ]   explorer route [ ]
   registrar (host scripts): cargo host tests [ ]   deploy+initialize [ ]   live register probe [ ]   (faucet ceiling: CLOSED 2026-10-24 — cap is exactly 10 000)

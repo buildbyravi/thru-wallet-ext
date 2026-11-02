@@ -52,6 +52,22 @@ export function formatTokenAmount(rawUnits, decimals = 9) {
 }
 
 /**
+ * Render base units with an asset's own scale, symbol included — the ONE place the "THRU uses
+ * the 9-decimal formatter" special case lives. Decoders (shared) and the review card (ui) both
+ * call this, so a fee row and a balance row can never disagree about the same number.
+ *
+ * Throws on a non-integer input; callers that may hold `null` must decide what to show first.
+ */
+export function formatAssetAmount(amountUnits, decimals, symbol) {
+  const scale = Number(decimals);
+  const units = typeof amountUnits === 'bigint' ? amountUnits : BigInt(amountUnits);
+  const text = scale === 9 && symbol === 'THRU'
+    ? formatThru(units)
+    : formatTokenAmount(units, scale);
+  return `${text} ${symbol}`;
+}
+
+/**
  * Parse a human-entered token amount (e.g. "1.5") into raw units for a mint with the given
  * decimals. Same no-float discipline as parseThruAmount — the only difference is the scale.
  */
@@ -75,8 +91,40 @@ export function parseTokenAmount(input, decimals = 9) {
   return units;
 }
 
-/** Truncate a Thru address for display: ta12345678…abcdef */
+/**
+ * Shorten an opaque identifier for display: `head…tail`.
+ *
+ * THE one implementation of "this string is too long for this row". It had six copies
+ * (routes/name.js, domain/account-avatar.js, domain/token-drawer.js, domain/tx-card.js,
+ * domain/tx-review/review-card.js and a decoder) before 2026-10-30, each with its own head/tail
+ * and its own idea of when a value is "short enough" — so the same address could read two
+ * different ways on two screens, and a short string could be made LONGER by truncation.
+ *
+ * A value is only shortened when the result is genuinely shorter: `head + tail + 4` must fit
+ * inside it (the 4 covers the ellipsis and the two visible edge characters that make the value
+ * recognisable). `tail: 0` drops the tail entirely.
+ *
+ * Display only. Never use the result to compare, look up or send anything: the caller keeps the
+ * full value, and any surface that truncates must expose the whole string in `title`/`aria-label`
+ * or in the detail view.
+ */
+export function shortenMiddle(value, { head = 8, tail = 6 } = {}) {
+  const text = value == null ? '' : String(value);
+  const h = Math.max(0, Math.trunc(head));
+  const t = Math.max(0, Math.trunc(tail));
+  if (text.length <= h + t + 4) return text;
+  return t ? `${text.slice(0, h)}…${text.slice(-t)}` : `${text.slice(0, h)}…`;
+}
+
+/** An address, shortened the way the wallet's address rows want it: ta12345678…abcdef. */
+export function shortAddress(address, { head = 8, tail = 6 } = {}) {
+  return shortenMiddle(address, { head, tail });
+}
+
+/**
+ * @deprecated Use `shortAddress` (same output, better name). Kept because four surfaces call it
+ * by this name; it is now a one-line alias of the single implementation above, not a second one.
+ */
 export function truncateAddress(address) {
-  if (!address || address.length <= 18) return address || '';
-  return `${address.slice(0, 8)}…${address.slice(-6)}`;
+  return shortAddress(address, { head: 8, tail: 6 });
 }

@@ -7,7 +7,9 @@
 // add `.open` on the next frame, close-exactly-once, destroy owned components, dispose listeners,
 // remove the node, call onClose. Three copies means three places to fix the next focus bug.
 // security-sheet.js and token-drawer.js now use this; migrating password-prompt.js and
-// tx-detail-sheet.js is a mechanical follow-up (see docs/06_MODULAR_REUSE_AUDIT.md).
+// tx-detail-sheet.js is a mechanical follow-up (see docs/audits/2026-10-30-shared-platform-audit.md
+// §3 and §6 — deferred there because an overlay layout change needs a real browser, which this
+// repository's agent environments do not have).
 //
 // Contract (same shape as every kit component: el + destroy):
 //

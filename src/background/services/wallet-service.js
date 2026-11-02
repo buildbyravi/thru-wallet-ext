@@ -8,6 +8,8 @@ import * as pending from './pending-tx-service.js';
 import { emitLockStateChanged } from './event-service.js';
 import { registerCreatedAccount } from './registration-service.js';
 import { getActiveNetworkId } from './network-service.js';
+import * as reviewStore from './review/store.js';
+import { clearConsents } from './review/consent.js';
 
 /**
  * Check whether an encrypted vault exists on device.
@@ -29,6 +31,11 @@ export async function isUnlocked() {
  * @returns {Promise<{ mnemonic: string, address: string }>}
  */
 export async function createVault(password) {
+  if (await vault.hasVault()) {
+    const error = new Error('A wallet already exists on this device. Reset it first to replace it.');
+    error.code = 'VAULT_EXISTS';
+    throw error;
+  }
   const networkId = await getActiveNetworkId();
   const mnemonic = await vault.createVault(password);
   const active = await vault.getActiveAccount();
@@ -47,6 +54,11 @@ export async function createVault(password) {
  * @returns {Promise<{ address: string }>}
  */
 export async function importMnemonicVault(mnemonic, password) {
+  if (await vault.hasVault()) {
+    const error = new Error('A wallet already exists on this device. Reset it first to replace it.');
+    error.code = 'VAULT_EXISTS';
+    throw error;
+  }
   const networkId = await getActiveNetworkId();
   const result = await vault.importMnemonicVault(mnemonic, password);
   void registerCreatedAccount((await vault.getActiveAccount()).address, networkId);
@@ -60,6 +72,11 @@ export async function importMnemonicVault(mnemonic, password) {
  * @returns {Promise<{ address: string }>}
  */
 export async function importPrivateKeyVault(privateKeyHex, password) {
+  if (await vault.hasVault()) {
+    const error = new Error('A wallet already exists on this device. Reset it first to replace it.');
+    error.code = 'VAULT_EXISTS';
+    throw error;
+  }
   const networkId = await getActiveNetworkId();
   const result = await vault.importPrivateKeyVault(privateKeyHex, password);
   void registerCreatedAccount((await vault.getActiveAccount()).address, networkId);
@@ -107,10 +124,30 @@ export async function unlock(password) {
 
 /**
  * Re-verify the master password without changing lock state.
+ * Throttled using the same exponential backoff lockout as unlock, preventing brute-force guesses.
  * @param {string} password
  */
 export async function verifyPassword(password) {
-  return vault.verifyMasterPassword(password);
+  await auth.assertUnlockAllowed();
+  try {
+    const result = await vault.verifyMasterPassword(password);
+    await auth.recordSuccess();
+    return result;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/incorrect password/i.test(message)) {
+      const { retryInMs } = await auth.recordFailure();
+      if (retryInMs > 0) {
+        const seconds = Math.ceil(retryInMs / 1000);
+        const err = new Error(
+          `Incorrect password. Too many attempts — try again in ${seconds} second${seconds === 1 ? '' : 's'}.`,
+        );
+        err.code = 'AUTH_LOCKED_OUT';
+        throw err;
+      }
+    }
+    throw error;
+  }
 }
 
 /**
@@ -131,10 +168,37 @@ export async function removeLegacyBackup(password) {
 
 /**
  * Lock the wallet, destroying the session key in memory.
+ *
+ * Every lock path MUST come through here — the UI's `wallet.lock`, the auto-lock alarm, and
+ * anything added later. A lock ends the session the user's approval was given in, so prepared
+ * reviews are discarded with it (Hard rule 21). This used to live only in the router's
+ * `wallet.lock` handler, which meant the auto-lock alarm locked the vault and left a 120-second
+ * review sitting in storage for a wallet that had just been locked (2026-11-01 audit).
+ *
+ * A failure to clear must never block the lock itself: the vault lock is the security action, and
+ * it has already happened. The outcome is returned so a caller/test can see it rather than assume.
  */
 export async function lock() {
   await vault.lock();
+  const reviews = await discardPreparedReviews();
   emitLockStateChanged(false);
+  return reviews;
+}
+
+/**
+ * Drop every prepared review AND every consent token they minted. Both modules are leaves
+ * (shared modules only), so importing them here adds no service edge and cannot extend the known
+ * services cycle. Clearing one without the other would let a token minted before a lock be spent
+ * after it — the reviews would be gone but the approval would still be live.
+ */
+async function discardPreparedReviews() {
+  const consents = clearConsents();
+  try {
+    const result = await reviewStore.clearAll();
+    return { ...result, consents: consents.cleared };
+  } catch (error) {
+    return { cleared: 0, consents: consents.cleared, error: String(error?.message ?? error) };
+  }
 }
 
 /**
@@ -174,6 +238,20 @@ export async function resetWallet({ confirmation, password } = {}) {
   await auth.clearLockout();
   await balances.clearAllCaches();
   await pending.clearAll();
+
+  // Clear all wallet-associated persistent storage so no contacts, labels, caches,
+  // reviews, intents, or tracked domains survive into a new wallet.
+  try {
+    if (typeof chrome.storage?.local?.clear === 'function') {
+      await chrome.storage.local.clear();
+    } else {
+      const all = await chrome.storage.local.get(null);
+      await chrome.storage.local.remove(Object.keys(all || {}));
+    }
+    await chrome.storage.session.clear().catch(() => {});
+  } catch {
+    // ignore storage cleanup error
+  }
   emitLockStateChanged(false);
 }
 

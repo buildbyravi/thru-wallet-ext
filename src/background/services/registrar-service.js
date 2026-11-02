@@ -55,12 +55,6 @@ async function fetchAccountData(address) {
   return { exists: true, data, raw };
 }
 
-function accountOwner(raw) {
-  const owner = raw?.meta?.owner ?? raw?.owner ?? null;
-  if (!owner) return null;
-  try { return String(owner); } catch { return null; }
-}
-
 /**
  * name.getRegistry — read the registrar config account (derived, official formula) and
  * parse it. Absence is a supported:false answer, not an error: networks where the `.thru`
@@ -81,11 +75,12 @@ export async function getRegistry() {
   } catch (err) {
     return { supported: false, reason: `registry config present but unreadable (${err?.message ?? err})`, configAddress };
   }
-  const owner = accountOwner(raw);
-  if (owner && owner !== reg.THRU_REGISTRAR_PROGRAM) {
+  const owner = thruClient.getAccountOwnerAddress(raw);
+  if ((raw?.meta?.owner ?? raw?.owner) != null && owner !== reg.THRU_REGISTRAR_PROGRAM) {
     return {
       supported: false,
-      reason: `registry config is owned by ${owner.slice(0, 12)}…, not the registrar program — refusing to read it as a registry`,
+      reason: owner ? `registry config is owned by ${owner.slice(0, 12)}…, not the registrar program — refusing to read it as a registry`
+        : 'Registry program ownership could not be verified.',
       configAddress,
     };
   }
@@ -267,6 +262,7 @@ export async function purchaseDomain({ name, years, expectedNetworkId, expectedA
   return submitAndAwait(rawTransaction, {
     kind: 'name-purchase', from: feePayer.address,
     displayAmount: `${totalPrice} payment-token base units — purchase '${n}.${cfg.rootName}' (${y}y)`,
+    result: { name: n, domainAddress, rootAddress: cfg.rootRegistrar },
   });
 }
 
@@ -353,6 +349,7 @@ async function renewOrClaim({ name, years, claim, expectedNetworkId, expectedAcc
   return submitAndAwait(rawTransaction, {
     kind: claim ? 'name-claim' : 'name-renew', from: feePayer.address,
     displayAmount: `${totalPrice} payment-token base units — ${claim ? 'claim' : 'renew'} '${n}.${cfg.rootName}' (${y}y)`,
+    result: { name: n, domainAddress: await domainAccountAddress(cfg.rootRegistrar, n), rootAddress: cfg.rootRegistrar },
   });
 }
 
@@ -375,7 +372,8 @@ async function submitAndAwait(rawTransaction, { kind, from, displayAmount, error
         }
         const userCode = update.executionResult.userErrorCode ?? 0;
         const decoded = userCode && describeError ? describeError(Number(userCode)) : null;
-        throw coded('REGISTRAR_TX_REVERTED', `Registration transaction reverted on-chain (vmError=${update.executionResult.vmError}${userCode ? `, ${errorNoun} error ${userCode}${decoded ? ` — ${decoded}` : ''}` : ''}).`);
+        const opLabel = kind && kind.includes('renew') ? 'Renewal' : 'Registration';
+        throw coded('REGISTRAR_TX_REVERTED', `${opLabel} transaction reverted on-chain (vmError=${update.executionResult.vmError}${userCode ? `, ${errorNoun} error ${userCode}${decoded ? ` — ${decoded}` : ''}` : ''}).`);
       }
     }
   } catch (err) {
@@ -418,8 +416,27 @@ function tcrCoded(code, message, extra = {}) { return coded(code, message, extra
  * config account is absent/unparseable; otherwise the fully parsed config plus a
  * root-derivation cross-check (config.rootAddress == name-service derivation of rootName;
  * a mismatch is surfaced, never silently armed).
+ *
+ * Tiered pricing (2026-10-30): the config carries a per-YEAR price for each label length
+ * bucket — `fee3PerYear`, `fee4PerYear`, `fee5PlusPerYear` — plus `feePolicy`/`feeEnforced`.
+ * `feePerYear` is kept as the cheapest tier for older callers, but a quote for a NAME must go
+ * through `pricePerYearFor(info, label)`, because the tier depends on the label's length. A
+ * price is a CHARGE only when `feeEnforced` is true.
  */
-export async function getCustomRegistrar() {
+// In-memory cache for custom registrar config. The on-chain config (bytecode deployment,
+// fee schedule, treasury address) is static deployment data that does not change between
+// keystrokes; caching it for 15s avoids redundant sequential RPC calls during review preparation.
+let cachedCustomRegistrar = null;
+let cachedCustomRegistrarKey = null;
+let cachedCustomRegistrarExpiresAt = 0;
+
+export function clearCustomRegistrarCache() {
+  cachedCustomRegistrar = null;
+  cachedCustomRegistrarKey = null;
+  cachedCustomRegistrarExpiresAt = 0;
+}
+
+export async function getCustomRegistrar({ skipCache = false } = {}) {
   const network = await getActiveNetworkConfig(); // bind SDK to the active network first
   const program = network.customRegistrarProgram ?? null;
   if (!program) {
@@ -430,6 +447,12 @@ export async function getCustomRegistrar() {
       program: null,
     };
   }
+
+  const cacheKey = `${network.id}:${program}`;
+  if (!skipCache && cachedCustomRegistrar && cachedCustomRegistrarKey === cacheKey && Date.now() < cachedCustomRegistrarExpiresAt) {
+    return cachedCustomRegistrar;
+  }
+
   const configAddress = tcr.tcrConfigAddress(program);
   const read = await fetchAccountData(configAddress).catch((err) => {
     throw tcrCoded('TCR_CONFIG_UNREADABLE', `Could not read the custom registrar config: ${err?.message ?? err}`, { retryable: true });
@@ -445,7 +468,7 @@ export async function getCustomRegistrar() {
   }
   const derivedRoot = await rootRegistrarAddress(cfg.rootName);
   const rootMatchesNameService = derivedRoot === cfg.rootAddress;
-  return {
+  const result = {
     supported: true,
     networkId: network.id,
     program,
@@ -453,10 +476,46 @@ export async function getCustomRegistrar() {
     root: cfg.rootAddress,
     rootName: cfg.rootName,
     rootMatchesNameService,
-    feePerYear: cfg.feePerYear.toString(),
+    // Pricing, as the config declares it. `feePerYear` remains the cheapest tier so older
+    // callers keep working, but a quote for a NAME must use `pricePerYearFor(info, label)` — the tier depends
+    // on the label's length.
+    layout: cfg.layout,
+    feePolicy: cfg.feePolicy,
+    feePolicyName: cfg.feePolicyName,
+    // A price is only a CHARGE when the program enforces collection. Best-effort means the
+    // program attempts the debit and ignores a refusal (what the deployed program does), so
+    // the UI must not promise it.
+    feeEnforced: cfg.feePolicy === tcr.TCR_FEE_POLICY.strict,
+    fee3PerYear: cfg.fee3PerYear.toString(),
+    fee4PerYear: cfg.fee4PerYear.toString(),
+    fee5PlusPerYear: cfg.fee5PlusPerYear.toString(),
+    feePerYear: cfg.fee5PlusPerYear.toString(),
     treasury: cfg.treasury,
     admin: cfg.admin,
   };
+
+  cachedCustomRegistrar = result;
+  cachedCustomRegistrarKey = cacheKey;
+  cachedCustomRegistrarExpiresAt = Date.now() + 15_000;
+  return result;
+}
+
+/**
+ * Price of ONE YEAR for a label, from a registrar info object. The tier is a property of the
+ * label's LENGTH (3 / 4 / 5+), decided by the program's own config, not by the UI.
+ */
+export function pricePerYearFor(info, label) {
+  const n = String(label ?? '');
+  if (n.length === 3) return BigInt(info.fee3PerYear);
+  if (n.length === 4) return BigInt(info.fee4PerYear);
+  if (n.length >= 5) return BigInt(info.fee5PlusPerYear);
+  throw tcrCoded('INVALID_NAME', `cannot price a ${n.length}-character label (3–${tcr.TCR_MAX_LABEL})`);
+}
+
+/** price × years for a label, checked against the declared schedule. */
+export function totalForTerm(info, label, years) {
+  const y = Number(years);
+  return pricePerYearFor(info, label) * BigInt(y);
 }
 
 /**
@@ -468,8 +527,8 @@ export async function getCustomRegistrar() {
  *     a display hint only; the program's own judgement is authoritative at write time.
  *   - domain-existing-without-lease is a distinct truth ("another authority got there").
  */
-export async function checkCustomLease({ name } = {}) {
-  const info = await getCustomRegistrar();
+export async function checkCustomLease({ name, registrarInfo = null } = {}) {
+  const info = registrarInfo || await getCustomRegistrar();
   if (!info.supported) return info;
   const n = String(name ?? '').trim().toLowerCase();
   const prob = tcr.labelProblem(n);
@@ -551,17 +610,18 @@ export async function registerCustom({ name, years, expectedNetworkId, expectedA
       `'${n}.${info.rootName}' cannot be registered: ${state}. Renew/claim through the custom registrar is not yet wired into the wallet — only Register was live-verified (2026-10-25). Nothing was broadcast.`);
   }
 
-  // Fee quote from the chain-read config (best-effort note: on unowned EOAs ThruVM skips
-  // the in-program debit — see the section comment; the quote is still what the program
-  // INTENDS to charge, and a native balance shortfall elsewhere reverts honestly).
-  const feePerYear = BigInt(info.feePerYear);
+  // Tiered quote from the chain-read config: the tier is the LABEL's length, decided by the
+  // program. `feeEnforced` says whether a refusal can be ignored by the program (best-effort)
+  // or reverts it (strict) — the message and the balance gate both follow it, because
+  // refusing a registration the program would happily accept is its own kind of lie.
+  const feePerYear = pricePerYearFor(info, n);
   const totalFee = feePerYear * BigInt(y);
 
   // The signer must exist on-chain (same reason claimFaucet JIT-activates).
   const payerInfo = await thruClient.getAccountInfo(feePayer.address);
   if (!payerInfo.exists) {
     await thruClient.createOnChainAccount(feePayer);
-  } else if (payerInfo.balance != null && payerInfo.balance < totalFee) {
+  } else if (info.feeEnforced && payerInfo.balance != null && payerInfo.balance < totalFee) {
     throw tcrCoded('INSUFFICIENT_FUNDS',
       `The registrar charges ${totalFee} base units (${feePerYear}/yr × ${y}y); your account holds ${payerInfo.balance}.`);
   }
@@ -594,7 +654,9 @@ export async function registerCustom({ name, years, expectedNetworkId, expectedA
       expiryAfter: 10_000,
     },
     accounts: {
-      readWrite: [info.treasury, info.root, domainAddress, leaseAddress],
+      // The FEE PAYER is listed writable: it is the transfer source (`account_transfer(0, …)`),
+      // and the deployed program's charge was refused with -10 AccountNotWritable (0xD20A).
+      readWrite: [feePayer.address, info.treasury, info.root, domainAddress, leaseAddress],
       readOnly: [info.configAddress, NAME_SERVICE_PROGRAM],
     },
     instructionData: ({ getAccountIndex }) => tcr.buildTcrRegisterInstructionData({
@@ -617,9 +679,91 @@ export async function registerCustom({ name, years, expectedNetworkId, expectedA
   return submitAndAwait(rawTransaction, {
     kind: 'name-custom-register',
     from: feePayer.address,
-    displayAmount: `${totalFee} base units (program fee, best-effort — see docs) — register '${n}.${info.rootName}' (${y}y) via the custom registrar`,
+    displayAmount: `${totalFee} base units (${info.feeEnforced ? 'registrar fee' : 'declared registrar fee, best-effort'}) — register '${n}.${info.rootName}' (${y}y) via the custom registrar`,
     errorNoun: 'custom registrar',
     describeError: (code) => tcr.describeTcrError(code),
-    result: { domainAddress },
+    result: { name: n, domainAddress, rootAddress: info.root },
+  });
+}
+
+/**
+ * name.renewLease with `via: 'custom'` — extend an existing lease via the custom registrar.
+ */
+export async function renewCustom({ name, years, expectedNetworkId, expectedAccountAddress, expectedPricePerYear, expectedLeaseEndTime } = {}) {
+  const n = String(name ?? '').trim().toLowerCase();
+  const prob = tcr.labelProblem(n);
+  if (prob) throw tcrCoded('INVALID_NAME', prob);
+  const yp = tcr.yearsProblem(years);
+  if (yp) throw tcrCoded('INVALID_YEARS', yp);
+  const y = Number(years);
+
+  const feePayer = await vault.getActiveAccount();
+  const network = await getActiveNetworkConfig(); // bind before building/signing
+  const info = await getCustomRegistrar();
+  if (!info.supported) throw tcrCoded('TCR_ABSENT', info.reason ?? 'custom registrar unavailable on this network');
+  if (!info.rootMatchesNameService) {
+    throw tcrCoded('TCR_ROOT_MISMATCH', 'the registrar config root does not match the name-service derivation');
+  }
+  assertReviewContext({ expectedNetworkId, expectedAccountAddress, expectedPricePerYear }, network, feePayer, info);
+
+  const check = await checkCustomLease({ name: n });
+  if (check.readError) throw tcrCoded('TCR_READ_ERROR', `Could not verify '${n}' on-chain right now: ${check.readError}`, { retryable: true });
+  if (!check.leaseExists || !check.lease) {
+    throw tcrCoded('LEASE_NOT_FOUND', `'${n}.${info.rootName}' has no active lease on-chain to renew.`);
+  }
+  if (check.lease.owner !== feePayer.address) {
+    throw tcrCoded('NOT_NAME_OWNER', `'${n}' is leased to ${check.lease.owner.slice(0, 12)}… — only the lease owner can renew it.`);
+  }
+  if (expectedLeaseEndTime != null && String(expectedLeaseEndTime) !== String(check.lease.expiresAtSeconds)) {
+    throw tcrCoded('REVIEW_EXPIRY_CHANGED', 'The lease expiration changed after review. Check the domain again before renewing.');
+  }
+
+  const feePerYear = pricePerYearFor(info, n);
+  const totalFee = feePerYear * BigInt(y);
+
+  const payerInfo = await thruClient.getAccountInfo(feePayer.address);
+  if (!payerInfo.exists) {
+    await thruClient.createOnChainAccount(feePayer);
+  } else if (info.feeEnforced && payerInfo.balance != null && payerInfo.balance < totalFee) {
+    throw tcrCoded('INSUFFICIENT_FUNDS',
+      `Renewal charges ${totalFee} base units (${feePerYear}/yr × ${y}y); your account holds ${payerInfo.balance}.`);
+  }
+
+  const domainAddress = await domainAccountAddress(info.root, n);
+  const leaseAddress = tcr.tcrLeaseAddress(info.program, n);
+
+  const client = thruClient.getClient();
+  const { rawTransaction } = await client.transactions.buildAndSign({
+    feePayer: { publicKey: feePayer.publicKey, privateKey: feePayer.privateKey },
+    program: info.program,
+    header: {
+      computeUnits: 1_000_000,
+      memoryUnits: 32_768,
+      stateUnits: 0,
+      fee: 0n,
+      expiryAfter: 10_000,
+    },
+    accounts: {
+      readWrite: [feePayer.address, info.treasury, leaseAddress],
+      readOnly: [info.configAddress],
+    },
+    instructionData: ({ getAccountIndex }) => tcr.buildTcrRenewInstructionData({
+      label: n,
+      durationYears: y,
+      indexOf: getAccountIndex,
+      treasuryAddress: info.treasury,
+      leaseAddress,
+      configAddress: info.configAddress,
+    }),
+  });
+
+  await balances.getBalances([feePayer.address]).catch(() => null);
+  return submitAndAwait(rawTransaction, {
+    kind: 'name-custom-renew',
+    from: feePayer.address,
+    displayAmount: `${totalFee} base units (${info.feeEnforced ? 'registrar fee' : 'declared registrar fee, best-effort'}) — renew '${n}.${info.rootName}' (${y}y) via custom registrar`,
+    errorNoun: 'custom registrar',
+    describeError: (code) => tcr.describeTcrError(code),
+    result: { name: n, domainAddress, rootAddress: info.root },
   });
 }

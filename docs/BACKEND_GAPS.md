@@ -1,6 +1,6 @@
 # Backend capability inventory and open gaps
 
-**Status as of 2026-10-03:** the originally identified Tier A and Tier B capabilities are implemented. This file distinguishes shipped code from behavior that is still unsupported or requires live-chain verification. Contract v18 has 124 methods (81 wallet-core + the 43-method gated-off DeFi M0 contract surface declared 2026-10-05 — handlers answer explicit unsupported/`FEATURE_DISABLED` states; no DeFi live evidence yet); `src/shared/contract/manifest.js`, its router handlers, and tests are authoritative.
+**Status as of 2026-10-29:** the originally identified Tier A and Tier B capabilities are implemented. This file distinguishes shipped code from behavior that is still unsupported or requires live-chain verification. Contract **v31** has **153** methods (81 wallet-core + the 43-method gated-off DeFi M0 contract surface declared 2026-10-05 — handlers answer explicit unsupported/`FEATURE_DISABLED` states; no DeFi live evidence yet — plus the v19–v31 additive slices, v29 being the shared transaction-review trio and v31 the name-service record write plus reverse lookup); `src/shared/contract/manifest.js`, its router handlers, and tests are authoritative.
 
 | Tier | Meaning | Status |
 | --- | --- | --- |
@@ -48,9 +48,10 @@ registrar first, with the official paid `.thru` registry as fallback when that i
 registrar. It does not query `.id` availability or offer `.id` minting. Name lookup still reads
 explicit `.id` roots, so resolution remains available. The route formats prices using the mint
 decimals returned by `token.readMint`, and formats native THRU with the shared 9-decimal asset
-definition. Each entry has its own review and submission; multiple names are separate
-transactions. The official paid registrar's `name.renewLease` operation is the supported
-meaning of “extend.”
+definition. Registration is single-name, with a bottom-sheet review. A queue/batch control
+exists in source (`55703d0`) but is never revealed, and its submit loop renders no review card, so
+it is not a supported flow — see `docs/DEFECT_LOG.md` §13.4. The official paid registrar's
+`name.renewLease` operation is the supported meaning of “extend.”
 
 **VERIFIED AGAINST LIVE NETWORK (read-only, Betanet, 2026-10-26)**: the `.thru` paid-registry
 config is absent; the custom `.thru` registrar is present, root-matched, and quotes 1,000 native
@@ -61,23 +62,64 @@ payment behavior.
 
 **UNSUPPORTED / UNVERIFIED**:
 
-- The backend cannot enumerate all domains owned by an account. My Domains shows only an
-  explicitly linked primary name after a fresh ownership check; expiry facts are not available
-  for that link.
+- The backend cannot enumerate all domains owned by an account. My Domains now displays a
+  wallet-local tracked registry (contract v29), not complete discovery. It retains confirmed
+  registrations and migrated primary links, and accepts ownership-verified .thru imports.
+  Removing/unlinking a primary alias does not remove its tracked entry. Cached entries paint
+  immediately as stale; fresh lookup results distinguish owned, transferred, absent and unknown.
+- **BLOCKED (2026-10-27)**: full discovery was requested instead of a saved-domain list.
+  The pinned SDK supports `client.accounts.list`, and the official
+  [ListAccounts request](https://thru.org/docs/api-ref/grpc/messages/thru/services/v1/list-accounts-request.md)
+  documents owner filtering and pagination. A live Betanet query using the name-service
+  program as `params.owner_bytes`, with page size 5, returned `RESOURCE_EXHAUSTED` / `account
+  listing database budget exceeded`. Metadata owner means the program, not the user's domain
+  owner; complete enumeration still requires parsing domain data, checking roots/ownership,
+  and proving pagination completeness. The owner subsequently approved a tracked registry as
+  a separate solution to disappearing names; it does not remove this full-discovery limitation.
+- No chain-wide reverse index exists either: `name.reverseLookup` (contract v31) resolves an
+  address only against the wallet's own tracked registry, then re-reads the domain forward to
+  prove the owner matches. `NO_CANDIDATE` therefore means "this wallet knows of no name for that
+  address", not that the address owns none. Records are also append-only (opcode 2
+  `APPEND_RECORD`), so a re-set key keeps its previous value and first-match readers keep seeing it.
+- `name.getCachedDomains`, `name.listDomains`, `name.trackDomain`, `name.setPrimaryDomain`
+  and `name.untrackDomain` are unlocked-only metadata/read methods, not additional signing
+  paths. Primary changes/imports require a fresh backend ownership check. Unsupported future
+  storage schemas are never overwritten. Registrations report `trackingFailed` separately if
+  local persistence fails after confirmation.
 - Betanet's official paid `.thru` registry is not initialized, so its paid registration and lease
   renewal/claim handlers return unsupported there. The custom registrar is the live `.thru`
-  offer, but custom lease renewal/claim is not wired in the wallet.
+  offer: **registration and renewal are wired** (`domain-register`, and `domain-renew` with
+  `via:'custom'`, contract v30); custom-lease **claim is not**.
+- **The custom registrar's fee is tiered by label length and stored on-chain (2026-10-30).**
+  The contract's config carries `fee_3_char` / `fee_4_char` / `fee_5plus_char` (per YEAR, base
+  units) plus a collection policy, all settable through `UpdateConfig` — so a mainnet price is a
+  config change, not a redeploy. Betanet intent: 3 chars = 100 000, 4 = 10 000, 5+ = 1 000 base
+  units (0.0001 / 0.00001 / 0.000001 THRU). The extension reads those numbers from the config; no
+  price is hardcoded in the UI. Layout: `docs/DEFECT_LOG.md` §18.
+- **Whether a charge is enforced is a property of the deployed config, not of the wallet.** The
+  program has a `fee_policy`: `best-effort` (0) attempts `account_transfer` and ignores a refusal
+  — the deployed behaviour — and `strict` (1) reverts (`0xD206`; `0xD207` when the source balance
+  cannot cover it). The wallet maps `feeEnforced = (policy === strict)` and never assumes a charge:
+  an unenforced non-zero price is shown as an unenforced price with a `registrar-fee-unenforced`
+  warning ("no charge reported" is the honest wording, never "free"), and only an enforced charge
+  adds an outgoing THRU row to the review. **Default is best-effort**, because the only live
+  observation is the transfer being refused (`-10 AccountNotWritable`, surfaced as `0xD20A`);
+  `--fee-policy strict` is gated in `scripts/registrar/deploy-and-init.mjs` behind
+  `--collection-proven`, a recorded treasury balance delta. Open: whether the new artifact's
+  charge actually lands (`docs/DEFECT_LOG.md` §18, §13.3).
 - `.id` supports name-service lookup and has no lease-renewal operation. The Domain route treats
   it as resolution-only. The lower-level generic name-service write remains self-signed and
   refuses a signer that is not the parsed root authority (`NAME_PARENT_AUTHORITY`); the Betanet
   `.id` root is third-party controlled, so ordinary wallet accounts cannot mint beneath it.
-- Atomic multi-name registration is not supported. The route prepares, reviews, and confirms
-  each name independently, and tracks confirmed, failed, and unknown outcomes per name.
+- Atomic multi-name registration is not supported or offered. The single-name flow distinguishes
+  confirmed, failed, and unknown outcomes, with no automatic resubmission after a timeout.
 - **VERIFIED AGAINST LIVE NETWORK (Betanet, 2026-10-27)**: one unique `.thru` registration
   through the real background API router returned an on-chain execution result; a follow-up
   read confirmed the selected test account as lease owner. The handler quoted 1,000 base
   units/year. Charged network fee was not returned, and this did not exercise the rendered UI.
-- A rendered Chrome popup/side-panel review/auth flow and live renewal have not been verified.
+- Real Chrome visual-harness review layout is **TESTED** (actual route and built CSS; mocked
+  bridge; 400x600 light/dark and narrow/short 320px layouts). Actual extension popup/side-panel
+  review/auth behavior and live renewal remain **UNVERIFIED**.
 
 ### C1. Token balances — implemented; token-transfer behavior still needs live verification
 

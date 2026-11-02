@@ -1,0 +1,199 @@
+// Token transfer decoder (Token program, SPL-shaped accounts).
+//
+// Facts (read by the background before this runs):
+//   mintAddress, symbol, name, decimals, metadataVerified, amountUnits,
+//   fromAddress, toAddress, recipientLabel,
+//   recipientTokenAccount { exists: true|false|null, address|null },
+//   sourceTokenAccount { exists: true|false|null },
+//   balanceUnits|null, fee { supported, reason }, duplicate|null,
+//   tokenProgramId, mintExists
+//
+// Two consequences this review must never hide:
+//   1. A token send to a first-time holder is TWO chain transactions (the wallet initializes
+//      the recipient's token account, then transfers). That is an extra fee and an extra
+//      irreversible on-chain effect.
+//   2. Imported-token metadata is user-supplied until the mint is read. `metadataVerified`
+//      false means the symbol/decimals shown are not chain truth.
+
+import {
+  displayAmount, movement, warn, acknowledgement, feeBlock, instruction, accountRole,
+  executionBlock,
+} from './common.js';
+
+export const TOKEN_TRANSFER_KIND = 'token-transfer';
+
+export function decodeTokenTransfer({ facts }) {
+  const warnings = [];
+  const acknowledgements = [];
+  const symbol = facts.symbol || 'TOKEN';
+  const decimals = Number.isInteger(facts.decimals) ? facts.decimals : 0;
+  // The ticker is creator-controlled, so a mint can call itself THRU. On the money table that
+  // is indistinguishable from the native currency, which is exactly what an impersonation
+  // wants. Say it in words, first, and keep the mint address in Details as the fingerprint.
+  if (String(symbol).trim().toUpperCase() === 'THRU') {
+    warnings.push(warn('symbol-impersonation', 'warning',
+      'This token is not native THRU',
+      'The token calls itself THRU, but it is a minted token, not the network currency. The mint '
+      + 'address in Details is the token this transfer actually moves.'));
+  }
+
+  // Same invariant as the native send: "verified" must name the pinned program it verified.
+  const tokenProgramId = facts.tokenProgramId ?? null;
+  if (!tokenProgramId) {
+    warnings.push(warn('program-unidentified', 'danger',
+      'The token program is not pinned for this network',
+      'This network has no known token program, so the wallet cannot check what this '
+      + 'transaction would run.', { blocking: true }));
+  }
+
+  // Tri-state on purpose: an RPC failure is NOT proof that the mint is absent. `null` is
+  // "could not read", which is a warning; only a read that returned `exists:false` blocks.
+  if (facts.mintExists === false) {
+    warnings.push(warn('mint-absent', 'danger',
+      'This mint does not exist on this network',
+      'There is no token at that address on this network.', { blocking: true }));
+  } else if (facts.mintExists == null) {
+    warnings.push(warn('mint-unverified', 'warning',
+      'The mint account could not be read',
+      'The token could not be read just now. The wallet checks it again before signing.'));
+  }
+
+  if (!facts.metadataVerified) {
+    warnings.push(warn('metadata-unverified', 'warning',
+      'Token metadata is not verified on-chain',
+      'The name and decimal places shown are this wallet\'s own record, not a reading from '
+      + 'the token, so the amount could be displayed at the wrong scale.'));
+  }
+
+  if (facts.recipient?.exists === false) {
+    warnings.push(warn('recipient-not-activated', 'danger',
+      'Recipient is not activated on this network',
+      'The recipient has to be active on this network before it can hold this token.',
+      { blocking: true }));
+  } else if (facts.recipient?.exists == null) {
+    warnings.push(warn('recipient-unverified', 'warning',
+      'Recipient could not be verified',
+      'The recipient could not be checked just now. The wallet checks again before signing.'));
+  }
+
+  if (facts.sourceTokenAccount?.exists === false) {
+    warnings.push(warn('source-token-account-missing', 'danger',
+      'You have no token account for this mint',
+      'There is no balance to send from, and the token program transfer would revert.',
+      { blocking: true }));
+  }
+
+  if (facts.balanceUnits == null) {
+    warnings.push(warn('balance-unknown', 'warning',
+      'Token balance could not be read',
+      'The amount is not checked against a live balance here; the token path re-reads it and '
+      + 'refuses an amount above the balance.'));
+  } else if (BigInt(facts.balanceUnits) < BigInt(facts.amountUnits)) {
+    warnings.push(warn('insufficient-balance', 'danger',
+      'Amount is higher than your balance',
+      `The account holds ${displayAmount(facts.balanceUnits, decimals, symbol)}, which is less `
+      + 'than the amount.', { blocking: true }));
+  }
+
+  const createsRecipientAccount = facts.recipientTokenAccount?.exists === false;
+  if (createsRecipientAccount) {
+    warnings.push(warn('recipient-token-account-created', 'warning',
+      'This recipient has no token account yet',
+      `The wallet will first initialize a ${symbol} token account for the recipient, then `
+      + 'transfer. That is a separate, irreversible on-chain transaction with its own fee.'));
+    acknowledgements.push(acknowledgement('recipient-token-account-created',
+      'I understand two transactions are submitted and the account creation cannot be undone'));
+  }
+
+  if (facts.duplicate?.isDuplicate) {
+    const when = facts.duplicate.isPending
+      ? 'is still pending on-chain'
+      : `was submitted ${facts.duplicate.elapsedMs ? Math.round(facts.duplicate.elapsedMs / 1000) : 'a few'}s ago`;
+    warnings.push(warn('duplicate-transfer', 'warning',
+      'Repeated transaction',
+      `An identical transfer ${when}. Confirm only if you intend to send it twice.`));
+    acknowledgements.push(acknowledgement('duplicate-transfer', 'I want to send this duplicate transfer anyway'));
+  }
+
+  // Money lives in `assets`; the title carries the amount; the recipient gets their own line.
+  // The mint address used to sit here as the only unambiguous identity of the token, which is a
+  // fact about the token, not about this transaction — it is in Details with the accounts.
+  const summary = [];
+
+  const accounts = [
+    accountRole('Source owner', facts.fromAddress),
+    accountRole('Destination owner', facts.toAddress),
+  ];
+  if (facts.sourceTokenAccount?.address) {
+    accounts.push(accountRole('Source token account', facts.sourceTokenAccount.address));
+  }
+  if (facts.recipientTokenAccount?.address) {
+    accounts.push(accountRole(
+      createsRecipientAccount ? 'Recipient token account (to create)' : 'Recipient token account',
+      facts.recipientTokenAccount.address,
+    ));
+  }
+
+  return {
+    operation: {
+      id: TOKEN_TRANSFER_KIND,
+      name: `Send ${displayAmount(facts.amountUnits, decimals, symbol)}`,
+      summary: '',
+      confirmLabel: 'Send',
+      decode: 'decoded',
+    },
+    protocol: {
+      name: 'Thru token program',
+      address: tokenProgramId,
+      verified: Boolean(tokenProgramId),
+    },
+    counterparty: { address: facts.toAddress, ...(facts.recipientLabel ? { label: facts.recipientLabel } : {}) },
+    summary,
+    assets: {
+      outgoing: [movement({
+        symbol,
+        name: facts.name ?? null,
+        mintAddress: facts.mintAddress,
+        decimals,
+        amountUnits: facts.amountUnits,
+        verified: Boolean(facts.metadataVerified),
+        note: facts.metadataVerified
+          ? null
+          : 'Symbol and decimals are not verified against the mint account.',
+      })],
+      incoming: [],
+      fee: feeBlock({
+        supported: Boolean(facts.fee?.supported),
+        amountUnits: facts.fee?.supported ? facts.fee.feeUnits : null,
+        reserveUnits: facts.fee?.supported ? facts.fee.reserveUnits : null,
+        source: facts.fee?.supported ? (facts.fee.source ?? 'unknown') : null,
+        note: facts.fee?.supported
+          ? 'Set by the network. What was actually charged appears in Activity after confirmation.'
+          : (facts.fee?.reason || 'No fee measurement exists for token transfers on this network.'),
+      }),
+      balanceAfter: null,
+      balanceAfterNote: 'This network cannot preview a transaction, so the balance afterwards is not shown.',
+    },
+    execution: executionBlock({
+      program: {
+        name: 'Thru token program',
+        address: tokenProgramId,
+        verified: Boolean(tokenProgramId),
+      },
+      instructions: [
+        ...(createsRecipientAccount
+          ? [instruction('Initialize recipient token account', {
+            note: 'Creates the recipient\'s token account for this mint. Irreversible.',
+          })]
+          : []),
+        instruction('Transfer tokens', {
+          note: 'Moves the exact amount from your token account to the recipient\'s.',
+        }),
+      ],
+      accounts,
+      raw: null,
+    }),
+    warnings,
+    acknowledgements,
+  };
+}
