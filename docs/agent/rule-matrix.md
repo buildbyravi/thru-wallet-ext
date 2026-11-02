@@ -67,6 +67,7 @@ watched rejecting a real broken tree before the commit.
 | 25 | Dark-launch, then decide | Swap shipped and was withdrawn within a day; the dashboard layout reverted twice | `test/test-release-flags.mjs` — pins every flag off, with a control that turns two on |
 | 26 | One notification API | The Domain empty toast: a bare string into a props API | `test/test-toast.mjs` (existing tree-wide ban) |
 | 27 | Size is a review trigger, not a rule | The review's own recommendation: 11 files >25 KB, 15 >500 lines, and the repo is otherwise small | `npm run report:size` — report only, deliberately not a gate |
+| 28 | A signature needs a confirmed review, proven in the background | `tx.sendChecked` with no prepared review built, signed and broadcast — an outside probe did it in one call at `ab9e1b8`, because enforcement was the UI's `confirm.js` | `test/test-review-consent.mjs` — with the gate bypassed, `name.register` reaches the network; with single-use removed, a replayed token is accepted. Both watched failing |
 
 Two of these rules close a gap the review named directly: rule 23 is the "docs-truth script" and
 rule 20 is the "signing-surface enumeration". Both found real defects on their first run rather

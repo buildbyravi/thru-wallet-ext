@@ -1105,3 +1105,54 @@ not a defect); the fourth is guarded — `localnet` is disabled and `check-csp.m
 network out of `connect-src`, and custom RPC is behind the v7 quarantine; the fifth is real and
 **open**: send transactions set no `expiryAfter`, so a signed-but-delayed broadcast has no on-chain
 deadline. Adding one is a protocol-behaviour change that needs one live probe first, not a guess.
+
+---
+
+## 20. The review was a convention, not a gate (2026-11-02)
+
+The 2026-11-01 audit's first finding was the only one of the five that had no fix in this tree: a
+call to `tx.sendChecked` with no prepared review built, signed and broadcast anyway. The audit
+demonstrated it with a probe and one fetch to the RPC. We had answered it in writing — enforcement
+lives in `confirm.js`, the scan stops a route from skipping the card — and that answer was correct
+about *programming mistakes* and useless about the literal thing the audit measured.
+
+**What was wrong with the earlier reasoning.** "Moving it into the background reshapes eight
+signatures or adds a hidden consent lease" was true of the two designs we considered and false of
+the obvious third: mint a token at confirm and accept one optional parameter on the signing
+methods. That is additive, needs no signature reshaped, and the tests that broke were ours to fix.
+
+**What shipped.**
+
+- `services/review/consent.js`: a `Map`, never `chrome.storage`; 32 random bytes; 60 s; bound to
+  `{method, sha256(canonical params), accountAddress, networkId}`; 40-token cap with oldest-first
+  eviction. Single use, and burned even when the check that follows fails, so one mint buys one
+  attempt rather than a search over parameters.
+- `tx.confirmReview` mints it and returns it beside `submit`. That is the only production mint site;
+  `test-review-consent.mjs` fails if the router grows one, and no contract method can reach it.
+- The router checks it after auth and before the signing guard and the handler, strips it so no
+  service ever sees the field, and returns `REVIEW_REQUIRED` (not retryable) with a reason that
+  distinguishes unknown / expired / wrong method / changed params / changed context.
+- `walletService.lock()` and `discardAllReviews()` clear tokens with the reviews. A token that
+  outlived a lock would be consent for a session state that no longer exists.
+
+**Two exemptions, each with its reason in the router.** `tx.registerAccount` registers an address
+this wallet already owns, as a prerequisite inside a flow that was already reviewed, and takes no
+user-chosen parameter — the residual is that a script can spend creation fees on the user's own
+accounts. `intent.submit` takes only `intentId` + `bindingHash`; every executed parameter comes from
+the record the wallet prepared, so a caller cannot make it run anything it did not prepare.
+
+**The limit, which is the part to remember.** The token proves the call is the continuation of a
+review that passed revalidation. It does not prove a human saw the card: `tx.prepareReview` and
+`tx.confirmReview` are both reachable from the same caller, so a page with code execution can mint
+for whatever it wants. This closes the direct-call hole and post-confirm mutation, and it does not
+turn the background into a witness. Saying otherwise would be the same overstatement as calling a
+UI convention "enforced".
+
+**Cost, paid honestly:** thirteen suites call signing methods through the real router and now need
+a token. Nine mint through `test/fixtures/consent.mjs` for the exact params (setup, not security);
+the gate itself is measured with no helper in the loop, by calling every value-moving method with
+plausible params and asserting `REVIEW_REQUIRED` with zero client touches and zero fetches.
+
+**Negative controls watched failing:** gate bypassed → `name.register` reaches the network
+(`fetch failed`); single-use removed → a replayed token is accepted.
+

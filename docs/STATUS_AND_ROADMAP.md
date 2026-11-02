@@ -46,17 +46,20 @@ copy or the password flow.
   the password retry wrapper), and the method arguments forwarded through `name.js`'s small
   `action(method, params)` helper must all be declared non-signing. Both were added 2026-11-01 after
   an outside audit asked whether the review was enforced anywhere but the UI.
-- **The review is a UI-layer invariant, and that is stated, not implied.** The background cannot
-  prove a card was rendered: `tx.sendChecked` and the other review-owned methods remain callable
-  from the bridge, and enforcement is the single `confirm.js` path plus the scan above. This is
-  deliberate, and the threat model is what makes it defensible — reaching any bridge method needs
-  code execution in an extension page, and an attacker who has that can also run
-  prepare → confirm → submit legitimately. So the guard's job is to stop a **programming mistake**
-  (a route that skips the card, the 2026-10-30 hidden-queue class), not a compromised page. Moving
-  enforcement into the background was considered and rejected for now: it either reshapes eight
-  public method signatures (forbidden by rule 4) or adds a hidden consent lease that makes
-  every handler-level test depend on a review it cannot construct. Recorded as an open design
-  question in `docs/agent/rule-matrix.md`, not as a fixed defect.
+- **The review is enforced in the background too, as of v32 — within a stated limit.** Until
+  2026-11-02 enforcement was the UI's `confirm.js` path plus the scan above, and a direct
+  `tx.sendChecked` call built, signed and broadcast with no review at all (confirmed by an external
+  probe, `docs/DEFECT_LOG.md` §20). Now `tx.confirmReview` mints a one-time token bound to the
+  method, the SHA-256 of the canonical params, the account and the network (60 s, memory only), and
+  the router refuses every value-moving method that cannot present one: `REVIEW_REQUIRED`, before
+  the signing guard and before any handler. The token is spent on use and burned on any failure,
+  and lock / account switch / network switch clear tokens with the reviews.
+  **The limit, stated rather than implied:** this does not prove a human read the card. A caller
+  that can reach `tx.prepareReview` can reach `tx.confirmReview` and mint for any transaction it
+  wants, so a page with code execution is not stopped by this and never was. What it stops is the
+  direct-method hole and any change to params after confirm — the 2026-10-30 hidden-queue class of
+  programming mistake, and the "one fetch with no review" probe. Anything stronger needs human
+  presence the background cannot observe.
 - **Completion report, review responses, simplification:** `docs/TX_REVIEW_VERIFICATION.md`
   §9 (the owner-required report), §10 (a second AI review checked claim-by-claim against the code),
   §11 (the 2026-10-28 simplification to Rabby's before-sign shape) and §12 (a third audit's
@@ -281,16 +284,27 @@ Passing `npm test` or `npm run build` does not close any of these:
 **Current ordered next work (2026-10-04, confirmed by the owner after the conformance audit and
 documentation remediation — wallet core first; no DEX/launchpad/prediction work):**
 
-> **Release blockers still open (2026-11-01), in the owner's order.** (1) A live register **and**
+> **Release blockers still open (2026-11-02), in the owner's order.** (1) A live register **and**
 > renew with an observed treasury delta — until then no surface may say a registration was charged.
 > (2) `name.setRecord` is enabled at the handler but has never been exercised against the chain;
-> either disable it or probe it. (3) Release mechanics — wording and version are now **deferred by
-> the owner** (2026-11-01) and are recorded here so the tree does not quietly pick for them:
+> either disable it or probe it. (3) Release mechanics — wording and version are **deferred by the
+> owner** (2026-11-01) and are recorded here so the tree does not quietly pick for them:
 > "Import domain" (`name.trackDomain`, read-only watching) and "Unlink" (`name.unlinkPrimary`,
 > deletes a local primary record, signs nothing) are **known to overstate what happens** and are
 > kept only until the owner picks replacement copy; the version stays **1.4.1** until blockers
 > (1)–(2) clear, so the number never points at a tree that cannot ship. A CHANGELOG entry is
 > written with that bump, not before it.
+>
+> **Second audit, 2026-11-02 — what is done and what is not.** Done in this tree: the background
+> consent gate (P0, `docs/DEFECT_LOG.md` §20), the send/faucet/token-transfer expiry with the built
+> header stored on pending records, and the custom-RPC write refusal (the CSP cannot reach a saved
+> endpoint). **Not done, and not doable here:** the Betanet deploy, one real Register and Renew with
+> a measured treasury delta, the non-canonical-config `0xD112` negative case (no `cargo`, no RPC);
+> `Initialize` gated on the upgrade authority and a `max_fee` on Register/Renew (both need the
+> contract rebuilt, redeployed and exercised — a wallet-only half would send an ABI the live program
+> rejects, which is worse than not having it).
+
+
 
 1. ~~Keep D-003~~ — **DONE**: session-only signing default confirmed as a deliberate product/security decision; invariants and framing recorded in `docs/DECISIONS.md` D-003.
 2. ~~Make documentation exact~~ — **DONE**: cross-document truth sweep complete on the 11 shared facts.

@@ -169,6 +169,10 @@ non-interactive shell waiting for a GUI credential manager.
 27. **Size is a review trigger, not a rule.** A file over 500 lines or 25 KB is worth reading for
     mixed responsibilities before the next change; never split it mechanically or to satisfy a
     number. — *check:* none by design; `npm run report:size` is the report.
+28. **A signature needs a confirmed review, proven in the background.** Every value-moving method
+    refuses without the one-time token `tx.confirmReview` mints; an exemption is one line in the
+    router with its reason. The token proves the review, never that a human saw it. — *check:*
+    `test/test-review-consent.mjs` (a fresh router, no helper, zero client touches).
 
 ## Stop and ask instead of guessing
 
