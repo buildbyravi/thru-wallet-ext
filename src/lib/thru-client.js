@@ -393,6 +393,21 @@ export function encodeFaucetInstructionData(stateIdx, recipientIdx, amountUnits)
 }
 
 /**
+ * How long a wallet-signed transaction may wait for inclusion, in slots.
+ *
+ * The SDK default is 100. Betanet produces blocks continuously (~30/s when busy), so 100 slots is
+ * about three seconds, while a proof fetch, a sign and a broadcast routinely take longer under load
+ * (the RPC round trips in this sandbox run 5-10s). A transaction that expires on the way in comes
+ * back as an *unknown* outcome — the worst possible answer, because it invites a resend of something
+ * that may still land.
+ *
+ * 1,000 slots is roughly 33 seconds: long enough to survive a slow round trip, short enough that a
+ * dropped send cannot arrive minutes later. Registrar calls stay at 10,000 because they pin
+ * `startSlot` to a lease slot and need the headroom (registrar-service.js).
+ */
+export const SEND_EXPIRY_SLOTS = 1000;
+
+/**
  * Submission notice for sendAndTrack streams.
  *
  * The stream delivers the accepted submission's signature BEFORE the executionResult
@@ -404,14 +419,17 @@ export function encodeFaucetInstructionData(stateIdx, recipientIdx, amountUnits)
  * `onSubmitted(signature)` exactly once, never throws into the stream, and every send's
  * return semantics are unchanged.
  */
-async function* withSubmittedNotice(updates, onSubmitted) {
+async function* withSubmittedNotice(updates, onSubmitted, builtHeader = null) {
   let fired = false;
   for await (const update of updates) {
     if (!fired && update.signature?.value) {
       fired = true;
       if (typeof onSubmitted === 'function') {
         try {
-          const p = onSubmitted(Signature.from(update.signature.value).toThruFmt());
+          // The header is handed over because the pending record must outlive the send: without
+          // startSlot + expiryAfter it cannot tell "may still land" from "expired", and the UI
+          // cannot tell the user which of the two they are looking at.
+          const p = onSubmitted(Signature.from(update.signature.value).toThruFmt(), builtHeader);
           if (p && typeof p.catch === 'function') p.catch(() => {});
         } catch {
           // Tracking is best-effort; never affect the send stream.
@@ -472,16 +490,17 @@ export async function claimFaucet(feePayer, amount, { onSubmitted = null } = {})
     accounts: 1,
     balanceUnits: info.balance ?? 0n,
   });
-  const { rawTransaction } = await getClient().transactions.buildAndSign({
+  const { rawTransaction, transaction: built } = await getClient().transactions.buildAndSign({
     feePayer: { publicKey: feePayer.publicKey, privateKey: feePayer.privateKey },
     program: net.faucetProgramId,
-    header: units,
+    header: { ...units, expiryAfter: SEND_EXPIRY_SLOTS },
     accounts: { readWrite: [net.faucetStateAccount] },
     instructionData: ({ getAccountIndex }) =>
       encodeFaucetInstructionData(getAccountIndex(net.faucetStateAccount), getAccountIndex(address), amountUnits),
   });
+  const builtHeader = { startSlot: String(built?.startSlot ?? ''), expiryAfter: built?.expiryAfter ?? SEND_EXPIRY_SLOTS };
 
-  for await (const update of withSubmittedNotice(getClient().transactions.sendAndTrack(rawTransaction), onSubmitted)) {
+  for await (const update of withSubmittedNotice(getClient().transactions.sendAndTrack(rawTransaction), onSubmitted, builtHeader)) {
     if (update.executionResult) {
       noteExecution(UNIT_CLASS.CLAIM, update.executionResult);
       if (update.executionResult.vmError === 0) {
@@ -549,16 +568,17 @@ export async function sendTransfer(feePayer, toAddress, amount, { onSubmitted = 
     accounts: readWrite.length,
     balanceUnits: info.balance ?? 0n,
   });
-  const { rawTransaction } = await getClient().transactions.buildAndSign({
+  const { rawTransaction, transaction: built } = await getClient().transactions.buildAndSign({
     feePayer: { publicKey: feePayer.publicKey, privateKey: feePayer.privateKey },
     program: activeNetwork.transferProgramId,
-    header: units,
+    header: { ...units, expiryAfter: SEND_EXPIRY_SLOTS },
     accounts: readWrite.length > 0 ? { readWrite } : undefined,
     instructionData: ({ getAccountIndex }) =>
       encodeTransferInstructionData(getAccountIndex(feePayer.address), getAccountIndex(toAddress), amountUnits),
   });
+  const builtHeader = { startSlot: String(built?.startSlot ?? ''), expiryAfter: built?.expiryAfter ?? SEND_EXPIRY_SLOTS };
 
-  for await (const update of withSubmittedNotice(getClient().transactions.sendAndTrack(rawTransaction), onSubmitted)) {
+  for await (const update of withSubmittedNotice(getClient().transactions.sendAndTrack(rawTransaction), onSubmitted, builtHeader)) {
     if (update.executionResult) {
       noteExecution(UNIT_CLASS.TRANSFER, update.executionResult);
       if (update.executionResult.vmError === 0) {
@@ -1166,17 +1186,18 @@ export async function sendTokenTransfer({ feePayer, mintAddress, recipientAddres
     balanceUnits: payerInfo.balance ?? 0n,
   });
 
-  const { rawTransaction } = await getClient().transactions.buildAndSign({
+  const { rawTransaction, transaction: built } = await getClient().transactions.buildAndSign({
     feePayer: { publicKey: feePayer.publicKey, privateKey: feePayer.privateKey },
     program: activeNetwork.tokenProgramId,
-    header: units,
+    header: { ...units, expiryAfter: SEND_EXPIRY_SLOTS },
     accounts: {
       readWrite: rwAccounts,
     },
     instructionData: instrData,
   });
+  const builtHeader = { startSlot: String(built?.startSlot ?? ''), expiryAfter: built?.expiryAfter ?? SEND_EXPIRY_SLOTS };
 
-  for await (const update of withSubmittedNotice(getClient().transactions.sendAndTrack(rawTransaction), onSubmitted)) {
+  for await (const update of withSubmittedNotice(getClient().transactions.sendAndTrack(rawTransaction), onSubmitted, builtHeader)) {
     if (update.executionResult) {
       noteExecution(UNIT_CLASS.TOKEN_OP, update.executionResult);
       if (update.executionResult.vmError === 0) {

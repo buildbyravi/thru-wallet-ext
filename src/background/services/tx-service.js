@@ -181,7 +181,7 @@ export async function claimFaucet(amountUnits, expected = {}) {
     throw error;
   }
   let trackedSignature = null;
-  const trackSubmitted = (signature) => {
+  const trackSubmitted = (signature, header = null) => {
     if (!signature || trackedSignature === signature) return null;
     trackedSignature = signature;
     return pending.track({
@@ -191,6 +191,10 @@ export async function claimFaucet(amountUnits, expected = {}) {
       to: feePayer.address,
       amountUnits: rawUnits.toString(),
       networkId: network.id,
+      // The built header, so an unknown outcome can later be classified as "may still land"
+      // or "expired" instead of being reported as one vague timeout.
+      startSlot: header?.startSlot ?? null,
+      expiryAfter: header?.expiryAfter ?? null,
     });
   };
   let result;
@@ -312,7 +316,7 @@ async function sendTransfer(toAddress, amountUnits, expected, { allowDuplicate =
     // is confirmed"). The post-return call is a fallback for streams that never fired the
     // hook; track() dedupes by signature.
     let trackedSignature = null;
-    const trackSubmitted = (signature) => {
+    const trackSubmitted = (signature, header = null) => {
       if (!signature || trackedSignature === signature) return null;
       trackedSignature = signature;
       return pending.track({
@@ -322,6 +326,8 @@ async function sendTransfer(toAddress, amountUnits, expected, { allowDuplicate =
         to: target,
         amountUnits: rawUnits.toString(),
         networkId: network.id,
+        startSlot: header?.startSlot ?? null,
+        expiryAfter: header?.expiryAfter ?? null,
       });
     };
     const result = normalizeTxResult(await thruClient.sendTransfer(feePayer, target, rawUnits, {

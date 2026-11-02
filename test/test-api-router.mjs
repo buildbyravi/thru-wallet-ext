@@ -438,7 +438,13 @@ const beforePendingTrack = sdkForPending.transactions.sendAndTrack;
 let releasePendingExec = null;
 try {
   sdkForPending.accounts.get = () => Promise.resolve({ meta: { balance: 100n } });
-  sdkForPending.transactions.buildAndSign = async () => ({ rawTransaction: new Uint8Array(1) });
+  // The built transaction object carries the header the record must remember. The real SDK
+  // returns it (Transaction has startSlot/expiryAfter); this stub does too so the plumbing from
+  // build -> onSubmitted -> pending record is measured, not assumed.
+  sdkForPending.transactions.buildAndSign = async () => ({
+    rawTransaction: new Uint8Array(1),
+    transaction: { startSlot: 4242n, expiryAfter: 1000 },
+  });
   sdkForPending.transactions.sendAndTrack = async function* () {
     // Submission accepted: the signature is public, executionResult is NOT there yet —
     // the real stream's progressive SendAndTrackTxnUpdate shape (status/consensusStatus/
@@ -464,6 +470,13 @@ try {
     const list = storage.get('thru_pending_txs::betanet')?.records;
     return Array.isArray(list) && list.length > 0 && list[0].status === 'submitted';
   }, 'the pending record to land at submission, before executionResult');
+  {
+    // Every pending record now carries its own deadline. Without it, an unknown outcome can only
+    // be reported as "timed out?" — the message that invites a resend of something that may land.
+    const record = storage.get('thru_pending_txs::betanet').records[0];
+    assert.equal(record.startSlot, '4242', 'the pending record stores the built startSlot');
+    assert.equal(record.expiryAfter, 1000, 'the pending record stores the built expiryAfter');
+  }
   const dupCheckPending = await handleApiRequest({
     method: 'tx.checkDuplicate',
     params: {

@@ -131,6 +131,12 @@ export async function track(tx) {
     status: TX_STATUS.SUBMITTED,
     submittedAt: Date.now(),
     settledAt: null,
+    // The transaction's own deadline, as built: without these two numbers an "unknown" send
+    // cannot be classified as "may still land" or "expired", and the only honest message left
+    // is the useless one. Null when a path did not report them (an older record, or a build
+    // that predates this field) — never invented.
+    startSlot: tx.startSlot != null && tx.startSlot !== '' ? String(tx.startSlot) : null,
+    expiryAfter: Number.isFinite(Number(tx.expiryAfter)) ? Number(tx.expiryAfter) : null,
     error: null,
   };
   await updateAll(networkId, (list) => ({

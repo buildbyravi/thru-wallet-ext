@@ -450,7 +450,7 @@ async function transferToken({ mintAddress, toAddress, amountUnits, allowDuplica
     // Track at SUBMISSION (see tx-service.sendTransfer): the pending record must exist
     // before executionResult so the duplicate warning covers the whole pending window.
     let trackedSignature = null;
-    const trackSubmitted = (signature) => {
+    const trackSubmitted = (signature, header = null) => {
       if (!signature || trackedSignature === signature) return null;
       trackedSignature = signature;
       return pending.track({
@@ -462,6 +462,8 @@ async function transferToken({ mintAddress, toAddress, amountUnits, allowDuplica
         mint,
         displayAmount: `${formatTokenAmount(rawUnits, mintInfo.decimals)} ${symbol}`,
         networkId: network.id,
+        startSlot: header?.startSlot ?? null,
+        expiryAfter: header?.expiryAfter ?? null,
       });
     };
     const result = await thruClient.sendTokenTransfer({
