@@ -78,12 +78,13 @@ console.log('[1] a decoded send: title, context, counterparty, then three money 
 {
   const lines = visibleLines(card('native-send', sendFacts).el);
   ok(lines[0] === 'Send 0.0015 THRU', 'the title is the verb and the amount', lines[0]);
-  // The card used to print "Betanet" in a badge beside the title and then again in the context
-  // line directly under it. The network is named once, in the line that also says who is signing.
-  ok(!lines.includes('Betanet'), 'the network is not printed twice — no badge beside the title',
-    JSON.stringify(lines.slice(0, 4)));
-  ok(lines[1] === 'From Main account · Betanet test network',
-    'the context line names the SENDING account and network', lines[1]);
+  // The network is a box beside the title, and the only place it is named. It used to appear here
+  // AND in the context line; naming it twice was the defect, dropping the box was the overcorrection.
+  ok(lines[1] === 'Betanet', 'the network is a box beside the title', lines[1]);
+  ok(lines[2] === 'From Main account · test network',
+    'the context line names the SENDING account, and marks the test network once', lines[2]);
+  ok(lines.filter((line) => line === 'Betanet').length === 1,
+    'the network is named exactly once above the fold', JSON.stringify(lines.slice(0, 4)));
   ok(!lines.some((line) => /^(Testnet|Decoded|Verified program)$/.test(line)),
     'no Testnet / Decoded / Verified-program badges');
   // Owner decision (2026-10-30): the recipient is named AND shown in full on the open card.

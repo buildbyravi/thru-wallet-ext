@@ -130,14 +130,16 @@ function movementRows(assets) {
   ];
 }
 
-// The context line replaces six header badges: who is signing, on which network, said once.
+// The context line says who is signing. The network lives in the badge beside the title and is
+// not repeated here: the first version printed "Betanet" in the badge and again in this line, and
+// the next one dropped the badge instead. The badge is the network's one home; this line carries
+// the account, and marks test-ness only, which is a separate fact from the network's name.
 function contextLine(review) {
   const account = review.account?.label || 'Active account';
-  const network = review.network?.label || 'this network';
   // "From" is spelled out. The old Send review opened with a FROM Account row and the owner
   // missed it: a bare account name could be the sender or the recipient, and on the one screen
   // where that matters the wallet should not make the reader work it out.
-  return `From ${account} \u00b7 ${network}${review.network?.isTestnet ? ' test network' : ''}`;
+  return `From ${account}${review.network?.isTestnet ? ' \u00b7 test network' : ''}`;
 }
 
 // Total is only arithmetic the wallet can actually do: one outgoing asset, an asset-denominated
@@ -208,9 +210,12 @@ export function TxReviewCard({ review, onChange = null } = {}) {
     // ---- title, context, counterparty -----------------------------------------------
     // What am I doing (the title carries the verb AND the amount), on whose account and which
     // network (one line, not six badges), and to whom. Nothing technical above the fold.
-    // The network is named once, in the context line below the title. The badge that used to sit
-    // beside the title said the same word one line above it ("Betanet" over "From Alice · Betanet").
-    const headTitle = h('h2', { class: 'tx-review-title', text: r.operation.name });
+    // The network is the box beside the title — the one place it is named. The context line
+    // carries the account, so the same word is not printed twice above the fold.
+    const headTitle = h('div', { class: 'row-flex between align-center' }, [
+      h('h2', { class: 'tx-review-title', text: r.operation.name }),
+      r.network?.label ? badge(r.network.label) : null,
+    ]);
     el.appendChild(h('div', { class: 'tx-review-head' }, [
       headTitle,
       h('div', { class: 'tx-review-context', text: contextLine(r) }),

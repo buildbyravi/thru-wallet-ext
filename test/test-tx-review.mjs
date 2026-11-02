@@ -1166,11 +1166,13 @@ console.log('[15] the review fits one screen (owner review, 2026-10-28)');
   }
   // ...and the card itself must name it once. It said "Betanet" in a badge beside the title and
   // again in the context line directly under it, which is not a fact repeated in a table but the
-  // same word printed twice above the fold.
-  ok('the card names the network once, in the context line',
-    cardSource.includes('`From ${account}')
-      && !/class: 'badge',\s*text: r\.network/.test(cardSource),
-    'a header badge beside the title duplicates the context line');
+  // same word printed twice above the fold. The badge is the one place; the context line carries
+  // the account and must not interpolate the network label again.
+  ok('the card names the network once — in the badge, not also in the context line',
+    cardSource.includes('badge(r.network.label)')
+      && /return `From \$\{account\}/.test(cardSource)
+      && !/From \$\{account\}[^`]*\$\{network/.test(cardSource),
+    'the network must be the badge beside the title only');
 
   // Simplification must not become deletion: every technical fact the first version showed
   // still exists in the envelope, because the card moves it behind the disclosure rather than
