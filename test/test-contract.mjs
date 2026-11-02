@@ -155,7 +155,9 @@ section('Contract v17/v18 DeFi contract-first drop (M0)');
 // the swap slice the same day; additive, auth 'unlocked').
 // v27 (2026-10-26): token.getCachedBalances; v28 (2026-10-26): optional reviewed context for
 // existing name writes. These additions bind the existing handlers to what the user saw at Review.
-ok('the contract advances to v31 without reusing earlier numbers', CONTRACT_VERSION === 31);
+// v32 (2026-11-02): the background consent gate. No method is added; `tx.confirmReview` gains a
+// `consentToken` in its return, and every value-moving method refuses without one.
+ok('the contract advances to v32 without reusing earlier numbers', CONTRACT_VERSION === 32);
 
 const v29 = Object.entries(METHODS).filter(([, spec]) => spec.since === 29).map(([name]) => name).sort();
 ok('v29 appends exactly the 3 review-pipeline methods',

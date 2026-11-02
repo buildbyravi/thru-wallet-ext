@@ -1,6 +1,6 @@
 # Documentation index
 
-Date: 2026-10-05; refreshed 2026-10-29 (contract v31, shared transaction review + tracked domains + name-service record write and reverse lookup).
+Date: 2026-10-05; refreshed 2026-11-02 (contract v32, background consent gate on top of the shared review pipeline, tracked domains and name-service record write).
 Purpose: map the maintained documentation and point readers to the implementation and verification sources of truth. Documentation summarizes the code; it does not override it.
 
 ---

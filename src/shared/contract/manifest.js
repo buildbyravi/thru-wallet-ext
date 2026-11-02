@@ -144,7 +144,7 @@
 //   per network under the scoped key `tx_reviews`.
 //   v30 adds versioned tracked-domain reads/imports/selection, preserving primary aliases.
 //   v31 adds bidirectional reverse domain resolution.
-export const CONTRACT_VERSION = 31;
+export const CONTRACT_VERSION = 32;
 
 export const METHODS = {
   // ---- System ------------------------------------------------------------
@@ -1184,10 +1184,17 @@ export const METHODS = {
   // { method, params } plus the authoritative auth/password policy; does not sign.
   'tx.confirmReview': {
     params: ['reviewId', 'bindingHash', 'acknowledgements'],
-    returns: '{ reviewId, kind, submit:{ method, params }, submitPolicy, revalidatedAt, expiresAt }',
+    returns: '{ reviewId, kind, submit:{ method, params }, submitPolicy, consentToken, revalidatedAt, expiresAt }'
+      + ' — consentToken is 64 hex chars, single use, 60s, bound to the method and params',
     auth: 'unlocked',
     since: 29,
   },
+  // v32: every value-moving method additionally accepts an optional `consentToken`, the one-time
+  // token `tx.confirmReview` mints. The router refuses the method with REVIEW_REQUIRED if it is
+  // missing, spent, expired (60s), or was minted for another method/params/account/network. It is
+  // not a parameter a caller chooses: it is the proof the confirm happened. Params lists below are
+  // unchanged on purpose — the token is an envelope field on signing methods, not a new surface.
+  //
   // Dropping a prepared review (cancel) — a local delete, no chain effect.
   'tx.discardReview': {
     params: ['reviewId'],

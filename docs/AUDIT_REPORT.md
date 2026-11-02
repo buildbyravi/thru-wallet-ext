@@ -31,7 +31,7 @@ New guards: `test/test-toast.mjs` (92) and `test/test-shared-platform.mjs` (45, 
 positive control). A real-browser look at the fixed bar is still **UNVERIFIED**; the harness is
 `scripts/preview-toast.html`.
 
-**Refresh (2026-10-30).** The tree is at contract **v31** with **153 methods** and **15 routes**;
+**Refresh (2026-11-02).** The tree is at contract **v32** with **153 methods** and **15 routes**;
 `npm test` is **2,831 checks (40 suites + 9 gates)**, `npm run build` PASS, layering 127 files /
 0 DOM sinks, `check-routes` 15/15 with the full used-class set defined. The 2026-10-30 lifecycle
 audit (`docs/audits/2026-10-30-review-lifecycle-audit.md`) fixed four pre-sign defects — a hidden

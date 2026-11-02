@@ -1,10 +1,10 @@
 # Status and roadmap
 
-Single source of truth for the **shipped baseline**, what automated evidence proves, and the remaining work. Source baseline re-verified on `arena/0439c226-thru-wallet-ext` at contract v31 (2026-10-31). `src/`, `test/`, and `scripts/` remain authoritative.
+Single source of truth for the **shipped baseline**, what automated evidence proves, and the remaining work. Source baseline re-verified on `arena/0439c226-thru-wallet-ext` at contract v32 (2026-11-02). `src/`, `test/`, and `scripts/` remain authoritative.
 
 ## Shipped baseline
 
-- **Contract v31, 153 methods** (2026-10-31). `CONTRACT_VERSION` in `src/shared/contract/manifest.js` is authoritative; the historical M0 line is: 81 wallet-core methods plus the 43-method DeFi M0 contract surface (v17 READ+LOCAL, v18 PREPARE+EXECUTE) — every DeFi method is declared, schema-validated, and gated behind build-time flags that are all off; reads answer explicit unsupported states and the only signing method (`intent.submit`) refuses `FEATURE_DISABLED`. v16 removed the retired unbound `tx.send` / `token.transfer` mutation paths after all shipped callers migrated to checked methods. v29 adds the shared transaction-review pipeline described below and changes no existing method.
+- **Contract v32, 153 methods** (2026-11-02). `CONTRACT_VERSION` in `src/shared/contract/manifest.js` is authoritative; the historical M0 line is: 81 wallet-core methods plus the 43-method DeFi M0 contract surface (v17 READ+LOCAL, v18 PREPARE+EXECUTE) — every DeFi method is declared, schema-validated, and gated behind build-time flags that are all off; reads answer explicit unsupported states and the only signing method (`intent.submit`) refuses `FEATURE_DISABLED`. v16 removed the retired unbound `tx.send` / `token.transfer` mutation paths after all shipped callers migrated to checked methods. v29 adds the shared transaction-review pipeline described below and changes no existing method.
 - **Account activation.** Account/keyring creation paths make bounded, best-effort self-registration attempts for newly added accounts on the selected network. There is no periodic signer. Send checks an unregistered recipient and calls `tx.registerAccount` just in time only when that destination is an owned account. The target account signs for itself; arbitrary contacts are never registered.
 - **Send review.** The JIT activation must complete before Review enables. Review shows the matched recipient label above the full destination address; the label is display-only. Checked native/token methods bind the reviewed account and network at the background boundary.
 - **Signing preference.** Signing requires an unlocked wallet. Password re-authentication is **off by default** (`requirePasswordForSigning: false`); a user can explicitly enable it through the password-gated Settings path. The v12 registration exception remains narrowly unlocked-only.
@@ -14,7 +14,7 @@ Single source of truth for the **shipped baseline**, what automated evidence pro
 
 Companion docs: `docs/DOCS_INDEX.md` · `docs/PROJECT_LEDGER.md` · `CONTEXT.md` · `docs/MODULE_BOUNDARIES.md` · `docs/BACKEND_GAPS.md` · `docs/BUILD_SPEC.md` · `docs/MANUAL_SMOKE_CHECKLIST.md` · `docs/SEND_PATH_AUDIT.md`.
 
-## Transaction review pipeline (introduced in v29; the current contract is v31)
+## Transaction review pipeline (introduced in v29; the current contract is v32)
 
 Every value-moving screen prepares a typed intent through `tx.prepareReview`, renders the ONE
 `TxReviewCard`, and submits through `submitReviewedReview` (confirm → optional password → the

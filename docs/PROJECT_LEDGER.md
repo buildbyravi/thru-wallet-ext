@@ -1,6 +1,6 @@
 # Project ledger — shipped baseline and open verification
 
-Date: 2026-10-04; refreshed 2026-10-29 (contract v31, name-service record write).
+Date: 2026-10-04; refreshed 2026-11-02 (contract v32, background consent gate).
 Purpose: concise source-backed record of the current implementation, contract identifiers, completed milestones, and checks that remain open. `src/`, tests, and scripts are authoritative; this ledger is a summary.
 
 The identifier refresh is based on the audited source at `7883219` plus the 2026-10-04 conformance audit (`docs/audits/2026-10-04-conformance.md`; index and open gates in `docs/AUDIT_REPORT.md`), then re-counted against `src/` on 2026-10-28. The documentation does not claim new runtime behavior beyond what `src/` ships.
@@ -13,7 +13,7 @@ The identifier refresh is based on the audited source at `7883219` plus the 2026
 | --- | --- |
 | Repository | `buildbyravi/thru-wallet-ext` |
 | Audited implementation baseline | `7883219` (`arena/01a10602-thru-wallet-ext`, 2026-10-04 audit) |
-| Contract version | **v31** (2026-10-29). The v18 figure below in §3 is the historical M0 measurement; `CONTRACT_VERSION` in `src/shared/contract/manifest.js` is authoritative. |
+| Contract version | **v32** (2026-11-02). The v18 figure below in §3 is the historical M0 measurement; `CONTRACT_VERSION` in `src/shared/contract/manifest.js` is authoritative. |
 | Contract methods | **153**, counted from `Object.keys(METHODS)` in `src/shared/contract/manifest.js` (the v18 audit counted 124: 81 wallet-core + 43 DeFi M0 surface, all feature-flagged off). v29 adds the three review methods; v31 adds `name.reverseLookup`. |
 | Route count | 15 popup/side-panel routes |
 | Signing preference default | Session-only while unlocked (`requirePasswordForSigning: false`); password re-auth is an explicit, password-gated Settings opt-in |
