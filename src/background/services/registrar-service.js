@@ -44,25 +44,49 @@ function coded(code, message, extra = {}) {
 }
 
 /**
- * The fee a registrar write declares, from the network's measured base fee and this payer's
- * verified balance — never a constant. An unmeasured chain or an unreadable/empty balance
- * yields 0, and the review quotes that 0 with its reason instead of inventing a number.
+ * The one-year price a review quotes, for either registrar shape.
+ *
+ * The official registry Config declares a single flat `pricePerYear`. The custom registrar
+ * prices by LABEL LENGTH (3 / 4 / 5+), so its review quotes the tier for THIS label — and the
+ * write-time check must compare the same number. It used to compare against `feePerYear`, the
+ * cheapest tier: a correct 3- or 4-character review then failed at submit with
+ * REVIEW_PRICE_CHANGED and nothing was broadcast (found 2026-11-12 in the domain audit — the
+ * recheck already compared the tier, so the review passed and the write refused).
  */
-function declaredNetworkFee(network, balanceUnits) {
-  return networkFeeUnits({ baseFeeUnits: network?.baseFeeUnits ?? null, balanceUnits });
+export function reviewPricePerYear(cfg, label) {
+  if (cfg == null) return null;
+  if (cfg.pricePerYear != null) return String(cfg.pricePerYear);
+  if (cfg.fee3PerYear != null && label != null) {
+    try {
+      return pricePerYearFor(cfg, label).toString();
+    } catch {
+      return null; // a label that cannot be priced is refused by the caller, not compared
+    }
+  }
+  if (cfg.feePerYear != null) return String(cfg.feePerYear);
+  return null;
 }
 
-function assertReviewContext({ expectedNetworkId, expectedAccountAddress, expectedPricePerYear } = {}, network, account, cfg) {
+function assertReviewContext({ expectedNetworkId, expectedAccountAddress, expectedPricePerYear } = {}, network, account, cfg, label = null) {
   if (expectedNetworkId && expectedNetworkId !== network?.id) {
     throw coded('REVIEW_NETWORK_CHANGED', 'The active network changed after review. Check the name again before signing.');
   }
   if (expectedAccountAddress && expectedAccountAddress !== account?.address) {
     throw coded('REVIEW_ACCOUNT_CHANGED', 'The active account changed after review. Check the name again before signing.');
   }
-  const currentPrice = cfg?.pricePerYear ?? cfg?.feePerYear;
+  const currentPrice = reviewPricePerYear(cfg, label);
   if (expectedPricePerYear != null && String(expectedPricePerYear) !== String(currentPrice)) {
     throw coded('REVIEW_PRICE_CHANGED', 'The registrar price changed after review. Check the name again for the current price.');
   }
+}
+
+/**
+ * The fee a registrar write declares, from the network's measured base fee and this payer's
+ * verified balance — never a constant. An unmeasured chain or an unreadable/empty balance
+ * yields 0, and the review quotes that 0 with its reason instead of inventing a number.
+ */
+function declaredNetworkFee(network, balanceUnits) {
+  return networkFeeUnits({ baseFeeUnits: network?.baseFeeUnits ?? null, balanceUnits });
 }
 
 async function fetchAccountData(address) {
@@ -211,7 +235,7 @@ export async function purchaseDomain({ name, years, expectedNetworkId, expectedA
   const registry = await getRegistry();
   if (!registry.supported) throw coded('REGISTRY_ABSENT', registry.reason ?? 'registry not available here');
   const cfg = registry.registry;
-  assertReviewContext({ expectedNetworkId, expectedAccountAddress, expectedPricePerYear }, network, feePayer, cfg);
+  assertReviewContext({ expectedNetworkId, expectedAccountAddress, expectedPricePerYear }, network, feePayer, cfg, n);
   if (cfg.tokenProgram !== network.tokenProgramId) {
     throw coded('REGISTRY_UNSUPPORTED', `the registry's token program (${cfg.tokenProgram.slice(0, 12)}…) differs from this build's pinned token program — refusing to construct the payment`);
   }
@@ -315,7 +339,7 @@ async function renewOrClaim({ name, years, claim, expectedNetworkId, expectedAcc
   const registry = await getRegistry();
   if (!registry.supported) throw coded('REGISTRY_ABSENT', registry.reason ?? 'registry not available here');
   const cfg = registry.registry;
-  assertReviewContext({ expectedNetworkId, expectedAccountAddress, expectedPricePerYear }, network, feePayer, cfg);
+  assertReviewContext({ expectedNetworkId, expectedAccountAddress, expectedPricePerYear }, network, feePayer, cfg, n);
   if (cfg.tokenProgram !== network.tokenProgramId) {
     throw coded('REGISTRY_UNSUPPORTED', `the registry's token program (${cfg.tokenProgram.slice(0, 12)}…) differs from this build's pinned token program — refusing to construct the payment`);
   }
@@ -617,7 +641,7 @@ export async function registerCustom({ name, years, expectedNetworkId, expectedA
   if (!info.rootMatchesNameService) {
     throw tcrCoded('TCR_ROOT_MISMATCH', 'the registrar config root does not match the name-service derivation — refusing to construct a registration against a mismatched root');
   }
-  assertReviewContext({ expectedNetworkId, expectedAccountAddress, expectedPricePerYear }, network, feePayer, info);
+  assertReviewContext({ expectedNetworkId, expectedAccountAddress, expectedPricePerYear }, network, feePayer, info, n);
 
   // Existence pre-verification (creation proofs only apply to NON-existing accounts):
   // lease exists (any state) or domain exists ⇒ the register instruction cannot apply.
@@ -729,7 +753,7 @@ export async function renewCustom({ name, years, expectedNetworkId, expectedAcco
   if (!info.rootMatchesNameService) {
     throw tcrCoded('TCR_ROOT_MISMATCH', 'the registrar config root does not match the name-service derivation');
   }
-  assertReviewContext({ expectedNetworkId, expectedAccountAddress, expectedPricePerYear }, network, feePayer, info);
+  assertReviewContext({ expectedNetworkId, expectedAccountAddress, expectedPricePerYear }, network, feePayer, info, n);
 
   const check = await checkCustomLease({ name: n });
   if (check.readError) throw tcrCoded('TCR_READ_ERROR', `Could not verify '${n}' on-chain right now: ${check.readError}`, { retryable: true });

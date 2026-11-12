@@ -48,6 +48,9 @@ const { sendWithConsent } = await import('./fixtures/consent.mjs');
 const { Pubkey } = await import('@thru/sdk');
 const reg = await import('../src/lib/registrar.js');
 const ns = await import('../src/lib/name-service.js');
+const tcr = await import('../src/lib/custom-registrar.js');
+const registrarService = await import('../src/background/services/registrar-service.js');
+const { NETWORKS } = await import('../src/lib/networks.js');
 
 let checks = 0;
 function ok(label, cond = true) {
@@ -362,6 +365,87 @@ ok('lease derivation byte-exact: alice → ta06ZB32… (official CLI derive-leas
   assert.ok(reg.yearsProblem(0) !== null && reg.yearsProblem(256) !== null && reg.yearsProblem(1.5) !== null);
   assert.equal(reg.yearsProblem('2'), null);
   ok('name/year validation is strict and honest (never silently normalized into a paid write)');
+}
+
+// [7] The review price and the write-time price are the SAME tier (2026-11-12 domain audit).
+// The custom registrar prices by LABEL LENGTH; comparing a tiered review price against
+// `feePerYear` (the cheapest tier) refused every 3- and 4-character name at submit with
+// REVIEW_PRICE_CHANGED — the review passed, then the write aborted before broadcasting.
+{
+  // Different shapes, one comparison: registry Config is flat, the custom registrar is tiered.
+  assert.equal(registrarService.reviewPricePerYear({ pricePerYear: 1_000_000n }, 'alice'), '1000000');
+  const tiers = { fee3PerYear: 100_000n, fee4PerYear: 10_000n, fee5PlusPerYear: 1_000n, feePerYear: 1_000n };
+  assert.equal(registrarService.reviewPricePerYear(tiers, 'abc'), '100000');
+  assert.equal(registrarService.reviewPricePerYear(tiers, 'abcd'), '10000');
+  assert.equal(registrarService.reviewPricePerYear(tiers, 'alice'), '1000');
+  ok('the reviewed price is compared with the label\'s own tier, not the cheapest tier');
+
+  // Exercise the real gate: a layout-2 config (tiered, strict) for the pinned custom program.
+  const CUSTOM_PROGRAM = NETWORKS.betanet.customRegistrarProgram;
+  assert.ok(CUSTOM_PROGRAM, 'betanet pins the custom registrar program');
+  const CUSTOM_CONFIG = tcr.tcrConfigAddress(CUSTOM_PROGRAM);
+  const LABEL3 = 'abc';
+  const customLease = tcr.tcrLeaseAddress(CUSTOM_PROGRAM, LABEL3);
+
+  const customConfigBytes = () => {
+    const out = new Uint8Array(tcr.TCR_CONFIG_SIZE);
+    const dv = new DataView(out.buffer);
+    dv.setUint32(tcr.TCR_CFG.magic, tcr.TCR_CONFIG_MAGIC, true);
+    out[tcr.TCR_CFG.version] = tcr.TCR_CONFIG_LAYOUT_V2;
+    const rootNameBytes = new TextEncoder().encode('thru');
+    out[tcr.TCR_CFG.rootNameLen] = rootNameBytes.length;
+    out.set(rootNameBytes, tcr.TCR_CFG.rootName);
+    out.set(Pubkey.from(OTHER).toBytes(), tcr.TCR_CFG.admin);
+    out.set(Pubkey.from(TREASURER).toBytes(), tcr.TCR_CFG.treasury);
+    out.set(Pubkey.from(ROOT_THRU).toBytes(), tcr.TCR_CFG.rootAddress);
+    dv.setBigUint64(tcr.TCR_CFG.feePerYear, 1_000n, true);
+    dv.setBigUint64(tcr.TCR_CFG.fee3Char, 100_000n, true);
+    dv.setBigUint64(tcr.TCR_CFG.fee4Char, 10_000n, true);
+    dv.setBigUint64(tcr.TCR_CFG.fee5PlusChar, 1_000n, true);
+    out[tcr.TCR_CFG.feePolicy] = tcr.TCR_FEE_POLICY.strict;
+    return out;
+  };
+  const customLeaseBytes = () => {
+    const out = new Uint8Array(tcr.TCR_LEASE_SIZE);
+    const dv = new DataView(out.buffer);
+    dv.setUint32(tcr.TCR_LSE.magic, tcr.TCR_LEASE_MAGIC, true);
+    out[tcr.TCR_LSE.version] = tcr.TCR_LAYOUT_VERSION;
+    out[tcr.TCR_LSE.labelLen] = LABEL3.length;
+    dv.setBigUint64(tcr.TCR_LSE.expiresAt, BigInt(nowSeconds + 86_400), true);
+    dv.setBigUint64(tcr.TCR_LSE.registeredAt, BigInt(nowSeconds - 100), true);
+    out.set(Pubkey.from(OTHER).toBytes(), tcr.TCR_LSE.owner);
+    out.set(new Uint8Array(32), tcr.TCR_LSE.resolver);
+    out.set(new TextEncoder().encode(LABEL3), tcr.TCR_LSE.label);
+    return out;
+  };
+
+  const baseGet = client.accounts.get;
+  client.accounts.get = async (address) => {
+    if (address === CUSTOM_CONFIG) return { meta: { balance: 1n }, data: customConfigBytes() };
+    if (address === customLease) return { meta: { balance: 1n }, data: customLeaseBytes() };
+    return baseGet(address);
+  };
+
+  // The tier for a 3-character label is 100000. Before the fix this exact call answered
+  // REVIEW_PRICE_CHANGED (compared with feePerYear = 1000) and nothing was broadcast; now the
+  // gate passes and the flow reaches its real refusal — the lease already exists.
+  const tiered = await sendWithConsent(handleApiRequest, 'name.register', {
+    name: LABEL3, years: 1, via: 'custom', expectedNetworkId: 'betanet',
+    expectedAccountAddress: SENDER, expectedPricePerYear: '100000', password: 'Password123!',
+  });
+  assert.notEqual(tiered.error?.code, 'REVIEW_PRICE_CHANGED',
+    `a correct tiered review must not be refused as stale (got ${tiered.error?.code})`);
+  assert.equal(tiered.error?.code, 'TCR_LEASE_EXISTS', `the gate passes and the real refusal is the lease (got ${tiered.error?.code})`);
+
+  // Negative control: a genuinely stale price is still refused.
+  const staleTier = await sendWithConsent(handleApiRequest, 'name.register', {
+    name: LABEL3, years: 1, via: 'custom', expectedNetworkId: 'betanet',
+    expectedAccountAddress: SENDER, expectedPricePerYear: '999', password: 'Password123!',
+  });
+  assert.equal(staleTier.error?.code, 'REVIEW_PRICE_CHANGED', 'a stale tier price is still refused');
+
+  client.accounts.get = baseGet;
+  ok('a 3-character (premium-tier) review reaches its real refusal instead of REVIEW_PRICE_CHANGED');
 }
 
 console.log(`\ntest-name-registrar: ${checks} checks passed`);
