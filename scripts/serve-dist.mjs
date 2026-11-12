@@ -34,11 +34,24 @@ const types = {
   '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml',
 };
 
-createServer(async (req, res) => {
-  const path = req.url === '/' ? defaultPath : req.url.split('?')[0];
-  const file = resolve(join(root, path));
+// A path under `root` that this server is willing to read: no `.` segment (so `.git/`, `.env` and
+// friends stay private) and no dependency tree. `--root .` publishes the checkout, and a dev
+// server that will read `.git/config` is one copy-pasted URL away from handing out a remote it
+// was never asked to disclose (2026-11-12: the review-card harness served `/.git/config` with 200
+// while bound to `0.0.0.0`).
+function resolveRequested(rootDir, urlPath) {
+  const decoded = decodeURIComponent(urlPath);
+  const segments = decoded.split('/').filter(Boolean);
+  if (segments.some((part) => part.startsWith('.') || part === 'node_modules')) return null;
+  const file = resolve(join(rootDir, decoded));
   // Never serve outside the chosen root, even if the request is percent-encoded.
-  if (file !== root && !file.startsWith(root + sep)) {
+  if (file !== rootDir && !file.startsWith(rootDir + sep)) return null;
+  return file;
+}
+
+createServer(async (req, res) => {
+  const file = resolveRequested(root, req.url === '/' ? defaultPath : req.url.split('?')[0]);
+  if (!file) {
     res.writeHead(403);
     res.end('forbidden');
     return;
