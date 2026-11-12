@@ -209,6 +209,11 @@ console.log('[5] domain cards: no invented price, one total at most');
     treasury: 'taTreasury11111111111111111111111111111111111',
     nativeBalanceUnits: '5000000',
     availability: { state: 'available' },
+    // The fee the signed header declares, measured on this chain (betanet baseFeeUnits = 1).
+    networkFee: {
+      supported: true, amountUnits: '1', baseFeeUnits: '1', reserveUnits: '1000',
+      source: 'measured', reason: null,
+    },
     feeReserveUnits: '0',
     instruction: { name: 'Register domain', opcode: 7 },
     program: { name: 'Thru custom registrar', address: 'taRegistrarProgram1111111111111111111111111111', verified: true },
@@ -221,10 +226,35 @@ console.log('[5] domain cards: no invented price, one total at most');
     JSON.stringify(register));
   ok(!register.some((line) => /^(Total charge|Total price|Price per year)$/.test(line)),
     'no registrar price and no second total');
-  ok(register.includes('Network fee') && register.includes('none'),
-    'the only money row is the network fee, and it is declared zero');
+  // 2026-11-12: this row used to print "none" because the decoder hard-coded the builder's
+  // 0n, next to a sentence telling the user they pay the network fee. It now quotes the fee the
+  // header declares — the measured base fee.
+  ok(register.includes('Network fee') && register.includes('about 0.000000001 THRU'),
+    'the only money row is the network fee, quoted from the measured base fee',
+    JSON.stringify(register));
+  ok(!register.includes('none'), 'a measured fee is never rendered as "none"', JSON.stringify(register));
   ok(!register.some((line) => /best-effort|base units|declared/i.test(line)),
     'no "best-effort" / "base units" / "declared" in the card', JSON.stringify(register));
+
+  // No measurement is NOT a zero: the card says "not confirmed". This is the negative control
+  // for the fix — the old decoder printed "none" here too, because it never read the facts.
+  const unmeasured = visibleLines(card('domain-register', {
+    fromAddress: ACCOUNT.address,
+    name: 'vault',
+    tld: 'thru',
+    years: 1,
+    pricePerYear: '0',
+    totalPriceUnits: '0',
+    nativeBalanceUnits: '5000000',
+    availability: { state: 'available' },
+    networkFee: { supported: false, reason: 'The network fee has not been measured on this chain.' },
+    instruction: { name: 'Register domain', opcode: 7 },
+    program: { name: 'Thru custom registrar', address: 'taRegistrarProgram1111111111111111111111111111', verified: true },
+  }).el);
+  ok(unmeasured.includes('Network fee') && unmeasured.includes('not confirmed'),
+    'an unmeasured fee is "not confirmed", never a zero', JSON.stringify(unmeasured));
+  ok(!unmeasured.includes('none'),
+    'an absent measurement never renders as "none"', JSON.stringify(unmeasured));
 }
 
 console.log('[6] an unrecognised transaction is explicit, and cannot be signed');

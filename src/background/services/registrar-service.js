@@ -6,10 +6,18 @@
 // Write path : name.purchase / name.renewLease / name.claimExpired are auth:'signing'
 //              contract methods (v22). Every write is self-signed (fee payer = vault
 //              signer), pays from the fee payer's OWN token account of the registry mint,
-//              carries fee 0n exactly like the first-party CLI (THRU_REGISTRAR_PROGRAM_FEE
-//              = 0 — the registrar program charges its own token price, there is no
-//              protocol fee field to fill), and re-reads config fresh at build time so a
-//              registry change between quote and submit is caught.
+//              declares the network fee from the chain's measured base fee when that payer
+//              can cover it (`tx-units.networkFeeUnits`; the same rule sends use), and
+//              re-reads config fresh at build time so a registry change between quote and
+//              submit is caught.
+//
+//              Correcting a long-standing misreading (2026-11-12): the first-party CLI's
+//              THRU_REGISTRAR_PROGRAM_FEE = 0 is NOT a program-level fee field. Its builder
+//              passes it straight into `Transaction::new(fee_payer, program, fee, nonce)`
+//              (rpc/thru-base/src/txn_tools.rs), i.e. it is the transaction header fee the
+//              CLI happened to leave at zero ("0 fee for now"). Copying that zero here made
+//              the wallet's registrar writes free while every other write paid the measured
+//              base fee — and the review card then called the builder constant "Network fee".
 //
 // Honest boundaries documented here rather than hidden:
 //   - lease end times are raw u64 "chain time"; expiry hints compare them to LOCAL
@@ -24,6 +32,7 @@ import * as reg from '../../lib/registrar.js';
 import * as tcr from '../../lib/custom-registrar.js';
 import { domainAccountAddress, registrarConfigAddress, rootRegistrarAddress, NAME_SERVICE_PROGRAM } from '../../lib/name-service.js';
 import { getActiveNetworkConfig } from './network-service.js';
+import { networkFeeUnits } from '../../lib/tx-units.js';
 import * as pending from './pending-tx-service.js';
 import * as balances from './balance-service.js';
 
@@ -32,6 +41,15 @@ function coded(code, message, extra = {}) {
   err.code = code;
   if (extra.retryable !== undefined) err.retryable = extra.retryable;
   return err;
+}
+
+/**
+ * The fee a registrar write declares, from the network's measured base fee and this payer's
+ * verified balance — never a constant. An unmeasured chain or an unreadable/empty balance
+ * yields 0, and the review quotes that 0 with its reason instead of inventing a number.
+ */
+function declaredNetworkFee(network, balanceUnits) {
+  return networkFeeUnits({ baseFeeUnits: network?.baseFeeUnits ?? null, balanceUnits });
 }
 
 function assertReviewContext({ expectedNetworkId, expectedAccountAddress, expectedPricePerYear } = {}, network, account, cfg) {
@@ -176,9 +194,9 @@ export async function getPaymentBalance() {
 }
 
 /**
- * name.purchase — buy a `.thru` lease for the active account (self-signed; fee 0n).
+ * name.purchase — buy a `.thru` lease for the active account (self-signed).
  * Token charge = price_per_year × years, paid from the signer's own token account of the
- * registry mint. Steps mirror the first-party CLI exactly.
+ * registry mint, plus the network fee the header declares (see `declaredNetworkFee`).
  */
 export async function purchaseDomain({ name, years, expectedNetworkId, expectedAccountAddress, expectedPricePerYear } = {}) {
   const prob = reg.purchaseNameProblem(name);
@@ -231,6 +249,10 @@ export async function purchaseDomain({ name, years, expectedNetworkId, expectedA
   if (have < totalPrice) {
     throw coded('INSUFFICIENT_PAYMENT_FUNDS', `This registration costs ${totalPrice} base units of the registry token; your account holds ${have}.`);
   }
+  // The declared network fee needs the payer's NATIVE balance: the registry is paid in its own
+  // token, so a payer can hold plenty of that and no THRU. An unreadable balance declares 0.
+  const payerNative = await thruClient.getAccountInfo(feePayer.address).catch(() => null);
+  const networkFee = declaredNetworkFee(network, payerNative?.balance ?? 0n);
 
   // Creation state proofs (proofType 1 = Creating — the same proof the token account
   // initializer embeds; the purchase instruction carries both proofs inline).
@@ -243,7 +265,7 @@ export async function purchaseDomain({ name, years, expectedNetworkId, expectedA
   const { rawTransaction } = await client.transactions.buildAndSign({
     feePayer: { publicKey: feePayer.publicKey, privateKey: feePayer.privateKey },
     program: reg.THRU_REGISTRAR_PROGRAM,
-    header: { ...reg.REG_HEADER_PURCHASE },
+    header: reg.registryWriteHeader(reg.REG_UNITS_PURCHASE, networkFee),
     accounts: {
       readWrite: [registry.configAddress, leaseAddress, domainAddress, cfg.treasurer, payerBalance.tokenAccount, cfg.rootRegistrar],
       readOnly: [cfg.nameServiceProgram, cfg.tokenMint, cfg.tokenProgram],
@@ -327,12 +349,14 @@ async function renewOrClaim({ name, years, claim, expectedNetworkId, expectedAcc
   if (have < totalPrice) {
     throw coded('INSUFFICIENT_PAYMENT_FUNDS', `This ${claim ? 'claim' : 'renewal'} costs ${totalPrice} base units of the registry token; your account holds ${have}.`);
   }
+  const payerNative = await thruClient.getAccountInfo(feePayer.address).catch(() => null);
+  const networkFee = declaredNetworkFee(network, payerNative?.balance ?? 0n);
 
   const client = thruClient.getClient();
   const { rawTransaction } = await client.transactions.buildAndSign({
     feePayer: { publicKey: feePayer.publicKey, privateKey: feePayer.privateKey },
     program: reg.THRU_REGISTRAR_PROGRAM,
-    header: { ...reg.REG_HEADER_RENEW },
+    header: reg.registryWriteHeader(reg.REG_UNITS_RENEW, networkFee),
     accounts: {
       readWrite: [leaseAddress, cfg.treasurer, payerBalance.tokenAccount],
       readOnly: [registry.configAddress, cfg.tokenMint, cfg.tokenProgram],
@@ -619,11 +643,12 @@ export async function registerCustom({ name, years, expectedNetworkId, expectedA
 
   // The signer must exist on-chain (same reason claimFaucet JIT-activates).
   const payerInfo = await thruClient.getAccountInfo(feePayer.address);
+  const networkFee = declaredNetworkFee(network, payerInfo?.balance ?? 0n);
   if (!payerInfo.exists) {
     await thruClient.createOnChainAccount(feePayer);
-  } else if (info.feeEnforced && payerInfo.balance != null && payerInfo.balance < totalFee) {
+  } else if (info.feeEnforced && payerInfo.balance != null && payerInfo.balance < totalFee + networkFee) {
     throw tcrCoded('INSUFFICIENT_FUNDS',
-      `The registrar charges ${totalFee} base units (${feePerYear}/yr × ${y}y); your account holds ${payerInfo.balance}.`);
+      `The registrar charges ${totalFee} base units (${feePerYear}/yr × ${y}y) plus a ${networkFee}-base-unit network fee; your account holds ${payerInfo.balance}.`);
   }
 
   const domainAddress = await domainAccountAddress(info.root, n);
@@ -649,7 +674,7 @@ export async function registerCustom({ name, years, expectedNetworkId, expectedA
       computeUnits: 2_000_000,
       memoryUnits: 32_768,
       stateUnits: 6,
-      fee: 0n,
+      fee: networkFee,
       startSlot: slot,
       expiryAfter: 10_000,
     },
@@ -722,11 +747,12 @@ export async function renewCustom({ name, years, expectedNetworkId, expectedAcco
   const totalFee = feePerYear * BigInt(y);
 
   const payerInfo = await thruClient.getAccountInfo(feePayer.address);
+  const networkFee = declaredNetworkFee(network, payerInfo?.balance ?? 0n);
   if (!payerInfo.exists) {
     await thruClient.createOnChainAccount(feePayer);
-  } else if (info.feeEnforced && payerInfo.balance != null && payerInfo.balance < totalFee) {
+  } else if (info.feeEnforced && payerInfo.balance != null && payerInfo.balance < totalFee + networkFee) {
     throw tcrCoded('INSUFFICIENT_FUNDS',
-      `Renewal charges ${totalFee} base units (${feePerYear}/yr × ${y}y); your account holds ${payerInfo.balance}.`);
+      `Renewal charges ${totalFee} base units (${feePerYear}/yr × ${y}y) plus a ${networkFee}-base-unit network fee; your account holds ${payerInfo.balance}.`);
   }
 
   const domainAddress = await domainAccountAddress(info.root, n);
@@ -740,7 +766,7 @@ export async function renewCustom({ name, years, expectedNetworkId, expectedAcco
       computeUnits: 1_000_000,
       memoryUnits: 32_768,
       stateUnits: 0,
-      fee: 0n,
+      fee: networkFee,
       expiryAfter: 10_000,
     },
     accounts: {

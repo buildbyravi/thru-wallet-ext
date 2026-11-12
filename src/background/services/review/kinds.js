@@ -19,6 +19,7 @@ import * as registrarService from '../registrar-service.js';
 import * as accountService from '../account-service.js';
 import * as contactsService from '../contacts-service.js';
 import * as primaryNameService from '../primary-name-service.js';
+import { networkFeeUnits } from '../../../lib/tx-units.js';
 import * as ns from '../../../lib/name-service.js';
 
 function coded(code, message, retryable = false) {
@@ -127,6 +128,35 @@ async function feeQuote() {
   } catch (error) {
     return { supported: false, reason: error?.message || 'The fee quote could not be read.' };
   }
+}
+
+/**
+ * The network fee a reviewed write DECLARES, with provenance, computed by the same rule the
+ * write path uses (`tx-units.networkFeeUnits`) so the card cannot quote one number and sign
+ * another. An unmeasured fee is `supported:false` — never a quoted zero.
+ */
+function declaredNetworkFee(fee, balanceUnits) {
+  if (!fee?.supported) {
+    return {
+      supported: false,
+      amountUnits: null,
+      baseFeeUnits: null,
+      reserveUnits: null,
+      source: null,
+      reason: fee?.reason || 'The network fee on this chain has not been measured, so no fee is quoted.',
+    };
+  }
+  const amountUnits = networkFeeUnits({ baseFeeUnits: fee.feeUnits, balanceUnits }).toString();
+  return {
+    supported: true,
+    amountUnits,
+    baseFeeUnits: String(fee.feeUnits),
+    reserveUnits: fee.reserveUnits == null ? null : String(fee.reserveUnits),
+    // A zero here is the wallet's decision (unfunded or unreadable balance), not a chain
+    // measurement, and the decoder says so. Only a positive amount keeps the measured source.
+    source: amountUnits === '0' ? 'declared-by-builder' : (fee.source || 'unknown'),
+    reason: fee.reason || null,
+  };
 }
 
 /** {exists, balanceUnits} where `exists:null` means the read failed, not "absent". */
@@ -372,6 +402,8 @@ async function domainRegisterFacts(params, { account, network }) {
         : 'Config root does NOT match the name-service derivation',
     },
     instruction: { name: 'Register domain', opcode: customRegistrar.TCR_OP_REGISTER },
+    // The fee row quotes the amount the signed header will declare, with its provenance.
+    networkFee: declaredNetworkFee(fee, payer.balanceUnits),
     feeReserveUnits: fee.supported ? fee.reserveUnits : null,
     feeNote: null,
   };
@@ -464,6 +496,7 @@ async function domainCustomRenewFacts(params, { account, network }) {
         : 'Config root does NOT match the name-service derivation',
     },
     instruction: { name: 'Renew domain lease', opcode: customRegistrar.TCR_OP_RENEW },
+    networkFee: declaredNetworkFee(fee, payer.balanceUnits),
     feeReserveUnits: fee.supported ? fee.reserveUnits : null,
     feeNote: null,
   };
@@ -521,10 +554,13 @@ async function registryWriteFacts(params, { account, mode }) {
       lease.reason || 'The `.thru` registry is not initialized on this network.');
   }
 
-  const [payment, balance, fee] = await Promise.all([
+  const [payment, balance, fee, native] = await Promise.all([
     tokenMetadata(cfg.tokenMint),
     thruClient.getTokenBalance(account.address, cfg.tokenMint).catch(() => null),
     feeQuote(),
+    // The registry is paid in its own token; the network fee comes from native THRU, so its
+    // balance is read separately (a payer can hold the token and no THRU at all).
+    accountState(account.address),
   ]);
 
   let availability;
@@ -594,6 +630,7 @@ async function registryWriteFacts(params, { account, mode }) {
       opcode: mode === 'purchase' ? registrar.REG_OP_PURCHASE_DOMAIN
         : mode === 'renew' ? registrar.REG_OP_RENEW_LEASE : registrar.REG_OP_CLAIM_EXPIRED_DOMAIN,
     },
+    networkFee: declaredNetworkFee(fee, native.balanceUnits),
     feeReserveUnits: fee.supported ? fee.reserveUnits : null,
     feeNote: null,
   };

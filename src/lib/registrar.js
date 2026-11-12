@@ -48,8 +48,20 @@ export const REG_LEASE_SIZE = 148;  // 32 + 32 + 64 + 4 + 8 + 8
 // ---- Input bounds (first-party, txn_tools.rs constants) -----------------------
 export const REG_MAX_NAME_CHARS = 64;   // TN_NAME_SERVICE_MAX_DOMAIN_LENGTH
 export const REG_MAX_YEARS = 255;       // years is u8; CLI rejects 0
-export const REG_HEADER_PURCHASE = Object.freeze({ computeUnits: 500_000, memoryUnits: 10_000, stateUnits: 2, fee: 0n });
-export const REG_HEADER_RENEW = Object.freeze({ computeUnits: 300_000, memoryUnits: 10_000, stateUnits: 0, fee: 0n });
+// Budgets only — the FEE IS NOT A CONSTANT. A header's fee is the money the signer pays the
+// block producer, and it must come from the network's measured base fee and the payer's
+// balance (`tx-units.networkFeeUnits`), the same rule every other wallet write follows.
+// These objects used to carry `fee: 0n`, and the review card then printed "Network fee — none"
+// beside a sentence promising that fee (2026-11-12). Build the header with
+// `registryWriteHeader(units, feeUnits)` so a write cannot ship a fee nobody decided.
+export const REG_UNITS_PURCHASE = Object.freeze({ computeUnits: 500_000, memoryUnits: 10_000, stateUnits: 2 });
+export const REG_UNITS_RENEW = Object.freeze({ computeUnits: 300_000, memoryUnits: 10_000, stateUnits: 0 });
+
+/** The wire header for a registry write: fixed budget + the declared network fee. */
+export function registryWriteHeader(units, feeUnits) {
+  if (feeUnits == null) throw new Error('a registry write needs a declared network fee');
+  return { ...units, fee: BigInt(feeUnits) };
+}
 
 // ---- Pure validation -----------------------------------------------------------
 export function purchaseNameProblem(name) {

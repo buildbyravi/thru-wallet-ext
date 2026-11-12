@@ -253,8 +253,12 @@ export function TxReviewCard({ review, onChange = null } = {}) {
     const total = totalRow(r.assets);
     if (total && total.value !== moneyRows[0]?.value) moneyRows.push(total);
     // An undecodable transaction has no amount and no provable fee: a table of two "unknown"
-    // rows teaches the user nothing, so there is no money table at all.
-    const moneyKnown = movement.length > 0 || (fee.supported && fee.amountUnits != null);
+    // rows teaches the user nothing, so there is no money table at all. A DECODED write keeps
+    // its fee row even when the fee could not be measured — "not confirmed" is the answer the
+    // user needs, and omitting the row left a sentence promising a network fee with no fee line
+    // under it (2026-11-12, domain register with no measurement).
+    const moneyKnown = movement.length > 0 || (fee.supported && fee.amountUnits != null)
+      || (known && Boolean(fee));
     if (moneyKnown && moneyRows.length) el.appendChild(detailTable(moneyRows));
 
     // Facts that are not money and not the title: current/new expiry, previous owner, and the

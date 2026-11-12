@@ -168,6 +168,12 @@ const domainFacts = (overrides = {}) => ({
   treasury: asAddress(11),
   program: { name: 'Custom `.thru` registrar', address: asAddress(12), verified: true, source: 'pinned' },
   instruction: { name: 'Register domain', opcode: 1 },
+  // The fee the signed header declares, measured on this chain (betanet baseFeeUnits = 1).
+  // The decoder quotes THIS, never a builder constant: `src/shared/tx-review/decoders/domain.js`.
+  networkFee: {
+    supported: true, amountUnits: '1', baseFeeUnits: '1', reserveUnits: '1000',
+    source: 'measured', reason: null,
+  },
   feeReserveUnits: '1000',
   feeNote: null,
   networkId: 'betanet',
@@ -177,6 +183,12 @@ const domainFacts = (overrides = {}) => ({
 
 const paidFacts = (overrides = {}) => ({
   ...domainFacts(),
+  // The registry is paid in its own token; this payer's NATIVE balance was not modelled as
+  // funded, so the header declares 0 and the card must say so with the reason, not "not quoted".
+  networkFee: {
+    supported: true, amountUnits: '0', baseFeeUnits: '1', reserveUnits: '1000',
+    source: 'declared-by-builder', reason: null,
+  },
   provider: 'registry',
   pricePerYear: '1000000',
   totalPriceUnits: '2000000',
@@ -355,6 +367,30 @@ console.log('[3] decoders: domain writes');
 {
   const register = decode('domain-register', domainFacts());
   model.assertReviewContent(register);
+  // 2026-11-12: the card used to print "Network fee — none" because the decoder hard-coded
+  // '0'/'declared-by-builder'. It now quotes the fee the signed header declares.
+  ok('the network fee is the declared, measured amount — not a builder zero',
+    register.assets.fee.supported === true
+      && register.assets.fee.amountUnits === '1'
+      && register.assets.fee.source === 'measured',
+    JSON.stringify(register.assets.fee));
+  const unmeasured = decode('domain-register', domainFacts({
+    networkFee: { supported: false, amountUnits: null, reason: 'no measurement on this chain' },
+  }));
+  ok('a registrar write with no fee measurement quotes nothing instead of zero',
+    unmeasured.assets.fee.supported === false
+      && unmeasured.assets.fee.amountUnits === null
+      && /no measurement/.test(unmeasured.assets.fee.note),
+    JSON.stringify(unmeasured.assets.fee));
+  const unfunded = decode('domain-register', domainFacts({
+    networkFee: {
+      supported: true, amountUnits: '0', baseFeeUnits: '1', reserveUnits: '1000',
+      source: 'declared-by-builder', reason: null,
+    },
+  }));
+  ok('a deliberate zero keeps the declared amount AND names the measured base fee it could not cover',
+    unfunded.assets.fee.amountUnits === '0' && /measured base fee is 1/.test(unfunded.assets.fee.note),
+    JSON.stringify(unfunded.assets.fee));
   // v1.5.0 (owner directive, Part 2.2): the deployed program does NOT collect its fee, so the
   // card promises no charge. With tiered pricing the price is real but unenforced, so the card
   // states the price AND states that it is not enforced — it does not call the registration
@@ -414,7 +450,8 @@ console.log('[3] decoders: domain writes');
   ok('a purchase pays in the registry token with its own scale',
     purchase.assets.outgoing[0].symbol === 'USDX'
       && purchase.assets.outgoing[0].decimals === 6
-      && purchase.assets.fee.amountUnits === '0');
+      && purchase.assets.fee.amountUnits === '0'
+      && purchase.assets.fee.source === 'declared-by-builder');
   // Audit F-10: kinds.js emitted `treasurer` while the decoder read `treasury`, so the real
   // config address rendered as "unknown".
   ok('the registry treasurer address reaches the execution accounts',

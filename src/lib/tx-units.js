@@ -62,6 +62,39 @@ export function payloadFloor({ bytes = 0, accounts = 1 } = {}) {
 }
 
 /**
+ * The network fee a wallet-initiated write DECLARES, from chain facts.
+ *
+ * The fee in a Thru transaction header is money the signer pays the block producer, and it is
+ * the ONLY network fee there is: the runtime's pre-execute check is
+ * `TN_RUNTIME_TXN_ERR_INSUFFICIENT_FEE_PAYER_BALANCE`
+ * (rpc/thru-base/src/tn_runtime_utils.rs), i.e. the chain rejects a fee the payer cannot cover
+ * — it never adds one of its own. So this number IS the network fee, and it has exactly one
+ * decision point:
+ *   - `baseFeeUnits == null` — the fee on this chain has not been measured. Declare 0 and let
+ *     the review say "not confirmed"; never turn an unknown into a quoted zero.
+ *   - an unfunded/unreadable payer — 0, because declaring more fails the pre-execute balance
+ *     check before the program ever runs.
+ *   - a funded payer — the measured base fee.
+ *
+ * Why this function exists (2026-11-12, domain register): the registrar and name-service writes
+ * each hard-coded `fee: 0n` while their own review cards printed "Network fee — none" next to
+ * "You pay only the network fee". The card was quoting a builder constant, not a chain fact.
+ */
+export function networkFeeUnits({ baseFeeUnits = null, balanceUnits = 0n, sponsored = false } = {}) {
+  if (sponsored) return 0n;
+  if (baseFeeUnits == null) return 0n;
+  if (balanceUnits == null) return 0n;
+  let balance;
+  try {
+    balance = BigInt(balanceUnits);
+  } catch {
+    return 0n; // an unreadable balance cannot prove the fee is payable
+  }
+  if (balance <= 0n) return 0n;
+  return BigInt(baseFeeUnits);
+}
+
+/**
  * Resolve the full header budget for a transaction.
  * @param {object} o
  * @param {keyof typeof UNIT_CLASS extends never ? string : string} o.kind   UNIT_CLASS value
@@ -76,13 +109,14 @@ export function autoUnits({ kind, bytes = 0, accounts = 1, balanceUnits = 0n, ma
   if (!floor) throw new Error(`unknown unit class '${kind}'`);
   const sized = payloadFloor({ bytes, accounts });
   // Account creation and faucet claims are sponsored protocol flows that MUST NOT deduct fee (0n).
-  // Transfers and token operations tip 1 base unit when funded.
+  // Transfers and token operations tip the measured base unit when funded (one policy:
+  // `networkFeeUnits`, shared with the registrar/name-service writes that used to declare 0).
   const isSponsored = kind === UNIT_CLASS.CREATE || kind === UNIT_CLASS.CLAIM;
   return {
     computeUnits: clamp(Math.max(floor.computeUnits, 4 * bytes), 0, GLOBAL_CEILINGS.computeUnits),
     memoryUnits: floor.memoryUnits,
     stateUnits: clamp(Math.max(floor.stateUnits, sized.stateUnits), 1, maxStateUnitsPerBlock),
-    fee: isSponsored ? 0n : (balanceUnits > 0n ? 1n : 0n),
+    fee: networkFeeUnits({ baseFeeUnits: 1n, balanceUnits, sponsored: isSponsored }),
   };
 }
 

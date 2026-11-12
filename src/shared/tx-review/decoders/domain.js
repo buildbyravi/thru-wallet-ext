@@ -81,15 +81,40 @@ function chainTime(value) {
   }
 }
 
-/** A registrar write declares fee 0n in its header; the program prices in its own unit. */
+/**
+ * "Network fee": the fee the SIGNED header will declare, as the background measured it.
+ *
+ * It used to be the literal string '0' with source 'declared-by-builder' — a copy of the
+ * builder constant, not a chain fact — so the card printed "none" beside a sentence promising
+ * the network fee (2026-11-12, domain register). Three cases now:
+ *   - no measurement (`networkFee.supported === false`) → no quote: the card says "not confirmed"
+ *   - a measured declaration → that number, with its source
+ *   - a deliberate zero (unfunded payer, or a chain with no measured base fee) → 0 + the reason
+ */
 function registrarFee(facts) {
+  const quote = facts.networkFee ?? null;
+  if (!quote?.supported) {
+    return feeBlock({
+      supported: false,
+      reserveUnits: quote?.reserveUnits ?? facts.feeReserveUnits ?? null,
+      note: quote?.reason
+        || 'No network fee has been measured on this chain, so the wallet does not quote one.',
+    });
+  }
+  const amountUnits = String(quote.amountUnits ?? '0');
+  const note = amountUnits === '0'
+    ? (quote.baseFeeUnits && String(quote.baseFeeUnits) !== '0'
+      ? `The measured base fee is ${quote.baseFeeUnits} base units, but this account cannot cover `
+        + 'it on this chain read, so the transaction declares no network fee.'
+      : 'This chain has no measured base fee, so the transaction declares no network fee.')
+    : 'The network fee this transaction declares, from the base fee measured on this chain. '
+      + 'What was actually charged appears in Activity after confirmation.';
   return feeBlock({
     supported: true,
-    amountUnits: '0',
-    reserveUnits: facts.feeReserveUnits ?? null,
-    source: 'declared-by-builder',
-    note: facts.feeNote
-      || 'The registrar transaction declares no network fee of its own.',
+    amountUnits,
+    reserveUnits: quote.reserveUnits ?? facts.feeReserveUnits ?? null,
+    source: quote.source || 'unknown',
+    note,
   });
 }
 
