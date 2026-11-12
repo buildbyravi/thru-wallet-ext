@@ -1,6 +1,6 @@
 // Domain record decoder — review content for appending key/value text records to a .thru domain.
 import {
-  row, warn, feeBlock, instruction, accountRole, executionBlock,
+  row, warn, instruction, accountRole, executionBlock, declaredFeeBlock,
 } from './common.js';
 import { shortenMiddle } from '../../format.js';
 
@@ -104,13 +104,9 @@ export function decodeDomainRecord({ facts }) {
     assets: {
       outgoing: [],
       incoming: [],
-      fee: feeBlock({
-        supported: true,
-        amountUnits: '0',
-        reserveUnits: '0',
-        source: 'declared-by-builder',
-        note: 'Name service record operations declare a 0 network fee in the transaction header.',
-      }),
+      // The record write declares a fee like every other write; the review quotes that
+      // number, and an unmeasured chain renders "not confirmed" rather than "none".
+      fee: declaredFeeBlock(facts, { reserveUnits: '0' }),
       balanceAfter: null,
       balanceAfterNote: 'This network cannot preview a transaction, so the balance afterwards is not shown.',
     },

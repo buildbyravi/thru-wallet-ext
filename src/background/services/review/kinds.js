@@ -159,6 +159,37 @@ function declaredNetworkFee(fee, balanceUnits) {
   };
 }
 
+/**
+ * Refuse a confirm whose signed fee would differ from the one the card quoted.
+ *
+ * The fee is declared at build time from the payer's balance, so a balance that moved between
+ * review and confirm changes the number in the header. The card already showed a specific
+ * amount (or "not confirmed"); signing a different one is the quote/signed mismatch this
+ * whole change exists to remove. Same verdict a send uses: REVIEW_FEE_CHANGED, review again.
+ */
+async function assertFeeUnchanged(record) {
+  const facts = record.facts;
+  const quoted = facts.networkFee ?? null;
+  const [fee, payer] = await Promise.all([feeQuote(), accountState(record.accountAddress)]);
+  if (!fee.supported) {
+    // Nothing was quotable then and nothing is now: the write declares 0 in both cases.
+    if (quoted?.supported) {
+      throw coded('REVIEW_FEE_CHANGED',
+        'The network fee can no longer be quoted on this chain. Review the write again.');
+    }
+    return;
+  }
+  if (!quoted?.supported) {
+    throw coded('REVIEW_FEE_CHANGED',
+      'A network fee can be quoted now, but this review has none. Review the write again.');
+  }
+  const current = declaredNetworkFee(fee, payer.balanceUnits).amountUnits;
+  if (String(current) !== String(quoted.amountUnits)) {
+    throw coded('REVIEW_FEE_CHANGED',
+      'The network fee this transaction would declare changed after review. Review it again.');
+  }
+}
+
 /** {exists, balanceUnits} where `exists:null` means the read failed, not "absent". */
 async function accountState(address) {
   try {
@@ -411,6 +442,7 @@ async function domainRegisterFacts(params, { account, network }) {
 
 async function domainRegisterRecheck(record) {
   const facts = record.facts;
+  await assertFeeUnchanged(record);
   const info = await registrarService.getCustomRegistrar();
   if (!info.supported) {
     throw coded('REVIEW_REGISTRAR_CHANGED',
@@ -504,6 +536,7 @@ async function domainCustomRenewFacts(params, { account, network }) {
 
 async function domainCustomRenewRecheck(record) {
   const facts = record.facts;
+  await assertFeeUnchanged(record);
   const info = await registrarService.getCustomRegistrar();
   if (!info.supported) {
     throw coded('REVIEW_REGISTRAR_CHANGED', 'The custom registrar is no longer readable on this network. Review the renewal again.');
@@ -638,6 +671,7 @@ async function registryWriteFacts(params, { account, mode }) {
 
 async function registryWriteRecheck(record) {
   const facts = record.facts;
+  await assertFeeUnchanged(record);
   const registry = await registrarService.getRegistry();
   if (!registry.supported) {
     throw coded('REVIEW_REGISTRAR_CHANGED',
@@ -847,6 +881,10 @@ async function domainRecordFacts(params, { account, network }) {
     }
   }
 
+  // The record write declares a network fee like every other write; the review quotes that
+  // number (it used to print a hard-coded 0, rendered as "Network fee — none").
+  const [fee, payer] = await Promise.all([feeQuote(), accountState(account.address)]);
+
   const existing = currentRecords.find((r) => r.key === key);
   const unchanged = existing ? existing.value === value : false;
 
@@ -879,11 +917,13 @@ async function domainRecordFacts(params, { account, network }) {
       verified: true,
       source: 'Pinned system program at BOOTSTRAP_PROGRAM_ADDRESSES.name_service',
     },
+    networkFee: declaredNetworkFee(fee, payer.balanceUnits),
   };
 }
 
 async function domainRecordRecheck(record) {
   const { facts } = record;
+  await assertFeeUnchanged(record);
   // `record.binding` does not exist — the prepared record carries `accountAddress` (see
   // store.put in review-service.js). Reading the wrong field made this throw a TypeError on
   // EVERY confirm, which the catch below re-labelled as "ownership could not be verified"

@@ -30,6 +30,7 @@ import * as txService from './tx-service.js';
 import * as thruClient from '../../lib/thru-client.js';
 import * as vault from '../../lib/vault.js';
 import { getActiveNetworkConfig } from './network-service.js';
+import { networkFeeUnits } from '../../lib/tx-units.js';
 import * as pending from './pending-tx-service.js';
 import { formatSignature, purchaseNameProblem } from '../../lib/registrar.js';
 
@@ -300,11 +301,14 @@ export async function getCanonicalRoot({ root } = {}) {
   };
 }
 
-/** name.register (v23 — live): self-signed, fee-0n registration of a single label under an
- *  existing parent (the canonical root by default). Exact mirror of the first-party CLI
- *  `thru nameservice register-subdomain` (txn_tools.rs build_name_service_register_subdomain):
- *  NAME_SERVICE_PROGRAM_FEE = 0, compute 500_000 / state 1 / memory 10_000, accounts
+/** name.register (v23 — live): self-signed registration of a single label under an
+ *  existing parent (the canonical root by default). Mirrors the first-party CLI
+ *  `thru nameservice register-subdomain` (txn_tools.rs build_name_service_register_subdomain)
+ *  for units (500_000 compute / state 1 / memory 10_000) and accounts
  *  [domain (rw), parent (rw), owner (ro), authority (ro)] with authority = fee payer.
+ *  The header FEE is not copied from the CLI's `NAMESERVICE_PROGRAM_FEE = 0` (a placeholder
+ *  that its builder passes straight into `Transaction::new`): it is the wallet's one declared
+ *  network fee, from the measured base fee and this payer's balance (tx-units.networkFeeUnits).
  *  A foreign-authority parent lets the CHAIN decide — a revert is surfaced verbatim, never
  *  retried silently or sponsored with a different key. */
 export async function registerName({ name, parentAddress, expectedNetworkId, expectedAccountAddress } = {}) {
@@ -378,12 +382,15 @@ export async function registerName({ name, parentAddress, expectedNetworkId, exp
   const client = thruClient.getClient();
   const proofObj = await client.proofs.generate({ address: domainAddress, proofType: 1 });
 
+  // Units come from build_name_service_register_subdomain (500k CU / 1 SU / 10k MU), never
+  // autoUnits; the FEE does not — it is the one declared network fee, like every other write.
+  const payerInfo = await thruClient.getAccountInfo(feePayer.address).catch(() => null);
+  const networkFee = networkFeeUnits({ baseFeeUnits: network.baseFeeUnits, balanceUnits: payerInfo?.balance ?? 0n });
+
   const { rawTransaction } = await client.transactions.buildAndSign({
     feePayer: { publicKey: feePayer.publicKey, privateKey: feePayer.privateKey },
     program: ns.NAME_SERVICE_PROGRAM,
-    // Exactly the first-party CLI conversion: fee 0n; units from
-    // build_name_service_register_subdomain (500k CU / 1 SU / 10k MU). Never autoUnits.
-    header: { computeUnits: 500_000, memoryUnits: 10_000, stateUnits: 1, fee: 0n },
+    header: { computeUnits: 500_000, memoryUnits: 10_000, stateUnits: 1, fee: networkFee },
     accounts: {
       readWrite: [domainAddress, parent],
       // feePayer is implicit index 0; adding it to readOnly creates duplicate accounts
@@ -407,7 +414,8 @@ export async function registerName({ name, parentAddress, expectedNetworkId, exp
         const network = await getActiveNetworkConfig();
         await pending.track({
           signature: formatted, kind: 'name-register', from: feePayer.address, to: feePayer.address,
-          amountUnits: '0', displayAmount: `register '${label}' (fee 0n — no payment)`, networkId: network.id,
+          amountUnits: networkFee.toString(),
+          displayAmount: `register '${label}' (network fee ${networkFee} base units)`, networkId: network.id,
         }).catch(() => null);
       }
       if (update?.executionResult) {
@@ -515,11 +523,16 @@ export async function setRecord({
     throw coded('NOT_NAME_OWNER', `your active account ${feePayer.address.slice(0, 12)}… does not own '${cleanName}.${rootName}'.`);
   }
 
+  // The declared network fee, from the measured base fee and this payer's balance — the same
+  // rule as register/send (a hard-coded 0n here is what made the record review say "none").
+  const payerInfo = await thruClient.getAccountInfo(feePayer.address).catch(() => null);
+  const networkFee = networkFeeUnits({ baseFeeUnits: network.baseFeeUnits, balanceUnits: payerInfo?.balance ?? 0n });
+
   const client = thruClient.getClient();
   const { rawTransaction } = await client.transactions.buildAndSign({
     feePayer: { publicKey: feePayer.publicKey, privateKey: feePayer.privateKey },
     program: ns.NAME_SERVICE_PROGRAM,
-    header: { computeUnits: 300_000, memoryUnits: 10_000, stateUnits: 1, fee: 0n },
+    header: { computeUnits: 300_000, memoryUnits: 10_000, stateUnits: 1, fee: networkFee },
     accounts: {
       readWrite: [domainAddress],
     },
@@ -543,8 +556,8 @@ export async function setRecord({
           kind: 'name-record',
           from: feePayer.address,
           to: domainAddress,
-          amountUnits: '0',
-          displayAmount: `set record ${displayLabel} (fee 0n)`,
+          amountUnits: networkFee.toString(),
+          displayAmount: `set record ${displayLabel} (network fee ${networkFee} base units)`,
           networkId: net.id,
         }).catch(() => null);
       }

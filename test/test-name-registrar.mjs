@@ -448,4 +448,61 @@ ok('lease derivation byte-exact: alice → ta06ZB32… (official CLI derive-leas
   ok('a 3-character (premium-tier) review reaches its real refusal instead of REVIEW_PRICE_CHANGED');
 }
 
+// [8] A confirmed write signs the fee the card quoted (2026-11-12).
+// The fee is declared from the payer's balance at build time, so a balance that moved between
+// review and confirm would sign a different number than the card showed. The recheck refuses
+// with REVIEW_FEE_CHANGED instead of silently changing the quote.
+{
+  const stubBalances = Object.create(null);
+  const setAccountBlob = (address, balance) => {
+    if (balance == null) delete stubBalances[address];
+    else stubBalances[address] = balance;
+  };
+  const baseGet2 = client.accounts.get;
+  client.accounts.get = async (address) => {
+    if (Object.hasOwn(stubBalances, address)) return { meta: { balance: stubBalances[address] } };
+    return baseGet2(address);
+  };
+  leaseState = 'absent';
+  domainExists = false;
+
+  // The payer is unfunded at prepare time, so the review quotes a declared 0.
+  setAccountBlob(SENDER, null);
+  const prepared = await handleApiRequest({
+    method: 'tx.prepareReview',
+    params: { kind: 'domain-purchase', params: { name: NAME, years: 1 } },
+  });
+  assert.equal(prepared.ok, true, prepared.error?.message);
+  assert.equal(prepared.data.review.assets.fee.amountUnits, '0',
+    'an unfunded payer quotes a declared zero, not a measured one');
+
+  // The payer receives THRU before confirming: the write would now declare the base fee.
+  setAccountBlob(SENDER, 5n);
+  const drifted = await handleApiRequest({
+    method: 'tx.confirmReview',
+    params: { reviewId: prepared.data.reviewId, bindingHash: prepared.data.bindingHash },
+  });
+  assert.equal(drifted.ok, false);
+  assert.equal(drifted.error.code, 'REVIEW_FEE_CHANGED', drifted.error.code);
+
+  // Control: a review whose quote still matches confirms normally.
+  setAccountBlob(SENDER, 5n);
+  const stable = await handleApiRequest({
+    method: 'tx.prepareReview',
+    params: { kind: 'domain-purchase', params: { name: NAME, years: 1 } },
+  });
+  assert.equal(stable.ok, true, stable.error?.message);
+  assert.equal(stable.data.review.assets.fee.amountUnits, '1');
+  const confirmed = await handleApiRequest({
+    method: 'tx.confirmReview',
+    params: { reviewId: stable.data.reviewId, bindingHash: stable.data.bindingHash },
+  });
+  assert.equal(confirmed.ok, true, confirmed.error?.message);
+  assert.equal(confirmed.data.submit.method, 'name.purchase');
+
+  setAccountBlob(SENDER, null);
+  client.accounts.get = baseGet2;
+  ok('a confirm that would sign a different network fee is refused; an unchanged one confirms');
+}
+
 console.log(`\ntest-name-registrar: ${checks} checks passed`);

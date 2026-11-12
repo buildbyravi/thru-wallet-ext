@@ -95,6 +95,10 @@ console.log('[3] Review decoder integration');
         address: ns.NAME_SERVICE_PROGRAM,
         verified: true,
       },
+      networkFee: {
+        supported: true, amountUnits: '1', baseFeeUnits: '1', reserveUnits: '1000',
+        source: 'measured', reason: null,
+      },
     },
   });
 
@@ -102,7 +106,7 @@ console.log('[3] Review decoder integration');
   ok(content.operation.id === 'domain-record', 'operation kind matches');
   ok(content.summary.some(r => r.label === 'Record Key' && r.value === 'github'), 'record key rendered in summary');
   ok(content.summary.some(r => r.label === 'Record Value' && r.value === 'alice-dev'), 'record value rendered in summary');
-  ok(content.assets.fee.amountUnits === '0', 'fee is zero base units');
+  ok(content.assets.fee.amountUnits === '1', 'the review quotes the fee its header declares');
   ok(content.warnings.length === 0, 'no warnings for valid owned record update');
 
   const unowned = decodeReview('domain-record', {
@@ -224,7 +228,10 @@ const client = thruClient.getClient();
 const signed = [];
 let broadcasts = 0;
 let mode = 'owned';
+// The native balance the setRecord write reads to decide its declared network fee.
+let payerBalance = 5_000_000n;
 client.accounts.get = async (address) => {
+  if (address === ME) return { meta: { balance: payerBalance } };
   if (address !== DOMAIN) throw Object.assign(new Error('Account not found'), { code: 5 });
   if (mode === 'missing') throw Object.assign(new Error('Account not found'), { code: 5 });
   if (mode === 'unreadable') throw new Error('503 backend unavailable');
@@ -364,7 +371,9 @@ console.log('[6] name.setRecord: signing guard, review binding, refusals before 
 
   const built = signed[signed.length - 1];
   ok(built.program === ns.NAME_SERVICE_PROGRAM, 'the write targets the name-service program');
-  ok(built.header?.fee === 0n, 'the protocol fee is 0n by construction');
+  // 2026-11-12: the header used to hard-code 0n while the review printed "none". The fee now
+  // comes from the measured base fee and the signer's balance (betanet baseFeeUnits = 1n).
+  ok(built.header?.fee === 1n, 'the header declares the measured network fee, not a constant');
   ok(built.accounts?.readWrite?.includes(DOMAIN), 'the domain account is the writable account');
 
   const calls = signed.length;

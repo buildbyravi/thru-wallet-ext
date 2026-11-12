@@ -109,6 +109,44 @@ export function feeBlock({
   };
 }
 
+/**
+ * The "Network fee" block for a write whose fee is DECLARED by its own header.
+ *
+ * `facts.networkFee` is the background's measurement of the number the signed header will
+ * carry (`review/kinds.js` → `declaredNetworkFee`). Three outcomes, and only three:
+ *   - no measurement → `supported: false` (the card says "not confirmed", never 0)
+ *   - a measured positive amount → that number, with its source
+ *   - a deliberate zero (unfunded payer / chain with no measured base fee) → 0 + the reason
+ * The old domain decoders hard-coded '0' + 'declared-by-builder' here, which rendered as
+ * "Network fee — none" next to a sentence promising the network fee (2026-11-12).
+ */
+export function declaredFeeBlock(facts, { reserveUnits = null } = {}) {
+  const quote = facts.networkFee ?? null;
+  if (!quote?.supported) {
+    return feeBlock({
+      supported: false,
+      reserveUnits: quote?.reserveUnits ?? reserveUnits,
+      note: quote?.reason
+        || 'No network fee has been measured on this chain, so the wallet does not quote one.',
+    });
+  }
+  const amountUnits = String(quote.amountUnits ?? '0');
+  const note = amountUnits === '0'
+    ? (quote.baseFeeUnits && String(quote.baseFeeUnits) !== '0'
+      ? `The measured base fee is ${quote.baseFeeUnits} base units, but this account cannot cover `
+        + 'it on this chain read, so the transaction declares no network fee.'
+      : 'This chain has no measured base fee, so the transaction declares no network fee.')
+    : 'The network fee this transaction declares, from the base fee measured on this chain. '
+      + 'What was actually charged appears in Activity after confirmation.';
+  return feeBlock({
+    supported: true,
+    amountUnits,
+    reserveUnits: quote.reserveUnits ?? reserveUnits,
+    source: quote.source || 'unknown',
+    note,
+  });
+}
+
 /** An asset-moving instruction, named only when the wallet genuinely knows the layout. */
 export function instruction(name, { decoded = true, note = null } = {}) {
   return { name: String(name), decoded: Boolean(decoded), note: note ? String(note) : null };

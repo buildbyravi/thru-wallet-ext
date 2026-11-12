@@ -540,14 +540,27 @@ console.log('[3] decoders: domain writes');
       verified: true,
       source: 'Pinned system program at BOOTSTRAP_PROGRAM_ADDRESSES.name_service',
     },
+    networkFee: {
+      supported: true, amountUnits: '1', baseFeeUnits: '1', reserveUnits: '1000',
+      source: 'measured', reason: null,
+    },
     ...overrides,
   });
 
   const recordReview = decode('domain-record', recFacts());
   model.assertReviewContent(recordReview);
-  ok('domain-record decodes with summary and zero fee',
+  // Same rule as the registrar decoders (2026-11-12): quote the declared fee, never a
+  // hard-coded 'declared-by-builder' zero. An unmeasured chain says "not confirmed".
+  ok('domain-record quotes the declared network fee',
     recordReview.summary.some((row) => row.label === 'Record Key' && row.value === 'twitter')
-      && recordReview.assets.fee.amountUnits === '0');
+      && recordReview.assets.fee.amountUnits === '1'
+      && recordReview.assets.fee.source === 'measured',
+    JSON.stringify(recordReview.assets.fee));
+  const recordNoQuote = decode('domain-record', recFacts({
+    networkFee: { supported: false, amountUnits: null, reason: 'not measured here' },
+  }));
+  ok('a record write with no fee measurement is "not confirmed", not zero',
+    recordNoQuote.assets.fee.supported === false && recordNoQuote.assets.fee.amountUnits === null);
 
   const notOwnerRec = decode('domain-record', recFacts({ isOwner: false }));
   ok('setting record on someone else domain blocks signing',
