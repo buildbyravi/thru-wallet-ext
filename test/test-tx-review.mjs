@@ -1257,6 +1257,20 @@ console.log('[15] the review fits one screen (owner review, 2026-10-28)');
   ok('the harness folds the simulation verdict into state like review-service',
     fixturesSource.includes('simulationWarning(sim)')
       && fixturesSource.includes('stateFromWarnings(warnings)'));
+  // The preview is where a reviewer looks at a card. A fixture that omits a fact the background
+  // always sends renders a card the wallet can never emit — a bare "Network fee: not confirmed"
+  // over a realistic domain write (2026-11-12). Every domain fixture must carry the declared fee.
+  const { previewFixtures } = await import('../scripts/preview-tx-review.fixtures.js');
+  const domainFixtures = previewFixtures().filter((f) => f.review.kind?.startsWith('domain-'));
+  ok('the preview carries domain fixtures to look at', domainFixtures.length >= 2,
+    String(domainFixtures.length));
+  for (const fixture of domainFixtures) {
+    ok(`preview fixture "${fixture.title}" quotes a declared network fee`,
+      fixture.review.assets?.fee?.supported === true
+        && fixture.review.assets.fee.amountUnits != null
+        && fixture.review.assets.fee.amountUnits !== '0',
+      JSON.stringify(fixture.review.assets?.fee));
+  }
 
   const rawReview = shapes.find(([kind]) => kind === 'raw')[1];
   ok('raw still exposes the bytes and stays unsignable',

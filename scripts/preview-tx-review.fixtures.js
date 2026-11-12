@@ -34,6 +34,19 @@ const UNMEASURED_FEE = {
     + 'The charge is paid in THRU and reported only after the chain answers.',
 };
 
+// The fee a signed registrar/record header DECLARES, as the background measures it
+// (review/kinds.js `declaredNetworkFee`): betanet baseFeeUnits = 1, funded payer.
+// Without it the domain previews would render "Network fee — not confirmed", which is the
+// honest answer for an unmeasured chain but NOT what a betanet review shows.
+const DECLARED_FEE = {
+  supported: true,
+  amountUnits: '1',
+  baseFeeUnits: '1',
+  reserveUnits: '1000',
+  source: 'measured',
+  reason: null,
+};
+
 const NO_SIMULATION = {
   status: 'unavailable',
   reason: 'This network has no dry-run RPC, so the wallet cannot simulate the transaction.',
@@ -200,6 +213,7 @@ export function previewFixtures() {
           source: 'Evidence-pinned deployment (D-016); config root matches the name-service derivation',
         },
         treasury: 'taTREASURYaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        networkFee: DECLARED_FEE,
         feeReserveUnits: '1000',
         feeNote: null,
         lease: null,
@@ -234,6 +248,7 @@ export function previewFixtures() {
           source: 'Evidence-pinned deployment (D-016); config root matches the name-service derivation',
         },
         treasury: 'taTREASURYaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        networkFee: DECLARED_FEE,
         feeReserveUnits: '1000',
         feeNote: null,
         lease: { owner: ACCOUNT.address, endTime: '1795000000', mine: true, expiredHint: false },
