@@ -411,6 +411,12 @@ const evidence = {
   fee5PlusPerYearBaseUnits: FEE_5PLUS.toString(),
   feePolicy: FEE_POLICY_STRICT ? 'strict' : 'best-effort',
   collectionProbe,
+  // The attestation that let `strict` through the gate is EVIDENCE, so it is persisted with the
+  // run. It used to exist only on the console: the 2026-10-31 file records `feePolicy: strict`
+  // with `collectionProbe.measured: false` and no way to tell whether a human attested a treasury
+  // delta or the gate was bypassed (2026-11-12 domain audit). `false` here means no strict run.
+  collectionAttested: FEE_POLICY_STRICT ? COLLECTION_PROVEN : false,
+  collectionNote: COLLECTION_PROVEN ? (COLLECTION_NOTE || null) : null,
   treasury: TREASURY,
   initializeSignature: signature,
   initializeState,

@@ -1156,3 +1156,134 @@ plausible params and asserting `REVIEW_REQUIRED` with zero client touches and ze
 **Negative controls watched failing:** gate bypassed → `name.register` reaches the network
 (`fetch failed`); single-use removed → a replayed token is accepted.
 
+
+---
+
+## 21. The domain flow: a fee the card invented, and a price the write refused (2026-11-12)
+
+Reported: on the domain **Register** review, **Network fee** reads **none** — while the same card
+says *"You pay only the network fee"*. Everything below was found by following that row through
+`facts → decoder → card → header`, then auditing the rest of the domain path with the same rule:
+**a number on the card must be a number the signature carries.**
+
+### H-1 (FIXED, `ba9c191`) — "none" was the wallet's own constant, not the network's price
+
+Four facts in a row, each individually defensible:
+
+1. `registrar-service.js` built every registrar header with `fee: 0n` (purchase / renew / claim /
+   custom register / custom renew), copying `THRU_REGISTRAR_PROGRAM_FEE = 0` from the first-party
+   CLI. That constant is **not** a program-level fee field: `txn_tools.rs` passes it straight into
+   `Transaction::new(fee_payer, program, fee, nonce)`, i.e. it is the transaction header fee the
+   CLI left at zero ("0 fee for now").
+2. `decoders/domain.js#registrarFee()` hard-coded `amountUnits: '0'`, `source:
+   'declared-by-builder'`, and never looked at the fee quote the background had already fetched.
+3. `review-card.js#feeRow()` renders any declared `0` as the literal word **none**.
+4. `review/kinds.js#domainRegisterFacts()` fetched `feeQuote()` (betanet `baseFeeUnits: 1n`,
+   source `measured`) and forwarded only `feeReserveUnits`, dropping `feeUnits`/`source`.
+
+So the card told the user what the wallet had decided, and formatted it as if it were the chain's
+answer. The same class of defect as the custom-RPC quarantine (G.6): the surface promised
+something the write path did not do.
+
+**Fix.** One policy, `tx-units.networkFeeUnits({baseFeeUnits, balanceUnits, sponsored})`: the
+declared fee is the network's measured base fee when the payer can cover it, 0 when it cannot, 0
+when the chain has no measurement. `autoUnits` now calls it; so do the registrar and name-service
+writes. Registry headers are built by `registrarWriteHeader(units, fee)`, so a write cannot ship a
+fee nobody chose. Every registrar fact carries `networkFee {supported, amountUnits, baseFeeUnits,
+reserveUnits, source, reason}`; the decoders quote that block through the shared
+`declaredFeeBlock`. **No measurement is not a zero**: it renders "not confirmed".
+
+**Negative controls (run first, against the pre-fix code):** restoring the old `registrarFee`
+body fails 4 card assertions — "quoted from the measured base fee", "never rendered as none",
+"not confirmed, never a zero", "an absent measurement never renders as none".
+
+**Not verified.** No register/renew was signed here (G.2 is still blocked: no `cargo`, Betanet RPC
+unreachable). The claim is "the card quotes the fee the header will declare", tested offline; it is
+not "the chain charged 1 base unit".
+
+### H-2 (FIXED, `3eb2f9d`) — every 3- and 4-character name was unregisterable
+
+The review quotes the label's own tier (`fee3PerYear` 100000 / `fee4PerYear` 10000, from the
+config the 2026-10-31 evidence file records), and `domainRegisterRecheck` compares that tier —
+with a comment explaining that comparing the cheapest tier "would report a change on every 3- and
+4-character name". The **write** path still did exactly that: `assertReviewContext` compared the
+reviewed price against `cfg.pricePerYear ?? cfg.feePerYear` (1000) and refused with
+`REVIEW_PRICE_CHANGED`. Review passes, write aborts, nothing broadcast. Premium names were
+impossible to register, and the error blamed a price that had not changed.
+
+**Fix.** `reviewPricePerYear(cfg, label)` is the one comparison — flat `pricePerYear` for the
+official registry, `pricePerYearFor` for the tiered custom registrar; `assertReviewContext` takes
+the label.
+
+**Negative control:** with the old comparison line restored, the new `test-name-registrar` [7]
+case fails with `REVIEW_PRICE_CHANGED` for a correct 3-character review; with the fix the gate
+passes and the flow reaches its real refusal (`TCR_LEASE_EXISTS`, the stubbed lease). A genuinely
+stale price (999) is still refused.
+
+### H-3 (FIXED, `510ead9`) — the record write, and the confirm-time fee
+
+Same defect class, two remaining holes:
+
+- `name.setRecord` declared `fee: 0n` and its decoder printed a hard-coded `'0'`. The write now
+  declares the measured fee and the review quotes it. `name.register` (still gated behind
+  `FLAGS.NAME_SERVICE`) got the same treatment so flipping the gate cannot resurrect the defect.
+- The declared fee depends on the payer's balance, so a balance change between review and confirm
+  could sign a number the card never showed. `assertFeeUnchanged` now runs in the registrar and
+  record rechecks and refuses with `REVIEW_FEE_CHANGED` — the verdict a send already uses.
+
+**Negative controls:** `fee: 0n` restored in `setRecord` fails the header assertion
+(`name-records`); removing the recheck call lets the drifted confirm through (the test then fails
+on `ok === false`).
+
+### H-4 (DOC FIXED, live claim OPEN) — the deployed-config description was stale
+
+`docs/STATUS_AND_ROADMAP.md` described the live Betanet registrar as a "layout-1, flat,
+best-effort config". The newest evidence file in this tree —
+`scripts/defi-evidence/registrar-deploy-betanet-thru-1793443647724.json` (2026-10-31) — records
+`initializeState: "updated"`, `feePolicy: "strict"`, tiers `100000 / 10000 / 1000`,
+`initializeSignature` present, `vmError 0`, and **`collectionProbe.measured: false`**. So: strict
+pricing is *configured*, collection is still *unmeasured*, and the card must keep saying "charged"
+only where the program's policy says so. The docs now say that; a live re-read of the config was
+not possible from this sandbox.
+
+### H-5 (OPEN, minor) — the route's balance hint ignores the declared fee
+
+`src/ui/app/routes/name.js` disables the CTA when `have < cost`; the write needs `cost +
+networkFee` in strict mode (the service gate now includes it). The hint can therefore be one base
+unit optimistic. Failure mode is a refusal with a reason before signing, not a bad signature.
+Fix deliberately deferred: the harness would need a strict-config route scenario to test it, and
+the value is cosmetic at 1 base unit.
+
+### H-6 (FIXED, script) — the attestation that unblocked `strict` was never recorded
+
+`deploy-and-init.mjs` refuses `--fee-policy strict` without `--collection-proven "<note>"`. That
+note was only printed to the console. The 2026-10-31 run's evidence file therefore records
+`feePolicy: "strict"` **and** `collectionProbe: { measured: false }`, with no field saying whether a
+human attested a treasury delta or the gate was bypassed — the one question the file exists to
+answer. The evidence object now persists `collectionAttested` and `collectionNote`; the existing
+file is left untouched (it is evidence, not a draft).
+
+**Consequence for the docs.** *"Best-effort is the deployed behaviour"* is not supported any more:
+the 2026-10-31 `UpdateConfig` records `initializeState: "updated"`, `vmError 0`, a signature, and a
+strict policy. What can be said is narrower — *strict is configured per that update; whether a
+charge is collected is still unmeasured*. `STATUS_AND_ROADMAP.md` says that now.
+
+### Checked and found correct (no change)
+
+- Availability is three-state (`available` / `taken` / `unknown`); a failed read blocks, never
+  defaults to available. The write re-reads existence before building proofs.
+- Price comes from the chain config on every prepare; mint decimals from the mint read (local
+  registry values are marked untrusted).
+- Custom renewal, official renew and claim all re-check owner/expiry/price/policy before signing;
+  the fee is now part of that set.
+- Registrar writes are self-signed only; the fee payer is the vault signer; no sponsored path.
+- The review binding (account, network, price, expiry, TTL, consent token) is unchanged.
+
+### Scope note
+
+The three fixes change the signed fee for registrar and name-service writes from 0 to
+`baseFeeUnits` (1 on Betanet) **when the signer holds a balance** — the same tip sends and token
+operations have always paid. A payer with no THRU keeps declaring 0, and so does any chain whose
+`baseFeeUnits` is still `null` (mainnet today). If the owner wants registrar writes to stay free,
+the revert is one call site per header: `fee: 0n` — but then the card must say "this wallet
+declares no fee", not "none", and the summary must stop promising the network fee.

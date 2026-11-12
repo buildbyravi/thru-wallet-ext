@@ -99,13 +99,26 @@ the shared 9-decimal definition; paid-registry token decimals come from the on-c
   it always was — the new fields are *appended*, so the upgrade does not change anyone's price.
 - **Enforcement is declared on-chain, and the wallet only reports what it declares.**
   `fee_policy = strict` makes a refused charge revert (`0xD206`; `0xD207` when the balance cannot
-  cover it); `best-effort` keeps the deployed behaviour of attempting the debit and ignoring the
-  refusal. The only live observation is that refusal — the VM's `-10 AccountNotWritable`, surfaced
-  as `0xD20A` — so best-effort is the default and `strict` is gated behind a measured treasury
-  delta (`--fee-policy strict --collection-proven "<note>"`). The card therefore shows an
-  *unenforced* price as unenforced (`registrar-fee-unenforced`) and reserves the outgoing THRU row
-  for an enforced charge; "no charge reported" is the wording, never "free". Deploying the new
-  artifact, and proving collection works, are both still open — `docs/DEFECT_LOG.md` §18.
+  cover it); `best-effort` keeps the older behaviour of attempting the debit and ignoring the
+  refusal. The card shows an *unenforced* price as unenforced (`registrar-fee-unenforced`) and
+  reserves the outgoing THRU row for an enforced charge; "no charge reported" is the wording,
+  never "free". **State of the live config (2026-11-12):** the 2026-10-31 `UpdateConfig`
+  (`scripts/defi-evidence/registrar-deploy-betanet-thru-1793443647724.json`) records
+  `initializeState: "updated"`, `feePolicy: "strict"`, tiers `100000 / 10000 / 1000` and `vmError 0`
+  — so the deployed schedule is no longer the flat best-effort one. What is NOT established is
+  collection: that file's `collectionProbe.measured` is `false`, and the human attestation the
+  deploy script demanded was never persisted (the script records it now — `DEFECT_LOG.md` §21 H-6).
+  Treat the fee as *configured strict, unmeasured*.
+- **A registrar or record write declares a network fee, and the card quotes that exact number
+  (2026-11-12).** Every write used to carry `fee: 0n`, and the domain review printed the constant
+  as "Network fee — none" beside "You pay only the network fee". The declared fee now comes from
+  the active network's measured `baseFeeUnits` and the signer's verified balance
+  (`tx-units.networkFeeUnits`, the same policy sends use): funded payer → the base fee (1 base unit
+  on Betanet), unfunded/unreadable → 0, chain without a measurement → 0 *and* the card says
+  "not confirmed" rather than inventing a zero. Between review and confirm the fee is re-checked;
+  a change refuses with `REVIEW_FEE_CHANGED` instead of signing a different number. Signing a
+  registrar write with 1 base unit has not been exercised on a live chain from this checkout —
+  `docs/DEFECT_LOG.md` §21 H-1.
 - **The batch registration queue is gone (removed 2026-10-30).** A queue and a "Register N names"
   loop were added in `55703d0`; the control that revealed them was created with the `hidden` class
   and never un-hidden, and the loop submitted prepared reviews without rendering the review card.
@@ -123,9 +136,11 @@ the evidence-pinned custom `.thru` registrar present at 1,000 native base units 
 transaction was sent during that probe. On 2026-10-27, one unique `.thru` registration through
 the real background API router returned an on-chain execution result, and a follow-up Betanet
 read confirmed the selected test account as lease owner. The handler quoted 1,000 base
-units/year; charged network fee was not returned. Both probes predate the tiered config (the
-deployed one is a layout-1, flat, best-effort config); the tiered layout and its prices are source
-only until a rebuilt artifact is deployed — `docs/DEFECT_LOG.md` §18.
+units/year; charged network fee was not returned. Both probes predate the tiered config. The
+2026-10-31 `UpdateConfig` then recorded a layout-2, tiered, strict config (see the bullet above);
+no probe after it has measured a collection, and no check of the live config was possible from
+this checkout. The tiered prices and the strict policy are therefore "configured per that
+evidence", not "observed charging" — `docs/DEFECT_LOG.md` §18 and §21 H-4/H-6.
 
 **TESTED (2026-10-27 UI audit)**: build and full `npm test` pass. Mounted route regressions
 cover exact review values, renewal/claim expiry binding, Escape/Cancel focus restoration,

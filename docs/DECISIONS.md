@@ -212,6 +212,13 @@ lived only in `AGENTS.md` and audit history.
 
 **Key invariants.**
 - Self-signed only: authority = fee payer = active account, proven first-party in `resolve_signing_account` (CLI); headers pass fee `0n` explicitly (`THRU_REGISTRAR_PROGRAM_FEE = 0` in the CLI source), never autoUnits.
+
+> **Superseded claim (2026-11-12).** The `0n` header fee is not a first-party requirement. The CLI
+> constant is passed straight into `Transaction::new(fee_payer, program, fee, nonce)` — it is the
+> transaction header fee the CLI left at zero, not a program-level field. Registrar writes now
+> declare the network's measured base fee when the signer can cover it (`tx-units.networkFeeUnits`,
+> the same policy sends use), and their review quotes that exact number instead of printing
+> "Network fee — none". Unfunded payers still declare 0. See `DEFECT_LOG.md` §21 H-1.
 - Nothing hard-coded: root/config/lease/domain addresses derived via CLI-proven formulas (root seed >32B → sha256 first, so `rootRegistrarAddress` is async everywhere); price/mint/treasurer parsed from the 244-byte config account at the exact CLI offsets.
 - Honest states: registry absent → reads answer `{ supported: false, reason }` and signing refuses with `REGISTRY_ABSENT`; unreadable config → `REGISTRY_UNREADABLE`; the UI never fabricates a price (decimals come from `token.readMint`; unparseable amounts render as "base units").
 - UI action is derived ONLY from a fresh `name.checkLease` read: mine → renew; expired-someone-else → claim; taken-active → refuse; free → purchase. Purchase/claim success auto-`name.linkPrimary` best-effort; a failed link never masquerades as a failed registration.
@@ -224,7 +231,12 @@ through the shared review kind `domain-record`; `name.register` was ungated at c
 
 ## D-015 — Free name-service registration live beneath the canonical root (2026-10-24, owner-directed)
 
-**Decision.** On networks whose paid `.thru` registry is absent but whose name-service root exists (Betanet today: `.id` community root present, `.thru` root + registrar config absent), /name offers free registration: `name.register` — self-signed, fee `0n`, units matching the first-party CLI (500k compute / 10k memory / 1 state), one Creation state proof, no payment token accounts — exactly mirroring `thru nameservice register-subdomain`. The CHAIN decides whether the resulting authority (always the signer's own key) is accepted beneath the parent; a revert is surfaced honestly, never retried with another key or sponsored.
+**Decision.** On networks whose paid `.thru` registry is absent but whose name-service root exists (Betanet today: `.id` community root present, `.thru` root + registrar config absent), /name offers free registration: `name.register` — self-signed, fee `0n`, units matching the first-party CLI (500k compute / 10k memory / 1 state), one Creation state proof, no payment token accounts — exactly mirroring `thru nameservice register-subdomain`.
+
+> **Amended (2026-11-12).** "Free" is about the *protocol* price; the transaction header still
+> declares the network fee, and it no longer hard-codes `0n` — `name.register` (still gated behind
+> `FLAGS.NAME_SERVICE`) declares the measured base fee when the signer holds a balance. See
+> `DEFECT_LOG.md` §21 H-3. The CHAIN decides whether the resulting authority (always the signer's own key) is accepted beneath the parent; a revert is surfaced honestly, never retried with another key or sponsored.
 
 **Why now.** Owner's observation that "register is working / maybe free on testnet" is correct per the re-read first-party sources (thru.org/docs/cli-reference/name-service-commands.md + `NAME_SERVICE_PROGRAM_FEE = 0` in the CLI). Betanet is the only live test network; a separate free "testnet" network was ruled out (owner, same day).
 
