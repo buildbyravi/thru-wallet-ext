@@ -5652,7 +5652,13 @@ async function nameReviewTest() {
       && writes[0].name === 'bob' && writes[0].years === 3 && writes[0].via === 'custom'
       && writes[0].expectedPricePerYear === '1000'
       && writes[0].expectedAccountAddress === ADDRESS_A && writes[0].expectedNetworkId === 'betanet');
-    ok('only a returned confirmation renders success', /Registration confirmed/.test(textOf(route.el)));
+    // Rule 29: the confirmation claim lives on ONE surface — the toast that carried the attempt.
+    // The route text must not restate it (it used to say it in the banner and the field line too).
+    const confirmedToasts = (await import('../src/ui/kit/toast.js')).activeToasts()
+      .filter((t) => /registration confirmed/i.test(t.text));
+    ok('only a returned confirmation renders success, once, on the toast',
+      confirmedToasts.length === 1 && !/Registration confirmed/.test(textOf(route.el)),
+      JSON.stringify({ confirmedToasts, route: textOf(route.el).slice(-160) }));
     destroy();
 
     // Old availability must not win during the replacement query's debounce window.
@@ -5694,10 +5700,14 @@ async function nameReviewTest() {
     type(password, SECRET_PASSWORD);
     click(buttons(DOC.body.querySelector('[role="dialog"]'), /confirm and sign/i)[0]);
     await settle();
+    const unknownToasts = (await import('../src/ui/kit/toast.js')).activeToasts()
+      .filter((t) => /Confirmation unavailable/.test(t.text));
     ok('unknown submission closes password dialog, clears secret and offers outcome check',
       !password.isConnected && password.value === '' && !DOC.body.querySelector('[role="dialog"]')
-      && /Confirmation unavailable/.test(textOf(route.el)) && buttons(route.el, /check outcome/i).length === 1
-      && !/Registration confirmed/.test(textOf(route.el)));
+      && unknownToasts.length === 1 && unknownToasts[0].tone === 'warning'
+      && buttons(route.el, /check outcome/i).length === 1
+      && !/Registration confirmed/.test(textOf(route.el))
+      && !/Confirmation unavailable/.test(textOf(route.el)));
     destroy();
     failure = null;
 
@@ -5756,6 +5766,176 @@ async function nameReviewTest() {
     }
   } finally {
     route?.destroy();
+    for (const key of Object.keys(FIXTURES)) if (!(key in originals)) delete FIXTURES[key];
+    Object.assign(FIXTURES, originals);
+  }
+}
+
+// ---- One notification per event ------------------------------------------------------------
+//
+// AGENTS.md rule 29. The owner's 2026-10-27 screenshots showed a refused review printed twice
+// ("This review did not receive a signing confirmation." in the banner AND under the name field)
+// and a renewal that wrote the same attempt to a toast, an info banner and a field line. These
+// checks count a verdict across everything the user can see on this screen — the route (banner and
+// field line) and the live toasts — and require exactly one copy, with the in-flight bar retired
+// when the verdict lands. They failed on the pre-fix file with 3 copies of "Registration confirmed"
+// and a live success toast, which is why they exist (docs/DEFECT_LOG.md §22).
+async function nameNotificationTest() {
+  section('domains: one notification per event, never a second copy (rule 29)');
+  const { activeToasts, dismissAllToasts } = await import('../src/ui/kit/toast.js');
+  const originals = { ...FIXTURES };
+  let route;
+  let failure = null;
+  let renewalOwned = false;
+  const writes = [];
+  const baseCheckLease = originals['name.checkCustomLease'];
+  FIXTURES['name.checkCustomLease'] = ({ name } = {}) => {
+    const result = baseCheckLease({ name });
+    return renewalOwned ? {
+      ...result,
+      domainExists: true,
+      leaseExists: true,
+      lease: { owner: ADDRESS_A, expiresAtSeconds: '1800000000' },
+      expiredHint: false,
+    } : result;
+  };
+  const sign = (params) => {
+    writes.push(params);
+    if (failure) throw failure;
+    return { signature: 'domain-confirmed-fixture' };
+  };
+  FIXTURES['name.register'] = sign;
+  FIXTURES['name.purchase'] = sign;
+  FIXTURES['name.renewLease'] = sign;
+  FIXTURES['name.claimExpired'] = sign;
+
+  const mount = async (password = false) => {
+    dismissAllToasts();
+    resetBackend(SCENARIOS[2]);
+    resetDom();
+    backend.preferences.requirePasswordForSigning = password;
+    route = NameRoute({ back() {} });
+    DOC.body.appendChild(route.el);
+    await settle();
+  };
+  const destroy = () => {
+    route.destroy();
+    route.el.remove();
+    dismissAllToasts();
+  };
+  // Type a free name, wait out the availability debounce, open the review and confirm it inside
+  // the sheet. Every scenario starts from a real review so the submit path runs end to end.
+  const submit = async (name = 'alice', password = false) => {
+    await mount(password);
+    type(route.el.querySelector('input'), name);
+    await sleep(500);
+    await settle();
+    click(buttons(route.el, /^review /i)[0]);
+    await settle();
+    const sheet = DOC.body.querySelector('.name-confirm-sheet');
+    click(buttons(sheet, /confirm and sign/i)[0]);
+    await settle();
+  };
+  // How many times a sentence appears across the route text and every live toast.
+  const copies = (text) => {
+    const seen = [textOf(route.el), ...activeToasts().map((t) => t.text)].join(' ');
+    return (seen.match(new RegExp(text, 'gi')) || []).length;
+  };
+  const fieldLine = () => route.el.querySelector('.name-status').textContent;
+  const detail = (text) => JSON.stringify({
+    copies: copies(text), toasts: activeToasts(), route: textOf(route.el).slice(-200),
+  });
+
+  try {
+    // ---- the outcome of a successful submission: one copy, on the toast ----------------
+    failure = null;
+    await submit();
+    ok('a confirmed registration is announced exactly once',
+      copies('registration confirmed') === 1, detail('registration confirmed'));
+    ok('the in-flight bar becomes the verdict instead of a banner appearing beside it',
+      activeToasts().length === 1 && activeToasts()[0].key === 'name-submit'
+      && activeToasts()[0].tone === 'success', JSON.stringify(activeToasts()));
+    ok('the name field line keeps availability text only, never transaction text',
+      fieldLine() === '', JSON.stringify({ fieldLine: fieldLine() }));
+    destroy();
+
+    // The owner's second screenshot was a renewal in flight, so exercise the same shared submit
+    // handler with an owned lease, not just the registration branch.
+    renewalOwned = true;
+    failure = null;
+    await submit();
+    ok('a confirmed renewal is announced exactly once on the pending toast',
+      copies('renewal confirmed') === 1 && activeToasts().length === 1
+      && activeToasts()[0].tone === 'success' && fieldLine() === '',
+      detail('renewal confirmed'));
+    destroy();
+    renewalOwned = false;
+
+    // ---- the outcome of a refusal: the same bar, turned into the error -----------------
+    failure = apiError('TX_REJECTED', 'The network refused this transaction.');
+    await submit();
+    ok('a refused registration is reported exactly once',
+      copies('The network refused this transaction') === 1,
+      detail('The network refused this transaction'));
+    ok('the refusal reuses the in-flight bar rather than adding a second notification',
+      activeToasts().length === 1 && activeToasts()[0].tone === 'error'
+      && /Registration failed/.test(activeToasts()[0].text), JSON.stringify(activeToasts()));
+    ok('a refusal leaves the field line empty', fieldLine() === '', JSON.stringify({ fieldLine: fieldLine() }));
+    destroy();
+
+    // ---- an unknown outcome: one warning, and the CTA is what persists ------------------
+    failure = apiError('TX_RESULT_MISSING', 'Result unavailable', true);
+    await submit();
+    ok('an unknown outcome is stated exactly once, as a warning',
+      copies('Confirmation unavailable') === 1 && activeToasts().length === 1
+      && activeToasts()[0].tone === 'warning', detail('Confirmation unavailable'));
+    ok('the unknown state persists as "Check outcome", not as a second message',
+      buttons(route.el, /check outcome/i).length === 1
+      && !/Registration confirmed/.test(textOf(route.el)));
+    destroy();
+
+    // ---- a cancelled submission: the pending bar answers, nothing else speaks -----------
+    failure = null;
+    await submit('alice', true);
+    const passwordDialog = DOC.body.querySelector('[role="dialog"]');
+    click(buttons(passwordDialog, /^cancel$/i)[0]);
+    await settle();
+    ok('cancelling answers the pending bar and says nothing twice',
+      copies('Registration cancelled') === 1 && !DOC.body.querySelector('[role="dialog"]')
+      && fieldLine() === '', detail('Registration cancelled'));
+    destroy();
+
+    // ---- a review that can no longer be signed: screen state, not an event --------------
+    failure = apiError('REVIEW_EXPIRED', 'That review expired.');
+    await submit();
+    ok('a void review is screen state, and no verdict toast is left behind',
+      copies('can no longer be signed') === 1 && activeToasts().length === 0,
+      detail('can no longer be signed'));
+    destroy();
+
+    // ---- the screenshot: confirmReview without a consent token --------------------------
+    // A worker built before the consent gate replies with submit instructions and no token. The
+    // raw contract sentence must not reach the screen at all, and nothing may be signed.
+    failure = null;
+    const realConfirm = FIXTURES['tx.confirmReview'];
+    FIXTURES['tx.confirmReview'] = ({ reviewId } = {}) => ({
+      reviewId,
+      submit: { method: 'name.register', params: {} },
+      submitPolicy: { passwordRequired: false },
+    });
+    const writesBefore = writes.length;
+    await submit();
+    ok('a review the wallet cannot vouch for is explained once, in words the user can act on',
+      copies('This review did not receive a signing confirmation') === 0
+      && copies('can no longer be signed') === 1, detail('can no longer be signed'));
+    ok('a review without a consent token signs nothing and leaves no spinner',
+      writes.length === writesBefore && activeToasts().length === 0,
+      JSON.stringify({ writes: writes.length - writesBefore, toasts: activeToasts() }));
+    FIXTURES['tx.confirmReview'] = realConfirm;
+    destroy();
+  } finally {
+    dismissAllToasts();
+    FIXTURES['tx.confirmReview'] = originals['tx.confirmReview'];
     for (const key of Object.keys(FIXTURES)) if (!(key in originals)) delete FIXTURES[key];
     Object.assign(FIXTURES, originals);
   }
@@ -5921,6 +6101,7 @@ try {
   await historyCacheFirstTest();
   await offlineBalanceConsumersTest();
   await nameReviewTest();
+  await nameNotificationTest();
   await trackedDomainsTest();
   await dashboardActivationTest();
   await panelExclusionTest();

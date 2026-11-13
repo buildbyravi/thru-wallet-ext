@@ -173,6 +173,10 @@ non-interactive shell waiting for a GUI credential manager.
     refuses without the one-time token `tx.confirmReview` mints; an exemption is one line in the
     router with its reason. The token proves the review, never that a human saw it. — *check:*
     `test/test-review-consent.mjs` (a fresh router, no helper, zero client touches).
+29. **One surface per event.** A submission opens one `pending` toast and resolves that toast;
+    never repeat the outcome in a Banner or a field-status line. Banner = state the screen cannot
+    show (a review that cannot start, or can no longer be signed); a field line = what was typed.
+    — *check:* `test/test-route-lifecycle.mjs` ("one notification per event").
 
 ## Stop and ask instead of guessing
 

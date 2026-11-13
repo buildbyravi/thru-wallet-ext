@@ -876,12 +876,17 @@ export function NameRoute({ back }) {
       setListMutationLocked(true);
       for (const control of transactionControls) control.disabled = true;
       const opName = kind === 'domain-renew' ? 'Renewal' : 'Registration';
-      setStatus(`Submitting ${opName.toLowerCase()} transaction…`, '');
-      banner.set(`Submitting ${opName.toLowerCase()} for ${nameText}.${currentTld()} to Thru L1… Waiting for confirmation.`, 'info');
-      // The toast follows the real lifecycle: it opens as `pending` (spinner, never expires) and is
-      // resolved IN PLACE by whichever outcome actually happened. A signature is not a
-      // confirmation, and a lost RPC answer is not a failure, so the three outcomes get three
-      // different verdicts — and only the confirmed one says "confirmed".
+      // ONE surface for this event (AGENTS.md rule 29). The attempt and its verdict are both the
+      // toast: it opens as `pending` (spinner, never expires) and is resolved IN PLACE by whichever
+      // outcome happened. The banner is not written here at all — it is for screen state that is
+      // not an event (a review that cannot be prepared, or one that can no longer be signed) — and
+      // the `.name-status` line above owns availability text for the typed name only. Before
+      // 2026-10-27 this function wrote the in-flight sentence to all three surfaces and the verdict
+      // to two, which is the duplication in the owner's screenshot (docs/DEFECT_LOG.md §22).
+      setStatus('', '');
+      banner.clear();
+      // A signature is not a confirmation, and a lost RPC answer is not a failure, so the outcomes
+      // get different verdicts — and only the confirmed one says "confirmed".
       const submitToast = toast({
         tone: 'pending',
         key: 'name-submit',
@@ -903,21 +908,21 @@ export function NameRoute({ back }) {
         // same class of stale claim the review lifecycle audit removed.
         if (destroyed || !card.isConnected) { submitToast.dismiss(); return; }
         if (outcome.status === 'cancelled') {
-          submitToast.dismiss();
-          setStatus('Transaction cancelled', '');
-          banner.set('');
+          submitToast.update({
+            tone: 'info',
+            title: `${opName} cancelled`,
+            message: 'Nothing was signed or sent.',
+          });
           return;
         }
         // The submit path resolved only after the handler returned an execution result, which
-        // is why this says "confirmed" and not "submitted" — same claim the banner makes.
-        toast({
+        // is why this says "confirmed" and not "submitted". It is also the ONLY place that claim
+        // is made on this screen: no banner, no field text.
+        submitToast.update({
           tone: 'success',
-          key: 'name-submit',
           title: `${nameText}.${currentTld()} ${opName.toLowerCase()} confirmed`,
           message: 'The transaction executed on-chain. It is listed in Activity.',
         });
-        banner.set(`${nameText}.${currentTld()} · ${opName} confirmed on-chain!`, 'success');
-        setStatus(`${nameText}.${currentTld()} · ${opName} confirmed`, 'ok');
         ctaBtn.classList.add('hidden');
         entry.completed = true;
         entry.quote = null;
@@ -927,30 +932,34 @@ export function NameRoute({ back }) {
         const classified = classifyReviewError(err);
         if (classified.kind === 'uncertain') {
           // NOT a failure: the request may have been broadcast. The toast says what is known and
-          // tells the user where to look, and the CTA becomes "Check outcome".
-          toast({
+          // tells the user where to look, and the CTA becomes "Check outcome" — the affordance,
+          // not a second copy of the message, is what makes the unknown state persist.
+          submitToast.update({
             tone: 'warning',
-            key: 'name-submit',
-            title: 'Outcome unknown',
+            title: 'Confirmation unavailable',
             message: 'The network did not answer. Check Activity before trying again.',
           });
-          setStatus('Confirmation unavailable. Check the outcome before trying again.', 'warn');
           entry.outcomeUnknown = true;
           entry.recheckRequired = true;
           leaseState = null;
           ctaBtn.classList.remove('hidden');
           ctaLabel().textContent = 'Check outcome';
         } else if (classified.kind === 'stale') {
+          // The review is void (expired, changed on-chain, or the wallet refused to vouch for it),
+          // so no verdict belongs on the toast: the only path is a fresh read, and that
+          // instruction is screen state until the user acts on it.
           submitToast.dismiss();
-          banner.set('Transaction details changed. Review the updated details before signing.');
+          banner.set('This review can no longer be signed. Review the updated details before signing.', 'warning');
           leaseState = null;
           await load();
         } else {
-          // A REFUSED or failed submission is a real failure. The banner carries the reason and
-          // stays; the pending toast is retired rather than turned into a second copy of it.
-          submitToast.dismiss();
-          banner.set(classified.message);
-          setStatus(classified.message, 'bad');
+          // A REFUSED or failed submission is still the same event, so the toast that carried it
+          // becomes the failure instead of a second notification appearing beside it.
+          submitToast.update({
+            tone: 'error',
+            title: `${opName} failed`,
+            message: classified.message,
+          });
         }
       } finally {
         submissionInFlight = false;

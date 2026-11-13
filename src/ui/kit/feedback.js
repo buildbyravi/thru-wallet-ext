@@ -4,8 +4,11 @@ import { h, disposer } from './dom.js';
 import { icon } from './icon.js';
 
 // The banner's tone vocabulary is the same four states the toast uses for events, minus
-// `pending` (a persistent "in progress" line belongs in the screen's own status text, not in a
-// banner that has no resolution mechanism). `'ok'` is accepted as a synonym for `'success'`
+// `pending`: in-flight work belongs to the toast that can resolve it in place, never to a banner
+// that has no resolution mechanism (AGENTS.md rule 29). A banner carries STATE the screen cannot
+// show on its own — a review that cannot be prepared or can no longer be signed, a balance that
+// could not be verified — and never a second copy of a toast's event. `'ok'` is accepted as a
+// synonym for `'success'`
 // because the Domain route already passed it; before 2026-10-30 that silently fell through to
 // the neutral notice style, so a confirmed registration was painted as an unremarkable grey box.
 const TONE_ALIAS = { ok: 'success', success: 'success', error: 'error', warning: 'warning', info: 'info' };

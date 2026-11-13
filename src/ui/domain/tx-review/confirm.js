@@ -95,10 +95,14 @@ export async function submitReviewedReview({
     throw Object.assign(new Error('This review cannot be signed.'), { code: 'NOT_EXECUTABLE' });
   }
   if (!consentToken) {
-    // The background refuses every signing method without one, so this is a contract breach,
-    // not a user-facing condition. Failing here beats a confusing REVIEW_REQUIRED from the call.
-    throw Object.assign(new Error('This review did not receive a signing confirmation.'), {
+    // The background refuses every signing method without one, so this is a contract breach
+    // rather than a user condition: the worker that answered did not mint the token this UI
+    // requires (a stale build is the usual cause, and nothing was sent). Failing here beats a
+    // confusing REVIEW_REQUIRED from the signing call. The user-facing copy states the one thing
+    // that can work — a fresh review — and `detail` keeps the diagnostic out of the screen.
+    throw Object.assign(new Error('This review cannot be signed. Start the review again.'), {
       code: 'REVIEW_REQUIRED',
+      detail: 'tx.confirmReview returned no consentToken',
     });
   }
 
@@ -172,6 +176,19 @@ export function classifyReviewError(error, { submitted = false, uncertainMessage
   const sent = submitted || error?.phase === 'submit';
   if (STALE_CODES.has(code)) {
     return { kind: 'stale', message: error.message || 'This transaction changed. Review it again.' };
+  }
+  // Not a code the background throws for a changed chain fact, but the same consequence: the
+  // wallet answered a confirmed review without the one-time token it mints, so THIS review can
+  // never produce a signature. Nothing was sent, so it is not `failed`, and no rule refused it,
+  // so it is not `blocked`. The remedy is a fresh review, which is what `stale` means to every
+  // caller — and it keeps the raw contract breach off the screen (docs/DEFECT_LOG.md §22).
+  if (code === 'REVIEW_REQUIRED') {
+    // The background's own refusals carry the specific reason ("These transaction details changed
+    // after the review…"); the message above only stands in for a reply with no token at all.
+    return {
+      kind: 'stale',
+      message: error?.message || 'This review cannot be signed. Start the review again.',
+    };
   }
   if (sent && (SIGNING_FAILURE_CODES.has(code) || error?.retryable === true)) {
     return {

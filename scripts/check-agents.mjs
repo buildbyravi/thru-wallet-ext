@@ -23,9 +23,9 @@ const DOCS = ['AGENTS.md', 'docs/agent/engineering-directive.md', 'docs/agent/ru
   'docs/agent/traps.md', 'docs/agent/rule-matrix.md'];
 
 // Rules that must exist, in order. Numbers are stable: src/ and test/ cite them. 1–17 are the
-// original set (restructured 2026-10-31, same numbers); 18–27 were added with the checks that
+// original set (restructured 2026-10-31, same numbers); 18–29 were added with the checks that
 // enforce them, one per failure recorded in docs/agent/rule-matrix.md §2b.
-const REQUIRED_RULES = 28;
+const REQUIRED_RULES = 29;
 // The hard-rules block is the part that grows; the ceiling keeps prose out. Raising it is a
 // deliberate edit of a guard, justified in the commit that does it.
 const MAX_LINES = 218;

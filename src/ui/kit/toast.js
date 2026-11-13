@@ -13,6 +13,12 @@
 // example "balance could not be verified") still belongs in a Banner; a toast is for
 // EVENTS ("Token added", "Address copied", "Side panel unavailable").
 //
+// ONE SURFACE PER EVENT (AGENTS.md rule 29, added 2026-11-13). A submission opens this toast as
+// `pending` and resolves THIS toast — success, cancelled, refused or unknown. It must not also
+// write the same outcome into a Banner or into the screen's field-status line: the Domain route
+// did all three, and the owner saw one event printed three times. Banner = state that outlives
+// the event and explains a changed affordance; a field line = validation of what was typed.
+//
 // THE BLANK-TOAST RULE (added 2026-10-30)
 //
 // The Domain screen shipped an oversized, nearly empty black bar because three call sites wrote

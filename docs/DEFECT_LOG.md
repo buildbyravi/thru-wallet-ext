@@ -1287,3 +1287,52 @@ operations have always paid. A payer with no THRU keeps declaring 0, and so does
 `baseFeeUnits` is still `null` (mainnet today). If the owner wants registrar writes to stay free,
 the revert is one call site per header: `fee: 0n` — but then the card must say "this wallet
 declares no fee", not "none", and the summary must stop promising the network fee.
+
+## 22. 2026-10-27 — the shared notification exists, but Domain printed the same event three times
+
+**Owner report:** the screenshots show a red inline sentence under the name field and the same red
+sentence in the grey page banner: *"This review did not receive a signing confirmation."* A second
+screenshot shows a bottom toast *"Submitting renewal… · waiting for the network"* while the page
+also says *"Submitting renewal … Waiting for confirmation"* in the banner and the field line.
+
+**Finding — separate surfaces, not three notification components.** The extension does have one
+centralized event component: `src/ui/kit/toast.js` owns the fixed bottom toast host, tones,
+dismissal, and in-place `pending → verdict`. The other two elements are not toasts:
+
+- `src/ui/kit/feedback.js#Banner` is an inline page-level status/error banner.
+- `src/ui/app/routes/name.js#setStatus` writes the `.name-status` line below the input (meant for
+  availability and validation of the typed name).
+
+The Domain submit handler wrote its progress to *all three*. On success, it printed the same
+"confirmed" outcome to the pending toast, the banner, and the field line. On a definite failure,
+it dismissed the toast and copied the same error into both inline surfaces. That is why centralizing
+the *toast API* did not centralize all feedback; the Domain handler bypassed that policy by writing
+to its other two, legitimate, non-toast surfaces.
+
+The first screenshot's text was not a chain refusal. `confirm.js` throws `REVIEW_REQUIRED` if
+`tx.confirmReview` returns no `consentToken` — a contract breach, usually a UI/background version
+mismatch. No signing call was made. The old raw developer sentence then fell through the generic
+error branch and was duplicated in the banner and field. The shared classifier now treats
+`REVIEW_REQUIRED` as a review that cannot proceed (preserving the background's specific reason when
+present); a missing token gets plain copy: *"This review cannot be signed. Start the review again."*
+No signing attempt is made.
+
+**Fix.** During a name submission, the toast is now the one surface for that event. It opens as
+`pending`, then the same keyed toast becomes success, refused/error, unknown/warning, or cancelled.
+No submit verdict is copied to the banner or name-status line. The line is cleared before submit and
+remains reserved for the typed name's availability. The banner is cleared before submit and used
+only for persistent state such as a review that has become invalid and must be prepared again. The
+unknown state remains actionable through the *Check outcome* CTA, not a second copy of its message.
+
+The centralized component remains intentionally distinct from inline state: it is not a rule that
+all notices everywhere must become toasts. The rule is **one surface per event** — a transient
+submission outcome lives in one toast; input validity lives by the input; persistent screen state
+lives in a banner. `AGENTS.md` rule 29 records this with its route-lifecycle check.
+
+**Negative control:** restoring the pre-fix `name.js` and `confirm.js` made `test/test-route-lifecycle.mjs`
+fail 11 checks. It counted **3** copies of *"registration confirmed"* across route text + toast;
+**2** copies of the refused error in the route; the outcome was also copied into field status; and
+it surfaced the raw missing-consent diagnostic instead of actionable copy. With the fix, lifecycle
+suite **1130/1130** passes, including one-copy registration/renewal success, refusal,
+unknown/cancel and the no-token case; no signature is made without a consent token. The same submit handler handles renewal, so the
+pending renewal in the screenshot follows this flow too.
