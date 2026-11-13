@@ -150,8 +150,8 @@ See [`docs/STATUS_AND_ROADMAP.md`](docs/STATUS_AND_ROADMAP.md) for the live orde
 
 ```bash
 npm install
-npm test
 npm run build
+npm test
 npm audit --omit=dev
 ```
 

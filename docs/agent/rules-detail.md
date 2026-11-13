@@ -1,9 +1,9 @@
 # Hard rules — full text
 
-Referenced from `AGENTS.md`. Rules 1–9, 11, 12 and 13 are complete in one or two lines there and
-are NOT duplicated here (a duplication is a place for the two copies to disagree). This file
-carries the LONG text of rules 10, 14, 15, 16 and 17 — the signing exception, the layout rule, the
-no-blocking-paint rule and the review pipeline.
+Referenced from `AGENTS.md`. Rules 1–9, 11, 12, 13 and 18–29 are complete in one or two lines there
+and are NOT duplicated here (a duplication is a place for the two copies to disagree). This file
+carries the LONG text of rules 10, 14, 15, 16, 17 and 30 — the signing exception, the layout rule,
+the no-blocking-paint rule, the review pipeline and the independent verification rule.
 
 The rule NUMBERS are stable: `src/` comments cite rule 15 (paint first), `test-toast.mjs` cites
 rule 14 (layout needs eyes), `test-launchpad-quarantine.mjs` cites rule 6 (BigInt), and
@@ -85,3 +85,29 @@ rule 14 (layout needs eyes), `test-launchpad-quarantine.mjs` cites rule 6 (BigIn
     paragraphs justifying why dry-run is unverified, why post-transaction balance is not shown, that signing
     is irreversible/fixed, or that actual fees appear in Activity after confirmation. Present verifiable data,
     not essays.
+
+## Rule 30
+
+30. **Never trust green test reports as sole proof (Independent Verification).**
+    An implementation agent's test files, passing test output, audit notes, and completion reports
+    are **claims to verify, not independent evidence**. The same agent may have introduced the
+    defect and encoded the same incorrect assumption in its tests.
+
+    The audit/review agent MUST:
+    1. **Independently derive expected behavior** from authoritative requirements, protocol
+       specifications, pinned SDK source/API, contract source, and deployed behavior where
+       applicable. Do not derive expected behavior solely from the implementation or its tests.
+    2. **Read and critically review the tests themselves.** Check that assertions validate the
+       actual requirement, cover failure paths and edge cases, and cannot pass because of mocks,
+       permissive fixtures, hard-coded expected values, skipped tests, weakened assertions, or
+       shared implementation assumptions.
+    3. **Independently verify critical behavior** using a separate method where feasible: direct
+       source inspection, targeted adversarial tests, independent test fixtures/oracles, integration
+       tests, real browser execution, or live-chain evidence.
+    4. **Reproduce reported commands and results on the exact candidate commit SHA.** Never
+       transfer a passing result from another branch, commit, worktree, build artifact, or PR head.
+    5. **Treat missing, inaccessible, mocked, stale, or unverified evidence as UNVERIFIED**, not
+       PASS. Clearly separate IMPLEMENTED, TESTED, INDEPENDENTLY VERIFIED, and UNVERIFIED.
+    6. **Do not approve a release solely because the implementation agent reports that tests pass.**
+       Record independently verified evidence, remaining gaps, and the exact commit SHA. Keep the
+       release blocked when a critical behavior lacks sufficient independent verification.

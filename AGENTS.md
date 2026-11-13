@@ -8,7 +8,7 @@ enough to be read every time:
 | File | Holds |
 | --- | --- |
 | `docs/agent/engineering-directive.md` | the full engineering directive, architecture/compatibility invariants, transaction & signing invariants, delivery and security-review rules |
-| `docs/agent/rules-detail.md` | the full text of hard rules 10, 14, 15, 16, 17 |
+| `docs/agent/rules-detail.md` | the full text of hard rules 10, 14, 15, 16, 17, 30 |
 | `docs/agent/traps.md` | the traps that cost real debugging time here |
 | `docs/agent/rule-matrix.md` | where every former section of this file went |
 
@@ -177,6 +177,10 @@ non-interactive shell waiting for a GUI credential manager.
     never repeat the outcome in a Banner or a field-status line. Banner = state the screen cannot
     show (a review that cannot start, or can no longer be signed); a field line = what was typed.
     — *check:* `test/test-route-lifecycle.mjs` ("one notification per event").
+30. **Never trust green test reports as sole proof.** Tests and implementation written by the same
+    agent can share identical blind spots, mock false assumptions, and pass self-affirming checks.
+    An auditing agent must independently verify boundary logic, negative controls, and on-chain facts.
+    Full text in `docs/agent/rules-detail.md`. — *check:* review.
 
 ## Stop and ask instead of guessing
 
