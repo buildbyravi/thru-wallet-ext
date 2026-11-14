@@ -156,15 +156,11 @@ export function NameRoute({ back }) {
     const list = h('div', { class: 'stack stack-3 name-domain-list' });
     const status = h('div', { class: 'hint', role: 'status', text: 'Loading saved domains…' });
     const refresh = h('button', { type: 'button', class: 'btn text', text: 'Refresh ownership' });
-    const input = track(Field({ label: 'Import domain', placeholder: 'yourname.thru',
-      autocomplete: 'off', maxLength: 69, hint: 'Add a .thru domain you own.' }));
-    const add = h('button', { type: 'button', class: 'btn secondary', text: 'Import domain' });
-    host.appendChild(h('p', { class: 'hint', text: 'Domains saved in this wallet. Import names registered elsewhere.' }));
+    host.appendChild(h('p', { class: 'hint', text: 'Domains saved in this wallet.' }));
     host.appendChild(list);
     host.appendChild(status);
     host.appendChild(refresh);
-    host.appendChild(h('div', { class: 'name-entry domain-card stack stack-2' }, [input.el, add]));
-    add.disabled = refresh.disabled = !ctx.expectedNetworkId || !ctx.expectedAccountAddress;
+    refresh.disabled = !ctx.expectedNetworkId || !ctx.expectedAccountAddress;
 
     function paint() {
       rows.dispose();
@@ -352,14 +348,12 @@ export function NameRoute({ back }) {
     async function action(method, params) {
       if (busy || !current()) return;
       busy = true;
-      add.disabled = refresh.disabled = true;
-      input.control.disabled = true;
+      refresh.disabled = true;
       paint();
       banner.set('');
       try {
         await bridge.send(method, { ...params, ...ctx });
         if (!current()) return;
-        if (method === 'name.trackDomain') input.value = '';
         // One event = one toast, keyed so a double click resolves the same bar instead of
         // stacking a second one. The untrack case says what did NOT happen: the domain is
         // still on-chain, this wallet just stops tracking it.
@@ -379,20 +373,12 @@ export function NameRoute({ back }) {
       } finally {
         if (current()) {
           busy = false;
-          add.disabled = refresh.disabled = false;
-          input.control.disabled = false;
+          refresh.disabled = false;
           paint();
         }
       }
     }
     bodyDisposer.on(refresh, 'click', () => { if (!busy) void refreshList(); });
-    bodyDisposer.on(add, 'click', () => {
-      if (add.disabled || busy) return;
-      if (!input.value.trim()) { input.setError('Enter a domain name.'); return; }
-      input.setError('');
-      void action('name.trackDomain', { name: input.value });
-    });
-    bodyDisposer.on(input.control, 'keydown', event => { if (event.key === 'Enter') add.click(); });
     void refreshList();
   }
 

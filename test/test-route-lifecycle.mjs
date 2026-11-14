@@ -5960,7 +5960,7 @@ async function trackedDomainsTest() {
   FIXTURES['name.getCachedDomains'] = () => data(true);
   FIXTURES['name.listDomains'] = () => data();
   FIXTURES['name.checkCustomLease'] = ({ name } = {}) => {
-    const isAliceOrBob = name === 'alice' || name === 'bob';
+    const isAliceOrBob = name === 'alice' || name === 'bob' || name === 'carol';
     return {
       ...originals['name.checkCustomLease']({ name }),
       domainExists: isAliceOrBob,
@@ -5999,9 +5999,8 @@ async function trackedDomainsTest() {
     await settle();
     click(buttons(route.el, /^my domains$/i)[0]);
     await settle();
-    ok('saved domains and import controls paint before a live owner read finishes',
-      held.length === 1 && /alice.thru/.test(textOf(route.el)) && /bob.thru/.test(textOf(route.el))
-      && route.el.querySelector('input[placeholder="yourname.thru"]'));
+    ok('saved domains paint before a live owner read finishes',
+      held.length === 1 && /alice.thru/.test(textOf(route.el)) && /bob.thru/.test(textOf(route.el)));
     ok('cached ownership is labelled and cannot enable primary or renewal actions',
       /Ownership not verified/.test(textOf(route.el)) && buttons(route.el, /^make primary$/i)[0].disabled
       && buttons(route.el.querySelector('.name-domain-list'), /^renew$/i).length === 2
@@ -6027,17 +6026,18 @@ async function trackedDomainsTest() {
     click(buttons(route.el, /^unlink/i)[0]);
     await settle();
     ok('unlink leaves both domains in My Domains', buttons(route.el, /^make primary$/i).length === 2);
-    const input = route.el.querySelector('input[placeholder="yourname.thru"]');
-    type(input, 'carol.thru');
-    click(buttons(route.el, /^import domain$/i)[0]);
+    click(buttons(route.el, /^register$/i)[0]);
+    await settle();
+    const regInput = route.el.querySelector('input[placeholder="Search yourname.thru"]');
+    type(regInput, 'carol');
+    await settle(450);
+    ok('owned domain in Register tab shows Import button', buttons(route.el, /^import$/i).length === 1);
+    click(buttons(route.el, /^import$/i)[0]);
+    await settle();
+    click(buttons(route.el, /^my domains$/i)[0]);
     await settle();
     ok('import adds another domain without replacing the existing list', /carol.thru/.test(textOf(route.el))
-      && /alice.thru/.test(textOf(route.el)) && input.value === '');
-    type(input, 'foreign.thru');
-    click(buttons(route.el, /^import domain$/i)[0]);
-    await settle();
-    ok('ownership rejection keeps the import input and existing domains', input.value === 'foreign.thru'
-      && /belongs to another account/.test(textOf(route.el)) && items.length === 3);
+      && /alice.thru/.test(textOf(route.el)));
     click(buttons(route.el, /^remove/i)[1]);
     await settle();
     ok('untrack removes only the selected local entry', !/bob.thru/.test(textOf(route.el)) && /alice.thru/.test(textOf(route.el)));
