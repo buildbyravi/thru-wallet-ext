@@ -63,4 +63,28 @@ equal(registry.yearsProblem(255), null, 'official registrar accepts the protocol
 equal(custom.yearsProblem(10), null, 'custom registrar accepts its configured 10-year maximum');
 ok(custom.yearsProblem(11) !== null, 'custom registrar rejects durations over its configured maximum');
 
+// Out-of-range lease timestamp protection (Finding 1)
+function validateLeaseTimestamp(rawSecondsStr) {
+  const rawSeconds = rawSecondsStr != null ? Number(rawSecondsStr) : null;
+  const valid = rawSeconds !== null && Number.isFinite(rawSeconds) && rawSeconds > 0 && rawSeconds <= 8640000000000;
+  return valid ? rawSeconds * 1000 : null;
+}
+ok(validateLeaseTimestamp('1800000000') !== null, 'standard unix timestamp within valid JS Date range');
+ok(validateLeaseTimestamp('18446744073709551615') === null, 'u64::MAX timestamp is rejected, avoiding Invalid Date');
+ok(validateLeaseTimestamp('-1000') === null, 'negative timestamp is rejected');
+ok(validateLeaseTimestamp('NaN') === null, 'non-numeric timestamp is rejected');
+
+// Short draft tier pill bounds (Finding 2)
+function getDraftTierName(label) {
+  const len = String(label || '').trim().length;
+  if (len < 3 || len > 32) return null;
+  return len === 3 ? 'Tier 1 (3 chars)' : len === 4 ? 'Tier 2 (4 chars)' : 'Tier 3 (5+ chars)';
+}
+equal(getDraftTierName('a'), null, '1-character draft has no tier pill (invalid length)');
+equal(getDraftTierName('ab'), null, '2-character draft has no tier pill (invalid length)');
+equal(getDraftTierName('abc'), 'Tier 1 (3 chars)', '3-character draft is Tier 1');
+equal(getDraftTierName('abcd'), 'Tier 2 (4 chars)', '4-character draft is Tier 2');
+equal(getDraftTierName('abcde'), 'Tier 3 (5+ chars)', '5-character draft is Tier 3');
+equal(getDraftTierName('a'.repeat(33)), null, '33-character draft exceeds maximum length and has no tier pill');
+
 console.log(`test-name-ui: ${checks} checks passed`);

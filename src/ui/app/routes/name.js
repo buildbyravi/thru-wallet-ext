@@ -232,9 +232,14 @@ export function NameRoute({ back }) {
         }
 
         const leaseObj = lease && lease !== 'loading' ? lease : null;
-        const expiresAtMs = leaseObj?.expiresAtSeconds ? Number(leaseObj.expiresAtSeconds) * 1000 : null;
+        const rawSeconds = leaseObj?.expiresAtSeconds != null ? Number(leaseObj.expiresAtSeconds) : null;
+        // JS Date maximum range: ±8,640,000,000,000,000 ms (approx year 275,760).
+        // Anything <= 0 or > 8.64e12 seconds is outside supported JS Date range.
+        const validTimestamp = rawSeconds !== null && Number.isFinite(rawSeconds)
+          && rawSeconds > 0 && rawSeconds <= 8640000000000;
+        const expiresAtMs = validTimestamp ? rawSeconds * 1000 : null;
         const now = Date.now();
-        const daysRemaining = expiresAtMs && Number.isFinite(expiresAtMs)
+        const daysRemaining = expiresAtMs !== null
           ? Math.ceil((expiresAtMs - now) / 86400000)
           : null;
 
@@ -259,9 +264,9 @@ export function NameRoute({ back }) {
           pillText = 'Unverified';
         }
 
-        const expiryDisplay = expiresAtMs && Number.isFinite(expiresAtMs)
+        const expiryDisplay = expiresAtMs !== null
           ? `${new Date(expiresAtMs).toLocaleDateString(undefined, { dateStyle: 'medium' })} (${daysRemaining != null && daysRemaining > 0 ? `${daysRemaining}d left` : 'expired'})`
-          : (lease === 'loading' ? 'Checking…' : 'Pending sync');
+          : (leaseObj?.expiresAtSeconds && !validTimestamp ? 'Invalid lease date' : (lease === 'loading' ? 'Checking…' : 'Pending sync'));
         const targetDisplay = leaseObj?.resolver && typeof leaseObj.resolver === 'string' && leaseObj.resolver.length > 5
           ? truncateMiddle(leaseObj.resolver, 6)
           : (item.domainAddress ? truncateMiddle(item.domainAddress, 6) : 'Unassigned');
@@ -557,7 +562,7 @@ export function NameRoute({ back }) {
     function updateTierPill() {
       const draftName = String(entry.name || searchField.value || '').trim();
       const len = draftName.length;
-      if (len === 0 || !provider) {
+      if (len < 3 || len > 32 || !provider) {
         tierPill.classList.add('hidden');
         return;
       }

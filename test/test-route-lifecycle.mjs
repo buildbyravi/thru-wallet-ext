@@ -5967,7 +5967,7 @@ async function trackedDomainsTest() {
       leaseExists: isAliceOrBob,
       lease: isAliceOrBob ? {
         owner: ADDRESS_A,
-        expiresAtSeconds: '1800000000',
+        expiresAtSeconds: name === 'bob' ? '18446744073709551615' : '1800000000',
       } : null,
     };
   };
@@ -6026,11 +6026,16 @@ async function trackedDomainsTest() {
     click(buttons(route.el, /^unlink/i)[0]);
     await settle();
     ok('unlink leaves both domains in My Domains', buttons(route.el, /^make primary$/i).length === 2);
+    ok('out-of-range lease timestamp is handled honestly without throwing', /Invalid lease date/.test(textOf(route.el)));
     click(buttons(route.el, /^register$/i)[0]);
     await settle();
     const regInput = route.el.querySelector('input[placeholder="Search yourname.thru"]');
+    type(regInput, 'ab');
+    await settle(50);
+    ok('draft under 3 chars hides tier pill', Boolean(route.el.querySelector('.domain-tier-pill.hidden')));
     type(regInput, 'carol');
     await settle(450);
+    ok('valid draft shows tier pill', !route.el.querySelector('.domain-tier-pill.hidden'));
     ok('owned domain in Register tab shows Import button', buttons(route.el, /^import$/i).length === 1);
     click(buttons(route.el, /^import$/i)[0]);
     await settle();
