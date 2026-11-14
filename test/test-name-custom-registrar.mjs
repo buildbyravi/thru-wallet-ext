@@ -88,9 +88,6 @@ eq(tcr.describeTcrError(53770), 'fee transfer failed (account not writable)', 'c
 eq(tcr.describeTcrError(0xD226), 'fee transfer failed (insufficient balance)', 'composite 0xD226 decodes to insufficient balance');
 eq(tcr.describeTcrError(99999), 'unknown registrar error 99999', 'unrecognized code falls back honestly');
 
-if (failures) { console.error(`\n${failures} failure(s)`); process.exit(1); }
-console.log('\nCustom-registrar evidence tests passed');
-
 // ---- tiered schedule: the three Betanet tiers, priced by label LENGTH ---------------------
 // Owner directive 2026-10-30: 3 chars = 0.0001 THRU/yr, 4 = 0.00001, 5+ = 0.000001
 // (base units below). These numbers come from the release plan, NOT from a live read — the
@@ -126,3 +123,9 @@ console.log('fee enforcement vocabulary');
   // The two new codes must not collide with the VM-composite decoding space (0xD2xx | syscall).
   ok(!(0xd206 in { 0xd226: 1 }) && 0xd206 !== 0xd20a, 'new codes do not shadow the live 0xD20A failure');
 }
+
+if (failures) {
+  console.error(`\n${failures} failure(s) in test-name-custom-registrar`);
+  process.exit(1);
+}
+console.log('\nAll custom-registrar evidence and tiered pricing tests passed');

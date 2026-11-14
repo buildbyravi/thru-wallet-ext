@@ -62,6 +62,7 @@ export function NameRoute({ back }) {
   let cachedDomainItems = [];
   let loadSeq = 0;
   let activeTab = 'register';
+  let isRenewOnly = false;
   let draft = { name: '', years: 1, quote: null };
   let reviewSheet = null;
   let submissionInFlight = false;
@@ -193,7 +194,7 @@ export function NameRoute({ back }) {
               void bridge.send('name.checkLease', { name: item.name }).then(regRes => {
                 if (regRes?.lease && current()) {
                   leaseFacts.set(item.name, {
-                    expiresAtSeconds: regRes.lease.leaseEndTime,
+                    expiresAtSeconds: regRes.lease.endTime || regRes.lease.leaseEndTime,
                     resolver: regRes.lease.domainAccount,
                   });
                   paint();
@@ -213,7 +214,7 @@ export function NameRoute({ back }) {
               void bridge.send('name.checkLease', { name: item.name }).then(regRes => {
                 if (regRes?.lease && current()) {
                   leaseFacts.set(item.name, {
-                    expiresAtSeconds: regRes.lease.leaseEndTime,
+                    expiresAtSeconds: regRes.lease.endTime || regRes.lease.leaseEndTime,
                     resolver: regRes.lease.domainAccount,
                   });
                   paint();
@@ -306,7 +307,11 @@ export function NameRoute({ back }) {
         list.appendChild(card);
         rows.on(select, 'click', () => {
           if (select.disabled) return;
-          void action(item.isPrimary ? 'name.unlinkPrimary' : 'name.setPrimaryDomain', { domainAddress: item.domainAddress });
+          if (item.isPrimary) {
+            void action('name.unlinkPrimary', { domainAddress: item.domainAddress });
+          } else {
+            void action('name.setPrimaryDomain', { domainAddress: item.domainAddress });
+          }
         });
         rows.on(remove, 'click', () => {
           if (!remove.disabled) void action('name.untrackDomain', { domainAddress: item.domainAddress });
@@ -314,6 +319,7 @@ export function NameRoute({ back }) {
         rows.on(renew, 'click', () => {
           if (renew.disabled) return;
           draft = { name: item.name, rootAddress: item.rootAddress, years: 1, quote: null };
+          isRenewOnly = true;
           activeTab = 'register';
           render();
         });
@@ -322,6 +328,7 @@ export function NameRoute({ back }) {
 
     async function refreshList() {
       if (!current() || !ctx.expectedNetworkId || !ctx.expectedAccountAddress) return;
+      leaseFacts.clear();
       const attempt = ++seq;
       let liveArrived = false;
       status.textContent = 'Checking ownership…';
@@ -483,6 +490,9 @@ export function NameRoute({ back }) {
 
     // The mint suffix is fixed; chain facts decide only whether a `.thru` registrar exists.
     if (provider) searchField.control.placeholder = 'Search yourname.thru';
+    if (renewOnly) {
+      searchField.control.readOnly = true;
+    }
     const updateNameRuleHint = () => {
       if (!nameRuleHint) return;
       nameRuleHint.textContent = provider === 'registry'
@@ -553,7 +563,17 @@ export function NameRoute({ back }) {
         expiryProjection.classList.add('hidden');
         return;
       }
-      const endMs = Date.now() + years * 365 * 86400000;
+      const isRenewal = leaseState?.kind === 'custom-mine' || leaseState?.kind === 'mine';
+      const rawExistingSec = isRenewal
+        ? (leaseState?.lease?.expiresAtSeconds ?? leaseState?.lease?.endTime ?? null)
+        : null;
+      const numSec = rawExistingSec != null ? Number(rawExistingSec) : null;
+      const existingValid = numSec !== null && Number.isFinite(numSec) && numSec > 0 && numSec <= 8640000000000;
+      const existingMs = existingValid ? numSec * 1000 : null;
+      const baseMs = (isRenewal && existingMs !== null && existingMs > Date.now())
+        ? existingMs
+        : Date.now();
+      const endMs = baseMs + years * 365 * 86400000;
       const dateStr = new Date(endMs).toLocaleDateString(undefined, { dateStyle: 'medium' });
       expiryProjection.textContent = `Valid through ${dateStr} (+${years} ${years === 1 ? 'year' : 'years'})`;
       expiryProjection.classList.remove('hidden');
@@ -1207,6 +1227,9 @@ export function NameRoute({ back }) {
       bodyDisposer.on(tab, 'click', () => {
         if (activeTab === key) return;
         activeTab = key;
+        if (key === 'register') {
+          isRenewOnly = false;
+        }
         render();
       });
       tabs.appendChild(tab);
@@ -1218,6 +1241,9 @@ export function NameRoute({ back }) {
       event.preventDefault();
       const next = (current + (event.key === 'ArrowRight' ? 1 : tabButtons.length - 1)) % tabButtons.length;
       activeTab = ['register', 'domains'][next];
+      if (activeTab === 'register') {
+        isRenewOnly = false;
+      }
       render();
       body.querySelectorAll('.name-tab')[next]?.focus();
     });
@@ -1226,8 +1252,8 @@ export function NameRoute({ back }) {
 
 
     if (activeTab === 'register') {
-      panel.appendChild(h('div', { class: 'hint', text: 'Your name on Thru. Find, register or renew a .thru domain.' }));
-      void renderSearchCard(panel, draft);
+      panel.appendChild(h('div', { class: 'hint', text: isRenewOnly ? 'Renew your domain lease.' : 'Your name on Thru. Find, register or renew a .thru domain.' }));
+      void renderSearchCard(panel, draft, isRenewOnly);
       const refresh = h('button', { type: 'button', class: 'btn text', text: 'Refresh availability' });
       mutationControls.add(refresh);
       refresh.disabled = submissionInFlight;

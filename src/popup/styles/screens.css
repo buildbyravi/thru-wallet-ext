@@ -1594,6 +1594,8 @@ form > .btn.text {
   min-width: 8ch;
   text-align: center;
   white-space: nowrap;
+  flex-shrink: 0;
+  display: inline-block;
 }
 .name-owner-actions {
   display: grid;

@@ -636,7 +636,7 @@ export async function registerCustom({ name, years, expectedNetworkId, expectedA
 
   const feePayer = await vault.getActiveAccount();
   const network = await getActiveNetworkConfig(); // bind before building/signing
-  const info = await getCustomRegistrar();
+  const info = await getCustomRegistrar({ skipCache: true });
   if (!info.supported) throw tcrCoded('TCR_ABSENT', info.reason ?? 'custom registrar unavailable on this network');
   if (!info.rootMatchesNameService) {
     throw tcrCoded('TCR_ROOT_MISMATCH', 'the registrar config root does not match the name-service derivation — refusing to construct a registration against a mismatched root');
@@ -748,7 +748,7 @@ export async function renewCustom({ name, years, expectedNetworkId, expectedAcco
 
   const feePayer = await vault.getActiveAccount();
   const network = await getActiveNetworkConfig(); // bind before building/signing
-  const info = await getCustomRegistrar();
+  const info = await getCustomRegistrar({ skipCache: true });
   if (!info.supported) throw tcrCoded('TCR_ABSENT', info.reason ?? 'custom registrar unavailable on this network');
   if (!info.rootMatchesNameService) {
     throw tcrCoded('TCR_ROOT_MISMATCH', 'the registrar config root does not match the name-service derivation');

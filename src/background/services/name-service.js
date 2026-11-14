@@ -83,11 +83,11 @@ function normalizeRootName(value) {
 const KNOWN_ROOT_SUFFIXES = Object.freeze(['thru', 'id']);
 
 export async function lookupName({ name, rootAddress } = {}) {
-  const typed = String(name ?? '').trim().toLowerCase();
+  const typed = String(name ?? '').trim();
   let cleanName = typed;
   let suffix = null;
   for (const known of KNOWN_ROOT_SUFFIXES) {
-    if (cleanName.length > known.length + 1 && cleanName.endsWith('.' + known)) {
+    if (cleanName.length > known.length + 1 && cleanName.toLowerCase().endsWith('.' + known)) {
       suffix = known;
       cleanName = cleanName.slice(0, -(known.length + 1));
       break;
@@ -97,6 +97,10 @@ export async function lookupName({ name, rootAddress } = {}) {
   // Validate the LABEL, after peeling the suffix. A name the paid registry accepts but the
   // name-service label rules do not (`MiX_9`) is still readable — it just needs the registrar
   // address derivation instead of the dotted-chain walk.
+  const isRegistrarLabel = (suffix === 'thru' || !suffix) && !purchaseNameProblem(cleanName);
+  if (!isRegistrarLabel) {
+    cleanName = cleanName.toLowerCase();
+  }
   const labelProblem = ns.nameProblem(cleanName);
   const readsAsRegistrarLabel = Boolean(labelProblem) && !purchaseNameProblem(cleanName);
   if (labelProblem && !readsAsRegistrarLabel) {
