@@ -1600,6 +1600,120 @@ form > .btn.text {
      price/balance truth-lines so they can be targeted (e.g. balance warning) later. */
   color: var(--text-secondary, #475569);
 }
+/* ---- Modernized Domain Screen UI (Design System Blueprint) --------- */
+.domain-card {
+  padding: var(--sp-3, 12px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg, 12px);
+  background: var(--surface-1);
+  box-shadow: 0 1px 3px rgba(21, 27, 30, 0.04);
+}
+.domain-card-header {
+  justify-content: space-between;
+  align-items: center;
+}
+.domain-avatar-box {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-2);
+  flex-shrink: 0;
+}
+.domain-title {
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  color: var(--text-1);
+  overflow-wrap: anywhere;
+}
+.domain-primary-tag {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-tint);
+  color: var(--accent);
+  border: 1px solid var(--accent-border);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.domain-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.pill-positive {
+  background: var(--positive-tint);
+  color: var(--positive);
+  border: 1px solid var(--positive-border);
+}
+.pill-warning {
+  background: var(--gold-tint);
+  color: var(--gold);
+  border: 1px solid var(--gold-border);
+}
+.pill-negative {
+  background: var(--negative-tint);
+  color: var(--negative);
+  border: 1px solid var(--negative-border);
+}
+.pill-neutral {
+  background: var(--surface-2);
+  color: var(--text-2);
+  border: 1px solid var(--border);
+}
+.domain-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-2);
+  padding: var(--sp-2) 0;
+  border-top: 1px solid var(--border-hairline);
+  border-bottom: 1px solid var(--border-hairline);
+}
+.domain-meta-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.domain-meta-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-3);
+  font-weight: 600;
+}
+.domain-meta-value {
+  font-size: var(--fs-xs);
+  color: var(--text-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.domain-tier-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-inset);
+  border: 1px solid var(--border-hairline);
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+}
+.domain-expiry-preview {
+  font-size: var(--fs-xs);
+  color: var(--positive);
+  font-weight: 500;
+}
 /* ---- Dashboard ecosystem services grid (2026-10-24 owner directive) --------- */
 /* Same classes (.dashboard-panel-grid + .panel-item) => tiles are the EXACT same size
    as Send/Receive. Owner review: NO gap between the grids — tiles must look like one

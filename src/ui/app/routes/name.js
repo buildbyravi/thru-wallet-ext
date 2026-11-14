@@ -149,6 +149,7 @@ export function NameRoute({ back }) {
     let seq = 0;
     let snapshot = null;
     let busy = false;
+    const leaseFacts = new Map();
     bodyDisposer.add(() => { alive = false; seq++; rows.dispose(); });
     const current = () => alive && !destroyed && host.isConnected;
     const list = h('div', { class: 'stack stack-3 name-domain-list' });
@@ -161,7 +162,7 @@ export function NameRoute({ back }) {
     host.appendChild(list);
     host.appendChild(status);
     host.appendChild(refresh);
-    host.appendChild(h('div', { class: 'name-entry stack stack-2' }, [input.el, add]));
+    host.appendChild(h('div', { class: 'name-entry domain-card stack stack-2' }, [input.el, add]));
     add.disabled = refresh.disabled = !ctx.expectedNetworkId || !ctx.expectedAccountAddress;
 
     function paint() {
@@ -182,16 +183,121 @@ export function NameRoute({ back }) {
         const stateLabel = item.stale ? 'Ownership not verified'
           : item.status === 'owned' ? 'Verified ownership'
             : item.status === 'not-owned' ? 'No longer owned by this account' : 'Not found on this network';
+
+        // Async lease fetch without blocking initial render
+        const lease = leaseFacts.get(item.name);
+        if (!leaseFacts.has(item.name) && item.rootName === 'thru') {
+          leaseFacts.set(item.name, 'loading');
+          void bridge.send('name.checkCustomLease', { name: item.name }).then(res => {
+            if (res?.lease && current()) {
+              leaseFacts.set(item.name, res.lease);
+              paint();
+            } else if (current()) {
+              void bridge.send('name.checkLease', { name: item.name }).then(regRes => {
+                if (regRes?.lease && current()) {
+                  leaseFacts.set(item.name, {
+                    expiresAtSeconds: regRes.lease.leaseEndTime,
+                    resolver: regRes.lease.domainAccount,
+                  });
+                  paint();
+                } else if (current()) {
+                  leaseFacts.set(item.name, null);
+                  paint();
+                }
+              }).catch(() => {
+                if (current()) {
+                  leaseFacts.set(item.name, null);
+                  paint();
+                }
+              });
+            }
+          }).catch(() => {
+            if (current()) {
+              void bridge.send('name.checkLease', { name: item.name }).then(regRes => {
+                if (regRes?.lease && current()) {
+                  leaseFacts.set(item.name, {
+                    expiresAtSeconds: regRes.lease.leaseEndTime,
+                    resolver: regRes.lease.domainAccount,
+                  });
+                  paint();
+                } else if (current()) {
+                  leaseFacts.set(item.name, null);
+                  paint();
+                }
+              }).catch(() => {
+                if (current()) {
+                  leaseFacts.set(item.name, null);
+                  paint();
+                }
+              });
+            }
+          });
+        }
+
+        const leaseObj = lease && lease !== 'loading' ? lease : null;
+        const expiresAtMs = leaseObj?.expiresAtSeconds ? Number(leaseObj.expiresAtSeconds) * 1000 : null;
+        const now = Date.now();
+        const daysRemaining = expiresAtMs && Number.isFinite(expiresAtMs)
+          ? Math.ceil((expiresAtMs - now) / 86400000)
+          : null;
+
+        let statusTone = 'neutral';
+        let pillText = item.stale ? 'Unverified' : (item.status === 'owned' ? 'Active' : 'Not owned');
+        if (verified && daysRemaining !== null) {
+          if (daysRemaining <= 0) {
+            statusTone = 'negative';
+            pillText = 'Expired';
+          } else if (daysRemaining <= 30) {
+            statusTone = 'warning';
+            pillText = `Expires in ${daysRemaining}d`;
+          } else {
+            statusTone = 'positive';
+            pillText = 'Active';
+          }
+        } else if (verified) {
+          statusTone = 'positive';
+          pillText = 'Active';
+        } else if (item.stale) {
+          statusTone = 'warning';
+          pillText = 'Unverified';
+        }
+
+        const expiryDisplay = expiresAtMs && Number.isFinite(expiresAtMs)
+          ? `${new Date(expiresAtMs).toLocaleDateString(undefined, { dateStyle: 'medium' })} (${daysRemaining != null && daysRemaining > 0 ? `${daysRemaining}d left` : 'expired'})`
+          : (lease === 'loading' ? 'Checking…' : 'Pending sync');
+        const targetDisplay = leaseObj?.resolver && typeof leaseObj.resolver === 'string' && leaseObj.resolver.length > 5
+          ? truncateMiddle(leaseObj.resolver, 6)
+          : (item.domainAddress ? truncateMiddle(item.domainAddress, 6) : 'Unassigned');
+
         const select = h('button', { type: 'button', class: 'btn secondary', text: item.isPrimary ? 'Unlink' : 'Make primary',
           disabled: busy || (!item.isPrimary && !verified) });
         const renew = h('button', { type: 'button', class: 'btn secondary', text: 'Renew', disabled: busy || !verified || item.rootName !== 'thru' });
         const remove = h('button', { type: 'button', class: 'btn secondary', text: 'Remove', disabled: busy || item.isPrimary });
-        const card = h('div', { class: 'name-entry stack stack-2' }, [
+
+        const headerRow = h('div', { class: 'row-flex domain-card-header' }, [
           h('div', { class: 'row-flex name-domain-heading' }, [
-            icon('globe', 16), h('span', { class: 'row-title name-domain-title', text: label }),
-            item.isPrimary ? h('span', { class: 'tag-native', text: 'Primary' }) : null,
+            h('div', { class: 'domain-avatar-box' }, [icon('globe', 16)]),
+            h('span', { class: 'row-title name-domain-title domain-title mono', text: label }),
+            item.isPrimary ? h('span', { class: 'tag-native domain-primary-tag', text: 'Primary' }) : null,
           ]),
+          h('span', { class: `domain-pill pill-${statusTone}`, text: pillText }),
+        ]);
+
+        const metaGrid = h('div', { class: 'domain-meta-grid' }, [
+          h('div', { class: 'domain-meta-item' }, [
+            h('span', { class: 'domain-meta-label', text: 'Expires' }),
+            h('span', { class: 'domain-meta-value mono', text: expiryDisplay }),
+          ]),
+          h('div', { class: 'domain-meta-item' }, [
+            h('span', { class: 'domain-meta-label', text: 'Points to' }),
+            h('span', { class: 'domain-meta-value mono', text: targetDisplay }),
+          ]),
+        ]);
+
+        const card = h('div', { class: 'name-entry domain-card stack stack-2' }, [
+          headerRow,
           h('div', { class: `hint${verified ? ' name-status-ok' : ''}`, text: stateLabel }),
+          metaGrid,
           item.verifiedAt ? h('div', { class: 'hint', text: `Last verified ${formatVerifiedAt(item.verifiedAt)}` }) : null,
           h('div', { class: 'name-domain-actions' }, [select, renew, remove]),
         ]);
@@ -325,7 +431,9 @@ export function NameRoute({ back }) {
       entry.name = draft;
     });
     const nameRuleHint = searchField.el.querySelector('.hint');
-    const cardInner = h('div', { class: 'stack stack-3' }, [searchField.el, statusLine]);
+    const tierPill = h('div', { class: 'domain-tier-pill hidden' });
+    const expiryProjection = h('div', { class: 'domain-expiry-preview hidden' });
+    const cardInner = h('div', { class: 'stack stack-3' }, [searchField.el, tierPill, statusLine]);
     card.appendChild(cardInner);
 
     // The rest of this flow's computation happens against settled reads, so hydrate now.
@@ -445,19 +553,53 @@ export function NameRoute({ back }) {
     // refusal. The UI must not disable Review (or promise a price) on that basis alone.
     function customFeeEnforced() { return custom.feeEnforced === true; }
 
+    function updateExpiryProjection() {
+      if (entry.completed || entry.outcomeUnknown) {
+        expiryProjection.classList.add('hidden');
+        return;
+      }
+      const endMs = Date.now() + years * 365 * 86400000;
+      const dateStr = new Date(endMs).toLocaleDateString(undefined, { dateStyle: 'medium' });
+      expiryProjection.textContent = `Valid through ${dateStr} (+${years} ${years === 1 ? 'year' : 'years'})`;
+      expiryProjection.classList.remove('hidden');
+    }
+
+    function updateTierPill() {
+      const draftName = String(entry.name || searchField.value || '').trim();
+      const len = draftName.length;
+      if (len === 0 || !provider) {
+        tierPill.classList.add('hidden');
+        return;
+      }
+      if (provider === 'custom') {
+        const tierName = len === 3 ? 'Tier 1 (3 chars)' : len === 4 ? 'Tier 2 (4 chars)' : 'Tier 3 (5+ chars)';
+        const fee = customPricePerYear(draftName);
+        tierPill.textContent = `${tierName} • ${formatTokenAmount(fee, NATIVE_TOKEN.decimals)} ${NATIVE_TOKEN.symbol}/yr`;
+        tierPill.classList.remove('hidden');
+      } else if (provider === 'registry' && registryUp) {
+        tierPill.textContent = `Flat tier • ${fmt(registry.registry.pricePerYear)}/yr`;
+        tierPill.classList.remove('hidden');
+      } else {
+        tierPill.classList.add('hidden');
+      }
+    }
+
     function setYears(delta) {
       years = Math.min(10, Math.max(1, years + delta));
       entry.years = years;
       yearsLabel.textContent = years === 1 ? '1 year' : `${years} years`;
+      updateExpiryProjection();
       armForState(leaseState);
     }
     bodyDisposer.on(minusBtn, 'click', () => setYears(-1));
     bodyDisposer.on(plusBtn, 'click', () => setYears(+1));
+    bodyDisposer.on(searchField.control, 'input', () => updateTierPill());
 
     function hideActions() {
       // A pending preparation no longer describes this draft.
       prepareSeq += 1;
       yearsStepper.classList.add('hidden');
+      expiryProjection.classList.add('hidden');
       priceLine.classList.add('hidden');
       balanceLine.classList.add('hidden');
       ctaBtn.classList.add('hidden');
@@ -476,11 +618,13 @@ export function NameRoute({ back }) {
     function armForState(state) {
       if (!state) return;
       hideActions();
+      updateTierPill();
       if (entry.completed || entry.outcomeUnknown) return;
       if (renewOnly && state.kind !== 'mine' && state.kind !== 'custom-mine') return;
       // Configured price is a quote, not evidence of the amount ultimately charged.
       if (state.kind === 'custom-available') {
         yearsStepper.classList.remove('hidden');
+        updateExpiryProjection();
         const cost = customBaseCost();
         entry.quote = { assetId: `${network?.id || 'active'}:${NATIVE_TOKEN.symbol}`, ticker: NATIVE_TOKEN.symbol, decimals: NATIVE_TOKEN.decimals, raw: cost };
         priceLine.classList.remove('hidden');
@@ -509,6 +653,7 @@ export function NameRoute({ back }) {
       }
       if (state.kind === 'custom-mine') {
         yearsStepper.classList.remove('hidden');
+        updateExpiryProjection();
         const cost = customPricePerYear(entry.name)
           * BigInt(entry.years || 1);
         entry.quote = { assetId: `${network?.id || 'active'}:${NATIVE_TOKEN.symbol}`, ticker: NATIVE_TOKEN.symbol, decimals: NATIVE_TOKEN.decimals, raw: cost };
@@ -543,6 +688,7 @@ export function NameRoute({ back }) {
       if (!registryUp) return; // nothing to sell here — status line already said so
 
       yearsStepper.classList.remove('hidden');
+      updateExpiryProjection();
       priceLine.classList.remove('hidden');
       if (decimals == null) {
         priceLine.textContent = 'Price unavailable. Refresh to try again.';
@@ -997,6 +1143,7 @@ export function NameRoute({ back }) {
     // Hydrate in place; the `.thru` registrar is selected from verified network facts.
     const additions = [
       yearsStepper,
+      expiryProjection,
       priceLine,
       balanceLine,
       ctaBtn,
