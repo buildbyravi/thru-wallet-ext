@@ -1591,8 +1591,24 @@ form > .btn.text {
   padding: 0 8px;
 }
 .name-stepper .name-years {
-  min-width: 5ch;
+  min-width: 8ch;
   text-align: center;
+  white-space: nowrap;
+}
+.name-owner-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-2);
+  width: 100%;
+}
+.name-owner-actions .btn {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 12px;
+  font-size: var(--fs-sm);
+  text-align: center;
+  justify-content: center;
+  white-space: nowrap;
 }
 .name-price,
 .name-balance {

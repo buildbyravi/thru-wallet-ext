@@ -59,6 +59,7 @@ export function NameRoute({ back }) {
   let account = null;
   let network = null;
   let primary = null;
+  let cachedDomainItems = [];
   let loadSeq = 0;
   let activeTab = 'register';
   let draft = { name: '', years: 1, quote: null };
@@ -509,18 +510,21 @@ export function NameRoute({ back }) {
     mutationControls.add(plusBtn);
     minusBtn.disabled = submissionInFlight;
     plusBtn.disabled = submissionInFlight;
-    const yearsStepper = h('div', { class: 'name-stepper row-flex hidden' }, [
-      h('span', { class: 'hint', text: renewOnly ? 'Renewal period' : 'Registration period' }),
-      h('div', { class: 'row-flex' }, [minusBtn, yearsLabel, plusBtn]),
+    const yearsStepper = h('div', { class: 'name-stepper row-flex between hidden' }, [
+      h('span', { class: 'hint shrink-0', text: renewOnly ? 'Renewal period' : 'Registration period' }),
+      h('div', { class: 'row-flex align-center shrink-0' }, [minusBtn, yearsLabel, plusBtn]),
     ]);
 
     const priceLine = h('div', { class: 'name-price hint hidden' });
     const balanceLine = h('div', { class: 'name-balance hint hidden' });
     const ctaBtn = h('button', { type: 'button', class: 'btn primary hidden' }, [h('span', { text: 'Review registration' })]);
     const ctaLabel = () => ctaBtn.querySelector('span');
-    const linkBtn = h('button', { type: 'button', class: 'btn secondary hidden' }, [h('span', { text: 'Set as primary' })]);
+    const linkBtn = h('button', { type: 'button', class: 'btn secondary' }, [h('span', { text: 'Set as primary' })]);
+    const importBtn = h('button', { type: 'button', class: 'btn secondary' }, [h('span', { text: 'Import' })]);
+    const ownerActionsRow = h('div', { class: 'name-owner-actions hidden' }, [linkBtn, importBtn]);
     transactionControls.add(ctaBtn);
     mutationControls.add(linkBtn);
+    mutationControls.add(importBtn);
 
     let years = Math.min(10, Math.max(1, Number(entry.years) || 1));
     // kind: 'available'|'taken'|'mine'|'claimable' (official registry) or the
@@ -603,7 +607,7 @@ export function NameRoute({ back }) {
       priceLine.classList.add('hidden');
       balanceLine.classList.add('hidden');
       ctaBtn.classList.add('hidden');
-      linkBtn.classList.add('hidden');
+      ownerActionsRow.classList.add('hidden');
       reviewSheet?.close();
       ctaBtn.disabled = false;
       entry.quote = null;
@@ -679,7 +683,13 @@ export function NameRoute({ back }) {
         }
         ctaBtn.classList.remove('hidden');
         ctaLabel().textContent = 'Review renewal';
-        if (!(primary?.name === state.name)) linkBtn.classList.remove('hidden');
+        ownerActionsRow.classList.remove('hidden');
+        const isCustomPrimary = primary?.name === state.name;
+        linkBtn.disabled = isCustomPrimary;
+        linkBtn.querySelector('span').textContent = isCustomPrimary ? 'Primary' : 'Set as primary';
+        const isCustomTracked = cachedDomainItems.some(item => item.name === state.name || item.name === `${state.name}.thru`);
+        importBtn.disabled = isCustomTracked;
+        importBtn.querySelector('span').textContent = isCustomTracked ? 'Imported' : 'Import';
         return;
       }
       const purchasable = state.kind === 'available' || state.kind === 'claimable';
@@ -715,8 +725,14 @@ export function NameRoute({ back }) {
         : state.kind === 'claimable'
           ? 'Review claim'
           : 'Review registration';
-      if (state.kind === 'mine' && !(primary?.name === state.name)) {
-        linkBtn.classList.remove('hidden');
+      if (state.kind === 'mine') {
+        ownerActionsRow.classList.remove('hidden');
+        const isRegPrimary = primary?.name === state.name;
+        linkBtn.disabled = isRegPrimary;
+        linkBtn.querySelector('span').textContent = isRegPrimary ? 'Primary' : 'Set as primary';
+        const isRegTracked = cachedDomainItems.some(item => item.name === state.name || item.name === `${state.name}.thru`);
+        importBtn.disabled = isRegTracked;
+        importBtn.querySelector('span').textContent = isRegTracked ? 'Imported' : 'Import';
       }
     }
 
@@ -1115,6 +1131,29 @@ export function NameRoute({ back }) {
     }
 
 
+    bodyDisposer.on(importBtn, 'click', async () => {
+      banner.set('');
+      const importable = leaseState?.kind === 'mine' || leaseState?.kind === 'custom-mine';
+      if (!importable) return;
+      importBtn.disabled = true;
+      try {
+        const ctx = { expectedNetworkId: network.id, expectedAccountAddress: account.address };
+        await bridge.send('name.trackDomain', { name: leaseState.name, ...ctx });
+        if (destroyed || !card.isConnected) return;
+        toast({
+          tone: 'success',
+          key: 'domain-list-update',
+          title: 'Domain imported',
+          message: `${leaseState.name}.thru is now saved in My Domains.`,
+        });
+        importBtn.querySelector('span').textContent = 'Imported';
+        await load();
+      } catch (err) {
+        banner.set(err?.message || 'Could not import that name.');
+        importBtn.disabled = false;
+      }
+    });
+
     bodyDisposer.on(linkBtn, 'click', async () => {
       banner.set('');
       const linkable = leaseState?.kind === 'mine' || leaseState?.kind === 'custom-mine';
@@ -1131,8 +1170,9 @@ export function NameRoute({ back }) {
           tone: 'success',
           key: 'name-primary',
           title: 'Primary name updated',
-          message: `${leaseState.name} now resolves to this account.`,
+          message: `${leaseState.name}.thru now resolves to this account.`,
         });
+        linkBtn.querySelector('span').textContent = 'Primary';
         await load();
       } catch (err) {
         banner.set(err?.message || 'Could not verify that name on-chain.');
@@ -1147,7 +1187,7 @@ export function NameRoute({ back }) {
       priceLine,
       balanceLine,
       ctaBtn,
-      linkBtn,
+      ownerActionsRow,
     ];
 
     for (const node of additions) cardInner.appendChild(node);
@@ -1234,6 +1274,7 @@ export function NameRoute({ back }) {
       if ((previousAddress && previousAddress !== account.address) || (previousNetwork && previousNetwork !== network.id)) {
         draft = { name: '', years: 1, quote: null };
         primary = null;
+        cachedDomainItems = [];
       }
       render();
     } catch (err) {
@@ -1247,7 +1288,8 @@ export function NameRoute({ back }) {
         expectedNetworkId: network.id, expectedAccountAddress: account.address,
       });
       if (destroyed || attempt !== loadSeq || activeTab === 'domains') return;
-      primary = result.items.find(item => item.isPrimary) ?? null;
+      cachedDomainItems = Array.isArray(result?.items) ? result.items : [];
+      primary = result?.items?.find(item => item.isPrimary) ?? null;
       render();
     } catch { /* no cache: keep the immediately painted route */ }
   }
