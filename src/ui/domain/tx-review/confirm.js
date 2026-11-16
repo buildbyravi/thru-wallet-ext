@@ -203,4 +203,3 @@ export function classifyReviewError(error, { submitted = false, uncertainMessage
   }
   return { kind: 'failed', message: error?.message || 'The transaction failed.' };
 }
-

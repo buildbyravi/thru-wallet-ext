@@ -35,11 +35,9 @@ console.log('[1] Text record wire encoding & instruction layout');
   ok(dv.getUint16(4, true) === 3, 'domain account index resolved');
   ok(dv.getUint16(6, true) === 0, 'authority defaults to fee payer (slot 0)');
   ok(dv.getUint32(8, true) === 'twitter'.length, 'key length correctly encoded');
-  
   const dec = new TextDecoder();
   const keyBytes = inst.slice(12, 12 + 'twitter'.length);
   ok(dec.decode(keyBytes) === 'twitter', 'key string correctly placed at offset 12');
-  
   ok(dv.getUint32(12 + ns.NS_KEY_FIELD, true) === '@alice_thru'.length, 'value length correctly encoded');
   const valBytes = inst.slice(16 + ns.NS_KEY_FIELD, 16 + ns.NS_KEY_FIELD + '@alice_thru'.length);
   ok(dec.decode(valBytes) === '@alice_thru', 'value string correctly placed');
@@ -73,7 +71,6 @@ console.log('[3] Review decoder integration');
   await import('../src/shared/tx-review/decoders/index.js');
   const { decodeReview } = await import('../src/shared/tx-review/registry.js');
   const { assertReviewContent } = await import('../src/shared/tx-review/model.js');
-  
   const content = decodeReview('domain-record', {
     network: { id: 'betanet', label: 'Betanet', environment: 'testnet', isTestnet: true },
     account: { address: asAddress(1), label: 'Main' },
