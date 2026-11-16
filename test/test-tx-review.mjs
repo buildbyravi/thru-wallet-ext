@@ -1458,5 +1458,29 @@ console.log('[18] the faucet handler refuses a context that changed after review
     JSON.stringify(faucetPending).slice(0, 120));
 }
 
+console.log('[19] registrar-specific year limits reject before chain facts');
+{
+  const client = thruClient.getClient();
+  const original = client.accounts.get;
+  let reads = 0;
+  client.accounts.get = async () => { reads += 1; throw new Error('invalid years must not read chain facts'); };
+  try {
+    for (const [kind, via, years] of [
+      ['domain-register', 'custom', 0], ['domain-register', 'custom', 11],
+      ['domain-renew', 'custom', 11], ['domain-purchase', null, 0],
+      ['domain-purchase', null, 256], ['domain-renew', null, 256], ['domain-claim', null, 256],
+    ]) {
+      const response = await handleApiRequest({ method: 'tx.prepareReview',
+        params: { kind, params: { name: 'alice', years, ...(via ? { via } : {}) } } });
+      assert.equal(response.error?.code, 'INVALID_INPUT', `${kind}/${via}/${years}`);
+      ok(`${kind}/${via || 'registry'} rejects ${years} years at canonical preparation`);
+    }
+    assert.equal(reads, 0);
+    ok('invalid duration controls never reach SDK account reads');
+  } finally {
+    client.accounts.get = original;
+  }
+}
+
 console.log(`\nAll tx-review checks passed: ${checks}/${checks}.`);
 console.log('No network was contacted: the SDK account read was stubbed at the client boundary.');

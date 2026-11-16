@@ -113,3 +113,140 @@ releaseNative();
 const releaseRetry = beginTransfer(intent);
 releaseRetry();
 console.log('  ok - the same intent cannot run twice, while distinct mints/networks remain independent');
+
+console.log('[verified import] real router, SDK mint bytes, detached persisted preferences');
+const { Pubkey } = await import('@thru/sdk');
+const { TokenMintAccount } = await import('@thru/programs/token');
+const { handleApiRequest } = await import('../src/background/api-router.js');
+const client = await import('../src/lib/thru-client.js');
+const networks = await import('../src/background/services/network-service.js');
+const local = new Map([['thru_active_network', 'betanet']]);
+const session = new Map();
+let preferenceReadGate = null;
+const area = (data) => ({
+  async get(key) {
+    const result = structuredClone(key === null ? Object.fromEntries(data) : { [key]: data.get(key) });
+    if (key === 'thru_prefs' && preferenceReadGate) {
+      const gate = preferenceReadGate;
+      preferenceReadGate = null;
+      gate.enter();
+      await gate.wait;
+    }
+    return result;
+  },
+  async set(values) {
+    for (const [key, value] of Object.entries(values)) data.set(key, structuredClone(value));
+  },
+  async remove(keys) { for (const key of Array.isArray(keys) ? keys : [keys]) data.delete(key); },
+});
+globalThis.chrome = { storage: { local: area(local), session: area(session) } };
+const network = await networks.getActiveNetworkConfig();
+const sdk = client.getClient();
+const originalGet = sdk.accounts.get;
+const mintAddress = Pubkey.from(new Uint8Array(32).fill(17)).toThruFmt();
+function mintAccount({ decimals = 6, ticker = 'CHAIN', owner = network.tokenProgramId } = {}) {
+  const tickerBytes = new Uint8Array(9);
+  tickerBytes[0] = ticker.length;
+  tickerBytes.set(new TextEncoder().encode(ticker), 1);
+  const bytes = TokenMintAccount.builder().set_decimals(decimals).set_supply(42n)
+    .set_has_freeze_authority(0).set_ticker(tickerBytes).finish().buffer;
+  return { meta: { balance: 1n, owner: Pubkey.from(owner) }, data: { data: bytes } };
+}
+const callImport = (params = { mintAddress, symbol: 'LOCAL' }) =>
+  handleApiRequest({ method: 'token.importVerified', params });
+const resetImports = () => local.set('thru_prefs', { version: 1, customTokens: [] });
+const savedImports = () => local.get('thru_prefs').customTokens;
+function gate() {
+  let enter;
+  let release;
+  return { entered: new Promise((resolve) => { enter = resolve; }),
+    wait: new Promise((resolve) => { release = resolve; }),
+    enter: () => enter(), release: () => release() };
+}
+let reads = 0;
+try {
+  sdk.accounts.get = async (address) => {
+    reads += 1;
+    assert.equal(address, mintAddress);
+    return mintAccount();
+  };
+  resetImports();
+  assert.equal((await callImport()).error.code, 'WALLET_LOCKED');
+  assert.equal(reads, 0);
+  session.set('unlocked_session', { vaultData: {} });
+  for (const extra of [{ decimals: 0 }, { name: 'Forged' }, { decimals: 6, name: 'CHAIN' }]) {
+    const refusal = await callImport({ mintAddress, ...extra });
+    assert.equal(refusal.error?.code, 'INVALID_INPUT', JSON.stringify(refusal));
+    assert.deepEqual(savedImports(), []);
+  }
+  assert.equal(reads, 0, 'unknown metadata must reach strict validation, never be silently stripped');
+  const imported = await callImport({ mintAddress: ` ${mintAddress} `, symbol: 'LOCAL' });
+  assert.equal(imported.ok, true, imported.error?.message);
+  assert.equal(reads, 1, 'verification parses one captured account snapshot');
+  assert.equal(imported.data.decimals, 6);
+  assert.equal(imported.data.symbol, 'CHAIN');
+  assert.equal(imported.data.name, 'CHAIN');
+  assert.equal(imported.data.networkId, 'betanet');
+  assert.deepEqual(savedImports(), [imported.data], 'verified decimals survive detached persistence');
+  const listed = await handleApiRequest({ method: 'token.list' });
+  assert.equal(listed.data.find((token) => token.mintAddress === mintAddress).decimals, 6);
+  assert.equal((await callImport()).error.code, 'ALREADY_EXISTS');
+  assert.deepEqual(savedImports(), [imported.data], 'duplicates cannot replace verified metadata');
+  console.log('  ok - unlocked import persists chain decimals; locked/extra-field/duplicate calls refuse');
+
+  for (const [label, response, code] of [
+    ['wrong owner', () => mintAccount({ owner: mintAddress }), 'UNSUPPORTED'],
+    ['unsupported decimals', () => mintAccount({ decimals: 19 }), 'UNSUPPORTED'],
+    ['wrong footprint', () => ({ ...mintAccount(), data: { data: new Uint8Array(12) } }), 'UNSUPPORTED'],
+    ['missing account', () => { throw Object.assign(new Error('absent'), { code: 5 }); }, 'ACCOUNT_MISSING'],
+    ['RPC failure', () => { throw new Error('offline'); }, 'RPC_UNAVAILABLE'],
+  ]) {
+    resetImports();
+    sdk.accounts.get = async () => response();
+    const result = await callImport();
+    assert.equal(result.error?.code, code, `${label}: ${JSON.stringify(result)}`);
+    assert.deepEqual(savedImports(), [], `${label} must not persist a guessed record`);
+  }
+  resetImports();
+  sdk.accounts.get = async () => mintAccount({ decimals: 0, ticker: '' });
+  const fallback = await callImport();
+  assert.equal(fallback.ok, true, fallback.error?.message);
+  assert.equal(savedImports()[0].decimals, 0, 'verified zero decimals remain valid');
+  assert.equal(savedImports()[0].symbol, 'LOCAL', 'fallback is used only when chain ticker is empty');
+  console.log('  ok - owner/layout/denomination/absence/transport refusals persist nothing');
+
+  for (const phase of ['RPC', 'preference queue']) {
+    resetImports();
+    const barrier = gate();
+    sdk.accounts.get = async () => {
+      if (phase === 'RPC') { barrier.enter(); await barrier.wait; }
+      return mintAccount();
+    };
+    if (phase === 'preference queue') preferenceReadGate = barrier;
+    const importing = callImport();
+    await barrier.entered;
+    const before = networks.getNetworkGeneration();
+    await networks.setActiveNetwork('betanet');
+    assert.ok(networks.getNetworkGeneration() > before);
+    assert.equal(client.getClient(), sdk, 'same-id boundary retains client identity');
+    barrier.release();
+    const result = await importing;
+    assert.equal(result.error?.code, 'CONTEXT_CHANGED', `${phase}: ${JSON.stringify(result)}`);
+    assert.deepEqual(savedImports(), [], `${phase} context change must refuse before persistence`);
+  }
+  console.log('  ok - network generation fences RPC and queued preference reads even with the same client');
+
+  sdk.accounts.get = async () => { throw new Error('Legacy import must not read RPC'); };
+  const legacy = await handleApiRequest({ method: 'token.import',
+    params: { mintAddress, symbol: 'OLD', name: 'Legacy', decimals: 9 } });
+  assert.equal(legacy.ok, true, legacy.error?.message);
+  assert.equal(savedImports()[0].decimals, 9);
+  const replacement = await handleApiRequest({ method: 'token.import',
+    params: { mintAddress, symbol: 'OLD2', decimals: 3 } });
+  assert.equal(replacement.ok, true, replacement.error?.message);
+  assert.equal(savedImports().length, 1);
+  assert.equal(savedImports()[0].decimals, 3, 'legacy metadata replacement remains compatible');
+  console.log('  ok - legacy metadata-only import retains replacement compatibility');
+} finally {
+  sdk.accounts.get = originalGet;
+}

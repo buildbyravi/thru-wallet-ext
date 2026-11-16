@@ -16,7 +16,7 @@ import { PageHeader, Banner, Spinner } from '../../kit/feedback.js';
 import { keyringTypeLabel } from '../../domain/account-row.js';
 import { requirePassword } from '../../domain/password-prompt.js';
 import * as bridge from '../bridge.js';
-import { invalidate } from '../guards.js';
+import { seed } from '../guards.js';
 import { encodeRef } from '../../../shared/refs.js';
 
 export function KeyringRoute({ params, navigate, back }) {
@@ -179,7 +179,7 @@ export function KeyringRoute({ params, navigate, back }) {
             : (password) => bridge.send('keyring.remove', { keyringId, password }),
         });
         if (!removed) return;
-        invalidate();
+        if (onlySource) seed({ hasVault: false, unlocked: false });
         navigate(onlySource ? '/welcome' : '/accounts', { replace: true });
       },
     })).el);

@@ -29,7 +29,8 @@ import * as ns from '../../lib/name-service.js';
 import * as txService from './tx-service.js';
 import * as thruClient from '../../lib/thru-client.js';
 import * as vault from '../../lib/vault.js';
-import { getActiveNetworkConfig } from './network-service.js';
+import { getActiveNetworkConfig, getNetworkGeneration } from './network-service.js';
+import { refsEqual } from '../../shared/refs.js';
 import { networkFeeUnits } from '../../lib/tx-units.js';
 import * as pending from './pending-tx-service.js';
 import { formatSignature, purchaseNameProblem } from '../../lib/registrar.js';
@@ -47,6 +48,7 @@ function coded(code, message, extra = {}) {
   const err = new Error(message);
   err.code = code;
   if (extra.retryable !== undefined) err.retryable = extra.retryable;
+  else if (typeof code === 'string' && code.startsWith('REVIEW_')) err.retryable = false;
   return err;
 }
 
@@ -315,7 +317,11 @@ export async function getCanonicalRoot({ root } = {}) {
  *  network fee, from the measured base fee and this payer's balance (tx-units.networkFeeUnits).
  *  A foreign-authority parent lets the CHAIN decide — a revert is surfaced verbatim, never
  *  retried silently or sponsored with a different key. */
-export async function registerName({ name, parentAddress, expectedNetworkId, expectedAccountAddress } = {}) {
+export async function registerName({ name, parentAddress, expectedNetworkId, expectedAccountAddress,
+  expectedRegistrarFacts, expectedNetworkFeeUnits, expectedNetworkFeeSupported } = {}) {
+  if (expectedRegistrarFacts) {
+    throw coded('REVIEW_REGISTRAR_CHANGED', 'This review belongs to a registrar, not direct name-service registration.');
+  }
   if (name && String(name).includes('.')) {
     const err = new Error('register one label at a time under its parent (no dotted forms)');
     err.code = 'INVALID_PARAMS';
@@ -323,6 +329,7 @@ export async function registerName({ name, parentAddress, expectedNetworkId, exp
   }
   requireValidName(name);
   const network = await getActiveNetworkConfig(); // bind the SDK RPC binding to the active network before any read
+  const networkGeneration = getNetworkGeneration();
   if (expectedNetworkId && expectedNetworkId !== network.id) {
     throw coded('REVIEW_NETWORK_CHANGED', 'The active network changed after review. Check the name again before signing.');
   }
@@ -388,10 +395,23 @@ export async function registerName({ name, parentAddress, expectedNetworkId, exp
 
   // Units come from build_name_service_register_subdomain (500k CU / 1 SU / 10k MU), never
   // autoUnits; the FEE does not — it is the one declared network fee, like every other write.
-  const payerInfo = await thruClient.getAccountInfo(feePayer.address).catch(() => null);
+  const payerInfo = await thruClient.getAccountInfo(feePayer.address, client);
   const networkFee = networkFeeUnits({ baseFeeUnits: network.baseFeeUnits, balanceUnits: payerInfo?.balance ?? 0n });
-
-  const { rawTransaction } = await client.transactions.buildAndSign({
+  if ((expectedNetworkFeeUnits !== undefined || expectedNetworkFeeSupported !== undefined)
+    && (expectedNetworkFeeUnits !== networkFee.toString() || expectedNetworkFeeSupported !== (network.baseFeeUnits != null))) {
+    throw coded('REVIEW_FEE_CHANGED', 'The declared network fee changed. Review the registration again.');
+  }
+  const currentAccount = await vault.getActiveAccount();
+  if ((expectedAccountAddress && currentAccount.address !== expectedAccountAddress)
+    || (feePayer.ref && !refsEqual(feePayer.ref, currentAccount.ref))) {
+    throw coded('REVIEW_ACCOUNT_CHANGED', 'The active account changed. Review the registration again.');
+  }
+  if (networkGeneration !== getNetworkGeneration() || client !== thruClient.getClient()
+    || thruClient.getConfiguredNetwork().id !== network.id) {
+    throw coded('REVIEW_NETWORK_CHANGED', 'The network changed. Review the registration again.');
+  }
+  const registrationIdentity = pending.registrationIdentity({ name: n, rootAddress: parent, domainAddress }, feePayer, network.id);
+  const { rawTransaction, transaction: built } = await client.transactions.buildAndSign({
     feePayer: { publicKey: feePayer.publicKey, privateKey: feePayer.privateKey },
     program: ns.NAME_SERVICE_PROGRAM,
     header: { computeUnits: 500_000, memoryUnits: 10_000, stateUnits: 1, fee: networkFee },
@@ -415,17 +435,20 @@ export async function registerName({ name, parentAddress, expectedNetworkId, exp
     for await (const update of client.transactions.sendAndTrack(rawTransaction)) {
       if (update?.signature?.value && formatted === null) {
         formatted = formatSignature(update.signature.value);
-        const network = await getActiveNetworkConfig();
         await pending.track({
           signature: formatted, kind: 'name-register', from: feePayer.address, to: feePayer.address,
           amountUnits: networkFee.toString(),
           displayAmount: `register '${label}' (network fee ${networkFee} base units)`, networkId: network.id,
+          startSlot: built?.startSlot?.toString() ?? null, expiryAfter: built?.expiryAfter ?? null,
+          registrationIdentity,
         }).catch(() => null);
       }
       if (update?.executionResult) {
         if (update.executionResult.vmError === 0) {
+          if (formatted) await pending.resolveExecution(formatted, true, network.id).catch(() => null);
           return { signature: formatted, domainAddress, rootAddress: parent };
         }
+        if (formatted) await pending.resolveExecution(formatted, false, network.id).catch(() => null);
         const userCode = update.executionResult.userErrorCode ?? 0;
         throw coded(
           'REGISTRATION_FAILED',
@@ -444,6 +467,7 @@ export async function registerName({ name, parentAddress, expectedNetworkId, exp
 /** name.setRecord: appends a key/value record on a domain the active account owns. */
 export async function setRecord({
   name, rootAddress, key, value, expectedNetworkId, expectedAccountAddress,
+  expectedNetworkFeeUnits, expectedNetworkFeeSupported,
 } = {}) {
   let cleanName = String(name ?? '').trim();
   if (!cleanName) {
@@ -501,6 +525,7 @@ export async function setRecord({
   }
 
   const network = await getActiveNetworkConfig();
+  const networkGeneration = getNetworkGeneration();
   if (expectedNetworkId && expectedNetworkId !== network.id) {
     throw coded('REVIEW_NETWORK_CHANGED', 'The active network changed after review. Check the record again before signing.');
   }
@@ -529,11 +554,24 @@ export async function setRecord({
 
   // The declared network fee, from the measured base fee and this payer's balance — the same
   // rule as register/send (a hard-coded 0n here is what made the record review say "none").
-  const payerInfo = await thruClient.getAccountInfo(feePayer.address).catch(() => null);
+  const payerInfo = await thruClient.getAccountInfo(feePayer.address);
   const networkFee = networkFeeUnits({ baseFeeUnits: network.baseFeeUnits, balanceUnits: payerInfo?.balance ?? 0n });
 
   const client = thruClient.getClient();
-  const { rawTransaction } = await client.transactions.buildAndSign({
+  if ((expectedNetworkFeeUnits !== undefined || expectedNetworkFeeSupported !== undefined)
+    && (expectedNetworkFeeUnits !== networkFee.toString() || expectedNetworkFeeSupported !== (network.baseFeeUnits != null))) {
+    throw coded('REVIEW_FEE_CHANGED', 'The declared network fee changed. Review the record again.');
+  }
+  const currentAccount = await vault.getActiveAccount();
+  if ((expectedAccountAddress && currentAccount.address !== expectedAccountAddress)
+    || (feePayer.ref && !refsEqual(feePayer.ref, currentAccount.ref))) {
+    throw coded('REVIEW_ACCOUNT_CHANGED', 'The active account changed. Review the record again.');
+  }
+  if (networkGeneration !== getNetworkGeneration() || client !== thruClient.getClient()
+    || thruClient.getConfiguredNetwork().id !== network.id) {
+    throw coded('REVIEW_NETWORK_CHANGED', 'The network changed. Review the record again.');
+  }
+  const { rawTransaction, transaction: built } = await client.transactions.buildAndSign({
     feePayer: { publicKey: feePayer.publicKey, privateKey: feePayer.privateKey },
     program: ns.NAME_SERVICE_PROGRAM,
     header: { computeUnits: 300_000, memoryUnits: 10_000, stateUnits: 1, fee: networkFee },
@@ -554,7 +592,6 @@ export async function setRecord({
     for await (const update of client.transactions.sendAndTrack(rawTransaction)) {
       if (update?.signature?.value && formatted === null) {
         formatted = formatSignature(update.signature.value);
-        const net = await getActiveNetworkConfig();
         await pending.track({
           signature: formatted,
           kind: 'name-record',
@@ -562,13 +599,16 @@ export async function setRecord({
           to: domainAddress,
           amountUnits: networkFee.toString(),
           displayAmount: `set record ${displayLabel} (network fee ${networkFee} base units)`,
-          networkId: net.id,
+          networkId: network.id,
+          startSlot: built?.startSlot?.toString() ?? null, expiryAfter: built?.expiryAfter ?? null,
         }).catch(() => null);
       }
       if (update?.executionResult) {
         if (update.executionResult.vmError === 0) {
+          if (formatted) await pending.resolveExecution(formatted, true, network.id).catch(() => null);
           return { signature: formatted, domainAddress, rootAddress: root, key: cleanKey, value };
         }
+        if (formatted) await pending.resolveExecution(formatted, false, network.id).catch(() => null);
         const userCode = update.executionResult.userErrorCode ?? 0;
         throw coded(
           'RECORD_UPDATE_FAILED',

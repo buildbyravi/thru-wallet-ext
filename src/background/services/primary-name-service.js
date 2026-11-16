@@ -7,6 +7,7 @@ import * as nameService from './name-service.js';
 import * as ns from '../../lib/name-service.js';
 import * as thruClient from '../../lib/thru-client.js';
 import { purchaseNameProblem } from '../../lib/registrar.js';
+import { refsEqual } from '../../shared/refs.js';
 
 const PRIMARY_BASE_KEY = 'thru_primary_names';
 const DOMAINS_BASE_KEY = 'thru_registered_domains';
@@ -190,6 +191,30 @@ export function registrationRecorder({ networkId, accountAddress }) {
       accountAddress, name, rootAddress, domainAddress, status: 'unknown', verifiedAt: 0, checkedAt: 0,
     }), startedGeneration);
   };
+}
+
+export async function rememberConfirmedRegistration(identity) {
+  const started = generation;
+  if (!identity?.accountRef?.keyringId || !identity.name || !identity.rootAddress
+    || !identity.domainAddress || !identity.accountAddress || !identity.networkId) {
+    throw errCode('INVALID_PARAMS', 'Registration identity is incomplete.');
+  }
+  let accounts;
+  try { accounts = await accountService.listAccounts({ includeHidden: true }); }
+  catch { return { complete: false }; }
+  const owned = accounts.some(a => a.address === identity.accountAddress && refsEqual(a.ref, identity.accountRef));
+  if (started !== generation) return { complete: false };
+  if (!owned) return { complete: true, obsolete: true };
+  if (await ns.domainAccountAddress(identity.rootAddress, identity.name) !== identity.domainAddress) {
+    throw errCode('INVALID_PARAMS', 'Registration domain identity does not match.');
+  }
+  await updateState(identity.networkId, state => {
+    if (state.records.some(r => r.accountAddress === identity.accountAddress && sameName(r, identity))) return false;
+    upsert(state, { accountAddress: identity.accountAddress, name: identity.name,
+      rootAddress: identity.rootAddress, domainAddress: identity.domainAddress,
+      status: 'unknown', verifiedAt: 0, checkedAt: 0 });
+  }, started);
+  return { complete: true };
 }
 
 export async function clearAllDomains() {

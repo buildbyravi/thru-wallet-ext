@@ -2,7 +2,7 @@
   "registryVersion": 0,
   "networkId": "betanet",
   "updatedAt": "2026-10-06",
-  "purpose": "Gate 0 seed for the DeFi program registry (docs/defi/REGISTRY_AND_CAPABILITY_SEED.md). Addresses come from the pinned official packages exactly as src/lib/networks.js already sources them (@thru/programs/bootstrap-addresses, @thru/sdk), never from literals; verification state is layered on top here. Package-declared addresses are NOT proof of live deployment or current management authority (Q14/Q20).",
+  "purpose": "Gate 0 seed for the DeFi program registry (docs/defi/DOSSIER_AND_CAPABILITIES.md). Addresses come from the pinned official packages exactly as src/lib/networks.js already sources them (@thru/programs/bootstrap-addresses, @thru/sdk), never from literals; verification state is layered on top here. Package-declared addresses are NOT proof of live deployment or current management authority (Q14/Q20).",
   "genesisBinding": {
     "status": "pending",
     "reason": "docs/BACKEND_GAPS.md and the 2026-09-26 managed-genesis reset show managed program addresses can be reused across a genesis swap. B3 requires every record and cache to bind to the network's genesis identity; the history service already has a chain-identity gate (offline fingerprint + live genesis check) that will be reused or lifted into a shared helper when the registry is built (build-order step 3). A changed identity must invalidate records, caches and prepared intents with reason NETWORK_RESET.",

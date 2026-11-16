@@ -46,7 +46,14 @@ export function evaluateSecurity({
   const checks = [];
 
   // ---- 1. Recovery phrase backup ------------------------------------------------------
-  if (!Array.isArray(keyrings)) {
+  if (!Array.isArray(keyrings) || keyrings.some((k) => !k || typeof k !== 'object'
+    || typeof k.id !== 'string' || !k.id
+    || ![...SEED_TYPES, 'privatekey'].includes(String(k.type || '').toLowerCase())
+    || (SEED_TYPES.has(String(k.type).toLowerCase())
+      && (!['generated', 'imported', 'unknown'].includes(k.origin)
+        || (k.origin === 'generated' && !Object.prototype.hasOwnProperty.call(k, 'backedUpAt'))
+        || (k.backedUpAt != null && (typeof k.backedUpAt !== 'number'
+          || !Number.isFinite(k.backedUpAt) || k.backedUpAt <= 0)))))) {
     checks.push({
       id: 'backup',
       status: CHECK_STATUS.UNKNOWN,
@@ -67,6 +74,13 @@ export function evaluateSecurity({
           : `${unbacked.length} recovery phrases are not backed up.`,
         action: { label: 'Back up', route: `/keyring?id=${encodeURIComponent(first.id)}` },
       });
+    } else if (seeds.some(k => k.origin === 'unknown' && !k.backedUpAt)) {
+      checks.push({
+        id: 'backup',
+        status: CHECK_STATUS.UNKNOWN,
+        title: 'Recovery phrase',
+        detail: 'Recovery phrase backup has not been confirmed.',
+      });
     } else if (seeds.length > 0) {
       checks.push({
         id: 'backup',
@@ -85,7 +99,7 @@ export function evaluateSecurity({
   }
 
   // ---- 2. Auto-lock ------------------------------------------------------------------
-  if (autoLockMinutes == null || Number.isNaN(Number(autoLockMinutes))) {
+  if (typeof autoLockMinutes !== 'number' || !Number.isFinite(autoLockMinutes) || autoLockMinutes < 0) {
     checks.push({
       id: 'autolock',
       status: CHECK_STATUS.UNKNOWN,
@@ -110,7 +124,7 @@ export function evaluateSecurity({
   }
 
   // ---- 3. Password for signing ---------------------------------------------------------
-  if (!prefs) {
+  if (!prefs || typeof prefs.requirePasswordForSigning !== 'boolean') {
     checks.push({
       id: 'signing',
       status: CHECK_STATUS.UNKNOWN,
@@ -137,10 +151,13 @@ export function evaluateSecurity({
   // ---- 4. Send whitelist (optional — never graded) --------------------------------------
   if (prefs) {
     const count = Array.isArray(prefs.whitelist) ? prefs.whitelist.length : 0;
-    if (prefs.enforceWhitelist === true) {
+    if (typeof prefs.enforceWhitelist !== 'boolean' || (prefs.enforceWhitelist && !Array.isArray(prefs.whitelist))) {
+      checks.push({ id: 'whitelist', title: 'Send whitelist', status: CHECK_STATUS.INFO,
+        detail: 'Whitelist settings could not be read.', action: { label: 'Manage', route: '/settings' } });
+    } else if (prefs.enforceWhitelist === true) {
       checks.push({
         id: 'whitelist',
-        status: CHECK_STATUS.OK,
+        status: CHECK_STATUS.INFO,
         title: 'Send whitelist on',
         detail: count === 1 ? 'Sends are limited to 1 saved address.' : `Sends are limited to ${count} saved addresses.`,
       });
@@ -178,7 +195,7 @@ export function evaluateSecurity({
   const hasUnknown = checks.some((c) => c.status === CHECK_STATUS.UNKNOWN);
   let level = 'good';
   if (graded.some((c) => c.status === CHECK_STATUS.WARN)) level = 'attention';
-  else if (hasUnknown && graded.length === 0) level = 'unknown';
+  else if (hasUnknown) level = 'unknown';
 
-  return { checks, okCount, gradedCount: graded.length, level };
+  return { checks, okCount, gradedCount: graded.length, level, hasUnknown };
 }

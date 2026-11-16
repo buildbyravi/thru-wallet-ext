@@ -9,6 +9,9 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import assert from 'node:assert/strict';
+import { Pubkey } from '@thru/sdk';
+import { TokenMintAccount, TokenAccount } from '@thru/programs/token';
 
 import { NETWORKS } from '../src/lib/networks.js';
 import * as tcr from '../src/lib/custom-registrar.js';
@@ -122,6 +125,212 @@ console.log('fee enforcement vocabulary');
   eq(tcr.TCR_ERRORS[0xd207], 'not enough balance to pay the registrar fee', 'insufficient fee is distinguished');
   // The two new codes must not collide with the VM-composite decoding space (0xD2xx | syscall).
   ok(!(0xd206 in { 0xd226: 1 }) && 0xd206 !== 0xd20a, 'new codes do not shadow the live 0xD20A failure');
+}
+
+console.log('custom registrar write boundaries (stubbed builder and RPC)');
+{
+  globalThis.fetch = async () => { throw new Error('No network allowed in this suite'); };
+  const storage = new Map();
+  const session = new Map();
+  const area = map => ({
+    async get(key) { return structuredClone(key == null ? Object.fromEntries(map) : { [key]: map.get(key) }); },
+    async set(values) { for (const [k, v] of Object.entries(values)) map.set(k, structuredClone(v)); },
+    async remove(keys) { for (const key of Array.isArray(keys) ? keys : [keys]) map.delete(key); },
+  });
+  globalThis.chrome = { storage: { local: area(storage), session: area(session) },
+    runtime: { async sendMessage() {} } };
+  const vault = await import('../src/lib/vault.js');
+  const thru = await import('../src/lib/thru-client.js');
+  const registrar = await import('../src/background/services/registrar-service.js');
+  const network = await import('../src/background/services/network-service.js');
+  const pending = await import('../src/background/services/pending-tx-service.js');
+  await vault.createVault('OfflineTest123!');
+  await network.getActiveNetworkConfig();
+  const payer = await vault.getActiveAccount();
+  const client = thru.getClient();
+  const label = 'repair';
+  const domain = await domainAccountAddress(rootAddress, label);
+  const lease = tcr.tcrLeaseAddress(program, label);
+  let policy = tcr.TCR_FEE_POLICY.strict;
+  let treasury = payer.address;
+  let price = 1000n;
+  let leaseOwner = payer.address;
+  let leaseExists = false;
+  let domainExists = false;
+  let payerExists = true;
+  let payerReads = 0;
+  let mutatePayerRead = null;
+  let mutateProof = null;
+  let builds = 0;
+  let sends = 0;
+  let activationBuilds = 0;
+  let activationMutation = null;
+  const missing = () => { throw Object.assign(new Error('absent'), { code: 5 }); };
+  function configBytes() {
+    const bytes = new Uint8Array(tcr.TCR_CONFIG_SIZE);
+    const view = new DataView(bytes.buffer);
+    view.setUint32(tcr.TCR_CFG.magic, tcr.TCR_CONFIG_MAGIC, true);
+    bytes[tcr.TCR_CFG.version] = tcr.TCR_CONFIG_LAYOUT_V2;
+    bytes[tcr.TCR_CFG.rootNameLen] = 4;
+    bytes.set(new TextEncoder().encode('thru'), tcr.TCR_CFG.rootName);
+    bytes.set(Pubkey.from(payer.address).toBytes(), tcr.TCR_CFG.admin);
+    bytes.set(Pubkey.from(treasury).toBytes(), tcr.TCR_CFG.treasury);
+    bytes.set(Pubkey.from(rootAddress).toBytes(), tcr.TCR_CFG.rootAddress);
+    for (const field of ['feePerYear', 'fee3Char', 'fee4Char', 'fee5PlusChar']) view.setBigUint64(tcr.TCR_CFG[field], price, true);
+    bytes[tcr.TCR_CFG.feePolicy] = policy;
+    return bytes;
+  }
+  function leaseBytes() {
+    const bytes = new Uint8Array(tcr.TCR_LEASE_SIZE);
+    const view = new DataView(bytes.buffer);
+    view.setUint32(tcr.TCR_LSE.magic, tcr.TCR_LEASE_MAGIC, true);
+    bytes[tcr.TCR_LSE.version] = tcr.TCR_LAYOUT_VERSION;
+    bytes[tcr.TCR_LSE.labelLen] = label.length;
+    bytes.set(new TextEncoder().encode(label), tcr.TCR_LSE.label);
+    bytes.set(Pubkey.from(leaseOwner).toBytes(), tcr.TCR_LSE.owner);
+    view.setBigUint64(tcr.TCR_LSE.expiresAt, 2000000000n, true);
+    return bytes;
+  }
+  client.accounts.get = async address => {
+    if (address === configAddress) return { meta: { balance: 1n, owner: Pubkey.from(program) }, data: { data: configBytes() } };
+    if (address === lease) return leaseExists ? { meta: { balance: 1n }, data: { data: leaseBytes() } } : missing();
+    if (address === domain) return domainExists ? { meta: { balance: 1n } } : missing();
+    if (address === payer.address) {
+      payerReads++;
+      if (mutatePayerRead) await mutatePayerRead(payerReads);
+      return payerExists ? { meta: { balance: 1000000n } } : missing();
+    }
+    return missing();
+  };
+  client.proofs.generate = async () => {
+    if (mutateProof) await mutateProof();
+    const proof = new Uint8Array(8);
+    new DataView(proof.buffer).setBigUint64(0, 123n, true);
+    return { proof };
+  };
+  client.transactions.buildAndSign = async options => {
+    if (options.program === program) {
+      builds++;
+      assert.equal(options.header.fee, payerExists ? 1n : 0n);
+    } else {
+      assert.equal(options.program, NETWORKS.betanet.accountCreateProgramId);
+      activationBuilds++;
+    }
+    return { rawTransaction: options.program, transaction: { startSlot: 123n, expiryAfter: 10000 } };
+  };
+  client.transactions.sendAndTrack = async function* (raw) {
+    if (raw === NETWORKS.betanet.accountCreateProgramId) {
+      payerExists = true;
+      activationMutation?.();
+    } else sends++;
+    yield { executionResult: { vmError: 0 } };
+  };
+  client.transactions.listForAccount = async () => ({ transactions: [] });
+  const expected = async () => ({ name: label, years: 1, expectedNetworkId: 'betanet',
+    expectedAccountAddress: payer.address, expectedPricePerYear: '1000',
+    expectedRegistrarFacts: registrar.registrarFacts(await registrar.getCustomRegistrar({ skipCache: true })) });
+
+  leaseExists = true;
+  const renewed = await registrar.renewCustom(await expected());
+  assert.equal(renewed.domainAddress, domain);
+  assert.equal(renewed.rootAddress, rootAddress);
+  assert.equal(sends, 1);
+  ok(true, 'custom renewal reaches submission and returns its derived domain address');
+  leaseExists = false;
+  await registrar.registerCustom(await expected());
+  assert.equal(sends, 2);
+  ok(true, 'unchanged custom registration reaches submission');
+
+  const other = Pubkey.from(new Uint8Array(32).fill(77)).toThruFmt();
+  for (const [mutate, code] of [
+    [() => { treasury = other; }, 'REVIEW_REGISTRAR_CHANGED'],
+    [() => { price = 2000n; }, 'REVIEW_PRICE_CHANGED'],
+    [() => { policy = tcr.TCR_FEE_POLICY.bestEffort; }, 'REVIEW_PRICE_CHANGED'],
+    [() => { domainExists = true; }, 'NAME_TAKEN'],
+  ]) {
+    const params = await expected();
+    const before = builds;
+    mutateProof = mutate;
+    await assert.rejects(registrar.registerCustom(params), e => e.code === code);
+    assert.equal(builds, before, 'facts changed during proof generation must refuse before signing');
+    mutateProof = null;
+    treasury = payer.address; price = 1000n; policy = tcr.TCR_FEE_POLICY.strict; domainExists = false;
+  }
+  ok(true, 'proof-time treasury, price, policy and availability changes refuse before build');
+
+  leaseExists = true;
+  payerReads = 0;
+  mutatePayerRead = count => { if (count === 2) leaseOwner = other; };
+  const beforeRenew = builds;
+  await assert.rejects(registrar.renewCustom(await expected()), e => e.code === 'NOT_NAME_OWNER');
+  assert.equal(builds, beforeRenew);
+  mutatePayerRead = null; leaseOwner = payer.address;
+  ok(true, 'renewal rechecks lease owner after its awaited payer read');
+
+  // Best-effort allows activation; the subsequent registrar write still needs fresh facts.
+  policy = tcr.TCR_FEE_POLICY.bestEffort;
+  payerExists = false;
+  const staleBeforeActivation = await expected();
+  staleBeforeActivation.expectedRegistrarFacts.treasuryAddress = other;
+  await assert.rejects(registrar.renewCustom(staleBeforeActivation), e => e.code === 'REVIEW_REGISTRAR_CHANGED');
+  assert.equal(activationBuilds, 0, 'stale review refuses before account activation');
+  activationMutation = () => { treasury = other; };
+  await assert.rejects(registrar.renewCustom(await expected()), e => e.code === 'REVIEW_REGISTRAR_CHANGED');
+  assert.equal(activationBuilds, 1);
+  assert.equal(builds, beforeRenew);
+  ok(true, 'activation completes but changed registrar facts prevent the renewal build');
+  activationMutation = null; treasury = payer.address;
+
+  leaseExists = false;
+  const beforeNetworkChange = builds;
+  const boundParams = await expected();
+  mutateProof = () => thru.configureNetwork({ ...NETWORKS.betanet, id: 'localnet' });
+  await assert.rejects(registrar.registerCustom(boundParams), e => e.code === 'REVIEW_NETWORK_CHANGED');
+  assert.equal(builds, beforeNetworkChange);
+  mutateProof = null;
+  thru.configureNetwork(NETWORKS.betanet);
+  const lockedParams = await expected();
+  mutateProof = () => vault.lock();
+  await assert.rejects(registrar.registerCustom(lockedParams), /locked/i);
+  assert.equal(builds, beforeNetworkChange);
+  mutateProof = null;
+  await vault.unlock('OfflineTest123!');
+  ok(true, 'proof-time network changes and wallet locking refuse before the registrar build');
+
+  // Exercise the official payment fallback with deployed and imported symbols disagreeing.
+  const reg = await import('../src/lib/registrar.js');
+  const ns = await import('../src/lib/name-service.js');
+  const tokens = await import('../src/background/services/token-service.js');
+  const mint = Pubkey.from(new Uint8Array(32).fill(88)).toThruFmt();
+  await thru.saveDeployedToken({ mint, ticker: 'DEPLOYED', decimals: 6 }, 'betanet');
+  storage.set('thru_prefs', { version: 1, customTokens: [{ mintAddress: mint, symbol: 'IMPORTED', networkId: 'betanet' }] });
+  const officialConfig = new Uint8Array(reg.REG_CONFIG_SIZE);
+  for (const [address, offset] of [[reg.NAME_SERVICE_PROGRAM, 0], [rootAddress, 32], [treasury, 64], [mint, 96], [NETWORKS.betanet.tokenProgramId, 128]]) {
+    officialConfig.set(Pubkey.from(address).toBytes(), offset);
+  }
+  officialConfig.set(new TextEncoder().encode('thru'), 160);
+  new DataView(officialConfig.buffer).setUint32(224, 4, true);
+  new DataView(officialConfig.buffer).setBigUint64(228, 1n, true);
+  const tokenAddress = await thru.deriveTokenAccountAddress(payer.address, mint);
+  client.accounts.get = async address => {
+    if (address === ns.registrarConfigAddress()) return { meta: { balance: 1n, owner: Pubkey.from(reg.THRU_REGISTRAR_PROGRAM) }, data: { data: officialConfig } };
+    if (address === mint) return { meta: { balance: 1n, owner: Pubkey.from(NETWORKS.betanet.tokenProgramId) },
+      data: { data: TokenMintAccount.builder().set_decimals(6).set_supply(100n).build() } };
+    if (address === tokenAddress) return { meta: { balance: 1n }, data: { data: TokenAccount.builder().set_amount(100n).build() } };
+    if (address === payer.address) return { meta: { balance: 1000000n } };
+    return missing();
+  };
+  const registry = await registrar.getRegistry();
+  const row = (await tokens.listDeployedTokens()).find(t => t.mintAddress === mint);
+  assert.equal(row.symbol, 'DEPLOYED');
+  const stopAtBuild = new Error('Payment facts accepted; no signing');
+  client.transactions.buildAndSign = async () => { throw stopAtBuild; };
+  await assert.rejects(registrar.purchaseDomain({ name: label, years: 1,
+    expectedNetworkId: 'betanet', expectedAccountAddress: payer.address, expectedPricePerYear: '1',
+    expectedRegistrarFacts: registrar.registrarFacts(registry, { symbol: row.symbol, decimals: 6, verified: true }) }),
+  error => error === stopAtBuild);
+  ok(true, 'official payment symbol matches review deployed-token precedence without an import cycle');
+  await pending.clearAll();
 }
 
 if (failures) {

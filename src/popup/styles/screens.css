@@ -1616,7 +1616,7 @@ form > .btn.text {
 .name-balance {
   /* spacing comes from the surrounding stack; the class exists for the register card's
      price/balance truth-lines so they can be targeted (e.g. balance warning) later. */
-  color: var(--text-secondary, #475569);
+  color: var(--text-2);
 }
 /* ---- Modernized Domain Screen UI (Design System Blueprint) --------- */
 .domain-card {
@@ -1726,11 +1726,6 @@ form > .btn.text {
   border: 1px solid var(--border-hairline);
   font-size: var(--fs-xs);
   color: var(--text-2);
-}
-.domain-expiry-preview {
-  font-size: var(--fs-xs);
-  color: var(--positive);
-  font-weight: 500;
 }
 /* ---- Dashboard ecosystem services grid (2026-10-24 owner directive) --------- */
 /* Same classes (.dashboard-panel-grid + .panel-item) => tiles are the EXACT same size

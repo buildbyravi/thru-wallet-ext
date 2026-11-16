@@ -1,8 +1,7 @@
 // Boot gate and route table for the popup.
 //
 // The equivalent of Rabby's SortHat: one place decides where an opening wallet lands,
-// instead of the ad-hoc sequence the legacy popup.js runs (a disclaimer check, then
-// hasVault, then isUnlocked, each navigating separately and each able to race the others).
+// without holding the UI behind an intermediate "Checking wallet…" screen (Hard Rule 15).
 
 import { Router } from './router.js';
 import * as guards from './guards.js';
@@ -10,7 +9,7 @@ import * as bridge from './bridge.js';
 import { AppShell } from './shell.js';
 import { installSidePanelExclusion } from './side-panel-exclusion.js';
 import { FLAGS } from '../../shared/flags.js';
-import { initTheme } from '../../popup/theme.js';
+import { applyTheme, initTheme } from '../../popup/theme.js';
 import { UnlockRoute } from './routes/unlock.js';
 import { dismissAllToasts } from '../kit/toast.js';
 import { DashboardRoute } from './routes/dashboard.js';
@@ -28,13 +27,6 @@ import { NameRoute } from './routes/name.js';
 import { HistoryRoute } from './routes/history.js';
 import { WelcomeRoute } from './routes/welcome.js';
 
-/**
- * The wallet's complete route table.
- *
- * A hash this table does not contain is redirected to the router's fallback ('/unlock'), so an
- * unknown or stale URL is never a dead end. The legacy tree this table replaced is deleted;
- * its history lives in Git, not in a compatibility layer.
- */
 export const POPUP_ROUTES = [
   {
     path: '/unlock',
@@ -77,9 +69,6 @@ export const POPUP_ROUTES = [
     view: ExportRoute,
     guard: guards.requireUnlocked,
     title: 'Export secret',
-    // Autofocus is suppressed here: focusing the first control on a screen that is about to
-    // display a recovery phrase would scroll the secret into view before the user has read
-    // the warning above it.
     autofocus: false,
   },
   {
@@ -87,9 +76,6 @@ export const POPUP_ROUTES = [
     view: SendRoute,
     guard: guards.requireUnlocked,
     title: 'Send',
-    // No autofocus: the router's focus helper would land on the recipient field, and on a screen
-    // that ends in an irreversible action the first keystroke should not already be going
-    // somewhere.
     autofocus: false,
   },
   {
@@ -117,8 +103,6 @@ export const POPUP_ROUTES = [
     title: 'Domain',
   },
   {
-    // requireNoWallet: onboarding must bounce to the dashboard if a wallet already exists,
-    // otherwise a stray #/welcome would offer to create a second one over the top.
     path: '/welcome',
     view: WelcomeRoute,
     guard: guards.requireNoWallet,
@@ -132,8 +116,6 @@ export const POPUP_ROUTES = [
     title: 'Settings',
   },
   {
-    // requireVault, not requireUnlocked: reset must be reachable from the unlock screen by
-    // someone who has forgotten their password. That is the main reason it exists.
     path: '/reset',
     view: ResetRoute,
     guard: guards.requireVault,
@@ -155,106 +137,159 @@ export async function boot({ root } = {}) {
     return null;
   }
 
-  // Register BEFORE the first await (including theme storage), not after the
-  // background bootstrap. Otherwise a popup can broadcast while a newly opened
-  // panel is still waiting to install its listener, and the close is lost.
-  installSidePanelExclusion();
+  let alive = true;
+  // Register BEFORE the first await so a newly opened panel never misses a close broadcast.
+  const offSidePanelExclusion = installSidePanelExclusion();
 
-  // Theme before first paint: no light->dark flash on open.
-  await initTheme().catch(() => {});
+  // Apply OS theme synchronously before first paint (zero light->dark flash), then hydrate
+  // stored preference non-blockingly so a slow settings read never holds the UI (Rule 15).
+  if (!document.documentElement.dataset.theme) {
+    applyTheme('system');
+  }
+  void initTheme().catch(() => {});
 
   const known = new Set(POPUP_ROUTES.map((r) => r.path));
-
-  // Routes that own the whole viewport and must not show the topbar/footer chrome.
   const FULLSCREEN_ROUTES = new Set(['/unlock', '/welcome']);
-
-  // ONE bootstrap call for the whole boot. The previous sequence called
-  // wallet.hasVault + wallet.isUnlocked for landingRoute(), then the route guard called both
-  // again, on a service worker that may still have been starting. Seeding the guard cache
-  // from this response removes those extra round-trips.
-  let initial = null;
-  try {
-    initial = await bridge.bootstrap();
-    guards.seed(initial);
-  } catch (error) {
-    console.warn('[boot] bootstrap failed; guards will query directly.', error);
-  }
 
   const shell = AppShell({
     navigate: (path, options) => router.navigate(path, options),
   });
+  shell.setChromeVisible(false);
   mount.appendChild(shell.el);
+  mount.classList.remove('hidden');
 
   const router = new Router({
     routes: POPUP_ROUTES,
     root: shell.outlet,
     fallback: '/unlock',
-    onError: (error) => {
-      console.error('[boot] route error:', error);
-    },
   });
 
   function applyChrome(path) {
     shell.setChromeVisible(!FULLSCREEN_ROUTES.has(path), path);
   }
 
-  // Keep an unknown hash from ever entering the URL: redirect to the fallback before the
-  // router resolves it. (The Router would recover through its own fallback anyway, but the
-  // stale hash would briefly land in history first.)
   const originalNavigate = router.navigate.bind(router);
   router.navigate = (path, options) => {
+    // A user action supersedes an outstanding bootstrap response.
+    run++;
     const cleanPath = String(path).split('?')[0];
     if (!known.has(cleanPath)) {
+      applyChrome('/unlock');
       originalNavigate('/unlock', { replace: true });
+      if (!router._started) router.start();
       return;
     }
     applyChrome(cleanPath);
     originalNavigate(path, options);
+    if (!router._started) router.start();
   };
 
-  // A hashchange straight to a known route (Back, or an edited URL) bypasses router.navigate,
-  // so chrome visibility has to be applied on resolve as well.
-  window.addEventListener('hashchange', () => {
+  const onHashChange = () => {
+    if (!alive) return;
     const { path } = Router.parseHash();
     if (known.has(path)) applyChrome(path);
-  });
+  };
+  window.addEventListener('hashchange', onHashChange);
 
-  // Push events replace polling. The old bridge exposed onEvent() with zero subscribers,
-  // so a background lock never reached an open popup and the UI kept showing private data
-  // over a locked vault until the next manual action.
   const offEvents = bridge.onEvents({
-    lockStateChanged: ({ unlocked } = {}) => {
-      guards.invalidate();
-      // Never leave a notification on screen over a locked wallet: a toast can quote a domain,
-      // an amount or an address, and "the wallet is locked" has to mean the screen is empty of
-      // wallet content. `dismissAllToasts()` was exported for exactly this since the toast
-      // shipped and had no production caller until 2026-10-30.
-      if (!unlocked) dismissAllToasts();
-      if (!unlocked) router.navigate('/unlock', { replace: true });
+    lockStateChanged: ({ unlocked, hasVault } = {}) => {
+      run++;
+      if (!unlocked) {
+        guards.seed({ hasVault, unlocked: false });
+        router.stop();
+        dismissAllToasts();
+        router.navigate(hasVault === false ? '/welcome' : '/unlock', { replace: true });
+        router.start();
+      } else {
+        guards.seed({ hasVault: true, unlocked: true });
+        // Keep the mounted public form (including an in-flight local unlock) intact,
+        // but enable navigation when another page unlocks before bootstrap completes.
+        if (!router._started) router.start({ resolve: false });
+      }
     },
     accountsChanged: () => {
-      guards.invalidate();
       dismissAllToasts();
     },
-    // A message produced on one network must not survive the switch: "confirmation" on Betanet
-    // is not a statement about any other chain.
     networkChanged: () => {
       dismissAllToasts();
     },
   });
-  window.addEventListener('unload', offEvents, { once: true });
 
-  const { path } = Router.parseHash();
-  if (!path || path === '/') {
-    router.navigate(await guards.landingRoute(), { replace: true });
-  } else {
-    applyChrome(path);
+  let run = 0;
+  const stop = router.stop.bind(router);
+  router.stop = () => { run++; stop(); };
+
+  function onUnload() {
+    if (!alive) return;
+    alive = false;
+    router.stop();
+    offEvents();
+    offSidePanelExclusion();
+    window.removeEventListener('hashchange', onHashChange);
+    window.removeEventListener('unload', onUnload);
+    shell.destroy();
   }
+  window.addEventListener('unload', onUnload, { once: true });
 
-  router.start();
-
-  // Network status is fetched after first paint, never before it.
-  shell.refreshNetwork();
+  async function initialize() {
+    if (!alive) return;
+    router.stop();
+    const generation = ++run;
+    const current = () => alive && generation === run;
+    guards.invalidate();
+    const authRevision = guards.stateRevision();
+    const requested = Router.parseHash();
+    // Only public UI is mounted before authentication is known. Background auth still
+    // protects every action; this surface remains usable while bootstrap hydrates.
+    const safePath = requested.path === '/welcome' ? '/welcome' : '/unlock';
+    applyChrome(safePath);
+    router.mountImmediate(safePath, requested.path === '/unlock' ? requested.params : {
+      returnTo: requested.path === '/' ? '/dashboard' : window.location.hash.slice(1),
+    });
+    try {
+      const initial = await bridge.bootstrap();
+      if (!current()) return;
+      if (authRevision !== guards.stateRevision()) {
+        if (!router._started) router.start({ resolve: false });
+        return;
+      }
+      if (typeof initial?.hasVault !== 'boolean' || typeof initial?.unlocked !== 'boolean') {
+        throw new Error('Wallet state unavailable.');
+      }
+      guards.seed(initial);
+      const { path, params } = Router.parseHash();
+      let destination;
+      if (!path || path === '/' || !known.has(path)) {
+        destination = await guards.landingRoute();
+      } else if (!initial.hasVault) {
+        destination = '/welcome';
+      } else if (!initial.unlocked && path !== '/unlock' && path !== '/reset') {
+        const query = new URLSearchParams(params || {}).toString();
+        const rawTarget = query ? `${path}?${query}` : path;
+        destination = path === '/welcome' ? '/unlock' : `/unlock?returnTo=${encodeURIComponent(rawTarget)}`;
+      } else if (path === '/welcome' && initial.hasVault) {
+        destination = initial.unlocked ? '/dashboard' : '/unlock';
+      } else {
+        const query = new URLSearchParams(params || {}).toString();
+        destination = query ? `${path}?${query}` : path;
+      }
+      if (!current()) return;
+      // router.navigate(..., { replace: true }) sets the URL hash without firing _resolve()
+      // while _started is false, so router.start() resolves once cleanly.
+      const preserveInput = destination.split('?')[0] === safePath;
+      applyChrome(destination.split('?')[0]);
+      originalNavigate(destination, { replace: true });
+      router.start({ resolve: !preserveInput });
+      shell.refreshNetwork();
+    } catch {
+      if (!current()) return;
+      router.showStatus({
+        message: 'The wallet could not be loaded. Reload to try again.',
+        onReload: () => { void initialize(); },
+      });
+    }
+  }
+  void initialize();
 
   if (FLAGS.DEBUG_ROUTING) {
     console.info('[boot] UI active. Routes:', [...known].join(', '));

@@ -1382,6 +1382,7 @@ const FIXTURES = {
   'wallet.reset': () => {
     backend.hasVault = false;
     backend.unlocked = false;
+    emitEvent('lockStateChanged', { unlocked: false, hasVault: false });
     return { reset: true };
   },
   'wallet.exportSecret': ({ ref, password } = {}) => {
@@ -1636,6 +1637,15 @@ const FIXTURES = {
       .filter((t) => t.mintAddress !== mintAddress)
       .concat(record);
     return { ...record, networkId: activeNetwork().id };
+  },
+  'token.importVerified': (params = {}) => {
+    if (Object.keys(params).some((key) => !['mintAddress', 'symbol'].includes(key))) {
+      throw apiError('INVALID_INPUT', 'Import accepts mint identity only.');
+    }
+    const mint = FIXTURES['token.readMint'](params);
+    if (!mint.exists) throw apiError('ACCOUNT_MISSING', 'No mint account.');
+    return FIXTURES['token.import']({ ...params, name: mint.ticker,
+      symbol: mint.ticker || params.symbol, decimals: mint.decimals });
   },
   'token.transferChecked': ({ fromAddress, networkId } = {}) => {
     if (fromAddress !== activeAccount().address || networkId !== activeNetwork().id) {
@@ -2804,6 +2814,8 @@ async function exportSecretTest() {
   const exportEl = router.current?.el;
   TORN_DOWN.push(exportEl);
   router.navigate('/dashboard');
+  ok('navigation wipes the revealed phrase synchronously, before any guard reply',
+    !textOf(exportEl).includes('thistle') && !textOf(DOC.body).includes('thistle'));
   await settle();
   const detachedHits = findSecretsInTornDown(SECRETS);
   ok('navigating away leaves no phrase in the DOM the export route handed back',
@@ -3521,8 +3533,11 @@ async function panelExclusionTest() {
     resumeTheme = () => resolve({ ...backend.preferences });
   });
   const pendingBoot = boot({ root: DOC.getElementById('app') });
+  for (const listener of [...chromeLog.listeners]) {
+    listener({ action: CLOSE_SIDE_PANEL_ACTION }, { id: chrome.runtime.id });
+  }
   ok('the panel listener is installed synchronously, before theme preferences return',
-    chromeLog.listeners.size === 1);
+    WIN.closed === true && typeof resumeTheme !== 'function');
   await settle();
   ok('theme loading is blocked at the backend preference boundary', typeof resumeTheme === 'function');
   ok('booting the panel does not broadcast or call sidePanel.close',
@@ -3655,7 +3670,7 @@ async function navigationTest() {
     [...findSecrets(SECRETS), ...findSecretsInTornDown(SECRETS)].slice(0, 3).join(' | '));
 
   backend.unlocked = true;
-  guards.invalidate();
+  emitEvent('lockStateChanged', { unlocked: true });
   router.navigate('/dashboard');
   await settle();
 
@@ -4515,7 +4530,9 @@ function negativeControls() {
   broken.start();
   releaseConsole();
   ok('control: a throwing route is caught by the console capture',
-    routerErrors().some((line) => line.includes('synthetic mount failure')),
+    routerErrors().some((line) => line.includes('[router] failed to mount route'))
+      && !consoleErrors.some((line) => line.includes('synthetic mount failure'))
+      && /could not be opened/i.test(textOf(brokenRoot)),
     routerErrors().join(' | '));
   broken.stop();
 }
@@ -5963,10 +5980,12 @@ async function trackedDomainsTest() {
     const isAliceOrBob = name === 'alice' || name === 'bob' || name === 'carol';
     return {
       ...originals['name.checkCustomLease']({ name }),
+      domainAddress: name === 'alice' ? 'taDomain0' : name === 'bob' ? 'taDomain1' : 'taImported',
       domainExists: isAliceOrBob,
       leaseExists: isAliceOrBob,
       lease: isAliceOrBob ? {
         owner: ADDRESS_A,
+        label: name,
         expiresAtSeconds: name === 'bob' ? '18446744073709551615' : '1800000000',
       } : null,
     };
@@ -6026,7 +6045,8 @@ async function trackedDomainsTest() {
     click(buttons(route.el, /^unlink/i)[0]);
     await settle();
     ok('unlink leaves both domains in My Domains', buttons(route.el, /^make primary$/i).length === 2);
-    ok('out-of-range lease timestamp is handled honestly without throwing', /Invalid lease date/.test(textOf(route.el)));
+    ok('out-of-range lease timestamp is handled honestly without claiming Active or a date',
+      /18446744073709551615 \(chain time, seconds\)/.test(textOf(route.el)) && !/Active|Invalid Date|Valid through/.test(textOf(route.el)));
     click(buttons(route.el, /^register$/i)[0]);
     await settle();
     const regInput = route.el.querySelector('input[placeholder="Search yourname.thru"]');
@@ -6082,6 +6102,172 @@ async function trackedDomainsTest() {
   }
 }
 
+async function nonBlockingBootTest() {
+  section('boot: immediate public UI, no backend gate after unlock, stale bootstrap discarded');
+  resetBackend(SCENARIOS[1]); resetDom(); guards.invalidate();
+  const originalSend = chrome.runtime.sendMessage;
+  let bootstrapReply;
+  let guardReads = 0;
+  chrome.runtime.sendMessage = (message, callback) => {
+    if (message.method === 'system.bootstrap') { bootstrapReply = callback; return; }
+    if (['wallet.hasVault', 'wallet.isUnlocked'].includes(message.method)) guardReads++;
+    return originalSend(message, callback);
+  };
+  const root = DOC.getElementById('app');
+  const booting = boot({ root });
+  ok('boot paints usable password input synchronously before bootstrap replies',
+    Boolean(root.querySelector('input')) && !/Checking wallet/.test(textOf(root))
+      && buttons(root, /^reload$/i).length === 0);
+  const router = await booting;
+  try {
+    const input = root.querySelector('input');
+    type(input, SECRET_PASSWORD);
+    input.focus();
+    bootstrapReply({ ok: true, data: { hasVault: true, unlocked: false } });
+    await settle();
+    ok('locked bootstrap preserves the typed password field and its focus',
+      root.querySelector('input') === input && input.value === SECRET_PASSWORD && DOC.activeElement === input);
+    click(buttons(root, /^unlock$/i)[0]);
+    await settle();
+    ok('unlock reaches dashboard with no extra auth round-trip or checking screen',
+      router.currentPath === '/dashboard' && guardReads === 0 && !/Checking wallet/.test(textOf(root)));
+    await settle(450);
+    router.navigate('/receive', { replace: true });
+    await settle();
+    ok('normal navigation past the old 400ms cache lifetime never requests auth again',
+      router.currentPath === '/receive' && guardReads === 0);
+    backend.unlocked = false;
+    emitEvent('lockStateChanged', { unlocked: false });
+    await settle();
+    ok('background lock still removes private UI and returns to unlock', router.currentPath === '/unlock');
+    router.navigate('/send', { replace: true });
+    await settle();
+    ok('private navigation remains refused after lock', router.currentPath === '/unlock');
+  } finally {
+    WIN.dispatchEvent({ type: 'unload' });
+    router.stop();
+    chrome.runtime.sendMessage = originalSend;
+  }
+
+  resetBackend(SCENARIOS[1]); resetDom(); guards.invalidate();
+  chrome.runtime.sendMessage = (message, callback) => {
+    if (message.method === 'system.bootstrap') { bootstrapReply = callback; return; }
+    return originalSend(message, callback);
+  };
+  const newer = await boot({ root: DOC.getElementById('app') });
+  try {
+    type(newer.root.querySelector('input'), SECRET_PASSWORD);
+    click(buttons(newer.root, /^unlock$/i)[0]);
+    await settle();
+    ok('unlock can finish while the original bootstrap is still held', newer.currentPath === '/dashboard');
+    bootstrapReply({ ok: true, data: { hasVault: true, unlocked: false } });
+    await settle();
+    ok('late locked bootstrap cannot undo a newer successful unlock', newer.currentPath === '/dashboard');
+  } finally {
+    WIN.dispatchEvent({ type: 'unload' });
+    newer.stop(); chrome.runtime.sendMessage = originalSend;
+  }
+
+  for (const hash of ['#/send', '#/unlock?returnTo=%2Freceive']) {
+    resetBackend(SCENARIOS[1]); resetDom(); guards.invalidate(); WIN.location.hash = hash;
+    let unlockReply;
+    chrome.runtime.sendMessage = (message, callback) => {
+      if (message.method === 'system.bootstrap') { bootstrapReply = callback; return; }
+      if (message.method === 'wallet.unlock') { unlockReply = callback; return; }
+      return originalSend(message, callback);
+    };
+    const deep = await boot({ root: DOC.getElementById('app') });
+    try {
+      const input = deep.root.querySelector('input');
+      type(input, SECRET_PASSWORD); input.focus();
+      click(buttons(deep.root, /^unlock$/i)[0]);
+      await settle();
+      bootstrapReply({ ok: true, data: { hasVault: true, unlocked: false } });
+      await settle();
+      ok(`${hash}: bootstrap preserves an in-flight unlock and its input`,
+        deep.root.querySelector('input') === input && input.value === SECRET_PASSWORD);
+      backend.unlocked = true;
+      unlockReply({ ok: true, data: { unlocked: true } });
+      await settle();
+      ok(`${hash}: successful in-flight unlock reaches the requested route`,
+        deep.currentPath === (hash === '#/send' ? '/send' : '/receive'));
+    } finally {
+      WIN.dispatchEvent({ type: 'unload' }); deep.stop(); chrome.runtime.sendMessage = originalSend;
+    }
+  }
+
+  resetBackend(SCENARIOS[1]); resetDom(); guards.invalidate();
+  chrome.runtime.sendMessage = (message, callback) => {
+    if (message.method === 'system.bootstrap') { bootstrapReply = callback; return; }
+    if (['wallet.hasVault', 'wallet.isUnlocked'].includes(message.method)) return;
+    return originalSend(message, callback);
+  };
+  const early = await boot({ root: DOC.getElementById('app') });
+  try {
+    click(buttons(early.root, /reset wallet on this device/i)[0]);
+    await settle();
+    ok('early Reset paints its real form even with bootstrap/auth reads held',
+      early.currentPath === '/reset' && /This erases your keys/.test(textOf(early.root)));
+    bootstrapReply({ ok: true, data: { hasVault: true, unlocked: false } });
+  } finally {
+    WIN.dispatchEvent({ type: 'unload' }); early.stop(); chrome.runtime.sendMessage = originalSend;
+  }
+
+  resetBackend(SCENARIOS[2]); resetDom(); guards.invalidate(); WIN.location.hash = '#/welcome';
+  const existing = await boot({ root: DOC.getElementById('app') });
+  await settle();
+  ok('initial /welcome cannot bypass the existing unlocked-wallet redirect', existing.currentPath === '/dashboard');
+  emitEvent('lockStateChanged', { unlocked: false, hasVault: false });
+  await settle();
+  ok('reset event in another page removes private UI and opens onboarding', existing.currentPath === '/welcome');
+  existing.navigate('/welcome', { replace: true }); await settle();
+  emitEvent('lockStateChanged', { unlocked: false, hasVault: false }); await settle();
+  ok('reset event arriving after reset navigation cannot resurrect unlock', existing.currentPath === '/welcome');
+  WIN.dispatchEvent({ type: 'unload' }); existing.stop();
+
+  resetBackend(SCENARIOS[1]); resetDom(); guards.invalidate();
+  chrome.runtime.sendMessage = (message, callback) => {
+    if (message.method === 'system.bootstrap') { bootstrapReply = callback; return; }
+    return originalSend(message, callback);
+  };
+  const external = await boot({ root: DOC.getElementById('app') });
+  try {
+    backend.unlocked = true;
+    emitEvent('lockStateChanged', { unlocked: true });
+    bootstrapReply({ ok: true, data: { hasVault: true, unlocked: false } });
+    await settle();
+    external.navigate('/receive', { replace: true }); await settle();
+    ok('late locked bootstrap cannot overwrite a newer external unlock event', external.currentPath === '/receive');
+  } finally {
+    WIN.dispatchEvent({ type: 'unload' }); external.stop(); chrome.runtime.sendMessage = originalSend;
+  }
+
+  resetBackend(SCENARIOS[0]); resetDom(); guards.invalidate(); WIN.location.hash = '#/welcome';
+  let refReply;
+  chrome.runtime.sendMessage = (message, callback) => {
+    if (message.method === 'system.bootstrap') { bootstrapReply = callback; return; }
+    if (message.method === 'account.getActiveRef') { refReply = callback; return; }
+    return originalSend(message, callback);
+  };
+  const creating = await boot({ root: DOC.getElementById('app') });
+  try {
+    click(buttons(creating.root, /create a new wallet/i)[0]);
+    const inputs = allElements(creating.root).filter((el) => el.localName === 'input' && el.getAttribute('type') === 'password');
+    inputs.forEach((input) => type(input, SECRET_PASSWORD));
+    click(buttons(creating.root, /^create wallet$/i)[0]);
+    await settle();
+    ok('new wallet creation finishes before the held account-ref read', backend.hasVault && typeof refReply === 'function');
+    bootstrapReply({ ok: true, data: { hasVault: false, unlocked: false } });
+    await settle();
+    refReply({ ok: true, data: FIXTURES['account.getActiveRef']() });
+    await settle();
+    ok('stale no-vault bootstrap cannot interrupt required backup after creation',
+      creating.currentPath === '/export' && textOf(creating.root).includes('thistle'));
+  } finally {
+    WIN.dispatchEvent({ type: 'unload' }); creating.stop(); chrome.runtime.sendMessage = originalSend;
+  }
+}
+
 // ---- Run -------------------------------------------------------------------
 
 const startedAt = Date.now();
@@ -6110,6 +6296,7 @@ try {
   await trackedDomainsTest();
   await dashboardActivationTest();
   await panelExclusionTest();
+  await nonBlockingBootTest();
   negativeControls();
 } finally {
   releaseConsole();

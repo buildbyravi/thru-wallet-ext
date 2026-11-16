@@ -1,155 +1,108 @@
 # Architecture
 
-**Status:** IMPLEMENTED unless a section is explicitly labelled otherwise. Source and tests remain authoritative.
+**Document Class:** Authority (Implemented System Architecture)
+**Baseline:** Contract **v33** (`154` methods, `15` routes) | **Status:** `IMPLEMENTED`, `TESTED` unless explicitly marked otherwise.
 
-## Dependency direction
+---
+
+## 1. Dependency Direction and Enforced Layering
 
 ```text
-popup / side-panel routes
-  → src/ui/app/bridge.js
-  → src/shared/contract/manifest.js
-  → src/background/api-router.js
-  → src/background/services/*
-  → src/lib/thru-client.js | src/lib/vault.js | src/lib/networks.js
-  → pinned @thru/sdk and @thru/programs
+Popup / Side-Panel Routes (src/ui/app/routes/*)
+  -> src/ui/app/bridge.js               [sole outbound chrome.runtime.sendMessage caller]
+  -> src/shared/contract/manifest.js    [v33 allowlist: 154 methods, 8 events, 65 error codes]
+  -> src/background/api-router.js       [auth check -> v32 consentToken gate -> signing-guard -> dispatch]
+  -> src/background/services/*          [wallet, tx, token, name, registrar, review, history, defi...]
+  -> src/lib/*                          [sole leaf allowed to import @thru/sdk & @thru/programs]
 ```
 
-`scripts/check-layering.mjs` enforces this direction, contains first-party Thru package imports in
-`src/lib/`, forbids direct UI storage access, and permits one Chrome message owner per direction.
-The UI cannot import the vault, backend services, network implementation, or RPC adapter.
+Inbound background-to-UI push events flow exclusively from `src/background/services/event-service.js` to `bridge.js`.
 
-## Authoritative responsibilities
+`scripts/check-layering.mjs` enforces on every build and test run:
+- `src/ui/**` never imports `src/background/**` or `src/lib/vault.js`, and never accesses `chrome.storage` directly.
+- `src/lib/**` is a strict leaf (`lib-is-a-leaf`): it never imports UI, background, or feature modules, and `@thru/sdk` / `@thru/programs` imports are confined to `src/lib/**`.
+- Feature internals (`src/background/features/<id>/**`, and any future `src/features/<id>/**`) cannot import sibling features or vault internals.
+- Zero HTML-injection sinks (`innerHTML`, `outerHTML`, `insertAdjacentHTML`) across all `128` shipped runtime JS files (vendored `qrcode-generator.js` excluded).
+- `scripts/check-cycles.mjs` ratchets import cycles across `src/` (`1` legacy 5-service transaction cycle allowed; zero new cycles permitted).
 
-| Concern | Authority |
+---
+
+## 2. Single-Owner Module Authorities
+
+| Concern | Single Authoritative Implementation |
 | --- | --- |
-| API compatibility and auth declaration | `src/shared/contract/manifest.js` |
-| API dispatch, centralized auth, error envelope | `src/background/api-router.js` |
-| Key material, encryption, derivation, account resolution | `src/lib/vault.js` |
-| Thru RPC, transaction construction, program bindings | `src/lib/thru-client.js` |
-| Network identity and verified capabilities | `src/lib/networks.js` |
-| Network activation and adapter binding | `src/background/services/network-service.js` |
-| Amount parsing/formatting (incl. the one 9-decimal THRU scale rule) | `src/shared/format.js` |
-| Transaction review contract, decoder registry, error codes | `src/shared/tx-review/model.js` + `registry.js` + `decoders/` |
-| Review preparation, binding, recheck, dispatch to signing | `src/background/services/review-service.js` + `services/review/{kinds,store}.js` |
-| Review rendering and the confirm→auth→submit step | `src/ui/domain/tx-review/review-card.js` + `confirm.js` |
-| Persistent user preferences | `src/background/services/preferences-service.js` |
-| Submitted transaction lifecycle | `src/background/services/pending-tx-service.js` |
-| UI DOM construction | `src/ui/kit/dom.js` |
-| Event notifications (transient) | `src/ui/kit/toast.js` |
-| Persistent screen state / banners | `src/ui/kit/feedback.js` (`Banner`, `Empty`, `Spinner`) |
-| Address / identifier shortening | `src/shared/format.js` (`shortenMiddle`, `shortAddress`) |
-| Copy-to-clipboard | `src/ui/kit/button.js` (`CopyButton`) |
+| API method allowlist, auth levels & error codes | `src/shared/contract/manifest.js` (+ `defi-schema.js` for the 43 DeFi M0 methods) |
+| Central auth, v32 `consentToken` gate & JSON envelope | `src/background/api-router.js` |
+| Encryption, multi-keyring vault & HD derivation | `src/lib/vault.js` *(sacred — Rule 2)* |
+| Thru RPC, EOA/NOOP/faucet/token builders & decoding | `src/lib/thru-client.js` *(sacred — Rule 2)* |
+| Compute/memory/state units & header fee policy | `src/lib/tx-units.js` (`autoUnits`, `networkFeeUnits`) |
+| Network configs & canonical program pins | `src/lib/networks.js` + `src/lib/bootstrap-pins.js` |
+| Active network binding & v7 custom-RPC quarantine | `src/background/services/network-service.js` |
+| BigInt money math & identifier shortening | `src/shared/format.js` (`formatThru`, `parseThruAmount`, `formatTokenAmount`, `shortenMiddle`, `shortAddress`) |
+| Opaque account URL references | `src/shared/refs.js` |
+| Global vs network-scoped storage keys | `src/shared/network-scope.js` (`GLOBAL_KEYS`, `SCOPED_KEYS`, `scopedKey`) |
+| Review wire schema, TTL & review error registry | `src/shared/tx-review/model.js` + `registry.js` + `decoders/*.js` (`9` kinds) |
+| Review preparation, rechecks & v32 consent tokens | `src/background/services/review-service.js` + `services/review/{kinds,store,consent}.js` |
+| Review UI card & confirm->auth->submit execution | `src/ui/domain/tx-review/review-card.js` + `confirm.js` |
+| Safe DOM node creation | `src/ui/kit/dom.js` (`h()`) |
+| Transient event notifications (`toast`) | `src/ui/kit/toast.js` |
+| Persistent inline screen state (`Banner`, `Empty`) | `src/ui/kit/feedback.js` |
+| Clipboard copy control | `src/ui/kit/button.js` (`CopyButton`; `/receive` owns its inline `"Copied"` box) |
 
-### Shared UI platform — how a feature consumes it
+---
 
-A route composes screens out of `src/ui/kit/*` and `src/ui/domain/*`; it does not build these
-primitives itself. The rules that the test suite enforces (`test/test-shared-platform.mjs`):
+## 3. Shared UI Platform Contract (`test/test-shared-platform.mjs`)
 
-- **Events go to `toast()`.** A toast always carries a message — a string argument is the title, and
-  a payload with no text renders nothing at all. `pending` is for in-flight work and is resolved in
-  place with `handle.update({...})`; `key` makes a repeated event update its own bar. Never build a
-  toast element, a toast host, or a second notification bar in a feature.
-- **Persistent state goes to `Banner()`.** `error` · `warning` · `info` · `success` (`ok` is a
-  synonym). An empty banner renders nothing.
-- **Never truncate a string by hand.** `shortenMiddle(value, {head, tail})` / `shortAddress(value)`
-  in `src/shared/format.js`; it guarantees the result is never longer than the input, and the caller
-  keeps the full value for `title`/`aria-label` and for anything that is compared or sent.
-- **Copying uses `CopyButton`.** The one exception is the Receive address box, which swaps its own
-  label to "Copied" and therefore owns its affordance; both surface a failure instead of failing
-  silently.
-- **Never render a claim the wallet cannot support.** "Submitting", "submitted", "confirmed" and
-  "outcome unknown" are distinct states, and a notification must not collapse a timeout into
-  "failed" or a signature into "confirmed".
+Routes compose screens from `src/ui/kit/*` and `src/ui/domain/*` and obey five structural UI rules:
 
-## Signing and transaction boundary
+1. **Transient Events -> `toast()` (`Rule 26`):** Callers always pass a props object `{ tone, title, message?, key?, duration? }` — bare-string calls (`toast('...')`) are banned across `src/` by `test/test-toast.mjs` (internally `toast.js` normalizes strings to `{ title }` and returns an inert no-DOM handle on empty payloads as defense-in-depth). Tones: `success`, `info`, `warning`, `error`, `pending`. `dismissAllToasts()` runs automatically on wallet lock, account switch, and network switch.
+2. **Persistent Screen State -> `Banner()`:** Tones `error`, `warning`, `info`, `success` (`ok` alias). `pending` is forbidden on `Banner` because banners have no automatic resolution lifecycle.
+3. **One Surface Per Event (`Rule 29`):** A transaction submission opens one keyed `pending` `toast()` and resolves that **same** toast in place via `handle.update(...)`. Routes clear `Banner` and field-status lines before submitting and never duplicate submission outcomes across multiple surfaces.
+4. **One Truncation Primitive:** Display shortening uses `shortenMiddle` / `shortAddress` (`truncateAddress` alias) in `src/shared/format.js`, preserving the full string in `title` / `aria-label` and in every wire or comparison value. Review counterparty addresses are **never** truncated (`word-break: break-all`).
+5. **Non-Blocking First Paint (`Rule 15`):** Every route paints immediately from cached storage (`*.getCached*`) or explicit checking/unknown placeholders; live RPC hydration replaces placeholders asynchronously and labels stale data honestly.
 
-No UI route signs. A value-moving route calls `tx.prepareReview`, renders
-`src/ui/domain/tx-review/review-card.js`, and submits through `tx.confirmReview`
-(`src/ui/domain/tx-review/confirm.js`). `confirmReview` re-validates and returns the exact submit
-instructions (`method` + `params`); the helper then calls that operation's existing signing method
-through the bridge — `tx.sendChecked`, `token.transferChecked`, `name.register` /
-`name.purchase` / `name.renewLease` / `name.claimExpired`, or `tx.claimFaucet` — and discards the
-review on success. Neither `prepareReview` nor `confirmReview` signs. Contract v16 removed the retired
-unbound send mutations; contract v29 added the review trio (`prepareReview`, `confirmReview`,
-`discardReview`), all `auth: 'unlocked'` and none of them signing — `confirmReview` returns
-`{method, params}` for the existing signed call. The background verifies
-authorization and reviewed account/network context on prepare and again on confirm, and a
-signing-operation guard prevents active-network rebinding from operation entry through submission
-completion. Pending acceptance is recorded as `submitted`; it is never presented as confirmation.
+---
 
-The only signing-adjacent call a UI file makes by name is the v12 activation path,
-`tx.registerAccount` (`auth:'unlocked'`, exact vault-owned address, zero declared fee, signed with
-that account's own key). Dashboard uses it for the active account and Send uses it JIT for an owned
-recipient. `test/test-tx-review.mjs` [14] scans `src/ui/**/*.js` for `bridge.send('…')` literals and
-fails on any `auth:'signing'` method, so the older `tx.autoCreateAccount` cannot come back through a
-route (it was removed from Dashboard; see `docs/DEFECT_LOG.md` §10).
+## 4. Signing, Review, and Background Consent Boundary (`v29`–`v32`)
 
-The review boundary is also a decoding boundary: `decoders/` produces explicit facts for known
-intents (`native-send`, `token-transfer`, `domain-register`, `domain-purchase`, `domain-renew`,
-`domain-claim`, `domain-record`, `faucet-claim`) and an explicit unknown with raw data (and no
-submit policy) for everything else. Facts that assert something about the chain are three-state
-where the chain can fail to answer: `domain-record`'s existence/ownership are `null` when the read
-failed, and the card then says "could not be verified" instead of asserting an absence. A review
-service never guesses a friendly name for an instruction it cannot decode, and never fabricates a
-fee, balance change, or simulation result. `tx.simulate` answers `supported:false` on the current
-backend, so post-transaction balances are always unavailable by policy, not by omission.
+Startup and navigation follow D-027: boot paints a public unlock/onboarding surface before
+bootstrap replies; synchronous guards use session state from authenticated responses/events.
+Unknown auth cannot mount private screens, and backend auth remains mandatory on protected
+methods. Same-context hydration preserves inputs. Lock/reset and newer navigation invalidate
+late bootstrap work; route teardown clears secrets before awaiting any guard or view.
 
-The current adapter uses one process-level SDK binding. The operation guard is therefore a required
-part of the design, not a UI convenience. A future immutable per-network SDK client may replace the
-lock only with equivalent interleaving and live-network evidence.
+Full operational walkthrough: `docs/guides/transaction-review.md`.
 
-## Persistent state
+- **UI Side (`Rule 16`):** Value-moving routes call `tx.prepareReview`, mount `TxReviewCard`, and submit via `confirm.js` (`submitReviewedReview` with a mandatory route `AbortSignal`). `test/test-tx-review.mjs` [14] scans `src/ui/`, `src/popup/`, and `src/features/` for both static `bridge.send('...')` literals and dynamic dispatch to guarantee no UI file calls an `auth: 'signing'` method directly.
+- **Background Consent Gate (`v32`, `Rule 28`):** `tx.confirmReview` re-validates review readiness (`state === 'ready'`), TTL (`120s`), `bindingHash`, active account/network, acknowledgements, and kind-specific chain rechecks, then mints a one-time 32-byte `consentToken` (`60s` TTL, in-memory `Map` in `src/background/services/review/consent.js`) bound to `{ method, sha256(canonicalParams), accountAddress, networkId }`. `api-router.js` verifies and burns `consentToken` before `signing-guard.js` or any handler runs, refusing unreviewed calls with `REVIEW_REQUIRED`.
+- **Two Documented Router Exemptions (`CONSENT_EXEMPT`):**
+  1. `tx.registerAccount` (`auth: 'unlocked'`): exact vault-owned self-registration (`NOOP_PROGRAM_ADDRESS`, fee `0n`, nonce `0n`, `stateUnits: 1`), invoked at account creation, on `/dashboard`, and JIT on `/send`.
+  2. `intent.submit` (`auth: 'signing'`): dark-launched DeFi M0 method gated off behind `FLAGS.DEFI_INTENT === false` (`FEATURE_DISABLED`).
+- **Network-Mutation Lock (`D-010`):** Because `thru-client.js` binds a process-level SDK client, `signing-guard.js` blocks `network.setActive` from signing-operation entry through submission completion.
+- **Session Boundary Cleanup (`Rule 21`):** Manual lock, auto-lock alarm (`walletService.lock()`), locked worker startup, account switch, network switch, and wallet reset clear both `tx_reviews` and in-memory `consentToken`s.
 
-Global identity/security state includes the encrypted vault, unlocked trusted-context session,
-account labels, contacts, preferences, lockout state, and active network identity. Chain-derived state
-uses `scopedKey(base, networkId)` for balances, pending transactions, deployed tokens, and History.
+---
 
-Durable structured records use explicit schema versions and legacy migration handling. Unsupported
-future versions fail closed. Balance and History stores are rebuildable caches: they are network
-scoped, freshness-labelled, and discarded when chain identity evidence does not match. Schema changes
-must add old→new fixtures before shipping.
+## 5. Persistent Storage and Network Scoping (`src/shared/network-scope.js`)
 
-Domain tracking (contract v30) is owned by `primary-name-service.js`, alongside primary
-aliases. `thru_registered_domains::<networkId>` stores `{version:1, revision, records}`;
-each candidate carries its account address, name/root/domain identity, last check status,
-and verification timestamps. The absent-registry v0 migration projects existing
-`thru_primary_names::<networkId>` aliases without RPC or a read-side write. The next
-mutation atomically persists both keys, preserving the old primary-key shape. Unlinking
-therefore migrates the old primary before removing its alias. Unsupported versions fail closed.
+- **Session Memory Only (`chrome.storage.session`):** `unlocked_session` (decrypted keyrings/keys; wiped immediately on lock, extension reload, or browser exit). Additionally, v32 `consentToken`s live strictly in worker JS memory (`Map`), never in `chrome.storage`.
+- **Global Persistent Keys (`GLOBAL_KEYS`, `11` keys in `chrome.storage.local`):** `vault` (v1 PBKDF2-600k + AES-256-GCM envelope), `vault_legacy_backup_v1`, `unlocked_session` (session store), `active_account_ref`, `thru_account_labels`, `thru_contacts` (schema v1), `thru_prefs` (schema v1), `thru_system_autolock_minutes`, `thru_unlock_lockout`, `thru_active_network`, `thru_custom_networks` (quarantined inert).
+- **Network-Scoped Keys (`SCOPED_KEYS`, `9` base keys via `scopedKey(base, networkId)`):**
+  1. `thru_balance_cache::<networkId>` (rebuildable native balance cache)
+  2. `thru_token_balance_cache::<networkId>` (rebuildable verified token balance cache)
+  3. `thru_pending_txs::<networkId>` (schema v1, per-network serialized queue)
+  4. `thru_deployed_tokens::<networkId>` (token registry / visibility)
+  5. `thru_history_cache::<networkId>` (per-address cached stream + chain-identity check)
+  6. `defi_intents::<networkId>` (dark-launched G2-S0 intent store)
+  7. `thru_primary_names::<networkId>` (wallet-local primary domain alias)
+  8. `thru_registered_domains::<networkId>` (schema v1 revision-guarded tracked domain inventory; `docs/guides/domains-and-registrar.md`)
+  9. `tx_reviews::<networkId>` (schema v1 serialized prepared-review store, `120s` TTL, cap `40`)
 
-All registry/primary mutations share a per-network queue. Refreshes only apply to their
-unchanged revision, so a late read cannot resurrect an untracked name or overwrite newer
-primary/import edits. Reads capture an RPC client before asynchronous derivation; the
-adapter's optional bound-client `getAccountInfo` argument prevents cross-network hydration
-without blocking network switching. Cached candidates are always stale. Fresh ownership
-requires the name-service program, derived identity, decoded name/parent and wallet owner
-to agree. Import and primary selection recheck ownership in the backend; local untracking
-is not a chain operation. Confirmed registration handlers retain candidates before returning,
-even if the popup closes. Persistence failure is reported separately from transaction success.
-Program-owner metadata is normalized through `thruClient.getAccountOwnerAddress`: SDK
-`Pubkey` objects require `toThruFmt()`, never `String(object)`. Malformed metadata stays unknown.
-Wallet reset clears both stores across networks and invalidates late reads/registration saves
-with a process-local generation; in-flight storage writes settle before cleanup completes.
+Durable schemas migrate legacy `v0` shapes losslessly and **fail closed** on unknown future schema versions (`test/test-storage-migrations.mjs`).
 
-## Smart contract integration & engineering policy
+---
 
-All on-chain program integrations (native programs, official registry, custom registrar, token standards, and future DeFi/AMM modules) adhere to `docs/GLOBAL_SMART_CONTRACT_POLICY.md`. Key invariants:
-1. **Inspect before build or reuse**: verify ABI, account layouts, and opcode behavior against official Thru protocol implementations before implementation.
-2. **Reuse vs. new program hierarchy**: prefer standard SDK and protocol contracts; deploy custom programs only when justified by unresolvable upstream gaps, strictly maintaining integer-only BigInt arithmetic and PDA derivation safety.
-3. **Official source reuse discipline**: modified or extended contracts must have separate namespaces, explicit delta documentation, and must never masquerade as official protocol programs.
-4. **Mainnet deployment gates**: zero-warning builds, 100% deterministic test passes, Betanet live verification, key security governance, and audit sign-off are required prior to Mainnet release.
+## 6. Optional Feature Isolation & Smart Contract Policy
 
-## Optional features
-
-Core wallet services do not depend on optional products. Future Launchpad, DEX, Prediction,
-Portfolio, NFT, or token-product UI belongs under `src/features/<feature>/`; backend code uses a
-separate feature namespace. Features never import the vault, implement signing, or own a signing
-screen: they add a decoder + a kind spec and reuse the shared review pipeline. Detailed target
-boundaries and deletion criteria are in `docs/MODULE_BOUNDARIES.md`.
-
-## Verification boundaries
-
-Deterministic Node tests enforce contracts, derivation vectors, transaction encoding, storage
-migration, network isolation, layering, CSP, routes, lifecycle teardown, and secret hygiene. They do
-not verify browser layout, Chrome extension lifecycle behavior, or live-chain semantics. Those remain
-separate checks in `docs/MANUAL_SMOKE_CHECKLIST.md` and `docs/STATUS_AND_ROADMAP.md`.
+- Optional product surfaces (DEX, Launchpad, Markets, Profiles) are decoupled from wallet core per `docs/MODULE_BOUNDARIES.md` and gated off behind build-time `FLAGS` (`Rule 25`).
+- On-chain program integrations and `contracts/thru-custom-registrar` follow `docs/GLOBAL_SMART_CONTRACT_POLICY.md`.

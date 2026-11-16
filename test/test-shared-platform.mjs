@@ -242,6 +242,82 @@ section('5] features go through the kit, never a copy');
 }
 
 // =============================================================================================
+section('6] CopyButton reports one failure and never survives teardown');
+{
+  Object.getPrototypeOf(DOC.body).replaceChildren = function (...children) {
+    while (this.firstChild) this.removeChild(this.firstChild);
+    for (const child of children) this.appendChild(child);
+  };
+  Object.defineProperty(Object.getPrototypeOf(Object.getPrototypeOf(DOC.body)), 'isConnected', {
+    configurable: true, get() {
+      return this === DOC.body || this === DOC.documentElement || Boolean(this.parentNode?.isConnected);
+    },
+  });
+  const { CopyButton } = await import('../src/ui/kit/button.js');
+  const { activeToasts, dismissAllToasts } = await import('../src/ui/kit/toast.js');
+  const flush = () => new Promise(setImmediate);
+  const secret = 'clipboard-content-must-not-be-notified';
+  Object.defineProperty(globalThis, 'navigator', { configurable: true,
+    value: { clipboard: { writeText: async () => { throw new Error(secret); } } } });
+  const fallback = CopyButton({ getValue: () => secret });
+  DOC.body.appendChild(fallback.el);
+  fallback.el.click(); await flush();
+  eq('a rejected clipboard write without a handler creates one fallback', activeToasts().length, 1);
+  ok('fallback is plain failure copy and contains no clipboard material',
+    activeToasts()[0]?.tone === 'error' && !activeToasts()[0]?.text.includes(secret));
+  fallback.destroy(); fallback.el.remove(); dismissAllToasts();
+
+  let results = 0;
+  const handled = CopyButton({ getValue: secret, onResult: (error) => { if (error) results++; } });
+  DOC.body.appendChild(handled.el); handled.el.click(); await flush();
+  eq('the consumer receives exactly one error', results, 1);
+  eq('a consumer handler suppresses the fallback', activeToasts().length, 0);
+  handled.destroy(); handled.el.remove();
+
+  let reject;
+  navigator.clipboard.writeText = () => new Promise((_resolve, fail) => { reject = fail; });
+  const late = CopyButton({ getValue: secret, onResult: () => { results++; } });
+  DOC.body.appendChild(late.el); late.el.click(); late.destroy(); late.el.remove();
+  reject(new Error('late failure')); await flush();
+  eq('a destroyed/locked consumer receives no late feedback', results, 1);
+  eq('a destroyed button creates no late fallback', activeToasts().length, 0);
+
+  const originalSet = globalThis.setTimeout;
+  const originalClear = globalThis.clearTimeout;
+  const timers = new Map();
+  globalThis.setTimeout = (fn, ms, ...args) => {
+    const timer = originalSet(fn, ms, ...args); timers.set(timer, ms); return timer;
+  };
+  globalThis.clearTimeout = (timer) => { timers.delete(timer); originalClear(timer); };
+  try {
+    navigator.clipboard.writeText = async () => {};
+    const success = CopyButton({ getValue: secret });
+    DOC.body.appendChild(success.el); success.el.click(); await flush();
+    ok('successful copy gives its existing inline feedback', success.el.classList.contains('copied'));
+    ok('successful copy arms its feedback timer', [...timers.values()].includes(1100));
+    success.destroy(); success.el.remove();
+    ok('destroy clears the inline feedback timer', ![...timers.values()].includes(1100));
+  } finally {
+    for (const timer of timers.keys()) originalClear(timer);
+    globalThis.setTimeout = originalSet;
+    globalThis.clearTimeout = originalClear;
+  }
+}
+
+section('7] Domain monetary facts use the canonical secondary foreground');
+{
+  const screens = readFileSync('src/popup/styles/screens.css', 'utf8');
+  const base = readFileSync('src/popup/styles/base.css', 'utf8');
+  const tokens = readFileSync('src/popup/styles/tokens.css', 'utf8');
+  const rule = screens.match(/\.name-price,\s*\.name-balance\s*\{([^}]+)\}/)?.[1] || '';
+  const canonical = (text) => /color:\s*var\(--text-2\)\s*;/.test(text);
+  ok('price and balance share the existing canonical foreground', canonical(rule));
+  ok('the canonical foreground is also the muted text owner', /\.muted\s*\{[^}]*color:\s*var\(--text-2\)/.test(base));
+  eq('light and dark both define the existing foreground', [...tokens.matchAll(/--text-2:\s*#[\da-f]{6}/gi)].length, 2);
+  eq('control: undefined text-secondary with a dark hardcoded fallback is rejected', canonical('color: var(--text-secondary, #475569);'), false);
+  eq('control: the canonical Domain rule is recognized', canonical('color: var(--text-2);'), true);
+}
+
 console.log('');
 if (failures) {
   console.error(`shared-platform checks: ${checks - failures} passed, ${failures} failed.`);

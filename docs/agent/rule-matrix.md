@@ -94,7 +94,7 @@ if `AGENTS.md` points at a file that does not exist, which is the failure the ta
 `scripts/check-agents.mjs` (runs inside `npm test`) asserts:
 
 1. every repository path mentioned in `AGENTS.md` and in `docs/agent/*.md` exists;
-2. rules **1–17** are all present, numbered and in order;
+2. rules **1–30** are all present, numbered and in order;
 3. every rule names a `*check:*` (or the literal word `review`) — a rule with neither fails;
 4. the file stays under a size ceiling that only ratchets down;
 5. **negative controls**: a synthetic document with a missing path, a missing rule, and a rule with

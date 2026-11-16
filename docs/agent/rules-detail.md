@@ -58,6 +58,11 @@ rule 14 (layout needs eyes), `test-launchpad-quarantine.mjs` cites rule 6 (BigIn
     (`*.getCached*`), and label stale data instead of pretending it is fresh (2026-10-26 owner
     directive).
 
+    Startup and navigation obey the same rule: paint safe local UI before bootstrap hydration,
+    never an intermediate "Checking wallet" page after unlock. Do not erase typed input when
+    same-context reads finish. UI session caching must never bypass background authorization;
+    lock/reset invalidate private UI and departing routes clear secrets synchronously.
+
 ## Rule 16
 
 16. **A value-moving screen goes through the ONE review pipeline; it never signs.** The sequence is

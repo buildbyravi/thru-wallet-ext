@@ -144,7 +144,9 @@
 //   per network under the scoped key `tx_reviews`.
 //   v30 adds versioned tracked-domain reads/imports/selection, preserving primary aliases.
 //   v31 adds bidirectional reverse domain resolution.
-export const CONTRACT_VERSION = 32;
+//   v32 enforces the background review consent token gate across value-moving handlers.
+//   v33 appends strict chain-verified token import; legacy metadata import remains compatible.
+export const CONTRACT_VERSION = 33;
 
 export const METHODS = {
   // ---- System ------------------------------------------------------------
@@ -437,7 +439,7 @@ export const METHODS = {
     // `expectedNetworkId`, which every caller through the review pipeline sends. A declared
     // parameter that no code reads is a promise the wallet does not keep, so it is gone
     // (test-signing-surface.mjs enumerates every signing method against its handlers).
-    params: ['name', 'parentAddress', 'password', 'via', 'years', 'expectedNetworkId', 'expectedAccountAddress', 'expectedPricePerYear'],
+    params: ['name', 'parentAddress', 'password', 'via', 'years', 'expectedNetworkId', 'expectedAccountAddress', 'expectedPricePerYear', 'expectedRegistrarFacts', 'expectedNetworkFeeUnits', 'expectedNetworkFeeSupported'],
     returns: '{ signature, domainAddress, rootAddress, name?, trackingFailed? } — register a label under a parent root/domain; self-signed (authority = fee payer, the ONLY key). ' +
       'Protocol fee 0n — NAME_SERVICE_PROGRAM_FEE = 0 in the first-party CLI (txn_tools.rs, 2026-10-24); no payment token involved. ' +
       'parentAddress may be blank: the canonical root is then auto-discovered on-chain. ' +
@@ -477,7 +479,7 @@ export const METHODS = {
   // single-flight guard would not cover it. The declared params are the ones the handler reads:
   // `expectedNetworkId`/`expectedAccountAddress` are what bind the signed write to the review.
   'name.setRecord': {
-    params: ['name', 'rootAddress', 'key', 'value', 'expectedNetworkId', 'expectedAccountAddress', 'password'],
+    params: ['name', 'rootAddress', 'key', 'value', 'expectedNetworkId', 'expectedAccountAddress', 'password', 'expectedNetworkFeeUnits', 'expectedNetworkFeeSupported'],
     returns: '{ signature, domainAddress, rootAddress, key, value } — APPEND a key/value record '
       + 'to a domain the signer owns. Opcode 2 is append: setting an existing key adds a second '
       + 'record, it does not replace the first. Pending acceptance is tracked, never presented as '
@@ -572,19 +574,19 @@ export const METHODS = {
     since: 22,
   },
   'name.purchase': {
-    params: ['name', 'years', 'password', 'expectedNetworkId', 'expectedAccountAddress', 'expectedPricePerYear'],
+    params: ['name', 'years', 'password', 'expectedNetworkId', 'expectedAccountAddress', 'expectedPricePerYear', 'expectedRegistrarFacts', 'expectedNetworkFeeUnits', 'expectedNetworkFeeSupported'],
     returns: '{ signature, name, domainAddress, rootAddress, trackingFailed? } — buys a .thru lease; price = config.pricePerYear × years in registry token; tracking failure does not negate confirmation',
     auth: 'signing',
     since: 22,
   },
   'name.renewLease': {
-    params: ['name', 'years', 'password', 'via', 'expectedNetworkId', 'expectedAccountAddress', 'expectedPricePerYear', 'expectedLeaseEndTime'],
+    params: ['name', 'years', 'password', 'via', 'expectedNetworkId', 'expectedAccountAddress', 'expectedPricePerYear', 'expectedLeaseEndTime', 'expectedRegistrarFacts', 'expectedNetworkFeeUnits', 'expectedNetworkFeeSupported'],
     returns: '{ signature, name, domainAddress, rootAddress } — extends the signer-owned lease',
     auth: 'signing',
     since: 22,
   },
   'name.claimExpired': {
-    params: ['name', 'years', 'password', 'expectedNetworkId', 'expectedAccountAddress', 'expectedPricePerYear', 'expectedLeaseEndTime'],
+    params: ['name', 'years', 'password', 'expectedNetworkId', 'expectedAccountAddress', 'expectedPricePerYear', 'expectedLeaseEndTime', 'expectedRegistrarFacts', 'expectedNetworkFeeUnits', 'expectedNetworkFeeSupported'],
     returns: '{ signature, name, domainAddress, rootAddress, trackingFailed? } — takes over an expired lease (owner ≠ signer, chain enforces expiry)',
     auth: 'signing',
     since: 22,
@@ -634,7 +636,7 @@ export const METHODS = {
       + 'feeDeclaredUnits, feeCharged: false, nonce, blockTimeMs } — lazy per-signature detail for '
       + 'the transaction sheet. feeDeclaredUnits is the HEADER-DECLARED fee, not an amount debited '
       + '(Thru carries no charged-fee field); blockTimeMs is the containing block\'s time and is '
-      + 'null when the node did not send one. Unknown => null, never a guess. See docs/archive/TX_DETAIL_SPIKE.md.',
+      + 'null when the node did not send one. Unknown => null, never a guess. See docs/guides/protocol-and-rpc.md.',
     auth: 'none',
     since: 10,
   },
@@ -752,6 +754,14 @@ export const METHODS = {
     returns: 'the saved record — metadata only, does not prove the mint exists on-chain',
     auth: 'unlocked',
     since: 4,
+  },
+  'token.importVerified': {
+    params: ['mintAddress', 'symbol'],
+    returns: 'The saved network-scoped record, with decimals and ticker verified from the mint; '
+      + 'symbol is an optional fallback only. Rejects caller-supplied name/decimals, duplicate mints, '
+      + 'unsupported mint accounts, and network changes during verification or persistence.',
+    auth: 'unlocked',
+    since: 33,
   },
   'token.readMint': {
     params: ['mintAddress'],
@@ -1270,6 +1280,8 @@ export const ERROR_CODES = {
   NOT_NAME_OWNER: 'The signing account does not own this name on-chain.',
   REVIEW_ACCOUNT_CHANGED: 'The active account changed after review; review the transaction again.',
   REVIEW_NETWORK_CHANGED: 'The active network changed after review; review the transaction again.',
+  REVIEW_REGISTRAR_CHANGED: 'The registrar configuration changed after review; review the transaction again.',
+  REVIEW_FEE_CHANGED: 'The network fee changed after review; review the transaction again.',
   TX_RESULT_MISSING: 'No execution result arrived; the outcome is unknown, not failed.',
   // v30/v31 tracked-domain registry (services/primary-name-service.js) — same rule: a UI
   // branches on the code, so the code is declared here rather than only in a thrown message.

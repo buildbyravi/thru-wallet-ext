@@ -107,13 +107,9 @@ function validatePreferenceValue(key, value) {
 }
 
 async function readRaw() {
-  try {
-    const res = await chrome.storage.local.get(PREFS_KEY);
-    const stored = res?.[PREFS_KEY];
-    return stored && typeof stored === 'object' ? stored : {};
-  } catch {
-    return {};
-  }
+  const res = await chrome.storage.local.get(PREFS_KEY);
+  const stored = res?.[PREFS_KEY];
+  return stored && typeof stored === 'object' ? stored : {};
 }
 
 /**
@@ -137,7 +133,56 @@ export async function getPreferences() {
   for (const field of ARRAY_FIELDS) {
     if (!Array.isArray(merged[field])) merged[field] = [...DEFAULTS[field]];
   }
-  return merged;
+  return structuredClone(merged);
+}
+
+let mutationQueue = Promise.resolve();
+
+function mutatePreferences(updater, security = false) {
+  const result = mutationQueue.then(async () => {
+    const current = await getPreferences();
+    const patch = updater(structuredClone(current));
+    const isAsync = patch != null && typeof patch.then === 'function';
+    // Reject async results without leaving their original rejection unhandled.
+    if (isAsync) Promise.resolve(patch).catch(() => {});
+    if (isAsync || !patch || typeof patch !== 'object' || Array.isArray(patch)
+      || ![Object.prototype, null].includes(Object.getPrototypeOf(patch))) {
+      throw new Error(`${security ? 'Security preferences' : 'Preferences'} patch must be an object.`);
+    }
+    const next = { ...current };
+    const rejected = [];
+    for (const [key, value] of Object.entries(patch)) {
+      const allowed = security ? SECURITY_FIELDS.has(key)
+        : Object.prototype.hasOwnProperty.call(DEFAULTS, key) && key !== 'version' && !SECURITY_FIELDS.has(key);
+      if (!allowed) {
+        rejected.push(key);
+        continue;
+      }
+      next[key] = validatePreferenceValue(key, value);
+    }
+    if (rejected.length) {
+      throw new Error(`${security ? 'Unsupported security preference' : 'Unknown preference'} key(s): ${rejected.join(', ')}`);
+    }
+    next.version = PREFS_VERSION;
+    const snapshot = structuredClone(next);
+    await chrome.storage.local.set({ [PREFS_KEY]: snapshot });
+    return structuredClone(snapshot);
+  });
+  // A failed validation/read/write must not poison later mutations.
+  mutationQueue = result.catch(() => {});
+  return result;
+}
+
+/**
+ * Compute a generic-only partial patch from a detached authoritative snapshot inside the queue.
+ * The updater is synchronous; mutations of its snapshot are ignored unless returned in the patch.
+ * Security fields, version and unknown keys are rejected exactly as in setPreferences.
+ * @param {(current: Object) => Object} updater
+ * @returns {Promise<Object>} The detached full record after the write succeeds.
+ */
+export async function updatePreferences(updater) {
+  if (typeof updater !== 'function') throw new Error('Preferences updater must be a function.');
+  return mutatePreferences(updater);
 }
 
 /**
@@ -146,28 +191,8 @@ export async function getPreferences() {
  * @param {Object} patch
  */
 export async function setPreferences(patch) {
-  if (!patch || typeof patch !== 'object' || Array.isArray(patch)) {
-    throw new Error('Preferences patch must be an object.');
-  }
-  const current = await getPreferences();
-  const next = { ...current };
-  const rejected = [];
-
-  for (const [key, value] of Object.entries(patch)) {
-    if (!Object.prototype.hasOwnProperty.call(DEFAULTS, key) || key === 'version' || SECURITY_FIELDS.has(key)) {
-      rejected.push(key);
-      continue;
-    }
-    next[key] = validatePreferenceValue(key, value);
-  }
-
-  if (rejected.length) {
-    throw new Error(`Unknown preference key(s): ${rejected.join(', ')}`);
-  }
-
-  next.version = PREFS_VERSION;
-  await chrome.storage.local.set({ [PREFS_KEY]: next });
-  return next;
+  const snapshot = structuredClone(patch);
+  return updatePreferences(() => snapshot);
 }
 
 /**
@@ -178,44 +203,18 @@ export async function setPreferences(patch) {
  * @param {Object} patch
  */
 export async function setSecurityPreferences(patch) {
-  if (!patch || typeof patch !== 'object' || Array.isArray(patch)) {
-    throw new Error('Security preferences patch must be an object.');
-  }
-  const current = await getPreferences();
-  const next = { ...current };
-  const rejected = [];
-
-  for (const [key, value] of Object.entries(patch)) {
-    if (!SECURITY_FIELDS.has(key)) {
-      rejected.push(key);
-      continue;
-    }
-    if (ARRAY_FIELDS.has(key)) {
-      if (!Array.isArray(value)) throw new Error(`'${key}' must be an array.`);
-      next[key] = value;
-    } else if (key === 'requirePasswordForSigning' || key === 'enforceWhitelist' || key === 'defiAlwaysRequirePassword') {
-      next[key] = Boolean(value);
-    } else {
-      next[key] = value;
-    }
-  }
-
-  if (rejected.length) {
-    throw new Error(`Unsupported security preference key(s): ${rejected.join(', ')}`);
-  }
-
-  next.version = PREFS_VERSION;
-  await chrome.storage.local.set({ [PREFS_KEY]: next });
-  return next;
+  const snapshot = structuredClone(patch);
+  return mutatePreferences(() => snapshot, true);
 }
 
 /** Toggle membership of an address/id in one of the array fields. */
 async function toggleMember(field, value, present) {
-  const prefs = await getPreferences();
-  const list = new Set(prefs[field]);
-  if (present) list.add(value);
-  else list.delete(value);
-  return setPreferences({ [field]: [...list] });
+  return updatePreferences((prefs) => {
+    const list = new Set(prefs[field]);
+    if (present) list.add(value);
+    else list.delete(value);
+    return { [field]: [...list] };
+  });
 }
 
 export async function setAccountHidden(address, hidden) {

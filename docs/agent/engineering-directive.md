@@ -5,7 +5,7 @@ architecture, transaction, delivery and security-review invariants. `AGENTS.md` 
 short version plus the hard rules; read this file before an architectural, signing, storage or
 migration change.
 
-The hard rules (1–17) live in `AGENTS.md`. The long text behind rules 10, 14, 15, 16 and 17 is in
+The hard rules (1–30) live in `AGENTS.md`. The long text behind rules 10, 14, 15, 16, 17 and 30 is in
 `docs/agent/rules-detail.md`.
 
 ## Mainnet-ready engineering directive

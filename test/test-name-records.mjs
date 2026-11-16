@@ -407,8 +407,93 @@ console.log('[7] the contract declares what the handler actually does');
   const { readFileSync } = await import('node:fs');
   const source = readFileSync(new URL('../src/background/services/name-service.js', import.meta.url), 'utf8');
   const thrown = new Set([...source.matchAll(/coded\(\s*'([A-Z_]+)'/g)].map((m) => m[1]));
-  const undeclared = [...thrown].filter((code) => typeof ERROR_CODES[code] !== 'string');
+  const known = code => typeof ERROR_CODES[code] === 'string' || Object.hasOwn(model.REVIEW_CODE, code);
+  const undeclared = [...thrown].filter(code => !known(code));
+  ok(!known('UNDECLARED_NEGATIVE_CONTROL') && known('REVIEW_FEE_CHANGED'), 'error scan accepts the model registry and rejects undeclared codes');
   ok(undeclared.length === 0, `every code setRecord can throw is declared (${undeclared.join(',') || 'none'})`);
+}
+
+console.log('[8] canonical record confirmation binds the final fee and one-time consent');
+{
+  const { Transaction } = await import('@thru/sdk');
+  const original = { get: client.accounts.get, build: client.transactions.buildAndSign,
+    send: client.transactions.sendAndTrack, list: client.transactions.listForAccount,
+    status: client.transactions.getStatus, fetch: globalThis.fetch };
+  let built;
+  let tracked;
+  client.transactions.buildAndSign = async request => {
+    signed.push(request);
+    built = new Transaction({ feePayer: request.feePayer.publicKey, program: request.program,
+      header: { nonce: 0n, startSlot: 654n, expiryAfter: 321, ...request.header } });
+    return { transaction: built, rawTransaction: new Uint8Array([1]) };
+  };
+  client.transactions.sendAndTrack = async function* () {
+    broadcasts += 1;
+    yield { signature: { value: new Uint8Array(64).fill(43) } };
+    const key = `thru_pending_txs::${NET}`;
+    tracked = structuredClone((await chrome.storage.local.get(key))[key].records[0]);
+    yield { executionResult: { vmError: 0 } };
+  };
+  client.transactions.listForAccount = async () => ({ transactions: [] });
+  client.transactions.getStatus = async () => { throw new Error('offline status unavailable'); };
+  globalThis.fetch = async () => { throw new Error('Live RPC forbidden in record tests'); };
+  async function approvedRecord() {
+    mode = 'owned'; payerBalance = 5_000_000n;
+    const prepared = await handleApiRequest({ method: 'tx.prepareReview', params: {
+      kind: 'domain-record', params: { name: 'alice', rootAddress: ROOT, key: 'twitter', value: '@alice' } } });
+    assert.equal(prepared.ok, true, prepared.error?.message);
+    const confirmed = await handleApiRequest({ method: 'tx.confirmReview', params: {
+      reviewId: prepared.data.reviewId, bindingHash: prepared.data.bindingHash } });
+    assert.equal(confirmed.ok, true, confirmed.error?.message);
+    assert.equal(confirmed.data.submit.params.expectedNetworkFeeUnits, '1');
+    assert.equal(confirmed.data.submit.params.expectedNetworkFeeSupported, true);
+    return confirmed.data;
+  }
+  const submit = approved => handleApiRequest({ method: approved.submit.method,
+    params: { ...approved.submit.params, consentToken: approved.consentToken } });
+  try {
+    const approved = await approvedRecord();
+    const before = [signed.length, broadcasts];
+    const gate = { entered: Promise.withResolvers(), release: Promise.withResolvers() };
+    client.accounts.get = async address => {
+      if (address === ME) { gate.entered.resolve(); await gate.release.promise; }
+      return original.get(address);
+    };
+    const sending = submit(approved);
+    await Promise.race([gate.entered.promise, sending.then(r => { throw new Error(`payer read not reached: ${r.error?.code}`); })]);
+    payerBalance = 0n; gate.release.resolve();
+    assert.equal((await sending).error?.code, 'REVIEW_FEE_CHANGED');
+    client.accounts.get = original.get;
+    assert.deepEqual([signed.length, broadcasts], before);
+    assert.equal((await submit(approved)).error?.code, 'REVIEW_REQUIRED');
+    ok(true, 'post-confirm held payer read cannot change the declared record fee or reuse consent');
+    for (const field of ['expectedNetworkFeeUnits', 'expectedNetworkFeeSupported']) {
+      const confirmed = await approvedRecord();
+      const altered = structuredClone(confirmed);
+      delete altered.submit.params[field];
+      const counts = [signed.length, broadcasts];
+      assert.equal((await submit(altered)).error?.code, 'REVIEW_REQUIRED');
+      assert.equal((await submit(confirmed)).error?.code, 'REVIEW_REQUIRED');
+      assert.deepEqual([signed.length, broadcasts], counts);
+      ok(true, `deleting confirmed ${field} burns the token without a replacement mint`);
+    }
+    const stable = await approvedRecord();
+    const counts = [signed.length, broadcasts];
+    assert.equal((await submit(stable)).ok, true);
+    assert.deepEqual([signed.length, broadcasts], counts.map(n => n + 1));
+    assert.equal(tracked.startSlot, built.startSlot.toString());
+    assert.equal(tracked.expiryAfter, built.expiryAfter);
+    assert.equal(tracked.networkId, NET);
+    assert.equal(tracked.from, ME);
+    assert.equal(tracked.to, DOMAIN);
+    assert.equal(tracked.registrationIdentity, null);
+    assert.equal((await submit(stable)).error?.code, 'REVIEW_REQUIRED');
+    ok(true, 'stable canonical record builds/broadcasts exactly once and persists actual SDK deadline');
+  } finally {
+    client.accounts.get = original.get; client.transactions.buildAndSign = original.build;
+    client.transactions.sendAndTrack = original.send; client.transactions.listForAccount = original.list;
+    client.transactions.getStatus = original.status; globalThis.fetch = original.fetch;
+  }
 }
 
 console.log(`\nname-records test summary: ${pass} passed, ${fail} failed.`);

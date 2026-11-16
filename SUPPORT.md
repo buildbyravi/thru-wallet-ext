@@ -6,68 +6,43 @@
 **Telegram Support Group:** [t.me/+dA8TwsOECcIxZWZl](https://t.me/+dA8TwsOECcIxZWZl)  
 **Issue Tracker:** [github.com/buildbyravi/thru-wallet-ext/issues](https://github.com/buildbyravi/thru-wallet-ext/issues)
 
-Welcome to the Thru Wallet support document. Thru Wallet is an experimental, self-custody Chrome extension for Thru's betanet, built with `@thru/sdk` (including its `@thru/sdk/crypto` subpath) and `@thru/programs`.
+Thru Wallet is an open-source, self-custody Chrome MV3 extension for Thru's **Betanet** (a non-EVM RISC-V Layer-1 blockchain), built on the official `@thru/sdk` (`@thru/sdk/crypto`) and `@thru/programs` packages.
 
-**Betanet is Thru's final testnet before mainnet** (official launch at the TOKEN2049 Singapore event, early October 2026) — a 10-node network that replaced the single-node alphanet. Blocks land every ~6 seconds, so a transfer settles in about one block. Expect occasional testnet instability until mainnet.
+**Betanet is Thru's final testnet before Mainnet** (`https://rpc.betanet.thru.org`, ~6-second blocks). Expect occasional testnet resets or RPC maintenance prior to Mainnet launch.
 
 ---
 
 ## 1. Getting Help & Reporting Issues
 
-If you encounter bugs, unexpected behavior, or have questions:
-
-1.  **Join the Telegram Support Group:** Connect with the team and community at [t.me/+dA8TwsOECcIxZWZl](https://t.me/+dA8TwsOECcIxZWZl).
-2.  **Search Existing Issues:** Check the [GitHub Issues](https://github.com/buildbyravi/thru-wallet-ext/issues) page to see if your bug or request has already been reported.
-3.  **Open a New Issue:** Provide clear details including:
-    *   Extension version (`1.4.1`)
-    *   Chrome browser version and OS
-    *   Exact steps to reproduce the issue
-    *   Relevant error messages (do **NOT** post your seed phrase or private key!)
+1. **Telegram Support Group:** Reach maintainers and community members at [t.me/+dA8TwsOECcIxZWZl](https://t.me/+dA8TwsOECcIxZWZl).
+2. **Search Existing Issues:** Check [GitHub Issues](https://github.com/buildbyravi/thru-wallet-ext/issues).
+3. **Open a Bug Report:** Include your extension version (`1.4.1`), Chrome version, OS, reproduction steps, and visible error text. **Never share your 12-word recovery phrase, private key, or password.**
 
 ---
 
-## 2. Known Limitations & Technical Context
+## 2. Current Scope & Known Limitations
 
-Because Thru's betanet is an active, evolving testnet environment, users should be aware of several technical caveats:
-
-*   **Betanet Scope Only:** The wallet only targets Thru's betanet (`rpc.betanet.thru.org`). Network state, balances, and accounts on betanet may be reset or wiped by network operators at any time.
-*   **Unaudited Codebase:** This wallet is a community-built open-source project and has not undergone a formal third-party security audit.
-*   **Reverse-Engineered Instruction Layouts:** 
-    *   The **Faucet** (`taAAAA...Pr6`) and **Transfer** (`taAAAA...ICA`) system program addresses and instruction byte structures were derived via transaction disassembly and differential analysis rather than published developer documentation.
-    *   While reserved program address markers (`0xfa` and `0x80`) confirm these program patterns, future betanet updates may alter program layouts.
-*   **Unconfirmed Explorer Routing:** Deep links to transaction hashes and account addresses point to `scan.thru.org`, but exact URL route formats on the official block explorer may change over time.
-*   **No Injected dApp Provider:** The wallet does not inject a web provider (`window.thru`) into web pages. It functions strictly as a standalone key manager and transaction signer.
+* **Betanet Only:** Only Thru Betanet (`rpc.betanet.thru.org`) is enabled in the shipped build; Mainnet remains disabled until Mainnet launch, fee measurement, and external security audit completion.
+* **External Security Audit Pending:** Internal engineering and security guards are in place, but a formal third-party security audit has not yet been completed. **Do not import keys holding real financial value.**
+* **No Dry-Run Transaction Simulation:** Thru RPC does not currently expose a transaction dry-run endpoint, so transaction reviews display deterministic amounts, counterparties, and declared network fees rather than simulated post-transaction balances.
+* **Tracked Domain List:** On-chain enumeration of all Name Service accounts is budget-limited by Betanet RPC, so **Domains -> My Domains** displays names registered or imported in your wallet (verified live against on-chain ownership).
+* **No Injected dApp Provider:** Thru Wallet operates as a standalone self-custody wallet and side panel; it does not inject `window.thru` into websites.
 
 ---
 
 ## 3. Frequently Asked Questions (FAQ)
 
-### Q: Which networks are supported?
-**A:** Thru Wallet supports Thru Betanet (`rpc.betanet.thru.org`). Mainnet support will be added upon network release.
+### Q: Is Thru Wallet safe to use with real Mainnet funds?
+**A:** **No.** The current release targets **Thru Betanet** only and has not yet undergone an independent external security audit. Use throwaway testnet keys only.
 
-### Q: Is this safe to use with real money or mainnet funds?
-**A:** **No.** This extension is designed exclusively for Thru's **betanet testnet**. It is intended for testing, development, and experimental use. **Do not import keys containing real assets or financial value.**
+### Q: How do I back up my recovery phrase or private key?
+**A:**
+1. Unlock the extension and open **Accounts** -> select your account (`Account` detail view).
+2. Choose the **Export** action and verify your master password.
+3. Write down your 12-word BIP-39 recovery phrase (or 64-character private key) offline in a secure location. Navigating away or locking immediately clears the revealed secret from screen memory.
 
-### Q: How do I back up my wallet?
-**A:** You can back up your wallet using your **12-word BIP-39 recovery phrase**:
-1.  Open the extension and unlock your wallet.
-2.  Navigate to the **Accounts** screen.
-3.  Click **Export / Reveal Seed Phrase** (you will be prompted to re-enter your master password).
-4.  Write down the 12 words in order and store them in a secure physical location offline.
+### Q: Why can't I send native THRU to a brand-new external address?
+**A:** On Thru L1, an account must exist on-chain before receiving native `THRU` transfers. Thru Wallet automatically activates accounts created inside your own wallet (on creation, Dashboard load, or when selected as one of your own accounts in Send). An external recipient's wallet must activate its own address first.
 
-> [!WARNING]
-> Never share your recovery phrase or private keys with anyone. Anyone with your seed phrase can access all accounts generated by your wallet.
-
-### Q: How do I reset or clear the wallet from my browser?
-**A:** To reset the wallet on your current device:
-1.  Open the extension settings or navigate to **Reset Wallet**.
-2.  Confirm wallet reset. This completely deletes the encrypted vault from your browser's local storage (`chrome.storage.local`).
-3.  Alternatively, removing the extension from Chrome (`chrome://extensions`) will permanently remove all local wallet storage.
-
-*Note: Resetting the wallet only affects the current device/browser. Make sure you have backed up your recovery phrase before resetting if you wish to restore your accounts later.*
-
-### Q: What should I do if my transactions fail?
-**A:** 
-1.  Verify that your account has been initialized on-chain using the **Create Account** step before attempting transfers or faucet claims.
-2.  Ensure the betanet RPC node (`rpc.betanet.thru.org`) is online and accessible.
-3.  Check the error message on screen; if the RPC endpoint returns a sequence/nonce mismatch or low-level format error, check GitHub Issues for betanet protocol updates.
+### Q: How do I reset the wallet if I forgot my password?
+**A:** From the **Unlock** (lock) screen, select **Reset**, read the warning, and type `RESET` in uppercase to erase the local encrypted vault (`chrome.storage.local`). You can then restore your accounts only if you previously backed up your recovery phrase or private keys.

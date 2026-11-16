@@ -12,14 +12,25 @@ NETWORKS.localnet.enabled = true;
 
 const data = new Map();
 let writes = 0;
+let onRead = null;
+let failWrite = null;
+const historyWrites = [];
+globalThis.fetch = async () => { throw new Error('Unexpected real RPC'); };
 globalThis.chrome = {
   runtime: { sendMessage: () => Promise.resolve() },
   storage: { local: {
-    async get(key) { return { [key]: structuredClone(data.get(key)) }; },
+    async get(key) {
+      const result = structuredClone(key === null ? Object.fromEntries(data) : { [key]: data.get(key) });
+      await onRead?.(key);
+      return result;
+    },
     async set(next) {
+      if (failWrite && Object.hasOwn(next, failWrite)) { failWrite = null; throw new Error('Injected write failure'); }
       writes += 1;
+      historyWrites.push(structuredClone(next));
       for (const [key, value] of Object.entries(next)) data.set(key, structuredClone(value));
     },
+    async remove(keys) { for (const key of Array.isArray(keys) ? keys : [keys]) data.delete(key); },
   } },
 };
 
@@ -238,3 +249,125 @@ assert.equal(settled.entries[0]?.success, true);
 console.log('  ok - freshly submitted transactions persist immediately to local history cache and settle cleanly');
 
 localClient.blocks.getBlockHeight = originalHeight;
+
+// Hold the active-ID read AFTER the authoritative queued scope read, not the earlier RPC.
+// An alias roundtrip restores ID/config/client; only the generation distinguishes it.
+const originalAliasRpc = NETWORKS.localnet.rpcUrl;
+NETWORKS.localnet.rpcUrl = NETWORKS.betanet.rpcUrl;
+await networks.setActiveNetwork('betanet');
+const aliasClient = thruClient.getClient();
+const aliasList = aliasClient.transactions.listForAccount;
+const aliasHeight = aliasClient.blocks.getBlockHeight;
+try {
+  aliasClient.transactions.listForAccount = async () => ({ transactions: [] });
+  aliasClient.blocks.getBlockHeight = async () => ({ finalized: 100n });
+  for (const roundtrip of [false, true]) {
+    const key = 'thru_history_cache::betanet';
+    const beforeScope = structuredClone(data.get(key));
+    const beforeOther = structuredClone(data.get('thru_history_cache::localnet'));
+    const beforeGeneration = networks.getNetworkGeneration();
+    let release;
+    let entered;
+    const held = new Promise(resolve => { release = resolve; });
+    const ready = new Promise(resolve => { entered = resolve; });
+    let scopeReads = 0;
+    onRead = async readKey => {
+      if (readKey === key) scopeReads++;
+      if (readKey === 'thru_active_network' && scopeReads === 2) {
+        onRead = null;
+        entered();
+        await held;
+      }
+    };
+    const feed = history.getHistoryFeed('ta_final_queue');
+    const outcome = feed.then(value => ({ value }), error => ({ error }));
+    await Promise.race([ready, outcome.then(() => { throw new Error('Final queued ID barrier not reached'); })]);
+    assert.equal(scopeReads, 2, 'barrier is inside the queued persistence section');
+    if (roundtrip) {
+      await networks.setActiveNetwork('localnet');
+      await networks.setActiveNetwork('betanet');
+    } else {
+      failWrite = 'thru_active_network';
+      await assert.rejects(networks.setActiveNetwork('localnet'), /Injected write failure/);
+    }
+    assert.equal(thruClient.getClient(), aliasClient, 'same-RPC control retains the SDK client');
+    assert.equal(thruClient.getConfiguredNetwork().id, 'betanet');
+    assert.equal(await networks.getActiveNetworkId(), 'betanet');
+    assert.equal(networks.getNetworkGeneration(), beforeGeneration + (roundtrip ? 2 : 0));
+    const beforeWrites = historyWrites.length;
+    release();
+    const result = await outcome;
+    if (roundtrip) {
+      assert.equal(result.error?.code, 'NETWORK_CHANGED');
+      assert.equal(historyWrites.length, beforeWrites, 'stale queued feed must not call storage.set');
+      assert.deepEqual(data.get(key), beforeScope);
+    } else {
+      assert.equal(result.value?.synced, true, 'unchanged context is allowed to persist');
+      assert.equal(historyWrites.length, beforeWrites + 1);
+      assert.ok(data.get(key).ta_final_queue);
+    }
+    assert.deepEqual(data.get('thru_history_cache::localnet'), beforeOther);
+  }
+} finally {
+  onRead = null;
+  NETWORKS.localnet.rpcUrl = originalAliasRpc;
+  aliasClient.transactions.listForAccount = aliasList;
+  aliasClient.blocks.getBlockHeight = aliasHeight;
+}
+console.log('  ok - final queued persistence rejects a same-client roundtrip; failed switch still permits a fresh write');
+
+const recoveryKey = 'thru_history_cache::betanet';
+const recoveryClient = thruClient.getClient();
+const recoveryList = recoveryClient.transactions.listForAccount;
+const recoveryHeight = recoveryClient.blocks.getBlockHeight;
+try {
+  recoveryClient.transactions.listForAccount = async () => ({ transactions: [] });
+  recoveryClient.blocks.getBlockHeight = async () => ({ finalized: 100n });
+  const beforeScope = structuredClone(data.get(recoveryKey));
+  const beforeWrites = historyWrites.length;
+  let scopeReads = 0;
+  onRead = key => {
+    if (key === recoveryKey && ++scopeReads === 2) { onRead = null; throw new Error('Injected read failure'); }
+  };
+  const unavailable = await history.getHistoryFeed(A);
+  assert.equal(unavailable.synced, false);
+  assert.deepEqual(unavailable.entries, beforeScope[A].entries);
+  assert.equal(historyWrites.length, beforeWrites);
+  assert.deepEqual(data.get(recoveryKey), beforeScope, 'failed queued read cannot overwrite with an empty scope');
+  failWrite = recoveryKey;
+  const queued = await Promise.allSettled([
+    history.recordSubmittedTransaction({ signature: 'ts_failed_write', from: A, networkId: 'betanet' }),
+    history.recordSubmittedTransaction({ signature: 'ts_recovered_write', from: B, networkId: 'betanet' }),
+  ]);
+  assert.deepEqual(queued.map(r => r.status), ['rejected', 'fulfilled']);
+  assert.match(queued[0].reason.message, /Injected write failure/);
+  assert.deepEqual(data.get(recoveryKey)[A], beforeScope[A]);
+  assert.equal(data.get(recoveryKey)[B].entries[0].signature, 'ts_recovered_write');
+  console.log('  ok - failed queued history reads preserve cache and write failures allow later account recovery');
+
+  let release;
+  let entered;
+  const held = new Promise(resolve => { release = resolve; });
+  const ready = new Promise(resolve => { entered = resolve; });
+  scopeReads = 0;
+  onRead = async key => {
+    if (key === recoveryKey) scopeReads++;
+    if (key === 'thru_active_network' && scopeReads === 2) {
+      onRead = null; entered(); await held;
+    }
+  };
+  const late = history.getHistoryFeed(A).then(value => ({ value }), error => ({ error }));
+  await Promise.race([ready, late.then(() => { throw new Error('Reset barrier not reached'); })]);
+  const reset = history.clearAllHistory();
+  const beforeReset = historyWrites.length;
+  release();
+  assert.equal((await late).error?.code, 'NETWORK_CHANGED');
+  await reset;
+  assert.equal(historyWrites.length, beforeReset);
+  assert.equal([...data.keys()].some(key => key.startsWith('thru_history_cache::')), false);
+  console.log('  ok - history reset drains a final queued write without resurrection');
+} finally {
+  onRead = null;
+  recoveryClient.transactions.listForAccount = recoveryList;
+  recoveryClient.blocks.getBlockHeight = recoveryHeight;
+}

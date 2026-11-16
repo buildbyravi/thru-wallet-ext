@@ -6,6 +6,7 @@
 
 import { h, disposer, on } from './dom.js';
 import { icon } from './icon.js';
+import { toast } from './toast.js';
 
 /**
  * @param {Object} props
@@ -143,28 +144,50 @@ export function IconButton({ iconName, title, size = 16, variant = '', className
  * write is refused.
  */
 export function CopyButton({ getValue, title = 'Copy', className = '', onResult } = {}) {
+  let alive = true;
+  let copying = false;
+  let timer = null;
   const button = IconButton({
     iconName: 'copy',
     title,
     size: 14,
     className,
     onClick: async () => {
+      if (!alive || copying) return;
       const value = typeof getValue === 'function' ? getValue() : getValue;
       if (!value) return;
+      copying = true;
+      let failure = null;
       try {
         await navigator.clipboard.writeText(String(value));
-        button.el.classList.add('copied');
-        button.update({ iconName: 'check' });
-        setTimeout(() => {
-          button.el.classList.remove('copied');
-          button.update({ iconName: 'copy' });
-        }, 1100);
-        onResult?.(null);
       } catch (error) {
-        onResult?.(error instanceof Error ? error : new Error('Could not copy to clipboard.'));
+        failure = error instanceof Error ? error : new Error('Could not copy to clipboard.');
+      } finally {
+        copying = false;
       }
+      if (!alive || !button.el.isConnected) return;
+      if (failure) {
+        if (typeof onResult === 'function') onResult(failure);
+        else toast({ tone: 'error', title: 'Could not copy', message: 'Clipboard was unavailable. Copy manually.' });
+        return;
+      }
+      clearTimeout(timer);
+      button.el.classList.add('copied');
+      button.update({ iconName: 'check' });
+      timer = setTimeout(() => {
+        if (!alive) return;
+        button.el.classList.remove('copied');
+        button.update({ iconName: 'copy' });
+      }, 1100);
+      onResult?.(null);
     },
   });
+  const destroy = button.destroy;
+  button.destroy = () => {
+    alive = false;
+    clearTimeout(timer);
+    destroy();
+  };
   return button;
 }
 

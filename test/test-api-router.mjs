@@ -79,6 +79,65 @@ assert.equal(res3.data.account.address, res2.data.address);
 assert.equal(res3.data.accounts.length, 1);
 console.log('  ok - bootstrap returns active account and list');
 
+console.log('[passive polling] successful History/Send refreshes preserve the idle clock');
+{
+  const client = await import('../src/lib/thru-client.js');
+  const system = await import('../src/background/services/system-service.js');
+  const sdk = client.getClient();
+  const originalGet = sdk.accounts.get;
+  const originalList = sdk.transactions.listForAccount;
+  const originalHeight = sdk.blocks.getBlockHeight;
+  const originalWindow = storage.get('thru_system_autolock_minutes');
+  const originalStamp = session.get('thru_last_activity_at');
+  const address = res3.data.account.address;
+  const oldStamp = Date.now() - 120_000;
+  let accountReads = 0;
+  let historyReads = 0;
+  try {
+    sdk.accounts.get = async () => { accountReads += 1; return { meta: { balance: 123n } }; };
+    sdk.transactions.listForAccount = async () => { historyReads += 1; return { transactions: [] }; };
+    sdk.blocks.getBlockHeight = async () => ({ finalized: 1n });
+    storage.set('thru_system_autolock_minutes', 1);
+    session.set('thru_last_activity_at', oldStamp);
+    for (const [method, params = {}] of [
+      ['account.getActive'], ['network.getActive'], ['account.list', { withBalances: true }],
+      ['tx.getCachedHistory', { address }], ['tx.getHistoryFeed', { address }],
+      ['tx.listHistory', { address, limit: 15, cursor: 0 }],
+      ['tx.getAccountInfo', { address }], ['tx.getBalances', { addresses: [address] }],
+      ['tx.getCachedBalances', { addresses: [address] }], ['tx.getTotalBalance', { addresses: [address] }],
+      ['token.list'], ['token.getBalances', { address }], ['token.getCachedBalances', { address }],
+      ['tx.estimateFee'], ['tx.getPending'], ['tx.reconcilePending'],
+    ]) {
+      const response = await handleApiRequest({ method, params });
+      assert.equal(response.ok, true, `${method}: ${JSON.stringify(response)}`);
+      if (method === 'tx.getHistoryFeed') assert.equal(response.data.synced, true, 'exercise successful live hydration');
+      if (method === 'tx.getAccountInfo') assert.equal(response.data.balance, '123');
+      assert.equal(session.get('thru_last_activity_at'), oldStamp, `${method} must not extend the session`);
+    }
+    assert.ok(accountReads > 0 && historyReads >= 2, 'real services reached the stubbed SDK reads');
+    assert.equal(await system.shouldAutoLock(), true, 'passive refreshes leave the idle wallet eligible to lock');
+    for (const [method, params] of [
+      ['system.ping', {}],
+      ['settings.set', { patch: { fiatCurrency: 'USD' } }],
+    ]) {
+      session.set('thru_last_activity_at', oldStamp);
+      const before = Date.now();
+      const response = await handleApiRequest({ method, params });
+      assert.equal(response.ok, true, `${method}: ${JSON.stringify(response)}`);
+      assert.ok(session.get('thru_last_activity_at') >= before, `${method} must still stamp activity`);
+      assert.equal(await system.shouldAutoLock(), false);
+    }
+    console.log('  ok - 16 passive reads preserve idle eligibility; explicit activity and a write reset it');
+  } finally {
+    sdk.accounts.get = originalGet;
+    sdk.transactions.listForAccount = originalList;
+    sdk.blocks.getBlockHeight = originalHeight;
+    if (originalWindow === undefined) storage.delete('thru_system_autolock_minutes');
+    else storage.set('thru_system_autolock_minutes', originalWindow);
+    session.set('thru_last_activity_at', originalStamp);
+  }
+}
+
 console.log('[4] Account management: Add HD account & switch');
 const res4 = await handleApiRequest({ method: 'account.addHd' });
 assert.equal(res4.ok, true);
@@ -784,7 +843,8 @@ console.log('[token.readMint] custom-token lookup reads the chain and validates 
   const FIXTURE_MINT = 'taMINTLOOKUPFIXTURE00000000000000000000000000';
   try {
     sdkForMint.accounts.get = (address) => {
-      if (address === FIXTURE_MINT) return Promise.resolve({ data: { data: mintBytes } });
+      if (address === FIXTURE_MINT) return Promise.resolve({ meta: { balance: 1n,
+        owner: clientForRace.getConfiguredNetwork().tokenProgramId }, data: { data: mintBytes } });
       const err = new Error('account not found');
       err.code = 5;
       return Promise.reject(err);

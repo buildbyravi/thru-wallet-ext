@@ -1,71 +1,52 @@
 # Thru Wallet — Betanet
 
-Chrome MV3 self-custody wallet extension for the **Thru native Layer 1**. Built with vanilla ES modules, esbuild, and real Thru packages (`@thru/sdk` and its `@thru/sdk/crypto` subpath, plus `@thru/programs`).
+Chrome MV3 self-custody wallet extension for the **Thru native Layer 1**. Built with vanilla ES modules, `esbuild`, and exact-pinned official Thru packages (`@thru/sdk@0.4.2` including `@thru/sdk/crypto`, plus `@thru/programs@0.4.2`). Thru is **not EVM**; external wallets (Rabby, Phantom, Keplr) serve as UX references only.
 
-**Betanet is Thru's final testnet before mainnet** (official launch at the TOKEN2049 Singapore event, early October 2026 — the chain is already live). It replaces the single-node alphanet (which processed over 10 million blocks) with a 10-node network and ~6-second blocks — a transfer settles in about one block. Network id: `betanet` (`https://rpc.betanet.thru.org`, explorer `https://scan.thru.org` with `?network=betanet`).
+**Betanet is Thru's final testnet before Mainnet** (`betanet`: RPC `https://rpc.betanet.thru.org`, explorer `https://scan.thru.org` with `?network=betanet`, ~6-second blocks).
 
 > [!IMPORTANT]
-> **Betanet deployment. Mainnet engineering standard.** Source remediations are implemented and
-> tested locally; real-browser checks, specified live-network verification, security review, and an
-> external audit remain required. See `docs/STATUS_AND_ROADMAP.md` and `docs/AUDIT_REPORT.md`.
+> **Betanet deployment. Mainnet engineering standard.** Internal security remediations through
+> Contract **v32** are implemented and tested locally; real-browser smoke checks, remaining live
+> Betanet probes, and an independent external security audit remain required before Mainnet. See
+> [`docs/STATUS_AND_ROADMAP.md`](docs/STATUS_AND_ROADMAP.md) and [`docs/AUDIT_REPORT.md`](docs/AUDIT_REPORT.md).
 
 ---
 
-## Current state
+## Current Shipped State (Contract v33)
 
-- Single popup UI stack; no legacy popup fallback.
-- 15 popup routes: welcome, unlock, dashboard, accounts, account detail, add account, keyring, export, send, receive, faucet, domains (`/name`), history, settings, reset.
-- Contract version: **32**; **153** methods (81 wallet-core, 43 gated-off DeFi M0, plus the v19–v31 additive slices; `CONTRACT_VERSION` in `src/shared/contract/manifest.js` is authoritative).
-- Value-moving methods use centralized `auth: 'signing'`, checked account/network context, and a
-  network-mutation lock through submission. Session-only signing is the explicit default; users may
-  enable per-sign password re-authentication, and changing that security setting is password-gated.
-- **One transaction-review pipeline (contract v29).** Every value-moving screen — native send, token
-  transfer, domain register/purchase/renew/claim, faucet claim — prepares a typed intent through
-  `tx.prepareReview`, renders the single shared review card, and submits through
-  `tx.confirmReview` → the operation's existing signing method. `confirmReview` never signs: it
-  re-validates and returns the exact submit instructions, and the card's confirm helper calls that
-  method through the bridge (its `auth: 'signing'` policy still applies). No UI file names a
-  signing-gated method at all — a source scan in `test/test-tx-review.mjs` enforces that. A transaction the wallet cannot decode renders as an explicit unknown with raw data and
-  **cannot be signed**; there is no fabricated fee or post-transaction balance.
-- Reset and auto-lock changes are background-hardened in contract v6.
-- Contract v7 quarantines legacy custom networks at the background boundary: saved records stay listable/removable, but direct activation is permanently refused and a stale active selection self-heals to Betanet before RPC binding.
-- Every route is mounted by a test: `test-route-lifecycle.mjs` drives all 15 routes through the real Router, guards and bridge in no-vault / locked / unlocked states, and asserts teardown, secret hygiene, modal focus trapping and the Settings guarantees. Layout, real focus and the side panel itself are a browser runbook: [`docs/MANUAL_SMOKE_CHECKLIST.md`](docs/MANUAL_SMOKE_CHECKLIST.md).
-- Settings no longer offers "Add custom network". `network.upsertCustom` remains for contract compatibility but has no UI caller. A legacy saved record is shown as **not selectable**, with Remove as its only action; `network.setActive` enforces the same quarantine in the background.
-- Side Panel Mode is an explicit Settings preference. It is persisted through the versioned backend
-  preference service and re-applied after worker restart; popup/panel mutual exclusion is covered by
-  deterministic tests and remains subject to the real-Chrome runbook.
-- Password dialogs trap keyboard focus (`src/ui/kit/focus-trap.js`): Tab wraps inside the dialog, Escape cancels, and focus returns to the control that opened it.
-- The legacy launchpad/DEX/prediction surface is **quarantined**: `src/launchpad/**` is deleted, no launchpad page is built into `dist/`, and the `?launchpad=1` override is gone. `test-launchpad-quarantine.mjs` keeps it out. Research docs are retained; backend `token.*` methods are unchanged.
-- Thru is **not EVM**. Rabby/MetaMask/Phantom/Keplr/etc. are UX references only.
+- **One UI Stack (`15` Routes):** `welcome`, `unlock`, `dashboard`, `accounts`, `account`, `add-account`, `keyring`, `export`, `send`, `receive`, `faucet`, `name` (Domains), `history`, `settings`, `reset`. Toolbar popup (`400x600`) and resizable side panel (`popup.html?thru_panel=1`) share one page with mutual exclusion; Side Panel Mode is an explicit Settings opt-in.
+- **Contract v33 (`154` Methods):** `src/shared/contract/manifest.js` declares `88` wallet-core methods, `23` `name.*` domain/registrar methods, and `43` dark-launched DeFi M0 methods (`src/shared/contract/defi-schema.js`, all `FLAGS.DEFI_* === false` in `src/shared/flags.js`).
+- **One Transaction Review & Background Consent Pipeline (`v29`–`v32`):** Every value-moving screen (`/send` native & token, `/name` register/purchase/renew/claim, `/faucet` claim — plus contract-level `domain-record`, `9` review kinds total) prepares via `tx.prepareReview`, renders `src/ui/domain/tx-review/review-card.js`, and confirms via `tx.confirmReview`. `tx.confirmReview` mints a single-use 60s `consentToken` enforced in `src/background/api-router.js` (`REVIEW_REQUIRED`) before any value-moving handler executes. Undecodable transactions (`raw`) cannot be signed; post-tx balances are never fabricated (`tx.simulate` returns `supported: false`). Details: [`docs/guides/transaction-review.md`](docs/guides/transaction-review.md).
+- **Session-Only Signing Default (`D-003`):** Unlocked sessions authorize `auth: 'signing'` operations by default (`requirePasswordForSigning: false`); per-signature password re-auth is a password-gated Settings opt-in. Vault secret exports, keyring mutations, security preferences, and unlocked resets always require the master password.
+- **Domains (`.thru` & `.id`):** `/name` provides `Register` and `My Domains` tabs with `.thru` registration and renewal (`thru-custom-registrar` tiered layout-2 pricing on Betanet, official paid registry fallback), `.id` resolution-only lookup, per-network tracked domain inventory, and `tx-units.networkFeeUnits` header fees. Details: [`docs/guides/domains-and-registrar.md`](docs/guides/domains-and-registrar.md).
+- **Quarantined Surfaces:** Legacy `src/launchpad/**` is deleted and guarded (`test/test-launchpad-quarantine.mjs`). Custom RPC activation and writes are refused in the background (`v7`). No `window.thru` dApp provider is injected.
 
 ---
 
-## Documentation
+## Documentation — Single Source of Truth
 
-Start with the docs index:
+Start at [`docs/DOCS_INDEX.md`](docs/DOCS_INDEX.md) for the complete SSoT hierarchy and AI-agent read order:
 
-| File | Purpose |
+| Document | Responsibility |
 | --- | --- |
-| [`docs/DOCS_INDEX.md`](docs/DOCS_INDEX.md) | Map of all maintained docs, archive rules, and duplicate-context decisions. |
-| [`AGENTS.md`](AGENTS.md) | Rules, commands, traps, security constraints, and reporting format. |
-| [`docs/PROJECT_LEDGER.md`](docs/PROJECT_LEDGER.md) | Past/present/future build ledger and current identifiers. |
-| [`docs/STATUS_AND_ROADMAP.md`](docs/STATUS_AND_ROADMAP.md) | Current state, verified/not verified items, and next tasks. |
-| [`CONTEXT.md`](CONTEXT.md) | Current file-by-file repository map. |
-| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Implemented dependency, signing, storage, and verification boundaries. |
-| [`docs/DECISIONS.md`](docs/DECISIONS.md) | Durable decisions with alternatives, trade-offs, and consequences. |
-| [`docs/MODULE_BOUNDARIES.md`](docs/MODULE_BOUNDARIES.md) | Target feature separation for launchpad, DEX, prediction, portfolio, and SDK adapters. |
-| [`docs/archive/MCP_AGENT_INTEGRATION.md`](docs/archive/MCP_AGENT_INTEGRATION.md) | Archived AI-agent/MCP companion planning record. |
-| [`llms.txt`](llms.txt) | Short read-only repo LLM context; pair with official Thru protocol docs at `https://thru.org/docs/llm.txt`. |
-| [`docs/AUDIT_REPORT.md`](docs/AUDIT_REPORT.md) | Security audit findings and remediation status. |
-| [`docs/DEFECT_LOG.md`](docs/DEFECT_LOG.md) | Historical defects, root causes, and lessons. |
-| [`docs/BACKEND_GAPS.md`](docs/BACKEND_GAPS.md) | Capability gaps and unsupported backend states. |
-| [`docs/MANUAL_SMOKE_CHECKLIST.md`](docs/MANUAL_SMOKE_CHECKLIST.md) | Browser-only verification runbook: popup + side panel, narrow + wide widths, all 15 routes, focus, secret hygiene. |
-| [`docs/TX_REVIEW_VERIFICATION.md`](docs/TX_REVIEW_VERIFICATION.md) | The v29 review pipeline's verification record: Rabby source study, claim-by-claim audit, browser-harness limits, open gaps. |
-| [`docs/archive/WALLET_FEATURES_PERFORMANCE_STUDY.md`](docs/archive/WALLET_FEATURES_PERFORMANCE_STUDY.md) | Popular wallet feature study and no-lag popup/full-tab performance model. |
-| [`docs/archive/THRU_NATIVE_DEFI_TAB_UX.md`](docs/archive/THRU_NATIVE_DEFI_TAB_UX.md) | Thru-native launchpad/DEX/full-tab architecture direction. Research only; no shipped code corresponds to it. |
-| [`docs/archive/LAUNCHPAD_UX_STUDY.md`](docs/archive/LAUNCHPAD_UX_STUDY.md) | Launchpad UX study. Retained research only. |
-| [`docs/archive/LAUNCHPAD_DEX_MIGRATION_UX.md`](docs/archive/LAUNCHPAD_DEX_MIGRATION_UX.md) | Launchpad-to-DEX migration and charting study. Archived research only. |
-| [`docs/archive/`](docs/archive/) | Historical plans only; do not use as current state. |
+| [`AGENTS.md`](AGENTS.md) | Hard rules `1–30` with mechanical gates, commands, and reporting format (detail in `docs/agent/`). |
+| [`CONTEXT.md`](CONTEXT.md) | File-by-file map of `src/`, `test/`, and `scripts/` with lookup index. |
+| [`docs/DOCS_INDEX.md`](docs/DOCS_INDEX.md) | Master documentation router, precedence hierarchy, and anti-sprawl rules. |
+| [`docs/STATUS_AND_ROADMAP.md`](docs/STATUS_AND_ROADMAP.md) | Shipped baseline, live Betanet evidence matrix, release blockers, and next work. |
+| [`docs/PROJECT_LEDGER.md`](docs/PROJECT_LEDGER.md) | Canonical identifiers and contract changelog (`v5–v33`). |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Enforced dependency graph, v32 signing/consent boundary, shared UI platform, and storage. |
+| [`docs/BUILD_SPEC.md`](docs/BUILD_SPEC.md) | Shipped product, wallet container, route, security, and design specification. |
+| [`docs/DECISIONS.md`](docs/DECISIONS.md) | Durable architectural decisions (`D-001` through `D-026`). |
+| [`docs/BACKEND_GAPS.md`](docs/BACKEND_GAPS.md) | Implemented capabilities vs unsupported/unverified chain boundaries. |
+| [`docs/MODULE_BOUNDARIES.md`](docs/MODULE_BOUNDARIES.md) | Core layering and future `src/features/<id>/` module isolation rules. |
+| [`docs/GLOBAL_SMART_CONTRACT_POLICY.md`](docs/GLOBAL_SMART_CONTRACT_POLICY.md) | On-chain program engineering rules and 6 Mainnet deployment gates. |
+| [`docs/guides/`](docs/guides/) | Cohesive subsystem guides: [`transaction-review.md`](docs/guides/transaction-review.md), [`domains-and-registrar.md`](docs/guides/domains-and-registrar.md), [`history-and-activity.md`](docs/guides/history-and-activity.md), [`protocol-and-rpc.md`](docs/guides/protocol-and-rpc.md). |
+| [`docs/defi/README.md`](docs/defi/README.md) | Dark-launched DeFi M0–G3 backend architecture, dossier, and contract inventory (`FLAGS.DEFI === false`). |
+| [`docs/roadmap/`](docs/roadmap/) | Phased [`FUTURE_ROADMAP.md`](docs/roadmap/FUTURE_ROADMAP.md), [`ARCHITECTURE_AND_UX_CRITIQUE.md`](docs/roadmap/ARCHITECTURE_AND_UX_CRITIQUE.md), and [`LIFECYCLE_SECURITY_AND_QA_PLAN.md`](docs/roadmap/LIFECYCLE_SECURITY_AND_QA_PLAN.md) (`PLANNED`). |
+| [`docs/AUDIT_REPORT.md`](docs/AUDIT_REPORT.md) | Mainnet-readiness gates and index of historical audits (`docs/audits/`). |
+| [`docs/DEFECT_LOG.md`](docs/DEFECT_LOG.md) | Categorized engineering postmortem and defect guardrails. |
+| [`docs/MANUAL_SMOKE_CHECKLIST.md`](docs/MANUAL_SMOKE_CHECKLIST.md) | Real-Chrome popup/side-panel and live-chain verification runbook. |
+| [`llms.txt`](llms.txt) | Compact read-only repository context brief for external LLMs. |
 
 ---
 
@@ -73,76 +54,12 @@ Start with the docs index:
 
 ```txt
 src/ui/app/routes/*
-  ↓ bridge.send(method, params)
-src/background/api-router.js
-  ↓ auth + contract validation + dispatch
-src/background/services/*
-  ↓ adapters
-src/lib/vault.js        # sacred crypto/session/keyring layer
-src/lib/thru-client.js  # sacred Thru RPC/transaction/program layer
-src/lib/networks.js     # network/program config
+  -> src/ui/app/bridge.js
+  -> src/shared/contract/manifest.js (v33, 154 methods)
+  -> src/background/api-router.js (auth + v32 consentToken gate + signing-guard)
+  -> src/background/services/*
+  -> src/lib/{vault,thru-client,networks,tx-units,...}.js
 ```
-
-Important boundaries:
-
-- UI never imports background services, vault internals, or RPC internals.
-- Background owns auth and signing.
-- `src/shared/contract/manifest.js` is the API allowlist.
-- `src/ui/kit/dom.js` is the guarded DOM factory for the main UI.
-- Money is BigInt internally and stringified over Chrome messages.
-- Network-specific data is scoped per network.
-
-Target future feature split is documented in [`docs/MODULE_BOUNDARIES.md`](docs/MODULE_BOUNDARIES.md):
-
-```txt
-src/features/launchpad/
-src/features/dex/
-src/features/prediction/
-src/background/features/*
-src/lib/thru/*-adapter.js
-```
-
----
-
-## What works today
-
-- Create a seed-based wallet.
-- Import a recovery phrase.
-- Import a private key.
-- Lock/unlock.
-- Multiple seed/private-key keyrings.
-- Multiple accounts.
-- Account labels, hiding, pinning, ordering.
-- Receive address and QR.
-- Native THRU send and token transfer, both through the shared review pipeline.
-- `.thru` domain registration (verified custom registrar, or the official paid registry when that is
-  the only `.thru` route), renewal and expired-name claims, plus a wallet-local primary-name link.
-- Faucet claim where the active network supports a faucet, through the shared review pipeline.
-- Transaction history decoding where known.
-- Pending transaction tracking.
-- Selection between enabled built-in networks; legacy custom-network records can be reviewed and removed but not activated.
-- Password-gated secret export.
-- Centralized checked signing with an optional password-per-sign policy.
-- Token balances and checked token transfer are implemented with official Token Program bindings;
-  the remaining live-chain questions are explicitly listed in `docs/STATUS_AND_ROADMAP.md`.
-- Honest unsupported states instead of guesses: undecodable transactions, unmeasured fees,
-  unreadable chain facts and unavailable simulation are all rendered as such, never as zeros.
-
----
-
-## Known gaps
-
-Highest priority:
-
-1. Run the browser-only smoke checklist for popup/side-panel layout, focus, canvas, and worker eviction.
-2. Token transfer is implemented on the official Token Program bindings, but two live-chain questions remain open: whether a never-registered recipient owner can receive a sender-initialized token account, and the actual token-program fee (`scripts/verify-token-transfer.mjs`). This is why the token-transfer review shows its network fee as **not quoted** instead of borrowing the native number.
-3. Transaction simulation is unavailable: Thru exposes no verified dry-run RPC, so the review shows deterministic facts only and never a post-transaction balance.
-4. Custom-lease renewal is not reachable from the UI: `name.renewLease` covers the official paid registry only, and the custom registrar's Renew instruction has no bridge method yet.
-5. Custom networks remain quarantined until HTTPS/host-permission, verified chain-program capability, and re-authentication requirements are implemented together.
-6. Any future launchpad/DEX/prediction work must be built as isolated feature modules. The legacy surface is deleted, the DeFi backend flags are all off, and nothing of the kind ships today.
-7. An external wallet security audit has not been performed; no mainnet-readiness claim is valid without it.
-
-See [`docs/STATUS_AND_ROADMAP.md`](docs/STATUS_AND_ROADMAP.md) for the live ordered list.
 
 ---
 
@@ -150,56 +67,14 @@ See [`docs/STATUS_AND_ROADMAP.md`](docs/STATUS_AND_ROADMAP.md) for the live orde
 
 ```bash
 npm install
-npm run build
-npm test
+npm run build        # bundles dist/ via esbuild
+npm test             # runs all 9 structural guard scripts + 41 test suites
 npm audit --omit=dev
 ```
 
-`npm test` runs the whole deterministic suite (2,405 checks across 34 test suites plus 5 build gates, as of 2026-10-29):
+Load `dist/` unpacked in Chrome via `chrome://extensions` -> **Developer mode** -> **Load unpacked**.
 
-1. derivation and QR checks,
-2. layering and DOM-sink checks (all of `src/`),
-3. CSP, route reachability/CSS and CSS-nesting checks,
-4. launchpad quarantine checks (source, flags, routes, manifest, and a real `dist/` build),
-5. contract/router/caller checks (manifest ↔ router ↔ shipped callers, both directions),
-6. the shared transaction-review suite (`test-tx-review.mjs`) and the route lifecycle sweep,
-7. DOM helper, vault, Thru client, token-balance, history, registration and API-router integration checks.
-
-`npm run build` runs the same structural gates before bundling, so a violation fails the build too.
-
-Load `dist/` as an unpacked extension in Chrome/Chromium after `npm run build`.
-
----
-
-## Live verification scripts
-
-These are not part of `npm test` because they touch a live network:
-
-```bash
-node scripts/verify-live-e2e.mjs betanet
-node scripts/verify-autoregister.mjs betanet
-node scripts/verify-chain.mjs betanet
-node scripts/measure-fee.mjs betanet
-```
-
-Historical testnet results are tracked in `docs/STATUS_AND_ROADMAP.md` and `docs/PROJECT_LEDGER.md`.
-
----
-
-## Security basics
-
-- Never share a real seed phrase or private key.
-- Never paste secrets into issues, chat, MCP tools, or logs.
-- Secret export requires password re-authentication.
-- Signing requires an unlocked wallet. Password re-authentication per signature is **off by
-  default** (`docs/DECISIONS.md` D-003): while unlocked, the session can sign, and the
-  password-per-signature policy is an explicit, password-gated Settings opt-in.
-- Do not implement unverified protocol behavior.
-- Thru's current official wallet docs describe `@thru/wallet` connecting to the hosted
-  `app.tid.sh/embedded` iframe; they do not establish an extension provider contract.
-- Do not invent a fake `window.thru` provider or infer extension compatibility from the hosted
-  `connect()`, `getSigningContext()`, and `signTransaction()` methods. Wait for a verified
-  extension/BYO-signer contract.
+Live-network verification scripts (`scripts/verify-*.mjs`, `scripts/probe-*.mjs`, `npm run test:live`) are excluded from `npm test` and run manually against throwaway wallets on an RPC-reachable host.
 
 ---
 

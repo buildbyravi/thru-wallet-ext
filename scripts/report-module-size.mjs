@@ -5,7 +5,7 @@
 // plausibly has one responsibility: those are the ones worth reading before the next change.
 //
 // This deliberately does not fail and does not split anything. Byte limits are not a design rule
-// (`docs/agent/engineer-directive.md`: modularity is stable responsibilities, not one file per
+// (`docs/agent/engineering-directive.md`: modularity is stable responsibilities, not one file per
 // function), and a build that fails on a line count teaches people to shuffle lines.
 //
 // Run: npm run report:size

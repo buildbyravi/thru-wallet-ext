@@ -4,7 +4,7 @@
 //
 // This is the CSP-clean price-feed read path: the oracle is an ON-CHAIN program, so reading a
 // feed is an RPC read against the origin the manifest already pins. No new host, no new
-// dependency. See docs/EXPLORER_SPIKE.md §5.
+// dependency. See docs/guides/protocol-and-rpc.md.
 //
 // Feed discovery: feed addresses appear in `priceUpdate`/`booleanUpdate` events (field
 // `feedAddress`) on transactions against the oracle program — enumerate them with
@@ -72,6 +72,6 @@ try {
     process.exit(0);
   }
   console.error(`\nUNREACHABLE or unreadable from this environment: ${err.name}: ${err.message}`);
-  console.error('Record the step as BLOCKED in docs/EXPLORER_SPIKE.md — do not fabricate feed values.');
+  console.error('Record the step as BLOCKED in docs/guides/protocol-and-rpc.md — do not fabricate feed values.');
   process.exit(1);
 }

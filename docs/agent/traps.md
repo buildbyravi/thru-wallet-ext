@@ -3,8 +3,6 @@
 Referenced from `AGENTS.md`. Every entry here cost real debugging time in this repository. Read it
 before you conclude a fix "did not work".
 
-# Traps that will waste your time
-
 **Reload the extension, not just the popup.** Chrome caches the service worker, so reopening the
 popup runs new UI against old backend code. Use the **Reload** button on the extension card.
 This made an already-fixed serialization bug appear to persist.

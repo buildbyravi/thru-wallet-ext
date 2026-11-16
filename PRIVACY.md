@@ -1,6 +1,6 @@
 # Privacy Policy — Thru Wallet Extension
 
-**Last Updated:** August 2026  
+**Last Updated:** November 2026
 **Repository:** [github.com/buildbyravi/thru-wallet-ext](https://github.com/buildbyravi/thru-wallet-ext)
 
 Thru Wallet is a self-custody Chrome extension for Thru's betanet (a non-EVM RISC-V Layer-1 blockchain). It is designed from the ground up to respect user privacy and operate under strict zero-telemetry principles.
@@ -22,8 +22,8 @@ All sensitive cryptographic material and application settings remain exclusively
 
 The extension only communicates with the specified Thru betanet RPC endpoint to perform essential blockchain operations. The following data is transmitted:
 
-*   **Public Addresses:** Your account public address is sent to the RPC node via HTTP JSON-RPC to query account state, balance, and transaction nonces.
-*   **Signed Transactions:** Fully pre-signed transaction payloads (such as native transfers or faucet claims) are broadcast to the RPC node for network inclusion.
+*   **Public Addresses:** Your account public address (and queried token or `.thru`/`.id` domain addresses) is sent to the RPC node to query account state, balances, domain ownership, and transaction nonces.
+*   **Signed Transactions:** Fully pre-signed transaction payloads (such as native/token transfers, `.thru` domain operations, account activations, or faucet claims) are broadcast to the RPC node for network inclusion.
 
 ### Official RPC Endpoint
 All RPC communication is conducted directly with:

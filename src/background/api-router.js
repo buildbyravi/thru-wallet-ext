@@ -76,11 +76,17 @@ const CONSENT_EXEMPT = new Map([
     + '(a caller that can prepare can confirm too). Proven by test-review-consent.mjs.'],
 ]);
 
-// Methods the UI polls on its own schedule (background sync of pending tx state). A call to
+// Methods the UI polls on its own schedule (history, balances and pending tx state). A call to
 // one of these is NOT user activity and must not refresh the auto-lock idle stamp — see the
 // stamp comment in handleApiRequest. The DeFi READ group is registered here too (S13): every
 // read a DeFi screen would poll is a sync read, and none of them may keep a session alive.
 const SYNC_READ_METHODS = new Set([
+  // History's 5s reload includes identity/labels and both cached and live history. Send's
+  // 30s refresh reads native/token balances; hydration uses the same passive read family.
+  'account.getActive', 'account.list', 'network.getActive',
+  'tx.getCachedHistory', 'tx.getHistoryFeed', 'tx.listHistory',
+  'tx.getAccountInfo', 'tx.getBalances', 'tx.getCachedBalances', 'tx.getTotalBalance',
+  'token.list', 'token.getBalances', 'token.getCachedBalances', 'tx.estimateFee',
   'tx.getPending', 'tx.reconcilePending',
   'program.capabilities', 'program.list',
   'feed.status', 'feed.lookup',
@@ -306,6 +312,7 @@ const handlers = Object.assign(Object.create(null), {
   'token.deriveTokenAccount': ({ ownerAddress, mintAddress }) => tokenService.deriveTokenAccount(ownerAddress, mintAddress),
   'token.generateSeed': () => tokenService.generateMintSeed(),
   'token.import': ({ mintAddress, symbol, name, decimals }) => tokenService.importToken({ mintAddress, symbol, name, decimals }),
+  'token.importVerified': (params) => tokenService.importVerifiedToken(params),
   'token.readMint': ({ mintAddress }) => tokenService.readMint({ mintAddress }),
   'token.discover': ({ address, candidateMints }) => tokenService.discoverTokens({ address, candidateMints }),
   'token.setVisibility': ({ mintAddress, hidden }) => tokenService.setVisibility(mintAddress, hidden),
@@ -577,8 +584,8 @@ export async function handleApiRequest(request) {
     const data = await handlers[method](handlerParams);
     // Stamp only after a successful call so a locked-out unlock attempt cannot be used to
     // keep a session alive indefinitely. Background SYNC reads are exempt: the dashboard and
-    // history screens poll these every second while a pending tx is on screen, and stamping
-    // them would defeat auto-lock for as long as the wallet is merely open.
+    // history/send screens poll even without user input. Stamping these would defeat auto-lock
+    // while a page is merely open. Actual input uses system.ping; successful writes still stamp.
     if (!SYNC_READ_METHODS.has(method)) {
       await systemService.touchActivity();
     }

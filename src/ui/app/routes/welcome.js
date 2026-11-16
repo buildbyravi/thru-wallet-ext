@@ -17,7 +17,7 @@ import { Field } from '../../kit/field.js';
 import { PageHeader, Banner } from '../../kit/feedback.js';
 import * as bridge from '../bridge.js';
 import { offerFreshPhrase } from '../../domain/fresh-phrase.js';
-import { invalidate } from '../guards.js';
+import { seed } from '../guards.js';
 import { encodeRef } from '../../../shared/refs.js';
 
 const MIN_PASSWORD = 8;
@@ -143,7 +143,7 @@ export function WelcomeRoute({ navigate }) {
           const created = await bridge.send('wallet.create', { password });
           pw.clearSecret();
           confirm.clearSecret();
-          invalidate();
+          seed({ hasVault: true, unlocked: true });
 
           const ref = await bridge.send('account.getActiveRef');
           const refToken = encodeRef(ref);
@@ -220,7 +220,7 @@ export function WelcomeRoute({ navigate }) {
           phrase.clearSecret();
           pw.clearSecret();
           confirm.clearSecret();
-          invalidate();
+          seed({ hasVault: true, unlocked: true });
           // No backup step: an imported phrase is already written down somewhere.
           navigate('/dashboard', { replace: true });
         } catch (error) {
@@ -287,7 +287,7 @@ export function WelcomeRoute({ navigate }) {
           key.clearSecret();
           pw.clearSecret();
           confirm.clearSecret();
-          invalidate();
+          seed({ hasVault: true, unlocked: true });
           navigate('/dashboard', { replace: true });
         } catch (error) {
           key.clearSecret();

@@ -10,6 +10,7 @@ import { registerCreatedAccount } from './registration-service.js';
 import { getActiveNetworkId } from './network-service.js';
 import * as reviewStore from './review/store.js';
 import { clearConsents } from './review/consent.js';
+import { clearAllHistory } from './history-service.js';
 
 /**
  * Check whether an encrypted vault exists on device.
@@ -234,10 +235,13 @@ export async function resetWallet({ confirmation, password } = {}) {
     }
   }
 
+  clearConsents();
+  await reviewStore.clearAll().catch(() => {});
   await vault.resetWallet();
   await auth.clearLockout();
   await balances.clearAllCaches();
   await pending.clearAll();
+  await clearAllHistory();
 
   // Clear all wallet-associated persistent storage so no contacts, labels, caches,
   // reviews, intents, or tracked domains survive into a new wallet.
@@ -252,7 +256,7 @@ export async function resetWallet({ confirmation, password } = {}) {
   } catch {
     // ignore storage cleanup error
   }
-  emitLockStateChanged(false);
+  emitLockStateChanged(false, false);
 }
 
 /**

@@ -28,6 +28,7 @@ import {
   createMintToInstruction as sdkCreateMintToInstruction,
   parseTokenAccountData as sdkParseTokenAccountData,
   parseMintAccountData as sdkParseMintAccountData,
+  TokenMintAccount,
   isAccountNotFoundError as sdkIsAccountNotFoundError,
 } from '@thru/programs/token';
 import { BOOTSTRAP_PROGRAM_ADDRESSES, BOOTSTRAP_FAUCET_VAULT_ADDRESS } from '@thru/programs/bootstrap-addresses';
@@ -111,6 +112,12 @@ export function configureNetwork(config) {
 /** The network this module is currently pointed at. */
 export function getConfiguredNetwork() {
   return activeNetwork;
+}
+
+/** SDK-canonical address, or null when the input cannot identify a public key. */
+export function canonicalizeThruAddress(address) {
+  try { return Pubkey.from(address).toThruFmt(); }
+  catch { return null; }
 }
 
 /** Validate a Thru address using the SDK's own parsing + checksum logic, not a guessed regex. */
@@ -957,25 +964,39 @@ export async function readTokenAccount(tokenAccountAddress) {
  *
  * @param {string} mintAddress
  */
+/** Validate owner and the pinned SDK mint type on ONE captured account snapshot. */
+export function parseMintAccount(account, tokenProgramId) {
+  const expectedOwner = canonicalizeThruAddress(tokenProgramId);
+  const actualOwner = canonicalizeThruAddress(getAccountOwnerAddress(account));
+  if (!expectedOwner || actualOwner !== expectedOwner) {
+    throw new Error('The account is not owned by the expected token program.');
+  }
+  const data = account?.data?.data;
+  if (!(data instanceof Uint8Array) || data.length !== TokenMintAccount.footprint()) {
+    throw new Error('The account does not have the pinned SDK mint footprint.');
+  }
+  const typed = TokenMintAccount.from_array(data);
+  const ticker = typed?.get_ticker();
+  if (!ticker || ticker.get_length() > ticker.get_bytes().length) {
+    throw new Error('The mint ticker is malformed.');
+  }
+  const info = sdkParseMintAccountData(account);
+  return { exists: true, decimals: info.decimals, supply: info.supply,
+    creator: info.creator, mintAuthority: info.mintAuthority, freezeAuthority: info.freezeAuthority,
+    hasFreezeAuthority: info.hasFreezeAuthority, ticker: info.ticker };
+}
+
 export async function readMintAccount(mintAddress) {
+  const client = getClient();
+  const tokenProgramId = activeNetwork.tokenProgramId;
   let account;
   try {
-    account = await getClient().accounts.get(mintAddress);
+    account = await client.accounts.get(mintAddress);
   } catch (err) {
     if (sdkIsAccountNotFoundError(err)) return { exists: false };
     throw err;
   }
-  const info = sdkParseMintAccountData(account);
-  return {
-    exists: true,
-    decimals: info.decimals,
-    supply: info.supply,
-    ticker: info.ticker,
-    creator: info.creator,
-    mintAuthority: info.mintAuthority,
-    freezeAuthority: info.freezeAuthority,
-    hasFreezeAuthority: info.hasFreezeAuthority,
-  };
+  return parseMintAccount(account, tokenProgramId);
 }
 
 /**

@@ -30,11 +30,12 @@ import { Button } from '../../kit/button.js';
 import { Banner } from '../../kit/feedback.js';
 import { APP_ICON_URL } from '../../../shared/tokens.js';
 import * as bridge from '../bridge.js';
-import { invalidate, resolveReturnTo } from '../guards.js';
+import { resolveReturnTo, seed } from '../guards.js';
 
 export function UnlockRoute({ params, navigate, knownPaths }) {
   const d = disposer();
   let countdownTimer = null;
+  let alive = true;
 
   // Where to go after unlocking. A guard that bounced us here records the original
   // destination, so opening #/send while locked lands on Send rather than silently on the
@@ -123,19 +124,24 @@ export function UnlockRoute({ params, navigate, knownPaths }) {
 
     try {
       await bridge.send('wallet.unlock', { password: value });
+      if (!alive) return;
       // Clear before navigating: the string must not outlive this screen.
       password.clearSecret();
-      invalidate();
+      // Seed immediately so requireUnlocked resolves synchronously with zero extra IPC wait.
+      seed({ hasVault: true, unlocked: true });
       // Return to the screen that was originally requested, not always the dashboard.
       navigate(returnTo, { replace: true });
     } catch (error) {
+      if (!alive) return;
       password.clearSecret();
 
       if (error.code === 'AUTH_LOCKED_OUT') {
         try {
           const lockout = await bridge.send('wallet.getLockoutState');
+          if (!alive) return;
           startCountdown(lockout?.retryInMs || 5000);
         } catch {
+          if (!alive) return;
           banner.set(error.message, 'warning');
         }
         return;
@@ -175,13 +181,14 @@ export function UnlockRoute({ params, navigate, knownPaths }) {
   // popup mid-lockout), show it immediately rather than after a failed attempt.
   bridge.send('wallet.getLockoutState')
     .then((lockout) => {
-      if (lockout?.retryInMs > 0) startCountdown(lockout.retryInMs);
+      if (alive && lockout?.retryInMs > 0) startCountdown(lockout.retryInMs);
     })
     .catch(() => {});
 
   return {
     el,
     destroy() {
+      alive = false;
       stopCountdown();
       password.destroy();
       unlockBtn.destroy();

@@ -35,6 +35,13 @@ import { assertNetworkSwitchAllowed } from './signing-guard.js';
 const ACTIVE_NETWORK_KEY = 'thru_active_network';
 const CUSTOM_NETWORKS_KEY = 'thru_custom_networks';
 
+let networkGeneration = 0;
+
+/** Process-local context boundary, including roundtrips that retain the same SDK client. */
+export function getNetworkGeneration() {
+  return networkGeneration;
+}
+
 /** Error code returned when a caller asks to activate a saved custom network. */
 export const CUSTOM_NETWORK_DISABLED = 'CUSTOM_NETWORK_DISABLED';
 
@@ -116,6 +123,7 @@ async function readActiveNetworkId() {
   if (builtInIds().has(stored)) return { id: stored, healedFrom: null };
 
   await chrome.storage.local.set({ [ACTIVE_NETWORK_KEY]: DEFAULT_NETWORK });
+  networkGeneration += 1;
   return { id: DEFAULT_NETWORK, healedFrom: stored };
 }
 
@@ -194,6 +202,9 @@ export async function setActiveNetwork(networkId) {
   // Rebind immediately so the next RPC call already targets the new endpoint, rather than
   // waiting for whoever happens to read the config next.
   configureNetwork(config);
+  // Even same-id selection already writes, emits and discards reviews through the router.
+  // Keep that explicit context boundary distinct from idempotent config reads.
+  networkGeneration += 1;
   emitNetworkChanged(toPublicNetwork(config));
   return config;
 }

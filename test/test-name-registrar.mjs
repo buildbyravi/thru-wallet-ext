@@ -46,6 +46,7 @@ globalThis.chrome = {
 const { handleApiRequest } = await import('../src/background/api-router.js');
 const { sendWithConsent } = await import('./fixtures/consent.mjs');
 const { Pubkey } = await import('@thru/sdk');
+const { TokenMintAccount } = await import('@thru/programs/token');
 const reg = await import('../src/lib/registrar.js');
 const ns = await import('../src/lib/name-service.js');
 const tcr = await import('../src/lib/custom-registrar.js');
@@ -118,6 +119,12 @@ const client = thru.getClient();
 // An absent account = the SDK's own not-found shape (err.code 5 → the wrapper answers {exists:false}).
 const notFound = () => { const e = new Error('account not found'); e.code = 5; throw e; };
 client.accounts.get = async (address) => {
+  if (address === MINT) {
+    const ticker = new Uint8Array(9); ticker[0] = 3; ticker.set(new TextEncoder().encode('PAY'), 1);
+    const data = TokenMintAccount.builder().set_decimals(6).set_supply(1000000n)
+      .set_has_freeze_authority(0).set_ticker(ticker).finish().buffer;
+    return { meta: { balance: 1n, owner: Pubkey.from(TOKEN_PROGRAM) }, data: { data } };
+  }
   if (address === CONFIG_ADDR) {
     if (!configPresent) return notFound();
     return { meta: { balance: 1n, owner: registryOwner }, data: buildConfigBytes() };

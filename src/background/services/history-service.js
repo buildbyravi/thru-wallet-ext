@@ -1,5 +1,5 @@
-// History service — the wallet's local answer to Rabby's history cache (P0 of
-// docs/HISTORY_REDESIGN_PLAN.md).
+// History service — the wallet's local answer to Rabby's history cache (see
+// docs/guides/history-and-activity.md).
 //
 // Rabby opens its transactions tab instantly because indexed rows are cached locally and
 // refreshed in the background; Thru's explorer indexer exists but its documented surface is
@@ -15,7 +15,7 @@
 
 import * as txService from './tx-service.js';
 import * as thruClient from '../../lib/thru-client.js';
-import { getActiveNetworkConfig, getActiveNetworkId } from './network-service.js';
+import { getActiveNetworkConfig, getActiveNetworkId, getNetworkGeneration } from './network-service.js';
 import { getNetworkConfig, explorerTxUrl } from '../../lib/networks.js';
 import { scopedKey } from '../../shared/network-scope.js';
 import { getPreferences } from './preferences-service.js';
@@ -96,12 +96,20 @@ function cachedPage(scope, address) {
 // A plain read-modify-write of the shared network scope loses one writer's account. Queue
 // only the storage write critical section; RPCs and cache-first reads remain independent.
 const scopeUpdates = new Map();
-function updateScope(networkId, edit) {
+let generation = 0;
+function updateScope(networkId, edit, isCurrent = null) {
+  const started = generation;
   const key = scopedKey(CACHE_BASE_KEY, networkId);
   const prior = scopeUpdates.get(key) || Promise.resolve();
   const update = prior.catch(() => {}).then(async () => {
+    if (started !== generation) return null;
     const { scope } = await readScope(networkId);
+    if (started !== generation) return null;
     const { changed, value } = await edit(scope);
+    const activeId = isCurrent ? await getActiveNetworkId() : null;
+    // No asynchronous key resolution or edit may follow this final context check.
+    if (started !== generation) return null;
+    if (isCurrent && !isCurrent(activeId)) return null;
     if (changed) await chrome.storage.local.set({ [key]: scope });
     return value;
   });
@@ -137,19 +145,29 @@ export async function getCachedHistory(address) {
  * @returns {Promise<{ entries: object[], nextCursor: number|null, synced: boolean }>}
  */
 export async function getHistoryFeed(address) {
+  const startedGeneration = generation;
   const network = await getActiveNetworkConfig(); // a cold worker must bind before its RPC
+  const client = thruClient.getClient();
+  const networkGeneration = getNetworkGeneration();
+  function assertCurrent(activeId) {
+    if (startedGeneration !== generation || networkGeneration !== getNetworkGeneration()
+      || client !== thruClient.getClient() || activeId !== network.id
+      || thruClient.getConfiguredNetwork().id !== network.id) {
+      const error = new Error('The network or wallet changed while fetching history. Retry.');
+      error.code = 'NETWORK_CHANGED';
+      throw error;
+    }
+    return true;
+  }
   const { scope } = await readScope(network.id);
   const cached = cachedPage(scope, address);
 
   try {
+    assertCurrent(await getActiveNetworkId());
     const page = await txService.listHistory(address, {
       limit: PAGE_ON_OPEN, cursor: 0, skipBlockTimes: true,
     });
-    if ((await getActiveNetworkId()) !== network.id) {
-      const error = new Error('The network changed while fetching history. Retry on the new network.');
-      error.code = 'NETWORK_CHANGED';
-      throw error;
-    }
+    assertCurrent(await getActiveNetworkId());
     const fresh = Array.isArray(page) ? page : (page?.entries || []);
     const nextCursor = Array.isArray(page) ? fresh.length : (page?.nextCursor ?? fresh.length);
 
@@ -169,6 +187,7 @@ export async function getHistoryFeed(address) {
       if (timeMs !== null) blockTimes.set(slot, timeMs);
     })); // at most PAGE_ON_OPEN unique headers; duplicate slots share one request
 
+    assertCurrent(await getActiveNetworkId());
     // Chain-reality evidence from the live fetch: a cached row stamped above what this
     // chain has produced cannot belong to it. A genesis swap can reuse the same managed
     // program addresses (the previous testnet's resets did), so the offline _chain fingerprint alone cannot see a genesis
@@ -176,11 +195,14 @@ export async function getHistoryFeed(address) {
     // fresh ones. Resolved outside the write queue, like the block headers above.
     let headSlot = null;
     try {
+      assertCurrent(await getActiveNetworkId());
       const height = await thruClient.getBlockHeight();
       const finalized = height?.finalized;
       headSlot = finalized == null ? null : Number(finalized);
       if (!Number.isFinite(headSlot)) headSlot = null;
-    } catch {
+      assertCurrent(await getActiveNetworkId());
+    } catch (error) {
+      if (error.code === 'NETWORK_CHANGED') throw error;
       headSlot = null;
     }
     if (headSlot == null && fresh.length) {
@@ -203,12 +225,7 @@ export async function getHistoryFeed(address) {
       .map((p) => [p?.signature, validTimeMs(p?.submittedAt) || validTimeMs(p?.settledAt)])
       .filter(([signature, ms]) => Boolean(signature) && ms !== null));
 
-    const merged = await updateScope(network.id, async (latestScope) => {
-      if ((await getActiveNetworkId()) !== network.id) {
-        const error = new Error('The network changed while fetching history. Retry on the new network.');
-        error.code = 'NETWORK_CHANGED';
-        throw error;
-      }
+    const merged = await updateScope(network.id, (latestScope) => {
       // Re-read inside the serialized write section: an overlapping feed for a DIFFERENT
       // account may have updated this scope while the RPC was running. Preserve both rows.
       const latest = cachedPage(latestScope, address);
@@ -241,7 +258,8 @@ export async function getHistoryFeed(address) {
       ].slice(0, CACHE_LIMIT);
       latestScope[address] = { entries, nextCursor, updatedAt: Date.now() };
       return { changed: true, value: entries };
-    });
+    }, assertCurrent);
+    assertCurrent(await getActiveNetworkId());
     return { entries: merged, nextCursor, synced: true };
   } catch (error) {
     if (error?.code === 'NETWORK_CHANGED') throw error;
@@ -276,7 +294,7 @@ export async function recordSubmittedTransaction(tx) {
     tokenSymbol: tx.tokenSymbol || null,
     tokenDecimals: tx.tokenDecimals != null ? Number(tx.tokenDecimals) : null,
     tokenMint: tx.mint || null,
-    success: true,
+    success: null,
   };
 
   await updateScope(networkId, (scope) => {
@@ -317,10 +335,11 @@ export async function recordSubmittedTransaction(tx) {
  * @param {string|null} [error=null]
  * @param {string|null} [networkId=null]
  */
-export async function settleTransaction(signature, status, error = null, networkId = null) {
+export async function settleTransaction(signature, status, error = null, networkId = null, isCurrent = null) {
   if (!signature) return;
+  const started = generation;
   const netId = networkId || await getActiveNetworkId();
-  await updateScope(netId, (scope) => {
+  const changed = await updateScope(netId, (scope) => {
     let changed = false;
     for (const [address, page] of Object.entries(scope)) {
       if (address.startsWith('_') || !page?.entries || !Array.isArray(page.entries)) continue;
@@ -332,7 +351,7 @@ export async function settleTransaction(signature, status, error = null, network
         return {
           ...e,
           status,
-          success: status === 'confirmed',
+          success: status === 'confirmed' ? true : status === 'failed' ? false : null,
           error: error || (status === 'failed' ? (e.error || 'Transaction failed on-chain.') : null),
           settledAt: Date.now(),
         };
@@ -346,12 +365,15 @@ export async function settleTransaction(signature, status, error = null, network
       }
     }
     return { changed, value: changed };
-  });
+  }, isCurrent);
+  if (!changed || started !== generation) return;
 
   // Desktop notification if enabled
   try {
     if (chrome?.notifications?.create && (status === 'confirmed' || status === 'failed')) {
       const prefs = await getPreferences().catch(() => null);
+      if (isCurrent && !isCurrent(await getActiveNetworkId())) return;
+      if (started !== generation) return;
       if (prefs?.desktopNotifications !== false) {
         const title = status === 'confirmed' ? 'Transaction Confirmed' : 'Transaction Failed';
         const explorerAvailable = Boolean(explorerTxUrl(getNetworkConfig(netId), signature));
@@ -405,6 +427,14 @@ export async function openNotificationTx(notificationId, { openTab } = {}) {
 /**
  * Drop an address's cached feed (e.g. account removal). Storage stays bounded by design.
  */
+export async function clearAllHistory() {
+  generation++;
+  await Promise.allSettled([...scopeUpdates.values()]);
+  const all = await chrome.storage.local.get(null);
+  const keys = Object.keys(all).filter(k => k === CACHE_BASE_KEY || k.startsWith(`${CACHE_BASE_KEY}::`));
+  if (keys.length) await chrome.storage.local.remove(keys);
+}
+
 export async function clearHistoryCache(address) {
   const networkId = await getActiveNetworkId();
   await updateScope(networkId, (scope) => {

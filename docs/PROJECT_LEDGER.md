@@ -1,221 +1,76 @@
-# Project ledger — shipped baseline and open verification
+# Project Ledger — Identifiers and Contract History
 
-Date: 2026-10-04; refreshed 2026-11-02 (contract v32, background consent gate).
-Purpose: concise source-backed record of the current implementation, contract identifiers, completed milestones, and checks that remain open. `src/`, tests, and scripts are authoritative; this ledger is a summary.
-
-The identifier refresh is based on the audited source at `7883219` plus the 2026-10-04 conformance audit (`docs/audits/2026-10-04-conformance.md`; index and open gates in `docs/AUDIT_REPORT.md`), then re-counted against `src/` on 2026-10-28. The documentation does not claim new runtime behavior beyond what `src/` ships.
+Date: 2026-10-04; refreshed 2026-11-16 (contract v33, additive verified token import).
+Purpose: canonical record of shipped repository identifiers and the append-only contract version history (`v5–v33`). `src/`, `test/`, and `scripts/` are authoritative; current verification status and next tasks live in `docs/STATUS_AND_ROADMAP.md`.
 
 ---
 
-## 1. Current identifiers
+## 1. Canonical Shipped Identifiers
 
-| Item | Shipped value |
-| --- | --- |
-| Repository | `buildbyravi/thru-wallet-ext` |
-| Audited implementation baseline | `7883219` (`arena/01a10602-thru-wallet-ext`, 2026-10-04 audit) |
-| Contract version | **v32** (2026-11-02). The v18 figure below in §3 is the historical M0 measurement; `CONTRACT_VERSION` in `src/shared/contract/manifest.js` is authoritative. |
-| Contract methods | **153**, counted from `Object.keys(METHODS)` in `src/shared/contract/manifest.js` (the v18 audit counted 124: 81 wallet-core + 43 DeFi M0 surface, all feature-flagged off). v29 adds the three review methods; v31 adds `name.reverseLookup`. |
-| Route count | 15 popup/side-panel routes |
-| Signing preference default | Session-only while unlocked (`requirePasswordForSigning: false`); password re-auth is an explicit, password-gated Settings opt-in |
-| Built extension page | `popup.html`, shared by toolbar popup and side panel |
-| Network availability | Betanet enabled; Localnet, Testnet and Mainnet declared but disabled (tests re-enable Localnet in-process) |
-| Thru package versions | `@thru/sdk` and `@thru/programs` exact-pinned at `0.4.2` |
-| Build output | Generated under `dist/`; do not edit by hand |
-| Store package | `1.4.1` live in the Chrome Web Store since 2026-10-04 (live page verified; record in `extension.md` §9); no browser verification of the store package is recorded |
+| Identifier | Shipped Value | Authority / Enforcing Gate |
+| --- | --- | --- |
+| Repository | `buildbyravi/thru-wallet-ext` | `package.json` |
+| Contract version | **v33** | `CONTRACT_VERSION` in `src/shared/contract/manifest.js` (`scripts/check-docs-truth.mjs`) |
+| Contract methods | **154** (`88` wallet-core + `23` `name.*` + `43` flag-off `DEFI_METHODS`) | `Object.keys(METHODS)` in `manifest.js` (`test/test-contract.mjs`, `test/test-defi-m0.mjs`) |
+| Push events / Error codes | **8** `EVENTS` / **65** `ERROR_CODES` | `src/shared/contract/manifest.js` |
+| Registered UI routes | **15** popup/side-panel routes | `src/ui/app/boot.js` (`scripts/check-routes.mjs`, `test/test-route-lifecycle.mjs`) |
+| Transaction review kinds | **9** (`8` executable + `1` display-only `raw`) | `src/shared/tx-review/registry.js` <-> `src/background/services/review/kinds.js` (`test/test-tx-review.mjs`) |
+| Runtime JS files / DOM sinks | **128** shipped JS files / **0** HTML-injection sinks | `scripts/check-layering.mjs` (vendored QR excluded) |
+| Automated test suite | **41** `test/test-*.mjs` suites + **9** `scripts/check-*.mjs` guards | `package.json` `scripts.test` |
+| Signing auth default | Session-only while unlocked (`requirePasswordForSigning: false`); password-per-sign is a password-gated opt-in | `docs/DECISIONS.md` D-003 (`test/test-api-router.mjs`) |
+| Enabled networks | `betanet` enabled (`localnet`, `testnet`, `mainnet` declared disabled) | `src/lib/networks.js` + `scripts/check-csp.mjs` |
+| Thru SDK / Program pins | `@thru/sdk` `0.4.2`, `@thru/programs` `0.4.2` (exact pins) | `package.json` (`test/test-derivation.mjs`) |
+| Extension / Store version | `1.4.1` (`src/manifest.json`; live on CWS since 2026-10-04; pre-v29 build) | `extension.md` |
+| Build output | `dist/` (`popup.html`, `popup.css`, `popup.bundle.js`, `background.bundle.js`) | `build.mjs` (never edit `dist/` by hand) |
+| Feature flags (`FLAGS`) | **11** flags in `src/shared/flags.js` — **all `false`** | `test/test-release-flags.mjs`, `test/test-launchpad-quarantine.mjs` |
 
-The contract remains an append-only API in ordinary feature work, with documented security-policy exceptions in v5–v7, the v13 faucet-auth change, and the v16 retirement of the unbound send methods (a removal after zero shipped callers, not an addition). Version history v8–v18 is recorded in §3. Treat the manifest and `test/test-contract.mjs` as the exact contract authority for wallet-core, plus `src/shared/contract/defi-schema.js` and `test/test-defi-m0.mjs` for the DeFi surface (M0, all feature-gated off).
-
-Run from the repository root:
+Quick verification commands:
 
 ```bash
-git status --short --branch
 node -e "import('./src/shared/contract/manifest.js').then(m => console.log(m.CONTRACT_VERSION, Object.keys(m.METHODS).length))"
-npm test
-npm run build
+npm run build && npm test
 ```
 
 ---
 
-## 2. Present architecture snapshot
+## 2. Shipped Contract Milestones (`v5`–`v33`)
 
-```txt
-src/ui/app/routes/*
-  ↓ bridge.send(method, params)
-src/shared/contract/manifest.js
-  ↓ allowlisted API request
-src/background/api-router.js
-  ↓ auth + service dispatch
-src/background/services/*
-  ↓
-src/lib/vault.js       # encrypted vault, keyrings, account derivation
-src/lib/thru-client.js # RPC, transaction/program adapters, history decoding
-src/lib/networks.js    # enabled network and program configuration
-```
+Ordinary contract evolution is strictly append-only (`Rule 4`), with documented security-hardening exceptions in `v5–v7`, `v13`, `v16`, and `v31`.
 
-The 15 routes are registered in `src/ui/app/boot.js`: `/welcome`, `/unlock`, `/dashboard`, `/accounts`, `/account`, `/add-account`, `/keyring`, `/export`, `/send`, `/receive`, `/faucet`, `/name`, `/history`, `/settings`, and `/reset`.
-
-The toolbar popup and side panel share `popup.html`. The side panel uses the `?thru_panel=1` context marker. A popup opening broadcasts a close message and uses Chrome's side-panel close API when available; the panel listener is installed before asynchronous boot work. Settings exposes an explicit **Side Panel Mode** opt-in that controls whether the toolbar action opens the panel. This behavior is covered by deterministic tests; actual Chrome interaction remains a manual check.
-
-No launchpad, DEX, swap, or prediction UI is shipped. The old `src/launchpad/` tree and its entry points were removed; `test/test-launchpad-quarantine.mjs` keeps that surface out of source/build output. Backend token methods are separate and remain part of the wallet contract.
-
----
-
-## 3. Shipped contract milestones
-
-| Version | Shipped change |
+| Version | Shipped Delta |
 | ---: | --- |
-| v5 | Existing signing methods moved to `auth: 'signing'`; background policy honors the user's password re-auth preference. |
-| v6 | Reset confirmation/password policy and password-gated auto-lock changes enforced by the background. |
-| v7 | Custom network activation refused in the background; stale custom/disabled/unknown active IDs heal before RPC binding. Legacy records remain inert/listable/removable. |
-| v8 | Token transfer and real registry-mint balances built on official `@thru/programs/token` bindings. |
-| v9 | Cache-merged history feed with cursor pagination and an explicit offline/sync status. |
-| v10 | Lazy per-signature transaction detail; declared fee and unavailable/optional fields are distinguished rather than guessed. |
-| v11 | `tx.sendChecked` and `token.transferChecked` pin the reviewed source account and network at the backend boundary. |
-| v12 | `tx.registerAccount` is unlocked-only and limited to an exact vault-owned address; `tx.getCachedHistory` adds a storage-only, per-network/address History read. |
-| v13 | `tx.claimFaucet` auth drops from `signing` to `unlocked` (first modified method since the v5 security break, same precedent: behavior changes get a version); the vestigial password param leaves the declaration. |
-| v14 | `token.readMint` reads a mint account straight from the chain so "Add custom token" verifies the pasted address and uses the chain's own symbol/decimals. |
-| v15 | `tx.checkDuplicate` detects repeat transfers within 30s or while in flight; send methods accept an explicit `allowDuplicate` for user-confirmed repeats. |
-| v16 | Retires the unbound `tx.send` / `token.transfer` mutation endpoints after every shipped UI caller migrated to the checked counterparts; the weaker alternate signing path is gone. |
-| v17 | M0 DeFi READ+LOCAL surface (29 methods): `program.*`, `feed.*`, `market.*` reads/watchlist, `risk.assetAssess`, `launchpad.*` reads/drafts/validateDraft, `dex.*` pool reads/positions, `intent.list/get`, `desktop.open`. Discovery reads answer from the evidence-pinned capability snapshot; capability-gated reads answer `{ supported:false, reason }`. All behind build-time flags, all off. |
-| v18 | M0 DeFi PREPARE+EXECUTE surface (14 methods): `intent.prepareSend/rePrepare/resume/discard/stopWaiting`, `dex.quote/quoteLiquidity/prepareSwap/prepareLiquidity`, `launchpad.uploadImage/prepareCreate/prepareMigrate/prepareClaim`, and `intent.submit` — the only signing-gated DeFi method. All refuse honestly (unsupported/`FEATURE_DISABLED`) intent-store pending; events `intentChanged`/`capabilitiesChanged`/`feedChanged` and the S10 error-code map appended in the same drop. |
-| v19 | Name-service slice (5 methods): `name.lookup` and `name.checkAvailability` reads, plus `name.initRoot`, `name.register` and `name.setRecord` behind the `NAME_SERVICE` flag (the latter two become real writes later, v23 for `register`). |
-| v20 | The v18 intent methods gain a real native-send intent pipeline (network-scoped store, bindingHash-pinned submit, honest `NOT_READY` resume/stopWaiting). Method shapes unchanged; still behind `DEFI_INTENT`. |
-| v21 | Primary-name slice (3 `name.*` methods): a wallet-local, network-scoped "my name" record. Linking verifies on-chain ownership through the existing `name.lookup` read; nothing signs. |
-| v22 | Official `.thru` registrar slice (6 `name.*` methods): `getRegistry`, `checkLease` and `getPaymentBalance` reads plus self-signed `purchase`, `renewLease`, `claimExpired` from first-party formats. Fee policy follows the first-party builder: `0n`, because the registrar prices in its own payment token. |
-| v23 | Owner-directed: `name.register` leaves the `NAME_SERVICE` gate and becomes a real self-signed write (first-party subdomain-register format, fee `0n`). Auth tightens `unlocked` → `signing`. `name.getCanonicalRoot` appended as a proof-backed read. `initRoot`/`setRecord` stay gated. |
-| v24 | `tx.getFaucetLimit`: a pure read of the faucet's on-chain rate-limit policy plus the active account's per-rule bucket usage. Unknown states stay explicit; ratelimit-coded `vmError`s are re-labelled `FAUCET_RATE_LIMITED`. |
-| v25 | The custom thru-custom-registrar (D-016, live-verified on Betanet 2026-10-25) joins `/name` as a second provider: `name.getCustomRegistrar` / `name.checkCustomLease` reads, and optional `via`/`years` on `name.register` (`via:'custom'` routes to the custom registrar). |
-| v26 | `token.discover` (additive, `unlocked`): chain-verified incoming-mint discovery. The same drop enabled the DEX swap slice on dated live evidence; the owner withdrew the swap screen on 2026-10-26, so every `DEFI_*` flag is off again and the UI is un-shipped. |
-| v27 | `token.getCachedBalances` (additive, auth none): a storage-only snapshot of the last chain-verified token rows, so the dashboard never waits on RPC. Failed reads are never cached. |
-| v28 | Optional reviewed network/account/price/expiry facts on the name signing requests. |
-
-### v12 registration and History behavior
-
-- Account/keyring creation paths make a best-effort registration attempt for each newly added account on the selected network. Retries are bounded (one initial attempt plus at most three exponential retries); lock, account removal, network change, or a permanent refusal stops the retry. Offline failure does not block local account creation.
-- Dashboard and Send both activate an absent owned account through `tx.registerAccount` (Dashboard for the active account, Send after a successful live absence check). Send uses `tx.registerAccount` only after an absence check for a recipient the unlocked vault owns. It never registers an arbitrary contact or external address.
-- Registration signs with the target account's own key; its transaction declares fee `0n` and nonce `0n`. It is still a signed broadcast and is not evidence that network/privacy effects are zero. There is no periodic signer.
-- Send JIT activation remains pending until the background confirms registration. Review then displays the matched recipient label and the full address. The label is presentation only; the address remains the authorization fact.
-- History paints a storage-only cache scoped by network and address before its RPC feed/pending reconciliation completes. Known block times carry `timestampSource: 'block'`; only an actual local submission time for the wallet's own transaction may be used as a fallback. Otherwise the card shows `Block <slot>` rather than a fabricated date. The UI is a flat stream without day headers and has no per-card fee line.
+| **v5** | *Security break:* Existing value-moving signing methods moved in place to centralized `auth: 'signing'`. |
+| **v6** | *Security break:* `wallet.reset` requires confirmation (plus password when unlocked); `system.setAutoLock` requires `auth: 'password'`. |
+| **v7** | *Security break:* Custom network activation refused in background (`CUSTOM_NETWORK_DISABLED`); stale custom/disabled stored network IDs heal to `betanet` before RPC binding. |
+| **v8** | Token transfer and live registry-mint balances built on official `@thru/programs/token` bindings. |
+| **v9** | Cache-merged History feed (`tx.getHistoryFeed`) with cursor pagination and explicit offline/sync status. |
+| **v10** | Lazy per-signature transaction detail (`tx.getDetail`) distinguishing `feeDeclaredUnits` (`feeCharged: false`) and optional block time. |
+| **v11** | Checked send methods (`tx.sendChecked`, `token.transferChecked`) binding reviewed source account and network at the background boundary. |
+| **v12** | Narrow `tx.registerAccount` (`auth: 'unlocked'`) self-signing exception for exact vault-owned addresses; storage-only `tx.getCachedHistory`. |
+| **v13** | `tx.claimFaucet` moved from `signing` to `unlocked` (incoming testnet credit) and vestigial password param removed. |
+| **v14** | `token.readMint` chain lookup verifying symbol and decimals directly from the on-chain mint account. |
+| **v15** | `tx.checkDuplicate` (30s / in-flight repeat transfer detection) + `allowDuplicate` acknowledgement flag. |
+| **v16** | *Security retirement:* Removed unbound legacy `tx.send` and `token.transfer` after confirming zero shipped callers (`D-010`). |
+| **v17** | DeFi M0 `READ` (`21`) + `LOCAL` (`8`) contract surface (`29` methods across `program.*`, `feed.*`, `market.*`, `risk.*`, `launchpad.*`, `dex.*`, `intent.list/get`, `desktop.open`), all gated off behind `FLAGS.DEFI_* === false`. |
+| **v18** | DeFi M0 `PREPARE` (`13`) + `EXECUTE` (`1`: `intent.submit`) surface (`14` methods) + `intentChanged`/`capabilitiesChanged`/`feedChanged` events and `UNSUPPORTED_REASONS` schema (`defi-schema.js`). |
+| **v19** | Name-service slice (`5` methods): `name.lookup`, `name.checkAvailability`, `name.initRoot`, `name.register`, `name.setRecord`. |
+| **v20** | Backed `v18` `intent.*` methods with a network-scoped `defi_intents` store proven on native send (still behind `FLAGS.DEFI_INTENT === false`). |
+| **v21** | Wallet-local, network-scoped primary alias (`name.getPrimary`, `name.linkPrimary`, `name.unlinkPrimary`) verified against `name.lookup`. |
+| **v22** | Official `.thru` paid registrar slice (`6` methods): `getRegistry`, `checkLease`, `getPaymentBalance`, `purchase`, `renewLease`, `claimExpired`. |
+| **v23** | Ungated `name.register` (`auth: 'signing'`, first-party self-signed subdomain write) + `name.getCanonicalRoot` read (`initRoot` stays gated). |
+| **v24** | `tx.getFaucetLimit` reading `@thru/programs/ratelimit` on-chain policy and per-account bucket usage. |
+| **v25** | Integrated `thru-custom-registrar` (`name.getCustomRegistrar`, `name.checkCustomLease`, `via: 'custom'` + `years` on `name.register`). |
+| **v26** | `token.discover` chain-verified incoming mint discovery. (Same drop briefly enabled DEX swap UI; withdrawn by owner 2026-10-26 so all `DEFI_*` flags remain `false`.) |
+| **v27** | `token.getCachedBalances` (`auth: 'none'`) storage-only token balance snapshot for non-blocking Dashboard first paint. |
+| **v28** | Bound reviewed `expectedNetworkId`, `expectedAccountAddress`, `expectedPriceUnits`, and `expectedExpiresAt` parameters on `name.*` writes. |
+| **v29** | Shared transaction-review pipeline (`tx.prepareReview`, `tx.confirmReview`, `tx.discardReview`, all `auth: 'unlocked'`, `TX_REVIEW_VERSION = 1`, `tx_reviews` store, `TxReviewCard`, `confirm.js`). |
+| **v30** | Per-network tracked domain inventory (`name.getCachedDomains`, `listDomains`, `trackDomain`, `setPrimaryDomain`, `untrackDomain`) and custom-registrar renewal (`name.renewLease` with `via: 'custom'`). |
+| **v31** | *Security upgrade + append:* `name.setRecord` promoted in place to live `auth: 'signing'` write (`APPEND_RECORD` opcode 2, reviewed as kind `domain-record`, `153` methods total with new `name.reverseLookup`). |
+| **v32** | **Background review consent gate (`2026-11-02`):** `tx.confirmReview` mints a single-use 60s in-memory `consentToken` (`src/background/services/review/consent.js`) bound to `{ method, sha256(canonicalParams), accountAddress, networkId }`. `api-router.js` requires and burns `consentToken` before any non-exempt `TRANSACTION_METHODS` handler runs (`REVIEW_REQUIRED`). Subsequent `2026-11-02..13` hardening on v32 added `SEND_EXPIRY_SLOTS` (`1,000` slots), `CUSTOM_RPC_SUPPORTED = false` write refusal, unified `tx-units.networkFeeUnits` on registrar/record writes, and one-surface-per-event submission feedback (`Rule 29`). |
+| **v33** | **Additive verified token import (`2026-11-16`, D-026):** `token.importVerified` accepts only `mintAddress` and optional fallback `symbol` with `auth: 'unlocked'`. Dashboard routes to the existing strict mint verifier, which persists chain decimals under the captured network and rejects context changes. Legacy `token.import` remains compatible; total methods: `154`. |
 
 ---
 
-### v29 — shared transaction review (2026-10-28)
+## 3. Milestone Reporting Template
 
-| Item | Shipped value |
-| --- | --- |
-| Methods | `tx.prepareReview`, `tx.confirmReview`, `tx.discardReview` — all `auth: 'unlocked'`, none signs |
-| Wire model | `src/shared/tx-review/model.js` (`TX_REVIEW_VERSION = 1`, 120 s TTL, strict `assertReview` validator) |
-| Decoders | `native-send`, `token-transfer`, `domain-register`, `domain-purchase`, `domain-renew`, `domain-claim`, `faucet-claim`, `raw` (display-only) |
-| Submit map | `src/background/services/review/kinds.js` — every kind names an EXISTING signing method (method + params, called by the confirm helper); `raw` has `submit: null` |
-| Storage | `tx_reviews`, network-scoped, capped at 40 records, TTL evaluated on read |
-| UI | one card (`src/ui/domain/tx-review/review-card.js`) and one confirm helper (`confirm.js`); blocked reviews and failed simulations are refused by `tx.confirmReview`, and prepared-review writes are serialized per network; `test-tx-review.mjs` [14] fails the suite if any `bridge.send('…')` literal under `src/ui/` names an `auth:'signing'` method |
-| Integrated routes | Send (native + token), Domain (register/purchase/renew/claim), Faucet (claim) |
-| Not integrated | DeFi/DEX/launchpad: no UI surface ships (all flags off) and no backend execute path is reachable |
-
-### v30 — tracked domains and the custom-repair renewal path (2026-10-28)
-
-| Item | Shipped value |
-| --- | --- |
-| Methods | `name.getCachedDomains`, `name.listDomains`, `name.trackDomain`, `name.setPrimaryDomain`, `name.untrackDomain` — all `auth: 'unlocked'`, none signs |
-| Storage | `thru_registered_domains::<networkId>` = `{version:1, revision, records}`; v0 primary aliases migrate on the next mutation; unsupported versions fail closed |
-| Ownership | every import/primary selection re-reads the domain account, checks the name-service program owner, and compares parent/name/length before the record is enabled |
-| Renewal | `name.renewLease` + `via:'custom'` extends a custom-registrar lease; the `domain-renew` review prices it in native THRU by label tier and reports the on-chain `fee_policy` — an unenforced price is labelled unenforced, never shown as a charge or as "free" |
-| Not v30 | the batch registration queue added in `55703d0` is unreachable (its control is never revealed) and renders no review before signing (`docs/DEFECT_LOG.md` §13.4) |
-
-### v31 — live name-service record write and reverse lookup (2026-10-29)
-
-| Item | Shipped value |
-| --- | --- |
-| Methods | `name.setRecord` (existing method, now a real write: `auth: 'signing'`, declared params `expectedNetworkId` / `expectedAccountAddress` / `password`, member of `TRANSACTION_METHODS`) and the new `name.reverseLookup` (`auth: 'unlocked'`) — 153 methods total |
-| Wire | `APPEND_RECORD` (name-service opcode 2): u32 opcode, u16 domain index, u16 authority (= fee payer), bounded key/value fields; fee `0n` by construction |
-| Review | kind `domain-record` + decoder `domain-record`: three-state existence/ownership, all four recheck outcomes, "Add domain record" wording, and an append notice when the key already holds a value |
-| Reverse read | candidates come from this wallet's tracked registry only (no chain-wide reverse index exists); `verified` means the domain was re-read and its owner matches; a non-active `networkId` is refused with `NETWORK_MISMATCH` |
-| Audit | `docs/audits/2026-10-29-v31-audit.md` — found a confirm path that threw on every attempt, a signing method declared `unlocked`, boolean facts that rendered an outage as "not yours", and a swapped account row; all fixed with tests that drive the real router |
-| Not v31 | no shipped screen offers domain records; the write and the read are reachable through the contract only, and neither has live-chain evidence |
-
-## 4. Current verified state
-
-| Area | Current state and evidence |
-| --- | --- |
-| `npm test` | PASS on the 2026-11-01 tree: **2,831 checks across 40 suites plus 9 guard scripts**, exit 0. Includes derivation and QR vectors, layering 127 files/0 DOM sinks, CSP, routes 15/15 with the full used CSS class set defined, CSS nesting, launchpad quarantine, contract 168/168, DOM/refs, route lifecycle 1,117/1,117, the transaction review suite 189/189, the review-card render suite 63/63, the custom-registrar suite 63/63, toast 92/92, shared platform 45/45, name records 57, name reverse 14, plus storage-migrations, vault, Thru client, token/balance, History, registration, and API-router suites. Use the final test output for any subsequent refresh. |
-| `npm run build` | PASS on the 2026-10-29 tree; `build.mjs` regenerated `dist/` from current source with no warnings. |
-| Contract | v31, 153 methods (81 wallet-core + 43 gated-off DeFi M0 surface + the v19–v31 additive slices). v16 deliberately retired unbound legacy send methods after zero shipped callers. v29 adds `tx.prepareReview` / `tx.confirmReview` / `tx.discardReview`, all `unlocked` and none of them signing; v30 adds the tracked-domain reads/writes and `via:'custom'` renewal; v31 makes `name.setRecord` a live signing write and adds `name.reverseLookup`. |
-| Transaction review | One shared pipeline (`src/shared/tx-review/*`, `services/review-service.js`, `ui/domain/tx-review/*`) behind Send (native + token), Domain (register/purchase/renew/claim) and Faucet (claim). Decoders: native-send, token-transfer, domain-register, domain-purchase, domain-renew, domain-claim, domain-record, faucet-claim, raw. Unknown intents render explicit technical details and have no submit policy. Simulation is unsupported (`tx.simulate` → `supported:false`), so no post-tx balance is ever shown. `domain-record` is reachable only through `tx.prepareReview` — no shipped screen offers it (`docs/DEFECT_LOG.md` §14). |
-| Signing | Signing methods use `auth: 'signing'`. The wallet must be unlocked; password re-authentication is required only when the user enables it in Settings. That opt-in is itself password-gated. |
-| Registration | Exact ownership is checked in the background, the target account is the signer, Send JIT does not touch external recipients, and retry behavior is covered by deterministic registration/API tests. |
-| History | Flat card stream, storage-only cache-first paint, per-network/address cache, network-scoped block-time lookup, and provenance/fallback behavior are covered by deterministic tests. |
-| Popup/side panel | Mutual-exclusion and side-panel mode paths have deterministic route/service tests. No real-Chrome certification is claimed. |
-| DOM safety | `scripts/check-layering.mjs` checks the shipped `src/` tree (vendored QR code excluded); current sink count is zero. |
-| Dependency pin | `@thru/sdk` and `@thru/programs` are exact-pinned at `0.4.2`; derivation vectors record verification against that pin with unchanged golden addresses. This is complete, not open work. |
-
----
-
-## 5. Open verification and unresolved work
-
-Passing Node tests/builds do not close these items.
-
-| Priority | Open item | Boundary / owner |
-| ---: | --- | --- |
-| P1 | Real popup + side-panel smoke: layout at narrow/wide widths, focus rings, QR canvas, opening/closing each context, mutual exclusion, and Settings mode behavior. **Partial run recorded 2026-10-04** — popup only, local build of current source: native Betanet self-send verified recipient/amount/Review fee/confirmation/History entry, so the `/send` popup cell is ticked (run record in checklist §7); every other cell remains open | `docs/MANUAL_SMOKE_CHECKLIST.md` |
-| P1 | MV3 suspension/restart or bridge timeout during account registration and Send; verify retry/unknown-outcome behavior in real Chrome | `docs/MANUAL_SMOKE_CHECKLIST.md`; `docs/SEND_PATH_AUDIT.md` |
-| P1 | Live v12 activation: create multiple HD accounts, then activate an absent owned Send recipient; verify exact target signer, selected-network behavior, and offline/absence distinction | `docs/STATUS_AND_ROADMAP.md`; `scripts/verify-autoregister.mjs` is historical pre-v12 evidence, not a substitute |
-| P1 | Live token transfer: whether a never-registered recipient owner can receive an initialized token account and what fee the token program actually charges | `scripts/verify-token-transfer.mjs`; `docs/BACKEND_GAPS.md` |
-| P1 | Signing network-switch race after the last preflight check and concurrent pending-record read/modify/write race | `docs/SEND_PATH_AUDIT.md` |
-| P1 | Live availability/latency of optional block-time headers on the current feeds and each enabled network | `docs/HISTORY_REDESIGN_PLAN.md`; `docs/MANUAL_SMOKE_CHECKLIST.md` |
-| P1 | Whether an authoritative charged-fee value exists outside the current RPC detail response; the current response does not report a charged-fee field | `docs/BACKEND_GAPS.md`; official Explorer MCP docs are linked from `docs/DOCS_INDEX.md` |
-| P1 | Confirm the live explorer transaction route before relying on it as a supported destination | `docs/STATUS_AND_ROADMAP.md`; `docs/MANUAL_SMOKE_CHECKLIST.md` |
-| P2 | Custom RPC activation remains intentionally disabled until endpoint permissions, CSP, verified per-network program capabilities, and user authorization are designed together | `docs/STATUS_AND_ROADMAP.md` |
-| P2 | Optional feature modules (launchpad/DEX/prediction, dApp provider, local MCP) are not shipped; any future work needs its own protocol verification and guardrails | `docs/MODULE_BOUNDARIES.md` and the relevant maintained planning doc |
-
----
-
-## 6. Non-negotiable constraints
-
-1. Treat `src/` and its tests as the implementation authority; do not describe a planned feature as shipped.
-2. Thru is a native L1, not EVM. External wallets may inform UX only.
-3. Do not invent token/DEX/launchpad/chart behavior, fee values, explorer route guarantees, or an extension `window.thru` provider contract.
-4. Background owns authentication, account ownership checks, and signing. Do not move vault material into the UI.
-5. Signing password re-auth is opt-in and defaults to session-only while unlocked. Secret export, password-gated keyring operations, and security-setting changes use their declared password policy; reset always requires confirmation and also requires a password when the wallet is unlocked. Other account operations follow their contract auth.
-6. The v12 unlocked-only registration exception applies only to an exact owned account; never extend it to value-moving sends or external recipients.
-7. History caches, balances, pending transactions, and token state remain network-scoped where chain-specific; keys, labels, and contacts remain wallet/global state.
-8. Real-browser and live-chain evidence must be recorded separately from automated test results.
-9. Keep small, reviewable changes; run the repository checks on the final tree.
-
----
-
-## 7. Milestone reporting template
-
-For a future major milestone, record only the concise summary here; Git commits and PRs are the detailed change log.
-
-```txt
-PHASE:
-FILES ADDED / MODIFIED / DELETED:
-BACKEND CONTRACT DELTA:
-UI CHANGES:
-SECURITY IMPACT:
-TESTS:
-BUILD:
-BROWSER / LIVE-CHAIN EVIDENCE:
-KNOWN LIMITATIONS:
-NEXT:
-```
-
----
-
-## 8. Source identifiers to keep updated
-
-When these change, update this ledger, `CONTEXT.md`, `docs/STATUS_AND_ROADMAP.md`, and `llms.txt`:
-
-| Identifier | Current value |
-| --- | --- |
-| contract version | 29 |
-| method count | 147 |
-| route count | 15 |
-| guarded DOM sink count | 0 across shipped `src/` (vendored QR excluded) |
-| store package | `1.4.1`, listed 2026-10-04; browser verification of the store package: not recorded |
-| enabled networks | Betanet |
-| disabled declared networks | Localnet, Testnet, Mainnet |
-| built extension pages | one shared `popup.html` for popup + side panel |
-| launchpad/DEX/prediction UI | not shipped; launchpad tree is quarantined by source/build tests |
-| signing re-auth default | off; unlocked session only, with password-gated opt-in |
-| `@thru/sdk` / `@thru/programs` | exact-pinned `0.4.2` |
+Record future contract bumps as a single row in §2 above and use the standard agent report block in `AGENTS.md` §Reporting for PR/session summaries. When `CONTRACT_VERSION`, method count, or route count changes, update `CONTEXT.md`, `docs/STATUS_AND_ROADMAP.md`, `docs/PROJECT_LEDGER.md`, `docs/AUDIT_REPORT.md`, `README.md`, and `llms.txt` in the same commit (`scripts/check-docs-truth.mjs`).

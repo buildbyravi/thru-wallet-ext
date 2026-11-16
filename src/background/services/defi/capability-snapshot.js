@@ -10,7 +10,7 @@ import { BOOTSTRAP_PROGRAM_ADDRESSES } from '../../../lib/bootstrap-pins.js';
 // This is the SHIPPED twin of the script-verified seeds:
 //   scripts/defi-evidence/betanet.capability-matrix.json
 //   scripts/defi-evidence/betanet.registry-seed.json
-// (authored in docs/defi/REGISTRY_AND_CAPABILITY_SEED.md, gate G0).
+// (documented in docs/defi/DOSSIER_AND_CAPABILITIES.md, gate G0).
 //
 // Why a snapshot in code: the real DeFi registry service is build-order step 3 (POST-G0) and
 // its chain/feed evidence does not exist yet. Until it lands, the discovery READ methods
@@ -291,9 +291,9 @@ export const FEATURES = Object.freeze([
   Object.freeze({ key: 'claim', state: 'unsupported', reason: 'LAUNCH_MODEL_UNAVAILABLE',
     evidenceRef: ['registry role=curve'] }),
   Object.freeze({ key: 'charts', state: 'unsupported', reason: 'NO_INDEXER',
-    evidenceRef: ['docs/defi/DECISIONS_G0.md D2'] }),
+    evidenceRef: ['docs/defi/DOSSIER_AND_CAPABILITIES.md Q9'] }),
   Object.freeze({ key: 'discovery', state: 'unsupported', reason: 'NO_INDEXER',
-    evidenceRef: ['docs/defi/DECISIONS_G0.md D2'] }),
+    evidenceRef: ['docs/defi/DOSSIER_AND_CAPABILITIES.md Q9'] }),
   Object.freeze({ key: 'simulation', state: 'unsupported', reason: 'NO_SIMULATION',
     evidenceRef: ['docs/BACKEND_GAPS.md C3', '2026-10-05-official-docs'] }),
   Object.freeze({ key: 'usd', state: 'unsupported', reason: 'DEPENDENCY_UNVERIFIED',

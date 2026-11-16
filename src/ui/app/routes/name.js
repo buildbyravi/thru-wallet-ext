@@ -40,7 +40,10 @@ function formatVerifiedAt(ms) {
 // seconds, and label the unit either way — never silently reinterpret an unknown clock.
 function formatChainTime(u64String) {
   try {
+    if (u64String == null || (typeof u64String === 'string' && !/^\d+$/.test(u64String))
+      || (typeof u64String === 'number' && !Number.isSafeInteger(u64String))) return 'Unknown';
     const seconds = BigInt(u64String);
+    if (seconds < 0n || seconds > 18446744073709551615n) return 'Unknown';
     if (seconds >= 1_500_000_000n && seconds < 10_000_000_000n) {
       const text = new Date(Number(seconds) * 1000)
         .toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
@@ -48,7 +51,7 @@ function formatChainTime(u64String) {
     }
     return `${seconds} (chain time, seconds)`;
   } catch {
-    return String(u64String ?? '');
+    return 'Unknown';
   }
 }
 
@@ -61,6 +64,8 @@ export function NameRoute({ back }) {
   let primary = null;
   let cachedDomainItems = [];
   let loadSeq = 0;
+  let contextReady = null;
+  let refreshSearchActions = null;
   let activeTab = 'register';
   let isRenewOnly = false;
   let draft = { name: '', years: 1, quote: null };
@@ -114,6 +119,39 @@ export function NameRoute({ back }) {
     return mintReads.get(key);
   }
 
+  async function readLeaseFacts(item) {
+    const owner = account?.address;
+    if (!owner || [item.name, item.rootAddress, item.domainAddress]
+      .some((value) => typeof value !== 'string' || !value)) return null;
+    const offerings = await readProviderFacts(network?.id);
+    if (offerings.some((result) => result.status !== 'fulfilled')) return null;
+    const providers = availableThruProviders({ registry: offerings[0].value, custom: offerings[1].value })
+      .filter((provider) => (provider === 'custom' ? offerings[1].value.root
+        : offerings[0].value.registry.rootRegistrar) === item.rootAddress);
+    if (!providers.length) return null;
+    const results = await Promise.allSettled(providers.map((provider) =>
+      bridge.send(provider === 'custom' ? 'name.checkCustomLease' : 'name.checkLease', { name: item.name })));
+    const eligible = [];
+    for (let i = 0; i < results.length; i++) {
+      if (results[i].status !== 'fulfilled') return null;
+      const res = results[i].value;
+      const provider = providers[i];
+      const root = provider === 'custom' ? res?.root : res?.rootRegistrar;
+      if (res?.supported !== true || res.stale || res.cached || res.readError || res.leaseParseError
+        || res.name !== item.name || root !== item.rootAddress || res.domainAddress !== item.domainAddress
+        || typeof res.leaseExists !== 'boolean' || res.domainExists !== true) return null;
+      if (!res.leaseExists) continue;
+      const lease = res.lease;
+      if (!lease || typeof lease.owner !== 'string' || !lease.owner
+        || (provider === 'custom' ? lease.label : lease.name) !== item.name
+        || (provider === 'registry' && lease.domainAccount !== item.domainAddress)) return null;
+      if (lease.owner !== owner) continue;
+      eligible.push({ provider, lease: { ...lease, expiresAtSeconds: lease.expiresAtSeconds ?? lease.endTime } });
+    }
+    // A root can be shared by both registrars. Only one freshly matched owned lease selects a provider.
+    return eligible.length === 1 ? eligible[0] : null;
+  }
+
   const banner = Banner({ tone: 'error' });
   // Hard rule 15 (2026-10-26): shell paints with its eyebrow + a checking card; the
   // reads that fill it in (network, account, chain offerings) all arrive in parallel.
@@ -128,6 +166,7 @@ export function NameRoute({ back }) {
   const el = h('section', { class: 'screen' }, [header.el, banner.el, body]);
 
   function clearBody() {
+    refreshSearchActions = null;
     reviewSheet?.destroy();
     reviewSheet = null;
     bodyDisposer.dispose();
@@ -153,7 +192,8 @@ export function NameRoute({ back }) {
     let busy = false;
     const leaseFacts = new Map();
     bodyDisposer.add(() => { alive = false; seq++; rows.dispose(); });
-    const current = () => alive && !destroyed && host.isConnected;
+    const current = () => alive && !destroyed && host.isConnected
+      && ctx.expectedNetworkId === network?.id && ctx.expectedAccountAddress === account?.address;
     const list = h('div', { class: 'stack stack-3 name-domain-list' });
     const status = h('div', { class: 'hint', role: 'status', text: 'Loading saved domains…' });
     const refresh = h('button', { type: 'button', class: 'btn text', text: 'Refresh ownership' });
@@ -182,99 +222,43 @@ export function NameRoute({ back }) {
           : item.status === 'owned' ? 'Verified ownership'
             : item.status === 'not-owned' ? 'No longer owned by this account' : 'Not found on this network';
 
-        // Async lease fetch without blocking initial render
-        const lease = leaseFacts.get(item.name);
-        if (!leaseFacts.has(item.name) && item.rootName === 'thru') {
-          leaseFacts.set(item.name, 'loading');
-          void bridge.send('name.checkCustomLease', { name: item.name }).then(res => {
-            if (res?.lease && current()) {
-              leaseFacts.set(item.name, res.lease);
-              paint();
-            } else if (current()) {
-              void bridge.send('name.checkLease', { name: item.name }).then(regRes => {
-                if (regRes?.lease && current()) {
-                  leaseFacts.set(item.name, {
-                    expiresAtSeconds: regRes.lease.endTime || regRes.lease.leaseEndTime,
-                    resolver: regRes.lease.domainAccount,
-                  });
-                  paint();
-                } else if (current()) {
-                  leaseFacts.set(item.name, null);
-                  paint();
-                }
-              }).catch(() => {
-                if (current()) {
-                  leaseFacts.set(item.name, null);
-                  paint();
-                }
-              });
-            }
-          }).catch(() => {
-            if (current()) {
-              void bridge.send('name.checkLease', { name: item.name }).then(regRes => {
-                if (regRes?.lease && current()) {
-                  leaseFacts.set(item.name, {
-                    expiresAtSeconds: regRes.lease.endTime || regRes.lease.leaseEndTime,
-                    resolver: regRes.lease.domainAccount,
-                  });
-                  paint();
-                } else if (current()) {
-                  leaseFacts.set(item.name, null);
-                  paint();
-                }
-              }).catch(() => {
-                if (current()) {
-                  leaseFacts.set(item.name, null);
-                  paint();
-                }
-              });
-            }
+        const key = item.domainAddress;
+        const facts = leaseFacts.get(key);
+        if (!leaseFacts.has(key) && ctx.expectedNetworkId && ctx.expectedAccountAddress) {
+          leaseFacts.set(key, 'loading');
+          const attempt = seq;
+          void Promise.allSettled([
+            item.rootName === 'thru' ? readLeaseFacts(item) : Promise.resolve(null),
+            bridge.send('tx.validateAddress', { address: label }),
+          ]).then(([lease, resolution]) => {
+            if (!current() || attempt !== seq) return;
+            leaseFacts.set(key, {
+              ...(lease.status === 'fulfilled' ? lease.value : null),
+              resolution: resolution.status === 'fulfilled' ? resolution.value : null,
+            });
+            paint();
           });
         }
-
-        const leaseObj = lease && lease !== 'loading' ? lease : null;
-        const rawSeconds = leaseObj?.expiresAtSeconds != null ? Number(leaseObj.expiresAtSeconds) : null;
-        // JS Date maximum range: ±8,640,000,000,000,000 ms (approx year 275,760).
-        // Anything <= 0 or > 8.64e12 seconds is outside supported JS Date range.
-        const validTimestamp = rawSeconds !== null && Number.isFinite(rawSeconds)
-          && rawSeconds > 0 && rawSeconds <= 8640000000000;
-        const expiresAtMs = validTimestamp ? rawSeconds * 1000 : null;
-        const now = Date.now();
-        const daysRemaining = expiresAtMs !== null
-          ? Math.ceil((expiresAtMs - now) / 86400000)
-          : null;
-
-        let statusTone = 'neutral';
-        let pillText = item.stale ? 'Unverified' : (item.status === 'owned' ? 'Active' : 'Not owned');
-        if (verified && daysRemaining !== null) {
-          if (daysRemaining <= 0) {
-            statusTone = 'negative';
-            pillText = 'Expired';
-          } else if (daysRemaining <= 30) {
-            statusTone = 'warning';
-            pillText = `Expires in ${daysRemaining}d`;
-          } else {
-            statusTone = 'positive';
-            pillText = 'Active';
-          }
-        } else if (verified) {
-          statusTone = 'positive';
-          pillText = 'Active';
-        } else if (item.stale) {
-          statusTone = 'warning';
-          pillText = 'Unverified';
-        }
-
-        const expiryDisplay = expiresAtMs !== null
-          ? `${new Date(expiresAtMs).toLocaleDateString(undefined, { dateStyle: 'medium' })} (${daysRemaining != null && daysRemaining > 0 ? `${daysRemaining}d left` : 'expired'})`
-          : (leaseObj?.expiresAtSeconds && !validTimestamp ? 'Invalid lease date' : (lease === 'loading' ? 'Checking…' : 'Pending sync'));
-        const targetDisplay = leaseObj?.resolver && typeof leaseObj.resolver === 'string' && leaseObj.resolver.length > 5
-          ? truncateMiddle(leaseObj.resolver, 6)
-          : (item.domainAddress ? truncateMiddle(item.domainAddress, 6) : 'Unassigned');
+        const leaseObj = facts?.lease;
+        const statusTone = item.stale
+          ? 'warning'
+          : item.status === 'owned'
+            ? 'positive'
+            : item.status === 'not-owned'
+              ? 'negative'
+              : 'neutral';
+        const pillText = item.stale ? 'Unverified' : item.status === 'owned' ? 'Owned' : 'Not owned';
+        const expiryDisplay = facts === 'loading' ? 'Checking…'
+          : leaseObj?.expiresAtSeconds != null ? formatChainTime(leaseObj.expiresAtSeconds) : 'Unknown';
+        const resolved = facts?.resolution;
+        const resolvedAddress = resolved?.valid === true && typeof resolved.resolvedAddress === 'string'
+          && resolved.resolvedName === label ? resolved.resolvedAddress : null;
+        const targetDisplay = resolvedAddress ? truncateMiddle(resolvedAddress, 6)
+          : facts === 'loading' ? 'Checking…' : 'Unknown';
 
         const select = h('button', { type: 'button', class: 'btn secondary', text: item.isPrimary ? 'Unlink' : 'Make primary',
           disabled: busy || (!item.isPrimary && !verified) });
-        const renew = h('button', { type: 'button', class: 'btn secondary', text: 'Renew', disabled: busy || !verified || item.rootName !== 'thru' });
+        const renew = h('button', { type: 'button', class: 'btn secondary', text: 'Renew', disabled: busy || !verified || !facts?.provider || item.rootName !== 'thru' });
         const remove = h('button', { type: 'button', class: 'btn secondary', text: 'Remove', disabled: busy || item.isPrimary });
 
         const headerRow = h('div', { class: 'row-flex domain-card-header' }, [
@@ -293,7 +277,7 @@ export function NameRoute({ back }) {
           ]),
           h('div', { class: 'domain-meta-item' }, [
             h('span', { class: 'domain-meta-label', text: 'Points to' }),
-            h('span', { class: 'domain-meta-value mono', text: targetDisplay }),
+            h('span', { class: 'domain-meta-value mono', text: targetDisplay, title: resolvedAddress || 'Resolution unavailable' }),
           ]),
         ]);
 
@@ -318,7 +302,8 @@ export function NameRoute({ back }) {
         });
         rows.on(renew, 'click', () => {
           if (renew.disabled) return;
-          draft = { name: item.name, rootAddress: item.rootAddress, years: 1, quote: null };
+          providerReads.clear();
+          draft = { name: item.name, rootAddress: item.rootAddress, domainAddress: item.domainAddress, provider: facts.provider, years: 1, quote: null };
           isRenewOnly = true;
           activeTab = 'register';
           render();
@@ -329,6 +314,7 @@ export function NameRoute({ back }) {
     async function refreshList() {
       if (!current() || !ctx.expectedNetworkId || !ctx.expectedAccountAddress) return;
       leaseFacts.clear();
+      providerReads.clear();
       const attempt = ++seq;
       let liveArrived = false;
       status.textContent = 'Checking ownership…';
@@ -407,8 +393,6 @@ export function NameRoute({ back }) {
     // reads run in parallel below. `.id` roots are not queried for minting.
     // A slow network never leaves a naked Loading card: it sees the shell and the status
     // line honestly says the offering is still being checked.
-    const readsPromise = readProviderFacts(network?.id);
-
     // -- pieces -------------------------------------------------------------------
     // Paint the whole card BEFORE registrar reads resolve; never show a blocking spinner.
     const statusLine = h('div', { class: 'name-status hint', role: 'status', 'aria-live': 'polite', text: 'Checking .thru registration…' });
@@ -422,6 +406,7 @@ export function NameRoute({ back }) {
     searchField.value = entry.name;
     mutationControls.add(searchField.control);
     searchField.control.disabled = submissionInFlight;
+    searchField.control.readOnly = renewOnly;
     // The card is interactive before provider reads settle. Persist typing immediately so
     // adding/removing a sibling while the chain is slow cannot erase this entry's draft.
     bodyDisposer.on(searchField.control, 'input', () => {
@@ -431,12 +416,14 @@ export function NameRoute({ back }) {
     });
     const nameRuleHint = searchField.el.querySelector('.hint');
     const tierPill = h('div', { class: 'domain-tier-pill hidden' });
-    const expiryProjection = h('div', { class: 'domain-expiry-preview hidden' });
     const cardInner = h('div', { class: 'stack stack-3' }, [searchField.el, tierPill, statusLine]);
     card.appendChild(cardInner);
 
     // The rest of this flow's computation happens against settled reads, so hydrate now.
-    const [registryRes, customRes] = await readsPromise;
+    // Keep the editable field mounted while context arrives; quotes must use that context.
+    try { await contextReady; } catch { return; }
+    if (destroyed || !card.isConnected || !network?.id || !account?.address) return;
+    const [registryRes, customRes] = await readProviderFacts(network.id);
     if (destroyed || !card.isConnected) return;
 
     const registry = registryRes.status === 'fulfilled'
@@ -458,6 +445,8 @@ export function NameRoute({ back }) {
       registry: registryUp ? registry.registry.rootRegistrar : null,
       custom: customUp ? custom.root : null,
     };
+    const renewal = renewOnly ? await readLeaseFacts(entry) : null;
+    if (destroyed || !card.isConnected) return;
     const requestedProvider = entry.provider || (providers.includes('custom') ? 'custom' : providers[0] ?? null);
     const preferredProvider = providers.includes(requestedProvider) ? requestedProvider : (providers[0] ?? null);
     const pinnedProvider = entry.rootAddress
@@ -465,7 +454,7 @@ export function NameRoute({ back }) {
         ? requestedProvider
         : providers.find((kind) => providerRoots[kind] === entry.rootAddress) ?? null)
       : null;
-    const provider = entry.rootAddress ? pinnedProvider : preferredProvider;
+    const provider = renewOnly ? renewal?.provider ?? null : entry.rootAddress ? pinnedProvider : preferredProvider;
     const rootUnsupported = Boolean(entry.rootAddress && !pinnedProvider);
     const tld = provider ? 'thru' : null;
 
@@ -511,8 +500,9 @@ export function NameRoute({ back }) {
     mutationControls.add(plusBtn);
     minusBtn.disabled = submissionInFlight;
     plusBtn.disabled = submissionInFlight;
+    const stepperLabel = h('span', { class: 'hint shrink-0', text: renewOnly ? 'Renewal period' : 'Registration period' });
     const yearsStepper = h('div', { class: 'name-stepper row-flex between hidden' }, [
-      h('span', { class: 'hint shrink-0', text: renewOnly ? 'Renewal period' : 'Registration period' }),
+      stepperLabel,
       h('div', { class: 'row-flex align-center shrink-0' }, [minusBtn, yearsLabel, plusBtn]),
     ]);
 
@@ -558,27 +548,6 @@ export function NameRoute({ back }) {
     // refusal. The UI must not disable Review (or promise a price) on that basis alone.
     function customFeeEnforced() { return custom.feeEnforced === true; }
 
-    function updateExpiryProjection() {
-      if (entry.completed || entry.outcomeUnknown) {
-        expiryProjection.classList.add('hidden');
-        return;
-      }
-      const isRenewal = leaseState?.kind === 'custom-mine' || leaseState?.kind === 'mine';
-      const rawExistingSec = isRenewal
-        ? (leaseState?.lease?.expiresAtSeconds ?? leaseState?.lease?.endTime ?? null)
-        : null;
-      const numSec = rawExistingSec != null ? Number(rawExistingSec) : null;
-      const existingValid = numSec !== null && Number.isFinite(numSec) && numSec > 0 && numSec <= 8640000000000;
-      const existingMs = existingValid ? numSec * 1000 : null;
-      const baseMs = (isRenewal && existingMs !== null && existingMs > Date.now())
-        ? existingMs
-        : Date.now();
-      const endMs = baseMs + years * 365 * 86400000;
-      const dateStr = new Date(endMs).toLocaleDateString(undefined, { dateStyle: 'medium' });
-      expiryProjection.textContent = `Valid through ${dateStr} (+${years} ${years === 1 ? 'year' : 'years'})`;
-      expiryProjection.classList.remove('hidden');
-    }
-
     function updateTierPill() {
       const draftName = String(entry.name || searchField.value || '').trim();
       const len = draftName.length;
@@ -603,7 +572,6 @@ export function NameRoute({ back }) {
       years = Math.min(10, Math.max(1, years + delta));
       entry.years = years;
       yearsLabel.textContent = years === 1 ? '1 year' : `${years} years`;
-      updateExpiryProjection();
       armForState(leaseState);
     }
     bodyDisposer.on(minusBtn, 'click', () => setYears(-1));
@@ -614,7 +582,6 @@ export function NameRoute({ back }) {
       // A pending preparation no longer describes this draft.
       prepareSeq += 1;
       yearsStepper.classList.add('hidden');
-      expiryProjection.classList.add('hidden');
       priceLine.classList.add('hidden');
       balanceLine.classList.add('hidden');
       ctaBtn.classList.add('hidden');
@@ -638,8 +605,8 @@ export function NameRoute({ back }) {
       if (renewOnly && state.kind !== 'mine' && state.kind !== 'custom-mine') return;
       // Configured price is a quote, not evidence of the amount ultimately charged.
       if (state.kind === 'custom-available') {
+        stepperLabel.textContent = 'Registration period';
         yearsStepper.classList.remove('hidden');
-        updateExpiryProjection();
         const cost = customBaseCost();
         entry.quote = { assetId: `${network?.id || 'active'}:${NATIVE_TOKEN.symbol}`, ticker: NATIVE_TOKEN.symbol, decimals: NATIVE_TOKEN.decimals, raw: cost };
         priceLine.classList.remove('hidden');
@@ -667,8 +634,8 @@ export function NameRoute({ back }) {
         return;
       }
       if (state.kind === 'custom-mine') {
+        stepperLabel.textContent = 'Renewal period';
         yearsStepper.classList.remove('hidden');
-        updateExpiryProjection();
         const cost = customPricePerYear(entry.name)
           * BigInt(entry.years || 1);
         entry.quote = { assetId: `${network?.id || 'active'}:${NATIVE_TOKEN.symbol}`, ticker: NATIVE_TOKEN.symbol, decimals: NATIVE_TOKEN.decimals, raw: cost };
@@ -708,8 +675,8 @@ export function NameRoute({ back }) {
       if (!purchasable && !renewable) return;
       if (!registryUp) return; // nothing to sell here — status line already said so
 
+      stepperLabel.textContent = renewable ? 'Renewal period' : (state.kind === 'claimable' ? 'Claim period' : 'Registration period');
       yearsStepper.classList.remove('hidden');
-      updateExpiryProjection();
       priceLine.classList.remove('hidden');
       if (decimals == null) {
         priceLine.textContent = 'Price unavailable. Refresh to try again.';
@@ -751,6 +718,7 @@ export function NameRoute({ back }) {
       let addr = account?.address;
       if (!addr) {
         const acc = await bridge.send('account.getActive').catch(() => null);
+        if (destroyed || !card.isConnected || mySeq !== checkSeq) return null;
         if (acc?.address) {
           account = acc;
           addr = acc.address;
@@ -759,6 +727,7 @@ export function NameRoute({ back }) {
       if (!addr) return null;
       try {
         const cached = await bridge.send('tx.getCachedBalances', { addresses: [addr] }).catch(() => null);
+        if (destroyed || !card.isConnected || mySeq !== checkSeq) return null;
         if (cached?.[addr] && cached[addr].balance != null) {
           nativeBalance = cached[addr];
           if (leaseState) armForState(leaseState);
@@ -790,6 +759,9 @@ export function NameRoute({ back }) {
         const res = await bridge.send('name.checkCustomLease', { name });
         if (destroyed || !statusLine.isConnected || mySeq !== checkSeq) return; // stale
         if (!res?.supported) throw new Error(res?.reason || 'custom registrar reads unsupported on this network');
+        if (renewOnly && (res.stale || res.cached || res.name !== entry.name || res.root !== entry.rootAddress
+          || res.domainAddress !== entry.domainAddress || res.lease?.label !== entry.name
+          || res.lease?.owner !== account?.address)) throw new Error('Renewal facts changed.');
         if (res.labelProblem) {
           leaseState = null;
           hideActions();
@@ -863,6 +835,9 @@ export function NameRoute({ back }) {
         const res = await bridge.send('name.checkLease', { name });
         if (destroyed || !statusLine.isConnected || mySeq !== checkSeq) return; // stale
         if (!res?.supported) throw new Error(res?.reason || 'registry reads unsupported on this network');
+        if (renewOnly && (res.stale || res.cached || res.name !== entry.name || res.rootRegistrar !== entry.rootAddress
+          || res.domainAddress !== entry.domainAddress || res.lease?.name !== entry.name
+          || res.lease?.owner !== account?.address)) throw new Error('Renewal facts changed.');
         if (registryUp) {
           payment = await bridge.send('name.getPaymentBalance').catch(() => null);
           if (destroyed || !statusLine.isConnected || mySeq !== checkSeq) return;
@@ -1194,7 +1169,6 @@ export function NameRoute({ back }) {
     // Hydrate in place; the `.thru` registrar is selected from verified network facts.
     const additions = [
       yearsStepper,
-      expiryProjection,
       priceLine,
       balanceLine,
       ctaBtn,
@@ -1202,6 +1176,7 @@ export function NameRoute({ back }) {
     ];
 
     for (const node of additions) cardInner.appendChild(node);
+    refreshSearchActions = () => armForState(leaseState);
 
     // Kick off the initial availability read immediately when a name was pre-filled.
     if (searchField.value?.trim?.()) void backgroundCheck(searchField.value.trim());
@@ -1225,9 +1200,10 @@ export function NameRoute({ back }) {
       tab.disabled = submissionInFlight;
       tabButtons.push(tab);
       bodyDisposer.on(tab, 'click', () => {
-        if (activeTab === key) return;
+        if (submissionInFlight || (activeTab === key && !(key === 'register' && isRenewOnly))) return;
         activeTab = key;
         if (key === 'register') {
+          if (isRenewOnly) draft = { name: '', years: 1, quote: null };
           isRenewOnly = false;
         }
         render();
@@ -1242,6 +1218,7 @@ export function NameRoute({ back }) {
       const next = (current + (event.key === 'ArrowRight' ? 1 : tabButtons.length - 1)) % tabButtons.length;
       activeTab = ['register', 'domains'][next];
       if (activeTab === 'register') {
+        if (isRenewOnly) draft = { name: '', years: 1, quote: null };
         isRenewOnly = false;
       }
       render();
@@ -1273,27 +1250,50 @@ export function NameRoute({ back }) {
 
   }
 
-  async function load() {
+  async function load(resetContext = false) {
     if (destroyed) return;
     const attempt = ++loadSeq;
+    const initial = contextReady === null;
     const previousAddress = account?.address;
     const previousNetwork = network?.id;
+    prepareSeq++;
     reviewSheet?.close();
     providerReads.clear();
     mintReads.clear();
-    try {
-      const [nextNetwork, nextAccount] = await Promise.all([
-        bridge.send('network.getActive'), bridge.send('account.getActive'),
-      ]);
+    contextReady = Promise.all([
+      bridge.send('network.getActive'), bridge.send('account.getActive'),
+    ]).then(([nextNetwork, nextAccount]) => {
       if (destroyed || attempt !== loadSeq) return;
       network = nextNetwork;
       account = nextAccount;
-      if ((previousAddress && previousAddress !== account.address) || (previousNetwork && previousNetwork !== network.id)) {
+    });
+    if (resetContext) {
+      network = null;
+      account = null;
+      primary = null;
+      cachedDomainItems = [];
+      draft = { name: '', years: 1, quote: null };
+      isRenewOnly = false;
+      render();
+    }
+    try {
+      await contextReady;
+      if (destroyed || attempt !== loadSeq) return;
+      const contextSwitched = Boolean(
+        (previousAddress && previousAddress !== account?.address)
+        || (previousNetwork && previousNetwork !== network?.id),
+      );
+      if (contextSwitched && !resetContext) {
         draft = { name: '', years: 1, quote: null };
+        isRenewOnly = false;
         primary = null;
         cachedDomainItems = [];
       }
-      render();
+      if ((!resetContext && (contextSwitched || !initial)) || activeTab === 'domains') {
+        render();
+      } else {
+        body.querySelector('.eyebrow').textContent = `Network: ${network?.label || network?.id || 'loading…'}`;
+      }
     } catch (err) {
       if (destroyed || attempt !== loadSeq) return;
       banner.set(err?.message || 'Could not read the selected account and network.');
@@ -1305,15 +1305,16 @@ export function NameRoute({ back }) {
         expectedNetworkId: network.id, expectedAccountAddress: account.address,
       });
       if (destroyed || attempt !== loadSeq || activeTab === 'domains') return;
+      if (result?.networkId !== network?.id || result?.accountAddress !== account?.address) return;
       cachedDomainItems = Array.isArray(result?.items) ? result.items : [];
       primary = result?.items?.find(item => item.isPrimary) ?? null;
-      render();
+      refreshSearchActions?.();
     } catch { /* no cache: keep the immediately painted route */ }
   }
 
-  d.add(bridge.onEvents({ networkChanged: () => { void load(); }, accountsChanged: () => { void load(); } }));
-  render();
+  d.add(bridge.onEvents({ networkChanged: () => { void load(true); }, accountsChanged: () => { void load(true); } }));
   void load();
+  render();
 
   return {
     el,

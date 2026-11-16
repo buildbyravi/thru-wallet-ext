@@ -124,7 +124,7 @@ lived only in `AGENTS.md` and audit history.
 
 **Options considered.** (a) Fix docs ad hoc when noticed; (b) one monolithic document; (c) explicit per-document ownership with a conflict-resolution hierarchy.
 
-**Chosen.** Explicit ownership: `AGENTS.md` (permanent rules) · `docs/DOCS_INDEX.md` (which doc to trust) · `docs/STATUS_AND_ROADMAP.md` (current state + open checks — start here) · `docs/PROJECT_LEDGER.md` (identifiers, phase history) · `CONTEXT.md` (file facts) · `docs/BUILD_SPEC.md` (product/security behavior) · `docs/DECISIONS.md` (durable decisions) · `docs/BACKEND_GAPS.md` (capabilities/unsupported) · `docs/MANUAL_SMOKE_CHECKLIST.md` (browser-only runbook) · `docs/archive/` (historical only). `src/`, tests, and scripts always outrank documentation. One explanation lives in its owning document; others link instead of copying.
+**Chosen.** Explicit ownership: `AGENTS.md` (permanent rules) · `docs/DOCS_INDEX.md` (which doc to trust) · `docs/STATUS_AND_ROADMAP.md` (current state + open checks — start here) · `docs/PROJECT_LEDGER.md` (identifiers, phase history) · `CONTEXT.md` (file facts) · `docs/BUILD_SPEC.md` (product/security behavior) · `docs/DECISIONS.md` (durable decisions) · `docs/BACKEND_GAPS.md` (capabilities/unsupported) · `docs/guides/*` (cohesive subsystem guides) · `docs/MANUAL_SMOKE_CHECKLIST.md` (browser-only runbook) · `docs/roadmap/FUTURE_ROADMAP.md` (planned/unshipped specs) · `docs/audits/` (append-only historical audit snapshots). `src/`, tests, and scripts always outrank documentation. One explanation lives in its owning document; others link instead of copying.
 
 **Why.** Documentation that summarizes code drifts unless each claim has exactly one owner and a defined conflict order.
 
@@ -314,8 +314,10 @@ rendering unknown ones as neutral, so a confirmed registration was painted as a 
 **Decision.** Two notification components, one owner each, one vocabulary between them:
 
 - **`toast()` (`src/ui/kit/toast.js`) is for EVENTS.** success · info · warning · error · pending.
-  A toast always carries a message: a bare string means the title, and a payload with no text renders
-  **nothing** and returns an inert handle. `pending` never expires and is resolved in place with
+  Callers must always pass a props object (`{ tone, title, message?, key? }`); bare-string calls are
+  banned across `src/` (`AGENTS.md` Rule 26, enforced by `test/test-toast.mjs`), while internally
+  `toast()` normalizes a string to `{ title }` as defense-in-depth and renders **nothing** (returning
+  an inert handle) when a payload has no text. `pending` never expires and is resolved in place with
   `handle.update({...})`, so a submission shows one bar that changes verdict. `key` dedupes repeated
   events. `dismissAllToasts()` is called by the app shell on lock, account change and network change,
   because a message quoting a domain, amount or address must not outlive the state it described.
@@ -380,13 +382,12 @@ unless the operator passes `--collection-proven "<note>"`, an attestation that a
 delta was observed after a real registration. `--probe-collection` records the balance for exactly
 that measurement. Switching to strict is a one-transaction `UpdateConfig` once the probe passes.
 
-**Consequences.** The contract's Rust has not been compiled in this environment (no `cargo`), so
-`contracts/thru-custom-registrar/thru-custom-registrar.bin` is stale and must be rebuilt before it
-is deployed; deployment is BLOCKED until then and until an RPC-reachable host runs
-`scripts/registrar/deploy-and-init.mjs` with the tier arguments. The JS ABI twin, the service
-pricing, the review decoder and the Name route are implemented and tested; whether the new
-artifact's charge actually lands, and whether `account_resize` works on a live layout-1 account,
-remain UNVERIFIED.
+**Consequences.** The checked-in `contracts/thru-custom-registrar/thru-custom-registrar.bin` (`33,714`
+bytes, `sha256 f93c112b…35dd2`) was subsequently rebuilt with the tiered layout-2 fields and the
+canonical-config-PDA check (`0xD112`), while Betanet currently runs the prior `2026-10-31` `30,000`-byte
+layout-2 build (`feePolicy: "strict"`, `collectionProbe.measured: false`). Deploying the `33,714`-byte
+artifact and recording a measured treasury balance delta on an RPC-reachable host remain required
+before claiming on-chain fee collection (`docs/guides/domains-and-registrar.md`).
 
 ## D-020 — Agent rules get checks, not more prose (2026-10-31)
 
@@ -399,12 +400,13 @@ and exactly **one** import cycle — across the five core transaction services, 
 
 **Decision.**
 
-- `AGENTS.md` is an **index plus the hard rules**: 27 rules, each one or two lines ending in the
+- `AGENTS.md` is an **index plus the hard rules**: 30 rules (`1–27` from the 2026-10-31 pass plus
+  `28–30` added with v32 consent, one-surface-per-event, and independent verification), each ending in the
   gate that enforces it, or the word `review` when nothing mechanical can. Detail lives in
   `docs/agent/` and is linked, not duplicated. Rule numbers are frozen — `src/` and `test/` cite
   them.
 - A new rule ships **with its check**, in the same commit, and the check is watched failing on a
-  real broken tree first. Rules 18–27 exist because their checks now exist.
+  real broken tree first. Rules 18–29 exist because their checks now exist (`scripts/check-agents.mjs`).
 - Checks are written in-repo, with no new dependency (`check-cycles` uses the already-pinned
   esbuild parser; `check-docs-truth` reads the manifest and boot registry).
 - **Rejected:** moving to `core/domain/application/infrastructure` folders. The architecture is
@@ -412,9 +414,147 @@ and exactly **one** import cycle — across the five core transaction services, 
   **Rejected:** byte or line caps as a rule — size is a review trigger (`npm run report:size`),
   because a build that fails on a line count teaches people to shuffle lines.
 
-**Consequences.** Four new guard scripts and three new suites run inside `npm test` (2,814 checks,
-9 guards). Two of them found real defects on their first run instead of confirming the tree:
+**Consequences.** Nine guard scripts and the full suite run inside `npm test`. Two of them found real
+defects on their first run instead of confirming the tree:
 `test-signing-surface.mjs` reported `name.register.networkId` and `intent.submit.acknowledgements`
 as declared-but-unread (both removed from the contract), and `check-cycles.mjs` pinned the known
 cycle so it can only shrink. The cycle itself is deliberately NOT fixed here: it touches
 signing-adjacent services and belongs after the release, with its own tests.
+
+## D-021 — Background review consent token (contract v32, 2026-11-02)
+
+**Context.** Under contract v29–v31, review enforcement lived in the UI (`confirm.js` + the
+`test-tx-review.mjs` [14] static/dynamic UI source scan). An external probe demonstrated that calling
+`tx.sendChecked` directly at the router boundary built, signed, and broadcast without any prepared
+review.
+
+**Chosen.** `tx.confirmReview` mints a single-use, 32-byte random `consentToken` (`60s` TTL, cap `40`,
+stored strictly in an in-memory `Map` in `src/background/services/review/consent.js`, never
+`chrome.storage`) bound to `{ method, sha256(canonicalParams), accountAddress, networkId }`.
+`src/background/api-router.js` requires and burns `consentToken` before `signing-guard.js` or any
+handler runs (`REVIEW_REQUIRED`), stripping the field before handler dispatch. Only two
+`TRANSACTION_METHODS` are listed in `CONSENT_EXEMPT`: `tx.registerAccount` (self-registers an owned
+address with zero user-chosen transfer parameters) and `intent.submit` (dormant behind
+`FLAGS.DEFI_INTENT === false`, bound by `bindingHash`). Wallet lock, startup while locked, account
+switch, network switch, and reset clear all tokens alongside `tx_reviews`.
+
+**Limit (stated explicitly).** The token proves that a signing call is the unmodified continuation of
+a confirmed review; it cannot prove a human visually read the DOM card because a caller with code
+execution in the page can call `tx.prepareReview` and `tx.confirmReview` too. Enforced by
+`test/test-review-consent.mjs`.
+
+## D-022 — Unified `networkFeeUnits` policy across registrar and name-service writes (2026-11-12)
+
+**Context.** Registrar and `name.setRecord` writes previously hardcoded `fee: 0n` (copying a CLI
+`THRU_REGISTRAR_PROGRAM_FEE = 0` placeholder that was actually the transaction header fee), causing
+domain review cards to print `Network fee — none` right beside `"You pay only the network fee"`.
+
+**Chosen.** One shared policy in `src/lib/tx-units.js`: `networkFeeUnits({ baseFeeUnits, balanceUnits,
+sponsored })`. Sponsored operations (`CREATE`, `CLAIM`) declare `0n`; unmeasured chains
+(`baseFeeUnits == null`) declare `0n` and render `"not confirmed"` (never `"none"`); unfunded payers
+declare `0n`; funded payers declare `BigInt(baseFeeUnits)` (`1n` on Betanet). Confirm-time rechecks
+run `assertFeeUnchanged` (`REVIEW_FEE_CHANGED`), and tiered custom-registrar writes compare
+`reviewPricePerYear(cfg, label)` rather than the flat `5+` tier.
+
+## D-023 — One surface per event (`toast` vs `Banner` vs field validation, 2026-11-13)
+
+**Context.** Even after `D-018` centralized `toast()`, the `/name` submit handler wrote the same
+submission progress and outcome simultaneously to a `pending` toast, the page `Banner`, and the
+`.name-status` input helper — printing every refusal or confirmation two to three times.
+
+**Chosen.** Strict surface ownership (`AGENTS.md` Rule 29, enforced by `test/test-route-lifecycle.mjs`):
+a transaction submission opens one keyed `pending` `toast()` and resolves that same toast in place;
+routes clear `Banner` and field-validation text before submitting; `Banner` is reserved for persistent
+screen state (e.g., a review invalidated by context change), and field lines are reserved for input
+validation/availability.
+
+## D-024 — Single Source of Truth (SSoT) documentation overhaul and legacy purge (2026-11-15)
+
+**Context.** Legacy `docs/archive/`, `docs/handoff/`, `docs/reference/`, duplicate top-level audit
+notes (`MAINNET_READINESS.md`, `SEND_PATH_AUDIT.md`, `REDESIGN_TRIAGE.md`), monolithic PR logs
+(`DEFECT_LOG.md` at 88 KB, `TX_REVIEW_VERIFICATION.md` at 38 KB), and stray root agent prompts
+(`thru-defi-*.md`, `thru-identity-profile-plan.md`, `mcp.txt`) contradicted `D-003` and `v29–v32`,
+causing AI agents to hallucinate unimplemented features and violate signing rules.
+
+**Chosen.** Establish one hierarchical SSoT under `docs/` (`DOCS_INDEX.md` router, core Authority
+specs, cohesive `docs/guides/*` for shipped subsystems, synchronized `docs/defi/*` for dark-launched
+backend code, `docs/roadmap/FUTURE_ROADMAP.md` as the sole `PLANNED` home for retained frontend/UX and
+protocol research, and `docs/audits/*` isolated as frozen historical snapshots), delete all superseded
+archive/handoff/prompt files, and enforce cross-document count and path integrity via
+`scripts/check-docs-truth.mjs` and `scripts/check-agents.mjs`.
+
+## D-025 - Bounded wallet remediation and cleanup integration (2026-11-14, owner-directed)
+
+**Context.** The owner authorized audited wallet fixes and a written handoff while other workers
+were integrating the documentation cleanup. The authorization distinguishes corrective work from
+new features, protocol changes, and verification claims.
+
+**Options considered.** (a) Bundle speculative features or restore superseded documentation into
+the remediation; (b) retain fabricated fiat values until a price feed exists; (c) integrate the
+authorized cleanup and bounded fixes without changing the established security architecture.
+
+**Chosen.** (c), with these explicit owner boundaries:
+- Multi-name registration, a multi-name submission queue, and atomic minting remain intentionally deferred;
+  this task does not authorize enabling them.
+- Preserve the existing architecture and one review/signing flow (D-001, D-006, D-010, D-017,
+  D-021), not a second router, store, bridge, or feature-owned signing path.
+- Unverified USD values must be honestly unavailable, not a fixed quote, a zero-dollar valuation
+  for an unpriced holding, or an invented price feed. A future sourced feed is separate work.
+- This remediation does not authorize contract ABI changes or deployment. Such work requires
+  verified protocol semantics and separate scoped authorization under the smart-contract policy;
+  neither successful Node tests nor existing CLI placeholders establish those semantics.
+- Integrate the owner-authorized cleanup and repair active references without restoring
+  superseded files. Preserve unrelated owner/parallel-worker changes, the D-008 hierarchy,
+  D-024 cleanup, and frozen historical evidence.
+
+**Why.** Correctness fixes must remove demonstrated failures without silently expanding product
+scope, implying transaction guarantees, or treating uncertain data as verified facts.
+
+**Trade-offs.** Unavailable fiat and deferred features provide less information or convenience
+than speculative implementations, but do not invent evidence or transaction authority.
+
+**Consequences.** This entry records directives, not shipped capabilities or completed fixes.
+Implementation results, actual test runs, remaining blockers, and browser/live-network evidence
+belong in the separately owned handoff and current-state records; authorization is not verification.
+
+## D-026 - Additive verified token import (contract v33, 2026-11-16)
+
+**Context.** The token drawer sends only a mint address and fallback symbol. Routing that payload
+to legacy `token.import` silently defaults missing decimals to zero even when the mint uses a
+different denomination. The existing strict `importVerifiedToken` service already verifies a
+captured mint snapshot and fences network-generation changes.
+
+**Chosen.** Append `token.importVerified` with `auth: 'unlocked'`, `since: 33`, and only
+`mintAddress` / `symbol` parameters; pass the complete request to strict service validation and
+route Dashboard imports through it. Reject caller-supplied `name` and `decimals`. Preserve
+legacy `token.import` metadata normalization and replacement behavior for compatibility.
+
+**Consequences.** The contract has 154 methods. Router tests use SDK-built mint bytes and detached
+storage to prove verified denomination persistence, malformed/unsupported account refusal,
+duplicate rejection, and network-generation fences during RPC and queued preference reads.
+This adds no signing path, dependency, protocol format, or storage schema. Browser and live-network
+verification remain separate gates.
+
+## D-027 - Render local UI before backend hydration (2026-11-16)
+
+**Owner directive.** Remove the post-unlock "Checking wallet" page. Backend loading or sync
+must not hold the frontend, including during startup and route transitions.
+
+**Chosen.** Boot paints a safe public unlock/onboarding route synchronously, then hydrates
+session state. Guards use the UI session snapshot rather than querying the background on
+every navigation. Unknown authentication never mounts private routes. Background authorization
+remains authoritative for every protected action; this cache grants no signing permission.
+Successful unlock/create/import/reset responses and lock events update the snapshot. Reset
+events add optional `hasVault: false` so other open pages can return to onboarding. Newer actions
+and events invalidate pending bootstrap replies. Hydration preserves typed input and focus.
+
+**Security and verification.** Departing routes are destroyed synchronously before guard work,
+clearing secrets and aborting route-owned reviews. Recoverable error UI is reserved for actual
+failures, never routine sync. Router/bridge logs omit arbitrary exception payloads. Regression
+coverage in `test/test-route-lifecycle.mjs` holds backend replies and exercises deep links,
+unlock-in-flight, reset delivery orders, external unlock events, and secret teardown.
+
+**Documentation cleanup.** Removed the duplicate root/archived documentation-overhaul reports
+and the temporary November 14 fixes handoff. Their conflicting intermediate v32/v33 states
+are superseded by current source and the maintained status/decision documents. The seven
+dated September/October audits remain historical evidence, not implementation instructions.

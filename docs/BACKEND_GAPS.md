@@ -1,170 +1,61 @@
-# Backend capability inventory and open gaps
+# Backend Capability Inventory and Open Gaps
 
-**Status as of 2026-10-29:** the originally identified Tier A and Tier B capabilities are implemented. This file distinguishes shipped code from behavior that is still unsupported or requires live-chain verification. Contract **v31** has **153** methods (81 wallet-core + the 43-method gated-off DeFi M0 contract surface declared 2026-10-05 — handlers answer explicit unsupported/`FEATURE_DISABLED` states; no DeFi live evidence yet — plus the v19–v31 additive slices, v29 being the shared transaction-review trio and v31 the name-service record write plus reverse lookup); `src/shared/contract/manifest.js`, its router handlers, and tests are authoritative.
+**Document Class:** Authority (Implemented Backend Capabilities vs Unsupported / Unverified Boundaries)
+**Baseline:** Contract **v33** (`154` methods in `src/shared/contract/manifest.js`: `88` wallet-core + `23` `name.*` + `43` dark-launched DeFi M0 methods in `src/shared/contract/defi-schema.js`)
 
-| Tier | Meaning | Status |
+| Tier | Scope | Status |
 | --- | --- | --- |
-| A | Additive service/API/storage capabilities | ✅ Implemented; see §1 |
-| B | Additive vault/account operations | ✅ Implemented and covered by tests; see §1 |
-| C | Protocol, live-chain, browser, or external integration uncertainty | ⚠️ Open or explicitly unsupported; see §2 |
-| D | Unreviewed in-place API shape changes | ⛔ Forbidden except documented security-policy changes; see §3 |
+| **A & B** | Core wallet, vault, keyring, token, history, domain, review, and consent services | `IMPLEMENTED`, `TESTED` (§1) |
+| **C** | Protocol limits, live-chain measurements, browser/MV3 scheduling, external specs | Explicitly `UNSUPPORTED`, `BLOCKED`, or `UNVERIFIED` (§2) |
+| **D** | Unreviewed in-place API shape mutations | Forbidden (`Rule 4`, §3) |
 
 ---
 
-## 1. Shipped capabilities
+## 1. Implemented Backend Capabilities (`IMPLEMENTED`, `TESTED`)
 
-| Original gap | Shipped implementation |
+| Capability | Backing Methods & Services |
 | --- | --- |
-| A1 — batch balances | `tx.getBalances`, `tx.getCachedBalances`, and `tx.getTotalBalance`; balance cache is network-scoped, and partial/unknown reads are not silently turned into fresh zeroes. |
-| A2 — first paint blocked by health RPC | Bootstrap returns without waiting for network-health probing; UI routes load secondary reads independently where implemented. Send renders after active account/network metadata and does not wait for balance, fee, token, or picker reads before showing its form. |
-| A3 — push events | `src/background/services/event-service.js` emits declared account, lock, network, balance, and pending-transaction events; the UI bridge consumes them. |
-| A4 — account order/pin/hide | Preference-backed account ordering, pinning, and hiding are implemented without changing vault keys. |
-| A5 — send whitelist | The whitelist preference is security-gated and enforced at the background signing boundary; generic `settings.set` cannot change security-sensitive keys. |
-| A6 — generic preferences | `settings.get`/`settings.set` use validated, versioned preferences; security fields use the separate password-gated `settings.setSecurity` path. |
-| A7 — history pagination | `tx.listHistory` supports cursor paging while retaining the legacy positional form. `tx.getHistoryFeed` provides the cache-merged first page and offline/sync status. |
-| A8 — custom RPC activation | Contract v7 deliberately quarantines custom activation: `network.setActive` accepts enabled built-ins only; stale custom/disabled/unknown active IDs heal before client binding. Legacy custom rows can be listed/removed but not selected. |
-| A9 — token registry and balances | Token registry/import/visibility APIs are implemented. `token.getBalances` reads owned balances for registry mints using official `@thru/programs/token` bindings; proven-zero and unknown/error remain distinct. Token state is network-scoped. |
-| A10 — pending transaction lifecycle | `pending-tx-service.js` tracks submissions, reconciliation, badge state, and duplicate protection. Pending records are network-scoped. A concurrent storage read-modify-write race remains open; see §2. |
-| B1 — derive and preview HD accounts | `account.previewHd` derives candidates without persisting them. |
-| B2 — remove one HD account | `account.removeHd` removes an eligible HD account while preserving the keyring's required remaining account. |
-| B3 — backup provenance/state | Seed keyrings record generated/imported origin and backup state (`backedUpAt`) through the keyring API. |
-| B4 — batch HD derivation | `account.addHdBatch` persists multiple derived accounts in one vault update. |
-| Additional — account/keyring creation | Seed creation keeps fresh entropy in the background; account/keyring creation paths use the bounded creation-bound account-activation helper. |
-| Additional — checked Send context | Contract v11 adds `tx.sendChecked` and `token.transferChecked`; source account and network from Review are checked at the backend boundary around preflight work. |
-| Additional — owned-account activation | Contract v12 adds `tx.registerAccount` (`auth: 'unlocked'`) for an exact address in the unlocked vault. It self-signs with that account; Send calls it just in time only after a successful absence check for a selected/typed owned recipient. External contacts are never registered by the sender. |
-| Additional — History first paint | Contract v12 adds storage-only `tx.getCachedHistory`; cache is scoped by network and address, painted before the RPC feed/pending reads, and serialized writes preserve concurrent accounts. Block-time provenance is retained. |
-| Additional — Domain registration review | Contract v28 adds optional reviewed account, network, price, and (for lease renewal/claim) expiry facts to the existing `name.*` write methods. The Domain route uses those handlers and the wallet's existing signing/auth boundary; it does not add a signing path. |
-
-These are implementation claims backed by `src/` and local tests, not a claim that the corresponding live-chain or real-browser checks have all been performed.
+| **Multi-keyring vault & KDF v1** | `wallet.*`, `keyring.*`, `account.*` (`src/lib/vault.js`): PBKDF2-600k + AES-256-GCM per-vault envelope, multi-seed + imported keys, HD preview/batch-add/remove, backup provenance, unlock backoff (`auth-service.js`). |
+| **Non-blocking cache-first reads** | `system.bootstrap`, `tx.getCachedBalances`, `token.getCachedBalances`, `tx.getCachedHistory`, `name.getCachedDomains`: storage-only snapshots scoped by network (`src/shared/network-scope.js`), keeping proven-zero (`0`) distinct from unknown/error (`null`). |
+| **v29–v32 review & consent gate** | `tx.prepareReview`, `tx.confirmReview`, `tx.discardReview` (`review-service.js`, `review/kinds.js`, `review/store.js`, `review/consent.js`): `9` review kinds, `120s` prepared review TTL, and `60s` single-use in-memory `consentToken` enforced in `api-router.js` (`REVIEW_REQUIRED`). |
+| **Checked sends, deadlines & lock** | `tx.sendChecked`, `token.transferChecked`, `tx.checkDuplicate`: source account/network verification (`send-context.js`), `signing-guard.js` network-switch lock across build/sign/submit, `SEND_EXPIRY_SLOTS = 1000` on-chain expiry (`thru-client.js`), and serialized v1 `pending-tx-service.js` tracking. |
+| **v12 owned-account activation** | `tx.registerAccount` (`registration-service.js`): `auth: 'unlocked'` self-signed `NOOP_PROGRAM_ADDRESS` creation (`fee: 0n`, `nonce: 0n`, `stateUnits: 1`) restricted to exact vault-owned addresses with bounded creation retries. |
+| **Token Program integration** | `token.readMint`, `token.discover`, `token.getBalances`, `token.transferChecked` (`@thru/programs/token`): chain-verified mint decimals/tickers, bounded-concurrency balance reads, sender-paid recipient token-account PDA init. |
+| **Domains & custom registrar** | `name.*` (`23` methods across `name-service.js`, `registrar-service.js`, `primary-name-service.js`): `.thru` custom layout-2 tiered registrar + official paid registrar, `.id` lookup, tracked domain inventory (`thru_registered_domains`), `APPEND_RECORD` (`name.setRecord`), wallet-local `name.reverseLookup`, and `tx-units.networkFeeUnits` header fees. |
+| **v7 custom-RPC quarantine** | `network-service.js`: `network.setActive` accepts enabled built-ins only (`CUSTOM_NETWORK_DISABLED`), `network.upsertCustom` refuses writes (`CUSTOM_RPC_SUPPORTED = false`), and stale stored IDs self-heal to `betanet` on startup. |
+| **Dark-launched DeFi M0–G3** | `43` methods across `program.*`, `feed.*`, `market.*`, `risk.*`, `launchpad.*`, `dex.*`, `intent.*`, `desktop.open` — all gated behind `FLAGS.DEFI_* === false` (`docs/defi/M0_CONTRACT_INVENTORY.md`). |
 
 ---
 
-## 2. Open or unsupported capabilities
+## 2. Unsupported, Blocked, or Open Live-Chain Boundaries
 
-### Domain registration and management — current Betanet boundary
+### C1. Token Program Live Semantics vs Unwired Token Fee Quote
+- **Resolved on Betanet (`2026-10-23`):** `scripts/defi-evidence/2026-10-23-live-chain-run3.json` (`p3-token-transfer: PASS`, 13/13 rungs) proved on live Betanet that `createInitializeAccountInstruction` + `transferChecked` succeeds when the recipient wallet has **never registered on-chain** (`created: true`), while the recipient's native wallet remains unregistered, and observed `2` base units across init + transfer (`1` base unit per token tx).
+- **Still Open in Config:** `src/lib/networks.js` has not yet promoted a dedicated `tokenFeeUnits` field, so `token-transfer` reviews continue to display the network fee honestly as `"not confirmed (paid in THRU)"` rather than borrowing the native transfer quote.
 
-**IMPLEMENTED**: Register is `.thru`-only. It selects the evidence-pinned deployed custom
-registrar first, with the official paid `.thru` registry as fallback when that is the available
-registrar. It does not query `.id` availability or offer `.id` minting. Name lookup still reads
-explicit `.id` roots, so resolution remains available. The route formats prices using the mint
-decimals returned by `token.readMint`, and formats native THRU with the shared 9-decimal asset
-definition. Registration is single-name, with a bottom-sheet review. A queue/batch control
-exists in source (`55703d0`) but is never revealed, and its submit loop renders no review card, so
-it is not a supported flow — see `docs/DEFECT_LOG.md` §13.4. The official paid registrar's
-`name.renewLease` operation is the supported meaning of “extend.”
+### C2. Pre-Send Fee Policy & Mainnet `autoUnits` Wiring
+- Betanet native transfer fee (`baseFeeUnits: 1n`, `feeReserveUnits: 1000n`, `feeSource: 'measured'`) is configured per network in `src/lib/networks.js`; Mainnet has `baseFeeUnits: null` (`tx.estimateFee` returns `{ supported: false }`).
+- **Pre-Mainnet Code Note:** Registrar and `name.setRecord` writes pass `network.baseFeeUnits` into `tx-units.networkFeeUnits`, whereas `tx-units.autoUnits` (`src/lib/tx-units.js:119`, used by native sends and token ops) currently passes `baseFeeUnits: 1n`. Before enabling Mainnet, measure Mainnet fees on-chain **and** thread `network.baseFeeUnits` into `autoUnits`.
 
-**VERIFIED AGAINST LIVE NETWORK (read-only, Betanet, 2026-10-26)**: the `.thru` paid-registry
-config is absent; the custom `.thru` registrar is present, root-matched, and quotes 1,000 native
-base units per year; the `.id` root exists; a fresh sample label read as unregistered under both
-routes. The 1,000 native base-unit quote formats to `0.000001 THRU/year` using the configured
-9-decimal native scale. This was a read-only probe; it did not establish wallet-signed write or
-payment behavior.
+### C2b. Charged Fee in Transaction History (`UNSUPPORTED` on Current RPC)
+- `TransactionExecutionResult` exposes consumed compute/memory/state units and `vmError`, **not** a debited per-transaction fee (`Transaction.fee` echoes `header.fee`, and `StreamSlotMetricsResult.claimedFees` is a block aggregate). `tx.getDetail` therefore returns `feeDeclaredUnits` + `feeCharged: false`, rendered as **`Fee (declared)`** (`docs/guides/history-and-activity.md`). `https://scan.thru.org/api/mcp` is an LLM-only `format=toon` endpoint and cannot be used as a typed wallet API.
 
-**UNSUPPORTED / UNVERIFIED**:
+### C2c. Block-Time Availability & Explorer `/tx/` Deep Link (`UNVERIFIED` Live)
+- `blocks.get({ slot })` provides optional `BlockHeader.block_time` cached per `(networkId, rpcUrl, slot)` (`timestampSource: 'block'`), falling back to own-send `submitted` time or `Block <slot>`. Live Betanet block-time availability/latency and confirmation of `https://scan.thru.org` `/tx/` routing remain open manual checks.
 
-- The backend cannot enumerate all domains owned by an account. My Domains now displays a
-  wallet-local tracked registry (contract v29), not complete discovery. It retains confirmed
-  registrations and migrated primary links, and accepts ownership-verified .thru imports.
-  Removing/unlinking a primary alias does not remove its tracked entry. Cached entries paint
-  immediately as stale; fresh lookup results distinguish owned, transferred, absent and unknown.
-- **BLOCKED (2026-10-27)**: full discovery was requested instead of a saved-domain list.
-  The pinned SDK supports `client.accounts.list`, and the official
-  [ListAccounts request](https://thru.org/docs/api-ref/grpc/messages/thru/services/v1/list-accounts-request.md)
-  documents owner filtering and pagination. A live Betanet query using the name-service
-  program as `params.owner_bytes`, with page size 5, returned `RESOURCE_EXHAUSTED` / `account
-  listing database budget exceeded`. Metadata owner means the program, not the user's domain
-  owner; complete enumeration still requires parsing domain data, checking roots/ownership,
-  and proving pagination completeness. The owner subsequently approved a tracked registry as
-  a separate solution to disappearing names; it does not remove this full-discovery limitation.
-- No chain-wide reverse index exists either: `name.reverseLookup` (contract v31) resolves an
-  address only against the wallet's own tracked registry, then re-reads the domain forward to
-  prove the owner matches. `NO_CANDIDATE` therefore means "this wallet knows of no name for that
-  address", not that the address owns none. Records are also append-only (opcode 2
-  `APPEND_RECORD`), so a re-set key keeps its previous value and first-match readers keep seeing it.
-- `name.getCachedDomains`, `name.listDomains`, `name.trackDomain`, `name.setPrimaryDomain`
-  and `name.untrackDomain` are unlocked-only metadata/read methods, not additional signing
-  paths. Primary changes/imports require a fresh backend ownership check. Unsupported future
-  storage schemas are never overwritten. Registrations report `trackingFailed` separately if
-  local persistence fails after confirmation.
-- Betanet's official paid `.thru` registry is not initialized, so its paid registration and lease
-  renewal/claim handlers return unsupported there. The custom registrar is the live `.thru`
-  offer: **registration and renewal are wired** (`domain-register`, and `domain-renew` with
-  `via:'custom'`, contract v30); custom-lease **claim is not**.
-- **The custom registrar's fee is tiered by label length and stored on-chain (2026-10-30).**
-  The contract's config carries `fee_3_char` / `fee_4_char` / `fee_5plus_char` (per YEAR, base
-  units) plus a collection policy, all settable through `UpdateConfig` — so a mainnet price is a
-  config change, not a redeploy. Betanet intent: 3 chars = 100 000, 4 = 10 000, 5+ = 1 000 base
-  units (0.0001 / 0.00001 / 0.000001 THRU). The extension reads those numbers from the config; no
-  price is hardcoded in the UI. Layout: `docs/DEFECT_LOG.md` §18.
-- **Whether a charge is enforced is a property of the deployed config, not of the wallet.** The
-  program has a `fee_policy`: `best-effort` (0) attempts `account_transfer` and ignores a refusal
-  — the deployed behaviour — and `strict` (1) reverts (`0xD206`; `0xD207` when the source balance
-  cannot cover it). The wallet maps `feeEnforced = (policy === strict)` and never assumes a charge:
-  an unenforced non-zero price is shown as an unenforced price with a `registrar-fee-unenforced`
-  warning ("no charge reported" is the honest wording, never "free"), and only an enforced charge
-  adds an outgoing THRU row to the review. **Default is best-effort**, because the only live
-  observation is the transfer being refused (`-10 AccountNotWritable`, surfaced as `0xD20A`);
-  `--fee-policy strict` is gated in `scripts/registrar/deploy-and-init.mjs` behind
-  `--collection-proven`, a recorded treasury balance delta. Open: whether the new artifact's
-  charge actually lands (`docs/DEFECT_LOG.md` §18, §13.3).
-- `.id` supports name-service lookup and has no lease-renewal operation. The Domain route treats
-  it as resolution-only. The lower-level generic name-service write remains self-signed and
-  refuses a signer that is not the parsed root authority (`NAME_PARENT_AUTHORITY`); the Betanet
-  `.id` root is third-party controlled, so ordinary wallet accounts cannot mint beneath it.
-- Atomic multi-name registration is not supported or offered. The single-name flow distinguishes
-  confirmed, failed, and unknown outcomes, with no automatic resubmission after a timeout.
-- **VERIFIED AGAINST LIVE NETWORK (Betanet, 2026-10-27)**: one unique `.thru` registration
-  through the real background API router returned an on-chain execution result; a follow-up
-  read confirmed the selected test account as lease owner. The handler quoted 1,000 base
-  units/year. Charged network fee was not returned, and this did not exercise the rendered UI.
-- Real Chrome visual-harness review layout is **TESTED** (actual route and built CSS; mocked
-  bridge; 400x600 light/dark and narrow/short 320px layouts). Actual extension popup/side-panel
-  review/auth behavior and live renewal remain **UNVERIFIED**.
+### C3. Transaction Simulation (`UNSUPPORTED`)
+- Thru exposes no verified dry-run simulation RPC. `tx.simulate` returns `{ supported: false, changes: null, reason }`, `assets.balanceAfter` is enforced `null` in `src/shared/tx-review/model.js`, and no post-transaction balance is ever predicted (`Rule 16`).
 
-### C1. Token balances — implemented; token-transfer behavior still needs live verification
+### C4. Domain Discovery, Record Semantics & Custom Registrar Deployment Gap
+- **Full Domain Enumeration (`BLOCKED`):** Betanet `ListAccounts` filtered by the Name Service program owner fails with `RESOURCE_EXHAUSTED` (`2026-10-27`); `/name` uses the wallet-local tracked registry (`thru_registered_domains`), and `name.reverseLookup` resolves only within that tracked set.
+- **Append-Only Records (`v31`):** `name.setRecord` encodes `APPEND_RECORD` (opcode 2), which appends without overwriting prior keys (`DELETE_RECORD` is unprobed), has no UI caller yet, and is `UNVERIFIED` on live Betanet.
+- **Custom Registrar `.bin` & Fee Collection (`Release Blocker #1`):** Checked-in `thru-custom-registrar.bin` (`33,714` B, adding `0xD112` canonical-PDA enforcement) is one build ahead of Betanet's `2026-10-31` `30,000` B deployment (`feePolicy: "strict"`, `collectionProbe.measured: false`), and custom-lease expired-claim does not exist in the contract ABI (`docs/guides/domains-and-registrar.md`).
 
-`token.getBalances` is a real implementation, not the former capability stub. It reads the wallet's registry mints through the pinned official Token Program bindings. Missing token accounts are represented as proven zero; failed or malformed reads remain unknown. Mint decimals are read from chain data rather than trusted from editable registry metadata.
-
-This does **not** establish the end-to-end behavior of `token.transferChecked` on a live node. Whether the Token Program accepts a never-registered wallet address as the owner of a sender-created token account, and what the token-program transaction actually costs, remain open. Use `scripts/verify-token-transfer.mjs` only in a network-reachable, throwaway-wallet environment; see `docs/STATUS_AND_ROADMAP.md` and `docs/MANUAL_SMOKE_CHECKLIST.md`.
-
-### C2. Pre-send fee estimate — native and token cases are different
-
-The native transfer fee has a historical Alphanet observation (2026-09-26) of 1 base unit and is kept in per-network configuration with explicit provenance (`feeSource: 'measured'` on Betanet, whose programs are that same deployment; `'assumed'` on Localnet; unmeasured networks report `supported: false` with null values). That observation does not establish the token-program fee. The Send UI does not substitute the native amount for an unmeasured token fee; it identifies that token fee as unmeasured, and labels a native fee as "assumed, not measured on this network" only when the network entry actually says `assumed`. Reconfirm fee behavior for the current network before treating an estimate as a live-chain guarantee.
-
-### C2b. Charged fee in transaction history — not reported by the current detail response
-
-The transaction detail API exposes a header-declared fee (`feeDeclaredUnits`) and explicitly reports `feeCharged: false`; the UI labels the row **Fee (declared)**. A declared value is an input in the transaction header, not proof of what was debited. Do not relabel it as a charged/paid fee or infer a debit from the pre-send estimate.
-
-The current RPC detail response has no charged-fee field. Whether an authoritative charged-fee value is available through another typed explorer surface remains open. Thru's documented [Explorer MCP overview](https://thru.org/docs/api-ref/explorer-mcp/overview/) is an agent-facing reference; it is not, by itself, a stable typed API contract for the extension.
-
-### C2c. Block time — optional, and the current lookup still needs live checks
-
-Transactions carry a slot; an optional containing-block time can be resolved through the SDK. The shipped History path records a verified value with `timestampSource: 'block'`, scopes lookup/cache identity by network, RPC endpoint, and slot, and performs header reads outside the serialized cache-write section. Paginated entries are enriched as they are displayed. For the wallet's own sends, an actual local submission time may be used only as a fallback; otherwise the card shows `Block <slot>`.
-
-`test/test-history-block-time.mjs` and `test/test-history-cache.mjs` exercise deterministic fixtures, collisions, races, missing-time fallback, and paging. They do not establish that every live node supplies block time or measure first-load latency. Recheck the current feed on each enabled network in a real environment.
-
-### C3. Transaction simulation — unsupported
-
-`tx.simulate` remains an explicit unsupported capability. No predicted token/balance effect is fabricated, and there is no shipped transaction-simulation UI.
-
-### C4. dApp signing — no extension provider is shipped
-
-The official [Embedded Wallet Integration](https://thru.org/docs/wallet/embedded-wallet-integration/) describes the hosted iframe at `https://app.tid.sh/embedded`. `https://wallet.tid.sh` is the standalone wallet host and sends `X-Frame-Options: DENY`; it is not the embedded URL. These hosted-wallet APIs do not define an extension/BYO-signer provider contract. This extension does not inject `window.thru`, and no dApp connector is claimed shipped. Any extension integration requires a published and verified contract for origin discovery, permissions, approval transport, signing ownership, and submission semantics.
-
-Official Thru cross-checks: [Thru docs](https://thru.org/docs/), [API/SDK overview](https://thru.org/docs/api-ref/overview/), [`@thru/sdk`](https://thru.org/docs/sdks/web-packages/sdk/), [`@thru/programs`](https://thru.org/docs/sdks/web-packages/programs/), and [gRPC API overview](https://thru.org/docs/api-ref/grpc/overview/). Check against the exact dependency versions pinned by this repository.
-
-### Other open checks
-
-- Live contract-v12 account creation/registration and Send JIT activation, including MV3 worker suspension/restart behavior.
-- Live signing race if the selected network changes after the last preflight check but during SDK signing/submission.
-- Concurrent pending-record storage writes on the same network.
-- Real-Chrome popup/side-panel layout, focus, context exclusion, QR rendering, and worker lifecycle.
-- Confirmation of the explorer transaction route; do not turn an unverified URL convention into a protocol guarantee.
-
-The owners and the test/live/browser boundaries are tracked in `docs/STATUS_AND_ROADMAP.md`, `docs/SEND_PATH_AUDIT.md`, and `docs/MANUAL_SMOKE_CHECKLIST.md`.
+### C5. Extension dApp Provider (`UNSUPPORTED` / `BLOCKED`)
+- Official `@thru/wallet` connects web apps to the hosted iframe `https://app.tid.sh/embedded` (`https://wallet.tid.sh` sends `X-Frame-Options: DENY`). Neither defines a browser-extension provider standard. No `window.thru`, `content_scripts`, or `externally_connectable` surface is shipped.
 
 ---
 
-## 3. Contract compatibility rule
+## 3. Contract Compatibility Policy (`Rule 4`)
 
-Ordinary feature work appends methods rather than changing existing parameter or return shapes. This contract is not an excuse to preserve an unsafe policy: the documented v5 signing-auth, v6 destructive-settings, and v7 custom-network security changes are intentional in-place security exceptions. Contract tests in `test/test-contract.mjs` check method/router/UI agreement and key security invariants. Do not silently widen a method's authority or reinterpret an existing field.
+New features append methods to `src/shared/contract/manifest.js` and `src/background/api-router.js` (`test/test-contract.mjs` checks two-way parity). Existing parameter/return shapes are never mutated in place except documented security-hardening upgrades (`v5` signing auth, `v6` reset/auto-lock password gates, `v7` custom-RPC quarantine, `v13` faucet auth, `v16` unbound-send retirement, `v31` `name.setRecord` promotion to `auth: 'signing'`, and `v32` router `consentToken` enforcement).

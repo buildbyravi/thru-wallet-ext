@@ -9,6 +9,8 @@ import { CLOSE_SIDE_PANEL_ACTION } from '../shared/side-panel.js';
 import { discardAllReviews } from './services/review-service.js';
 import { getPreferences } from './services/preferences-service.js';
 import { openNotificationTx } from './services/history-service.js';
+import * as pending from './services/pending-tx-service.js';
+import * as primaryNames from './services/primary-name-service.js';
 
 const AUTO_LOCK_ALARM = 'thru-auto-lock';
 
@@ -52,14 +54,26 @@ async function syncSidePanelBehavior() {
 
 syncSidePanelBehavior();
 
+pending.configureRegistrationRecovery({ remember: primaryNames.rememberConfirmedRegistration,
+  clear: primaryNames.clearAllDomains });
+async function recoverPending() {
+  await pending.reconcile();
+}
+void recoverPending().catch(() => {});
+chrome.storage?.onChanged?.addListener((changes, area) => {
+  if (area === 'local' && changes.thru_active_network) void recoverPending().catch(() => {});
+});
+
 chrome.runtime.onInstalled.addListener(() => {
   ensureAutoLockAlarm();
   syncSidePanelBehavior();
+  void recoverPending().catch(() => {});
 });
 
 chrome.runtime.onStartup.addListener(async () => {
   ensureAutoLockAlarm();
   syncSidePanelBehavior();
+  void recoverPending().catch(() => {});
   // A browser restart ends whatever session the user had. If the wallet came back locked, any
   // prepared review is consent from a session that no longer exists — discard it now rather than
   // leave it to the 120-second TTL (2026-11-01 audit).
@@ -75,6 +89,10 @@ chrome.runtime.onStartup.addListener(async () => {
 // locks only once the configured inactivity window has actually elapsed, so an active
 // signing flow is never interrupted mid-way.
 chrome.alarms.onAlarm.addListener(async (alarm) => {
+  if (alarm.name === pending.PENDING_ALARM) {
+    await recoverPending().catch(() => {});
+    return;
+  }
   if (alarm.name !== AUTO_LOCK_ALARM) return;
   try {
     if (await shouldAutoLock()) {

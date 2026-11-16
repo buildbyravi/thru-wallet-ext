@@ -417,6 +417,45 @@ section('8] source guard: no argument-less toast calls');
   if (bare.length) console.error(`         ${bare.join('\n         ')}`);
 }
 
+section('9] toast secondary text follows the inverse theme foreground');
+{
+  const css = readFileSync('src/popup/styles/overlays.css', 'utf8');
+  const tokens = readFileSync('src/popup/styles/tokens.css', 'utf8');
+  const messageRule = css.match(/\.toast-message\s*\{([^}]+)\}/)?.[1] || '';
+  const actionRule = css.match(/\.toast-action\s*\{([^}]+)\}/)?.[1] || '';
+  const focusRule = css.match(/\.toast-action:focus-visible,\s*\.toast-close:focus-visible\s*\{([^}]+)\}/)?.[1] || '';
+  const inverse = (rule) => /color:\s*var\(--ink-ink\)\s*;/.test(rule);
+  eq('actual secondary text rule uses the toast inverse foreground', inverse(messageRule), true);
+  eq('actual toast action button uses the toast inverse foreground (never hardcoded #ffffff)', inverse(actionRule), true);
+  eq('control: hardcoded #ffffff action button is rejected', inverse('color: #ffffff;'), false);
+  ok('toast focus outline uses the inverse foreground token', /outline:\s*2px solid var\(--ink-ink\)/.test(focusRule));
+  eq('control: old translucent white on the inverted surface is rejected',
+    inverse('color: rgba(255, 255, 255, 0.72);'), false);
+  eq('control: the semantic foreground rule is recognized', inverse('color: var(--ink-ink);'), true);
+  ok('actual toast background uses the paired inverse surface', /\.toast\s*\{[^}]*background:\s*var\(--ink[,)]/.test(css));
+  const hex = (scope, name) => scope.match(new RegExp(`${name}:\\s*(#[\\da-f]{6})`, 'i'))?.[1];
+  const rgb = (value) => [1, 3, 5].map((at) => parseInt(value.slice(at, at + 2), 16));
+  const luminance = (values) => values.map((value) => {
+    const v = value / 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  }).reduce((sum, value, index) => sum + value * [0.2126, 0.7152, 0.0722][index], 0);
+  const contrast = (a, b) => (Math.max(luminance(a), luminance(b)) + 0.05)
+    / (Math.min(luminance(a), luminance(b)) + 0.05);
+  for (const [label, scope] of [['light', tokens.match(/:root\s*\{([\s\S]*?)\n\}/)?.[1]],
+    ['dark', tokens.match(/\[data-theme="dark"\]\s*\{([\s\S]*?)\n\}/)?.[1]]]) {
+    const background = rgb(hex(scope, '--ink')); const foreground = rgb(hex(scope, '--ink-ink'));
+    ok(`${label}: actual paired foreground/surface tokens exceed 4.5:1`, contrast(foreground, background) >= 4.5);
+    if (label === 'dark') {
+      const oldWhite = background.map((value) => 255 * 0.72 + value * 0.28);
+      ok('control: old white RGBA fails dark-theme contrast', contrast(oldWhite, background) < 4.5);
+    }
+  }
+  reset();
+  toast({ title: 'Contrast control', message: 'Secondary text from the real component', duration: 0 });
+  eq('real toast renders its secondary copy with the guarded class',
+    bodyText(lastToast().querySelector('.toast-message')), 'Secondary text from the real component');
+  reset();
+}
+
 // =============================================================================================
 console.log('');
 if (failures) {

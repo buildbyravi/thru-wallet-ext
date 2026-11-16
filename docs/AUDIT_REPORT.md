@@ -1,130 +1,67 @@
-# Audit report — Thru Wallet Extension
+# Audit Report — Thru Wallet Extension
 
-**This file is the audit index and the current conclusion.** Full audit findings, evidence, and
-remediation records live as dated files under `docs/audits/` and are append-only history — a new
-audit adds a dated file and refreshes the summary here; a dated record is never edited. The
-open readiness gates below are current state and are maintained here, not in the records.
-
-## Current conclusion (2026-10-04)
-
-**Production-rules conformance audit — accepted baseline. No P0 fund-loss/security defect.**
-All eight findings (F-01…F-08: two security-policy documentation defects, stale ledger
-identifiers, a public-policy permission omission, a fee-provenance dead branch, stale rule text,
-and two dead-code leftovers) are fixed, re-verified, and covered by regression tests — including
-a negative control. The prior 2026-10-03 remediations (MR-01…MR-07: signing-operation network
-lock, legacy send retirement, serialized pending writes, schema versioning, signing-default
-decision, status refresh, derivation provenance) are all present in source and tested.
-The architecture is frozen (see `AGENTS.md`); the remaining work is verification, not
-restructuring. External audit remains required; no external audit exists.
-
-Baseline evidence (re-run green 2026-10-04): `npm run build` PASS · `npm test` PASS
-(derivation 16/16, contract 80/80, lifecycle 1017/1017, 1647 assertions) ·
-`npm audit --omit=dev` 0 vulnerabilities.
-
-**Refresh (2026-10-30, shared-platform pass).** The Domain "empty black notification bar" was a
-`toast()` called with a bare string: the component rendered chrome with an empty message body and
-had no tests at all. Fixed at source (`docs/audits/2026-10-30-shared-platform-audit.md`,
-`docs/DEFECT_LOG.md` §16): `toast()` now refuses to render without a message, gained a `pending`
-state with in-place resolution, key dedupe and real teardown (lock/account/network), `Banner`
-resolves one tone vocabulary, and six address-truncation copies became one shared primitive.
-New guards: `test/test-toast.mjs` (92) and `test/test-shared-platform.mjs` (45, each scanner with a
-positive control). A real-browser look at the fixed bar is still **UNVERIFIED**; the harness is
-`scripts/preview-toast.html`.
-
-**Refresh (2026-11-02).** The tree is at contract **v32** with **153 methods** and **15 routes**;
-`npm test` is **2,831 checks (40 suites + 9 gates)**, `npm run build` PASS, layering 127 files /
-0 DOM sinks, `check-routes` 15/15 with the full used-class set defined. The 2026-10-30 lifecycle
-audit (`docs/audits/2026-10-30-review-lifecycle-audit.md`) fixed four pre-sign defects — a hidden
-Domain queue that submitted reviews without a card, a faucet claim that re-derived its account at
-submit time, an optional abort signal that two routes never passed, and a Domain sheet that raced
-its own preparation — and the card copy was rewritten to the owner's v1.5.0 shape. The v29
-change is the owner-directed shared transaction-review pipeline; its verification record, including
-the fixes found during review, is `docs/TX_REVIEW_VERIFICATION.md`. v30 adds the tracked-domain
-registry and the custom-registrar renewal path, audited in `docs/audits/2026-10-28-sync-audit.md`;
-v31 makes the name-service record write live and adds reverse name lookup, audited in
-`docs/audits/2026-10-29-v31-audit.md` — that audit found the write's confirm path threw on every
-attempt and fixed it. None of these records adds **live-chain** or browser evidence: the review card
-still has no real-browser pass (checklist §7), no review has been confirmed against a funded Betanet
-account, and the two v31 name paths are `UNVERIFIED` on the live chain. The 2026-10-04 findings F-01…F-08 remain fixed;
-this refresh changes counts and adds a feature, not the audit conclusion.
-
-## Mainnet-readiness gates — open (classified 2026-10-04)
-
-Classification basis: the accepted 2026-10-04 conformance audit (all findings F-01…F-08 fixed
-and re-verified) and the same-day hardening pass. The categories are never merged: a passing
-Node test cannot close a browser item, a Betanet observation cannot prove Mainnet behavior, and
-a source audit is not an external audit. Full findings and remediation detail live in the dated
-records below.
-
-**A. Automated verified (deterministic, local — 2026-10-04 run; current counts in the refresh above):**
-
-- `npm run build` — PASS, no warnings; `dist/` regenerated from current source.
-- `npm test` — PASS: derivation goldens 16/16 (pinned 0.4.1), QR 15/15, layering 80 files /
-  0 violations / 0 DOM sinks, CSP↔enabled-networks two-way, routes 14/14 both directions,
-  CSS nesting, launchpad quarantine 47/47, contract both directions 80/80, security-checks 20,
-  DOM/refs 130/130, route lifecycle 1017/1017, storage migrations (v0→v1 + future-version
-  fail-closed), vault, Thru client wire goldens, token balances, network-scoped balances,
-  History cache/block-time, registration policy, API-router (auth, serialization, quarantine,
-  checked sends, fee provenance), auto-lock.
-- `npm audit --omit=dev` — 0 vulnerabilities.
-- Contract v16, 81 methods: manifest ↔ router ↔ shipped-callers agreement enforced.
-
-**B. Browser verified: PARTIAL — OPEN.** One partial real-Chrome run is recorded (2026-10-04;
-run record in `docs/MANUAL_SMOKE_CHECKLIST.md` §7): local build of the current source tree
-loaded unpacked, toolbar popup only — a native Betanet send to the tester's own account
-verified recipient acceptance, amount parsing, the Review fee display, confirmation, and the
-History entry, so the `/send` route row's popup cell is ticked. The charged-fee figure was not
-captured, and a self-send does not exercise v12 recipient activation. Everything else remains
-open: popup/side-panel layout at narrow/wide widths, real focus rings, QR canvas, popup/panel
-mutual exclusion, clipboard permission prompt, and MV3 worker eviction/restart all remain open
-in `docs/MANUAL_SMOKE_CHECKLIST.md`. The `1.4.1` store package went live 2026-10-04 on
-automated evidence alone, predates the same-day fee-provenance/dead-code fixes, and still has
-no browser verification (`extension.md` §9) — the partial run is not evidence about it.
-A green DOM-shim suite is not evidence here.
-
-**C. Betanet live verified (provenance retained; the historical 2026-09 observations do NOT
-certify the current v12/v16 code paths):**
-
-- Native transfer program behavior and the 1-base-unit fee, measured on the managed-genesis
-  chain 2026-09-26 (the same program deployment Betanet runs); recorded per-network with
-  `feeSource: 'measured'`.
-- Faucet instruction layout credited 10,000 units from the bootstrap vault PDA (2026-09-26).
-- Explorer `/address/` route with `?network=` scoping verified 2026-09-27; ~6-second block
-  cadence verified 2026-09-29.
-- Current-code send observation, partial (2026-10-04): a native Betanet send to the tester's
-  own account was driven end-to-end through the real Chrome popup from a local build of the
-  current source tree (post-`14e16b1`) and confirmed on-chain, appearing in History. One
-  self-send only: the charged-fee figure was not captured, v12 JIT recipient activation was
-  not exercised, and token paths were untouched.
-
-Still open on Betanet: live v12 account activation and Send JIT, token-transfer
-recipient-owner acceptance and the actual token-program fee, current block-time
-availability/latency, confirmation of the explorer `/tx/` route, and any authoritative
-charged-fee source. Use only throwaway wallets for these.
-
-**D. Mainnet-specific verification: NONE.** Mainnet is declared but disabled; its fee is
-explicitly unknown (`baseFeeUnits: null`, estimate returns `supported: false`), its RPC origin
-is not in `connect-src`, and no mainnet-specific testing exists. A Betanet observation cannot
-prove Mainnet behavior — fee schedule, program deployment, and explorer routing may all differ.
-Before mainnet enablement: re-measure fees on mainnet, verify program ids, and re-run the
-live-chain items against it.
-
-**E. External security audit: NOT PERFORMED — EXTERNAL AUDIT REQUIRED.** The 2026-10-03 and
-2026-10-04 source audits and remediations are internal work and are not a substitute. No
-external audit of this wallet exists; no claim of one may be made.
+**Document Class:** Operational Verification (Current Audit Summary, Mainnet-Readiness Gates & Historical Audit Index)
+**Baseline:** The tree is at contract **v33** with **154 methods** and **15 routes** (synchronized 2026-11-16).
 
 ---
 
-## Audit records (append-only, dated)
+## 1. Current Audit Conclusion
 
-| Date | Record | Scope |
+**Current repair pass: IMPLEMENTED and TESTED (`v33`, 2026-11-16). External audit: NOT PERFORMED (`EXTERNAL AUDIT REQUIRED`).** This records the scoped repairs below, not a claim that all possible security defects are resolved.
+
+- All findings from the 2026-10-03 Mainnet-readiness audit (`MR-01…MR-07`), 2026-10-04 conformance audit (`F-01…F-08`), 2026-10-28 v30 domain audit (`D-1…D-6`), 2026-10-29 v31 record-write audit (`E-1…E-8`), 2026-10-30 review-lifecycle audit (`F-1…F-5`), and 2026-10-30 shared-platform audit are fixed in `src/` and guarded by automated regression tests with negative controls.
+- Subsequent `2026-11-01..13` security passes closed the direct-handler review bypass by adding the **contract v32 background `consentToken` gate** (`src/background/services/review/consent.js` + `REVIEW_REQUIRED` in `api-router.js`, `test/test-review-consent.mjs`), wired `walletService.lock()` review/token discard onto the inactivity alarm and startup lock paths (`test/test-review-lifecycle.mjs`), added explicit `SEND_EXPIRY_SLOTS = 1000` transaction deadlines (`test/test-thru-client.mjs`), refused custom-RPC writes (`CUSTOM_RPC_SUPPORTED = false`), unified registrar/record header fees via `tx-units.networkFeeUnits` (`D-022`), and enforced one notification surface per submission event (`Rule 29`).
+- **Architecture remains frozen (`AGENTS.md`):** priority is real-Chrome smoke execution, closing the Betanet custom-registrar `.bin` / fee-collection and `name.setRecord` live probes, and completing an independent external security audit before any Mainnet claim.
+
+---
+
+## 2. Mainnet-Readiness Gates (Five Strictly Separated Categories)
+
+Verification classes are never merged: a green Node test never closes a browser gate, a Betanet probe never proves Mainnet behavior, and internal reviews never substitute for an external audit.
+
+### Gate A — Deterministic Automated Verification: `PASS` (`IMPLEMENTED`, `TESTED`)
+- `npm run build` — **PASS**, zero warnings; `dist/` regenerated cleanly from `src/`.
+- `npm test` — **PASS** across **41 test suites** (`test/test-*.mjs`) and **9 guard scripts** (`scripts/check-*.mjs`):
+  - Exact pins `@thru/sdk@0.4.2` & `@thru/programs@0.4.2` with 16/16 derivation golden vectors (`test/test-derivation.mjs`).
+  - Layering across `128` runtime JS files (`0` boundary violations, `0` HTML-injection sinks), cycle ratchet (`1` legacy 5-service cycle), CSP <-> enabled-network parity, `30/30` ordered `AGENTS.md` rules, docs-truth parity, guard negative controls, `15/15` routes reachable with all used CSS classes defined, flat CSS, Dashboard 6-tile geometry, launchpad quarantine, and all `11` build-time `FLAGS === false`.
+  - Contract **v33** (`154` methods) parity and verified-token import; signing consent and session cleanup; nine review kinds (`205` decoder/service checks and `67` card checks); `1,153` route-lifecycle checks; strict mint parsing, registrar rechecks, pending unknown-outcome retention, storage migrations, and passive-polling auto-lock regression coverage.
+
+### Gate B — Real-Browser Verification (Chrome MV3): `PARTIAL — OPEN` (`UNVERIFIED`)
+- **Recorded:** One partial real-Chrome toolbar-popup run (`2026-10-04`, `docs/MANUAL_SMOKE_CHECKLIST.md` §8: native Betanet self-send verified recipient, amount, Review fee, confirmation, and History entry) plus an isolated Chrome visual-harness check of `NameRoute`/`Sheet` at `400x600` and `320px` (`2026-10-27`, mocked bridge).
+- **Still Open:** Full `docs/MANUAL_SMOKE_CHECKLIST.md` across popup and side panel (`<400px` narrow and `>=800px` wide), popup/panel mutual exclusion, real focus rings, QR scan, `TxReviewCard` §7 (`scripts/preview-tx-review.html`), `toast()` bar (`scripts/preview-toast.html`), clipboard permission prompt, MV3 worker eviction/restart, and browser verification of the `1.4.1` CWS package.
+
+### Gate C — Betanet Live-Network Verification: `PARTIAL — OPEN`
+- **Verified on Betanet (`VERIFIED AGAINST LIVE NETWORK`):**
+  - Native EOA transfer & `1`-base-unit fee (`2026-09-26`), `/address/?network=betanet` explorer link (`2026-09-27`), ~6s block cadence (`2026-09-29`), popup native self-send (`2026-10-04`).
+  - Faucet `10,000` base-unit per-claim ceiling (`2026-10-24-faucet-cap.json`) and explicit `autoUnits` resource budgets (`2026-10-09`).
+  - Full 13-rung Token Program live verification (`2026-10-23-live-chain-run3.json`: mint deploy, sender-created token account for never-registered recipient wallet `created: true`, transfer, `2` base units across init + transfer) and all `18` bootstrap program addresses verified deployed on-chain.
+  - Live AMM pool init, LP add, and exact-in swap (`2026-10-25-live-swap-probe.json`, `vmError: 0`; DeFi flags remain `false`).
+  - Custom `.thru` registrar deployment read (`2026-10-26`), router `Register` (`2026-10-27`), and layout-2 tiered `UpdateConfig` (`2026-10-31`, `registrar-deploy-betanet-thru-1793443647724.json`, `feePolicy: "strict"`).
+- **Still Open on Betanet (`UNVERIFIED` / `Release Blockers`):**
+  1. Deploy checked-in `33,714`-byte `thru-custom-registrar.bin` (`0xD112` canonical-PDA check) and measure treasury balance delta across a live `Register` and `Renew` (`collectionProbe.measured` is `false`), plus live broadcast with `1`-base-unit `networkFeeUnits`.
+  2. Probe `name.setRecord` (`v31` opcode 2) and `name.reverseLookup` against live Betanet (or gate `name.setRecord` off).
+  3. Multi-account `v12` `tx.registerAccount` creation + `/send` JIT activation (`scripts/verify-live-e2e.mjs betanet`).
+  4. Live `blocks.get` block-time availability/latency and confirmation of `https://scan.thru.org` `/tx/` deep-link routing.
+
+### Gate D — Mainnet-Specific Verification: `NONE` (`BLOCKED`)
+- `mainnet` in `src/lib/networks.js` is disabled (`enabled: false`, `baseFeeUnits: null`, absent from `manifest.json` `connect-src`). Before Mainnet enablement: measure Mainnet fees on-chain, thread `network.baseFeeUnits` into `tx-units.autoUnits` (`docs/BACKEND_GAPS.md` C2), satisfy all 6 contract deployment gates in `docs/GLOBAL_SMART_CONTRACT_POLICY.md` (including upgrade-authority-gated `Initialize` and `max_fee` bounds on custom programs), and re-run live verification on Mainnet.
+
+### Gate E — Independent External Security Audit: `NOT PERFORMED` (`EXTERNAL AUDIT REQUIRED`)
+- All audits indexed below are internal engineering audits. An independent third-party wallet & smart-contract security audit is required prior to any Mainnet-readiness claim.
+
+---
+
+## 3. Historical Audit Records (`docs/audits/` — Append-Only Snapshots)
+
+> [!WARNING]
+> **AI Agent Notice:** Files in `docs/audits/` are **immutable historical point-in-time records** of earlier commits (`v6`–`v31`). Several contain policies later superseded by owner decisions (e.g., `2026-09-18-baseline.md` predates `D-003` session-only signing default; `2026-10-28..30` predate the `v32` `consentToken` gate and `2026-11-12` `networkFeeUnits` policy). Never edit these files and **never treat them as current specification** — use `docs/ARCHITECTURE.md`, `docs/DECISIONS.md`, and `docs/guides/*` for current behavior. Temporary agent handoffs and documentation-overhaul reports are deliberately excluded from this directory.
+
+| Date | Historical Record | Commit / Era Audited |
 | --- | --- | --- |
-| 2026-10-30 | [`docs/audits/2026-10-30-review-lifecycle-audit.md`](audits/2026-10-30-review-lifecycle-audit.md) | Review lifecycle after v31: four pre-sign defects (hidden batch queue, unbound faucet claim, optional abort signal, Domain prepare race) plus the v1.5.0 card copy rewrite. |
-| 2026-10-29 | [`docs/audits/2026-10-29-v31-audit.md`](audits/2026-10-29-v31-audit.md) | The v31 record-write merge: confirm path, signing auth level, three-state reads, account rows, error codes, reverse lookup. |
-| 2026-10-28 | [`docs/audits/2026-10-28-sync-audit.md`](audits/2026-10-28-sync-audit.md) | The v30 domain merge audit. |
-| 2026-10-04 | [`docs/audits/2026-10-04-conformance.md`](audits/2026-10-04-conformance.md) | Production-rules conformance: baseline, findings F-01…F-08, remediation units U1–U5. |
-| 2026-10-03 | [`docs/audits/2026-10-03-mainnet-readiness.md`](audits/2026-10-03-mainnet-readiness.md) | Mainnet-readiness: findings MR-01…MR-07 and their source remediations. |
-| 2026-09-18 | [`docs/audits/2026-09-18-baseline.md`](audits/2026-09-18-baseline.md) | Baseline security audit: findings F-01…F-09 of the original review (historical; superseded states are labeled inside). |
-
-Rules: append a new dated file per audit; refresh the summary and gates above; never edit or
-delete a dated record; keep the five gate categories separate from one another.
+| 2026-10-30 | [`docs/audits/2026-10-30-shared-platform-audit.md`](audits/2026-10-30-shared-platform-audit.md) | `0cb010b` (v31): blank Domain `toast()` root cause, unified `toast`/`Banner` vocabulary, single `shortenMiddle` truncation primitive. |
+| 2026-10-30 | [`docs/audits/2026-10-30-review-lifecycle-audit.md`](audits/2026-10-30-review-lifecycle-audit.md) | `2c0aeed` -> `5b39dc5` (v31): deleted hidden Domain batch queue, bound faucet claim account/network, mandatory `AbortSignal` on `submitReviewedReview`, Domain prepare race fix, v1.5.0 card copy. |
+| 2026-10-29 | [`docs/audits/2026-10-29-v31-audit.md`](audits/2026-10-29-v31-audit.md) | `4bd5ef9` (v31): `name.setRecord` confirm `TypeError`, promotion to `auth: 'signing'`, three-state domain facts, `ERROR_CODES` scan, `reverseLookup` network/TLD binding. |
+| 2026-10-28 | [`docs/audits/2026-10-28-sync-audit.md`](audits/2026-10-28-sync-audit.md) | `a613fcb..3276245` (v30): tracked domain registry merge and custom-registrar renewal pricing fixes. |
+| 2026-10-04 | [`docs/audits/2026-10-04-conformance.md`](audits/2026-10-04-conformance.md) | `7883219` (v16): production-rules conformance (`F-01…F-08` and remediations `U1–U5`). |
+| 2026-10-03 | [`docs/audits/2026-10-03-mainnet-readiness.md`](audits/2026-10-03-mainnet-readiness.md) | `05fda07` (v15->v16): `MR-01…MR-07` (`signing-guard`, unbound-send retirement, serialized pending writes, versioned storage). |
+| 2026-09-18 | [`docs/audits/2026-09-18-baseline.md`](audits/2026-09-18-baseline.md) | Initial v6/v7 baseline security review (`F-01` password-per-sign default later superseded by `D-003`). |

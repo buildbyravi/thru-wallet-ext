@@ -15,7 +15,13 @@ import * as pendingTx from '../src/background/services/pending-tx-service.js';
 
 const data = new Map();
 const events = [];
+const alarms = new Map();
 globalThis.chrome = {
+  alarms: {
+    async get(name) { return alarms.get(name); },
+    async create(name, options) { alarms.set(name, options); },
+    async clear(name) { return alarms.delete(name); },
+  },
   runtime: { sendMessage(message) { events.push(message); return Promise.resolve(); } },
   storage: { local: {
     async get(key) {
@@ -171,4 +177,85 @@ assert.equal(pendingEnvelope.version, 1);
 assert.deepEqual(new Set(pendingEnvelope.records.map((row) => row.signature)),
   new Set(['ts_concurrent_a', 'ts_concurrent_b']));
 console.log('  ok - v0 migrates to v1 and simultaneous tracks cannot overwrite each other');
+
+console.log('[pending outcomes] unknown records remain tracked without periodic change events');
+await pendingTx.clearAll();
+const pendingClient = thruClient.getClient();
+pendingClient.accounts.get = async () => ({ meta: { balance: 1n } });
+pendingClient.transactions.listForAccount = async () => ({ transactions: [] });
+const unresolved = { signature: 'ts_late', kind: 'transfer', from: address, to: 'recipient-late',
+  amountUnits: '5', networkId: 'localnet', status: 'submitted', submittedAt: Date.now() - 600_000 };
+data.set('thru_pending_txs::localnet', { version: 1, records: [unresolved] });
+assert.equal((await pendingTx.reconcile()).settled, 1);
+assert.equal((await pendingTx.list())[0].status, 'unknown');
+assert.equal(alarms.has(pendingTx.PENDING_ALARM), true);
+assert.equal(await pendingTx.isProbableDuplicate(unresolved), true);
+assert.equal((await pendingTx.getDuplicateInfo(unresolved)).isPending, true);
+assert.equal(await pendingTx.isProbableDuplicate({ ...unresolved, mint: 'other-mint' }), false);
+await pendingTx.clearSettled();
+assert.equal((await pendingTx.list()).length, 1);
+const quietEvents = events.length;
+const quietRecord = structuredClone((await pendingTx.list())[0]);
+await pendingTx.reconcile();
+await pendingTx.reconcile();
+assert.equal(events.length, quietEvents, 'unchanged alarm reconciliation emits no events');
+assert.deepEqual((await pendingTx.list())[0], quietRecord, 'unknown does not continually resettle');
+pendingClient.transactions.listForAccount = async () => ({ transactions: [{
+  getSignature: () => ({ toThruFmt: () => unresolved.signature }),
+  program: { toThruFmt: () => 'taPROGRAM' }, executionResult: { vmError: 0 }, slot: 12345n,
+}] });
+assert.equal((await pendingTx.reconcile()).settled, 1);
+assert.equal((await pendingTx.list())[0].status, 'confirmed');
+assert.equal(alarms.has(pendingTx.PENDING_ALARM), false);
+await new Promise(resolve => setImmediate(resolve));
+const settledEvents = events.length;
+await pendingTx.reconcile();
+assert.equal(events.length, settledEvents, 'settled alarm pass stays quiet');
+assert.equal(await pendingTx.isProbableDuplicate(unresolved), false);
+data.set('thru_pending_txs::localnet', { version: 1, records: [{ ...unresolved, status: 'unknown' }] });
+pendingClient.transactions.listForAccount = async () => ({ transactions: [{
+  getSignature: () => ({ toThruFmt: () => unresolved.signature }),
+  program: { toThruFmt: () => 'taPROGRAM' }, executionResult: { vmError: 1 }, slot: 12345n,
+}] });
+assert.equal((await pendingTx.reconcile()).settled, 1);
+assert.equal((await pendingTx.list())[0].status, 'failed');
+assert.equal(alarms.has(pendingTx.PENDING_ALARM), false);
+console.log('  ok - timeout preserves duplicates, unknown can confirm late, and settled alarms stop quietly');
+
+console.log('[pending retention] the history cap never evicts unresolved outcomes');
+pendingClient.transactions.listForAccount = async () => ({ transactions: [] });
+const retained = Array.from({ length: 55 }, (_, i) => ({ ...unresolved, signature: `ts_unknown_${i}`, status: 'unknown' }));
+data.set('thru_pending_txs::localnet', { version: 1, records: retained });
+await pendingTx.track({ ...unresolved, signature: 'ts_new' });
+await pendingTx.reconcile();
+assert.equal((await pendingTx.list()).length, 56);
+await pendingTx.clearSettled();
+assert.equal((await pendingTx.list()).length, 56);
+await pendingTx.clearAll();
+assert.equal(alarms.has(pendingTx.PENDING_ALARM), false);
+console.log('  ok - all unresolved records survive tracking and clearing beyond the settled history cap');
+
+console.log('[pending recovery] confirmed registration recovery keeps the alarm only while needed');
+let recoveryComplete = false;
+let recoveryAttempts = 0;
+pendingTx.configureRegistrationRecovery({ async remember() {
+  recoveryAttempts++;
+  return { complete: recoveryComplete };
+} });
+data.set('thru_pending_txs::localnet', { version: 1, records: [{ ...unresolved, status: 'confirmed',
+  registrationIdentity: { name: 'recovery' }, registrationRemembered: false }] });
+const recoveryEvents = events.length;
+await pendingTx.reconcile();
+assert.equal(alarms.has(pendingTx.PENDING_ALARM), true);
+assert.equal(recoveryAttempts, 1);
+recoveryComplete = true;
+await pendingTx.reconcile();
+assert.equal((await pendingTx.list())[0].registrationRemembered, true);
+assert.equal(alarms.has(pendingTx.PENDING_ALARM), false);
+assert.equal(events.length, recoveryEvents, 'metadata retries do not emit pending change events');
+await pendingTx.reconcile();
+assert.equal(recoveryAttempts, 2);
+pendingTx.configureRegistrationRecovery(null);
+await pendingTx.clearAll();
+console.log('  ok - metadata recovery retries quietly and stops its alarm after completion');
 

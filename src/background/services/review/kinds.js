@@ -64,11 +64,10 @@ function requireRegistryLabel(value, field) {
   return name;
 }
 
-function requireYears(value, field = 'years') {
+function requireYears(value, provider = 'custom') {
   const years = Number(value);
-  const problem = customRegistrar.yearsProblem(years);
+  const problem = (provider === 'registry' ? registrar : customRegistrar).yearsProblem(years);
   if (problem) throw coded('INVALID_INPUT', problem);
-  void field;
   return years;
 }
 
@@ -170,6 +169,9 @@ function declaredNetworkFee(fee, balanceUnits) {
 async function assertFeeUnchanged(record) {
   const facts = record.facts;
   const quoted = facts.networkFee ?? null;
+  if (!quoted || typeof quoted.supported !== 'boolean') {
+    throw coded('REVIEW_FEE_CHANGED', 'This review has no fee facts. Review the write again.');
+  }
   const [fee, payer] = await Promise.all([feeQuote(), accountState(record.accountAddress)]);
   if (!fee.supported) {
     // Nothing was quotable then and nothing is now: the write declares 0 in both cases.
@@ -223,7 +225,10 @@ async function tokenMetadata(mintAddress) {
   }
 
   const mintExists = mintReadFailed ? null : mintInfo?.exists !== false;
-  const chainDecimals = mintInfo?.exists && Number.isInteger(mintInfo.decimals) ? mintInfo.decimals : null;
+  const chainDecimals = mintInfo?.exists && Number.isInteger(mintInfo.decimals)
+    && mintInfo.decimals >= 0 && mintInfo.decimals <= 18
+    ? mintInfo.decimals
+    : null;
   return {
     mintAddress,
     symbol: (mintInfo?.ticker || registryRow?.symbol || '').toString() || 'TOKEN',
@@ -411,6 +416,7 @@ async function domainRegisterFacts(params, { account, network }) {
     tld: info.rootName,
     years,
     provider: 'custom',
+    registrarFacts: registrarService.registrarFacts(info),
     pricePerYear: feePerYear,
     totalPriceUnits,
     // Whether the program ENFORCES the charge. Best-effort means it attempts the debit and
@@ -443,11 +449,12 @@ async function domainRegisterFacts(params, { account, network }) {
 async function domainRegisterRecheck(record) {
   const facts = record.facts;
   await assertFeeUnchanged(record);
-  const info = await registrarService.getCustomRegistrar();
+  const info = await registrarService.getCustomRegistrar({ skipCache: true });
   if (!info.supported) {
     throw coded('REVIEW_REGISTRAR_CHANGED',
       'The custom registrar is no longer readable on this network. Review the registration again.');
   }
+  registrarService.assertRegistrarFacts(facts.registrarFacts, registrarService.registrarFacts(info));
   // Compare the tier price for THIS label. Comparing `info.feePerYear` (the cheapest tier)
   // would report a change on every 3- and 4-character name and block a correct review.
   if (registrarService.pricePerYearFor(info, facts.name).toString() !== String(facts.pricePerYear)) {
@@ -505,6 +512,7 @@ async function domainCustomRenewFacts(params, { account, network }) {
     years,
     provider: 'custom',
     pricePerYear: feePerYear,
+    registrarFacts: registrarService.registrarFacts(info),
     totalPriceUnits,
     feeEnforced: info.feeEnforced === true,
     feePolicy: info.feePolicyName,
@@ -513,7 +521,7 @@ async function domainCustomRenewFacts(params, { account, network }) {
     lease: {
       owner: check.lease.owner,
       endTime: check.lease.expiresAtSeconds == null ? null : String(check.lease.expiresAtSeconds),
-      expiredHint: check.lease.expiredHint ?? false,
+      expiredHint: check.expiredHint ?? null,
       mine: true,
     },
     root: info.root,
@@ -537,10 +545,11 @@ async function domainCustomRenewFacts(params, { account, network }) {
 async function domainCustomRenewRecheck(record) {
   const facts = record.facts;
   await assertFeeUnchanged(record);
-  const info = await registrarService.getCustomRegistrar();
+  const info = await registrarService.getCustomRegistrar({ skipCache: true });
   if (!info.supported) {
     throw coded('REVIEW_REGISTRAR_CHANGED', 'The custom registrar is no longer readable on this network. Review the renewal again.');
   }
+  registrarService.assertRegistrarFacts(facts.registrarFacts, registrarService.registrarFacts(info));
   if (registrarService.pricePerYearFor(info, facts.name).toString() !== String(facts.pricePerYear)) {
     throw coded('REVIEW_PRICE_CHANGED', 'The registrar price changed after review. Review the renewal again.');
   }
@@ -573,7 +582,7 @@ const REGISTRY_PROGRAM = Object.freeze({
 
 async function registryWriteFacts(params, { account, mode }) {
   const name = requireRegistryLabel(params.name, 'name');
-  const years = requireYears(params.years);
+  const years = requireYears(params.years, 'registry');
 
   const registry = await registrarService.getRegistry();
   if (!registry.supported) {
@@ -581,7 +590,7 @@ async function registryWriteFacts(params, { account, mode }) {
       registry.reason || 'The `.thru` registry is not initialized on this network.');
   }
   const cfg = registry.registry;
-  const lease = await registrarService.checkLease({ name });
+  const lease = await registrarService.checkLease({ name, registryInfo: registry });
   if (!lease.supported) {
     throw coded('REGISTRY_ABSENT',
       lease.reason || 'The `.thru` registry is not initialized on this network.');
@@ -633,6 +642,8 @@ async function registryWriteFacts(params, { account, mode }) {
     tld: cfg.rootName,
     years,
     provider: 'registry',
+    registrarFacts: registrarService.registrarFacts(registry, { symbol: payment.symbol,
+      decimals: payment.decimals, verified: payment.metadataVerified }),
     pricePerYear: String(cfg.pricePerYear),
     totalPriceUnits: (BigInt(cfg.pricePerYear) * BigInt(years)).toString(),
     paymentBalanceUnits: balance?.exists && balance?.amount != null ? String(balance.amount) : null,
@@ -677,11 +688,14 @@ async function registryWriteRecheck(record) {
     throw coded('REVIEW_REGISTRAR_CHANGED',
       'The `.thru` registry is no longer readable on this network. Review again.');
   }
+  const payment = await tokenMetadata(registry.registry.tokenMint);
+  registrarService.assertRegistrarFacts(facts.registrarFacts, registrarService.registrarFacts(registry,
+    { symbol: payment.symbol, decimals: payment.decimals, verified: payment.metadataVerified }));
   if (String(registry.registry.pricePerYear) !== String(facts.pricePerYear)) {
     throw coded('REVIEW_PRICE_CHANGED',
       'The registrar price changed after review. Review the name again.');
   }
-  const lease = await registrarService.checkLease({ name: facts.name });
+  const lease = await registrarService.checkLease({ name: facts.name, registryInfo: registry });
   if (!lease.supported) {
     throw coded('REVIEW_REGISTRAR_CHANGED', 'The lease could not be re-read before signing.');
   }
@@ -949,6 +963,18 @@ async function domainRecordRecheck(record) {
   }
 }
 
+function expectedWriteFacts(facts, registrar = true) {
+  if (registrar && !facts.registrarFacts) {
+    throw coded('REVIEW_REGISTRAR_CHANGED', 'This review is incomplete. Review the name again.');
+  }
+  if (!facts.networkFee || typeof facts.networkFee.supported !== 'boolean') {
+    throw coded('REVIEW_FEE_CHANGED', 'This review has no fee facts. Review the write again.');
+  }
+  return { ...(registrar ? { expectedRegistrarFacts: structuredClone(facts.registrarFacts) } : {}),
+    expectedNetworkFeeUnits: facts.networkFee.supported ? String(facts.networkFee.amountUnits) : '0',
+    expectedNetworkFeeSupported: facts.networkFee.supported };
+}
+
 // The table
 // ---------------------------------------------------------------------------------------
 
@@ -1008,6 +1034,7 @@ register('domain-register', {
       expectedAccountAddress: facts.fromAddress,
       expectedNetworkId: facts.networkId,
       expectedPricePerYear: facts.pricePerYear,
+      ...expectedWriteFacts(facts),
     },
   }),
 });
@@ -1023,6 +1050,7 @@ register('domain-purchase', {
       expectedAccountAddress: facts.fromAddress,
       expectedNetworkId: facts.networkId,
       expectedPricePerYear: facts.pricePerYear,
+      ...expectedWriteFacts(facts),
     },
   }),
 });
@@ -1043,6 +1071,7 @@ register('domain-renew', {
       expectedAccountAddress: facts.fromAddress,
       expectedNetworkId: facts.networkId,
       expectedPricePerYear: facts.pricePerYear,
+      ...expectedWriteFacts(facts),
       ...(facts.lease?.endTime != null ? { expectedLeaseEndTime: String(facts.lease.endTime) } : {}),
     },
   }),
@@ -1059,6 +1088,7 @@ register('domain-claim', {
       expectedAccountAddress: facts.fromAddress,
       expectedNetworkId: facts.networkId,
       expectedPricePerYear: facts.pricePerYear,
+      ...expectedWriteFacts(facts),
       ...(facts.lease?.endTime != null ? { expectedLeaseEndTime: String(facts.lease.endTime) } : {}),
     },
   }),
@@ -1091,6 +1121,7 @@ register('domain-record', {
       value: facts.value,
       expectedAccountAddress: facts.fromAddress,
       expectedNetworkId: facts.networkId,
+      ...expectedWriteFacts(facts, false),
     },
   }),
 });

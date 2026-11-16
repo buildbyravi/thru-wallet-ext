@@ -48,11 +48,15 @@ factually necessary.
 | --- | --- |
 | anything | `docs/STATUS_AND_ROADMAP.md` (current state), `CONTEXT.md` (file map) |
 | architecture, a new module, a new store/router/bridge | `docs/ARCHITECTURE.md`, `docs/MODULE_BOUNDARIES.md`, `docs/agent/engineering-directive.md` |
-| signing, transactions, review | `docs/agent/rules-detail.md` (rules 10, 16), `docs/TX_REVIEW_VERIFICATION.md`, `docs/audits/2026-10-30-review-lifecycle-audit.md` |
+| signing, transactions, review | `docs/agent/rules-detail.md` (rules 10, 16), `docs/guides/transaction-review.md` (sections 1, 4, 6); `docs/audits/2026-10-30-review-lifecycle-audit.md` is frozen evidence only |
+| domains, name service, registrar | `docs/guides/domains-and-registrar.md` (sections 1, 3, 4), `docs/GLOBAL_SMART_CONTRACT_POLICY.md`, `contracts/thru-custom-registrar/README.md` |
+| history, activity, transaction detail | `docs/guides/history-and-activity.md` (sections 1-5), `docs/BACKEND_GAPS.md` (C2b, C2c) |
+| SDK, RPC, units, token wire formats | `docs/guides/protocol-and-rpc.md` (sections 1-3); stop and ask on unverified protocol semantics |
 | storage, migration, persisted state | `docs/agent/engineering-directive.md`, `test/test-storage-migrations.mjs` |
-| layout, sheets, overlays, CSS | rule 14 (`docs/agent/rules-detail.md`), `docs/MANUAL_SMOKE_CHECKLIST.md`, `docs/DEFECT_LOG.md` §11 |
-| contracts, on-chain programs | `docs/GLOBAL_SMART_CONTRACT_POLICY.md`, `contracts/*/README.md` |
-| docs | `docs/DOCS_INDEX.md` — it owns the read order, the three document classes, and the anti-sprawl rules |
+| layout, sheets, overlays, CSS | rule 14 (`docs/agent/rules-detail.md`), `docs/MANUAL_SMOKE_CHECKLIST.md`, `docs/DEFECT_LOG.md` |
+| contracts, on-chain programs | `docs/GLOBAL_SMART_CONTRACT_POLICY.md`, `contracts/thru-custom-registrar/README.md` |
+| unshipped features, roadmap | `docs/roadmap/FUTURE_ROADMAP.md` (PLANNED only — never treat as shipped) |
+| docs | `docs/DOCS_INDEX.md` — it owns the read order, document classes, and anti-sprawl rules |
 
 Conflict resolution: `STATUS_AND_ROADMAP.md` wins on **current engineering state**;
 `PROJECT_LEDGER.md` on **phase/build tracking**; `MODULE_BOUNDARIES.md` on **future feature

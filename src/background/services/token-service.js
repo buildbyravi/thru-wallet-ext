@@ -2,8 +2,8 @@
 
 import * as vault from '../../lib/vault.js';
 import * as thruClient from '../../lib/thru-client.js';
-import { getPreferences, setPreferences, setTokenHidden, assertWhitelisted } from './preferences-service.js';
-import { getActiveNetworkConfig, getActiveNetworkId } from './network-service.js';
+import { getPreferences, updatePreferences, setTokenHidden, assertWhitelisted } from './preferences-service.js';
+import { getActiveNetworkConfig, getActiveNetworkId, getNetworkGeneration } from './network-service.js';
 import * as pending from './pending-tx-service.js';
 import * as balances from './balance-service.js';
 import { formatTokenAmount } from '../../shared/format.js';
@@ -91,10 +91,77 @@ export async function listDeployedTokens() {
   return [...deployed, ...imported.filter((t) => t.mintAddress && !seen.has(t.mintAddress))];
 }
 
-/**
- * Manually add a token to the local registry by mint address.
- * Records metadata only — it does not prove the mint exists on-chain.
- */
+function tokenError(code, message, retryable = false) {
+  return Object.assign(new Error(message), { code, retryable });
+}
+
+/** Import only facts verified from one account snapshot on the captured network. */
+export async function importVerifiedToken(params = {}) {
+  if (!params || typeof params !== 'object' || Array.isArray(params)
+    || Object.keys(params).some((key) => !['mintAddress', 'symbol'].includes(key))
+    || typeof params.mintAddress !== 'string'
+    || (params.symbol !== undefined && typeof params.symbol !== 'string')) {
+    throw tokenError('INVALID_INPUT', 'Provide a mint address and an optional symbol only.');
+  }
+  const mint = thruClient.canonicalizeThruAddress(params.mintAddress.trim());
+  const fallbackSymbol = (params.symbol || '').trim().slice(0, 12);
+  if (!mint) {
+    throw tokenError('INVALID_INPUT', 'Enter a valid token mint address.');
+  }
+  const generation = getNetworkGeneration();
+  const network = await getActiveNetworkConfig();
+  const networkId = network.id;
+  const tokenProgramId = network.tokenProgramId;
+  const client = thruClient.getClient();
+  const assertCurrent = () => {
+    if (getNetworkGeneration() !== generation || thruClient.getClient() !== client
+      || thruClient.getConfiguredNetwork().id !== networkId) {
+      throw tokenError('CONTEXT_CHANGED', 'The network changed. Import the token again.', true);
+    }
+  };
+  assertCurrent();
+  if (!thruClient.isValidThruAddress(tokenProgramId)) {
+    throw tokenError('UNSUPPORTED', 'The token program is unavailable on this network.');
+  }
+  let account;
+  try {
+    account = await thruClient.getAccountInfo(mint, client);
+  } catch {
+    assertCurrent();
+    throw tokenError('RPC_UNAVAILABLE', 'The token mint could not be read. Try again.', true);
+  }
+  assertCurrent();
+  if (!account.exists) throw tokenError('ACCOUNT_MISSING', 'No token mint exists at that address.');
+  let info;
+  try {
+    info = thruClient.parseMintAccount(account.raw, tokenProgramId);
+  } catch {
+    throw tokenError('UNSUPPORTED', 'That account is not a supported token mint.');
+  }
+  if (!Number.isInteger(info.decimals) || info.decimals < 0 || info.decimals > 18) {
+    throw tokenError('UNSUPPORTED', 'The token mint has an unsupported denomination.');
+  }
+  const ticker = info.ticker.trim();
+  const record = { mintAddress: mint, networkId, symbol: ticker || fallbackSymbol || 'TOKEN',
+    name: ticker || 'Token', decimals: info.decimals, addedAt: Date.now() };
+  const activeId = await getActiveNetworkId();
+  assertCurrent();
+  if (activeId !== networkId) {
+    throw tokenError('CONTEXT_CHANGED', 'The network changed. Import the token again.', true);
+  }
+  await updatePreferences((current) => {
+    // This runs after the queued fresh preference read, not before entering the queue.
+    assertCurrent();
+    if (current.customTokens.some((token) => (token?.networkId || DEFAULT_NETWORK) === networkId
+      && thruClient.canonicalizeThruAddress(token?.mintAddress) === mint)) {
+      throw tokenError('ALREADY_EXISTS', 'That token is already imported on this network.');
+    }
+    return { customTokens: [record, ...current.customTokens] };
+  });
+  assertCurrent();
+  return record;
+}
+
 /**
  * Auto-discovery (contract v26). Solana-style wallet behaviour: tokens that reached the
  * wallet without a registry entry should appear after the chain verifies them.
@@ -114,75 +181,80 @@ export async function listDeployedTokens() {
  * @returns {Promise<{ adopted: Array, skipped: Array<{ mintAddress: string, reason: string }> }>}
  */
 export async function discoverTokens({ address, candidateMints = [] } = {}) {
+  const generation = getNetworkGeneration();
+  const assertCurrent = () => {
+    if (getNetworkGeneration() !== generation) {
+      throw tokenError('CONTEXT_CHANGED', 'The network changed. Discover tokens again.', true);
+    }
+  };
+  const incoming = Array.isArray(candidateMints) ? [...candidateMints] : [];
   const owner = address || (await vault.getActiveAccount())?.address;
+  assertCurrent();
   if (!owner) throw new Error('An address is required to discover tokens.');
-  const networkId = await getActiveNetworkId();
   const registry = await listDeployedTokens();
-  const known = new Set(registry.map((t) => t.mintAddress));
+  assertCurrent();
+  const known = new Set(
+    registry.map((t) => thruClient.canonicalizeThruAddress(t.mintAddress) || t.mintAddress),
+  );
 
   const candidates = new Set(
-    (Array.isArray(candidateMints) ? candidateMints : [])
+    incoming
       .map((m) => String(m || '').trim())
       .filter((m) => /^ta[A-Za-z0-9_-]{20,}$/.test(m)),
   );
   // Mine the history cache for incoming token mints, persisted no-RPC reads only.
   try {
     const { getCachedHistory } = await import('./history-service.js');
+    assertCurrent();
     const cached = await getCachedHistory(owner);
+    assertCurrent();
     for (const entry of cached?.entries ?? []) {
       if (entry?.kind === 'token-received' && entry.tokenMint) candidates.add(String(entry.tokenMint));
     }
   } catch {
+    assertCurrent();
     // A broken cache read never blocks discovery over explicit candidates.
   }
 
   const adopted = [];
   const skipped = [];
-  for (const mint of candidates) {
+  for (const rawMint of candidates) {
+    const mint = thruClient.canonicalizeThruAddress(rawMint) || rawMint;
     if (known.has(mint)) continue; // registry rule: already tracked, nothing to adopt
-    let read;
     try {
-      read = await thruClient.readMintAccount(mint);
-    } catch {
-      skipped.push({ mintAddress: mint, reason: 'chain-read-failed' });
+      const record = await importVerifiedToken({ mintAddress: mint });
+      assertCurrent();
+      adopted.push(record);
+      known.add(mint);
+    } catch (error) {
+      assertCurrent();
+      if (error.code === 'CONTEXT_CHANGED') throw error;
+      const reasons = { RPC_UNAVAILABLE: 'chain-read-failed', ACCOUNT_MISSING: 'mint-not-found-on-chain',
+        UNSUPPORTED: 'unsupported-mint', ALREADY_EXISTS: 'already-imported', INVALID_INPUT: 'invalid-mint-address' };
+      skipped.push({ mintAddress: mint, reason: reasons[error.code] || 'import-failed' });
       continue;
     }
-    if (!read?.exists) {
-      skipped.push({ mintAddress: mint, reason: 'mint-not-found-on-chain' });
-      continue;
-    }
-    if (!Number.isInteger(read.decimals) || read.decimals < 0 || read.decimals > 18) {
-      skipped.push({ mintAddress: mint, reason: 'unusable-decimals' });
-      continue;
-    }
-    const record = await importToken({
-      mintAddress: mint,
-      symbol: String(read.ticker || '').trim() || 'TOKEN',
-      name: String(read.ticker || 'Token').trim() || 'Token',
-      decimals: read.decimals,
-    });
-    adopted.push(record);
-    known.add(mint);
   }
   return { adopted, skipped };
 }
 
+/** Legacy metadata-only import; retain its replacement and normalization semantics. */
 export async function importToken({ mintAddress, symbol, name, decimals }) {
   const mint = String(mintAddress || '').trim();
   if (!mint) throw new Error('A mint address is required.');
-  const networkId = await getActiveNetworkId();
-  const prefs = await getPreferences();
-  const existing = prefs.customTokens.filter((t) =>
-    t.mintAddress !== mint || (t.networkId || DEFAULT_NETWORK) !== networkId);
   const record = {
     mintAddress: mint,
-    networkId,
     symbol: String(symbol || '').trim().slice(0, 12),
     name: String(name || '').trim().slice(0, 48),
     decimals: Math.min(18, Math.max(0, Math.floor(Number(decimals) || 0))),
     addedAt: Date.now(),
   };
-  await setPreferences({ customTokens: [record, ...existing] });
+  const networkId = await getActiveNetworkId();
+  record.networkId = networkId;
+  await updatePreferences((current) => ({
+    customTokens: [record, ...current.customTokens.filter((token) =>
+      token.mintAddress !== mint || (token.networkId || DEFAULT_NETWORK) !== networkId)],
+  }));
   return record;
 }
 

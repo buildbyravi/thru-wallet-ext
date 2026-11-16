@@ -114,7 +114,7 @@ export function onEvent(eventName, callback) {
     try {
       callback(message.data);
     } catch (error) {
-      console.error(`[bridge] handler for '${eventName}' threw:`, error);
+      console.error(`[bridge] handler for '${eventName}' failed.`);
     }
   };
 

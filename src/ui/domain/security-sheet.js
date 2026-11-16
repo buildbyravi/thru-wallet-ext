@@ -121,7 +121,7 @@ export function SecuritySheet({ load, onNavigate, onClose } = {}) {
     clear(listHost);
     listHost.removeAttribute('aria-busy');
 
-    const { checks, okCount, gradedCount, level } = result;
+    const { checks, okCount, gradedCount, level, hasUnknown } = result;
     summaryHost.className = `security-summary ${level}`;
     const pct = gradedCount === 0 ? 0 : Math.round((okCount / gradedCount) * 100);
 
@@ -130,11 +130,11 @@ export function SecuritySheet({ load, onNavigate, onClose } = {}) {
       : level === 'attention'
         ? `${gradedCount - okCount} thing${gradedCount - okCount === 1 ? '' : 's'} to fix`
         : 'Security status unavailable';
-    const sub = gradedCount === 0
-      ? 'Settings could not be read.'
+    const sub = hasUnknown
+      ? 'Some protections could not be checked.'
       : `${okCount} of ${gradedCount} protections are on.`;
 
-    const bar = h('div', { class: 'security-meter', role: 'presentation' }, [
+    const bar = hasUnknown ? null : h('div', { class: 'security-meter', role: 'presentation' }, [
       h('div', { class: 'security-meter-fill', style: { width: `${pct}%` } }),
     ]);
 

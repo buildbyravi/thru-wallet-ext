@@ -174,7 +174,7 @@ export function TokenDrawer({
         network: networkLabel,
         mintAddress: token.mintAddress,
         imageUrl: token.imageUrl,
-        usdValue: '$0.00',
+        usdValue: null,
       });
       if (highlightMint && token.mintAddress === highlightMint) row.el.classList.add('just-added');
       rows.push(row);
@@ -406,14 +406,20 @@ export function TokenDrawer({
       await onImportToken({
         mintAddress: added.mint,
         symbol,
-        name: symbol,
-        decimals: added.decimals,
       });
     } catch (error) {
       if (sheet.closed) return;
       sheet.setDismissible(true);
       setStep(STEP.VERIFIED);
-      mintField.setError(error?.message || 'Could not save that token.');
+      const safeMessages = {
+        ALREADY_EXISTS: 'That token is already in your token list.',
+        ACCOUNT_MISSING: 'No token mint exists at that address on this network.',
+        UNSUPPORTED: 'That address is not a supported token mint.',
+        CONTEXT_CHANGED: 'The active network changed. Find the token again.',
+        RPC_UNAVAILABLE: 'Could not verify the token mint right now. Try again.',
+        INVALID_INPUT: 'Enter a valid token mint address.',
+      };
+      mintField.setError(safeMessages[error?.code] || 'Could not save that token.');
       return;
     }
 
