@@ -239,13 +239,23 @@ export async function boot({ root } = {}) {
     guards.invalidate();
     const authRevision = guards.stateRevision();
     const requested = Router.parseHash();
+    const hint = guards.getAuthHint();
+    const isUnlockedHint = hint === 'unlocked';
     // Only public UI is mounted before authentication is known. Background auth still
     // protects every action; this surface remains usable while bootstrap hydrates.
-    const safePath = requested.path === '/welcome' ? '/welcome' : '/unlock';
-    applyChrome(safePath);
-    router.mountImmediate(safePath, requested.path === '/unlock' ? requested.params : {
-      returnTo: requested.path === '/' ? '/dashboard' : window.location.hash.slice(1),
-    });
+    // When the wallet is known to be unlocked from the active session, skip mounting
+    // /unlock to avoid a momentary flash of the lock screen before dashboard paints.
+    const safePath = requested.path === '/welcome' || hint === 'no_vault'
+      ? '/welcome'
+      : (requested.path === '/unlock' || !isUnlockedHint ? '/unlock' : null);
+    if (safePath) {
+      applyChrome(safePath);
+      router.mountImmediate(safePath, requested.path === '/unlock' ? requested.params : {
+        returnTo: requested.path === '/' ? '/dashboard' : window.location.hash.slice(1),
+      });
+    } else {
+      applyChrome(requested.path === '/' || !known.has(requested.path) ? '/dashboard' : requested.path);
+    }
     try {
       const initial = await bridge.bootstrap();
       if (!current()) return;
@@ -276,7 +286,7 @@ export async function boot({ root } = {}) {
       if (!current()) return;
       // router.navigate(..., { replace: true }) sets the URL hash without firing _resolve()
       // while _started is false, so router.start() resolves once cleanly.
-      const preserveInput = destination.split('?')[0] === safePath;
+      const preserveInput = Boolean(safePath) && destination.split('?')[0] === safePath;
       applyChrome(destination.split('?')[0]);
       originalNavigate(destination, { replace: true });
       router.start({ resolve: !preserveInput });
