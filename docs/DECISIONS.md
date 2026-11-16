@@ -558,3 +558,19 @@ unlock-in-flight, reset delivery orders, external unlock events, and secret tear
 and the temporary November 14 fixes handoff. Their conflicting intermediate v32/v33 states
 are superseded by current source and the maintained status/decision documents. The seven
 dated September/October audits remain historical evidence, not implementation instructions.
+
+## D-028 - Domain profile editing strategy, extension vs web differentiation, and monetization model (2026-11-16, owner directive)
+
+**Owner directive.** Content and profile editing will primarily be hosted on the website rather than crammed into the browser extension, keeping the extension lightweight, fast, and clutter-free. The underlying smart contract records API (`name.setRecord`) remains open at the protocol layer to power external profile builders and third-party integrations, driving new domain registrations and protocol revenue.
+
+**Architecture and product strategy.**
+1. **Editing Workflow Strategy:**
+   - **Primary Web Surface:** Comprehensive profile building and text-record editing live on the web platform (`thru-profile-web` / `thru-wallet-web`), which provides rich form controls, validation, previewing, and asset linking without bloating the extension bundle or crowding the compact popup viewport.
+   - **Extension "Expand" Milestone (Phase 5):** The extension route `/name` will add an "Expand" button in a future milestone that opens a dedicated desktop tab (`desktop.html` or direct web app handoff) for seamless full-screen profile editing.
+   - **Secondary In-Wallet Phase:** A later phase may explore limited, high-frequency inline editing directly within the wallet after the standalone web editing suite has matured.
+2. **Feature Differentiation (Option A vs. Option B Hybrid):**
+   - **Option B (Extension Focus):** The extension UI is strictly optimized for high-speed, low-complexity transactions: searching availability, minting/registering, renewing leases, and setting primary name aliases. Complex profile management is excluded from the popup to protect performance and maintain a clean UX.
+   - **Option A (Web & Profile Builder Focus):** At the protocol and contract API layer (`name.setRecord`, opcode 2), the capability remains available. The web platform and third-party developers can utilize our smart contracts to construct dedicated profile builders, social directories, and identity tools.
+3. **Monetization & Ecosystem Revenue:**
+   - Under Option A, third-party profile builders and ecosystem dApps integrate directly with our smart contracts.
+   - Any new user who creates a profile or claims a handle through these external platforms registers their `.thru` domain through our custom registrar smart contracts, generating on-chain registration fees for the treasury.

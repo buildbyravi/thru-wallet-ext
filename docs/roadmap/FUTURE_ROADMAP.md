@@ -24,7 +24,7 @@ Integrating ecosystem utility analysis with the shipped Contract **v32** wallet 
 | **Phase 2** | **dApp Connection v1 (`ThruTransactionIntent` Provider) + Safe ABI Reflection** | Highest ecosystem unlock: enables any Thru web app (DEXes, games, `.thru` profile site) to connect and request wallet-decoded signatures. | `PLANNED` (§3) |
 | **Phase 3** | **`SignerBackend` Abstraction & Optional Passkey Wallet Bridge** | Adds `PasskeyBridgeSigner` alongside local `VaultSigner` (`hybrid`, never deleting seed self-custody) once PDA fee-paying and live Betanet Passkey probes pass. | `PLANNED` (§4) |
 | **Phase 4** | **Built-In Swap (`FLAGS.DEFI_DEX`)** | Highest daily in-wallet financial utility; backend AMM pool + exact-in swap already proven on Betanet (`2026-10-25-live-swap-probe.json`). | `PLANNED` (§5) |
-| **Phase 5** | **`.thru` Public Identity & Profile Website (`thru-profile-web` / `thru-wallet-web`)** | Uses Phase 2 dApp Connection v1 (or connectionless intent handoff) so rich profile editing lives on the web without bloating the extension. | `PLANNED` (§6) |
+| **Phase 5** | **`.thru` Public Identity & Profile Website (`thru-profile-web` / `thru-wallet-web`)** | Rich profile editing on the web; extension stays fast with a future "Expand" button to desktop tab; open contracts (Option A) power third-party profile builders and monetize via registrar fees. | `PLANNED` (§6) |
 | **Phase 6** | **AMM Liquidity Pools (`R2` Exit-First) -> Token Launchpad (`desktop.html`) -> Local MCP Companion** | Heavy multi-tx surfaces deferred until Thru has active liquidity, verified `withdrawLiquidity`, and public indexer coverage. | `PLANNED` (§5, §7) |
 
 ---
@@ -91,7 +91,20 @@ Backend M0/G1/G2-S0/G3 code sits dark-launched behind `FLAGS.DEFI === false` (`d
 
 ## 6. Phase 5: `.thru` Public Identity & Profile Website (`PLANNED`)
 
-Keep rich profile editing in a separate web application (`thru-wallet-web` or `thru-profile-web`) connecting via Phase 2 `dApp Connection v1` (or connectionless unsigned intent handoff), keeping the extension lightweight:
+### 6.1 Editing Workflow Strategy & Surface Separation
+Rich content and profile editing will primarily be hosted on the website (`thru-profile-web` / `thru-wallet-web`) rather than crammed into the browser extension, preventing extension bloat and UX clutter:
+- **Lightweight Extension Core:** The extension popup remains strictly focused on high-speed essential flows: searching availability, minting/registering, renewing leases, and setting primary name aliases.
+- **Future "Expand" Milestone:** Add an "Expand" action button within the extension's domain view that opens a full desktop tab (`desktop.html` or web app studio) for seamless, full-screen profile and text-record editing.
+- **Secondary In-Wallet Phase:** A subsequent phase may integrate limited, high-frequency inline record editing directly into the extension once the standalone web platform is established.
+
+### 6.2 Feature Differentiation (Option B vs. Option A Hybrid)
+- **Option B (Extension Focus):** The extension UI is optimized for high-speed, low-complexity actions (minting, renewing, primary alias) without heavy form suites, preserving popup performance and responsiveness.
+- **Option A (Web & Profile Builder Focus):** At the smart contract and protocol level (`name.setRecord`, opcode 2), the capability remains open. The web platform, community developers, and third-party teams can leverage our smart contracts to construct external profile builders and directory tools.
+
+### 6.3 Monetization & Ecosystem Revenue Model
+Under Option A, third-party profile builders and decentralized social applications integrate directly with our registrar smart contracts. When new users onboarding through these partner platforms register their `.thru` domains to complete their profiles, all registration transactions are processed through our custom registrar smart contracts, generating on-chain registration fees and steady treasury revenue.
+
+### 6.4 Technical Safety & On-Chain Schemas
 - **P0 Betanet Probe First:** Measure `APPEND_RECORD` (opcode 2) state units, record ceiling, `NS_OP_DELETE_RECORD = 3` support, and lease-expiry behavior.
 - **Schema & Conflict Safety:** Keys `<= 32B`, values `<= 256B` (`addr`, `display`, `bio`, `url`, `avatar` rendered as identicon in extension, `x`/`github`/`telegram`, `profile` JSON hash; no email/phone on-chain). Enforce **conflict-means-invalid** on multiple `addr` records and strict 4-tier verification copy (never showing verified checkmarks on unverified social handles).
 
