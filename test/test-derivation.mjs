@@ -33,11 +33,11 @@ import { keys, Pubkey } from '@thru/sdk';
 
 // A deliberately public, well-known test phrase. It must never hold real funds.
 const VECTORS = {
-  // Vectors were generated on 0.3.16 and VERIFIED unchanged on 0.4.0, 0.4.1 and 0.4.2 (all 16
-  // derivation checks pass). Each upgrade also passes transaction encoding, network, migration,
-  // API-router, and full-suite gates. Recorded per the version-drift policy below, so this
-  // string advances ONLY with a re-run on the newly installed version.
-  sdkVersion: '0.4.2',
+  // Vectors were generated on 0.3.16 and VERIFIED unchanged on 0.4.0, 0.4.1, 0.4.2 and 0.4.4
+  // (all 16 derivation checks pass). Each upgrade also passes transaction encoding, network,
+  // migration, API-router, and full-suite gates. Recorded per the version-drift policy below,
+  // so this string advances ONLY with a re-run on the newly installed version.
+  sdkVersion: '0.4.4',
   phrase: 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about',
   hd: [
     { index: 0, address: 'taogps3bfPUvvkQDAk4c6EY6wNcIcLrG9JL10WukBf3hLg' },

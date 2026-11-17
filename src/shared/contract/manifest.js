@@ -113,8 +113,8 @@
 //   discovery that name.lookup already performs internally, so the UI can offer free
 //   registration beneath a root that actually exists on the running network.
 //   v24 (2026-10-24, owner audit priority 1): tx.getFaucetLimit — a pure READ of the
-//   faucet's on-chain rate-limit policy (@thru/programs/ratelimit, bootstrap-pinned address)
-//   plus the active account's per-rule bucket usage. Truth discipline: unknown states are
+//   faucet's on-chain rate-limit policy (read by the src/lib/ratelimit.js compatibility
+//   adapter using the historical bootstrap pin) plus the active account's per-rule bucket usage. Truth discipline: unknown states are
 //   explicit (supported:false reasons; keyReadable:false; null window fields for
 //   slot-clocked rules), never fabricated numbers. Also a behavior note on tx.claimFaucet:
 //   ratelimit-coded vmErrors are now re-labelled honestly (code 'FAUCET_RATE_LIMITED').

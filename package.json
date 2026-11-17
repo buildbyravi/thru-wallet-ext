@@ -30,8 +30,8 @@
   },
   "homepage": "https://thruwallet.vercel.app",
   "dependencies": {
-    "@thru/programs": "0.4.2",
-    "@thru/sdk": "0.4.2"
+    "@thru/programs": "0.4.4",
+    "@thru/sdk": "0.4.4"
   },
   "devDependencies": {
     "esbuild": "0.28.1"

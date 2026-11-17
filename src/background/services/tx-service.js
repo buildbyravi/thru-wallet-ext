@@ -64,9 +64,10 @@ function normalizeTxResult(result) {
  * other tx.* query. Truth discipline:
  *   - supported:false reasons are declared states, never fabricated usage:
  *     'no-faucet' (network has none), 'policy-not-found', 'policy-unreadable'.
- *   - Bucket derivation follows the pinned `@thru/programs/ratelimit` package
- *     (src/lib/ratelimit.js). Rules whose key isn't derivable locally (instruction-account,
- *     attested) come back with keyReadable:false and NO usage numbers.
+ *   - Bucket derivation and account parsing use the read-only compatibility adapter in
+ *     src/lib/ratelimit.js because @thru/programs@0.4.4 no longer ships its former ratelimit
+ *     client. Rules whose key is not derivable locally (instruction-account, attested) come
+ *     back with keyReadable:false and NO usage numbers.
  *   - A missing bucket account proves zero usage (buckets are created on first charge);
  *     a slot-clocked window can't be evaluated against the wall clock, so its
  *     current-window fields stay null.

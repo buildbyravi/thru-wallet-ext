@@ -1,6 +1,6 @@
 # Thru Wallet — Betanet
 
-Chrome MV3 self-custody wallet extension for the **Thru native Layer 1**. Built with vanilla ES modules, `esbuild`, and exact-pinned official Thru packages (`@thru/sdk@0.4.2` including `@thru/sdk/crypto`, plus `@thru/programs@0.4.2`). Thru is **not EVM**; external wallets (Rabby, Phantom, Keplr) serve as UX references only.
+Chrome MV3 self-custody wallet extension for the **Thru native Layer 1**. Built with vanilla ES modules, `esbuild`, and exact-pinned official Thru packages (`@thru/sdk@0.4.4` including `@thru/sdk/crypto`, plus `@thru/programs@0.4.4`). Thru is **not EVM**; external wallets (Rabby, Phantom, Keplr) serve as UX references only.
 
 **Betanet is Thru's final testnet before Mainnet** (`betanet`: RPC `https://rpc.betanet.thru.org`, explorer `https://scan.thru.org` with `?network=betanet`, ~6-second blocks).
 

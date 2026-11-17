@@ -22,7 +22,7 @@ Verification classes are never merged: a green Node test never closes a browser 
 ### Gate A — Deterministic Automated Verification: `PASS` (`IMPLEMENTED`, `TESTED`)
 - `npm run build` — **PASS**, zero warnings; `dist/` regenerated cleanly from `src/`.
 - `npm test` — **PASS** across **41 test suites** (`test/test-*.mjs`) and **9 guard scripts** (`scripts/check-*.mjs`):
-  - Exact pins `@thru/sdk@0.4.2` & `@thru/programs@0.4.2` with 16/16 derivation golden vectors (`test/test-derivation.mjs`).
+  - Exact pins `@thru/sdk@0.4.4` & `@thru/programs@0.4.4` with 16/16 derivation golden vectors (`test/test-derivation.mjs`); read-only rate-limit compatibility tests cover the published 0.4.2 wire format (`test/test-faucet-limit.mjs`).
   - Layering across `128` runtime JS files (`0` boundary violations, `0` HTML-injection sinks), cycle ratchet (`1` legacy 5-service cycle), CSP <-> enabled-network parity, `30/30` ordered `AGENTS.md` rules, docs-truth parity, guard negative controls, `15/15` routes reachable with all used CSS classes defined, flat CSS, Dashboard 6-tile geometry, launchpad quarantine, and all `11` build-time `FLAGS === false`.
   - Contract **v33** (`154` methods) parity and verified-token import; signing consent and session cleanup; nine review kinds (`205` decoder/service checks and `67` card checks); `1,153` route-lifecycle checks; strict mint parsing, registrar rechecks, pending unknown-outcome retention, storage migrations, and passive-polling auto-lock regression coverage.
 

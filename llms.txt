@@ -11,7 +11,7 @@ Chrome MV3 self-custody wallet extension for the **Thru native Layer 1** (`betan
 
 - **Contract version:** **v33** (`154` methods in `src/shared/contract/manifest.js`: `88` wallet-core + `23` `name.*` + `43` dark-launched DeFi M0 methods in `src/shared/contract/defi-schema.js`).
 - **UI stack:** **15 routes** registered in `src/ui/app/boot.js` (`welcome`, `unlock`, `dashboard`, `accounts`, `account`, `add-account`, `keyring`, `export`, `send`, `receive`, `faucet`, `name`, `history`, `settings`, `reset`), sharing `popup.html` (`400x600` popup and `popup.html?thru_panel=1` side panel with mutual exclusion).
-- **Exact pins:** `@thru/sdk@0.4.2` (including `@thru/sdk/crypto`) and `@thru/programs@0.4.2`, confined strictly to `src/lib/*` (`scripts/check-layering.mjs`).
+- **Exact pins:** `@thru/sdk@0.4.4` (including `@thru/sdk/crypto`) and `@thru/programs@0.4.4`, confined strictly to `src/lib/*` (`scripts/check-layering.mjs`).
 - **Build-time flags:** All `11` flags in `src/shared/flags.js` (`NAME_SERVICE`, `DEFI`, `DEFI_*`) are **`false`** (`test/test-release-flags.mjs`). Legacy `src/launchpad/**` is deleted and quarantined (`test/test-launchpad-quarantine.mjs`).
 - **Automated suite:** `npm run build && npm test` runs **9 guard scripts** (`scripts/check-*.mjs`) + **41 test suites** (`test/test-*.mjs`) across `128` runtime JS files (`0` HTML-injection sinks). Node tests use a hand-rolled DOM shim (`no jsdom`) and never substitute for real-Chrome layout inspection (`docs/MANUAL_SMOKE_CHECKLIST.md`).
 

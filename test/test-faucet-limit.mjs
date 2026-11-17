@@ -1,14 +1,14 @@
-// Offline ratelimit-awareness tests — NO network. Budget fixtures are byte-exact account
-// layouts taken from the pinned @thru/programs@0.4.2 dist struct views (offsets verified
-// line-by-line against the generated classes; drift in the package would break these).
+// Offline ratelimit-awareness tests — NO network. Fixtures exercise the deployed read-only
+// wire format removed from @thru/programs in 0.4.4. Layout offsets are from the published
+// 0.4.2 generated ABI and are deliberately asserted here rather than imported from a removed
+// package subpath.
 //
 //   Policy (390 B): magic@0(u64le) admin@8(32) target@40(32) policy_id@72(u64le)
-//                   state_flags@80(u8) config@81(309, encodeRatelimitConfig)
+//                   state_flags@80(u8) config@81(309)
+//   Config (309 B): flags@0, rule_count@1, constraint_count@2, selector fields@3..20,
+//                   max_amount_per_call@21, attester@29(32), constraints@61, rules@197
 //   Bucket (113 B): magic@0(u64le) policy@8(32) key@40(32) rule_idx@72(u8)
 //                   window_start@73(u64le) calls@81 amount@89 total_calls@97 total_amount@105
-//
-// The official ENCODER (encodeRatelimitConfig) builds config fixtures — fixtures are as
-// close to first-party as this test suite can get.
 
 import {
   RATELIMIT_PROGRAM_ADDRESS,
@@ -24,13 +24,10 @@ import {
   RATELIMIT_POLICY_SIZE,
   RATELIMIT_BUCKET_SIZE,
   RATELIMIT_GLOBAL_KEY,
-  encodeRatelimitConfig,
-} from '@thru/programs/ratelimit';
-import {
-  BOOTSTRAP_FAUCET_RATE_LIMIT_POLICY_ADDRESS,
-  BOOTSTRAP_FAUCET_RATE_LIMIT_POLICY_ID,
-  BOOTSTRAP_PROGRAM_ADDRESSES,
-} from '@thru/programs/bootstrap-addresses';
+  FAUCET_POLICY_ADDRESS,
+  FAUCET_POLICY_ID,
+} from '../src/lib/ratelimit.js';
+import { BOOTSTRAP_PROGRAM_ADDRESSES } from '../src/lib/bootstrap-pins.js';
 import { Pubkey } from '@thru/sdk';
 
 import * as rl from '../src/lib/ratelimit.js';
@@ -46,18 +43,39 @@ function eq(a, b, label) {
 
 const NOW = 1_760_000_000n; // fixed wall clock for deterministic windows
 
-function makePolicy({ admin, target, policyId = 0n, stateFlags = 0, rules, maxAmountPerCall = 0n }) {
-  const config = encodeRatelimitConfig({
-    selectorSz: 0,
-    selectorOffset: 0,
-    selectorValue: 0n,
-    instrSzMin: 0,
-    instrSzMax: 0xffff,
-    amountSz: 8,
-    amountOffset: 8,
-    maxAmountPerCall,
-    rules,
-  });
+function makePolicy({
+  admin, target, policyId = 0n, stateFlags = 0, rules, maxAmountPerCall = 0n,
+  constraints = [], attester = new Uint8Array(32),
+}) {
+  const config = new Uint8Array(309);
+  const configView = new DataView(config.buffer);
+  configView.setUint8(1, rules.length);
+  configView.setUint8(2, constraints.length);
+  configView.setUint8(3, 0); // selectorSz
+  configView.setUint16(4, 0, true); // selectorOffset
+  configView.setBigUint64(6, 0n, true); // selectorValue
+  configView.setUint16(14, 0, true); // instrSzMin
+  configView.setUint16(16, 0xffff, true); // instrSzMax
+  configView.setUint8(18, 8); // amountSz
+  configView.setUint16(19, 8, true); // amountOffset
+  configView.setBigUint64(21, maxAmountPerCall, true);
+  config.set(attester, 29);
+  for (let i = 0; i < constraints.length; i += 1) {
+    const constraint = constraints[i];
+    const offset = 61 + i * 34;
+    configView.setUint16(offset, constraint.idxOffset, true);
+    config.set(constraint.expected, offset + 2);
+  }
+  for (let i = 0; i < rules.length; i += 1) {
+    const rule = rules[i];
+    const offset = 197 + i * 28;
+    configView.setUint8(offset, rule.keyKind);
+    configView.setUint8(offset + 1, rule.clock);
+    configView.setUint16(offset + 2, rule.keyOffset ?? 0, true);
+    configView.setBigUint64(offset + 4, rule.window, true);
+    configView.setBigUint64(offset + 12, rule.maxCalls, true);
+    configView.setBigUint64(offset + 20, rule.maxAmount, true);
+  }
   const out = new Uint8Array(RATELIMIT_POLICY_SIZE);
   const view = new DataView(out.buffer);
   view.setBigUint64(0, RATELIMIT_POLICY_MAGIC, true);
@@ -84,15 +102,15 @@ function makeBucket({ policy, key, ruleIdx = 0, windowStart = 0n, calls = 0n, am
   return out;
 }
 
-const PAYER = Pubkey.from(BOOTSTRAP_FAUCET_RATE_LIMIT_POLICY_ADDRESS).toBytes().fill(7, 16); // any 32 B — content irrelevant, determinism matters
-const POLICY_BYTES = Pubkey.from(rl.FAUCET_POLICY_ADDRESS).toBytes();
+const PAYER = Pubkey.from(FAUCET_POLICY_ADDRESS).toBytes().fill(7, 16); // any 32 B — content irrelevant, determinism matters
+const POLICY_BYTES = Pubkey.from(FAUCET_POLICY_ADDRESS).toBytes();
 const TARGET_BYTES = Pubkey.from(BOOTSTRAP_PROGRAM_ADDRESSES.faucet).toBytes();
 
-// --- Pin re-exports mirror the package -------------------------------------------------
+// --- Historical deployed pins remain explicit after upstream removed this program --------
 console.log('pins');
-eq(rl.FAUCET_POLICY_ADDRESS, BOOTSTRAP_FAUCET_RATE_LIMIT_POLICY_ADDRESS, 'faucet policy address pin');
-eq(rl.FAUCET_POLICY_ID, BOOTSTRAP_FAUCET_RATE_LIMIT_POLICY_ID, 'faucet policy id pin');
-eq(typeof RATELIMIT_PROGRAM_ADDRESS, 'string', 'ratelimit program address exported');
+eq(FAUCET_POLICY_ADDRESS, 'taDrvTPLhMWuRsCyAAnyNm5pkkrlmegsHrwYsJQ1GoBvfd', 'faucet policy address matches published 0.4.2 pin');
+eq(String(FAUCET_POLICY_ID), '0', 'faucet policy id');
+eq(RATELIMIT_PROGRAM_ADDRESS, 'taRATE6MTrtFFKY10oyskMcvokJs53iD5nWE8ZyUuGknMA', 'ratelimit program address matches published 0.4.2 pin');
 
 // --- Policy parse -----------------------------------------------------------------------
 console.log('policy parse');
@@ -100,11 +118,27 @@ const RULES = [
   { keyKind: RATELIMIT_KEY_FEE_PAYER, clock: RATELIMIT_CLOCK_UNIX_SECONDS, window: 600n, maxCalls: 3n, maxAmount: 30_000n },
   { keyKind: RATELIMIT_KEY_GLOBAL, clock: RATELIMIT_CLOCK_SLOT, window: 1500n, maxCalls: 0n, maxAmount: 0n },
 ];
-const policyData = makePolicy({ admin: PAYER, target: TARGET_BYTES, rules: RULES, maxAmountPerCall: 10_000n });
+const attesterBytes = new Uint8Array(32).fill(5);
+const constraintBytes = new Uint8Array(32).fill(9);
+const policyData = makePolicy({
+  admin: PAYER, target: TARGET_BYTES, rules: RULES, maxAmountPerCall: 10_000n,
+  constraints: [{ idxOffset: 4, expected: constraintBytes }], attester: attesterBytes,
+});
 const parsed = rl.parsePolicy(policyData);
 ok(parsed && parsed.config.rules.length === 2, 'policy parses both rules');
+eq(parsed.admin, Pubkey.from(PAYER).toThruFmt(), 'policy admin parsed');
+eq(parsed.target, Pubkey.from(TARGET_BYTES).toThruFmt(), 'policy target parsed');
 eq(String(parsed.policyId), '0', 'policy id');
 eq(String(parsed.config.maxAmountPerCall), '10000', 'maxAmountPerCall round-trips');
+eq(parsed.configBytes.length, 309, 'raw config retains exact packed size');
+eq(JSON.stringify([...parsed.config.attester]), JSON.stringify([...attesterBytes]), 'config attester parsed as raw bytes');
+eq(parsed.config.constraints.length, 1, 'config constraint count parsed');
+eq(parsed.config.constraints[0].idxOffset, 4, 'config constraint offset parsed');
+eq(parsed.config.constraints[0].expected, Pubkey.from(constraintBytes).toThruFmt(), 'config constraint address parsed');
+eq(String(parsed.config.rules[0].window), '600', 'first rule window parsed');
+eq(String(parsed.config.rules[0].maxCalls), '3', 'first rule call cap parsed');
+eq(String(parsed.config.rules[0].maxAmount), '30000', 'first rule amount cap parsed');
+eq(parsed.config.rules[1].keyKind, RATELIMIT_KEY_GLOBAL, 'second rule kind parsed');
 eq(rl.policyPaused(parsed), false, 'not paused');
 const pausedData = makePolicy({ admin: PAYER, target: TARGET_BYTES, rules: RULES, stateFlags: 1 });
 ok(rl.policyPaused(rl.parsePolicy(pausedData)) === true, 'paused flag read');
@@ -124,6 +158,12 @@ eq(rl.keyBytesForRule(RATELIMIT_KEY_FEE_PAYER, {}), null, 'fee-payer rule withou
 const bA = rl.bucketAddress(rl.FAUCET_POLICY_ADDRESS, 0, RATELIMIT_GLOBAL_KEY);
 const bB = rl.bucketAddress(rl.FAUCET_POLICY_ADDRESS, 0, RATELIMIT_GLOBAL_KEY);
 eq(bA, bB, 'bucket derivation deterministic');
+eq(bA, 'taqdwniPFoX59PG4skO1zBdEw2lxaYKA6oUWKBYwVaad5S', 'global bucket PDA matches the published 0.4.2 helper');
+eq(
+  rl.bucketAddress(rl.FAUCET_POLICY_ADDRESS, 1, fKey),
+  'taNlkL7kOH-qYEszij2PcjLYdohRjhTsGRMD5qvxI0FpM2',
+  'fee-payer bucket PDA matches the published 0.4.2 helper',
+);
 ok(rl.bucketAddress(rl.FAUCET_POLICY_ADDRESS, 1, RATELIMIT_GLOBAL_KEY) !== bA, 'different rule index → different bucket');
 
 // --- Summary semantics ------------------------------------------------------------------
@@ -136,7 +176,12 @@ eq(s.remainingCalls, '3', 'missing bucket ⇒ full allowance');
 eq(s.exhausted, false, 'missing bucket ⇒ not exhausted');
 // full window ⇒ exhausted with a reset time
 const full = makeBucket({ policy: POLICY_BYTES, key: fKey, windowStart: NOW - 100n, calls: 3n, amount: 30_000n });
-s = rl.summarizeRule(rule, rl.parseBucket(full), { nowUnixSec: NOW });
+const parsedFull = rl.parseBucket(full);
+eq(parsedFull.policy, FAUCET_POLICY_ADDRESS, 'bucket policy address parsed');
+eq(parsedFull.ruleIdx, 0, 'bucket rule index parsed');
+eq(String(parsedFull.windowStart), String(NOW - 100n), 'bucket window start parsed');
+eq(String(parsedFull.totalCalls), '0', 'bucket cumulative counters parsed');
+s = rl.summarizeRule(rule, parsedFull, { nowUnixSec: NOW });
 eq(s.remainingCalls, '0', 'full window ⇒ 0 left');
 eq(s.exhausted, true, 'full window ⇒ exhausted');
 eq(s.resetAtUnixSec, (NOW - 100n + 600n).toString(), 'reset = windowStart + window');
@@ -177,10 +222,13 @@ eq(rl.pickBindingRule([uncapped]), null, 'uncapped only ⇒ null');
 // --- Error classification ----------------------------------------------------------------
 console.log('classifyFaucetError');
 const byErr = (c) => String(RATELIMIT_ERRORS[c]);
-ok(rl.classifyFaucetError(`Faucet claim reverted on-chain (vmError=${byErr('CALL_LIMIT_EXCEEDED')}).`)?.kind === 'calls', '21005 → calls');
-ok(rl.classifyFaucetError(`Faucet claim reverted on-chain (vmError=${byErr('AMOUNT_LIMIT_EXCEEDED')}).`)?.kind === 'amount', '21006 → amount');
-ok(rl.classifyFaucetError(`Faucet claim reverted on-chain (vmError=${byErr('AMOUNT_PER_CALL_EXCEEDED')}).`)?.kind === 'per-call', '21002 → per-call');
-ok(rl.classifyFaucetError(`Faucet claim reverted on-chain (vmError=${byErr('PAUSED')}).`)?.kind === 'paused', '20999 → paused');
+const callsError = rl.classifyFaucetError(`Faucet claim reverted on-chain (vmError=${byErr('CALL_LIMIT_EXCEEDED')}).`);
+eq(callsError?.kind, 'calls', '21005 → calls');
+eq(callsError?.label, 'claim-count limit', 'call limit friendly label retained');
+eq(callsError?.code, byErr('CALL_LIMIT_EXCEEDED'), 'classified vmError code retained');
+eq(rl.classifyFaucetError(`Faucet claim reverted on-chain (vmError=${byErr('AMOUNT_LIMIT_EXCEEDED')}).`)?.kind, 'amount', '21006 → amount');
+eq(rl.classifyFaucetError(`Faucet claim reverted on-chain (vmError=${byErr('AMOUNT_PER_CALL_EXCEEDED')}).`)?.kind, 'per-call', '21002 → per-call');
+eq(rl.classifyFaucetError(`Faucet claim reverted on-chain (vmError=${byErr('PAUSED')}).`)?.kind, 'paused', '20999 → paused');
 eq(rl.classifyFaucetError('Faucet claim reverted on-chain (vmError=1).'), null, 'unknown codes stay generic');
 eq(rl.classifyFaucetError('The wallet service did not respond'), null, 'non-vm errors stay generic');
 eq(rl.classifyFaucetError(undefined), null, 'missing message stays generic');

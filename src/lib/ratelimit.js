@@ -1,59 +1,103 @@
-// Ratelimit adapter — awareness layer for the faucet (and any future gated program).
+// Read-only compatibility adapter for the Thru rate-limit account format.
 //
-// PROVENANCE & POLICY (every line below resolves through the PINNED first-party package,
-// never memory or prose):
-//   - All layouts, seeds, magics, key kinds, clock kinds and error codes come from
-//     `@thru/programs@0.4.2` subpath `./ratelimit` (exports verified in the pinned
-//     node_modules, 2026-10-24). We re-export and compose; we do not re-derive the
-//     bytes ourselves.
-//   - The faucet's policy pin ships in `@thru/programs/bootstrap-addresses`
-//     (BOOTSTRAP_FAUCET_RATE_LIMIT_POLICY_{ADDRESS,ID}). It is re-exported through
-//     ./bootstrap-pins.js like every other managed-genesis pin (D-016 layering rule:
-//     first-party packages may only be imported inside src/lib adapters).
+// @thru/programs@0.4.4 removed the rate-limit program client, bootstrap seed, and faucet
+// policy exports. Betanet's deployed faucet policy is still part of this wallet's existing
+// read-only limit display. This adapter retains only the wire-format reader and address
+// derivations needed for that display; it does not build or submit rate-limit instructions.
 //
-// WHAT THIS MODULE DOES NOT DO:
-//   - It contains NO network I/O. Reading accounts is the services layer's job; this
-//     module turns raw bytes and rule configs into truthful summaries.
-//   - It never invents usage. A policy or bucket that is missing or unparsable yields
-//     an explicit "unknown" / "not found" state — the caller renders that or stays
-//     silent; it never shows a number it did not read.
-//
-// Chain facts that ground true statements we render:
-//   - Bucket accounts are per (policy, ruleIdx, key). A MISSING bucket means the rule
-//     has not charged that key in ANY recorded window — i.e. the current window usage
-//     for that key is 0. That is provable from the model (buckets are created lazily
-//     by CALL when first charged); we rely on it to say "0 of N used", never more.
-//   - For UNIX_SECONDS-clocked rules we can evaluate "is this window current" against
-//     the wall clock. For SLOT-clocked rules we cannot (no slot-height RPC is plumbed
-//     through the wallet today), so current-window evaluation is reported as UNKNOWN
-//     (null), and the raw counters are still shown.
-//   - maxCalls / maxAmount of 0n means UNLIMITED for that rule (per the package's
-//     RatelimitRuleConfig contract). We surface that as null ("no cap"), not as "0 left".
+// The 390-byte policy, 113-byte bucket, 309-byte config layouts and seed tags below are the
+// published @thru/programs@0.4.2 ABI. Keep the fixtures/golden checks in test-faucet-limit.mjs
+// synchronized with that published format. All package imports remain at this adapter boundary.
 
-import { Pubkey } from '@thru/sdk';
-import {
+import { Pubkey, deriveProgramAddress } from '@thru/sdk';
+import { hashBytes, pubkeyAddress, pubkeyBytes } from '@thru/sdk/programs/utils/helpers';
+import { deriveManagedProgramAddresses } from '@thru/programs/manager';
+import { BOOTSTRAP_PROGRAM_ADDRESSES } from './bootstrap-pins.js';
+
+const U64_MAX = 1n << 64n;
+const encoder = new TextEncoder();
+const VERIFIED_POLICY_SEED_TAG = encoder.encode('tn_ratelimit_verified_policy_v1');
+const BUCKET_SEED_TAG = encoder.encode('tn_ratelimit_bucket_v1');
+const RATELIMIT_PROGRAM_SEED = 'thru-program:1697627';
+const POLICY_CONFIG_OFFSET = 81;
+const POLICY_CONFIG_SIZE = 309;
+const POLICY_RULES_OFFSET = 197;
+const POLICY_RULE_SIZE = 28;
+const POLICY_CONSTRAINTS_OFFSET = 61;
+const POLICY_CONSTRAINT_SIZE = 34;
+const MAX_RULES = 4;
+const MAX_CONSTRAINTS = 4;
+
+/** @typedef {{ keyKind: number, clock: number, keyOffset: number, window: bigint, maxCalls: bigint, maxAmount: bigint }} RatelimitRuleConfig */
+/** @typedef {{ policy: string, key: Uint8Array, ruleIdx: number, windowStart: bigint, calls: bigint, amount: bigint, totalCalls: bigint, totalAmount: bigint }} RatelimitBucketAccount */
+
+export const RATELIMIT_PROGRAM_ADDRESS = deriveManagedProgramAddresses(RATELIMIT_PROGRAM_SEED)
+  .programAccountAddress;
+
+export const RATELIMIT_ERRORS = Object.freeze({
+  INVALID_INSTRUCTION: 0x5201n,
+  INVALID_ACCOUNT: 0x5202n,
+  INVALID_CONFIG: 0x5203n,
+  UNAUTHORIZED: 0x5204n,
+  CREATE_FAILED: 0x5205n,
+  WRITE_FAILED: 0x5206n,
+  PAUSED: 0x5207n,
+  TARGET_MISMATCH: 0x5208n,
+  INSTRUCTION_REJECTED: 0x5209n,
+  AMOUNT_PER_CALL_EXCEEDED: 0x520an,
+  BUCKET_MISMATCH: 0x520bn,
+  ATTESTER_REQUIRED: 0x520cn,
+  CALL_LIMIT_EXCEEDED: 0x520dn,
+  AMOUNT_LIMIT_EXCEEDED: 0x520en,
+  TARGET_FAILED: 0x520fn,
+  GATE_NOT_RATE_LIMITED: 0x52a1n,
+});
+
+export const RATELIMIT_POLICY_MAGIC = 0x7261746c706f6c31n;
+export const RATELIMIT_BUCKET_MAGIC = 0x7261746c62636b31n;
+export const RATELIMIT_POLICY_SIZE = 390;
+export const RATELIMIT_BUCKET_SIZE = 113;
+export const RATELIMIT_CONFIG_SIZE = POLICY_CONFIG_SIZE;
+export const RATELIMIT_POLICY_FLAG_PAUSED = 0x01;
+export const RATELIMIT_POLICY_FLAG_VERIFIED = 0x80;
+export const RATELIMIT_KEY_GLOBAL = 0;
+export const RATELIMIT_KEY_FEE_PAYER = 1;
+export const RATELIMIT_KEY_INSTR_ACCOUNT = 2;
+export const RATELIMIT_KEY_ATTESTED = 3;
+export const RATELIMIT_CLOCK_SLOT = 0;
+export const RATELIMIT_CLOCK_UNIX_SECONDS = 1;
+export const RATELIMIT_GLOBAL_KEY = new Uint8Array(32);
+
+function u64le(value) {
+  if (typeof value !== 'bigint' || value < 0n || value >= U64_MAX) {
+    throw new Error('value must be a u64');
+  }
+  const bytes = new Uint8Array(8);
+  new DataView(bytes.buffer).setBigUint64(0, value, true);
+  return bytes;
+}
+
+function addressFromBytes(bytes) {
+  return pubkeyAddress(bytes);
+}
+
+function derivePolicyAddress(programAddress, targetAddress, policyId) {
+  const seed = hashBytes(
+    VERIFIED_POLICY_SEED_TAG,
+    pubkeyBytes(targetAddress, 'target'),
+    u64le(policyId),
+  );
+  return deriveProgramAddress({ programAddress, seed }).address;
+}
+
+export const BOOTSTRAP_FAUCET_RATE_LIMIT_POLICY_ID = 0n;
+export const BOOTSTRAP_FAUCET_RATE_LIMIT_POLICY_ADDRESS = derivePolicyAddress(
   RATELIMIT_PROGRAM_ADDRESS,
-  RATELIMIT_ERRORS,
-  RATELIMIT_KEY_GLOBAL,
-  RATELIMIT_KEY_FEE_PAYER,
-  RATELIMIT_KEY_INSTR_ACCOUNT,
-  RATELIMIT_KEY_ATTESTED,
-  RATELIMIT_CLOCK_UNIX_SECONDS,
-  RATELIMIT_CLOCK_SLOT,
-  RATELIMIT_POLICY_FLAG_PAUSED,
-  RATELIMIT_GLOBAL_KEY,
-  deriveRatelimitBucketAddress,
-  parseRatelimitPolicyAccount,
-  parseRatelimitBucketAccount,
-} from '@thru/programs/ratelimit';
-import {
-  BOOTSTRAP_FAUCET_RATE_LIMIT_POLICY_ADDRESS,
+  BOOTSTRAP_PROGRAM_ADDRESSES.faucet,
   BOOTSTRAP_FAUCET_RATE_LIMIT_POLICY_ID,
-} from './bootstrap-pins.js';
+);
 
 export {
-  RATELIMIT_PROGRAM_ADDRESS,
-  RATELIMIT_ERRORS,
   BOOTSTRAP_FAUCET_RATE_LIMIT_POLICY_ADDRESS as FAUCET_POLICY_ADDRESS,
   BOOTSTRAP_FAUCET_RATE_LIMIT_POLICY_ID as FAUCET_POLICY_ID,
 };
@@ -70,15 +114,90 @@ export const CLOCK_KINDS = Object.freeze({
   [RATELIMIT_CLOCK_UNIX_SECONDS]: 'seconds',
 });
 
-/** Parse a policy account; null on absent/unparsable data (package returns null there). */
+function dataView(data) {
+  return new DataView(data.buffer, data.byteOffset, data.byteLength);
+}
+
+function parseConfig(data, view) {
+  const base = POLICY_CONFIG_OFFSET;
+  const ruleCount = Math.min(view.getUint8(base + 1), MAX_RULES);
+  const constraintCount = Math.min(view.getUint8(base + 2), MAX_CONSTRAINTS);
+  const constraints = [];
+  for (let i = 0; i < constraintCount; i += 1) {
+    const offset = base + POLICY_CONSTRAINTS_OFFSET + i * POLICY_CONSTRAINT_SIZE;
+    constraints.push({
+      idxOffset: view.getUint16(offset, true),
+      expected: addressFromBytes(data.slice(offset + 2, offset + POLICY_CONSTRAINT_SIZE)),
+    });
+  }
+  const rules = [];
+  for (let i = 0; i < ruleCount; i += 1) {
+    const offset = base + POLICY_RULES_OFFSET + i * POLICY_RULE_SIZE;
+    rules.push({
+      keyKind: view.getUint8(offset),
+      clock: view.getUint8(offset + 1),
+      keyOffset: view.getUint16(offset + 2, true),
+      window: view.getBigUint64(offset + 4, true),
+      maxCalls: view.getBigUint64(offset + 12, true),
+      maxAmount: view.getBigUint64(offset + 20, true),
+    });
+  }
+  return {
+    flags: view.getUint8(base),
+    selectorSz: view.getUint8(base + 3),
+    selectorOffset: view.getUint16(base + 4, true),
+    selectorValue: view.getBigUint64(base + 6, true),
+    instrSzMin: view.getUint16(base + 14, true),
+    instrSzMax: view.getUint16(base + 16, true),
+    amountSz: view.getUint8(base + 18),
+    amountOffset: view.getUint16(base + 19, true),
+    maxAmountPerCall: view.getBigUint64(base + 21, true),
+    // @thru/programs@0.4.2 exposes this field as raw Pubkey bytes (unlike constraints).
+    attester: data.slice(base + 29, base + 61),
+    constraints,
+    rules,
+  };
+}
+
+/** Parse a rate-limit policy account; null on absent, wrong-sized, or wrong-magic data. */
+export function parseRatelimitPolicyAccount(data) {
+  if (!(data instanceof Uint8Array) || data.length !== RATELIMIT_POLICY_SIZE) return null;
+  const view = dataView(data);
+  if (view.getBigUint64(0, true) !== RATELIMIT_POLICY_MAGIC) return null;
+  return {
+    admin: addressFromBytes(data.slice(8, 40)),
+    target: addressFromBytes(data.slice(40, 72)),
+    policyId: view.getBigUint64(72, true),
+    stateFlags: view.getUint8(80),
+    config: parseConfig(data, view),
+    configBytes: data.slice(POLICY_CONFIG_OFFSET),
+  };
+}
+
+/** Parse a rate-limit bucket account; null on absent, wrong-sized, or wrong-magic data. */
+export function parseRatelimitBucketAccount(data) {
+  if (!(data instanceof Uint8Array) || data.length !== RATELIMIT_BUCKET_SIZE) return null;
+  const view = dataView(data);
+  if (view.getBigUint64(0, true) !== RATELIMIT_BUCKET_MAGIC) return null;
+  return {
+    policy: addressFromBytes(data.slice(8, 40)),
+    key: data.slice(40, 72),
+    ruleIdx: view.getUint8(72),
+    windowStart: view.getBigUint64(73, true),
+    calls: view.getBigUint64(81, true),
+    amount: view.getBigUint64(89, true),
+    totalCalls: view.getBigUint64(97, true),
+    totalAmount: view.getBigUint64(105, true),
+  };
+}
+
+/** Parse a policy account; null on absent/unparsable data. */
 export function parsePolicy(data) {
-  if (!(data instanceof Uint8Array)) return null;
   return parseRatelimitPolicyAccount(data);
 }
 
 /** Parse a bucket account; null on absent/unparsable data. */
 export function parseBucket(data) {
-  if (!(data instanceof Uint8Array)) return null;
   return parseRatelimitBucketAccount(data);
 }
 
@@ -88,13 +207,8 @@ export function policyPaused(policyAccount) {
 }
 
 /**
- * The bucket key bytes for a rule, or null when the wallet cannot derive the bucket
- * locally and MUST NOT fabricate usage for that rule:
- *   - keyKind 1 (FEE_PAYER): the claimer's own public key bytes — derivable.
- *   - keyKind 2 (INSTR_ACCOUNT): the key is an account REFERENCED INSIDE the forwarded
- *     instruction at keyOffset — our claim message only exists at build time and the
- *     faucet's claim format would need its indices; not derivable here today.
- *   - keyKind 3 (ATTESTED): the key depends on an external attester — not derivable.
+ * The bucket key bytes for a rule, or null when the wallet cannot derive the bucket key:
+ * global and fee-payer keys are local; instruction-account and attested keys are not.
  */
 export function keyBytesForRule(keyKind, { feePayerAddress } = {}) {
   if (keyKind === RATELIMIT_KEY_GLOBAL) return RATELIMIT_GLOBAL_KEY;
@@ -104,22 +218,30 @@ export function keyBytesForRule(keyKind, { feePayerAddress } = {}) {
   return null;
 }
 
-/** True when this rule's bucket is derivable locally (see keyBytesForRule). */
+/** True when this rule's bucket is derivable locally. */
 export function ruleLocallyReadable(keyKind, opts = {}) {
   return keyBytesForRule(keyKind, opts) != null;
 }
 
-/** Derive the bucket address for (policy, ruleIdx, keyBytes) via the pinned package. */
+/** Derive a bucket address using the deployed Thru rate-limit seed format. */
 export function bucketAddress(policyAddress, ruleIdx, keyBytes) {
-  return deriveRatelimitBucketAddress(RATELIMIT_PROGRAM_ADDRESS, policyAddress, ruleIdx, keyBytes)
-    .address;
+  if (!Number.isInteger(ruleIdx) || ruleIdx < 0 || ruleIdx > 0xff) {
+    throw new Error('ruleIdx must be a u8');
+  }
+  const seed = hashBytes(
+    BUCKET_SEED_TAG,
+    pubkeyBytes(policyAddress, 'policy'),
+    Uint8Array.of(ruleIdx),
+    pubkeyBytes(keyBytes, 'bucket key'),
+  );
+  return deriveProgramAddress({ programAddress: RATELIMIT_PROGRAM_ADDRESS, seed }).address;
 }
 
 /**
  * Turn one parsed rule + its (possibly absent) bucket into a usage summary.
  *
- * @param {import('@thru/programs/ratelimit').RatelimitRuleConfig} rule
- * @param {import('@thru/programs/ratelimit').RatelimitBucketAccount|null|undefined} bucket
+ * @param {RatelimitRuleConfig} rule
+ * @param {RatelimitBucketAccount|null|undefined} bucket
  *   null = bucket account absent on-chain (proves zero usage); undefined = not fetched/
  *   not derivable locally.
  * @param {{ nowUnixSec: bigint }} now — wall clock, only meaningful for clock 'seconds'.
@@ -130,40 +252,31 @@ export function summarizeRule(rule, bucket, { nowUnixSec }) {
   const isUnix = rule.clock === RATELIMIT_CLOCK_UNIX_SECONDS;
   const maxCalls = BigInt(rule.maxCalls);
   const maxAmount = BigInt(rule.maxAmount);
-
   const window = BigInt(rule.window);
-  let inCurrentWindow = null; // null = cannot tell (slot clock) or no bucket concept
+  let inCurrentWindow = null;
   let usedCalls = null;
   let usedAmount = null;
   let resetAtUnixSec = null;
 
   if (bucket === null) {
-    // No bucket account at all ⇒ the key has never been charged in any recorded window.
     usedCalls = 0n;
     usedAmount = 0n;
     inCurrentWindow = true;
-  } else if (bucket) {
-    const windowStart = BigInt(bucket.windowStart);
-    if (isUnix) {
-      const end = windowStart + window;
-      inCurrentWindow = end > nowUnixSec;
-      if (inCurrentWindow) {
-        usedCalls = BigInt(bucket.calls);
-        usedAmount = BigInt(bucket.amount);
-        resetAtUnixSec = end;
-      } else {
-        // Window rolled: the program zeroes the counters when next charged, so from the
-        // user's perspective the current window is fresh (0 used). windowStart stays in
-        // the past; that fact is still reported raw in the bucket echo below.
-        usedCalls = 0n;
-        usedAmount = 0n;
-      }
+  } else if (bucket && isUnix) {
+    const end = BigInt(bucket.windowStart) + window;
+    inCurrentWindow = end > nowUnixSec;
+    if (inCurrentWindow) {
+      usedCalls = BigInt(bucket.calls);
+      usedAmount = BigInt(bucket.amount);
+      resetAtUnixSec = end;
+    } else {
+      usedCalls = 0n;
+      usedAmount = 0n;
     }
-    // SLOT clock: inCurrentWindow stays null → honest "unknown"; counters echoed raw only.
   }
 
-  const remainingCalls = (maxCalls > 0n && usedCalls != null) ? maxCalls - usedCalls : null;
-  const remainingAmount = (maxAmount > 0n && usedAmount != null) ? maxAmount - usedAmount : null;
+  const remainingCalls = maxCalls > 0n && usedCalls != null ? maxCalls - usedCalls : null;
+  const remainingAmount = maxAmount > 0n && usedAmount != null ? maxAmount - usedAmount : null;
   const exhausted = (remainingCalls !== null && remainingCalls <= 0n)
     || (remainingAmount !== null && remainingAmount <= 0n);
 
@@ -173,15 +286,15 @@ export function summarizeRule(rule, bucket, { nowUnixSec }) {
     clock: rule.clock,
     clockLabel,
     window: window.toString(),
-    maxCalls: maxCalls.toString(),           // '0' ⇒ unlimited (per package contract)
-    maxAmount: maxAmount.toString(),         // '0' ⇒ unlimited
-    inCurrentWindow,                         // true | false | null (unknown)
+    maxCalls: maxCalls.toString(),
+    maxAmount: maxAmount.toString(),
+    inCurrentWindow,
     usedCallsInWindow: usedCalls?.toString() ?? null,
     usedAmountInWindow: usedAmount?.toString() ?? null,
-    remainingCalls: remainingCalls?.toString() ?? null, // null = unlimited or unknown
+    remainingCalls: remainingCalls?.toString() ?? null,
     remainingAmount: remainingAmount?.toString() ?? null,
     exhausted,
-    resetAtUnixSec: resetAtUnixSec?.toString() ?? null, // unix-clock, in-window only
+    resetAtUnixSec: resetAtUnixSec?.toString() ?? null,
     bucket: bucket
       ? {
         windowStart: String(bucket.windowStart),
@@ -190,16 +303,11 @@ export function summarizeRule(rule, bucket, { nowUnixSec }) {
         totalCalls: String(bucket.totalCalls),
         totalAmount: String(bucket.totalAmount),
       }
-      : null, // null ⇒ absent ⇒ zero usage (bucket === null); undefined ⇒ not fetched
+      : null,
   };
 }
 
-/**
- * The binding rule = the derivable rule closest to its cap, chosen strictly on read
- * numbers (never fabricated). Prefers an exhausted rule; otherwise the lowest
- * remaining-calls fraction among rules with a calls cap, else lowest remaining-amount
- * fraction; null when nothing derivable has a cap.
- */
+/** Pick the most binding locally derivable capped rule, using only read values. */
 export function pickBindingRule(summaries) {
   const candidates = (summaries || []).filter((r) => r && r.remainingCalls != null);
   if (!candidates.length) return null;
@@ -207,23 +315,18 @@ export function pickBindingRule(summaries) {
   if (exhausted) return exhausted;
   const withCap = candidates.filter((r) => r.maxCalls !== '0');
   if (!withCap.length) return null;
-  return withCap.reduce((best, r) => {
-    const frac = Number(BigInt(r.remainingCalls)) / Number(BigInt(r.maxCalls));
-    const bestFrac = Number(BigInt(best.remainingCalls)) / Number(BigInt(best.maxCalls));
-    return frac < bestFrac ? r : best;
+  return withCap.reduce((best, rule) => {
+    const fraction = Number(BigInt(rule.remainingCalls)) / Number(BigInt(rule.maxCalls));
+    const bestFraction = Number(BigInt(best.remainingCalls)) / Number(BigInt(best.maxCalls));
+    return fraction < bestFraction ? rule : best;
   });
 }
 
-/**
- * Classify the vmError inside a faucet claim failure message (thru-client throws
- * `Faucet claim reverted on-chain (vmError=N).`). Returns null when the message is NOT
- * a ratelimit failure — the caller must fall back to the generic error text.
- * Only the exact package error codes match; anything else stays unidentified.
- */
+/** Classify only published rate-limit vmError codes; unknown failures stay generic. */
 export function classifyFaucetError(message) {
-  const m = /vmError=(\d+)/.exec(String(message ?? ''));
-  if (!m) return null;
-  const code = m[1];
+  const match = /vmError=(\d+)/.exec(String(message ?? ''));
+  if (!match) return null;
+  const code = match[1];
   const byCode = {
     [String(RATELIMIT_ERRORS.CALL_LIMIT_EXCEEDED)]: {
       code, kind: 'calls', label: 'claim-count limit',
