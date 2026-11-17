@@ -36,6 +36,7 @@ if (!targetRef) {
   }
 }
 
-const pushUrl = `https://${token}@github.com/buildbyravi/thru-wallet-ext.git`;
+const auth = token.includes(':') ? token : `x-access-token:${token}`;
+const pushUrl = `https://${auth}@github.com/buildbyravi/thru-wallet-ext.git`;
 console.log(`[git-push] Pushing ${targetRef} to origin...`);
 execSync(`git push ${pushUrl} ${targetRef}`, { cwd: rootDir, stdio: 'inherit' });
