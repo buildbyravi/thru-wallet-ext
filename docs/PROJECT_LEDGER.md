@@ -19,7 +19,7 @@ Purpose: canonical record of shipped repository identifiers and the append-only 
 | Automated test suite | **41** `test/test-*.mjs` suites + **9** `scripts/check-*.mjs` guards | `package.json` `scripts.test` |
 | Signing auth default | Session-only while unlocked (`requirePasswordForSigning: false`); password-per-sign is a password-gated opt-in | `docs/DECISIONS.md` D-003 (`test/test-api-router.mjs`) |
 | Enabled networks | `betanet` enabled (`localnet`, `testnet`, `mainnet` declared disabled) | `src/lib/networks.js` + `scripts/check-csp.mjs` |
-| Thru SDK / Program pins | `@thru/sdk` `0.4.2`, `@thru/programs` `0.4.2` (exact pins) | `package.json` (`test/test-derivation.mjs`) |
+| Thru SDK / Program pins | `@thru/sdk` `0.4.4`, `@thru/programs` `0.4.4` (exact pins) | `package.json` (`test/test-derivation.mjs`); native-faucet no-policy behavior is tested in `test/test-native-faucet.mjs` |
 | Extension / Store version | `1.4.1` (`src/manifest.json`; live on CWS since 2026-10-04; pre-v29 build) | `extension.md` |
 | Build output | `dist/` (`popup.html`, `popup.css`, `popup.bundle.js`, `background.bundle.js`) | `build.mjs` (never edit `dist/` by hand) |
 | Feature flags (`FLAGS`) | **11** flags in `src/shared/flags.js` — **all `false`** | `test/test-release-flags.mjs`, `test/test-launchpad-quarantine.mjs` |
@@ -58,7 +58,7 @@ Ordinary contract evolution is strictly append-only (`Rule 4`), with documented 
 | **v21** | Wallet-local, network-scoped primary alias (`name.getPrimary`, `name.linkPrimary`, `name.unlinkPrimary`) verified against `name.lookup`. |
 | **v22** | Official `.thru` paid registrar slice (`6` methods): `getRegistry`, `checkLease`, `getPaymentBalance`, `purchase`, `renewLease`, `claimExpired`. |
 | **v23** | Ungated `name.register` (`auth: 'signing'`, first-party self-signed subdomain write) + `name.getCanonicalRoot` read (`initRoot` stays gated). |
-| **v24** | `tx.getFaucetLimit` reading `@thru/programs/ratelimit` on-chain policy and per-account bucket usage. |
+| **v24** | `tx.getFaucetLimit` was added for a policy read, but the owner clarified the native THRU faucet has no per-account rate limit (THRUSD only). The API remains for contract compatibility and returns not applicable without a chain read. |
 | **v25** | Integrated `thru-custom-registrar` (`name.getCustomRegistrar`, `name.checkCustomLease`, `via: 'custom'` + `years` on `name.register`). |
 | **v26** | `token.discover` chain-verified incoming mint discovery. (Same drop briefly enabled DEX swap UI; withdrawn by owner 2026-10-26 so all `DEFI_*` flags remain `false`.) |
 | **v27** | `token.getCachedBalances` (`auth: 'none'`) storage-only token balance snapshot for non-blocking Dashboard first paint. |

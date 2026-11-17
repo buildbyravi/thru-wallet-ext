@@ -1,0 +1,31 @@
+{
+  "date": "2026-11-17T19:22:55.299Z",
+  "network": "betanet",
+  "seed": "thru-custom-registrar:v1",
+  "hdIndex": 0,
+  "deployer": "tabDLDL9EVZYhRnbgPr0HrQuIvv01AZm9vtV8yIX26KO2J",
+  "registrarProgramAddress": "ta2vDCBzzptN2qVZgz6PXsCp5cNB7Nef4yeQ3W-OqzZcfF",
+  "configAddress": "ta_9lLvhxurg4J5DyZ82W14rzzGWCEfj9B7Y8wa99amPBa",
+  "rootAddress": "taNP1MFOO2shpn6ORofIGSNiQ-qJ9VE2lDkDwvUmgUmaQZ",
+  "rootName": "thru",
+  "configAdmin": "tabDLDL9EVZYhRnbgPr0HrQuIvv01AZm9vtV8yIX26KO2J",
+  "configOwnershipVerified": true,
+  "fee3PerYearBaseUnits": "100000",
+  "fee4PerYearBaseUnits": "10000",
+  "fee5PlusPerYearBaseUnits": "1000",
+  "feePolicy": "best-effort",
+  "collectionProbe": {
+    "measured": false
+  },
+  "collectionAttested": false,
+  "collectionNote": null,
+  "treasury": "taShrn6v-TM_h81ZjmDZLifdhLRlDMfIw_EAIaNKIIdPX-",
+  "initializeSignature": "tsCrSKfaFWfpkUi2K_7I_96WPLfwcHFDh1YVAyNzhcT7TIQZa7tcDVmQ_F0KuiAC8lhGvqRpE1xF0Uwh20pfGdBB6H",
+  "initializeState": "updated",
+  "vmError": 0,
+  "executionResult": {
+    "vmError": 0,
+    "consumedComputeUnits": 35702,
+    "userErrorCode": "0"
+  }
+}

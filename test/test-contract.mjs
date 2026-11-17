@@ -243,10 +243,10 @@ ok('v23 appends exactly the canonical-root discovery read', v23.length === 1 && 
 ok('v23 canonical-root read is open auth:none and register signs',
   METHODS['name.getCanonicalRoot']?.auth === 'none' && METHODS['name.register']?.auth === 'signing');
 
-// v24 (2026-10-24, owner audit priority 1): tx.getFaucetLimit — pure read of the faucet's
-// pinned rate-limit policy + per-rule bucket usage; open auth:none like every tx.* read.
+// v24 (2026-10-24): tx.getFaucetLimit remains a pure, open-auth legacy API; it reports
+// not applicable for the native THRU faucet and performs no policy/bucket read.
 const v24 = Object.entries(METHODS).filter(([, spec]) => spec.since === 24).map(([name]) => name);
-ok('v24 appends exactly the faucet rate-limit read', v24.length === 1 && v24[0] === 'tx.getFaucetLimit', `got ${v24.join(', ')}`);
+ok('v24 appends exactly the legacy faucet-policy status method', v24.length === 1 && v24[0] === 'tx.getFaucetLimit', `got ${v24.join(', ')}`);
 ok('v24 faucet-limit read is open auth:none', METHODS['tx.getFaucetLimit']?.auth === 'none');
 
 // v25 (2026-10-25, owner NEXT after the live-verified registrar deploy): the custom

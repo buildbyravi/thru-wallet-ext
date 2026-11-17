@@ -1,27 +1,17 @@
 // Faucet claim decoder.
 //
-// A faucet claim is an incoming credit, but it is still a signed, broadcast, irreversible
-// chain transaction with a rate-limit budget attached. It gets the same review as a transfer:
-// amount, recipient (the active account), program identity, remaining allowance, and an
-// explicit note that this wallet does not present a fee it did not receive.
+// A native faucet claim is an incoming credit, but it is still a signed, broadcast, irreversible
+// chain transaction. Review the amount, recipient (the active account), program identity, and
+// fee provenance. The native THRU faucet has no per-account rate-limit policy; THRUSD limits
+// are separate and do not apply here.
 //
-// Facts: amountUnits, capUnits, accountExists, limit { supported, paused, exhausted,
-// remainingAmount, window, resetAtUnixSec, reason }, fee { supported, reason }, programAddress.
+// Facts: amountUnits, capUnits, accountExists, fee { supported, reason }, programAddress.
 
 import {
-  displayAmount, movement, row, warn, feeBlock, instruction, accountRole, executionBlock,
+  displayAmount, movement, warn, feeBlock, instruction, accountRole, executionBlock,
 } from './common.js';
 
 export const FAUCET_CLAIM_KIND = 'faucet-claim';
-
-function windowLabel(limit) {
-  if (!limit?.supported) return null;
-  const seconds = limit.window == null ? null : Number(limit.window);
-  if (!Number.isFinite(seconds) || seconds <= 0) return null;
-  if (seconds % 3600 === 0) return `${seconds / 3600} h`;
-  if (seconds % 60 === 0) return `${seconds / 60} min`;
-  return `${seconds} s`;
-}
 
 export function decodeFaucetClaim({ facts }) {
   const warnings = [];
@@ -34,28 +24,6 @@ export function decodeFaucetClaim({ facts }) {
       { blocking: true }));
   }
 
-  if (!facts.limit?.supported) {
-    warnings.push(warn('limit-unknown', 'warning',
-      'Faucet remaining allowance could not be read',
-      facts.limit?.reason
-        ? `The on-chain rate-limit policy answered: ${facts.limit.reason}.`
-        : 'The wallet could not read how much is left in this window.'));
-  } else {
-    if (facts.limit.paused) {
-      warnings.push(warn('faucet-paused', 'danger',
-        'Faucet is paused by its administrator',
-        'The on-chain policy is paused, so a claim would be rejected.', { blocking: true }));
-    }
-    if (facts.limit.exhausted) {
-      const reset = facts.limit.resetAtUnixSec == null
-        ? ''
-        : ` The window resets at ${new Date(Number(facts.limit.resetAtUnixSec) * 1000)
-          .toLocaleTimeString()} your local time.`;
-      warnings.push(warn('faucet-exhausted', 'danger',
-        'This account has used its faucet allowance',
-        `The current rate-limit window is exhausted.${reset}`, { blocking: true }));
-    }
-  }
 
   // Tri-state again: only an authoritative "does not exist" may promise an activation step.
   if (facts.accountExists === false) {
@@ -68,25 +36,8 @@ export function decodeFaucetClaim({ facts }) {
       'The wallet could not tell whether this account already exists, so it may also create it.'));
   }
 
-  // F-07b: `targetMatchesFaucet:false` means the rate-limit policy this wallet just read
-  // belongs to a different faucet program. The recheck already refuses to confirm it, so the
-  // review must not present it as a normal claim either.
-  if (facts.limit?.supported && facts.limit.targetMatchesFaucet === false) {
-    warnings.push(warn('faucet-target-mismatch', 'danger',
-      'The faucet policy targets a different program',
-      'The allowance the wallet read belongs to a different faucet, so it cannot promise this '
-      + 'claim fits.', { blocking: true }));
-  }
-
-  // Only the rate-limit remainder is a fact about this transaction that is not money; the
-  // recipient is the counterparty line and the amount is in the title and the money table.
+  // There are no native-faucet rate-limit facts to render.
   const rows = [];
-  const window = windowLabel(facts.limit);
-  if (facts.limit?.supported && facts.limit.remainingAmount != null) {
-    rows.push(row('Remaining this window',
-      `${displayAmount(facts.limit.remainingAmount, 9, 'THRU')}${window ? ` / ${window}` : ''}`,
-      { mono: true }));
-  }
 
   return {
     operation: {
@@ -114,7 +65,7 @@ export function decodeFaucetClaim({ facts }) {
         decimals: 9,
         amountUnits: facts.amountUnits,
         verified: true,
-        note: 'Paid by the faucet, subject to its on-chain rate limit.',
+        note: 'Paid by the native faucet.',
       })],
       fee: feeBlock({
         supported: Boolean(facts.fee?.supported),
@@ -136,7 +87,7 @@ export function decodeFaucetClaim({ facts }) {
         verified: Boolean(facts.programAddress),
       },
       instructions: [instruction('Faucet payout', {
-        note: 'The network pays the amount shown to your account, subject to its rate limit.',
+        note: 'The network pays the amount shown to your account.',
       })],
       accounts: [
         accountRole('Faucet vault', facts.vaultAddress ?? 'pinned program vault'),

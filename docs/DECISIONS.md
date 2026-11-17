@@ -30,7 +30,7 @@ lived only in `AGENTS.md` and audit history.
 
 **Options considered.** (a) SemVer ranges for easy upgrades; (b) exact pins with a mandatory upgrade protocol; (c) vendoring the SDK.
 
-**Chosen.** Exact pins only (currently `@thru/sdk` and `@thru/programs` at `0.4.2`), `npm ci` as the install gate, and golden vectors for mnemonic→key→address derivation, public keys, amount conversion, and transaction encoding/decoding.
+**Chosen.** Exact pins only (currently `@thru/sdk` and `@thru/programs` at `0.4.4`), `npm ci` as the install gate, and golden vectors for mnemonic→key→address derivation, public keys, amount conversion, and transaction encoding/decoding. The 0.4.2→0.4.4 upgrade removes the obsolete native-faucet rate-limit dependency: the native THRU faucet has no per-account policy, while the separate THRUSD faucet's limit does not apply to native claims. The legacy `tx.getFaucetLimit` contract method remains explicitly not applicable.
 
 **Why.** Wallet addresses must never change silently. The goldens make any derivation or encoding drift fail the build instead of shipping.
 

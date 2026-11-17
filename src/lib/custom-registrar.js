@@ -13,9 +13,9 @@
 //   - CPI payload re-encoding (init-root tag 0 / register-subdomain tag 1, packed args,
 //     inline proofs): first-party txn_tools.rs @ a058dd8 — same source our live-proven
 //     name-service register path used on Betanet 2026-10-24.
-//   - Account-table ABI: v2 index-carrying formats. @thru/sdk 0.4.2 (the PUBLISHED npm
-//     dist — normalizeAccountList in chunk sorting with compareAccounts, verified
-//     2026-10-24 live in the sandbox) byte-sorts each readWrite/readOnly segment;
+//   - Account-table ABI: v2 index-carrying formats. @thru/sdk 0.4.4 (the PUBLISHED npm
+//     dist — normalizeAccountList sorting with compareAccounts, covered by the pinned
+//     account-index regression test) byte-sorts each readWrite/readOnly segment;
 //     the VM-visible table is [feePayer, program, sorted RW, sorted RO]. Positional
 //     account constants are therefore INVALID — indices must be resolved at build time
 //     through the SDK's own InstructionContext (this module takes an indexOf resolver
@@ -513,7 +513,7 @@ export function buildTcrUpdateConfigInstructionData({
   return out;
 }
 
-// ---- Account lists (semantic roles; ORDER IS IRRELEVANT — SDK 0.4.2 byte-sorts) ---
+// ---- Account lists (semantic roles; ORDER IS IRRELEVANT — SDK 0.4.4 byte-sorts) ---
 // Pass these sets to buildAndSign({ accounts: { readWrite, readOnly } }) and resolve
 // indices through the SDK InstructionContext inside the instructionData callback.
 // `target` (the future domain owner) appears as an extra read-only entry only when it
