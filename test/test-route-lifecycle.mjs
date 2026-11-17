@@ -748,9 +748,18 @@ const HISTORY_URLS = [];
 function makeWindow(doc) {
   const listeners = [];
   let location = null;
+  const localStore = new Map();
+  const localStorage = {
+    getItem(key) { return localStore.get(String(key)) ?? null; },
+    setItem(key, value) { localStore.set(String(key), String(value)); },
+    removeItem(key) { localStore.delete(String(key)); },
+    clear() { localStore.clear(); },
+    get length() { return localStore.size; },
+  };
   const win = {
     listeners,
     document: doc,
+    localStorage,
     // The popup is fixed-size (400x600, tokens.css), but the panel may be
     // shorter than 600px. Its manifest URL marker, not this size, identifies it.
     innerWidth: 400,
@@ -6266,6 +6275,42 @@ async function nonBlockingBootTest() {
   } finally {
     WIN.dispatchEvent({ type: 'unload' }); creating.stop(); chrome.runtime.sendMessage = originalSend;
   }
+
+
+  resetBackend(SCENARIOS[2]); resetDom(); guards.invalidate();
+  WIN.localStorage.setItem('thru_auth_hint', 'unlocked');
+  chrome.runtime.sendMessage = (message, callback) => {
+    if (message.method === 'system.bootstrap') { bootstrapReply = callback; return; }
+    return originalSend(message, callback);
+  };
+  const unlockedBootRoot = DOC.getElementById('app');
+  const unlockedBooting = boot({ root: unlockedBootRoot });
+  ok('unlocked boot does not mount password input before bootstrap replies (no lockscreen flash)',
+    !unlockedBootRoot.querySelector('input') && buttons(unlockedBootRoot, /^unlock$/i).length === 0);
+  const unlockedRouter = await unlockedBooting;
+  bootstrapReply({ ok: true, data: { hasVault: true, unlocked: true } });
+  await settle();
+  ok('unlocked boot lands directly on dashboard once bootstrap replies',
+    unlockedRouter.currentPath === '/dashboard');
+  WIN.dispatchEvent({ type: 'unload' }); unlockedRouter.stop(); chrome.runtime.sendMessage = originalSend;
+
+  resetBackend(SCENARIOS[1]); resetDom(); guards.invalidate();
+  WIN.localStorage.setItem('thru_auth_hint', 'unlocked');
+  chrome.runtime.sendMessage = (message, callback) => {
+    if (message.method === 'system.bootstrap') { bootstrapReply = callback; return; }
+    return originalSend(message, callback);
+  };
+  const staleBootRoot = DOC.getElementById('app');
+  const staleBooting = boot({ root: staleBootRoot });
+  ok('stale unlocked hint does not mount password input before bootstrap replies',
+    !staleBootRoot.querySelector('input'));
+  const staleRouter = await staleBooting;
+  bootstrapReply({ ok: true, data: { hasVault: true, unlocked: false } });
+  await settle();
+  ok('stale unlocked hint safely lands on /unlock once background reports locked',
+    staleRouter.currentPath === '/unlock' && Boolean(staleBootRoot.querySelector('input'))
+      && WIN.localStorage.getItem('thru_auth_hint') === 'locked');
+  WIN.dispatchEvent({ type: 'unload' }); staleRouter.stop(); chrome.runtime.sendMessage = originalSend;
 }
 
 // ---- Run -------------------------------------------------------------------
