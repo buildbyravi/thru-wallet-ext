@@ -32,10 +32,14 @@ const NATIVE = Object.freeze({ symbol: 'THRU', decimals: 9, mintAddress: null, v
 function registrarCharge(facts) {
   const declared = facts.totalPriceUnits != null ? BigInt(facts.totalPriceUnits) : 0n;
   const enforced = facts.feeEnforced === true;
+  const required = enforced && declared > 0n;
+  const collectionVerified = facts.feeCollectionVerified === true;
   return {
     declared,
     enforced,
-    charged: enforced && declared > 0n,
+    collectionVerified,
+    collectionUnverified: required && !collectionVerified,
+    charged: required && collectionVerified,
     free: declared === 0n,
   };
 }
@@ -85,6 +89,15 @@ function chainTime(value) {
 /** "Network fee": the fee the signed header will declare, from the background's measurement. */
 function registrarFee(facts) {
   return declaredFeeBlock(facts, { reserveUnits: facts.feeReserveUnits ?? null });
+}
+
+function feeCollectionWarning(charge, operation) {
+  if (!charge.collectionUnverified) return null;
+  return warn('registrar-fee-collection-unverified', 'danger',
+    'Registrar fee collection is not verified',
+    `This registrar requires ${displayAmount(charge.declared, 9, 'THRU')} for ${operation}, but this `
+    + 'deployment has no verified collection result. Signing is blocked until a strict registration '
+    + 'and renewal both succeed with a measured treasury increase.', { blocking: true });
 }
 
 function availabilityWarning(facts) {
@@ -164,6 +177,8 @@ export function decodeDomainRegister({ facts }) {
   const unavailable = availabilityWarning(facts);
   if (unavailable) warnings.push(unavailable);
   const charge = registrarCharge(facts);
+  const collectionWarning = feeCollectionWarning(charge, 'this registration');
+  if (collectionWarning) warnings.push(collectionWarning);
 
   if (charge.charged) {
     // Enforced fee: the price is money the program takes. An account that cannot cover it
@@ -174,7 +189,7 @@ export function decodeDomainRegister({ facts }) {
         `This registration costs ${displayAmount(charge.declared, 9, 'THRU')} and the account `
         + `holds ${displayAmount(BigInt(facts.nativeBalanceUnits), 9, 'THRU')}.`, { blocking: true }));
     }
-  } else if (!charge.free && facts.nativeBalanceUnits != null
+  } else if (!charge.collectionUnverified && !charge.free && facts.nativeBalanceUnits != null
       && BigInt(facts.nativeBalanceUnits) < charge.declared) {
     // Declared but unenforced: the program attempts the debit and ignores a refusal, so a low
     // balance is not a failure — it only means the fee will probably not be taken.
@@ -194,11 +209,13 @@ export function decodeDomainRegister({ facts }) {
       id: DOMAIN_REGISTER_KIND,
       name: `Register ${facts.name}.${facts.tld} for ${Number(facts.years)} `
         + `${Number(facts.years) === 1 ? 'year' : 'years'}`,
-      summary: charge.charged
-        ? `The registrar program collects ${displayAmount(charge.declared, 9, 'THRU')} for this term.`
-        : charge.free
-          ? 'No registration fee on this registrar. You pay only the network fee.'
-          : '',
+      summary: charge.collectionUnverified
+        ? `The registrar requires ${displayAmount(charge.declared, 9, 'THRU')}, but collection is unverified; signing is disabled.`
+        : charge.charged
+          ? `The registrar program collects ${displayAmount(charge.declared, 9, 'THRU')} for this term.`
+          : charge.free
+            ? 'No registration fee on this registrar. You pay only the network fee.'
+            : '',
       confirmLabel: 'Confirm and sign',
       decode: 'decoded',
     },
@@ -256,6 +273,8 @@ function paidRegistryBlock({ facts, operation, rows, instructions, extraWarnings
 
   const charge = native ? registrarCharge(facts) : null;
   if (native) {
+    const collectionWarning = feeCollectionWarning(charge, 'this renewal');
+    if (collectionWarning) warnings.push(collectionWarning);
     if (charge.charged) {
       if (facts.nativeBalanceUnits != null && BigInt(facts.nativeBalanceUnits) < charge.declared) {
         warnings.push(warn('registrar-fee-unpayable', 'danger',
@@ -263,7 +282,7 @@ function paidRegistryBlock({ facts, operation, rows, instructions, extraWarnings
           `This renewal costs ${displayAmount(charge.declared, 9, 'THRU')} and the account holds `
           + `${displayAmount(BigInt(facts.nativeBalanceUnits), 9, 'THRU')}.`, { blocking: true }));
       }
-    } else if (!charge.free && facts.nativeBalanceUnits != null
+    } else if (!charge.collectionUnverified && !charge.free && facts.nativeBalanceUnits != null
         && BigInt(facts.nativeBalanceUnits) < charge.declared) {
       warnings.push(warn('registrar-balance-check', 'info',
         'Your balance is checked before signing',
@@ -378,11 +397,13 @@ export function decodeDomainRenew({ facts }) {
   // (audit D-1); asking the purchase decoder for it crashed outright.
   if (facts.provider === 'custom') {
     const charge = registrarCharge(facts);
-    const summary = charge.charged
-      ? `The registrar program collects ${displayAmount(charge.declared, 9, 'THRU')} for this term.`
-      : charge.free
-        ? 'No renewal fee on this registrar. You pay only the network fee.'
-        : '';
+    const summary = charge.collectionUnverified
+      ? `The registrar requires ${displayAmount(charge.declared, 9, 'THRU')}, but collection is unverified; signing is disabled.`
+      : charge.charged
+        ? `The registrar program collects ${displayAmount(charge.declared, 9, 'THRU')} for this term.`
+        : charge.free
+          ? 'No renewal fee on this registrar. You pay only the network fee.'
+          : '';
     return paidRegistryBlock({
       facts,
       extraWarnings: warnings,

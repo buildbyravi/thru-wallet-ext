@@ -35,6 +35,7 @@ function eq(a, b, label) {
 // ---- networks.js evidence pin ---------------------------------------------------------
 console.log('networks pin');
 eq(NETWORKS.betanet.customRegistrarProgram, evidence.program, 'betanet customRegistrarProgram == deployed program (evidence)');
+eq(NETWORKS.betanet.customRegistrarFeeCollectionVerified, false, 'Betanet strict collection is fail-closed until register and renew deltas are verified');
 eq(NETWORKS.localnet.customRegistrarProgram, null, 'localnet has no custom registrar pinned');
 eq(NETWORKS.testnet.customRegistrarProgram, null, 'testnet (disabled) has no custom registrar pinned');
 eq(NETWORKS.mainnet.customRegistrarProgram, null, 'mainnet has no custom registrar pinned (fee decided later per Thru market price — owner decision)');
@@ -152,7 +153,8 @@ console.log('custom registrar write boundaries (stubbed builder and RPC)');
   const domain = await domainAccountAddress(rootAddress, label);
   const lease = tcr.tcrLeaseAddress(program, label);
   let policy = tcr.TCR_FEE_POLICY.strict;
-  let treasury = payer.address;
+  const originalTreasury = Pubkey.from(new Uint8Array(32).fill(66)).toThruFmt();
+  let treasury = originalTreasury;
   let price = 1000n;
   let leaseOwner = payer.address;
   let leaseExists = false;
@@ -212,6 +214,10 @@ console.log('custom registrar write boundaries (stubbed builder and RPC)');
     if (options.program === program) {
       builds++;
       assert.equal(options.header.fee, payerExists ? 1n : 0n);
+      assert.ok(!options.accounts.readWrite.includes(payer.address),
+        'fee payer is the SDK feePayer signer (implicit index 0), not a duplicate account meta');
+      assert.ok(!options.accounts.readOnly.includes(payer.address),
+        'fee payer is not repeated as a read-only account either');
     } else {
       assert.equal(options.program, NETWORKS.betanet.accountCreateProgramId);
       activationBuilds++;
@@ -230,6 +236,7 @@ console.log('custom registrar write boundaries (stubbed builder and RPC)');
     expectedAccountAddress: payer.address, expectedPricePerYear: '1000',
     expectedRegistrarFacts: registrar.registrarFacts(await registrar.getCustomRegistrar({ skipCache: true })) });
 
+  NETWORKS.betanet.customRegistrarFeeCollectionVerified = true;
   leaseExists = true;
   const renewed = await registrar.renewCustom(await expected());
   assert.equal(renewed.domainAddress, domain);
@@ -239,7 +246,21 @@ console.log('custom registrar write boundaries (stubbed builder and RPC)');
   leaseExists = false;
   await registrar.registerCustom(await expected());
   assert.equal(sends, 2);
-  ok(true, 'unchanged custom registration reaches submission');
+  ok(true, 'verified custom registration reaches submission');
+
+  NETWORKS.betanet.customRegistrarFeeCollectionVerified = false;
+  const beforeUnverifiedBuild = builds;
+  const beforeUnverifiedSend = sends;
+  await assert.rejects(registrar.registerCustom(await expected()), e => e.code === 'TCR_FEE_COLLECTION_UNVERIFIED');
+  assert.equal(builds, beforeUnverifiedBuild);
+  assert.equal(sends, beforeUnverifiedSend);
+  leaseExists = true;
+  await assert.rejects(registrar.renewCustom(await expected()), e => e.code === 'TCR_FEE_COLLECTION_UNVERIFIED');
+  assert.equal(builds, beforeUnverifiedBuild);
+  assert.equal(sends, beforeUnverifiedSend);
+  NETWORKS.betanet.customRegistrarFeeCollectionVerified = true;
+  leaseExists = false;
+  ok(true, 'unverified strict registration and renewal refuse before transaction build or submit');
 
   const other = Pubkey.from(new Uint8Array(32).fill(77)).toThruFmt();
   for (const [mutate, code] of [
@@ -254,7 +275,7 @@ console.log('custom registrar write boundaries (stubbed builder and RPC)');
     await assert.rejects(registrar.registerCustom(params), e => e.code === code);
     assert.equal(builds, before, 'facts changed during proof generation must refuse before signing');
     mutateProof = null;
-    treasury = payer.address; price = 1000n; policy = tcr.TCR_FEE_POLICY.strict; domainExists = false;
+    treasury = originalTreasury; price = 1000n; policy = tcr.TCR_FEE_POLICY.strict; domainExists = false;
   }
   ok(true, 'proof-time treasury, price, policy and availability changes refuse before build');
 
@@ -279,7 +300,7 @@ console.log('custom registrar write boundaries (stubbed builder and RPC)');
   assert.equal(activationBuilds, 1);
   assert.equal(builds, beforeRenew);
   ok(true, 'activation completes but changed registrar facts prevent the renewal build');
-  activationMutation = null; treasury = payer.address;
+  activationMutation = null; treasury = originalTreasury;
 
   leaseExists = false;
   const beforeNetworkChange = builds;

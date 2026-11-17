@@ -81,7 +81,8 @@ export function registrarFacts(info, payment = null) {
     rootName: cfg.rootName,
     nameServiceProgram: custom ? NAME_SERVICE_PROGRAM : cfg.nameServiceProgram,
     treasuryAddress: custom ? cfg.treasury : cfg.treasurer,
-    ...(custom ? { feePolicy: cfg.feePolicy, feeEnforced: cfg.feeEnforced } : {
+    ...(custom ? { feePolicy: cfg.feePolicy, feeEnforced: cfg.feeEnforced,
+      feeCollectionVerified: cfg.feeCollectionVerified === true } : {
       payment: { mintAddress: cfg.tokenMint, tokenProgramAddress: cfg.tokenProgram,
         symbol: payment?.symbol, decimals: payment?.decimals, verified: payment?.verified },
     }),
@@ -200,6 +201,11 @@ async function checkedRegistrarWrite(expected, network, account, original, name,
   const fee = declaredNetworkFee(network, payer.balance);
   assertNetworkFee(expected, network, fee);
   const total = BigInt(reviewPricePerYear(cfg, name)) * BigInt(years);
+  if (custom && cfg.feeEnforced && total > 0n && cfg.feeCollectionVerified !== true) {
+    throw coded('TCR_FEE_COLLECTION_UNVERIFIED',
+      'This registrar requires a THRU fee, but collection has not been verified for this deployment. '
+      + 'Signing is blocked to avoid a transaction known to revert. No registrar transaction was signed.');
+  }
   if (custom && cfg.feeEnforced && (!payer.exists || payer.balance < total + fee)) {
     throw coded('INSUFFICIENT_FUNDS', 'Your balance no longer covers the registrar price and network fee.');
   }
@@ -682,6 +688,8 @@ export async function getCustomRegistrar({ skipCache = false } = {}) {
     // refusal; strict declares that refusal aborts. Deployment/collection verification
     // remains separate from the freshness checks below.
     feeEnforced: cfg.feePolicy === tcr.TCR_FEE_POLICY.strict,
+    // Build-pinned evidence gate, separate from the on-chain policy bit.
+    feeCollectionVerified: network.customRegistrarFeeCollectionVerified === true,
     fee3PerYear: cfg.fee3PerYear.toString(),
     fee4PerYear: cfg.fee4PerYear.toString(),
     fee5PlusPerYear: cfg.fee5PlusPerYear.toString(),

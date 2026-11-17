@@ -422,6 +422,7 @@ async function domainRegisterFacts(params, { account, network }) {
     // Whether the program ENFORCES the charge. Best-effort means it attempts the debit and
     // ignores a refusal, so the review must not present the price as money that will move.
     feeEnforced: info.feeEnforced === true,
+    feeCollectionVerified: info.feeCollectionVerified === true,
     feePolicy: info.feePolicyName,
     nativeBalanceUnits: payer.balanceUnits,
     availability: { state: availability, readError: check.readError ?? null },
@@ -515,6 +516,7 @@ async function domainCustomRenewFacts(params, { account, network }) {
     registrarFacts: registrarService.registrarFacts(info),
     totalPriceUnits,
     feeEnforced: info.feeEnforced === true,
+    feeCollectionVerified: info.feeCollectionVerified === true,
     feePolicy: info.feePolicyName,
     nativeBalanceUnits: payer.balanceUnits,
     availability: { state: 'mine', readError: null },

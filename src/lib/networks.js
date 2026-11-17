@@ -33,6 +33,8 @@ import { BOOTSTRAP_PROGRAM_ADDRESSES, BOOTSTRAP_FAUCET_VAULT_ADDRESS } from '@th
  *   everything DOWNSTREAM (config address, root, fee, treasury) is derived/read from chain at
  *   runtime; this address alone must be listed here, and its provenance must be a dated evidence
  *   entry under scripts/defi-evidence/ (see the betanet comment).
+ * @property {boolean} customRegistrarFeeCollectionVerified - true only after a successful strict-fee
+ *   registration AND renewal with a measured treasury delta for this exact deployment.
  * @property {boolean} isTestnet    - Test/dev network. Drives faucet visibility and the badge.
  * @property {boolean} enabled      - Whether the network is selectable yet
  * @property {'devnet'|'testnet'|'mainnet'|'local'} environment
@@ -102,6 +104,9 @@ export const NETWORKS = {
     // root/fee/treasury from the parsed config account; if that account is absent or
     // unparseable on the running chain the UI simply does not offer custom registration.
     customRegistrarProgram: 'ta2vDCBzzptN2qVZgz6PXsCp5cNB7Nef4yeQ3W-OqzZcfF',
+    // FAIL CLOSED: strict fees reverted with AccountNotWritable; no treasury delta is verified.
+    // Set true only after a strict register AND renew both succeed with a measured delta.
+    customRegistrarFeeCollectionVerified: false,
   },
 
   // Local node support is NOT offered in the shipped wallet — selecting it bound the

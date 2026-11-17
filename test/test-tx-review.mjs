@@ -160,6 +160,7 @@ const domainFacts = (overrides = {}) => ({
   // The DEPLOYED program runs best-effort: it attempts the charge and ignores a refusal.
   // Facts that describe a strict deployment set this to true explicitly.
   feeEnforced: false,
+  feeCollectionVerified: false,
   feePolicy: 'best effort',
   nativeBalanceUnits: '5000000',
   availability: { state: 'available', readError: null },
@@ -405,7 +406,7 @@ console.log('[3] decoders: domain writes');
     register.operation.summary);
 
   // A STRICT deployment is the case the tiered contract exists for: the price is charged.
-  const enforced = decode('domain-register', domainFacts({ feeEnforced: true, feePolicy: 'strict' }));
+  const enforced = decode('domain-register', domainFacts({ feeEnforced: true, feePolicy: 'strict', feeCollectionVerified: true }));
   model.assertReviewContent(enforced);
   ok('a strict registrar puts the term price in the money table',
     enforced.assets.outgoing.length === 1
@@ -416,12 +417,19 @@ console.log('[3] decoders: domain writes');
     /collects/.test(enforced.operation.summary)
       && !warningIds(enforced).includes('registrar-fee-unenforced'),
     enforced.operation.summary);
-  const enforcedPoor = decode('domain-register', domainFacts({ feeEnforced: true, nativeBalanceUnits: '1' }));
+  const enforcedPoor = decode('domain-register', domainFacts({ feeEnforced: true, feeCollectionVerified: true, nativeBalanceUnits: '1' }));
   ok('a balance that cannot cover an ENFORCED fee blocks signing',
     warningIds(enforcedPoor).includes('registrar-fee-unpayable')
       && model.stateFromWarnings(enforcedPoor.warnings) === 'blocked');
 
   // A zero price is genuinely free, and says so.
+  const unverifiedStrict = decode('domain-register', domainFacts({ feeEnforced: true, feePolicy: 'strict', feeCollectionVerified: false }));
+  ok('an unverified strict fee blocks signing and is not shown as a collected outgoing payment',
+    warningIds(unverifiedStrict).includes('registrar-fee-collection-unverified')
+      && model.stateFromWarnings(unverifiedStrict.warnings) === 'blocked'
+      && unverifiedStrict.assets.outgoing.length === 0
+      && /signing is disabled/.test(unverifiedStrict.operation.summary));
+
   const free = decode('domain-register', domainFacts({ totalPriceUnits: '0', pricePerYear: '0' }));
   ok('a zero-priced registrar says the registration is free',
     free.assets.outgoing.length === 0 && /No registration fee/.test(free.operation.summary),
@@ -469,7 +477,7 @@ console.log('[3] decoders: domain writes');
   // branch that was supposed to cover it lived in the PURCHASE decoder, crashed with a
   // ReferenceError, and could never be reached by the background anyway.
   const customRenewFacts = {
-    ...domainFacts(),
+    ...domainFacts({ feeCollectionVerified: true }),
     availability: { state: 'mine', readError: null },
     lease: { owner: SENDER, endTime: '1795000000', expiredHint: false, mine: true },
     instruction: { name: 'Renew domain lease', opcode: 2 },
@@ -479,6 +487,15 @@ console.log('[3] decoders: domain writes');
   model.assertReviewContent(freeRenew);
   ok('a zero-fee custom-registrar renewal states no renewal fee',
     /No renewal fee/.test(freeRenew.operation.summary));
+
+  const unverifiedCustomRenew = decode('domain-renew', {
+    ...customRenewFacts, feeEnforced: true, feePolicy: 'strict', feeCollectionVerified: false,
+  });
+  ok('an unverified strict renewal blocks signing without claiming collection',
+    warningIds(unverifiedCustomRenew).includes('registrar-fee-collection-unverified')
+      && model.stateFromWarnings(unverifiedCustomRenew.warnings) === 'blocked'
+      && unverifiedCustomRenew.assets.outgoing.length === 0
+      && /signing is disabled/.test(unverifiedCustomRenew.operation.summary));
 
   const customRenew = decode('domain-renew', customRenewFacts);
   model.assertReviewContent(customRenew);
