@@ -178,7 +178,7 @@ console.log('[3] a token send: the fee is named in the right currency');
   ok(!lines.includes('Total'), 'no total is invented from a fee that was never quoted');
 }
 
-console.log('[4] a faucet claim: what arrives, and the rate limit');
+console.log('[4] a native faucet claim: what arrives, with no fabricated rate-limit facts');
 {
   const lines = visibleLines(card('faucet-claim', {
     fromAddress: ACCOUNT.address,
@@ -189,10 +189,10 @@ console.log('[4] a faucet claim: what arrives, and the rate limit');
     programAddress: 'taFaucetProgram111111111111111111111111111111',
     networkLabel: 'Betanet',
     accountExists: true,
-    limit: { supported: true, remainingAmount: '500000000', rule: { windowLabel: '24h' } },
   }).el);
   ok(lines[0] === 'Claim 0.5 THRU from the faucet', 'the title says what arrives', lines[0]);
   ok(lines.includes('You receive') && lines.includes('+0.5 THRU'), 'the incoming amount is signed');
+  ok(!lines.some((line) => /rate.limit|allowance/i.test(line)), 'no native-faucet rate limit is invented');
   ok(!lines.includes('You pay'), 'a faucet claim has nothing to pay');
 }
 

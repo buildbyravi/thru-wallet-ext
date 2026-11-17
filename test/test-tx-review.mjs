@@ -211,10 +211,6 @@ const claimFacts = {
   amountUnits: '10000',
   capUnits: '10000',
   accountExists: true,
-  limit: {
-    supported: true, paused: false, exhausted: false, remainingAmount: '10000',
-    window: '3600', resetAtUnixSec: null,
-  },
   fee: { supported: false, reason: 'not reported' },
   programAddress: asAddress(14),
   vaultAddress: asAddress(15),
@@ -592,10 +588,6 @@ console.log('[4] decoders: faucet claims and raw transactions');
     amountUnits: '10000',
     capUnits: '10000',
     accountExists: true,
-    limit: {
-      supported: true, paused: false, exhausted: false, remainingAmount: '10000',
-      window: '3600', resetAtUnixSec: null,
-    },
     fee: { supported: false, reason: 'not reported' },
     programAddress: asAddress(14),
     vaultAddress: asAddress(15),
@@ -606,15 +598,10 @@ console.log('[4] decoders: faucet claims and raw transactions');
     claim.assets.incoming.length === 1 && claim.assets.outgoing.length === 0
       && claim.assets.fee.supported === false);
 
-  const exhausted = decode('faucet-claim', {
-    ...claim.fee, fromAddress: SENDER, amountUnits: '10000', capUnits: '10000', accountExists: true,
-    limit: { supported: true, paused: false, exhausted: true, remainingAmount: '0', window: '3600', resetAtUnixSec: '1790000000' },
-    fee: { supported: false, reason: 'not reported' }, programAddress: asAddress(14), networkId: 'betanet', networkLabel: 'Betanet',
-  });
-  ok('an exhausted faucet allowance blocks signing', warningIds(exhausted).includes('faucet-exhausted'));
+  ok('native faucet claim review makes no rate-limit claim',
+    !warningIds(claim).some((id) => id.includes('limit') || id.includes('faucet-paused')));
 
-  // Audit F-07: unknown account state was rendered as "will be activated", and a rate-limit
-  // policy pointing at another program was silently ignored.
+  // Audit F-07: unknown account state was rendered as "will be activated".
   const unknownAccount = decode('faucet-claim', {
     ...claimFacts, accountExists: null,
   });
@@ -622,13 +609,7 @@ console.log('[4] decoders: faucet claims and raw transactions');
     warningIds(unknownAccount).includes('account-state-unverified')
       && !warningIds(unknownAccount).includes('account-activation')
       && model.stateFromWarnings(unknownAccount.warnings) === 'ready');
-  const mismatch = decode('faucet-claim', {
-    ...claimFacts,
-    limit: { ...claimFacts.limit, targetMatchesFaucet: false, reason: 'the policy targets a different faucet program' },
-  });
-  ok('a faucet policy that targets another program blocks the claim',
-    warningIds(mismatch).includes('faucet-target-mismatch')
-      && model.stateFromWarnings(mismatch.warnings) === 'blocked');
+
 
   const raw = decode('raw', {
     programAddress: asAddress(16),

@@ -57,8 +57,8 @@ const NON_SIGNING_GUARDED = new Map([
   }],
   ['tx.claimFaucet', {
     auth: 'unlocked',
-    why: 'A faucet claim is a rate-limited test-network credit, not a value transfer out of the '
-      + 'wallet; it is guarded for the in-flight network binding but deliberately needs no '
+    why: 'A native faucet claim is an incoming test-network credit, not a value transfer out of '
+      + 'the wallet; it is guarded for the in-flight network binding but deliberately needs no '
       + 'signing password.',
   }],
 ]);

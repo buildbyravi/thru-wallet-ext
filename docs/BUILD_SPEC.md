@@ -12,7 +12,7 @@ Where another document disagrees with `src/`, `src/` wins. Where documents disag
 
 Maintain the production-grade self-custody Chrome MV3 wallet for the **Thru native Layer 1**: encrypted multi-keyring vault, owned-account activation, network-scoped native and token balances, reviewed value-moving operations (`Send`, `Token Send`, `Domains`, `Faucet`), `Receive`, `History`, and `Settings`.
 
-- **Stack:** Vanilla ES modules bundled with `esbuild` (`0.28.1`), exact-pinned `@thru/sdk@0.4.4` (including `@thru/sdk/crypto`) and `@thru/programs@0.4.4`. Zero UI frameworks, zero CSS preprocessors, zero external runtime dependencies (`Rule 5`). The rate-limit read adapter remains local and read-only because `@thru/programs@0.4.4` removed its former rate-limit client export.
+- **Stack:** Vanilla ES modules bundled with `esbuild` (`0.28.1`), exact-pinned `@thru/sdk@0.4.4` (including `@thru/sdk/crypto`) and `@thru/programs@0.4.4`. Zero UI frameworks, zero CSS preprocessors, zero external runtime dependencies (`Rule 5`). The native THRU faucet has no per-account rate-limit policy; `tx.getFaucetLimit` remains a compatibility response only and does not read the separate THRUSD faucet policy.
 - **Delivery Sequence:** `Preserve -> Understand -> Reuse -> Centralize -> Isolate -> Test -> Verify -> Ship -> Document -> Delete obsolete code`.
 - **Rabby Reference Boundary:** Rabby Wallet (`MIT`, brand/logo reserved) informs UX hierarchy and approval legibility only — never copy Rabby source code, icons, or EVM/ABI/gas assumptions.
 - **Mandatory Local Gate:** Run `npm run build && npm test` before and after every code or doc change.
@@ -59,7 +59,7 @@ All 15 routes are registered in `src/ui/app/boot.js`, mount immediately from loc
 6. **Domains (`/name`, `v21`–`v31`):**
    - Two tabs (`Register` and `My Domains`), `.thru`-only registration and renewal (`via: 'custom'` tiered layout-2 registrar first, official paid registry fallback), `.id` lookup-only support, per-network tracked inventory (`thru_registered_domains`), and `tx-units.networkFeeUnits` header fees. Full specification: `docs/guides/domains-and-registrar.md`.
 7. **Faucet (`/faucet`, `v13`, `v24`):**
-   - Testnet THRU claim (`raw base units`, `10,000` cap on Betanet) with live read-only compatibility-adapter usage/window readout (`tx.getFaucetLimit`; the package removed its former `ratelimit` export), routed through `faucet-claim` review and bound to `fromAddress` + `networkId`.
+   - Testnet native THRU claim (`raw base units`, network-configured `10,000` per-claim cap on Betanet); there is no per-account rate-limit readout (the separate THRUSD faucet policy does not apply). Claims use `faucet-claim` review and are bound to `fromAddress` + `networkId`.
 8. **Receive (`/receive`):**
    - Branded canvas QR (`src/popup/qr.js`), full `ta...` address, inline `"Copied"` copy affordance, account label, explicit active-network badge, and explorer link.
 9. **History (`/history`, `v9`–`v12`):**

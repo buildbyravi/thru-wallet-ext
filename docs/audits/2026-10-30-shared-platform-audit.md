@@ -10,6 +10,11 @@ environment (`libnspr4`/`libnss3` absent), so no pixel or real-extension evidenc
 below; layout consequences are derived from the stylesheet and are labelled as such. No live-chain
 call was made.
 
+**Owner correction (2026-11-17):** This historical audit's references to `classifyFaucetError` and a
+native faucet rate-limit backend are superseded. The native THRU faucet has no per-account rate
+limit; the separate THRUSD faucet's policy does not apply to native claims. Current source keeps
+`tx.getFaucetLimit` only as a not-applicable compatibility response.
+
 Branch/head: `arena/0439c226-thru-wallet-ext` at `0cb010b`. Baselines recorded before any edit:
 
 | Gate | Result |

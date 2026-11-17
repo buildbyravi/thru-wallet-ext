@@ -31,8 +31,8 @@ import {
 import * as bridge from '../bridge.js';
 import { formatThru } from '../../../shared/format.js';
 
-// The display default, used only before the network tells us the faucet's own per-claim cap.
-// A claim submitted at this value would be a guess, so `claim()` refuses until the cap is known.
+// Fallback display value for networks that do not publish a per-claim cap. The service
+// validates the amount against the active network before signing.
 const DEFAULT_CLAIM_UNITS = 10_000n;
 
 export function FaucetRoute({ navigate, back }) {
@@ -45,10 +45,6 @@ export function FaucetRoute({ navigate, back }) {
   let account = null;
   let network = null;
   let capUnits = 0n;
-  // tx.getFaucetLimit response (contract v24) or null when unavailable. Only fields the
-  // chain returned are rendered — the service marks every unknown explicitly.
-  let limitInfo = null;
-  let limitBoxEl = null;
   let claimBtnEl = null;
 
   function track(c) { owned.push(c); return c; }
@@ -84,91 +80,6 @@ export function FaucetRoute({ navigate, back }) {
       })).el));
   }
 
-  // --- Rate-limit awareness (tx.getFaucetLimit, contract v24) -------------------------
-  // Only strings built from literally-read fields; anything unknown stays unrendered or
-  // is labelled "unknown". Never estimate chain state we did not read.
-
-  function fmtWindow(summary) {
-    const w = summary.window;
-    if (summary.clockLabel === 'seconds') {
-      const sec = Number(w);
-      if (Number.isFinite(sec)) {
-        if (sec % 3600 === 0) return `${sec / 3600} h`;
-        if (sec % 60 === 0) return `${sec / 60} min`;
-        return `${sec} s`;
-      }
-      return `${w} s`;
-    }
-    if (summary.clockLabel === 'slots') return `${w} slots`;
-    return `${w} ${summary.clockLabel} units`;
-  }
-
-  function fmtReset(summary) {
-    if (summary.resetAtUnixSec == null) {
-      return summary.clockLabel === 'slots'
-        ? 'reset time is slot-clocked (not shown as a clock time here)'
-        : null;
-    }
-    const at = new Date(Number(summary.resetAtUnixSec) * 1000);
-    if (Number.isNaN(at.getTime())) return null;
-    return `resets ${at.toLocaleTimeString()}`;
-  }
-
-  /** Rebuild the limit readout box and apply paused/exhausted UI state. */
-  function renderLimitNote() {
-    if (!limitBoxEl) return;
-    while (limitBoxEl.firstChild) limitBoxEl.removeChild(limitBoxEl.firstChild);
-    if (!limitInfo?.supported) return; // unknown limit state ⇒ stay silent, claim stays possible
-
-    const exhaustedSummaries = [];
-    for (const rule of limitInfo.rules ?? []) {
-      if (!rule.keyReadable || !rule.summary) continue;
-      const s = rule.summary;
-      const scope = s.keyKindLabel === 'fee-payer'
-        ? 'per account'
-        : (s.keyKindLabel === 'global' ? 'chain-wide' : null);
-      const win = fmtWindow(s);
-      const parts = [];
-      if (s.maxCalls !== '0') {
-        parts.push(s.remainingCalls != null
-          ? `${s.remainingCalls} of ${s.maxCalls} claims left`
-          : `up to ${s.maxCalls} claims`);
-      }
-      if (s.maxAmount !== '0') {
-        parts.push(s.remainingAmount != null
-          ? `${s.remainingAmount} of ${s.maxAmount} units left`
-          : `up to ${s.maxAmount} units`);
-      }
-      if (!parts.length) continue;
-      const reset = fmtReset(s);
-      limitBoxEl.appendChild(h('p', { class: 'hint', text:
-        `Faucet rate limit (${scope ? `${scope}, ` : ''}per ${win}): ${parts.join(' · ')}`
-        + (reset ? ` — ${reset}` : '') }));
-      if (s.exhausted) exhaustedSummaries.push(s);
-    }
-
-    // An on-chain per-claim cap tighter than the generic claim cap: say it plainly.
-    const perCall = BigInt(limitInfo.maxAmountPerCall ?? '0');
-    if (perCall > 0n && perCall < capUnits) {
-      limitBoxEl.appendChild(h('p', { class: 'hint', text:
-        `The faucet's on-chain policy allows at most ${perCall} base units per claim — `
-        + 'lower than this wallet\'s generic cap.' }));
-    }
-
-    if (limitInfo.paused) {
-      banner.set('The faucet is paused by its administrator on-chain. Claims will fail until it resumes.', 'warning');
-      claimBtnEl?.update({ disabled: true });
-      return;
-    }
-    if (exhaustedSummaries.length) {
-      const resets = exhaustedSummaries.map(fmtReset).filter(Boolean).join('; ');
-      banner.set(`The faucet rate limit for this window is used up.${resets ? ` ${resets}.` : ' Try again later.'}`, 'warning');
-      claimBtnEl?.update({ disabled: true });
-      return;
-    }
-    claimBtnEl?.update({ disabled: false });
-  }
-
   function renderForm() {
     clearBody();
 
@@ -195,30 +106,7 @@ export function FaucetRoute({ navigate, back }) {
     body.appendChild(amount.el);
     body.appendChild(h('p', { class: 'hint', text:
       'The faucet pays your active account. Claiming is free and does not need a balance.' }));
-    limitBoxEl = h('div', { class: 'stack stack-2' });
-    body.appendChild(limitBoxEl);
-    body.appendChild(h('div', { class: 'screen-actions' }, [
-      claimBtn.el,
-      track(Button({
-        label: 'Re-check limit',
-        variant: 'text',
-        onClick: async () => {
-          banner.clear();
-          await refreshLimit();
-        },
-      })).el,
-    ]));
-    renderLimitNote();
-  }
-
-  /** Refresh the on-chain limit readout; failures degrade to silence, never fake state. */
-  async function refreshLimit() {
-    try {
-      limitInfo = await bridge.send('tx.getFaucetLimit');
-    } catch {
-      limitInfo = null;
-    }
-    renderLimitNote();
+    body.appendChild(h('div', { class: 'screen-actions' }, claimBtn.el));
   }
 
   let claiming = false;
@@ -236,7 +124,7 @@ export function FaucetRoute({ navigate, back }) {
     // the network. Before that read there is nothing honest to submit — DEFAULT_CLAIM_UNITS is a
     // display value, not a fact about this faucet — so the claim waits instead of guessing.
     if (capUnits <= 0n) {
-      banner.set('The faucet limit is not available yet. Re-check the limit, then claim.');
+      banner.set('The faucet claim amount is not available yet. Try again shortly.');
       return;
     }
     // The cap can move while this screen is open. If it did, re-render and let the user read the
@@ -352,9 +240,6 @@ export function FaucetRoute({ navigate, back }) {
           + 'before trying again.',
       });
       banner.set(classified.message, classified.kind === 'uncertain' ? 'warning' : 'error');
-      // A failed claim often CONSUMES the failed window slot or proves the window exhausted
-      // — refresh the on-chain limit state so the note reflects what the chain now says.
-      void refreshLimit();
     } finally {
       submitting = false;
       if (!destroyed) claimBtnEl?.update({ disabled: false });
@@ -384,8 +269,7 @@ export function FaucetRoute({ navigate, back }) {
       ]),
       h('p', { class: 'hint', text: delta != null && delta > 0n
         ? 'Confirmed by re-reading your balance.'
-        : 'The balance has not changed yet. Faucet claims can take a moment, or this one may '
-          + 'have been rate-limited.' }),
+        : 'The balance has not changed yet. Faucet claims can take a moment to appear.' }),
     ]));
 
     if (delta != null && delta !== requested && delta > 0n) {
@@ -446,11 +330,7 @@ export function FaucetRoute({ navigate, back }) {
       }
       // faucetMaxPerClaim crosses the port as a string, since JSON cannot carry BigInt.
       capUnits = net.faucetMaxPerClaim != null ? BigInt(net.faucetMaxPerClaim) : DEFAULT_CLAIM_UNITS;
-      limitInfo = null;
       renderForm();
-      // The limit readout is a separate chain read; it fills in under the form without
-      // delaying the claim affordance (v24: { supported:false } states render as nothing).
-      refreshLimit();
     } catch (error) {
       clearBody();
       banner.set(error.message || 'Could not load the faucet.');

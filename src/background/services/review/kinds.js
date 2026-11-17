@@ -741,39 +741,13 @@ async function faucetClaimFacts(params, { account, network }) {
     throw coded('INVALID_INPUT', `This faucet pays at most ${capUnits} base units per claim.`);
   }
 
-  const [limit, state] = await Promise.all([
-    txService.getFaucetLimit().catch((error) => ({
-      supported: false,
-      reason: error?.message || 'The faucet policy could not be read.',
-    })),
-    accountState(account.address),
-  ]);
-
-  const rule = Array.isArray(limit?.rules) ? limit.rules[0] : null;
-  const summary = rule?.summary ?? null;
-  const paused = Boolean(limit?.paused);
-  const exhausted = summary?.exhausted === true;
-  const targetMismatch = limit?.supported === true && limit.targetMatchesFaucet === false;
-
+  const state = await accountState(account.address);
   return {
     fromAddress: account.address,
     fromLabel: account.label ?? null,
     amountUnits,
     capUnits,
     accountExists: state.exists === true,
-    limit: limit?.supported
-      ? {
-        supported: true,
-        paused,
-        exhausted,
-        targetMatchesFaucet: limit.targetMatchesFaucet !== false,
-        remainingAmount: summary?.remainingAmount == null ? null : String(summary.remainingAmount),
-        window: summary?.window == null ? null : String(summary.window),
-        resetAtUnixSec: summary?.resetAtUnixSec == null ? null : String(summary.resetAtUnixSec),
-        maxAmountPerCall: limit.maxAmountPerCall == null ? null : String(limit.maxAmountPerCall),
-        reason: targetMismatch ? 'the policy targets a different faucet program' : null,
-      }
-      : { supported: false, reason: limit?.reason ?? 'The faucet policy could not be read.' },
     fee: {
       supported: false,
       reason: 'The faucet claim path does not report a charged fee, so none is shown.',
@@ -784,20 +758,8 @@ async function faucetClaimFacts(params, { account, network }) {
 }
 
 async function faucetClaimRecheck(record) {
-  const limit = await txService.getFaucetLimit().catch(() => null);
-  if (!limit?.supported) return; // unknown now; the handler still enforces on-chain
-  if (limit.paused) {
-    throw coded('REVIEW_FAUCET_CHANGED', 'The faucet was paused after this review.');
-  }
-  if (limit.targetMatchesFaucet === false) {
-    throw coded('REVIEW_FAUCET_CHANGED',
-      'The faucet policy no longer targets this network\'s faucet program.');
-  }
-  const summary = Array.isArray(limit.rules) ? limit.rules[0]?.summary : null;
-  if (summary?.exhausted) {
-    throw coded('REVIEW_FAUCET_CHANGED',
-      'This account used its faucet allowance after this review.');
-  }
+  // There is no native-faucet rate-limit policy to re-read. The handler still validates the
+  // reviewed account, network and network-configured per-claim cap.
   void record;
 }
 

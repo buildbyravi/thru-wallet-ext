@@ -1205,29 +1205,12 @@ function prepareReviewFixture(kind, params) {
       networkLabel: network.label,
     };
   } else if (kind === 'faucet-claim') {
-    // Mirrors faucetClaimFacts: the policy read decides paused/exhausted, and an unavailable
-    // policy is declared rather than treated as "no limit".
-    const limit = FIXTURES['tx.getFaucetLimit']();
-    const summary = Array.isArray(limit?.rules) ? limit.rules[0]?.summary ?? null : null;
     facts = {
       fromAddress: account.address,
       fromLabel: account.label,
       amountUnits: String(params.amountUnits),
       capUnits: String(network.faucetMaxPerClaim ?? '10000'),
       accountExists: true,
-      limit: limit?.supported
-        ? {
-          supported: true,
-          paused: Boolean(limit.paused),
-          exhausted: summary?.exhausted === true,
-          targetMatchesFaucet: limit.targetMatchesFaucet !== false,
-          remainingAmount: summary?.remainingAmount ?? null,
-          window: summary?.window ?? null,
-          resetAtUnixSec: summary?.resetAtUnixSec ?? null,
-          maxAmountPerCall: limit.maxAmountPerCall ?? null,
-          reason: null,
-        }
-        : { supported: false, reason: limit?.reason || 'The faucet policy could not be read.' },
       fee: {
         supported: false,
         reason: 'The faucet claim path does not report a charged fee, so none is shown.',
@@ -1677,31 +1660,12 @@ const FIXTURES = {
     networkId: activeNetwork().id,
   }),
   'tx.getAccountInfo': () => ({ exists: true, balance: activeAccount().balance }),
-  // v24 faucet rate-limit read: one fee-payer-keyed rule with a bucket still absent ⇒
-  // provably zero usage (matches ratelimit.summarizeRule's absent-bucket semantics exactly).
+  // Retained for API compatibility; the native THRU faucet does not have a per-account policy.
   'tx.getFaucetLimit': () => ({
-
-    supported: true,
+    supported: false,
+    applicable: false,
+    reason: 'native-faucet-not-rate-limited',
     networkId: activeNetwork().id,
-    policyAddress: 'taTestFaucetPolicy',
-    policyId: '0',
-    target: activeNetwork().faucetProgramId,
-    targetMatchesFaucet: true,
-    paused: false,
-    maxAmountPerCall: '10000',
-    checkedAt: Date.now(),
-    rules: [{
-      idx: 0,
-      keyReadable: true,
-      bucketAddress: 'taTestFaucetBucket',
-      summary: {
-        keyKind: 1, keyKindLabel: 'fee-payer', clock: 1, clockLabel: 'seconds',
-        window: '600', maxCalls: '3', maxAmount: '30000',
-        inCurrentWindow: true, usedCallsInWindow: '0', usedAmountInWindow: '0',
-        remainingCalls: '3', remainingAmount: '30000',
-        exhausted: false, resetAtUnixSec: null, bucket: null,
-      },
-    }],
   }),
   'tx.getBalances': ({ addresses } = {}) => {
     const out = {};
@@ -4928,8 +4892,6 @@ async function faucetReviewTest() {
     prepared.push(params);
     return realPrepare(params);
   };
-  const realLimit = FIXTURES['tx.getFaucetLimit'];
-
   const route = FaucetRoute({ params: {}, navigate() {}, back() {} });
   DOC.body.appendChild(route.el);
   await settle();
@@ -4938,6 +4900,10 @@ async function faucetReviewTest() {
   ok('the faucet form offers a claim without any review pre-fetched',
     Boolean(claimBtn) && prepared.length === 0,
     `${route.el.textContent.slice(0, 120)}`);
+  ok('native faucet route neither reads nor displays a rate-limit policy',
+    !chromeLog.calls.includes('tx.getFaucetLimit')
+      && !/rate.limit|allowance|remaining/i.test(textOf(route.el)),
+    chromeLog.calls.filter((method) => method === 'tx.getFaucetLimit').length.toString());
 
   // The claim amount is fixed by the faucet, so the field is a VALUE, not an input. It is
   // read-only and shows the cap the network reported — never an editable box that silently
@@ -4973,7 +4939,7 @@ async function faucetReviewTest() {
     cardEl?.textContent?.slice(0, 200));
   // A faucet claim has no non-money facts, so it renders exactly one table: the money.
   // v1.5.0 splits the tables: money first (you receive / network fee), then the operation's
-  // non-money facts (the faucet's remaining allowance). Never a third, never stacked sections.
+  // non-money facts when present. The native faucet has no allowance table, so only money is shown.
   ok('the card carries the money table plus at most one facts table, and no stacked sections',
     cardEl?.querySelectorAll('.detail-table').length >= 1
       && cardEl?.querySelectorAll('.detail-table').length <= 2
@@ -5023,31 +4989,6 @@ async function faucetReviewTest() {
   ok('the faucet route tears down without leaving a listener behind',
     detachedListeners().length === 0, JSON.stringify(detachedListeners().slice(0, 3)));
   route.el.remove();
-
-  // A paused faucet is proof of failure. The route refuses BEFORE preparing a review, which is
-  // the strongest form: no decoder runs, nothing is ever confirmable.
-  resetBackend(SCENARIOS[2]);
-  resetDom();
-  prepared.length = 0;
-  FIXTURES['tx.getFaucetLimit'] = () => ({ ...realLimit(), paused: true });
-  const pausedRoute = FaucetRoute({ params: {}, navigate() {}, back() {} });
-  DOC.body.appendChild(pausedRoute.el);
-  await settle();
-  const pausedClaim = buttons(pausedRoute.el, /claim on-chain/i)[0];
-  ok('a paused faucet disables the claim and says why, before any review exists',
-    pausedClaim?.disabled === true
-      && /paused by its administrator/i.test(textOf(pausedRoute.el))
-      && prepared.length === 0,
-    `disabled=${pausedClaim?.disabled} prepared=${prepared.length}`);
-  click(pausedClaim);
-  await settle();
-  ok('clicking the disabled claim cannot reach a prepare or a signing call',
-    prepared.length === 0 && !chromeLog.calls.includes('tx.claimFaucet')
-      && !chromeLog.calls.includes('tx.confirmReview'));
-  pausedRoute.destroy();
-  FIXTURES['tx.getFaucetLimit'] = realLimit;
-  await settle();
-  pausedRoute.el.remove();
 
   // A timeout during submission is an UNKNOWN outcome, never a failure message.
   // Reviewer #16: the window between "sheet closed" and "submit settled" must be guarded —

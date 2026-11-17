@@ -112,12 +112,10 @@
 //   append: name.getCanonicalRoot (auth none) exposes the on-chain-proof canonical-root
 //   discovery that name.lookup already performs internally, so the UI can offer free
 //   registration beneath a root that actually exists on the running network.
-//   v24 (2026-10-24, owner audit priority 1): tx.getFaucetLimit — a pure READ of the
-//   faucet's on-chain rate-limit policy (read by the src/lib/ratelimit.js compatibility
-//   adapter using the historical bootstrap pin) plus the active account's per-rule bucket usage. Truth discipline: unknown states are
-//   explicit (supported:false reasons; keyReadable:false; null window fields for
-//   slot-clocked rules), never fabricated numbers. Also a behavior note on tx.claimFaucet:
-//   ratelimit-coded vmErrors are now re-labelled honestly (code 'FAUCET_RATE_LIMITED').
+//   v24 (2026-10-24): tx.getFaucetLimit was added for a faucet-policy read. Owner clarified
+//   the native THRU faucet has no per-account rate limit (the separate THRUSD faucet does),
+//   so the method is retained for contract compatibility and now reports not applicable without
+//   reading a policy. Native faucet vmErrors are not classified as rate-limit failures.
 //   v25 (2026-10-25, owner-directed NEXT of the registrar live verification): the custom
 //   thru-custom-registrar (D-016, live-verified on Betanet 2026-10-25) joins /name as a
 //   second registration provider. Two pure reads (name.getCustomRegistrar,
@@ -593,7 +591,7 @@ export const METHODS = {
   },
   'tx.getFaucetLimit': {
     params: [],
-    returns: 'Faucet rate-limit state: { supported, reason } or { supported: true, paused, maxAmountPerCall, rules[] } with read-only facts; unknown pieces are null/false-flagged, never invented',
+    returns: '{ supported: false, applicable: false, reason: "native-faucet-not-rate-limited" } — retained for compatibility; the native THRU faucet has no per-account rate-limit policy',
     auth: 'none',
     since: 24,
   },

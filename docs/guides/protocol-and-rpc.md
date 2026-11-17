@@ -20,7 +20,7 @@
 | `name-service.js` | Official system Name Service PDA derivations (`rootRegistrarAddress`, subdomain PDAs) and first-party `initRoot` / `register` / `APPEND_RECORD` instruction builders/parsers. |
 | `registrar.js` | Official `.thru` paid registrar config/lease parsers and `purchase` / `renewLease` / `claimExpired` builders. |
 | `custom-registrar.js` | `thru-custom-registrar` ABI v2 client (`InstructionContext` sorted-account index resolution, layout-1/layout-2 `RegistrarConfig` & `DomainLease` parsers, tiered `pricePerYearFor` / `totalForTerm`). |
-| `ratelimit.js` | read-only faucet policy and per-account bucket compatibility parser (`tx.getFaucetLimit`; `@thru/programs@0.4.4` removed the former `ratelimit` export). |
+| Native faucet policy | The native THRU faucet has no per-account rate limit. The legacy `tx.getFaucetLimit` method returns not applicable; THRUSD rate limits are separate. |
 | `amm.js` | `@thru/programs/amm` pool derivation, state parser, constant-product `quoteAmmSwapExactIn`, and swap instruction helpers (used by dark-launched `dex-service.js`). |
 | `feed-crypto.js` | `@thru/sdk/crypto` Ed25519 `SignatureDomain.MSG` verification for signed off-chain feed records (`feed-record.js`). |
 
