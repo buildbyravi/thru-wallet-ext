@@ -574,3 +574,16 @@ dated September/October audits remain historical evidence, not implementation in
 3. **Monetization & Ecosystem Revenue:**
    - Under Option A, third-party profile builders and ecosystem dApps integrate directly with our smart contracts.
    - Any new user who creates a profile or claims a handle through these external platforms registers their `.thru` domain through our custom registrar smart contracts, generating on-chain registration fees for the treasury.
+
+## D-029 — Release v1.5.0 (2026-11-18, owner directive)
+
+**Owner directive.** Release version 1.5.0 for the Chrome extension and repository.
+
+**Context.** Following the stabilization of Contract v29–v33, the integration of `@thru/sdk@0.4.4` and `@thru/programs@0.4.4`, and on-chain Betanet validation of best-effort custom registrar configuration (`feePolicy = 0`) enabling live `.thru` domain minting, the repository advances to release version 1.5.0.
+
+**Shipped scope in v1.5.0:**
+1. **Dependency Modernization:** Pinned exact `@thru/sdk@0.4.4` and `@thru/programs@0.4.4`. Removed obsolete native-faucet rate-limit adapter; legacy `tx.getFaucetLimit` method explicitly returns not-applicable without RPC calls.
+2. **On-Chain Betanet Registrar:** Verified on-chain `UpdateConfig` execution establishing `best-effort` fee policy (`0`), tiers `100,000 / 10,000 / 1,000` base units, verified live mint of `audit7v7e.thru`, and eliminated duplicate fee-payer account entries.
+3. **Unified Review Pipeline & Single-Use Consent (v29–v32):** Value-moving operations enforce background consent tokens (`confirmReview`), single-surface toast notifications (Rule 29), and strict account/network binding.
+4. **Verified Token Management & Name Services (v31–v33):** Added `token.importVerified` (`auth: 'unlocked'`) with verified decimals persistence, and contract methods `name.setRecord` and `name.reverseLookup`.
+5. **Version Bumps:** Bumped `package.json`, `package-lock.json`, and `src/manifest.json` from `1.4.1` to `1.5.0`.

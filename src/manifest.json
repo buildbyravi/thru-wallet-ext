@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Thru Wallet",
-  "version": "1.4.1",
+  "version": "1.5.0",
   "description": "High-performance self-custody wallet and key manager for Thru.",
   "homepage_url": "https://thruwallet.vercel.app",
   "action": {

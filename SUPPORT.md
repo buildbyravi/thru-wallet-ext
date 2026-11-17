@@ -16,7 +16,7 @@ Thru Wallet is an open-source, self-custody Chrome MV3 extension for Thru's **Be
 
 1. **Telegram Support Group:** Reach maintainers and community members at [t.me/+dA8TwsOECcIxZWZl](https://t.me/+dA8TwsOECcIxZWZl).
 2. **Search Existing Issues:** Check [GitHub Issues](https://github.com/buildbyravi/thru-wallet-ext/issues).
-3. **Open a Bug Report:** Include your extension version (`1.4.1`), Chrome version, OS, reproduction steps, and visible error text. **Never share your 12-word recovery phrase, private key, or password.**
+3. **Open a Bug Report:** Include your extension version (`1.5.0`), Chrome version, OS, reproduction steps, and visible error text. **Never share your 12-word recovery phrase, private key, or password.**
 
 ---
 

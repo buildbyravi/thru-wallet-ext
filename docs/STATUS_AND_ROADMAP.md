@@ -45,11 +45,13 @@ evidence is limited to the mocked-runtime Chrome harness recorded in the smoke c
 
 ## 3. Release Blockers & Ordered Next Work
 
-### Active Release Blockers Before Bumping Package Version `1.4.1`
+### Release Status & Ordered Next Work
+
+Version `1.5.0` released per owner directive (`docs/DECISIONS.md` D-029) on 2026-11-18, packaging @thru 0.4.4, Betanet registrar best-effort configuration, and contract v29–v33 security and review consent hardening.
 
 1. **Custom Registrar Upgrade & Measured Treasury Delta:** Deploy the checked-in `33,714`-byte `contracts/thru-custom-registrar/thru-custom-registrar.bin` to Betanet, execute one real `Register` **and** `Renew` with `--probe-collection`, verify the non-canonical config `0xD112` rejection, and record an observed treasury balance delta before any surface claims a registration charge was collected. (Mainnet contract release additionally requires gating `Initialize` on upgrade authority and adding a `max_fee` bound on `Register`/`Renew` per `docs/GLOBAL_SMART_CONTRACT_POLICY.md`.)
 2. **`name.setRecord` Product & Surface Disposition (`D-028`):** Per owner directive, the extension remains focused on Option B (high-speed minting, renewal, primary aliases; complex editing deferred to web / future desktop tab "Expand" button), while Option A remains enabled at the contract layer to support external profile builders and monetize registrations. Live Betanet probe of append-only limits remains planned prior to any UI editing surface.
-3. **Owner-Deferred Domain Copy & Version Bump:** `"Import"` (`name.trackDomain`, read-only local watching) and `"Unlink"` (`name.unlinkPrimary`, local alias removal without signing) are held for owner-chosen replacement labels; package version stays `1.4.1` until blockers (1)–(2) close.
+3. **Owner-Deferred Domain Copy:** `"Import"` (`name.trackDomain`, read-only local watching) and `"Unlink"` (`name.unlinkPrimary`, local alias removal without signing) are held for owner-chosen replacement labels.
 
 ### Ordered Wallet-Core Verification Sequence
 
