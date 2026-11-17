@@ -27,7 +27,7 @@ import { Field } from '../../kit/field.js';
 import { PageHeader, Banner } from '../../kit/feedback.js';
 import { requirePassword } from '../../domain/password-prompt.js';
 import * as bridge from '../bridge.js';
-import { invalidate } from '../guards.js';
+import { seed } from '../guards.js';
 
 const CONFIRM_PHRASE = 'RESET';
 
@@ -64,7 +64,7 @@ export function ResetRoute({ navigate, back }) {
       confirmation: confirmField.value.trim(),
       ...(password ? { password } : {}),
     });
-    invalidate();
+    seed({ hasVault: false, unlocked: false });
     // Replace, so Back cannot return to a reset screen for a wallet that no longer exists.
     navigate('/welcome', { replace: true });
   }

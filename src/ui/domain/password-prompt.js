@@ -24,6 +24,7 @@ import { focusTrap } from '../kit/focus-trap.js';
  *   confirmLabel button text
  *   danger      style the confirm as destructive
  *   verify      async (password) => any   the ONLY consumer of the password
+ *   signal      optional route-lifecycle AbortSignal; closes and clears the prompt
  * @returns {Promise<any|null>} the verify() result, or null if cancelled
  */
 export function requirePassword({
@@ -32,7 +33,9 @@ export function requirePassword({
   confirmLabel = 'Confirm',
   danger = false,
   verify,
+  signal,
 } = {}) {
+  if (signal?.aborted) return Promise.resolve(null);
   return new Promise((resolve) => {
     const d = disposer();
     let settled = false;
@@ -80,9 +83,11 @@ export function requirePassword({
       cancelBtn.update({ disabled: true });
       try {
         const result = await verify(value);
+        if (settled) return;
         password.clearSecret();
         finish(result === undefined ? true : result);
       } catch (error) {
+        if (settled) return;
         busy = false;
         confirmBtn.setBusy(false);
         cancelBtn.update({ disabled: false });
@@ -141,8 +146,10 @@ export function requirePassword({
       initial: password.control,
     });
 
+    if (signal) d.on(signal, 'abort', () => finish(null));
     document.body.appendChild(overlay);
     requestAnimationFrame(() => {
+      if (settled) return;
       overlay.classList.add('open');
       // Deferred for the same reason Field defers its own autofocus: focusing before the node is
       // in the document does nothing. The trap owns the decision so Escape/Tab work even if the

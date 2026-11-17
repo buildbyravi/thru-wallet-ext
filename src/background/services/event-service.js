@@ -35,8 +35,10 @@ export function emitAccountsChanged(data) {
   emit('accountsChanged', data);
 }
 
-export function emitLockStateChanged(unlocked) {
-  emit('lockStateChanged', { unlocked });
+export function emitLockStateChanged(unlocked, hasVault) {
+  emit('lockStateChanged', { unlocked,
+    ...(typeof hasVault === 'boolean' ? { hasVault } : {}),
+  });
   // The toolbar icon is the plain branded one at every state; syncing it here re-asserts
   // the manifest icon Chrome resets on browser start. Fire-and-forget — icon sync is
   // decoration and must not block or fail a lock transition.

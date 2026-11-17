@@ -19,7 +19,7 @@ import { AccountAvatar } from '../../domain/account-avatar.js';
 import { keyringTypeLabel } from '../../domain/account-row.js';
 import { requirePassword } from '../../domain/password-prompt.js';
 import * as bridge from '../bridge.js';
-import { invalidate } from '../guards.js';
+import { seed } from '../guards.js';
 import { decodeRef, encodeRef, refsEqual } from '../../../shared/refs.js';
 
 // The network config is already serialized across the background seam. Keep this route from
@@ -299,7 +299,7 @@ export function AccountDetailRoute({ params, navigate, back }) {
             : (password) => bridge.send('keyring.remove', { keyringId: keyring.id, password }),
         });
         if (!removed) return;
-        invalidate();
+        if (onlySource) seed({ hasVault: false, unlocked: false });
         navigate(onlySource ? '/welcome' : '/accounts', { replace: true });
       },
     })).el);

@@ -107,7 +107,7 @@ section('Registry mirrors the G0 evidence seeds');
       ? [] : [`${p.role}: mismatch`];
   });
   // 2026-10-08: the seed's program map was completed from the package's own pin — the FULL
-  // 0.4.1 bootstrap declaration set (18 system roles; see DECISIONS_G0) plus the registry-only
+  // 0.4.1 bootstrap declaration set (18 system roles; see docs/defi/DOSSIER_AND_CAPABILITIES.md) plus the registry-only
   // null-address 'curve' row = 19 records. The pinned role set below is the canonical pin a
   // review must re-confirm on any future edit, and the loop above still requires byte-identical
   // address/trust per record vs the seed file.

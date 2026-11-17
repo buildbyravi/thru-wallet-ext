@@ -1,80 +1,35 @@
-# Thru Wallet Extension — LLM context
+# Thru Wallet Extension — LLM Context Brief
 
-This file is read-only guidance for AI agents. It contains no secrets and grants no authority.
+Read-only repository context for AI agents. Contains no secrets and grants no signing authority.
+Always verify `src/`, `test/`, and `scripts/` directly; code outranks documentation.
 
-## Project
+## Project Summary
 
-Chrome MV3 self-custody wallet extension for the Thru native Layer 1. Thru is not EVM. Do not copy EVM/Solana/Cosmos protocol assumptions into implementation.
+Chrome MV3 self-custody wallet extension for the **Thru native Layer 1** (`betanet`: `https://rpc.betanet.thru.org`, explorer `https://scan.thru.org`). Thru is **not EVM** and **not Solana** (`ta...` 46-char addresses, 9-decimal native `THRU`, RISC-V ThruVM programs). Never import EVM/Solana protocol assumptions.
 
-## Current state
+## Current Baseline (Synchronized 2026-11-16)
 
-- Single popup route stack with 14 routes.
-- Contract version: 18 (124 methods = 81 wallet-core + 43 DeFi M0 surface, all feature-gated off; machine schema in `src/shared/contract/defi-schema.js`, fixtures in `test/fixtures/defi/`).
-- Contract source: `src/shared/contract/manifest.js`.
-- API seam: UI calls `bridge.send(method, params)` only.
-- Background owns auth, signing, services, and RPC coordination.
-- Vault and transaction/RPC code are sacred: `src/lib/vault.js`, `src/lib/thru-client.js`, `src/lib/networks.js`.
-- The legacy launchpad/DEX/prediction surface is quarantined: `src/launchpad/**` is deleted, no launchpad page is built, and `popup.html?launchpad=1` no longer does anything. `test-launchpad-quarantine.mjs` enforces this. Do not revive it; a future launchpad is a new `src/features/launchpad/**` module with `launchpad.*` backend namespaces.
-- All 14 routes are mounted by `test-route-lifecycle.mjs` (real Router/guards/bridge, only `chrome.runtime.sendMessage` mocked) in no-vault, locked and unlocked states: no throw, correct guard landing, no secret in text/attributes/dataset/input values/URLs, no listener left on a detached node. There is no jsdom dependency and there must not be one.
-- What a shim cannot prove (layout at narrow/wide widths, real focus, canvas QR, the side panel, service-worker eviction) is `docs/MANUAL_SMOKE_CHECKLIST.md`. Run it before merging UI changes.
-- Checked sends: the UI calls only `tx.sendChecked` and `token.transferChecked`; contract v16 removed the retired unbound send methods. Value-moving methods bind the reviewed source account and network at the background boundary, and a signing-operation guard blocks network switching from operation entry through submission.
-- Token transfer and real registry-mint balances are implemented on the official `@thru/programs/token` bindings; token unit math is BigInt with mint-scaled decimals (`parseTokenAmount`/`formatTokenAmount` in `src/shared/format.js`); recipient token-account initialization rides as a preceding sender-signed transaction; the remaining live-chain questions (recipient-owner acceptance, token-program fee) are in `docs/BACKEND_GAPS.md` C1, with `scripts/verify-token-transfer.mjs` as the pending live probe.
-- Contract v7 quarantines custom networks in the background, not just Settings. `network.setActive` accepts enabled built-ins only; a saved custom id returns permanent `CUSTOM_NETWORK_DISABLED`, and a stale custom/disabled active id self-heals to Betanet before `configureNetwork()`. Legacy records remain listable/removable and render as inert rows. `network.upsertCustom` stays in the contract with no UI caller. Do not re-enable custom endpoints without all four preconditions in `docs/STATUS_AND_ROADMAP.md` Step 2b.
-- Betanet is the enabled network (Localnet, Testnet and Mainnet are declared but disabled). Thru packages are exact-pinned (`@thru/sdk`/`@thru/programs` 0.4.1) and derivation vectors are verified against that pin.
-- Package `1.4.1` is live in the Chrome Web Store (listed 2026-10-04, verified on the live page) on automated evidence alone; no real-browser verification of the store package is recorded, and the package predates the same-day fee-provenance/dead-code source fixes. A first partial real-Chrome run on current source is recorded (2026-10-04, popup-only native Betanet send to the tester's own account — the `/send` popup cell is ticked; charged fee not captured; run record in `docs/MANUAL_SMOKE_CHECKLIST.md` §7). The rest of `docs/MANUAL_SMOKE_CHECKLIST.md` remains the top open item.
-- The side panel is opened by an explicit Dashboard control that calls `chrome.sidePanel.open({ windowId })`; Settings carries a separate explicit Side Panel Mode opt-in. Nothing else may call `chrome.sidePanel.setPanelBehavior`.
+- **Contract version:** **v33** (`154` methods in `src/shared/contract/manifest.js`: `88` wallet-core + `23` `name.*` + `43` dark-launched DeFi M0 methods in `src/shared/contract/defi-schema.js`).
+- **UI stack:** **15 routes** registered in `src/ui/app/boot.js` (`welcome`, `unlock`, `dashboard`, `accounts`, `account`, `add-account`, `keyring`, `export`, `send`, `receive`, `faucet`, `name`, `history`, `settings`, `reset`), sharing `popup.html` (`400x600` popup and `popup.html?thru_panel=1` side panel with mutual exclusion).
+- **Exact pins:** `@thru/sdk@0.4.2` (including `@thru/sdk/crypto`) and `@thru/programs@0.4.2`, confined strictly to `src/lib/*` (`scripts/check-layering.mjs`).
+- **Build-time flags:** All `11` flags in `src/shared/flags.js` (`NAME_SERVICE`, `DEFI`, `DEFI_*`) are **`false`** (`test/test-release-flags.mjs`). Legacy `src/launchpad/**` is deleted and quarantined (`test/test-launchpad-quarantine.mjs`).
+- **Automated suite:** `npm run build && npm test` runs **9 guard scripts** (`scripts/check-*.mjs`) + **41 test suites** (`test/test-*.mjs`) across `128` runtime JS files (`0` HTML-injection sinks). Node tests use a hand-rolled DOM shim (`no jsdom`) and never substitute for real-Chrome layout inspection (`docs/MANUAL_SMOKE_CHECKLIST.md`).
 
-## Read first
+## Core Security & Transaction Invariants
 
-1. `AGENTS.md` — rules, commands, traps, reporting.
-2. `docs/DOCS_INDEX.md` — documentation map.
-3. `docs/PROJECT_LEDGER.md` — past/present/future ledger.
-4. `docs/STATUS_AND_ROADMAP.md` — current state and next tasks.
-5. `CONTEXT.md` — file map.
-6. `docs/MODULE_BOUNDARIES.md` — target feature separation.
-7. `docs/DECISIONS.md` — durable decisions and why they exist.
-8. `https://thru.org/docs/llm.txt` — official Thru protocol-doc entry point for agents.
+1. **One Seam:** UI talks to background solely via `bridge.send(method, params)` (`src/ui/app/bridge.js` -> `src/background/api-router.js`). UI never imports `src/background/**` or `src/lib/vault.js`.
+2. **One Review & Background Consent Pipeline (`v29`–`v32`):** Every value-moving screen (`/send`, `/name`, `/faucet` — `9` registered review kinds in `src/shared/tx-review/` and `src/background/services/review/kinds.js`) calls `tx.prepareReview` -> renders `TxReviewCard` -> calls `tx.confirmReview` -> submits via `confirm.js` (`AbortSignal` required). `tx.confirmReview` mints a single-use 60s in-memory `consentToken` (`services/review/consent.js`) required by `api-router.js` (`REVIEW_REQUIRED`) on all non-exempt `TRANSACTION_METHODS`. Only `tx.registerAccount` (vault-owned self-activation) and dormant `intent.submit` (`FLAGS.DEFI_INTENT === false`) are `CONSENT_EXEMPT`.
+3. **Signing Policy (`D-003`):** Unlocked sessions authorize `auth: 'signing'` by default (`requirePasswordForSigning: false`); per-sign password re-auth is a password-gated Settings opt-in. Export, keyring mutations, security settings, and unlocked resets always require `auth: 'password'`.
+4. **Honest States:** Undecodable transactions (`raw`) have `submit: null` and cannot sign. `tx.simulate` returns `supported: false` (never render post-tx balances). Failed chain reads remain `unknown` (`null`), never false `0` or `"available"`. Submission feedback uses one keyed `pending` `toast()` per event (`Rule 29`).
+5. **Domains (`/name`):** `.thru` registration and renewal (`via: 'custom'` wired in `v30`) use `thru-custom-registrar` (tiered layout-2 config on Betanet; `33,714` B repo `.bin` upgrade + treasury collection delta measurement still open as a release blocker) with official paid-registry fallback; `.id` is lookup-only; header fees use `tx-units.networkFeeUnits`.
+6. **No Extension Provider:** Official `@thru/wallet` targets the hosted `https://app.tid.sh/embedded` iframe. Do **not** invent `window.thru` or let AI/MCP tools sign or access secrets.
 
-## Hard safety rules
+## Read Order
 
-- Never request, store, print, or reveal mnemonic/private key/password.
-- Never log decrypted vault data.
-- Never put secrets in URLs, `data-*`, localStorage/sessionStorage, console logs, analytics, or MCP output.
-- Do not invent a `window.thru` provider standard. Thru's current official wallet docs describe
-  `@thru/wallet` and `@thru/wallet/react` for the hosted `app.tid.sh/embedded` iframe, not
-  an extension provider; the existence of `connect()`, `getSigningContext()`, and
-  `signTransaction()` does not establish extension/BYO-signer compatibility. Wait for a verified
-  contract before implementing a dApp connector.
-- Do not fabricate token balances, DEX quotes, charts, launchpad state, perps, prediction markets, or protocol semantics.
-- Use official Thru SDK/program surfaces when available.
-- Run `npm test && npm run build` before and after code changes.
-
-## Signing
-
-Signing methods use `auth: 'signing'`: the wallet must be unlocked. Password re-authentication per signature is **off by default** (`requirePasswordForSigning: false`, decision D-003 in `docs/DECISIONS.md`); a user may explicitly enable it in Settings, and changing that security setting is itself password-gated. The v12 `tx.registerAccount` exception is unlocked-only and restricted to an exact vault-owned address.
-
-MCP/AI agents must not sign directly. Prefer the official read-only Thru Explorer MCP for live chain queries. A local wallet MCP may handle permissioned wallet reads and intent preparation only. Account addresses, balances, activity, labels, refs, and keyring metadata are non-secret but privacy-sensitive and require explicit per-session companion permission. The human reviews in the extension UI; the background signs/submits after auth policy passes.
-
-## Target feature separation
-
-Future feature modules:
-
-```txt
-src/features/launchpad/     # token launch/create only
-src/features/dex/           # quotes, pools, swaps only
-src/features/prediction/    # markets/orders/settlement only
-src/background/features/*   # matching backend namespaces
-src/lib/thru/*-adapter.js   # thin official Thru SDK/program adapters
-```
-
-Feature namespaces should be explicit: `launchpad.*`, `dex.*`, `prediction.*`, `portfolio.*`.
-Features must not import sibling features or vault internals.
-
-## Current P0 work
-
-Done: signing-auth centralization (contract v5), reset/auto-lock background hardening (v6), custom-network background quarantine (v7), token transfer and real token balances (v8, live-chain verification still open), History feed/detail/cached reads (v9–v12), checked sends (v11), owned-account activation (v12), duplicate-send detection (v15), retirement of the unbound send paths (v16), passkey feasibility spike (`docs/archive/PASSKEY_SPIKE.md`), legacy launchpad quarantine, route lifecycle tests for all 14 routes with secret-hygiene and teardown assertions, modal focus trapping, and an explicit side-panel action.
-
-1. Run `docs/MANUAL_SMOKE_CHECKLIST.md` in Chrome (popup and side panel, narrow and wide): layout, focus rings, QR canvas, mutual exclusion, clipboard prompt, MV3 worker eviction/restart.
-2. Live v12 activation and live token-transfer verification (recipient-owner acceptance, actual token-program fee) on a safe throwaway wallet; see `scripts/verify-token-transfer.mjs` and `scripts/verify-live-e2e.mjs`.
-3. Custom-network re-enablement: HTTPS-only policy with an explicit localhost exception, narrow user-granted host permission, a verified per-network capability record instead of default program ids, and password re-auth before the wallet talks to a user-supplied endpoint. Blocked until all four exist.
-4. External security audit before any Mainnet-readiness claim; none has been performed.
+1. `AGENTS.md` (30 hard rules + `docs/agent/`)
+2. `docs/DOCS_INDEX.md` (SSoT router)
+3. `CONTEXT.md` (exact source map)
+4. `docs/STATUS_AND_ROADMAP.md` (shipped state & open blockers)
+5. `docs/guides/{transaction-review,domains-and-registrar,history-and-activity,protocol-and-rpc}.md`
+6. `docs/roadmap/FUTURE_ROADMAP.md` (`PLANNED` unshipped features only — never treat as shipped)
+7. Official Thru protocol docs: `https://thru.org/docs/llm.txt`

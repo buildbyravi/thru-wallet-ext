@@ -6,7 +6,7 @@
 // Run: node scripts/check-layering.mjs
 
 import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { join, relative, sep } from 'node:path';
+import { join, relative, sep, posix } from 'node:path';
 import { build as analyzeImports, transform } from 'esbuild';
 
 const ROOT = process.cwd();
@@ -89,6 +89,32 @@ const RULES = [
     },
     why: 'Features reach chain/vault only through adapters and services; direct imports bypass the fixture-vs-implementation boundary. Features may import services/defi/* (shared DeFi machinery) and their own services/<feature>-service.js domain module only.',
   },
+  // src/lib is the adapter layer (SDK, vault, RPC shapes). It is imported BY the background and by
+  // nothing else, so it must never reach upward into a UI, feature or service layer. The rule was
+  // missing while `vault.js`/`thru-client.js` had a bespoke guard of their own (Hard rule 2) — the
+  // other 20 adapters had no direction check at all.
+  {
+    id: 'lib-is-a-leaf',
+    when: (f) => f.startsWith('src/lib/'),
+    forbid: (spec) => /(^|\/)(ui|popup|desktop|background|features)\//.test(spec),
+    why: 'src/lib holds the SDK/vault/RPC adapters. An adapter that imports a UI or feature module inverts the dependency direction and drags the popup bundle into the worker (or vice versa).',
+  },
+  // A feature may import its OWN files and the shared kit, never another feature's internals.
+  // (The DeFi backend already has this rule; this one covers the UI-side feature tree the moment
+  // it exists, so the first feature cannot set a precedent.)
+  {
+    id: 'feature-internals-are-private',
+    when: (f) => /^src\/features\/[^/]+\//.test(f),
+    forbid: (spec, file) => {
+      // Resolve the specifier against the importing file: `../launchpad/launchpad.js` from
+      // `src/features/swap/ui.js` is a cross-feature import, and the raw string does not say so.
+      const resolved = spec.startsWith('src/') ? spec : posix.normalize(posix.join(posix.dirname(file), spec));
+      const owner = /^src\/features\/([^/]+)\//.exec(file)?.[1];
+      const target = /^src\/features\/([^/]+)\//.exec(resolved)?.[1];
+      return Boolean(target && owner && target !== owner);
+    },
+    why: 'A feature module is a boundary: another feature may use it through a public entry point, not by reaching into its files.',
+  },
   {
     id: 'defi-shared-machinery-stays-a-leaf',
     when: (f) => f.startsWith('src/background/services/defi/'),
@@ -162,9 +188,12 @@ for (const [id, file, forbidden, allowed] of [
   ['ui-must-not-import-background-or-vault', 'src/ui/app/sample.js', '../../background/api-router.js', '../domain/tx-card.js'],
   ['kit-must-stay-domain-free', 'src/ui/kit/sample.js', '../domain/tx-card.js', './dom.js'],
   ['shared-must-stay-portable', 'src/shared/sample.js', '../background/api-router.js', './refs.js'],
+  ['lib-is-a-leaf', 'src/lib/sample.js', '../background/services/tx-service.js', '../shared/format.js'],
+  ['lib-is-a-leaf', 'src/lib/sample.js', '../ui/app/boot.js', './vault.js'],
+  ['feature-internals-are-private', 'src/features/swap/ui.js', '../launchpad/launchpad.js', './card.js'],
 ]) {
   const rule = RULES.find((r) => r.id === id);
-  if (!rule?.when(file) || !rule.forbid(forbidden) || rule.forbid(allowed)) {
+  if (!rule?.when(file) || !rule.forbid(forbidden, file) || rule.forbid(allowed, file)) {
     throw new Error(`The ${id} rule failed its positive or negative control.`);
   }
 }

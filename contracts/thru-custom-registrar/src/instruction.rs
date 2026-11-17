@@ -17,9 +17,13 @@
 //! Instruction header: `tag: u32` (little-endian), then this program's u16 account
 //! indices, then the semantic args.
 //!
-//!   tag 0 | Initialize
+//!   tag 0 | Initialize (SUPERSEDED — rejects with ERR_TAG_SUPERSEDED)
+//!     The old flat-fee layout. Kept only as a named refusal so an out-of-date deploy
+//!     client fails loudly instead of installing a config the new program cannot price.
+//!   tag 4 | InitializeV2
 //!     [u16 config_idx][u16 root_idx][u16 ns_idx]   (admin == fee payer == idx 0)
-//!     [u64 fee_per_year][32 treasury][u32 root_name_len | 1..=32][root_name bytes padded to 32]
+//!     [u64 fee_3_char][u64 fee_4_char][u64 fee_5plus_char][u8 fee_policy]
+//!     [32 treasury][u32 root_name_len | 1..=32][root_name bytes padded to 32]
 //!     [32 config_seed][u32 config_proof_len][config_proof][u32 root_proof_len][root_proof]
 //!   tag 1 | Register
 //!     [u16 treasury_idx][u16 root_idx][u16 domain_idx][u16 lease_idx][u16 config_idx]
@@ -32,18 +36,33 @@
 //!     [u16 treasury_idx][u16 lease_idx][u16 config_idx]
 //!     [u16 duration_years][u32 label_len | 3..=32][label bytes padded to 32]
 //!   tag 3 | UpdateConfig
-//!     [u16 config_idx][u8 mask][u64 new_fee][32 new_treasury]
-//!     mask bit0 = apply new_fee, bit1 = apply new_treasury.
+//!     [u16 config_idx][u8 mask][32 new_treasury][u64 new_fee_3][u64 new_fee_4]
+//!     [u64 new_fee_5plus][u8 new_fee_policy]
+//!     mask bit0 = apply new_treasury, bit1 = fee_3, bit2 = fee_4, bit3 = fee_5plus,
+//!     bit4 = fee_policy. The legacy `fee_per_year` is no longer settable: it is a
+//!     derived mirror of fee_5plus, so an admin cannot make the two disagree.
 //!
 //! This module is pure byte layout — no syscalls — so `cargo test` exercises it on the
 //! host target too.
 
 #![allow(clippy::missing_errors_doc)]
 
+/// The flat-fee Initialize. No longer parsed; see ERR_TAG_SUPERSEDED.
 pub const TAG_INITIALIZE: u32 = 0;
 pub const TAG_REGISTER: u32 = 1;
 pub const TAG_RENEW: u32 = 2;
 pub const TAG_UPDATE_CONFIG: u32 = 3;
+/// Tiered Initialize. A NEW tag, not a longer tag 0: an out-of-date deploy script then
+/// gets a named error instead of having its `fee_per_year` read as `fee_3_char`.
+pub const TAG_INITIALIZE_V2: u32 = 4;
+
+/// `fee_policy` values (config byte 168).
+/// 0 — BEST EFFORT: the charge is attempted and a refusal is ignored. This is what the
+///     deployed program did; a layout-1 config reads as this.
+/// 1 — STRICT: a refused charge reverts the whole instruction. Only correct once a live
+///     probe has shown the transfer can succeed on this VM (see DEPLOY notes in README).
+pub const FEE_POLICY_BEST_EFFORT: u8 = 0;
+pub const FEE_POLICY_STRICT: u8 = 1;
 
 /// Label policy: 3..=32 chars of [a-z0-9-], no leading/trailing hyphen.
 /// (32, not the name-service's 64: the lease account seed is one 32-byte value and
@@ -71,7 +90,10 @@ pub struct InitializeIx<'a> {
     pub config_idx: u16,
     pub root_idx: u16,
     pub ns_idx: u16,
-    pub fee_per_year: u64,
+    pub fee_3_char: u64,
+    pub fee_4_char: u64,
+    pub fee_5plus_char: u64,
+    pub fee_policy: u8,
     pub treasury: [u8; 32],
     pub root_name: &'a [u8],
     pub config_seed: [u8; 32],
@@ -107,8 +129,11 @@ pub struct RenewIx<'a> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UpdateConfigIx {
     pub config_idx: u16,
-    pub new_fee: Option<u64>,
     pub new_treasury: Option<[u8; 32]>,
+    pub new_fee_3_char: Option<u64>,
+    pub new_fee_4_char: Option<u64>,
+    pub new_fee_5plus_char: Option<u64>,
+    pub new_fee_policy: Option<u8>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -235,11 +260,17 @@ pub fn parse(data: &[u8]) -> Result<Ix<'_>, u64> {
     let mut rest = data;
     let tag = take_u32(&mut rest)?;
     let ix = match tag {
-        TAG_INITIALIZE => Ix::Initialize(InitializeIx {
+        // A flat-fee Initialize cannot express a tiered schedule, and its first u64 would be
+        // read as fee_3_char if we simply extended the tag. Refuse by name.
+        TAG_INITIALIZE => return Err(crate::errors::ERR_TAG_SUPERSEDED),
+        TAG_INITIALIZE_V2 => Ix::Initialize(InitializeIx {
             config_idx: take_u16(&mut rest)?,
             root_idx: take_u16(&mut rest)?,
             ns_idx: take_u16(&mut rest)?,
-            fee_per_year: take_u64(&mut rest)?,
+            fee_3_char: take_u64(&mut rest)?,
+            fee_4_char: take_u64(&mut rest)?,
+            fee_5plus_char: take_u64(&mut rest)?,
+            fee_policy: take_u8(&mut rest)?,
             treasury: take_pubkey(&mut rest)?,
             root_name: take_padded_name(&mut rest, ROOT_NAME_BUF, ERR_NAME_TOO_LONG)?,
             config_seed: take_pubkey(&mut rest)?,
@@ -270,12 +301,21 @@ pub fn parse(data: &[u8]) -> Result<Ix<'_>, u64> {
         TAG_UPDATE_CONFIG => {
             let config_idx = take_u16(&mut rest)?;
             let mask = take_u8(&mut rest)?;
-            let new_fee_raw = take_u64(&mut rest)?;
             let new_treasury_raw = take_pubkey(&mut rest)?;
+            let fee_3_raw = take_u64(&mut rest)?;
+            let fee_4_raw = take_u64(&mut rest)?;
+            let fee_5plus_raw = take_u64(&mut rest)?;
+            let policy_raw = take_u8(&mut rest)?;
+            if mask & 0x10 != 0 {
+                validate_fee_policy(policy_raw)?;
+            }
             Ix::UpdateConfig(UpdateConfigIx {
                 config_idx,
-                new_fee: if mask & 0x01 != 0 { Some(new_fee_raw) } else { None },
-                new_treasury: if mask & 0x02 != 0 { Some(new_treasury_raw) } else { None },
+                new_treasury: if mask & 0x01 != 0 { Some(new_treasury_raw) } else { None },
+                new_fee_3_char: if mask & 0x02 != 0 { Some(fee_3_raw) } else { None },
+                new_fee_4_char: if mask & 0x04 != 0 { Some(fee_4_raw) } else { None },
+                new_fee_5plus_char: if mask & 0x08 != 0 { Some(fee_5plus_raw) } else { None },
+                new_fee_policy: if mask & 0x10 != 0 { Some(policy_raw) } else { None },
             })
         }
         _ => return Err(ERR_UNKNOWN_TAG),
@@ -301,6 +341,16 @@ pub fn validate_label(label: &[u8]) -> Result<(), u64> {
     Ok(())
 }
 
+/// fee_policy must be one of the two known values. An unknown policy is refused at parse
+/// time rather than defaulted, because "silently treat it as best effort" is how a
+/// contract ends up not charging when it was configured to charge.
+pub fn validate_fee_policy(policy: u8) -> Result<(), u64> {
+    if policy == FEE_POLICY_BEST_EFFORT || policy == FEE_POLICY_STRICT {
+        return Ok(());
+    }
+    Err(crate::errors::ERR_BAD_FEE_POLICY)
+}
+
 /// duration_years policy: 1..=MAX_DURATION_YEARS.
 pub fn validate_duration(years: u16) -> Result<(), u64> {
     if years == 0 || years > MAX_DURATION_YEARS {
@@ -316,11 +366,14 @@ mod tests {
     fn legend_initialize() -> Vec<u8> {
         // Hand-assembled per the header comment; JS twin vectors pin the same bytes.
         let mut v = Vec::new();
-        v.extend_from_slice(&0u32.to_le_bytes()); // tag
+        v.extend_from_slice(&TAG_INITIALIZE_V2.to_le_bytes());
         v.extend_from_slice(&2u16.to_le_bytes()); // config_idx
         v.extend_from_slice(&3u16.to_le_bytes()); // root_idx
         v.extend_from_slice(&4u16.to_le_bytes()); // ns_idx
-        v.extend_from_slice(&1000u64.to_le_bytes()); // fee_per_year
+        v.extend_from_slice(&100_000u64.to_le_bytes()); // fee_3_char
+        v.extend_from_slice(&10_000u64.to_le_bytes()); // fee_4_char
+        v.extend_from_slice(&1_000u64.to_le_bytes()); // fee_5plus_char
+        v.push(FEE_POLICY_STRICT);
         v.extend_from_slice(&[0xAA; 32]); // treasury
         v.extend_from_slice(&4u32.to_le_bytes()); // root_name_len
         let mut name = [0u8; ROOT_NAME_BUF];
@@ -342,7 +395,10 @@ mod tests {
                 assert_eq!(ix.config_idx, 2);
                 assert_eq!(ix.root_idx, 3);
                 assert_eq!(ix.ns_idx, 4);
-                assert_eq!(ix.fee_per_year, 1000);
+                assert_eq!(ix.fee_3_char, 100_000);
+                assert_eq!(ix.fee_4_char, 10_000);
+                assert_eq!(ix.fee_5plus_char, 1_000);
+                assert_eq!(ix.fee_policy, FEE_POLICY_STRICT);
                 assert_eq!(ix.treasury, [0xAA; 32]);
                 assert_eq!(ix.root_name, b"thru");
                 assert_eq!(ix.config_seed, [0x07; 32]);
@@ -352,6 +408,64 @@ mod tests {
             }
             _ => panic!("wrong variant"),
         }
+    }
+
+    /// The old flat-fee tag must fail BY NAME. If it were parsed with the new layout its
+    /// `fee_per_year` would silently become `fee_3_char`.
+    #[test]
+    fn flat_fee_initialize_tag_is_superseded() {
+        let mut v = Vec::new();
+        v.extend_from_slice(&TAG_INITIALIZE.to_le_bytes());
+        v.extend_from_slice(&[0u8; 64]);
+        assert_eq!(parse(&v), Err(crate::errors::ERR_TAG_SUPERSEDED));
+    }
+
+    #[test]
+    fn unknown_fee_policy_cannot_be_initialised() {
+        let mut buf = legend_initialize();
+        // policy byte sits right after the three u64 tiers: 4 + 6 + 24 = 34
+        buf[34] = 9;
+        assert_eq!(parse(&buf), Err(crate::errors::ERR_BAD_FEE_POLICY));
+        assert_eq!(validate_fee_policy(9), Err(crate::errors::ERR_BAD_FEE_POLICY));
+        assert!(validate_fee_policy(FEE_POLICY_STRICT).is_ok());
+        assert!(validate_fee_policy(FEE_POLICY_BEST_EFFORT).is_ok());
+    }
+
+    #[test]
+    fn update_config_selects_only_masked_tiers() {
+        let mut v = Vec::new();
+        v.extend_from_slice(&TAG_UPDATE_CONFIG.to_le_bytes());
+        v.extend_from_slice(&2u16.to_le_bytes()); // config_idx
+        v.push(0x02 | 0x10); // fee_3 + policy
+        v.extend_from_slice(&[0xBB; 32]); // treasury (ignored: bit0 clear)
+        v.extend_from_slice(&7u64.to_le_bytes()); // fee_3
+        v.extend_from_slice(&8u64.to_le_bytes()); // fee_4 (ignored)
+        v.extend_from_slice(&9u64.to_le_bytes()); // fee_5plus (ignored)
+        v.push(FEE_POLICY_BEST_EFFORT);
+        match parse(&v).unwrap() {
+            Ix::UpdateConfig(ix) => {
+                assert_eq!(ix.new_fee_3_char, Some(7));
+                assert_eq!(ix.new_fee_4_char, None);
+                assert_eq!(ix.new_fee_5plus_char, None);
+                assert_eq!(ix.new_treasury, None);
+                assert_eq!(ix.new_fee_policy, Some(FEE_POLICY_BEST_EFFORT));
+            }
+            _ => panic!("wrong variant"),
+        }
+    }
+
+    #[test]
+    fn update_config_rejects_an_unknown_policy() {
+        let mut v = Vec::new();
+        v.extend_from_slice(&TAG_UPDATE_CONFIG.to_le_bytes());
+        v.extend_from_slice(&2u16.to_le_bytes());
+        v.push(0x10);
+        v.extend_from_slice(&[0u8; 32]);
+        v.extend_from_slice(&0u64.to_le_bytes());
+        v.extend_from_slice(&0u64.to_le_bytes());
+        v.extend_from_slice(&0u64.to_le_bytes());
+        v.push(3);
+        assert_eq!(parse(&v), Err(crate::errors::ERR_BAD_FEE_POLICY));
     }
 
     #[test]

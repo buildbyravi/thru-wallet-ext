@@ -9,3 +9,8 @@ thru-wallet-deploy.txt
 .env
 target/
 .kilo/
+.rabby/
+.thru-web-profile.txt
+# Read-only scratch directories the guard scripts ask esbuild to write metafiles for; nothing is
+# emitted, but the paths exist so a failed run cannot leave tracked noise.
+.arena-import-scan/

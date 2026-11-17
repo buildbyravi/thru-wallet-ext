@@ -44,9 +44,14 @@ globalThis.chrome = {
 };
 
 const { handleApiRequest } = await import('../src/background/api-router.js');
+const { sendWithConsent } = await import('./fixtures/consent.mjs');
 const { Pubkey } = await import('@thru/sdk');
+const { TokenMintAccount } = await import('@thru/programs/token');
 const reg = await import('../src/lib/registrar.js');
 const ns = await import('../src/lib/name-service.js');
+const tcr = await import('../src/lib/custom-registrar.js');
+const registrarService = await import('../src/background/services/registrar-service.js');
+const { NETWORKS } = await import('../src/lib/networks.js');
 
 let checks = 0;
 function ok(label, cond = true) {
@@ -99,6 +104,7 @@ function buildLeaseBytes(ownerAddress, name = NAME, start = 1_700_000_000n, end 
 
 // Mutable chain-world switchboard
 let configPresent = true;
+let registryOwner = Pubkey.from(reg.THRU_REGISTRAR_PROGRAM);
 let domainExists = false;
 let leaseState = 'absent'; // absent | unparseable | mine-active | other-active | other-expired
 const ENCODER = new TextEncoder();
@@ -113,9 +119,15 @@ const client = thru.getClient();
 // An absent account = the SDK's own not-found shape (err.code 5 → the wrapper answers {exists:false}).
 const notFound = () => { const e = new Error('account not found'); e.code = 5; throw e; };
 client.accounts.get = async (address) => {
+  if (address === MINT) {
+    const ticker = new Uint8Array(9); ticker[0] = 3; ticker.set(new TextEncoder().encode('PAY'), 1);
+    const data = TokenMintAccount.builder().set_decimals(6).set_supply(1000000n)
+      .set_has_freeze_authority(0).set_ticker(ticker).finish().buffer;
+    return { meta: { balance: 1n, owner: Pubkey.from(TOKEN_PROGRAM) }, data: { data } };
+  }
   if (address === CONFIG_ADDR) {
     if (!configPresent) return notFound();
-    return { meta: { balance: 1n }, data: buildConfigBytes() };
+    return { meta: { balance: 1n, owner: registryOwner }, data: buildConfigBytes() };
   }
   if (address === LEAF) {
     if (!domainExists) return notFound();
@@ -220,11 +232,20 @@ ok('lease derivation byte-exact: alice → ta06ZB32… (official CLI derive-leas
   assert.equal(res.data.configAddress, CONFIG_ADDR);
   ok('name.getRegistry parses the live config (price, root, treasurer, mint)');
 
+  registryOwner = Pubkey.from(OTHER);
+  const wrongOwner = await handleApiRequest({ method: 'name.getRegistry' });
+  assert.equal(wrongOwner.data.supported, false);
+  registryOwner = {};
+  const malformedOwner = await handleApiRequest({ method: 'name.getRegistry' });
+  assert.equal(malformedOwner.data.supported, false);
+  registryOwner = Pubkey.from(reg.THRU_REGISTRAR_PROGRAM);
+  ok('wrong or malformed metadata owners cannot masquerade as the registrar program');
+
   configPresent = false;
   const gone = await handleApiRequest({ method: 'name.getRegistry' });
   assert.equal(gone.ok, true);
   assert.equal(gone.data.supported, false);
-  const buy = await handleApiRequest({ method: 'name.purchase', params: { name: NAME, years: 1, password: 'Password123!' } });
+  const buy = await sendWithConsent(handleApiRequest, 'name.purchase', { name: NAME, years: 1, password: 'Password123!' });
   assert.equal(buy.ok, false);
   assert.equal(buy.error.code, 'REGISTRY_ABSENT');
   ok('no config → supported:false read + REGISTRY_ABSENT signing refusal (no fabricated price)');
@@ -238,7 +259,7 @@ ok('lease derivation byte-exact: alice → ta06ZB32… (official CLI derive-leas
     ['account', { expectedNetworkId: 'betanet', expectedAccountAddress: OTHER, expectedPricePerYear: '1000000' }, 'REVIEW_ACCOUNT_CHANGED'],
     ['price', { expectedNetworkId: 'betanet', expectedAccountAddress: SENDER, expectedPricePerYear: '1000001' }, 'REVIEW_PRICE_CHANGED'],
   ]) {
-    const stale = await handleApiRequest({ method: 'name.purchase', params: { name: NAME, years: 1, ...params } });
+    const stale = await sendWithConsent(handleApiRequest, 'name.purchase', { name: NAME, years: 1, ...params });
     assert.equal(stale.ok, false);
     assert.equal(stale.error.code, code, `stale ${label} context is refused`);
   }
@@ -260,7 +281,9 @@ ok('lease derivation byte-exact: alice → ta06ZB32… (official CLI derive-leas
     return originalGet(address);
   };
   try {
-    const pendingPurchase = handleApiRequest({ method: 'name.purchase', params: { name: NAME, years: 1 } });
+    // The token is minted BEFORE the call so the request is already past the consent gate when
+    // the held registrar read is reached — the point of this test is the signing guard, not consent.
+    const pendingPurchase = sendWithConsent(handleApiRequest, 'name.purchase', { name: NAME, years: 1 });
     for (let i = 0; i < 500 && !releaseConfigRead; i += 1) await new Promise((resolve) => setTimeout(resolve, 2));
     assert.equal(typeof releaseConfigRead, 'function', 'purchase reached a held registrar read');
     const blocked = await handleApiRequest({ method: 'account.switch', params: { ref: {} } });
@@ -296,13 +319,13 @@ ok('lease derivation byte-exact: alice → ta06ZB32… (official CLI derive-leas
   leaseState = 'absent';
 
   domainExists = true;
-  const taken = await handleApiRequest({ method: 'name.purchase', params: { name: NAME, years: 1, password: 'Password123!' } });
+  const taken = await sendWithConsent(handleApiRequest, 'name.purchase', { name: NAME, years: 1, password: 'Password123!' });
   assert.equal(taken.ok, false);
   assert.equal(taken.error.code, 'NAME_TAKEN');
   domainExists = false;
 
   leaseState = 'other-expired';
-  const claimRoute = await handleApiRequest({ method: 'name.purchase', params: { name: NAME, years: 1, password: 'Password123!' } });
+  const claimRoute = await sendWithConsent(handleApiRequest, 'name.purchase', { name: NAME, years: 1, password: 'Password123!' });
   assert.equal(claimRoute.ok, false);
   assert.equal(claimRoute.error.code, 'LEASE_CLAIM_REQUIRED');
   leaseState = 'absent';
@@ -311,28 +334,28 @@ ok('lease derivation byte-exact: alice → ta06ZB32… (official CLI derive-leas
 
 // [6] renew/claim guards
 {
-  const missing = await handleApiRequest({ method: 'name.renewLease', params: { name: NAME, years: 1, password: 'Password123!' } });
+  const missing = await sendWithConsent(handleApiRequest, 'name.renewLease', { name: NAME, years: 1, password: 'Password123!' });
   assert.equal(missing.ok, false);
   assert.equal(missing.error.code, 'LEASE_NOT_FOUND');
 
   leaseState = 'other-active';
-  const foreign = await handleApiRequest({ method: 'name.renewLease', params: { name: NAME, years: 1, password: 'Password123!' } });
+  const foreign = await sendWithConsent(handleApiRequest, 'name.renewLease', { name: NAME, years: 1, password: 'Password123!' });
   assert.equal(foreign.ok, false);
   assert.equal(foreign.error.code, 'NOT_NAME_OWNER');
-  const notExpired = await handleApiRequest({ method: 'name.claimExpired', params: { name: NAME, years: 1, password: 'Password123!' } });
+  const notExpired = await sendWithConsent(handleApiRequest, 'name.claimExpired', { name: NAME, years: 1, password: 'Password123!' });
   assert.equal(notExpired.ok, false);
   assert.equal(notExpired.error.code, 'LEASE_NOT_EXPIRED');
 
   leaseState = 'mine-active';
-  const staleExpiry = await handleApiRequest({ method: 'name.renewLease', params: {
+  const staleExpiry = await sendWithConsent(handleApiRequest, 'name.renewLease', {
     name: NAME, years: 1, expectedNetworkId: 'betanet', expectedAccountAddress: SENDER,
     expectedPricePerYear: '1000000', expectedLeaseEndTime: '1',
-  } });
+  });
   assert.equal(staleExpiry.ok, false);
   assert.equal(staleExpiry.error.code, 'REVIEW_EXPIRY_CHANGED');
 
   leaseState = 'other-expired';
-  const badYears = await handleApiRequest({ method: 'name.claimExpired', params: { name: NAME, years: 0, password: 'Password123!' } });
+  const badYears = await sendWithConsent(handleApiRequest, 'name.claimExpired', { name: NAME, years: 0, password: 'Password123!' });
   assert.equal(badYears.ok, false);
   assert.equal(badYears.error.code, 'INVALID_YEARS');
   leaseState = 'absent';
@@ -349,6 +372,144 @@ ok('lease derivation byte-exact: alice → ta06ZB32… (official CLI derive-leas
   assert.ok(reg.yearsProblem(0) !== null && reg.yearsProblem(256) !== null && reg.yearsProblem(1.5) !== null);
   assert.equal(reg.yearsProblem('2'), null);
   ok('name/year validation is strict and honest (never silently normalized into a paid write)');
+}
+
+// [7] The review price and the write-time price are the SAME tier (2026-11-12 domain audit).
+// The custom registrar prices by LABEL LENGTH; comparing a tiered review price against
+// `feePerYear` (the cheapest tier) refused every 3- and 4-character name at submit with
+// REVIEW_PRICE_CHANGED — the review passed, then the write aborted before broadcasting.
+{
+  // Different shapes, one comparison: registry Config is flat, the custom registrar is tiered.
+  assert.equal(registrarService.reviewPricePerYear({ pricePerYear: 1_000_000n }, 'alice'), '1000000');
+  const tiers = { fee3PerYear: 100_000n, fee4PerYear: 10_000n, fee5PlusPerYear: 1_000n, feePerYear: 1_000n };
+  assert.equal(registrarService.reviewPricePerYear(tiers, 'abc'), '100000');
+  assert.equal(registrarService.reviewPricePerYear(tiers, 'abcd'), '10000');
+  assert.equal(registrarService.reviewPricePerYear(tiers, 'alice'), '1000');
+  ok('the reviewed price is compared with the label\'s own tier, not the cheapest tier');
+
+  // Exercise the real gate: a layout-2 config (tiered, strict) for the pinned custom program.
+  const CUSTOM_PROGRAM = NETWORKS.betanet.customRegistrarProgram;
+  assert.ok(CUSTOM_PROGRAM, 'betanet pins the custom registrar program');
+  const CUSTOM_CONFIG = tcr.tcrConfigAddress(CUSTOM_PROGRAM);
+  const LABEL3 = 'abc';
+  const customLease = tcr.tcrLeaseAddress(CUSTOM_PROGRAM, LABEL3);
+
+  const customConfigBytes = () => {
+    const out = new Uint8Array(tcr.TCR_CONFIG_SIZE);
+    const dv = new DataView(out.buffer);
+    dv.setUint32(tcr.TCR_CFG.magic, tcr.TCR_CONFIG_MAGIC, true);
+    out[tcr.TCR_CFG.version] = tcr.TCR_CONFIG_LAYOUT_V2;
+    const rootNameBytes = new TextEncoder().encode('thru');
+    out[tcr.TCR_CFG.rootNameLen] = rootNameBytes.length;
+    out.set(rootNameBytes, tcr.TCR_CFG.rootName);
+    out.set(Pubkey.from(OTHER).toBytes(), tcr.TCR_CFG.admin);
+    out.set(Pubkey.from(TREASURER).toBytes(), tcr.TCR_CFG.treasury);
+    out.set(Pubkey.from(ROOT_THRU).toBytes(), tcr.TCR_CFG.rootAddress);
+    dv.setBigUint64(tcr.TCR_CFG.feePerYear, 1_000n, true);
+    dv.setBigUint64(tcr.TCR_CFG.fee3Char, 100_000n, true);
+    dv.setBigUint64(tcr.TCR_CFG.fee4Char, 10_000n, true);
+    dv.setBigUint64(tcr.TCR_CFG.fee5PlusChar, 1_000n, true);
+    out[tcr.TCR_CFG.feePolicy] = tcr.TCR_FEE_POLICY.strict;
+    return out;
+  };
+  const customLeaseBytes = () => {
+    const out = new Uint8Array(tcr.TCR_LEASE_SIZE);
+    const dv = new DataView(out.buffer);
+    dv.setUint32(tcr.TCR_LSE.magic, tcr.TCR_LEASE_MAGIC, true);
+    out[tcr.TCR_LSE.version] = tcr.TCR_LAYOUT_VERSION;
+    out[tcr.TCR_LSE.labelLen] = LABEL3.length;
+    dv.setBigUint64(tcr.TCR_LSE.expiresAt, BigInt(nowSeconds + 86_400), true);
+    dv.setBigUint64(tcr.TCR_LSE.registeredAt, BigInt(nowSeconds - 100), true);
+    out.set(Pubkey.from(OTHER).toBytes(), tcr.TCR_LSE.owner);
+    out.set(new Uint8Array(32), tcr.TCR_LSE.resolver);
+    out.set(new TextEncoder().encode(LABEL3), tcr.TCR_LSE.label);
+    return out;
+  };
+
+  const baseGet = client.accounts.get;
+  client.accounts.get = async (address) => {
+    if (address === CUSTOM_CONFIG) return { meta: { balance: 1n }, data: customConfigBytes() };
+    if (address === customLease) return { meta: { balance: 1n }, data: customLeaseBytes() };
+    return baseGet(address);
+  };
+
+  // The tier for a 3-character label is 100000. Before the fix this exact call answered
+  // REVIEW_PRICE_CHANGED (compared with feePerYear = 1000) and nothing was broadcast; now the
+  // gate passes and the flow reaches its real refusal — the lease already exists.
+  const tiered = await sendWithConsent(handleApiRequest, 'name.register', {
+    name: LABEL3, years: 1, via: 'custom', expectedNetworkId: 'betanet',
+    expectedAccountAddress: SENDER, expectedPricePerYear: '100000', password: 'Password123!',
+  });
+  assert.notEqual(tiered.error?.code, 'REVIEW_PRICE_CHANGED',
+    `a correct tiered review must not be refused as stale (got ${tiered.error?.code})`);
+  assert.equal(tiered.error?.code, 'TCR_LEASE_EXISTS', `the gate passes and the real refusal is the lease (got ${tiered.error?.code})`);
+
+  // Negative control: a genuinely stale price is still refused.
+  const staleTier = await sendWithConsent(handleApiRequest, 'name.register', {
+    name: LABEL3, years: 1, via: 'custom', expectedNetworkId: 'betanet',
+    expectedAccountAddress: SENDER, expectedPricePerYear: '999', password: 'Password123!',
+  });
+  assert.equal(staleTier.error?.code, 'REVIEW_PRICE_CHANGED', 'a stale tier price is still refused');
+
+  client.accounts.get = baseGet;
+  ok('a 3-character (premium-tier) review reaches its real refusal instead of REVIEW_PRICE_CHANGED');
+}
+
+// [8] A confirmed write signs the fee the card quoted (2026-11-12).
+// The fee is declared from the payer's balance at build time, so a balance that moved between
+// review and confirm would sign a different number than the card showed. The recheck refuses
+// with REVIEW_FEE_CHANGED instead of silently changing the quote.
+{
+  const stubBalances = Object.create(null);
+  const setAccountBlob = (address, balance) => {
+    if (balance == null) delete stubBalances[address];
+    else stubBalances[address] = balance;
+  };
+  const baseGet2 = client.accounts.get;
+  client.accounts.get = async (address) => {
+    if (Object.hasOwn(stubBalances, address)) return { meta: { balance: stubBalances[address] } };
+    return baseGet2(address);
+  };
+  leaseState = 'absent';
+  domainExists = false;
+
+  // The payer is unfunded at prepare time, so the review quotes a declared 0.
+  setAccountBlob(SENDER, null);
+  const prepared = await handleApiRequest({
+    method: 'tx.prepareReview',
+    params: { kind: 'domain-purchase', params: { name: NAME, years: 1 } },
+  });
+  assert.equal(prepared.ok, true, prepared.error?.message);
+  assert.equal(prepared.data.review.assets.fee.amountUnits, '0',
+    'an unfunded payer quotes a declared zero, not a measured one');
+
+  // The payer receives THRU before confirming: the write would now declare the base fee.
+  setAccountBlob(SENDER, 5n);
+  const drifted = await handleApiRequest({
+    method: 'tx.confirmReview',
+    params: { reviewId: prepared.data.reviewId, bindingHash: prepared.data.bindingHash },
+  });
+  assert.equal(drifted.ok, false);
+  assert.equal(drifted.error.code, 'REVIEW_FEE_CHANGED', drifted.error.code);
+
+  // Control: a review whose quote still matches confirms normally.
+  setAccountBlob(SENDER, 5n);
+  const stable = await handleApiRequest({
+    method: 'tx.prepareReview',
+    params: { kind: 'domain-purchase', params: { name: NAME, years: 1 } },
+  });
+  assert.equal(stable.ok, true, stable.error?.message);
+  assert.equal(stable.data.review.assets.fee.amountUnits, '1');
+  const confirmed = await handleApiRequest({
+    method: 'tx.confirmReview',
+    params: { reviewId: stable.data.reviewId, bindingHash: stable.data.bindingHash },
+  });
+  assert.equal(confirmed.ok, true, confirmed.error?.message);
+  assert.equal(confirmed.data.submit.method, 'name.purchase');
+
+  setAccountBlob(SENDER, null);
+  client.accounts.get = baseGet2;
+  ok('a confirm that would sign a different network fee is refused; an unchanged one confirms');
 }
 
 console.log(`\ntest-name-registrar: ${checks} checks passed`);

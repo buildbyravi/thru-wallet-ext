@@ -44,10 +44,11 @@ chrome.storage.local  chrome.storage.session
 ```
 
 ### Encryption Specifications
-*   **Key Derivation Function:** PBKDF2 with HMAC-SHA-256 and **600,000 iterations**. A unique 16-byte salt is generated via `crypto.getRandomValues()` during wallet setup.
+*   **Key Derivation Function:** PBKDF2 with HMAC-SHA-256 and **600,000 iterations** (pinned per-vault in a versioned KDF envelope so future parameter changes never silently alter existing vault derivation). A unique 16-byte salt is generated via `crypto.getRandomValues()` during wallet setup.
 *   **Authenticated Encryption:** AES-256-GCM (Galois/Counter Mode) provides both confidentiality and integrity verification.
 *   **Initialization Vector (IV):** A fresh 12-byte IV is generated via `crypto.getRandomValues()` for **every** encryption write operation to prevent IV reuse attacks.
 *   **Session-Only Decryption:** Unlocked vault state and private keys reside strictly within `chrome.storage.session` (an in-memory storage area isolated to the browser process lifetime). Decrypted keys are never written to disk or `chrome.storage.local`.
+*   **Reviewed Signing & Background Consent Boundary:** Value-moving transactions prepare a deterministic review (`tx.prepareReview`), require confirmation through the single review pipeline (`tx.confirmReview`), and present a one-time, short-lived in-memory consent token bound to the reviewed account, network, and parameters before the background worker signs. Users may additionally enable master-password re-authentication on every signature in Settings.
 
 ---
 

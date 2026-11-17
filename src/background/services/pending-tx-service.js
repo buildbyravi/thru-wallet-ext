@@ -17,7 +17,7 @@
 import * as thruClient from '../../lib/thru-client.js';
 import { getBalances } from './balance-service.js';
 import { emit } from './event-service.js';
-import { getActiveNetworkId } from './network-service.js';
+import { getActiveNetworkId, getActiveNetworkConfig, getNetworkGeneration } from './network-service.js';
 import { scopedKey } from '../../shared/network-scope.js';
 import { recordSubmittedTransaction, settleTransaction } from './history-service.js';
 
@@ -31,8 +31,51 @@ const MAX_RECORDS = 50;
 // Serialize every read-modify-write per network. Distinct transfers and reconciliation can finish
 // in either order; without this queue the last storage write silently erased the other signature.
 const pendingUpdates = new Map();
+let generation = 0;
+let registrationRecovery = null;
+const recoveryJobs = new Set();
+export const PENDING_ALARM = 'thru-pending-reconcile';
 
-// Give up watching after this long and mark the record 'unknown' rather than guessing.
+// Composition supplies domain recovery without adding pending -> domain -> name cycles.
+export function configureRegistrationRecovery(callbacks) { registrationRecovery = callbacks; }
+
+export function registrationIdentity(domain, signer, networkId) {
+  const ref = signer?.ref;
+  if (!ref?.keyringId) return null; // Legacy test/imported records have no durable identity.
+  return { name: domain.name, rootAddress: domain.rootAddress, domainAddress: domain.domainAddress,
+    accountAddress: signer.address, networkId,
+    accountRef: { keyringId: ref.keyringId, accountIndex: ref.accountIndex ?? ref.index ?? 0 } };
+}
+
+export async function ensurePendingAlarm() {
+  if (!globalThis.chrome?.alarms?.get || !chrome.alarms.create) return;
+  const alarm = await chrome.alarms.get(PENDING_ALARM);
+  if (!alarm || alarm.periodInMinutes !== 1) await chrome.alarms.create(PENDING_ALARM, { periodInMinutes: 1 });
+}
+
+async function syncPendingAlarm(hasActivePending) {
+  if (hasActivePending) {
+    await ensurePendingAlarm().catch(() => {});
+  } else {
+    await globalThis.chrome?.alarms?.clear?.(PENDING_ALARM)?.catch?.(() => {});
+  }
+}
+
+function contextCurrent(ctx, activeId) {
+  return ctx.generation === generation && ctx.networkGeneration === getNetworkGeneration()
+    && activeId === ctx.networkId
+    && thruClient.getConfiguredNetwork().id === ctx.networkId && thruClient.getClient() === ctx.client;
+}
+
+async function publish(list, networkId, ctx = null) {
+  const activeId = await getActiveNetworkId();
+  if (activeId !== networkId || (ctx && !contextCurrent(ctx, activeId))) return;
+  await updateBadge(list, networkId, ctx);
+  const currentId = await getActiveNetworkId();
+  if (currentId === networkId && (!ctx || contextCurrent(ctx, currentId))) emit('pendingTxChanged', { networkId, pending: list.filter(r => r.status === TX_STATUS.SUBMITTED) });
+}
+
+// Mark a delayed result unknown, but keep reconciling until chain evidence resolves it.
 const WATCH_TIMEOUT_MS = 5 * 60_000;
 
 export const TX_STATUS = {
@@ -42,46 +85,61 @@ export const TX_STATUS = {
   UNKNOWN: 'unknown',
 };
 
+function isUnresolved(record) {
+  return record.status === TX_STATUS.SUBMITTED || record.status === TX_STATUS.UNKNOWN;
+}
+
+function needsTracking(record) {
+  return isUnresolved(record)
+    || (record.status === TX_STATUS.CONFIRMED && record.registrationIdentity && !record.registrationRemembered);
+}
+
 async function pendingKey(networkId = null) {
   return scopedKey(PENDING_BASE_KEY, networkId || await getActiveNetworkId());
 }
 
 async function readAll(networkId = null) {
-  try {
-    const key = await pendingKey(networkId);
-    const res = await chrome.storage.local.get(key);
-    const stored = res?.[key];
-    // v0 was a bare array. Read it without rewriting; the next mutation performs the migration.
-    if (Array.isArray(stored)) return stored;
-    if (stored && typeof stored === 'object') {
-      if (stored.version > PENDING_SCHEMA_VERSION) {
-        throw new Error(`Pending transaction schema ${stored.version} is newer than this wallet.`);
-      }
-      return Array.isArray(stored.records) ? stored.records : [];
-    }
-    return [];
-  } catch (error) {
-    if (/newer than this wallet/.test(error?.message || '')) throw error;
-    return [];
-  }
-}
-
-async function writeAll(list, networkId = null) {
   const key = await pendingKey(networkId);
-  await chrome.storage.local.set({
-    [key]: { version: PENDING_SCHEMA_VERSION, records: list.slice(0, MAX_RECORDS) },
-  });
+  const res = await chrome.storage.local.get(key);
+  const stored = res?.[key];
+  // v0 was a bare array; an empty plain object {} has no records yet.
+  if (Array.isArray(stored)) return stored;
+  if (stored && typeof stored === 'object') {
+    if (Object.keys(stored).length === 0) return [];
+    if (!Number.isSafeInteger(stored.version) || stored.version !== PENDING_SCHEMA_VERSION) {
+      throw new Error(`Pending transaction schema ${stored.version} is newer than this wallet.`);
+    }
+    if (!Array.isArray(stored.records)) throw new Error('Pending transaction records are malformed.');
+    return stored.records;
+  }
+  if (stored != null) throw new Error('Pending transaction storage is malformed.');
+  return [];
 }
 
-function updateAll(networkId, edit) {
+function updateAll(networkId, edit, ctx = null) {
   const id = networkId;
+  const started = generation;
   const queueKey = String(id || 'active');
   const prior = pendingUpdates.get(queueKey) || Promise.resolve();
   const update = prior.catch(() => {}).then(async () => {
     const resolvedId = id || await getActiveNetworkId();
+    if (started !== generation) return null;
     const list = await readAll(resolvedId);
+    if (started !== generation) return null;
     const { next, value } = await edit(list);
-    if (next) await writeAll(next, resolvedId);
+    // Resolve all asynchronous facts before the final guard. The scoped key is synchronous:
+    // another await here would reopen the roundtrip/reset race before storage.set.
+    const activeId = ctx ? await getActiveNetworkId() : null;
+    if (started !== generation) return null;
+    if (ctx && !contextCurrent(ctx, activeId)) return null;
+    if (next) {
+      let settledKept = 0;
+      const settledLimit = Math.max(0, MAX_RECORDS - next.filter(needsTracking).length);
+      await chrome.storage.local.set({
+        [scopedKey(PENDING_BASE_KEY, resolvedId)]: { version: PENDING_SCHEMA_VERSION,
+          records: next.filter(r => needsTracking(r) || settledKept++ < settledLimit) },
+      });
+    }
     return value;
   });
   pendingUpdates.set(queueKey, update);
@@ -90,9 +148,11 @@ function updateAll(networkId, edit) {
   });
 }
 
-async function updateBadge(list) {
+async function updateBadge(list, networkId = null, ctx = null) {
   try {
     if (typeof chrome === 'undefined' || !chrome.action?.setBadgeText) return;
+    const activeId = networkId ? await getActiveNetworkId() : null;
+    if (networkId && (activeId !== networkId || (ctx && !contextCurrent(ctx, activeId)))) return;
     const active = list.filter((r) => r.status === TX_STATUS.SUBMITTED).length;
     await chrome.action.setBadgeText({ text: active > 0 ? String(active) : '' });
     if (active > 0 && chrome.action.setBadgeBackgroundColor) {
@@ -115,10 +175,12 @@ async function updateBadge(list) {
  *   mint?: string, displayAmount?: string, networkId?: string }} tx
  */
 export async function track(tx) {
+  const started = generation;
   if (!tx?.signature) return null;
   // A network switch can finish while the SDK is signing. The signature still belongs to
   // the chain where the send began, not the network selected when this storage call runs.
   const networkId = tx.networkId || await getActiveNetworkId();
+  if (started !== generation) return null;
   const record = {
     signature: String(tx.signature),
     kind: tx.kind || 'transfer',
@@ -131,36 +193,36 @@ export async function track(tx) {
     status: TX_STATUS.SUBMITTED,
     submittedAt: Date.now(),
     settledAt: null,
+    // The transaction's own deadline, as built: without these two numbers an "unknown" send
+    // cannot be classified as "may still land" or "expired", and the only honest message left
+    // is the useless one. Null when a path did not report them (an older record, or a build
+    // that predates this field) — never invented.
+    startSlot: tx.startSlot != null && tx.startSlot !== '' ? String(tx.startSlot) : null,
+    expiryAfter: tx.expiryAfter != null && tx.expiryAfter !== '' && Number.isSafeInteger(Number(tx.expiryAfter)) && Number(tx.expiryAfter) >= 0 ? Number(tx.expiryAfter) : null,
+    registrationIdentity: tx.registrationIdentity ? structuredClone(tx.registrationIdentity) : null,
+    registrationRemembered: false,
     error: null,
   };
-  await updateAll(networkId, (list) => ({
+  const saved = await updateAll(networkId, (list) => ({
     next: [record, ...list.filter((r) => r.signature !== record.signature)],
     value: record,
   }));
+  if (!saved || started !== generation) return null;
   try {
     await recordSubmittedTransaction(record);
   } catch {
     // History cache is best-effort after storing the signature; never change the send result.
   }
-  try {
-    if (await getActiveNetworkId() === networkId) {
-      const updated = await readAll(networkId);
-      await updateBadge(updated);
-      if (await getActiveNetworkId() === networkId) {
-        emit('pendingTxChanged', { pending: updated.filter((r) => r.status === TX_STATUS.SUBMITTED) });
-      }
-    }
-  } catch {
-    // Badge/events are best-effort after storing the signature; never change the send result.
-  }
-
-  // Active self-service: betanet blocks land in a few milliseconds (owner-confirmed
-  // 2026-10-26; the ~6s cadence measured 2026-09-29 was superseded), so a transfer settles
-  // essentially immediately and the reconcile window lives well under a second. The pass list
-  // no-ops once settled and swallows errors. unref keeps Node-based tests from hanging.
-  for (const ms of [300, 700, 1_400, 2_600]) {
-    const timer = setTimeout(() => { reconcile().catch(() => {}); }, ms);
-    timer.unref?.();
+  await publish(await readAll(networkId), networkId).catch(() => {});
+  await ensurePendingAlarm().catch(() => {});
+  // Reconcile promptly around Betanet's ~6s block cadence while the durable 1m alarm carries
+  // tracking across MV3 service-worker suspension. unref() keeps Node tests from hanging.
+  void reconcile().catch(() => {});
+  for (const delayMs of [2_000, 10_000]) {
+    const timer = setTimeout(() => {
+      if (started === generation) void reconcile().catch(() => {});
+    }, delayMs);
+    timer?.unref?.();
   }
 
   return record;
@@ -228,7 +290,7 @@ export async function isProbableDuplicate(candidate, windowMs = 30_000) {
     && r.to === candidate.to
     && r.amountUnits === String(candidate.amountUnits)
     && (r.mint || null) === mint
-    && (r.status === TX_STATUS.SUBMITTED || r.submittedAt >= cutoff)
+    && (isUnresolved(r) || r.submittedAt >= cutoff)
   ));
 }
 
@@ -249,12 +311,12 @@ export async function getDuplicateInfo(candidate, windowMs = 30_000) {
     && r.to === candidate.to
     && r.amountUnits === String(candidate.amountUnits)
     && (r.mint || null) === mint
-    && (r.status === TX_STATUS.SUBMITTED || r.submittedAt >= cutoff)
+    && (isUnresolved(r) || r.submittedAt >= cutoff)
   ));
   if (!match) {
     return { isDuplicate: false, isPending: false, elapsedMs: null, signature: null };
   }
-  const isPending = match.status === TX_STATUS.SUBMITTED;
+  const isPending = isUnresolved(match);
   const elapsedMs = match.submittedAt ? Math.max(0, Date.now() - match.submittedAt) : null;
   return {
     isDuplicate: true,
@@ -264,106 +326,129 @@ export async function getDuplicateInfo(candidate, windowMs = 30_000) {
   };
 }
 
-async function settle(signature, status, error = null) {
-  const networkId = await getActiveNetworkId();
+async function settle(signature, status, error, networkId, ctx = null) {
+  if (ctx && !contextCurrent(ctx, await getActiveNetworkId())) return null;
   const result = await updateAll(networkId, (list) => {
     let changed = false;
     const next = list.map((r) => {
-      if (r.signature !== signature || r.status !== TX_STATUS.SUBMITTED) return r;
+      if (r.signature !== signature || !isUnresolved(r) || r.status === status) return r;
       changed = true;
       return { ...r, status, settledAt: Date.now(), error };
     });
     return { next: changed ? next : null, value: changed ? next : null };
-  });
+  }, ctx);
   if (!result) return null;
   const next = result;
-  await updateBadge(next);
-  emit('pendingTxChanged', { pending: next.filter((r) => r.status === TX_STATUS.SUBMITTED) });
+  await publish(next, networkId, ctx);
   const settledRecord = next.find((r) => r.signature === signature) || null;
   try {
-    await settleTransaction(signature, status, error, settledRecord?.networkId || null);
+    await settleTransaction(signature, status, error, networkId,
+      ctx ? activeId => contextCurrent(ctx, activeId) : null);
   } catch {
     // History cache update is best-effort
   }
   if (status === TX_STATUS.CONFIRMED && settledRecord) {
     const addrs = [settledRecord.from, settledRecord.to].filter((a) => typeof a === 'string' && a);
     if (addrs.length) {
-      getBalances(addrs).catch(() => {});
+      const activeId = await getActiveNetworkId();
+      if (activeId === networkId && (!ctx || contextCurrent(ctx, activeId))) getBalances(addrs).catch(() => {});
     }
   }
+  if (status === TX_STATUS.CONFIRMED && settledRecord) await rememberRegistration(settledRecord);
   return settledRecord;
 }
 
-let reconciling = false;
+async function rememberRegistration(record) {
+  if (!record.registrationIdentity || record.registrationRemembered || !registrationRecovery?.remember) return;
+  const started = generation;
+  const job = (async () => {
+    const result = await registrationRecovery.remember(record.registrationIdentity);
+    if (started !== generation || !result?.complete) return;
+    await updateAll(record.networkId, list => ({
+      next: list.map(r => r.signature === record.signature ? { ...r, registrationRemembered: true } : r), value: true,
+    }));
+  })();
+  recoveryJobs.add(job);
+  try { await job; } catch { /* Retry metadata next reconciliation; never fail the transaction. */ }
+  finally { recoveryJobs.delete(job); }
+}
 
-/**
- * Check every submitted record against the chain and settle whatever has resolved.
- *
- * Confirmation is inferred from the sender's on-chain history, which is the only signal this
- * client is known to read correctly (decodeHistoryEntry is covered by test-thru-client.mjs).
- * Anything still unresolved past WATCH_TIMEOUT_MS becomes 'unknown', never 'confirmed'.
- *
- * @returns {Promise<{ checked: number, settled: number }>}
- */
+export async function resolveExecution(signature, success, networkId) {
+  if (success !== true && success !== false) return null;
+  return settle(signature, success ? TX_STATUS.CONFIRMED : TX_STATUS.FAILED,
+    success ? null : 'Transaction failed on-chain.', networkId);
+}
+
+const reconciliations = new Map();
 export async function reconcile() {
-  if (reconciling) return { checked: 0, settled: 0 };
-  reconciling = true;
-  try {
-    const pending = await listPending();
-    if (!pending.length) return { checked: 0, settled: 0 };
-
+  const started = generation;
+  const network = await getActiveNetworkConfig();
+  const ctx = { generation: started, networkId: network.id, client: thruClient.getClient(), networkGeneration: getNetworkGeneration() };
+  if (!contextCurrent(ctx, await getActiveNetworkId())) return { checked: 0, settled: 0 };
+  if (reconciliations.has(network.id)) return reconciliations.get(network.id);
+  const job = (async () => {
+    const all = await readAll(network.id);
+    if (!contextCurrent(ctx, await getActiveNetworkId())) return { checked: 0, settled: 0 };
+    // Sync toolbar badge quietly without emitting pendingTxChanged when nothing settled;
+    // emitting every minute causes open views to re-query RPC and reset the auto-lock timer.
+    await updateBadge(all, network.id, ctx);
+    for (const record of all.filter(r => r.status === TX_STATUS.CONFIRMED)) {
+      if (!contextCurrent(ctx, await getActiveNetworkId())) return { checked: 0, settled: 0 };
+      await rememberRegistration(record);
+    }
+    const unresolved = all.filter(isUnresolved);
+    await syncPendingAlarm((await readAll(network.id)).some(needsTracking));
     let settledCount = 0;
     const byAddress = new Map();
-    for (const record of pending) {
+    for (const record of unresolved) {
       if (!record.from) continue;
       if (!byAddress.has(record.from)) byAddress.set(record.from, []);
       byAddress.get(record.from).push(record);
     }
-
     for (const [address, records] of byAddress) {
-      let history = [];
-      try {
-        history = await thruClient.listAccountHistory(address, 25);
-      } catch {
-        continue; // network down: leave records pending, do not guess
-      }
-      const seen = new Map(
-        history
-          .filter((entry) => entry?.signature)
-          .map((entry) => [String(entry.signature), entry]),
-      );
-
+      if (!contextCurrent(ctx, await getActiveNetworkId())) break;
+      let history = null;
+      try { history = await thruClient.listAccountHistory(address, 25); }
+      catch { history = null; }
+      if (!contextCurrent(ctx, await getActiveNetworkId())) break;
+      const seen = history
+        ? new Map(history.filter(e => e?.signature).map(e => [String(e.signature), e]))
+        : new Map();
       for (const record of records) {
         const match = seen.get(record.signature);
-        if (match) {
-          const status = match.success === false ? TX_STATUS.FAILED : TX_STATUS.CONFIRMED;
-          await settle(record.signature, status, match.success === false ? 'Transaction failed on-chain.' : null);
-          settledCount += 1;
-        } else if (Date.now() - record.submittedAt > WATCH_TIMEOUT_MS) {
-          await settle(
-            record.signature,
-            TX_STATUS.UNKNOWN,
-            'Could not confirm this transaction. Check the explorer.',
-          );
-          settledCount += 1;
+        let status = match?.success === true ? TX_STATUS.CONFIRMED : match?.success === false ? TX_STATUS.FAILED : null;
+        if (!status && record.status === TX_STATUS.SUBMITTED && Date.now() - record.submittedAt > WATCH_TIMEOUT_MS) {
+          status = TX_STATUS.UNKNOWN;
         }
+        const errorText = status === TX_STATUS.FAILED
+          ? 'Transaction failed on-chain.'
+          : status === TX_STATUS.UNKNOWN
+            ? 'Could not confirm this transaction. Check the explorer.'
+            : null;
+        if (status && await settle(record.signature, status, errorText, network.id, ctx)) settledCount++;
       }
     }
-
-    return { checked: pending.length, settled: settledCount };
-  } finally {
-    reconciling = false;
-  }
+    if (settledCount > 0 && contextCurrent(ctx, await getActiveNetworkId())) {
+      const latest = await readAll(network.id);
+      await syncPendingAlarm(latest.some(needsTracking));
+    }
+    return { checked: unresolved.length, settled: settledCount };
+  })();
+  reconciliations.set(network.id, job);
+  try { return await job; }
+  finally { if (reconciliations.get(network.id) === job) reconciliations.delete(network.id); }
 }
 
 /** Remove settled records, keeping anything still in flight. */
 export async function clearSettled() {
   const networkId = await getActiveNetworkId();
   const next = await updateAll(networkId, (list) => {
-    const kept = list.filter((r) => r.status === TX_STATUS.SUBMITTED);
+    const kept = list.filter(needsTracking);
     return { next: kept, value: kept };
   });
-  await updateBadge(next);
+  if (!next) return { remaining: 0 };
+  await publish(next, networkId);
+  await syncPendingAlarm(next.some(needsTracking));
   return { remaining: next.length };
 }
 
@@ -374,13 +459,13 @@ export async function clearSettled() {
  * wallet's pending transactions waiting on a network the user has not selected yet.
  */
 export async function clearAll() {
-  try {
-    const all = await chrome.storage.local.get(null);
-    const keys = Object.keys(all || {})
-      .filter((k) => k === PENDING_BASE_KEY || k.startsWith(`${PENDING_BASE_KEY}::`));
-    if (keys.length) await chrome.storage.local.remove(keys);
-  } catch {
-    // ignore
-  }
+  generation++;
+  inFlightTransfers.clear();
+  await Promise.allSettled([...pendingUpdates.values(), ...reconciliations.values(), ...recoveryJobs]);
+  await registrationRecovery?.clear?.();
+  const all = await chrome.storage.local.get(null);
+  const keys = Object.keys(all || {}).filter(k => k === PENDING_BASE_KEY || k.startsWith(`${PENDING_BASE_KEY}::`));
+  if (keys.length) await chrome.storage.local.remove(keys);
+  await chrome.alarms?.clear?.(PENDING_ALARM);
   await updateBadge([]);
 }

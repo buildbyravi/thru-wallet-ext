@@ -12,10 +12,12 @@ This document records the shipped wallet-core boundaries and separately labels a
 Current code structure for the wallet core is:
 
 ```txt
-src/ui/app/routes → bridge.send() → v12 contract/router → background services → vault / thru-client
+src/ui/app/routes → bridge.send() → v33 contract/router → background services → vault / thru-client
 ```
 
-The current contract has 81 methods. Signing requires an unlocked wallet; password re-authentication
+The current contract has 154 methods (88 wallet-core + 23 `name.*` + 43 flag-off DeFi M0). Value-moving routes reach signing only through the shared review and consent pipeline
+(`tx.prepareReview` → `TxReviewCard` → `tx.confirmReview` one-time `consentToken` → the operation's existing signing
+method; `confirmReview` itself re-validates, mints the v32 consent token, and returns the submit instructions — it never signs; `docs/guides/transaction-review.md`). Signing requires an unlocked wallet; password re-authentication
 is opt-in and defaults off. v12 account registration is the narrow unlocked-only exception for an
 exact vault-owned address. History uses a network/address-scoped cache and ships as a flat stream;
 popup/side-panel mutual exclusion is implemented in the shared page. These are shipped core
@@ -271,13 +273,7 @@ Add guardrails incrementally:
 3. Add a rule: feature UI cannot import `src/background/**` or `src/lib/**`.
 4. Add a rule: feature background cannot import `src/ui/**`.
 5. Add contract tests by namespace.
-6. Add per-feature test commands later:
-
-```bash
-node test/test-feature-dex.mjs
-node test/test-feature-launchpad.mjs
-node test/test-feature-prediction.mjs
-```
+6. Add per-feature test suites in `package.json` (`node test/test-feature-<name>.mjs`; current dark-launched DeFi backend suites are `test/test-defi-m0.mjs` and `test/test-dex-swap.mjs`).
 
 7. Add CODEOWNERS-like review guidance in docs if GitHub CODEOWNERS is not desired.
 
@@ -289,10 +285,10 @@ node test/test-feature-prediction.mjs
 
 - `wallet.reset` confirmation and unlocked-wallet password policy are enforced in the background (v6).
 - Auto-lock changes are password-gated (v6).
-- All 14 routes mount through the real Router/guards/bridge under the deterministic DOM shim (`test/test-route-lifecycle.mjs`).
+- All 15 routes mount through the real Router/guards/bridge under the deterministic DOM shim (`test/test-route-lifecycle.mjs`).
 - Signing methods use the background `auth: 'signing'` policy (v5); its password re-auth preference defaults off and can be enabled only through the password-gated security-settings API.
 - Custom-network activation is rejected and stale active IDs are healed before RPC binding (v7).
-- v8–v15 additions include token balances/transfers, History feed/detail, checked Send context, owned-account registration, storage-only cached History, chain mint reads, and duplicate checks. Contract v16 retires unbound legacy send methods after zero shipped callers. Current source authority is `src/shared/contract/manifest.js` (v16, 81 methods).
+- v8–v15 additions include token balances/transfers, History feed/detail, checked Send context, owned-account registration, storage-only cached History, chain mint reads, and duplicate checks. Contract v16 retires unbound legacy send methods after zero shipped callers. v17–v28 append the flag-off DeFi surface, the primary name, the official and custom registrars, faucet limits, token discovery and cached balances, and reviewed name facts. **Contract v29 appends the shared transaction review** (`tx.prepareReview` / `tx.confirmReview` / `tx.discardReview`); v30 adds the tracked-domain registry; v31 adds the name-service record write (`name.setRecord`) plus `name.reverseLookup`; **v32 enforces the background `consentToken` gate** across value-moving handlers; and v33 appends `token.importVerified` while preserving legacy metadata import. Current source authority is `src/shared/contract/manifest.js` (v33, 154 methods).
 
 ### Phase B — quarantine legacy launchpad — DONE
 

@@ -11,7 +11,7 @@ import { icon } from '../kit/icon.js';
  * one with no delta at all. If a price feed lands, add the delta back with its source.
  *
  * @param {Object} props
- *   usd       formatted USD balance (default '$0.00' — neutral, never invented)
+ *   usd       formatted sourced USD balance, unknown until a price is available
  *   native    formatted native THRU amount (default '—' until the first real value)
  *   summary   one quiet line of token symbols (e.g. 'THRU · LAB') — real symbols only,
  *             the Rabby balance-card chain-chips analog
@@ -23,7 +23,7 @@ import { icon } from '../kit/icon.js';
  *             mouse handler.
  */
 export function BalanceHero({
-  usd = '$0.00',
+  usd = '\u2014',
   native = '—',
   summary = '',
   onRefresh,
@@ -48,7 +48,7 @@ export function BalanceHero({
     });
   }
 
-  const usdEl = h('div', { class: 'dash-balance-usd', text: usd });
+  const usdEl = h('div', { class: 'dash-balance-usd', text: usd ?? '\u2014' });
   const row = h('div', { class: 'dash-balance-row' }, [usdEl, refreshBtn]);
   const nativeEl = h('div', { class: 'dash-balance-native', text: native });
   const summaryEl = h('div', {
@@ -93,7 +93,7 @@ export function BalanceHero({
   return {
     el,
     update({ usd: u, native: n, summary: s } = {}) {
-      if (u !== undefined) usdEl.textContent = u;
+      if (u !== undefined) usdEl.textContent = u ?? '\u2014';
       if (n !== undefined) nativeEl.textContent = n;
       if (s !== undefined) {
         summaryEl.textContent = s;

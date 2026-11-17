@@ -1,0 +1,17 @@
+{
+  "date": "2026-10-28T08:30:40.690Z",
+  "network": "betanet",
+  "seed": "thru-custom-registrar:v1",
+  "hdIndex": 0,
+  "deployer": "tabDLDL9EVZYhRnbgPr0HrQuIvv01AZm9vtV8yIX26KO2J",
+  "registrarProgramAddress": "ta2vDCBzzptN2qVZgz6PXsCp5cNB7Nef4yeQ3W-OqzZcfF",
+  "configAddress": "ta_9lLvhxurg4J5DyZ82W14rzzGWCEfj9B7Y8wa99amPBa",
+  "rootAddress": "taNP1MFOO2shpn6ORofIGSNiQ-qJ9VE2lDkDwvUmgUmaQZ",
+  "rootName": "thru",
+  "feePerYearBaseUnits": "1000",
+  "treasury": "taShrn6v-TM_h81ZjmDZLifdhLRlDMfIw_EAIaNKIIdPX-",
+  "initializeSignature": null,
+  "vmError": null,
+  "executionResult": null,
+  "initializeState": "skipped"
+}

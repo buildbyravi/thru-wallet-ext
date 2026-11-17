@@ -6,10 +6,18 @@
 // Write path : name.purchase / name.renewLease / name.claimExpired are auth:'signing'
 //              contract methods (v22). Every write is self-signed (fee payer = vault
 //              signer), pays from the fee payer's OWN token account of the registry mint,
-//              carries fee 0n exactly like the first-party CLI (THRU_REGISTRAR_PROGRAM_FEE
-//              = 0 — the registrar program charges its own token price, there is no
-//              protocol fee field to fill), and re-reads config fresh at build time so a
-//              registry change between quote and submit is caught.
+//              declares the network fee from the chain's measured base fee when that payer
+//              can cover it (`tx-units.networkFeeUnits`; the same rule sends use), and
+//              re-reads config fresh at build time so a registry change between quote and
+//              submit is caught.
+//
+//              Correcting a long-standing misreading (2026-11-12): the first-party CLI's
+//              THRU_REGISTRAR_PROGRAM_FEE = 0 is NOT a program-level fee field. Its builder
+//              passes it straight into `Transaction::new(fee_payer, program, fee, nonce)`
+//              (rpc/thru-base/src/txn_tools.rs), i.e. it is the transaction header fee the
+//              CLI happened to leave at zero ("0 fee for now"). Copying that zero here made
+//              the wallet's registrar writes free while every other write paid the measured
+//              base fee — and the review card then called the builder constant "Network fee".
 //
 // Honest boundaries documented here rather than hidden:
 //   - lease end times are raw u64 "chain time"; expiry hints compare them to LOCAL
@@ -23,28 +31,201 @@ import * as thruClient from '../../lib/thru-client.js';
 import * as reg from '../../lib/registrar.js';
 import * as tcr from '../../lib/custom-registrar.js';
 import { domainAccountAddress, registrarConfigAddress, rootRegistrarAddress, NAME_SERVICE_PROGRAM } from '../../lib/name-service.js';
-import { getActiveNetworkConfig } from './network-service.js';
+import { getActiveNetworkConfig, getNetworkGeneration } from './network-service.js';
+import { refsEqual } from '../../shared/refs.js';
+import { networkFeeUnits } from '../../lib/tx-units.js';
 import * as pending from './pending-tx-service.js';
 import * as balances from './balance-service.js';
+import { getPreferences } from './preferences-service.js';
 
 function coded(code, message, extra = {}) {
   const err = new Error(message);
   err.code = code;
   if (extra.retryable !== undefined) err.retryable = extra.retryable;
+  else if (typeof code === 'string' && code.startsWith('REVIEW_')) err.retryable = false;
   return err;
 }
 
-function assertReviewContext({ expectedNetworkId, expectedAccountAddress, expectedPricePerYear } = {}, network, account, cfg) {
+/**
+ * The one-year price a review quotes, for either registrar shape.
+ *
+ * The official registry Config declares a single flat `pricePerYear`. The custom registrar
+ * prices by LABEL LENGTH (3 / 4 / 5+), so its review quotes the tier for THIS label — and the
+ * write-time check must compare the same number. It used to compare against `feePerYear`, the
+ * cheapest tier: a correct 3- or 4-character review then failed at submit with
+ * REVIEW_PRICE_CHANGED and nothing was broadcast (found 2026-11-12 in the domain audit — the
+ * recheck already compared the tier, so the review passed and the write refused).
+ */
+export function reviewPricePerYear(cfg, label) {
+  if (cfg == null) return null;
+  if (cfg.pricePerYear != null) return String(cfg.pricePerYear);
+  if (cfg.fee3PerYear != null && label != null) {
+    try {
+      return pricePerYearFor(cfg, label).toString();
+    } catch {
+      return null; // a label that cannot be priced is refused by the caller, not compared
+    }
+  }
+  if (cfg.feePerYear != null) return String(cfg.feePerYear);
+  return null;
+}
+
+export function registrarFacts(info, payment = null) {
+  const cfg = info.registry ?? info;
+  const custom = !info.registry;
+  return {
+    provider: custom ? 'custom' : 'registry',
+    programAddress: custom ? info.program : reg.THRU_REGISTRAR_PROGRAM,
+    configAddress: info.configAddress,
+    rootAddress: custom ? info.root : cfg.rootRegistrar,
+    rootName: cfg.rootName,
+    nameServiceProgram: custom ? NAME_SERVICE_PROGRAM : cfg.nameServiceProgram,
+    treasuryAddress: custom ? cfg.treasury : cfg.treasurer,
+    ...(custom ? { feePolicy: cfg.feePolicy, feeEnforced: cfg.feeEnforced,
+      feeCollectionVerified: cfg.feeCollectionVerified === true } : {
+      payment: { mintAddress: cfg.tokenMint, tokenProgramAddress: cfg.tokenProgram,
+        symbol: payment?.symbol, decimals: payment?.decimals, verified: payment?.verified },
+    }),
+  };
+}
+
+export function assertRegistrarFacts(expected, current, requirePayment = true) {
+  if (!expected || typeof expected !== 'object'
+    || Object.keys(current).some(key => !Object.hasOwn(expected, key) || current[key] === undefined)) {
+    throw coded('REVIEW_REGISTRAR_CHANGED', 'This review is incomplete. Review the name again.');
+  }
+  if (current.provider === 'custom'
+    && (expected.feePolicy !== current.feePolicy || expected.feeEnforced !== current.feeEnforced)) {
+    throw coded('REVIEW_PRICE_CHANGED', 'The registrar fee policy changed. Review the name again.');
+  }
+  if (current.payment) {
+    if (!expected.payment || (requirePayment && !current.payment.verified)
+      || Object.keys(current.payment).some(key => (requirePayment && current.payment[key] === undefined)
+        || expected.payment[key] !== current.payment[key])) {
+      throw coded('REVIEW_TOKEN_CHANGED', 'The payment token could not be verified as reviewed. Review the name again.');
+    }
+  }
+  if (Object.keys(current).some(key => key !== 'payment' && expected[key] !== current[key])) {
+    throw coded('REVIEW_REGISTRAR_CHANGED', 'The registrar configuration changed. Review the name again.');
+  }
+}
+
+function assertReviewContext({ expectedNetworkId, expectedAccountAddress, expectedPricePerYear } = {}, network, account, cfg, label = null) {
   if (expectedNetworkId && expectedNetworkId !== network?.id) {
     throw coded('REVIEW_NETWORK_CHANGED', 'The active network changed after review. Check the name again before signing.');
   }
   if (expectedAccountAddress && expectedAccountAddress !== account?.address) {
     throw coded('REVIEW_ACCOUNT_CHANGED', 'The active account changed after review. Check the name again before signing.');
   }
-  const currentPrice = cfg?.pricePerYear ?? cfg?.feePerYear;
+  const currentPrice = reviewPricePerYear(cfg, label);
   if (expectedPricePerYear != null && String(expectedPricePerYear) !== String(currentPrice)) {
     throw coded('REVIEW_PRICE_CHANGED', 'The registrar price changed after review. Check the name again for the current price.');
   }
+}
+
+/**
+ * The fee a registrar write declares, from the network's measured base fee and this payer's
+ * verified balance — never a constant. An unmeasured chain or an unreadable/empty balance
+ * yields 0, and the review quotes that 0 with its reason instead of inventing a number.
+ */
+function declaredNetworkFee(network, balanceUnits) {
+  return networkFeeUnits({ baseFeeUnits: network?.baseFeeUnits ?? null, balanceUnits });
+}
+
+export function assertNetworkFee(expected, network, fee) {
+  if (expected.expectedNetworkFeeUnits === undefined && expected.expectedNetworkFeeSupported === undefined) return;
+  if (typeof expected.expectedNetworkFeeSupported !== 'boolean'
+    || expected.expectedNetworkFeeSupported !== (network.baseFeeUnits != null)
+    || expected.expectedNetworkFeeUnits !== fee.toString()) {
+    throw coded('REVIEW_FEE_CHANGED', 'The declared network fee changed. Review the write again.');
+  }
+}
+
+// Run after activation/proofs, against the config used for the final lease read and builder.
+async function checkedRegistrarWrite(expected, network, account, original, name, years, mode, client, networkGeneration) {
+  if (networkGeneration !== getNetworkGeneration() || thruClient.getClient() !== client
+    || thruClient.getConfiguredNetwork().id !== network.id) {
+    throw coded('REVIEW_NETWORK_CHANGED', 'The network changed during preparation. Review again.');
+  }
+  const custom = !original.registry;
+  const info = custom ? await getCustomRegistrar({ skipCache: true }) : await getRegistry();
+  if (!info.supported) throw coded('REVIEW_REGISTRAR_CHANGED', 'The registrar is no longer readable. Review again.');
+  const cfg = info.registry ?? info;
+  assertReviewContext(expected, network, await vault.getActiveAccount(), cfg, name);
+  if (networkGeneration !== getNetworkGeneration() || thruClient.getClient() !== client
+    || thruClient.getConfiguredNetwork().id !== network.id) {
+    throw coded('REVIEW_NETWORK_CHANGED', 'The network changed. Review the name again.');
+  }
+  let payment = null;
+  if (!custom && expected.expectedRegistrarFacts) {
+    try {
+      const [accountInfo, prefs, deployed] = await Promise.all([
+        thruClient.getAccountInfo(cfg.tokenMint, client),
+        getPreferences(),
+        thruClient.getDeployedTokens(network.id),
+      ]);
+      const mint = thruClient.parseMintAccount(accountInfo.raw, cfg.tokenProgram);
+      const canonicalMint = thruClient.canonicalizeThruAddress(cfg.tokenMint) || cfg.tokenMint;
+      const localRow = [...(Array.isArray(deployed) ? deployed : []),
+        ...(prefs?.customTokens || []).filter(t => (t.networkId || 'betanet') === network.id)]
+        .find(t => (thruClient.canonicalizeThruAddress(t.mintAddress || t.mint) || t.mintAddress || t.mint) === canonicalMint);
+      payment = { symbol: (mint.ticker || localRow?.symbol || localRow?.ticker || '').toString() || 'TOKEN', decimals: mint.decimals,
+        verified: accountInfo.exists && Number.isInteger(mint.decimals) && mint.decimals >= 0 && mint.decimals <= 18 };
+    } catch {
+      throw coded('REVIEW_TOKEN_CHANGED', 'The payment token could not be verified as reviewed. Review again.');
+    }
+  }
+  if (expected.expectedRegistrarFacts) assertRegistrarFacts(expected.expectedRegistrarFacts, registrarFacts(info, payment));
+  // Even legacy requests cannot build with addresses/proofs fetched from a different config.
+  const before = registrarFacts(original, payment);
+  assertRegistrarFacts(before, registrarFacts(info, payment), false);
+  if (networkGeneration !== getNetworkGeneration() || thruClient.getClient() !== client) {
+    throw coded('REVIEW_NETWORK_CHANGED', 'The network changed while reading payment facts. Review again.');
+  }
+  const check = custom ? await checkCustomLease({ name, registrarInfo: info })
+    : await checkLease({ name, registryInfo: info });
+  if (check.readError || check.leaseParseError) throw coded('REVIEW_UNAVAILABLE', 'The lease could not be verified.', { retryable: true });
+  if (mode === 'register' || mode === 'purchase') {
+    if (check.domainExists || check.leaseExists) throw coded('NAME_TAKEN', 'The name is no longer available.');
+  } else {
+    if (!check.lease) throw coded('LEASE_NOT_FOUND', 'The lease no longer exists.');
+    const end = custom ? check.lease.expiresAtSeconds : check.lease.endTime;
+    if (expected.expectedLeaseEndTime != null && String(expected.expectedLeaseEndTime) !== String(end)) {
+      throw coded('REVIEW_EXPIRY_CHANGED', 'The lease expiry changed. Review again.');
+    }
+    if (mode === 'claim') {
+      if (check.lease.expiredHint !== true) throw coded('LEASE_NOT_EXPIRED', 'The lease is not expired.');
+    } else if (check.lease.owner !== account.address) throw coded('NOT_NAME_OWNER', 'The lease belongs to another account.');
+  }
+  const payer = await thruClient.getAccountInfo(account.address, client);
+  const fee = declaredNetworkFee(network, payer.balance);
+  assertNetworkFee(expected, network, fee);
+  const total = BigInt(reviewPricePerYear(cfg, name)) * BigInt(years);
+  if (custom && cfg.feeEnforced && total > 0n && cfg.feeCollectionVerified !== true) {
+    throw coded('TCR_FEE_COLLECTION_UNVERIFIED',
+      'This registrar requires a THRU fee, but collection has not been verified for this deployment. '
+      + 'Signing is blocked to avoid a transaction known to revert. No registrar transaction was signed.');
+  }
+  if (custom && cfg.feeEnforced && (!payer.exists || payer.balance < total + fee)) {
+    throw coded('INSUFFICIENT_FUNDS', 'Your balance no longer covers the registrar price and network fee.');
+  }
+  if (!custom) {
+    const balance = await thruClient.getTokenBalance(account.address, cfg.tokenMint);
+    if (!balance.exists || balance.amount == null || balance.amount < total) {
+      throw coded('INSUFFICIENT_PAYMENT_FUNDS', 'Your payment token balance no longer covers the price.');
+    }
+  }
+  const finalInfo = custom ? await getCustomRegistrar({ skipCache: true }) : await getRegistry();
+  if (!finalInfo.supported) throw coded('REVIEW_REGISTRAR_CHANGED', 'The registrar became unreadable. Review again.');
+  assertRegistrarFacts(registrarFacts(info, payment), registrarFacts(finalInfo, payment), false);
+  const currentAccount = await vault.getActiveAccount();
+  assertReviewContext(expected, network, currentAccount, finalInfo.registry ?? finalInfo, name);
+  if (account.ref && !refsEqual(account.ref, currentAccount.ref)) throw coded('REVIEW_ACCOUNT_CHANGED', 'The signing account changed. Review again.');
+  if (networkGeneration !== getNetworkGeneration() || thruClient.getClient() !== client
+    || thruClient.getConfiguredNetwork().id !== network.id) {
+    throw coded('REVIEW_NETWORK_CHANGED', 'The network changed. Review again.');
+  }
+  return fee;
 }
 
 async function fetchAccountData(address) {
@@ -53,12 +234,6 @@ async function fetchAccountData(address) {
   const raw = info.raw ?? null;
   const data = raw?.data?.data instanceof Uint8Array ? raw.data.data : (raw?.data instanceof Uint8Array ? raw.data : null);
   return { exists: true, data, raw };
-}
-
-function accountOwner(raw) {
-  const owner = raw?.meta?.owner ?? raw?.owner ?? null;
-  if (!owner) return null;
-  try { return String(owner); } catch { return null; }
 }
 
 /**
@@ -81,11 +256,12 @@ export async function getRegistry() {
   } catch (err) {
     return { supported: false, reason: `registry config present but unreadable (${err?.message ?? err})`, configAddress };
   }
-  const owner = accountOwner(raw);
-  if (owner && owner !== reg.THRU_REGISTRAR_PROGRAM) {
+  const owner = thruClient.getAccountOwnerAddress(raw);
+  if ((raw?.meta?.owner ?? raw?.owner) != null && owner !== reg.THRU_REGISTRAR_PROGRAM) {
     return {
       supported: false,
-      reason: `registry config is owned by ${owner.slice(0, 12)}…, not the registrar program — refusing to read it as a registry`,
+      reason: owner ? `registry config is owned by ${owner.slice(0, 12)}…, not the registrar program — refusing to read it as a registry`
+        : 'Registry program ownership could not be verified.',
       configAddress,
     };
   }
@@ -118,10 +294,10 @@ export async function getRegistry() {
  * name.checkLease — derived lease + domain addresses for a base name, with live existence
  * and (when present) parsed lease fields. Expiry is a local-clock HINT only.
  */
-export async function checkLease({ name } = {}) {
+export async function checkLease({ name, registryInfo = null } = {}) {
   const prob = reg.purchaseNameProblem(name);
   if (prob) throw coded('INVALID_NAME', prob);
-  const registry = await getRegistry();
+  const registry = registryInfo ?? await getRegistry();
   if (!registry.supported) return { supported: false, reason: registry.reason };
   const n = String(name).trim();
   const [leaseAddress, domainAddress] = await Promise.all([
@@ -181,11 +357,12 @@ export async function getPaymentBalance() {
 }
 
 /**
- * name.purchase — buy a `.thru` lease for the active account (self-signed; fee 0n).
+ * name.purchase — buy a `.thru` lease for the active account (self-signed).
  * Token charge = price_per_year × years, paid from the signer's own token account of the
- * registry mint. Steps mirror the first-party CLI exactly.
+ * registry mint, plus the network fee the header declares (see `declaredNetworkFee`).
  */
-export async function purchaseDomain({ name, years, expectedNetworkId, expectedAccountAddress, expectedPricePerYear } = {}) {
+export async function purchaseDomain({ name, years, expectedNetworkId, expectedAccountAddress, expectedPricePerYear,
+  expectedRegistrarFacts, expectedNetworkFeeUnits, expectedNetworkFeeSupported } = {}) {
   const prob = reg.purchaseNameProblem(name);
   if (prob) throw coded('INVALID_NAME', prob);
   const yp = reg.yearsProblem(years);
@@ -195,10 +372,11 @@ export async function purchaseDomain({ name, years, expectedNetworkId, expectedA
 
   const feePayer = await vault.getActiveAccount();
   const network = await getActiveNetworkConfig(); // bind before building/signing
+  const networkGeneration = getNetworkGeneration();
   const registry = await getRegistry();
   if (!registry.supported) throw coded('REGISTRY_ABSENT', registry.reason ?? 'registry not available here');
   const cfg = registry.registry;
-  assertReviewContext({ expectedNetworkId, expectedAccountAddress, expectedPricePerYear }, network, feePayer, cfg);
+  assertReviewContext({ expectedNetworkId, expectedAccountAddress, expectedPricePerYear }, network, feePayer, cfg, n);
   if (cfg.tokenProgram !== network.tokenProgramId) {
     throw coded('REGISTRY_UNSUPPORTED', `the registry's token program (${cfg.tokenProgram.slice(0, 12)}…) differs from this build's pinned token program — refusing to construct the payment`);
   }
@@ -236,6 +414,10 @@ export async function purchaseDomain({ name, years, expectedNetworkId, expectedA
   if (have < totalPrice) {
     throw coded('INSUFFICIENT_PAYMENT_FUNDS', `This registration costs ${totalPrice} base units of the registry token; your account holds ${have}.`);
   }
+  // The declared network fee needs the payer's NATIVE balance: the registry is paid in its own
+  // token, so a payer can hold plenty of that and no THRU. An unreadable balance declares 0.
+  const payerNative = await thruClient.getAccountInfo(feePayer.address).catch(() => null);
+  let networkFee = declaredNetworkFee(network, payerNative?.balance ?? 0n);
 
   // Creation state proofs (proofType 1 = Creating — the same proof the token account
   // initializer embeds; the purchase instruction carries both proofs inline).
@@ -245,10 +427,13 @@ export async function purchaseDomain({ name, years, expectedNetworkId, expectedA
     client.proofs.generate({ address: domainAddress, proofType: 1 }),
   ]);
 
-  const { rawTransaction } = await client.transactions.buildAndSign({
+  networkFee = await checkedRegistrarWrite({ expectedNetworkId, expectedAccountAddress, expectedPricePerYear,
+    expectedRegistrarFacts, expectedNetworkFeeUnits, expectedNetworkFeeSupported }, network, feePayer, registry, n, y, 'purchase', client, networkGeneration);
+  const registrationIdentity = pending.registrationIdentity({ name: n, rootAddress: cfg.rootRegistrar, domainAddress }, feePayer, network.id);
+  const { rawTransaction, transaction: built } = await client.transactions.buildAndSign({
     feePayer: { publicKey: feePayer.publicKey, privateKey: feePayer.privateKey },
     program: reg.THRU_REGISTRAR_PROGRAM,
-    header: { ...reg.REG_HEADER_PURCHASE },
+    header: reg.registryWriteHeader(reg.REG_UNITS_PURCHASE, networkFee),
     accounts: {
       readWrite: [registry.configAddress, leaseAddress, domainAddress, cfg.treasurer, payerBalance.tokenAccount, cfg.rootRegistrar],
       readOnly: [cfg.nameServiceProgram, cfg.tokenMint, cfg.tokenProgram],
@@ -265,8 +450,10 @@ export async function purchaseDomain({ name, years, expectedNetworkId, expectedA
 
   await balances.getBalances([feePayer.address]).catch(() => null);
   return submitAndAwait(rawTransaction, {
+    networkId: network.id, client, built, registrationIdentity,
     kind: 'name-purchase', from: feePayer.address,
     displayAmount: `${totalPrice} payment-token base units — purchase '${n}.${cfg.rootName}' (${y}y)`,
+    result: { name: n, domainAddress, rootAddress: cfg.rootRegistrar },
   });
 }
 
@@ -284,7 +471,8 @@ export async function claimExpiredDomain(params = {}) {
   return renewOrClaim({ ...params, claim: true });
 }
 
-async function renewOrClaim({ name, years, claim, expectedNetworkId, expectedAccountAddress, expectedPricePerYear, expectedLeaseEndTime }) {
+async function renewOrClaim({ name, years, claim, expectedNetworkId, expectedAccountAddress, expectedPricePerYear, expectedLeaseEndTime,
+  expectedRegistrarFacts, expectedNetworkFeeUnits, expectedNetworkFeeSupported }) {
   const prob = reg.purchaseNameProblem(name);
   if (prob) throw coded('INVALID_NAME', prob);
   const yp = reg.yearsProblem(years);
@@ -294,10 +482,11 @@ async function renewOrClaim({ name, years, claim, expectedNetworkId, expectedAcc
 
   const feePayer = await vault.getActiveAccount();
   const network = await getActiveNetworkConfig();
+  const networkGeneration = getNetworkGeneration();
   const registry = await getRegistry();
   if (!registry.supported) throw coded('REGISTRY_ABSENT', registry.reason ?? 'registry not available here');
   const cfg = registry.registry;
-  assertReviewContext({ expectedNetworkId, expectedAccountAddress, expectedPricePerYear }, network, feePayer, cfg);
+  assertReviewContext({ expectedNetworkId, expectedAccountAddress, expectedPricePerYear }, network, feePayer, cfg, n);
   if (cfg.tokenProgram !== network.tokenProgramId) {
     throw coded('REGISTRY_UNSUPPORTED', `the registry's token program (${cfg.tokenProgram.slice(0, 12)}…) differs from this build's pinned token program — refusing to construct the payment`);
   }
@@ -331,12 +520,18 @@ async function renewOrClaim({ name, years, claim, expectedNetworkId, expectedAcc
   if (have < totalPrice) {
     throw coded('INSUFFICIENT_PAYMENT_FUNDS', `This ${claim ? 'claim' : 'renewal'} costs ${totalPrice} base units of the registry token; your account holds ${have}.`);
   }
+  const payerNative = await thruClient.getAccountInfo(feePayer.address).catch(() => null);
+  let networkFee = declaredNetworkFee(network, payerNative?.balance ?? 0n);
 
   const client = thruClient.getClient();
-  const { rawTransaction } = await client.transactions.buildAndSign({
+  const domainAddress = await domainAccountAddress(cfg.rootRegistrar, n);
+  networkFee = await checkedRegistrarWrite({ expectedNetworkId, expectedAccountAddress, expectedPricePerYear, expectedLeaseEndTime,
+    expectedRegistrarFacts, expectedNetworkFeeUnits, expectedNetworkFeeSupported }, network, feePayer, registry, n, y, claim ? 'claim' : 'renew', client, networkGeneration);
+  const registrationIdentity = claim ? pending.registrationIdentity({ name: n, rootAddress: cfg.rootRegistrar, domainAddress }, feePayer, network.id) : null;
+  const { rawTransaction, transaction: built } = await client.transactions.buildAndSign({
     feePayer: { publicKey: feePayer.publicKey, privateKey: feePayer.privateKey },
     program: reg.THRU_REGISTRAR_PROGRAM,
-    header: { ...reg.REG_HEADER_RENEW },
+    header: reg.registryWriteHeader(reg.REG_UNITS_RENEW, networkFee),
     accounts: {
       readWrite: [leaseAddress, cfg.treasurer, payerBalance.tokenAccount],
       readOnly: [registry.configAddress, cfg.tokenMint, cfg.tokenProgram],
@@ -351,8 +546,10 @@ async function renewOrClaim({ name, years, claim, expectedNetworkId, expectedAcc
 
   await balances.getBalances([feePayer.address]).catch(() => null);
   return submitAndAwait(rawTransaction, {
+    networkId: network.id, client, built, registrationIdentity,
     kind: claim ? 'name-claim' : 'name-renew', from: feePayer.address,
     displayAmount: `${totalPrice} payment-token base units — ${claim ? 'claim' : 'renew'} '${n}.${cfg.rootName}' (${y}y)`,
+    result: { name: n, domainAddress: await domainAccountAddress(cfg.rootRegistrar, n), rootAddress: cfg.rootRegistrar },
   });
 }
 
@@ -360,22 +557,25 @@ async function renewOrClaim({ name, years, claim, expectedNetworkId, expectedAcc
  * Await the execution stream, tracking the submission for history/notifications as soon
  * as a signature exists — same honesty pattern as sendTransfer/claimFaucet.
  */
-async function submitAndAwait(rawTransaction, { kind, from, displayAmount, errorNoun = 'registrar', describeError = null, result = null } = {}) {
-  const network = await getActiveNetworkConfig();
+async function submitAndAwait(rawTransaction, { networkId, client, built, registrationIdentity, kind, from, displayAmount, errorNoun = 'registrar', describeError = null, result = null } = {}) {
   let formatted = null;
   try {
-    for await (const update of thruClient.getClient().transactions.sendAndTrack(rawTransaction)) {
+    for await (const update of client.transactions.sendAndTrack(rawTransaction)) {
       if (update?.signature?.value && formatted === null) {
         formatted = reg.formatSignature(update.signature.value);
-        await pending.track({ signature: formatted, kind, from, to: from, amountUnits: '0', displayAmount: displayAmount ?? null, networkId: network.id }).catch(() => null);
+        await pending.track({ signature: formatted, kind, from, to: from, amountUnits: '0', displayAmount: displayAmount ?? null,
+          networkId, startSlot: built?.startSlot?.toString() ?? null, expiryAfter: built?.expiryAfter ?? null, registrationIdentity }).catch(() => null);
       }
       if (update?.executionResult) {
         if (update.executionResult.vmError === 0) {
+          if (formatted) await pending.resolveExecution(formatted, true, networkId).catch(() => null);
           return { signature: formatted, blockHeight: null, ...(result ?? {}) };
         }
+        if (formatted) await pending.resolveExecution(formatted, false, networkId).catch(() => null);
         const userCode = update.executionResult.userErrorCode ?? 0;
         const decoded = userCode && describeError ? describeError(Number(userCode)) : null;
-        throw coded('REGISTRAR_TX_REVERTED', `Registration transaction reverted on-chain (vmError=${update.executionResult.vmError}${userCode ? `, ${errorNoun} error ${userCode}${decoded ? ` — ${decoded}` : ''}` : ''}).`);
+        const opLabel = kind && kind.includes('renew') ? 'Renewal' : 'Registration';
+        throw coded('REGISTRAR_TX_REVERTED', `${opLabel} transaction reverted on-chain (vmError=${update.executionResult.vmError}${userCode ? `, ${errorNoun} error ${userCode}${decoded ? ` — ${decoded}` : ''}` : ''}).`);
       }
     }
   } catch (err) {
@@ -418,8 +618,27 @@ function tcrCoded(code, message, extra = {}) { return coded(code, message, extra
  * config account is absent/unparseable; otherwise the fully parsed config plus a
  * root-derivation cross-check (config.rootAddress == name-service derivation of rootName;
  * a mismatch is surfaced, never silently armed).
+ *
+ * Tiered pricing (2026-10-30): the config carries a per-YEAR price for each label length
+ * bucket — `fee3PerYear`, `fee4PerYear`, `fee5PlusPerYear` — plus `feePolicy`/`feeEnforced`.
+ * `feePerYear` is kept as the cheapest tier for older callers, but a quote for a NAME must go
+ * through `pricePerYearFor(info, label)`, because the tier depends on the label's length. A
+ * price is a CHARGE only when `feeEnforced` is true.
  */
-export async function getCustomRegistrar() {
+// Mutable config may be cached for typing/prepare reads only. Confirm and signing always
+// bypass this cache; an unchanged price does not prove unchanged policy or treasury.
+// The cache is not evidence of deployed bytecode or measured collection.
+let cachedCustomRegistrar = null;
+let cachedCustomRegistrarKey = null;
+let cachedCustomRegistrarExpiresAt = 0;
+
+export function clearCustomRegistrarCache() {
+  cachedCustomRegistrar = null;
+  cachedCustomRegistrarKey = null;
+  cachedCustomRegistrarExpiresAt = 0;
+}
+
+export async function getCustomRegistrar({ skipCache = false } = {}) {
   const network = await getActiveNetworkConfig(); // bind SDK to the active network first
   const program = network.customRegistrarProgram ?? null;
   if (!program) {
@@ -430,6 +649,12 @@ export async function getCustomRegistrar() {
       program: null,
     };
   }
+
+  const cacheKey = `${network.id}:${program}`;
+  if (!skipCache && cachedCustomRegistrar && cachedCustomRegistrarKey === cacheKey && Date.now() < cachedCustomRegistrarExpiresAt) {
+    return cachedCustomRegistrar;
+  }
+
   const configAddress = tcr.tcrConfigAddress(program);
   const read = await fetchAccountData(configAddress).catch((err) => {
     throw tcrCoded('TCR_CONFIG_UNREADABLE', `Could not read the custom registrar config: ${err?.message ?? err}`, { retryable: true });
@@ -445,7 +670,7 @@ export async function getCustomRegistrar() {
   }
   const derivedRoot = await rootRegistrarAddress(cfg.rootName);
   const rootMatchesNameService = derivedRoot === cfg.rootAddress;
-  return {
+  const result = {
     supported: true,
     networkId: network.id,
     program,
@@ -453,10 +678,48 @@ export async function getCustomRegistrar() {
     root: cfg.rootAddress,
     rootName: cfg.rootName,
     rootMatchesNameService,
-    feePerYear: cfg.feePerYear.toString(),
+    // Pricing, as the config declares it. `feePerYear` remains the cheapest tier so older
+    // callers keep working, but a quote for a NAME must use `pricePerYearFor(info, label)` — the tier depends
+    // on the label's length.
+    layout: cfg.layout,
+    feePolicy: cfg.feePolicy,
+    feePolicyName: cfg.feePolicyName,
+    // This is the decoded policy, not a live collection proof. Best-effort ignores a debit
+    // refusal; strict declares that refusal aborts. Deployment/collection verification
+    // remains separate from the freshness checks below.
+    feeEnforced: cfg.feePolicy === tcr.TCR_FEE_POLICY.strict,
+    // Build-pinned evidence gate, separate from the on-chain policy bit.
+    feeCollectionVerified: network.customRegistrarFeeCollectionVerified === true,
+    fee3PerYear: cfg.fee3PerYear.toString(),
+    fee4PerYear: cfg.fee4PerYear.toString(),
+    fee5PlusPerYear: cfg.fee5PlusPerYear.toString(),
+    feePerYear: cfg.fee5PlusPerYear.toString(),
     treasury: cfg.treasury,
     admin: cfg.admin,
   };
+
+  cachedCustomRegistrar = result;
+  cachedCustomRegistrarKey = cacheKey;
+  cachedCustomRegistrarExpiresAt = Date.now() + 15_000;
+  return result;
+}
+
+/**
+ * Price of ONE YEAR for a label, from a registrar info object. The tier is a property of the
+ * label's LENGTH (3 / 4 / 5+), decided by the program's own config, not by the UI.
+ */
+export function pricePerYearFor(info, label) {
+  const n = String(label ?? '');
+  if (n.length === 3) return BigInt(info.fee3PerYear);
+  if (n.length === 4) return BigInt(info.fee4PerYear);
+  if (n.length >= 5) return BigInt(info.fee5PlusPerYear);
+  throw tcrCoded('INVALID_NAME', `cannot price a ${n.length}-character label (3–${tcr.TCR_MAX_LABEL})`);
+}
+
+/** price × years for a label, checked against the declared schedule. */
+export function totalForTerm(info, label, years) {
+  const y = Number(years);
+  return pricePerYearFor(info, label) * BigInt(y);
 }
 
 /**
@@ -468,8 +731,8 @@ export async function getCustomRegistrar() {
  *     a display hint only; the program's own judgement is authoritative at write time.
  *   - domain-existing-without-lease is a distinct truth ("another authority got there").
  */
-export async function checkCustomLease({ name } = {}) {
-  const info = await getCustomRegistrar();
+export async function checkCustomLease({ name, registrarInfo = null } = {}) {
+  const info = registrarInfo || await getCustomRegistrar();
   if (!info.supported) return info;
   const n = String(name ?? '').trim().toLowerCase();
   const prob = tcr.labelProblem(n);
@@ -519,7 +782,8 @@ export async function checkCustomLease({ name } = {}) {
  * CLAIM_EXPIRED are not wired here — only Register is live-verified; an existing lease
  * (active or expired) is reported, never silently overwritten.
  */
-export async function registerCustom({ name, years, expectedNetworkId, expectedAccountAddress, expectedPricePerYear } = {}) {
+export async function registerCustom({ name, years, expectedNetworkId, expectedAccountAddress, expectedPricePerYear,
+  expectedRegistrarFacts, expectedNetworkFeeUnits, expectedNetworkFeeSupported } = {}) {
   const n = String(name ?? '').trim().toLowerCase();
   const prob = tcr.labelProblem(n);
   if (prob) throw tcrCoded('INVALID_NAME', prob);
@@ -529,16 +793,17 @@ export async function registerCustom({ name, years, expectedNetworkId, expectedA
 
   const feePayer = await vault.getActiveAccount();
   const network = await getActiveNetworkConfig(); // bind before building/signing
-  const info = await getCustomRegistrar();
+  const networkGeneration = getNetworkGeneration();
+  const info = await getCustomRegistrar({ skipCache: true });
   if (!info.supported) throw tcrCoded('TCR_ABSENT', info.reason ?? 'custom registrar unavailable on this network');
   if (!info.rootMatchesNameService) {
     throw tcrCoded('TCR_ROOT_MISMATCH', 'the registrar config root does not match the name-service derivation — refusing to construct a registration against a mismatched root');
   }
-  assertReviewContext({ expectedNetworkId, expectedAccountAddress, expectedPricePerYear }, network, feePayer, info);
+  assertReviewContext({ expectedNetworkId, expectedAccountAddress, expectedPricePerYear }, network, feePayer, info, n);
 
   // Existence pre-verification (creation proofs only apply to NON-existing accounts):
   // lease exists (any state) or domain exists ⇒ the register instruction cannot apply.
-  const check = await checkCustomLease({ name: n });
+  const check = await checkCustomLease({ name: n, registrarInfo: info });
   if (check.readError) throw tcrCoded('TCR_READ_ERROR', `Could not verify '${n}' on-chain right now: ${check.readError}`, { retryable: true });
   if (check.domainExists) throw tcrCoded('NAME_TAKEN', `'${n}.${info.rootName}' already exists as a name-service domain.`);
   if (check.leaseExists) {
@@ -551,19 +816,24 @@ export async function registerCustom({ name, years, expectedNetworkId, expectedA
       `'${n}.${info.rootName}' cannot be registered: ${state}. Renew/claim through the custom registrar is not yet wired into the wallet — only Register was live-verified (2026-10-25). Nothing was broadcast.`);
   }
 
-  // Fee quote from the chain-read config (best-effort note: on unowned EOAs ThruVM skips
-  // the in-program debit — see the section comment; the quote is still what the program
-  // INTENDS to charge, and a native balance shortfall elsewhere reverts honestly).
-  const feePerYear = BigInt(info.feePerYear);
+  // Tiered quote from the chain-read config: the tier is the LABEL's length, decided by the
+  // program. `feeEnforced` says whether a refusal can be ignored by the program (best-effort)
+  // or reverts it (strict) — the message and the balance gate both follow it, because
+  // refusing a registration the program would happily accept is its own kind of lie.
+  const feePerYear = pricePerYearFor(info, n);
   const totalFee = feePerYear * BigInt(y);
 
-  // The signer must exist on-chain (same reason claimFaucet JIT-activates).
-  const payerInfo = await thruClient.getAccountInfo(feePayer.address);
+  const client = thruClient.getClient();
+  let networkFee = await checkedRegistrarWrite({ expectedNetworkId, expectedAccountAddress, expectedPricePerYear,
+    expectedRegistrarFacts, expectedNetworkFeeUnits, expectedNetworkFeeSupported }, network, feePayer, info, n, y, 'register', client, networkGeneration);
+
+  // Check review bindings BEFORE any account-creation side effect on-chain.
+  const payerInfo = await thruClient.getAccountInfo(feePayer.address, client);
   if (!payerInfo.exists) {
     await thruClient.createOnChainAccount(feePayer);
-  } else if (payerInfo.balance != null && payerInfo.balance < totalFee) {
+  } else if (info.feeEnforced && payerInfo.balance != null && payerInfo.balance < totalFee + networkFee) {
     throw tcrCoded('INSUFFICIENT_FUNDS',
-      `The registrar charges ${totalFee} base units (${feePerYear}/yr × ${y}y); your account holds ${payerInfo.balance}.`);
+      `The registrar charges ${totalFee} base units (${feePerYear}/yr × ${y}y) plus a ${networkFee}-base-unit network fee; your account holds ${payerInfo.balance}.`);
   }
 
   const domainAddress = await domainAccountAddress(info.root, n);
@@ -573,27 +843,28 @@ export async function registerCustom({ name, years, expectedNetworkId, expectedA
   // generate the domain proof, read its embedded u64le timestamp, mask off the proof-type
   // bits to get the proof slot, then generate the lease proof at the SAME targetSlot and
   // pin startSlot in the tx header.
-  const client = thruClient.getClient();
   const domainProofObj = await client.proofs.generate({ address: domainAddress, proofType: 1 });
   const dv = new DataView(domainProofObj.proof.buffer, domainProofObj.proof.byteOffset);
   const slot = dv.getBigUint64(0, true) & ((1n << 62n) - 1n);
   const leaseProofObj = await client.proofs.generate({ address: leaseAddress, proofType: 1, targetSlot: slot });
 
-  // Header: the exact values of the live-verified probe (vmError 0; consumedComputeUnits
-  // measured 92 128 of a 2 000 000 ceiling — comfortable headroom, calibrated later from
-  // accumulated evidence if it ever drifts).
-  const { rawTransaction } = await client.transactions.buildAndSign({
+  networkFee = await checkedRegistrarWrite({ expectedNetworkId, expectedAccountAddress, expectedPricePerYear,
+    expectedRegistrarFacts, expectedNetworkFeeUnits, expectedNetworkFeeSupported }, network, feePayer, info, n, y, 'register', client, networkGeneration);
+  const registrationIdentity = pending.registrationIdentity({ name: n, rootAddress: info.root, domainAddress }, feePayer, network.id);
+  const { rawTransaction, transaction: built } = await client.transactions.buildAndSign({
     feePayer: { publicKey: feePayer.publicKey, privateKey: feePayer.privateKey },
     program: info.program,
     header: {
       computeUnits: 2_000_000,
       memoryUnits: 32_768,
       stateUnits: 6,
-      fee: 0n,
+      fee: networkFee,
       startSlot: slot,
       expiryAfter: 10_000,
     },
     accounts: {
+      // feePayer is implicit index 0 (writable & signer); adding it here duplicates accounts
+      // (transfer source is account 0; EOA debits return AccountNotWritable if unowned)
       readWrite: [info.treasury, info.root, domainAddress, leaseAddress],
       readOnly: [info.configAddress, NAME_SERVICE_PROGRAM],
     },
@@ -615,11 +886,101 @@ export async function registerCustom({ name, years, expectedNetworkId, expectedA
 
   await balances.getBalances([feePayer.address]).catch(() => null);
   return submitAndAwait(rawTransaction, {
+    networkId: network.id, client, built, registrationIdentity,
     kind: 'name-custom-register',
     from: feePayer.address,
-    displayAmount: `${totalFee} base units (program fee, best-effort — see docs) — register '${n}.${info.rootName}' (${y}y) via the custom registrar`,
+    displayAmount: `${totalFee} base units (${info.feeEnforced ? 'registrar fee' : 'declared registrar fee, best-effort'}) — register '${n}.${info.rootName}' (${y}y) via the custom registrar`,
     errorNoun: 'custom registrar',
     describeError: (code) => tcr.describeTcrError(code),
-    result: { domainAddress },
+    result: { name: n, domainAddress, rootAddress: info.root },
+  });
+}
+
+/**
+ * name.renewLease with `via: 'custom'` — extend an existing lease via the custom registrar.
+ */
+export async function renewCustom({ name, years, expectedNetworkId, expectedAccountAddress, expectedPricePerYear, expectedLeaseEndTime,
+  expectedRegistrarFacts, expectedNetworkFeeUnits, expectedNetworkFeeSupported } = {}) {
+  const n = String(name ?? '').trim().toLowerCase();
+  const prob = tcr.labelProblem(n);
+  if (prob) throw tcrCoded('INVALID_NAME', prob);
+  const yp = tcr.yearsProblem(years);
+  if (yp) throw tcrCoded('INVALID_YEARS', yp);
+  const y = Number(years);
+
+  const feePayer = await vault.getActiveAccount();
+  const network = await getActiveNetworkConfig(); // bind before building/signing
+  const networkGeneration = getNetworkGeneration();
+  const info = await getCustomRegistrar({ skipCache: true });
+  if (!info.supported) throw tcrCoded('TCR_ABSENT', info.reason ?? 'custom registrar unavailable on this network');
+  if (!info.rootMatchesNameService) {
+    throw tcrCoded('TCR_ROOT_MISMATCH', 'the registrar config root does not match the name-service derivation');
+  }
+  assertReviewContext({ expectedNetworkId, expectedAccountAddress, expectedPricePerYear }, network, feePayer, info, n);
+
+  const check = await checkCustomLease({ name: n, registrarInfo: info });
+  if (check.readError) throw tcrCoded('TCR_READ_ERROR', `Could not verify '${n}' on-chain right now: ${check.readError}`, { retryable: true });
+  if (!check.leaseExists || !check.lease) {
+    throw tcrCoded('LEASE_NOT_FOUND', `'${n}.${info.rootName}' has no active lease on-chain to renew.`);
+  }
+  if (check.lease.owner !== feePayer.address) {
+    throw tcrCoded('NOT_NAME_OWNER', `'${n}' is leased to ${check.lease.owner.slice(0, 12)}… — only the lease owner can renew it.`);
+  }
+  if (expectedLeaseEndTime != null && String(expectedLeaseEndTime) !== String(check.lease.expiresAtSeconds)) {
+    throw tcrCoded('REVIEW_EXPIRY_CHANGED', 'The lease expiration changed after review. Check the domain again before renewing.');
+  }
+
+  const feePerYear = pricePerYearFor(info, n);
+  const totalFee = feePerYear * BigInt(y);
+
+  const client = thruClient.getClient();
+  let networkFee = await checkedRegistrarWrite({ expectedNetworkId, expectedAccountAddress, expectedPricePerYear, expectedLeaseEndTime,
+    expectedRegistrarFacts, expectedNetworkFeeUnits, expectedNetworkFeeSupported }, network, feePayer, info, n, y, 'renew', client, networkGeneration);
+
+  const payerInfo = await thruClient.getAccountInfo(feePayer.address, client);
+  if (!payerInfo.exists) {
+    await thruClient.createOnChainAccount(feePayer);
+  } else if (info.feeEnforced && payerInfo.balance != null && payerInfo.balance < totalFee + networkFee) {
+    throw tcrCoded('INSUFFICIENT_FUNDS',
+      `Renewal charges ${totalFee} base units (${feePerYear}/yr × ${y}y) plus a ${networkFee}-base-unit network fee; your account holds ${payerInfo.balance}.`);
+  }
+
+  const leaseAddress = tcr.tcrLeaseAddress(info.program, n);
+  const domainAddress = await domainAccountAddress(info.root, n);
+  networkFee = await checkedRegistrarWrite({ expectedNetworkId, expectedAccountAddress, expectedPricePerYear, expectedLeaseEndTime,
+    expectedRegistrarFacts, expectedNetworkFeeUnits, expectedNetworkFeeSupported }, network, feePayer, info, n, y, 'renew', client, networkGeneration);
+  const { rawTransaction, transaction: built } = await client.transactions.buildAndSign({
+    feePayer: { publicKey: feePayer.publicKey, privateKey: feePayer.privateKey },
+    program: info.program,
+    header: {
+      computeUnits: 1_000_000,
+      memoryUnits: 32_768,
+      stateUnits: 0,
+      fee: networkFee,
+      expiryAfter: 10_000,
+    },
+    accounts: {
+      readWrite: [info.treasury, leaseAddress],
+      readOnly: [info.configAddress],
+    },
+    instructionData: ({ getAccountIndex }) => tcr.buildTcrRenewInstructionData({
+      label: n,
+      durationYears: y,
+      indexOf: getAccountIndex,
+      treasuryAddress: info.treasury,
+      leaseAddress,
+      configAddress: info.configAddress,
+    }),
+  });
+
+  await balances.getBalances([feePayer.address]).catch(() => null);
+  return submitAndAwait(rawTransaction, {
+    networkId: network.id, client, built,
+    kind: 'name-custom-renew',
+    from: feePayer.address,
+    displayAmount: `${totalFee} base units (${info.feeEnforced ? 'registrar fee' : 'declared registrar fee, best-effort'}) — renew '${n}.${info.rootName}' (${y}y) via custom registrar`,
+    errorNoun: 'custom registrar',
+    describeError: (code) => tcr.describeTcrError(code),
+    result: { name: n, domainAddress, rootAddress: info.root },
   });
 }

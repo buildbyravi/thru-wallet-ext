@@ -1,0 +1,96 @@
+<!doctype html>
+<!--
+  One real popup-sized viewport for the toast harness. NOT shipped (dev only).
+
+  This page exists so `position: fixed` behaves the way it does in the extension: the toast host
+  is appended to `document.body` and is fixed to the VIEWPORT. Rendering it inside a 400px <div>
+  on a larger page would judge the wrong containing block and hide exactly the placement question
+  the harness is for (does the bar cover the footer?). Inside an <iframe> of exactly 400×600 the
+  component behaves as it does in the popup.
+
+  Driven by ../preview-toast.html through postMessage; opening it directly is also fine — the
+  same cases are available from the keyboard-less console via `window.__toastCase('success')`.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>toast frame</title>
+<link rel="stylesheet" href="../dist/popup.css" />
+<style>
+  html, body { margin: 0; height: 100%; background: #151b1e; overflow: hidden; }
+  /* A stand-in for the app's connection footer: the thing a toast must not cover. */
+  .footer-standin { position: absolute; left: 0; right: 0; bottom: 0; height: 44px;
+                    display: flex; align-items: center; justify-content: space-between;
+                    padding: 0 14px; background: #1b2327; border-top: 1px solid #2a343a;
+                    color: #a7b6bf; font: 12px/1.4 ui-sans-serif, system-ui, sans-serif; }
+  .footer-standin .dot { width: 8px; height: 8px; border-radius: 50%; background: #3fbfae;
+                         display: inline-block; margin-right: 6px; }
+  .footer-standin .cta { padding: 6px 12px; border-radius: 8px; background: #c43a40; color: #fff;
+                         font-weight: 600; }
+  .body-filler { padding: 16px; color: #6f808a; font: 12px/1.6 ui-sans-serif, system-ui, sans-serif; }
+</style>
+</head>
+<body>
+<div class="body-filler">Screen content stands in for a route body.</div>
+<div class="footer-standin">
+  <span><span class="dot"></span>Betanet · connected</span>
+  <span class="cta">Send</span>
+</div>
+
+<script type="module">
+  // The REAL component and the REAL stylesheet. Nothing here re-implements a notification.
+  const { toast, dismissAllToasts, activeToasts } = await import('../src/ui/kit/toast.js');
+
+  const cases = {
+    domain: () => toast({ tone: 'success', key: 'name-submit', title: 'Transaction confirmed' }),
+    success: () => toast({ tone: 'success', title: 'Domain imported' }),
+    info: () => toast({ tone: 'info', title: 'Copied to clipboard' }),
+    warning: () => toast({ tone: 'warning', title: 'Side panel unavailable',
+      message: 'This browser has no side panel API. The popup keeps working as usual.' }),
+    error: () => toast({ tone: 'error', title: 'Could not reach the network',
+      message: 'Check your connection and try again.' }),
+    long: () => toast({ tone: 'info', title: 'Recipient resolved',
+      message: 'The name alice.thru resolves to ta1q9x2v7d5m4k8s3n6p1w0z5r2t8y4u7i9o3a6s — the full '
+        + 'address is shown on the confirmation screen before anything is signed.' }),
+    action: () => toast({ tone: 'info', title: 'Domain removed from this wallet',
+      action: { label: 'Undo', onClick: () => toast({ tone: 'success', title: 'Domain restored' }) } }),
+    pending: () => {
+      const t = toast({ tone: 'pending', key: 'pending-demo', title: 'Submitting registration…' });
+      setTimeout(() => t.update({ tone: 'success', title: 'Registration confirmed',
+        message: 'The transaction executed on-chain.' }), 1800);
+    },
+    dedupe: () => {
+      toast({ tone: 'info', key: 'primary', title: 'Primary name updated' });
+      setTimeout(() => toast({ tone: 'success', key: 'primary', title: 'Primary name set' }), 900);
+    },
+    burst: () => {
+      ['One', 'Two', 'Three', 'Four'].forEach((n, i) => setTimeout(
+        () => toast({ tone: 'info', title: `Event ${n}` }), i * 250));
+    },
+    blank: () => {
+      const before = activeToasts().length;
+      toast('');
+      toast({});
+      toast({ title: '   ' });
+      toast(null);
+      return activeToasts().length === before
+        ? 'nothing rendered — blank-toast guard holds'
+        : 'REGRESSION: a blank toast rendered';
+    },
+    clear: () => { dismissAllToasts(); return 'cleared'; },
+  };
+
+  window.__toastCase = (name) => (cases[name] ? cases[name]() : `unknown case: ${name}`);
+
+  window.addEventListener('message', (event) => {
+    const data = event.data;
+    if (!data || data.type !== 'toast-case' || typeof data.case !== 'string') return;
+    const result = window.__toastCase(data.case);
+    window.parent.postMessage({ type: 'toast-verdict', case: data.case, result: result ?? null,
+      live: activeToasts().length }, '*');
+  });
+
+  window.parent.postMessage({ type: 'toast-frame-ready' }, '*');
+</script>
+</body>
+</html>

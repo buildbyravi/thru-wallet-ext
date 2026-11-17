@@ -27,7 +27,7 @@
 // Run: node test-launchpad-quarantine.mjs
 // Set QUARANTINE_SKIP_BUILD=1 to assert against an existing dist/ instead of rebuilding it.
 
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join, relative, sep } from 'node:path';
 import { transform } from 'esbuild';

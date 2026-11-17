@@ -13,15 +13,18 @@
 //   - The URL is the state. `#/send?token=native` is addressable, restorable and
 //     back-navigable, and works identically in the popup, the side panel and a tab.
 //   - Route params come from the query string, never from an in-memory params object that
-//     could carry a secret into history. The old router pushed navigation params verbatim
-//     into its history array, which is why the "wipes secret on unmount" comments in
-//     backup.js and export-reveal.js were false.
+//     could carry a secret into history.
 //   - Every route returns { destroy }. The router calls it before mounting the next one,
 //     and awaits nothing, so teardown is deterministic.
+//   - Never replace an active screen with an intermediate "Checking wallet…" gate during
+//     normal navigation (Hard Rule 15). Each route paints immediately from local/cached
+//     state; `showStatus` is reserved strictly for genuine mount/bootstrap failures.
+
+import { h, disposer } from '../kit/dom.js';
 
 const APP_ROOT_ID = 'app';
 
-/** @typedef {{ path: string, view: Function, guard?: Function, title?: string }} RouteDef */
+/** @typedef {{ path: string, view: Function, guard?: Function, title?: string, autofocus?: boolean }} RouteDef */
 
 export class Router {
   /**
@@ -37,19 +40,21 @@ export class Router {
     this.currentPath = null;
     this._onHashChange = () => this._resolve();
     this._started = false;
-    this._navigating = false;
+    this._resolveSeq = 0;
   }
 
-  start() {
+  start({ resolve = true } = {}) {
     if (this._started) return;
     this._started = true;
     window.addEventListener('hashchange', this._onHashChange);
-    this._resolve();
+    if (resolve) this._resolve();
   }
 
   stop() {
+    this._resolveSeq++;
     window.removeEventListener('hashchange', this._onHashChange);
     this._destroyCurrent();
+    this.currentPath = null;
     this._started = false;
   }
 
@@ -62,14 +67,20 @@ export class Router {
   navigate(path, { replace = false } = {}) {
     const target = `#${path.startsWith('/') ? path : `/${path}`}`;
     if (window.location.hash === target) {
-      // Same URL: re-resolve explicitly, since hashchange will not fire.
-      this._resolve();
+      if (this._started) this._resolve();
       return;
+    }
+    // Teardown happens when navigation is accepted, before any guard/RPC await. This keeps
+    // exported secrets and route-owned signing work from surviving behind a slow guard.
+    if (this._started) {
+      this._resolveSeq++;
+      this._destroyCurrent();
+      this.currentPath = null;
     }
     if (replace) {
       const url = `${window.location.pathname}${window.location.search}${target}`;
       window.history.replaceState(null, '', url);
-      this._resolve();
+      if (this._started) this._resolve();
     } else {
       window.location.hash = target;
     }
@@ -93,11 +104,10 @@ export class Router {
   }
 
   _destroyCurrent() {
-    if (!this.current) return;
     try {
-      this.current.destroy?.();
+      this.current?.destroy?.();
     } catch (error) {
-      console.error('[router] destroy threw:', error);
+      console.error('[router] destroy failed.');
     }
     this.current = null;
     if (this.root) {
@@ -105,71 +115,98 @@ export class Router {
     }
   }
 
+  /** Mount a safe local route before bootstrap/guards resolve. */
+  mountImmediate(path, params = {}) {
+    if (path !== '/unlock' && path !== '/welcome' && path !== '/dashboard') return false;
+    const route = this.routes.get(path);
+    if (!route) return false;
+    try {
+      const instance = route.view({
+        params,
+        knownPaths: new Set(this.routes.keys()),
+        navigate: (to, options) => this.navigate(to, options),
+        back: () => this.back(),
+      });
+      if (!instance || typeof instance.then === 'function') return false;
+      this._destroyCurrent();
+      this.currentPath = path;
+      this.current = instance;
+      if (instance.el && this.root) this.root.appendChild(instance.el);
+      if (route.title) document.title = `${route.title} — Thru Wallet`;
+      return true;
+    } catch (error) {
+      console.error('[router] immediate mount failed.');
+      return false;
+    }
+  }
+
+  showStatus({ message = 'This screen could not be opened. Reload to try again.', onReload = () => this._resolve() } = {}) {
+    this._destroyCurrent();
+    this.currentPath = null;
+    const d = disposer();
+    const reload = h('button', { type: 'button', class: 'btn secondary', text: 'Reload' });
+    const el = h('section', { class: 'screen' }, [
+      h('h1', { text: 'Wallet' }),
+      h('p', { class: 'hint', role: 'alert', text: message }),
+      reload,
+    ]);
+    d.on(reload, 'click', () => onReload());
+    this.current = { el, update() {}, destroy() { d.dispose(); el.remove(); } };
+    this.root?.appendChild(el);
+  }
+
   async _resolve() {
-    // Guards can redirect, which triggers another resolve. This flag keeps the second
-    // pass from tearing down a mount that is still in progress.
-    if (this._navigating) return;
-    this._navigating = true;
+    const generation = ++this._resolveSeq;
+    this._destroyCurrent();
+    this.currentPath = null;
 
     try {
       const { path, params } = Router.parseHash();
       const route = this.routes.get(path);
 
       if (!route) {
-        this._navigating = false;
         this.navigate(this.fallback, { replace: true });
         return;
       }
 
       if (typeof route.guard === 'function') {
         const verdict = await route.guard({ path, params });
+        if (generation !== this._resolveSeq) return;
         if (verdict && verdict.redirect) {
-          this._navigating = false;
           this.navigate(verdict.redirect, { replace: true });
           return;
         }
       }
 
-      this._destroyCurrent();
-      this.currentPath = path;
-
       const instance = await route.view({
         params,
-        // The set of paths this router actually knows. Passed in so a view can validate a
-        // user-supplied path (e.g. unlock's returnTo) against reality instead of trusting it.
         knownPaths: new Set(this.routes.keys()),
         navigate: (to, options) => this.navigate(to, options),
         back: () => this.back(),
       });
 
+      if (generation !== this._resolveSeq) {
+        instance?.destroy?.();
+        return;
+      }
+      this._destroyCurrent();
+      this.currentPath = path;
       this.current = instance || null;
       if (instance?.el && this.root) this.root.appendChild(instance.el);
       if (route.title) document.title = `${route.title} — Thru Wallet`;
 
-      // Move focus into the new view so keyboard and screen-reader users are not left where the
-      // previous screen's DOM used to be.
-      //
-      // Only an element that explicitly asks for focus gets it. This previously ran
-      // querySelector('[autofocus], input, button, [tabindex]'), which takes the FIRST focusable
-      // element in DOM order -- on the dashboard that is the account pill, so arriving after
-      // unlock drew a focus ring around the account name as if something were wrong. Nothing is
-      // being typed on arrival, so focusing a navigation control is simply incorrect. It was also
-      // redundant: kit/field.js focuses its own control when asked.
-      //
-      // With no explicit target, focus goes to the route container instead. That announces the
-      // new view without putting a visible ring on a control the user did not choose.
       const explicit = this.root?.querySelector('[autofocus]');
       if (explicit && route.autofocus !== false) {
-        requestAnimationFrame(() => explicit.focus?.());
+        requestAnimationFrame(() => { if (generation === this._resolveSeq) explicit.focus?.(); });
       } else if (instance?.el && route.autofocus !== false) {
         instance.el.setAttribute('tabindex', '-1');
-        requestAnimationFrame(() => instance.el.focus?.({ preventScroll: true }));
+        requestAnimationFrame(() => { if (generation === this._resolveSeq) instance.el.focus?.({ preventScroll: true }); });
       }
     } catch (error) {
-      console.error('[router] failed to mount route:', error);
-      this.onError?.(error);
-    } finally {
-      this._navigating = false;
+      if (generation !== this._resolveSeq) return;
+      this.showStatus({ message: 'This screen could not be opened. Reload to try again.' });
+      console.error('[router] failed to mount route.');
+      this.onError?.();
     }
   }
 }

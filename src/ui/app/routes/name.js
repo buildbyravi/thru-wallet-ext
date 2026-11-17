@@ -14,15 +14,17 @@ import { PageHeader, Banner } from '../../kit/feedback.js';
 import { Field } from '../../kit/field.js';
 import { Sheet } from '../../kit/sheet.js';
 import { toast } from '../../kit/toast.js';
-import { requirePassword } from '../../domain/password-prompt.js';
+import { TxReviewCard } from '../../domain/tx-review/review-card.js';
+import {
+  submitReviewedReview, classifyReviewError, discardReview,
+} from '../../domain/tx-review/confirm.js';
 import * as bridge from '../bridge.js';
-import { formatTokenAmount } from '../../../shared/format.js';
+import { formatTokenAmount, shortAddress } from '../../../shared/format.js';
 import { NATIVE_TOKEN } from '../../../shared/tokens.js';
 import { availableThruProviders } from './name-providers.js';
 
 function truncateMiddle(value, chars = 10) {
-  const s = String(value ?? '');
-  return s.length <= chars * 2 + 2 ? s : `${s.slice(0, chars)}…${s.slice(-chars)}`;
+  return shortAddress(value, { head: chars, tail: chars });
 }
 
 function formatVerifiedAt(ms) {
@@ -38,7 +40,10 @@ function formatVerifiedAt(ms) {
 // seconds, and label the unit either way — never silently reinterpret an unknown clock.
 function formatChainTime(u64String) {
   try {
+    if (u64String == null || (typeof u64String === 'string' && !/^\d+$/.test(u64String))
+      || (typeof u64String === 'number' && !Number.isSafeInteger(u64String))) return 'Unknown';
     const seconds = BigInt(u64String);
+    if (seconds < 0n || seconds > 18446744073709551615n) return 'Unknown';
     if (seconds >= 1_500_000_000n && seconds < 10_000_000_000n) {
       const text = new Date(Number(seconds) * 1000)
         .toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
@@ -46,7 +51,7 @@ function formatChainTime(u64String) {
     }
     return `${seconds} (chain time, seconds)`;
   } catch {
-    return String(u64String ?? '');
+    return 'Unknown';
   }
 }
 
@@ -57,17 +62,27 @@ export function NameRoute({ back }) {
   let account = null;
   let network = null;
   let primary = null;
-  let primaryLoaded = false;
-  let primaryReadError = null;
+  let cachedDomainItems = [];
+  let loadSeq = 0;
+  let contextReady = null;
+  let refreshSearchActions = null;
   let activeTab = 'register';
+  let isRenewOnly = false;
   let draft = { name: '', years: 1, quote: null };
   let reviewSheet = null;
   let submissionInFlight = false;
+  // One preparation at a time, and one generation of it. The review sheet is created only
+  // AFTER the asynchronous prepare resolves, so a second click during a slow read used to open
+  // a second sheet, and editing the draft mid-read could open a superseded review
+  // (v31 audit F-5). `prepareSeq` is bumped by every edit and by each new preparation.
+  let preparingReview = false;
+  let prepareSeq = 0;
   const mutationControls = new Set();
   const transactionControls = new Set();
   const providerReads = new Map();
   const mintReads = new Map();
   let destroyed = false;
+  const abortController = new AbortController();
 
   function track(c) {
     if (c) owned.push(c);
@@ -104,6 +119,39 @@ export function NameRoute({ back }) {
     return mintReads.get(key);
   }
 
+  async function readLeaseFacts(item) {
+    const owner = account?.address;
+    if (!owner || [item.name, item.rootAddress, item.domainAddress]
+      .some((value) => typeof value !== 'string' || !value)) return null;
+    const offerings = await readProviderFacts(network?.id);
+    if (offerings.some((result) => result.status !== 'fulfilled')) return null;
+    const providers = availableThruProviders({ registry: offerings[0].value, custom: offerings[1].value })
+      .filter((provider) => (provider === 'custom' ? offerings[1].value.root
+        : offerings[0].value.registry.rootRegistrar) === item.rootAddress);
+    if (!providers.length) return null;
+    const results = await Promise.allSettled(providers.map((provider) =>
+      bridge.send(provider === 'custom' ? 'name.checkCustomLease' : 'name.checkLease', { name: item.name })));
+    const eligible = [];
+    for (let i = 0; i < results.length; i++) {
+      if (results[i].status !== 'fulfilled') return null;
+      const res = results[i].value;
+      const provider = providers[i];
+      const root = provider === 'custom' ? res?.root : res?.rootRegistrar;
+      if (res?.supported !== true || res.stale || res.cached || res.readError || res.leaseParseError
+        || res.name !== item.name || root !== item.rootAddress || res.domainAddress !== item.domainAddress
+        || typeof res.leaseExists !== 'boolean' || res.domainExists !== true) return null;
+      if (!res.leaseExists) continue;
+      const lease = res.lease;
+      if (!lease || typeof lease.owner !== 'string' || !lease.owner
+        || (provider === 'custom' ? lease.label : lease.name) !== item.name
+        || (provider === 'registry' && lease.domainAccount !== item.domainAddress)) return null;
+      if (lease.owner !== owner) continue;
+      eligible.push({ provider, lease: { ...lease, expiresAtSeconds: lease.expiresAtSeconds ?? lease.endTime } });
+    }
+    // A root can be shared by both registrars. Only one freshly matched owned lease selects a provider.
+    return eligible.length === 1 ? eligible[0] : null;
+  }
+
   const banner = Banner({ tone: 'error' });
   // Hard rule 15 (2026-10-26): shell paints with its eyebrow + a checking card; the
   // reads that fill it in (network, account, chain offerings) all arrive in parallel.
@@ -118,6 +166,7 @@ export function NameRoute({ back }) {
   const el = h('section', { class: 'screen' }, [header.el, banner.el, body]);
 
   function clearBody() {
+    refreshSearchActions = null;
     reviewSheet?.destroy();
     reviewSheet = null;
     bodyDisposer.dispose();
@@ -134,46 +183,209 @@ export function NameRoute({ back }) {
   }
 
   // --------------------------------------------------------------------------
-  // Compact linked-name banner (ENS "manager" corner): only when a primary link
-  // exists. The hero below stays the search field either way.
-  function renderLinkedBadge(host = body) {
-    const card = h('div', { class: 'stack stack-2' }, [
-      h('div', { class: 'row-flex' }, [
-        icon('globe', 16),
-        h('span', { class: 'row-title', text: primary.name }),
-        h('span', { class: 'tag-native', text: 'Primary' }),
-      ]),
-      h('div', { class: 'detail-row' }, [
-        h('div', { class: 'detail-val', text: primary.stale ? 'Saved name · check unavailable' : 'Verified ownership' }),
-        h('div', { class: 'detail-val', text: formatVerifiedAt(primary.verifiedAt) }),
-      ]),
-      h('div', { class: 'hint', text: `Account ${truncateMiddle(account?.address || '', 8)}` }),
-      h('div', { class: 'screen-actions' }, [
-        track(h('button', { type: 'button', class: 'btn secondary' }, [icon('refresh', 14), h('span', { text: ' Refresh' })])),
-        track(h('button', { type: 'button', class: 'btn secondary danger-hover' }, [icon('trash', 14), h('span', { text: ' Unlink' })])),
-      ]),
-    ]);
-    host.appendChild(card);
-    const [reverifyBtn, unlinkBtn] = owned.slice(-2);
-    bodyDisposer.on(reverifyBtn, 'click', () => { void load(); });
-    bodyDisposer.on(unlinkBtn, 'click', async () => {
-      unlinkBtn.disabled = true;
-      try {
-        await bridge.send('name.unlinkPrimary');
-        toast('Name unlinked from this wallet.');
-        primary = null;
-        await load();
-      } catch (err) {
-        banner.set(err?.message || 'Could not unlink.');
-        unlinkBtn.disabled = false;
+  function renderDomains(host) {
+    const ctx = { expectedNetworkId: network?.id, expectedAccountAddress: account?.address };
+    let rows = disposer();
+    let alive = true;
+    let seq = 0;
+    let snapshot = null;
+    let busy = false;
+    const leaseFacts = new Map();
+    bodyDisposer.add(() => { alive = false; seq++; rows.dispose(); });
+    const current = () => alive && !destroyed && host.isConnected
+      && ctx.expectedNetworkId === network?.id && ctx.expectedAccountAddress === account?.address;
+    const list = h('div', { class: 'stack stack-3 name-domain-list' });
+    const status = h('div', { class: 'hint', role: 'status', text: 'Loading saved domains…' });
+    const refresh = h('button', { type: 'button', class: 'btn text', text: 'Refresh ownership' });
+    host.appendChild(h('p', { class: 'hint', text: 'Domains saved in this wallet.' }));
+    host.appendChild(list);
+    host.appendChild(status);
+    host.appendChild(refresh);
+    refresh.disabled = !ctx.expectedNetworkId || !ctx.expectedAccountAddress;
+
+    function paint() {
+      rows.dispose();
+      rows = disposer();
+      while (list.firstChild) list.removeChild(list.firstChild);
+      if (!snapshot) return;
+      primary = snapshot.items.find(item => item.isPrimary) ?? null;
+      if (!snapshot.items.length) {
+        list.appendChild(h('div', { class: 'name-empty stack stack-2' }, [
+          h('div', { class: 'row-title', text: 'No tracked domains yet' }),
+          h('div', { class: 'hint', text: 'Register a name or import one you already own.' }),
+        ]));
       }
-    });
+      for (const item of snapshot.items) {
+        const verified = !item.stale && item.status === 'owned';
+        const label = item.rootName ? `${item.name}.${item.rootName}` : item.name;
+        const stateLabel = item.stale ? 'Ownership not verified'
+          : item.status === 'owned' ? 'Verified ownership'
+            : item.status === 'not-owned' ? 'No longer owned by this account' : 'Not found on this network';
+
+        const key = item.domainAddress;
+        const facts = leaseFacts.get(key);
+        if (!leaseFacts.has(key) && ctx.expectedNetworkId && ctx.expectedAccountAddress) {
+          leaseFacts.set(key, 'loading');
+          const attempt = seq;
+          void Promise.allSettled([
+            item.rootName === 'thru' ? readLeaseFacts(item) : Promise.resolve(null),
+            bridge.send('tx.validateAddress', { address: label }),
+          ]).then(([lease, resolution]) => {
+            if (!current() || attempt !== seq) return;
+            leaseFacts.set(key, {
+              ...(lease.status === 'fulfilled' ? lease.value : null),
+              resolution: resolution.status === 'fulfilled' ? resolution.value : null,
+            });
+            paint();
+          });
+        }
+        const leaseObj = facts?.lease;
+        const statusTone = item.stale
+          ? 'warning'
+          : item.status === 'owned'
+            ? 'positive'
+            : item.status === 'not-owned'
+              ? 'negative'
+              : 'neutral';
+        const pillText = item.stale ? 'Unverified' : item.status === 'owned' ? 'Owned' : 'Not owned';
+        const expiryDisplay = facts === 'loading' ? 'Checking…'
+          : leaseObj?.expiresAtSeconds != null ? formatChainTime(leaseObj.expiresAtSeconds) : 'Unknown';
+        const resolved = facts?.resolution;
+        const resolvedAddress = resolved?.valid === true && typeof resolved.resolvedAddress === 'string'
+          && resolved.resolvedName === label ? resolved.resolvedAddress : null;
+        const targetDisplay = resolvedAddress ? truncateMiddle(resolvedAddress, 6)
+          : facts === 'loading' ? 'Checking…' : 'Unknown';
+
+        const select = h('button', { type: 'button', class: 'btn secondary', text: item.isPrimary ? 'Unlink' : 'Make primary',
+          disabled: busy || (!item.isPrimary && !verified) });
+        const renew = h('button', { type: 'button', class: 'btn secondary', text: 'Renew', disabled: busy || !verified || !facts?.provider || item.rootName !== 'thru' });
+        const remove = h('button', { type: 'button', class: 'btn secondary', text: 'Remove', disabled: busy || item.isPrimary });
+
+        const headerRow = h('div', { class: 'row-flex domain-card-header' }, [
+          h('div', { class: 'row-flex name-domain-heading' }, [
+            h('div', { class: 'domain-avatar-box' }, [icon('globe', 16)]),
+            h('span', { class: 'row-title name-domain-title domain-title mono', text: label }),
+            item.isPrimary ? h('span', { class: 'tag-native domain-primary-tag', text: 'Primary' }) : null,
+          ]),
+          h('span', { class: `domain-pill pill-${statusTone}`, text: pillText }),
+        ]);
+
+        const metaGrid = h('div', { class: 'domain-meta-grid' }, [
+          h('div', { class: 'domain-meta-item' }, [
+            h('span', { class: 'domain-meta-label', text: 'Expires' }),
+            h('span', { class: 'domain-meta-value mono', text: expiryDisplay }),
+          ]),
+          h('div', { class: 'domain-meta-item' }, [
+            h('span', { class: 'domain-meta-label', text: 'Points to' }),
+            h('span', { class: 'domain-meta-value mono', text: targetDisplay, title: resolvedAddress || 'Resolution unavailable' }),
+          ]),
+        ]);
+
+        const card = h('div', { class: 'name-entry domain-card stack stack-2' }, [
+          headerRow,
+          h('div', { class: `hint${verified ? ' name-status-ok' : ''}`, text: stateLabel }),
+          metaGrid,
+          item.verifiedAt ? h('div', { class: 'hint', text: `Last verified ${formatVerifiedAt(item.verifiedAt)}` }) : null,
+          h('div', { class: 'name-domain-actions' }, [select, renew, remove]),
+        ]);
+        list.appendChild(card);
+        rows.on(select, 'click', () => {
+          if (select.disabled) return;
+          if (item.isPrimary) {
+            void action('name.unlinkPrimary', { domainAddress: item.domainAddress });
+          } else {
+            void action('name.setPrimaryDomain', { domainAddress: item.domainAddress });
+          }
+        });
+        rows.on(remove, 'click', () => {
+          if (!remove.disabled) void action('name.untrackDomain', { domainAddress: item.domainAddress });
+        });
+        rows.on(renew, 'click', () => {
+          if (renew.disabled) return;
+          providerReads.clear();
+          draft = { name: item.name, rootAddress: item.rootAddress, domainAddress: item.domainAddress, provider: facts.provider, years: 1, quote: null };
+          isRenewOnly = true;
+          activeTab = 'register';
+          render();
+        });
+      }
+    }
+
+    async function refreshList() {
+      if (!current() || !ctx.expectedNetworkId || !ctx.expectedAccountAddress) return;
+      leaseFacts.clear();
+      providerReads.clear();
+      const attempt = ++seq;
+      let liveArrived = false;
+      status.textContent = 'Checking ownership…';
+      if (snapshot) {
+        snapshot = { ...snapshot, items: snapshot.items.map(item => ({ ...item, stale: true })) };
+        paint();
+      }
+      const accept = result => result?.networkId === ctx.expectedNetworkId
+        && result?.accountAddress === ctx.expectedAccountAddress && Array.isArray(result.items);
+      void bridge.send('name.getCachedDomains', ctx).then(result => {
+        if (!current() || attempt !== seq || liveArrived || !accept(result)) return;
+        snapshot = result;
+        paint();
+      }).catch(() => {});
+      try {
+        const result = await bridge.send('name.listDomains', ctx);
+        if (!current() || attempt !== seq || !accept(result)) return;
+        liveArrived = true;
+        snapshot = result;
+        paint();
+        status.textContent = result.items.some(item => item.stale) ? 'Some ownership checks are unavailable. Refresh to try again.' : '';
+      } catch (err) {
+        if (!current() || attempt !== seq) return;
+        status.textContent = err?.code === 'DOMAIN_CONTEXT_CHANGED'
+          ? 'Account or network changed. Reopen this screen.' : 'Ownership check unavailable. Saved domains are shown when available.';
+      }
+    }
+
+    async function action(method, params) {
+      if (busy || !current()) return;
+      busy = true;
+      refresh.disabled = true;
+      paint();
+      banner.set('');
+      try {
+        await bridge.send(method, { ...params, ...ctx });
+        if (!current()) return;
+        // One event = one toast, keyed so a double click resolves the same bar instead of
+        // stacking a second one. The untrack case says what did NOT happen: the domain is
+        // still on-chain, this wallet just stops tracking it.
+        toast({
+          tone: 'success',
+          key: 'domain-list-update',
+          title: method === 'name.trackDomain' ? 'Domain imported'
+            : method === 'name.untrackDomain' ? 'Removed from this wallet'
+              : 'Primary name updated',
+          message: method === 'name.untrackDomain'
+            ? 'This wallet no longer shows it. The domain itself is unchanged on-chain.'
+            : '',
+        });
+        await refreshList();
+      } catch (err) {
+        if (current()) banner.set(err?.message || 'Could not update this domain.');
+      } finally {
+        if (current()) {
+          busy = false;
+          refresh.disabled = false;
+          paint();
+        }
+      }
+    }
+    bodyDisposer.on(refresh, 'click', () => { if (!busy) void refreshList(); });
+    void refreshList();
   }
 
   // --------------------------------------------------------------------------
   // THE search card — the whole product typed into one field, ENS-style.
-  async function renderSearchCard(host, entry = draft) {
+  async function renderSearchCard(host, entry = draft, renewOnly = false) {
     const card = h('div', { class: 'name-entry stack stack-2' });
+    const signingAbort = new AbortController();
+    bodyDisposer.add(() => signingAbort.abort());
     host.appendChild(card);
 
     // Hard rule 15 (2026-10-26): the whole card — search field, stepper, price, CTA —
@@ -181,8 +393,6 @@ export function NameRoute({ back }) {
     // reads run in parallel below. `.id` roots are not queried for minting.
     // A slow network never leaves a naked Loading card: it sees the shell and the status
     // line honestly says the offering is still being checked.
-    const readsPromise = readProviderFacts(network?.id);
-
     // -- pieces -------------------------------------------------------------------
     // Paint the whole card BEFORE registrar reads resolve; never show a blocking spinner.
     const statusLine = h('div', { class: 'name-status hint', role: 'status', 'aria-live': 'polite', text: 'Checking .thru registration…' });
@@ -196,6 +406,7 @@ export function NameRoute({ back }) {
     searchField.value = entry.name;
     mutationControls.add(searchField.control);
     searchField.control.disabled = submissionInFlight;
+    searchField.control.readOnly = renewOnly;
     // The card is interactive before provider reads settle. Persist typing immediately so
     // adding/removing a sibling while the chain is slow cannot erase this entry's draft.
     bodyDisposer.on(searchField.control, 'input', () => {
@@ -204,11 +415,15 @@ export function NameRoute({ back }) {
       entry.name = draft;
     });
     const nameRuleHint = searchField.el.querySelector('.hint');
-    const cardInner = h('div', { class: 'stack stack-3' }, [searchField.el, statusLine]);
+    const tierPill = h('div', { class: 'domain-tier-pill hidden' });
+    const cardInner = h('div', { class: 'stack stack-3' }, [searchField.el, tierPill, statusLine]);
     card.appendChild(cardInner);
 
     // The rest of this flow's computation happens against settled reads, so hydrate now.
-    const [registryRes, customRes] = await readsPromise;
+    // Keep the editable field mounted while context arrives; quotes must use that context.
+    try { await contextReady; } catch { return; }
+    if (destroyed || !card.isConnected || !network?.id || !account?.address) return;
+    const [registryRes, customRes] = await readProviderFacts(network.id);
     if (destroyed || !card.isConnected) return;
 
     const registry = registryRes.status === 'fulfilled'
@@ -230,15 +445,24 @@ export function NameRoute({ back }) {
       registry: registryUp ? registry.registry.rootRegistrar : null,
       custom: customUp ? custom.root : null,
     };
-    const preferredProvider = providers.includes(entry.provider) ? entry.provider : (providers[0] ?? null);
+    const renewal = renewOnly ? await readLeaseFacts(entry) : null;
+    if (destroyed || !card.isConnected) return;
+    const requestedProvider = entry.provider || (providers.includes('custom') ? 'custom' : providers[0] ?? null);
+    const preferredProvider = providers.includes(requestedProvider) ? requestedProvider : (providers[0] ?? null);
     const pinnedProvider = entry.rootAddress
-      ? (providerRoots[entry.provider] === entry.rootAddress
-        ? entry.provider
+      ? (providerRoots[requestedProvider] === entry.rootAddress
+        ? requestedProvider
         : providers.find((kind) => providerRoots[kind] === entry.rootAddress) ?? null)
       : null;
-    const provider = entry.rootAddress ? pinnedProvider : preferredProvider;
+    const provider = renewOnly ? renewal?.provider ?? null : entry.rootAddress ? pinnedProvider : preferredProvider;
     const rootUnsupported = Boolean(entry.rootAddress && !pinnedProvider);
     const tld = provider ? 'thru' : null;
+
+    if (renewOnly && !provider) {
+      statusLine.textContent = 'Renewal is unavailable for this domain on the selected network.';
+      cardInner.appendChild(h('button', { type: 'button', class: 'btn primary', text: 'Renewal unavailable', disabled: true }));
+      return;
+    }
 
     let decimals = null;
     let symbol = null;
@@ -255,6 +479,9 @@ export function NameRoute({ back }) {
 
     // The mint suffix is fixed; chain facts decide only whether a `.thru` registrar exists.
     if (provider) searchField.control.placeholder = 'Search yourname.thru';
+    if (renewOnly) {
+      searchField.control.readOnly = true;
+    }
     const updateNameRuleHint = () => {
       if (!nameRuleHint) return;
       nameRuleHint.textContent = provider === 'registry'
@@ -273,18 +500,22 @@ export function NameRoute({ back }) {
     mutationControls.add(plusBtn);
     minusBtn.disabled = submissionInFlight;
     plusBtn.disabled = submissionInFlight;
-    const yearsStepper = h('div', { class: 'name-stepper row-flex hidden' }, [
-      h('span', { class: 'hint', text: 'Registration period' }),
-      h('div', { class: 'row-flex' }, [minusBtn, yearsLabel, plusBtn]),
+    const stepperLabel = h('span', { class: 'hint shrink-0', text: renewOnly ? 'Renewal period' : 'Registration period' });
+    const yearsStepper = h('div', { class: 'name-stepper row-flex between hidden' }, [
+      stepperLabel,
+      h('div', { class: 'row-flex align-center shrink-0' }, [minusBtn, yearsLabel, plusBtn]),
     ]);
 
     const priceLine = h('div', { class: 'name-price hint hidden' });
     const balanceLine = h('div', { class: 'name-balance hint hidden' });
     const ctaBtn = h('button', { type: 'button', class: 'btn primary hidden' }, [h('span', { text: 'Review registration' })]);
     const ctaLabel = () => ctaBtn.querySelector('span');
-    const linkBtn = h('button', { type: 'button', class: 'btn secondary hidden' }, [h('span', { text: 'Set as primary' })]);
+    const linkBtn = h('button', { type: 'button', class: 'btn secondary' }, [h('span', { text: 'Set as primary' })]);
+    const importBtn = h('button', { type: 'button', class: 'btn secondary' }, [h('span', { text: 'Import' })]);
+    const ownerActionsRow = h('div', { class: 'name-owner-actions hidden' }, [linkBtn, importBtn]);
     transactionControls.add(ctaBtn);
     mutationControls.add(linkBtn);
+    mutationControls.add(importBtn);
 
     let years = Math.min(10, Math.max(1, Number(entry.years) || 1));
     // kind: 'available'|'taken'|'mine'|'claimable' (official registry) or the
@@ -300,8 +531,42 @@ export function NameRoute({ back }) {
     function pricePerYear() { return BigInt(registry.registry.pricePerYear); }
     function baseCost() { return pricePerYear() * BigInt(years); }
     // Custom registrar fee: native base units, read from the on-chain config (raw BigInt).
-    function customPricePerYear() { return BigInt(custom.feePerYear); }
+    // The custom registrar prices by LABEL LENGTH (3 / 4 / 5+), from its own config. Fall back
+    // to the flat field only for an info object that predates the tiers (layout 1 reports the
+    // flat fee as every tier, so this cannot invent a price the chain does not declare).
+    function customPricePerYear(label = entry?.name || '') {
+      const info = custom;
+      const len = String(label).length;
+      const tier = len === 3 ? info.fee3PerYear
+        : len === 4 ? info.fee4PerYear
+          : len >= 5 ? info.fee5PlusPerYear
+            : null;
+      return BigInt(tier ?? custom.feePerYear);
+    }
     function customBaseCost() { return customPricePerYear() * BigInt(years); }
+    // Only a strict config actually charges; a best-effort one attempts the debit and ignores a
+    // refusal. The UI must not disable Review (or promise a price) on that basis alone.
+    function customFeeEnforced() { return custom.feeEnforced === true; }
+
+    function updateTierPill() {
+      const draftName = String(entry.name || searchField.value || '').trim();
+      const len = draftName.length;
+      if (len < 3 || len > 32 || !provider) {
+        tierPill.classList.add('hidden');
+        return;
+      }
+      if (provider === 'custom') {
+        const tierName = len === 3 ? 'Tier 1 (3 chars)' : len === 4 ? 'Tier 2 (4 chars)' : 'Tier 3 (5+ chars)';
+        const fee = customPricePerYear(draftName);
+        tierPill.textContent = `${tierName} • ${formatTokenAmount(fee, NATIVE_TOKEN.decimals)} ${NATIVE_TOKEN.symbol}/yr`;
+        tierPill.classList.remove('hidden');
+      } else if (provider === 'registry' && registryUp) {
+        tierPill.textContent = `Flat tier • ${fmt(registry.registry.pricePerYear)}/yr`;
+        tierPill.classList.remove('hidden');
+      } else {
+        tierPill.classList.add('hidden');
+      }
+    }
 
     function setYears(delta) {
       years = Math.min(10, Math.max(1, years + delta));
@@ -311,13 +576,16 @@ export function NameRoute({ back }) {
     }
     bodyDisposer.on(minusBtn, 'click', () => setYears(-1));
     bodyDisposer.on(plusBtn, 'click', () => setYears(+1));
+    bodyDisposer.on(searchField.control, 'input', () => updateTierPill());
 
     function hideActions() {
+      // A pending preparation no longer describes this draft.
+      prepareSeq += 1;
       yearsStepper.classList.add('hidden');
       priceLine.classList.add('hidden');
       balanceLine.classList.add('hidden');
       ctaBtn.classList.add('hidden');
-      linkBtn.classList.add('hidden');
+      ownerActionsRow.classList.add('hidden');
       reviewSheet?.close();
       ctaBtn.disabled = false;
       entry.quote = null;
@@ -332,21 +600,31 @@ export function NameRoute({ back }) {
     function armForState(state) {
       if (!state) return;
       hideActions();
+      updateTierPill();
       if (entry.completed || entry.outcomeUnknown) return;
+      if (renewOnly && state.kind !== 'mine' && state.kind !== 'custom-mine') return;
       // Configured price is a quote, not evidence of the amount ultimately charged.
       if (state.kind === 'custom-available') {
+        stepperLabel.textContent = 'Registration period';
         yearsStepper.classList.remove('hidden');
         const cost = customBaseCost();
         entry.quote = { assetId: `${network?.id || 'active'}:${NATIVE_TOKEN.symbol}`, ticker: NATIVE_TOKEN.symbol, decimals: NATIVE_TOKEN.decimals, raw: cost };
         priceLine.classList.remove('hidden');
-        priceLine.textContent = `Registration quote: ${formatTokenAmount(cost, NATIVE_TOKEN.decimals)} ${NATIVE_TOKEN.symbol}`;
+        priceLine.textContent = `Registration quote: ${formatTokenAmount(cost, NATIVE_TOKEN.decimals)} ${NATIVE_TOKEN.symbol}`
+          + (customFeeEnforced() ? '' : ' · not enforced on-chain');
         balanceLine.classList.remove('hidden');
-        if (nativeBalance?.exists && !nativeBalance.stale && nativeBalance.balance != null) {
+        if (nativeBalance?.exists && nativeBalance.balance != null) {
           const have = BigInt(nativeBalance.balance);
-          balanceLine.textContent = `Balance: ${formatTokenAmount(have, NATIVE_TOKEN.decimals)} ${NATIVE_TOKEN.symbol}${have < cost ? ' · Insufficient balance' : ''}`;
-          ctaBtn.disabled = have < cost;
+          const staleTag = nativeBalance.stale ? ' (cached)' : '';
+          const short = customFeeEnforced() && have < cost;
+          balanceLine.textContent = `Balance: ${formatTokenAmount(have, NATIVE_TOKEN.decimals)} ${NATIVE_TOKEN.symbol}${staleTag}${short ? ' · Insufficient balance' : ''}`;
+          ctaBtn.disabled = short;
         } else if (nativeBalance && !nativeBalance.exists && !nativeBalance.stale) {
           balanceLine.textContent = 'This account needs activation before registration.';
+          ctaBtn.disabled = true;
+        } else if (nativeBalance === null) {
+          balanceLine.textContent = 'Checking balance…';
+          ctaBtn.disabled = true;
         } else {
           balanceLine.textContent = 'Balance unavailable. Refresh to try again.';
           ctaBtn.disabled = true;
@@ -356,7 +634,40 @@ export function NameRoute({ back }) {
         return;
       }
       if (state.kind === 'custom-mine') {
-        if (!(primary?.name === state.name)) linkBtn.classList.remove('hidden');
+        stepperLabel.textContent = 'Renewal period';
+        yearsStepper.classList.remove('hidden');
+        const cost = customPricePerYear(entry.name)
+          * BigInt(entry.years || 1);
+        entry.quote = { assetId: `${network?.id || 'active'}:${NATIVE_TOKEN.symbol}`, ticker: NATIVE_TOKEN.symbol, decimals: NATIVE_TOKEN.decimals, raw: cost };
+        priceLine.classList.remove('hidden');
+        priceLine.textContent = `Renewal quote: ${formatTokenAmount(cost, NATIVE_TOKEN.decimals)} ${NATIVE_TOKEN.symbol}`
+          + (customFeeEnforced() ? '' : ' · not enforced on-chain');
+        balanceLine.classList.remove('hidden');
+        if (nativeBalance?.exists && nativeBalance.balance != null) {
+          const have = BigInt(nativeBalance.balance);
+          const staleTag = nativeBalance.stale ? ' (cached)' : '';
+          const short = customFeeEnforced() && have < cost;
+          balanceLine.textContent = `Balance: ${formatTokenAmount(have, NATIVE_TOKEN.decimals)} ${NATIVE_TOKEN.symbol}${staleTag}${short ? ' · Insufficient balance' : ''}`;
+          ctaBtn.disabled = short;
+        } else if (nativeBalance && !nativeBalance.exists && !nativeBalance.stale) {
+          balanceLine.textContent = 'This account needs activation before renewal.';
+          ctaBtn.disabled = true;
+        } else if (nativeBalance === null) {
+          balanceLine.textContent = 'Checking balance…';
+          ctaBtn.disabled = true;
+        } else {
+          balanceLine.textContent = 'Balance unavailable. Refresh to try again.';
+          ctaBtn.disabled = true;
+        }
+        ctaBtn.classList.remove('hidden');
+        ctaLabel().textContent = 'Review renewal';
+        ownerActionsRow.classList.remove('hidden');
+        const isCustomPrimary = primary?.name === state.name;
+        linkBtn.disabled = isCustomPrimary;
+        linkBtn.querySelector('span').textContent = isCustomPrimary ? 'Primary' : 'Set as primary';
+        const isCustomTracked = cachedDomainItems.some(item => item.name === state.name || item.name === `${state.name}.thru`);
+        importBtn.disabled = isCustomTracked;
+        importBtn.querySelector('span').textContent = isCustomTracked ? 'Imported' : 'Import';
         return;
       }
       const purchasable = state.kind === 'available' || state.kind === 'claimable';
@@ -364,6 +675,7 @@ export function NameRoute({ back }) {
       if (!purchasable && !renewable) return;
       if (!registryUp) return; // nothing to sell here — status line already said so
 
+      stepperLabel.textContent = renewable ? 'Renewal period' : (state.kind === 'claimable' ? 'Claim period' : 'Registration period');
       yearsStepper.classList.remove('hidden');
       priceLine.classList.remove('hidden');
       if (decimals == null) {
@@ -391,9 +703,52 @@ export function NameRoute({ back }) {
         : state.kind === 'claimable'
           ? 'Review claim'
           : 'Review registration';
-      if (state.kind === 'mine' && !(primary?.name === state.name)) {
-        linkBtn.classList.remove('hidden');
+      if (state.kind === 'mine') {
+        ownerActionsRow.classList.remove('hidden');
+        const isRegPrimary = primary?.name === state.name;
+        linkBtn.disabled = isRegPrimary;
+        linkBtn.querySelector('span').textContent = isRegPrimary ? 'Primary' : 'Set as primary';
+        const isRegTracked = cachedDomainItems.some(item => item.name === state.name || item.name === `${state.name}.thru`);
+        importBtn.disabled = isRegTracked;
+        importBtn.querySelector('span').textContent = isRegTracked ? 'Imported' : 'Import';
       }
+    }
+
+    async function fetchNativeBalance(mySeq) {
+      let addr = account?.address;
+      if (!addr) {
+        const acc = await bridge.send('account.getActive').catch(() => null);
+        if (destroyed || !card.isConnected || mySeq !== checkSeq) return null;
+        if (acc?.address) {
+          account = acc;
+          addr = acc.address;
+        }
+      }
+      if (!addr) return null;
+      try {
+        const cached = await bridge.send('tx.getCachedBalances', { addresses: [addr] }).catch(() => null);
+        if (destroyed || !card.isConnected || mySeq !== checkSeq) return null;
+        if (cached?.[addr] && cached[addr].balance != null) {
+          nativeBalance = cached[addr];
+          if (leaseState) armForState(leaseState);
+        }
+      } catch { /* best effort */ }
+      try {
+        const balances = await bridge.send('tx.getBalances', { addresses: [addr] }).catch(() => null);
+        if (destroyed || !statusLine.isConnected || mySeq !== checkSeq) return null;
+        if (balances?.[addr] && balances[addr].balance != null) {
+          nativeBalance = balances[addr];
+          if (leaseState) armForState(leaseState);
+        } else if (!nativeBalance) {
+          const info = await bridge.send('tx.getAccountInfo', { address: addr }).catch(() => null);
+          if (destroyed || !statusLine.isConnected || mySeq !== checkSeq) return null;
+          if (info && info.exists != null) {
+            nativeBalance = { balance: String(info.balance ?? '0'), exists: Boolean(info.exists), stale: false };
+            if (leaseState) armForState(leaseState);
+          }
+        }
+      } catch { /* best effort */ }
+      return nativeBalance;
     }
 
     // Custom registrar mode (v25): lease PDA + domain existence, fee from on-chain config.
@@ -404,6 +759,9 @@ export function NameRoute({ back }) {
         const res = await bridge.send('name.checkCustomLease', { name });
         if (destroyed || !statusLine.isConnected || mySeq !== checkSeq) return; // stale
         if (!res?.supported) throw new Error(res?.reason || 'custom registrar reads unsupported on this network');
+        if (renewOnly && (res.stale || res.cached || res.name !== entry.name || res.root !== entry.rootAddress
+          || res.domainAddress !== entry.domainAddress || res.lease?.label !== entry.name
+          || res.lease?.owner !== account?.address)) throw new Error('Renewal facts changed.');
         if (res.labelProblem) {
           leaseState = null;
           hideActions();
@@ -422,6 +780,11 @@ export function NameRoute({ back }) {
           if (mine) {
             leaseState = { kind: 'custom-mine', name, lease: res.lease, rootAddress: res.root };
             setStatus(`Owned by you · Expires ${formatChainTime(res.lease.expiresAtSeconds)}`, 'ok');
+            armForState(leaseState);
+            await fetchNativeBalance(mySeq);
+            if (destroyed || !statusLine.isConnected || mySeq !== checkSeq) return;
+            armForState(leaseState);
+            return;
           } else if (res.expiredHint) {
             leaseState = null;
             hideActions();
@@ -438,12 +801,12 @@ export function NameRoute({ back }) {
         } else {
           nativeBalance = null;
           leaseState = { kind: 'custom-available', name, rootAddress: res.root };
-          if (account?.address) {
-            const balances = await bridge.send('tx.getBalances', { addresses: [account.address] }).catch(() => null);
-            if (destroyed || !statusLine.isConnected || mySeq !== checkSeq) return;
-            nativeBalance = balances?.[account.address] ?? null;
-          }
           setStatus('Available', 'ok');
+          armForState(leaseState);
+          await fetchNativeBalance(mySeq);
+          if (destroyed || !statusLine.isConnected || mySeq !== checkSeq) return;
+          armForState(leaseState);
+          return;
         }
         armForState(leaseState);
       } catch (err) {
@@ -472,6 +835,9 @@ export function NameRoute({ back }) {
         const res = await bridge.send('name.checkLease', { name });
         if (destroyed || !statusLine.isConnected || mySeq !== checkSeq) return; // stale
         if (!res?.supported) throw new Error(res?.reason || 'registry reads unsupported on this network');
+        if (renewOnly && (res.stale || res.cached || res.name !== entry.name || res.rootRegistrar !== entry.rootAddress
+          || res.domainAddress !== entry.domainAddress || res.lease?.name !== entry.name
+          || res.lease?.owner !== account?.address)) throw new Error('Renewal facts changed.');
         if (registryUp) {
           payment = await bridge.send('name.getPaymentBalance').catch(() => null);
           if (destroyed || !statusLine.isConnected || mySeq !== checkSeq) return;
@@ -490,17 +856,17 @@ export function NameRoute({ back }) {
           setStatus(`Owned by you · Expires ${formatChainTime(res.lease.endTime)}`, 'ok');
         } else if (res.lease && res.lease.expiredHint === false) {
           leaseState = { kind: 'taken', name, lease: res.lease };
-          setStatus('Already registered', 'bad');
+          setStatus(renewOnly ? 'Only the current owner can renew this domain.' : 'Already registered', 'bad');
         } else if (res.lease) {
           leaseState = { kind: 'claimable', name, lease: res.lease };
-          setStatus('Available to claim · Previous registration expired', 'ok');
+          setStatus(renewOnly ? 'This domain cannot be renewed by this account.' : 'Available to claim · Previous registration expired', renewOnly ? 'warn' : 'ok');
         } else if (res.domainExists) {
           leaseState = null;
           hideActions();
-          setStatus('Already registered', 'bad');
+          setStatus(renewOnly ? 'This domain has no renewable lease with this registrar.' : 'Already registered', 'bad');
         } else {
           leaseState = { kind: 'available', name };
-          setStatus('Available', 'ok');
+          setStatus(renewOnly ? 'No registration to renew. Search this name under Register.' : 'Available', renewOnly ? 'warn' : 'ok');
         }
         armForState(leaseState);
       } catch (err) {
@@ -526,6 +892,7 @@ export function NameRoute({ back }) {
       clearTimeout(checkTimer);
       // Invalidate an older request immediately, including the debounce window.
       checkSeq++;
+      prepareSeq += 1;
       leaseState = null;
       hideActions();
       if (name.length === 0) { setStatus('', ''); return; }
@@ -549,40 +916,8 @@ export function NameRoute({ back }) {
       if (e.key === 'Enter' && leaseState && !ctaBtn.classList.contains('hidden')) ctaBtn.click();
     });
 
-    async function writeWithPassword(method, name, yrs, customRegister = false, reviewed = {}) {
-      const sendChecked = (extra = {}) => {
-        if (destroyed || !card.isConnected) return null;
-        setStatus('Submitting transaction…', '');
-        return bridge.send(method, customRegister
-          ? { name, years: yrs, via: 'custom', ...reviewed, ...extra }
-          : { name, years: yrs, ...reviewed, ...extra });
-      };
-      const prefs = await bridge.send('settings.get').catch(() => null);
-      if (destroyed || !card.isConnected) return null;
-      if (prefs?.requirePasswordForSigning === false) {
-        return sendChecked();
-      }
-      setStatus('Waiting for password…', '');
-      const outcome = await requirePassword({
-        title: 'Confirm transaction',
-        body: `Enter your password to sign for ${name}.${currentTld()}.`,
-        confirmLabel: 'Confirm and sign',
-        verify: async (password) => {
-          try { return { result: await sendChecked({ password }) }; }
-          catch (error) {
-            // Only authentication errors stay in the password dialog. A submitted or stale
-            // transaction must return to the route, never become a password retry.
-            if (['AUTH_REQUIRED', 'AUTH_FAILED', 'AUTH_LOCKED_OUT', 'INVALID_PASSWORD'].includes(error?.code)) throw error;
-            return { error };
-          }
-        },
-      });
-      if (outcome?.error) throw outcome.error;
-      return outcome?.result ?? null;
-    }
-
     bodyDisposer.on(ctaBtn, 'click', () => {
-      if (destroyed || submissionInFlight || ctaBtn.disabled || reviewSheet) return;
+      if (destroyed || submissionInFlight || ctaBtn.disabled || reviewSheet || preparingReview) return;
       banner.set('');
       if (entry.recheckRequired) {
         entry.recheckRequired = false;
@@ -594,107 +929,185 @@ export function NameRoute({ back }) {
       if (!leaseState || !entry.quote || !account?.address || !network?.id) return;
       const state = leaseState;
       const customRegister = state.kind === 'custom-available';
-      if (!customRegister && !registryUp) return;
-      const method = customRegister
-        ? 'name.register'
-        : state.kind === 'mine' ? 'name.renewLease' : state.kind === 'claimable' ? 'name.claimExpired' : 'name.purchase';
-      const title = method === 'name.renewLease' ? 'Confirm renewal'
-        : method === 'name.claimExpired' ? 'Confirm expired claim' : 'Confirm registration';
+      const customRenew = state.kind === 'custom-mine';
+      const isCustom = customRegister || customRenew;
+      if (!isCustom && !registryUp) return;
+
+      // The SAME review pipeline the Send route uses. The domain decoders decide what the
+      // sheet renders; this route only chooses the operation kind.
+      const kind = customRegister ? 'domain-register'
+        : (state.kind === 'mine' || customRenew) ? 'domain-renew'
+          : state.kind === 'claimable' ? 'domain-claim' : 'domain-purchase';
+      const title = (kind === 'domain-renew' || customRenew) ? 'Confirm renewal'
+        : kind === 'domain-claim' ? 'Confirm expired claim'
+          : kind === 'domain-purchase' ? 'Confirm purchase' : 'Confirm registration';
       const reviewedYears = years;
-      const amount = `${formatTokenAmount(entry.quote.raw, entry.quote.decimals)} ${entry.quote.ticker}`;
-      const reviewed = {
-        expectedAccountAddress: account.address,
-        expectedNetworkId: network.id,
-        ...(customRegister ? { expectedPricePerYear: String(custom.feePerYear) } : {}),
-        ...(!customRegister ? {
-          expectedPricePerYear: String(registry.registry.pricePerYear),
-          ...(state.lease?.endTime != null ? { expectedLeaseEndTime: String(state.lease.endTime) } : {}),
-        } : {}),
-      };
-      const sheet = Sheet({ label: title, className: 'name-confirm-sheet', onClose: () => {
-        if (reviewSheet === sheet) reviewSheet = null;
-      } });
-      reviewSheet = sheet;
-      const row = (label, value) => h('div', { class: 'detail-row' }, [
-        h('span', { class: 'hint', text: label }),
-        h('span', { class: 'detail-val', text: value }),
-      ]);
-      const cancel = h('button', { type: 'button', class: 'btn secondary', text: 'Cancel' });
-      const confirm = h('button', { type: 'button', class: 'btn primary', text: 'Confirm and sign' });
-      sheet.card.appendChild(h('div', { class: 'name-confirm-hero stack stack-2' }, [
-        h('div', { class: 'eyebrow', text: title }),
-        h('h2', { class: 'name-confirm-title', text: `${state.name}.${currentTld()}` }),
-        h('div', { class: 'hint', text: `${reviewedYears} ${reviewedYears === 1 ? 'year' : 'years'}` }),
-      ]));
-      sheet.card.appendChild(h('div', { class: 'detail-table' }, [
-        row('Quoted fee', amount),
-        row('Network fee', 'Not available'),
-        row('Network', network.label || network.id),
-      ]));
-      sheet.card.appendChild(h('div', { class: 'tx-sheet-sig' }, [
-        h('span', { class: 'hint', text: 'Account' }),
-        h('span', { class: 'detail-sheet-mono', text: reviewed.expectedAccountAddress }),
-      ]));
-      sheet.card.appendChild(h('p', { class: 'tx-sheet-note', text: customRegister
-        ? 'Final registration charges may differ from the quote. Network fees are not included.'
-        : 'Network fees are not included in the quote.' }));
-      sheet.card.appendChild(h('div', { class: 'screen-actions' }, [cancel, confirm]));
-      sheet.d.on(cancel, 'click', () => sheet.close());
-      sheet.d.on(confirm, 'click', () => {
-        if (sheet.closed || destroyed || !card.isConnected || submissionInFlight) return;
-        // Close the review trap before opening password authentication. All signed values
-        // come from this review snapshot, never from a subsequently edited form.
-        sheet.close();
-        void submitReviewed(state, method, reviewedYears, customRegister, reviewed);
-      });
-      sheet.open();
+      const params = { name: state.name, years: reviewedYears, ...(isCustom ? { via: 'custom' } : {}) };
+
+      const generation = ++prepareSeq;
+      const stale = () => destroyed || !card.isConnected || generation !== prepareSeq;
+      preparingReview = true;
+      void (async () => {
+        setStatus('Preparing review…', '');
+        let prepared;
+        try {
+          prepared = await bridge.send('tx.prepareReview', { kind, params });
+        } catch (error) {
+          if (stale()) return;
+          setStatus('', '');
+          banner.set(error?.message || 'The review could not be prepared.');
+          return;
+        } finally {
+          preparingReview = false;
+        }
+        if (stale()) {
+          // The draft changed or the route is gone: drop the review instead of showing a
+          // sheet for a transaction the user is no longer looking at.
+          if (prepared?.reviewId) discardReview(prepared.reviewId);
+          return;
+        }
+        setStatus('', '');
+        if (!prepared?.supported) {
+          banner.set('This wallet has no decoder for that transaction, so it cannot be signed.');
+          return;
+        }
+
+        const sheet = Sheet({ label: title, className: 'name-confirm-sheet', onClose: () => {
+          if (reviewSheet === sheet) reviewSheet = null;
+        } });
+        reviewSheet = sheet;
+
+        // The card fires onChange from its own constructor, so the button it gates must
+        // exist first. Every confirmability decision stays inside the card: this route never
+        // re-derives validation from the review envelope itself.
+        let confirm = null;
+        const reviewCard = sheet.track(TxReviewCard({
+          review: prepared.review,
+          onChange: ({ canConfirm }) => confirm?.el && (confirm.el.disabled = !canConfirm),
+        }));
+        sheet.card.appendChild(reviewCard.el);
+
+        const cancel = sheet.track({
+          el: h('button', { type: 'button', class: 'btn secondary', text: 'Cancel' }),
+          destroy: () => {},
+        });
+        confirm = sheet.track({
+          el: h('button', {
+            type: 'button',
+            class: 'btn primary',
+            text: prepared.review.operation.confirmLabel || 'Confirm and sign',
+            disabled: !reviewCard.canConfirm(),
+          }),
+          destroy: () => {},
+        });
+
+
+        sheet.d.on(cancel.el, 'click', () => {
+          discardReview(prepared.reviewId);
+          sheet.close();
+        });
+        sheet.d.on(confirm.el, 'click', () => {
+          if (sheet.closed || destroyed || !card.isConnected || submissionInFlight) return;
+          const acknowledgements = reviewCard.acknowledgements;
+          // Close the review trap before opening password authentication or submitting.
+          sheet.close();
+          void submitReviewed(prepared, acknowledgements, kind, state.name);
+        });
+
+        sheet.card.appendChild(h('div', { class: 'screen-actions' }, [confirm.el, cancel.el]));
+        sheet.open();
+      })();
     });
 
-    async function submitReviewed(state, method, reviewedYears, customRegister, reviewed) {
+    async function submitReviewed(prepared, acknowledgements, kind, nameText) {
       submissionInFlight = true;
-      setListMutationLocked();
+      setListMutationLocked(true);
       for (const control of transactionControls) control.disabled = true;
-      setStatus('Preparing transaction…', '');
+      const opName = kind === 'domain-renew' ? 'Renewal' : 'Registration';
+      // ONE surface for this event (AGENTS.md rule 29). The attempt and its verdict are both the
+      // toast: it opens as `pending` (spinner, never expires) and is resolved IN PLACE by whichever
+      // outcome happened. The banner is not written here at all — it is for screen state that is
+      // not an event (a review that cannot be prepared, or one that can no longer be signed) — and
+      // the `.name-status` line above owns availability text for the typed name only. Before
+      // 2026-10-27 this function wrote the in-flight sentence to all three surfaces and the verdict
+      // to two, which is the duplication in the owner's screenshot (docs/DEFECT_LOG.md §22).
+      setStatus('', '');
+      banner.clear();
+      // A signature is not a confirmation, and a lost RPC answer is not a failure, so the outcomes
+      // get different verdicts — and only the confirmed one says "confirmed".
+      const submitToast = toast({
+        tone: 'pending',
+        key: 'name-submit',
+        title: `Submitting ${opName.toLowerCase()}…`,
+        message: `${nameText}.${currentTld()} · waiting for the network`,
+      });
+      const review = prepared.review;
       try {
-        const result = await writeWithPassword(method, state.name, reviewedYears, customRegister, reviewed);
-        if (destroyed || !card.isConnected) return;
-        if (!result) { setStatus('Transaction cancelled', ''); return; }
-        toast('Transaction confirmed');
-        setStatus(`${state.name}.${currentTld()} · ${method === 'name.renewLease' ? 'Renewal' : 'Registration'} confirmed`, 'ok');
+        const outcome = await submitReviewedReview({
+          review,
+          acknowledgements,
+          signal: abortController.signal,
+          passwordTitle: 'Confirm transaction',
+          passwordBody: `Enter your password to sign for ${nameText}.${currentTld()}.`,
+          confirmLabel: 'Confirm and sign',
+        });
+        // The route is gone: retire the pending bar rather than leave an unresolvable spinner in
+        // the shared toast host. A "confirmed" toast for a screen that no longer exists is the
+        // same class of stale claim the review lifecycle audit removed.
+        if (destroyed || !card.isConnected) { submitToast.dismiss(); return; }
+        if (outcome.status === 'cancelled') {
+          submitToast.update({
+            tone: 'info',
+            title: `${opName} cancelled`,
+            message: 'Nothing was signed or sent.',
+          });
+          return;
+        }
+        // The submit path resolved only after the handler returned an execution result, which
+        // is why this says "confirmed" and not "submitted". It is also the ONLY place that claim
+        // is made on this screen: no banner, no field text.
+        submitToast.update({
+          tone: 'success',
+          title: `${nameText}.${currentTld()} ${opName.toLowerCase()} confirmed`,
+          message: 'The transaction executed on-chain. It is listed in Activity.',
+        });
         ctaBtn.classList.add('hidden');
         entry.completed = true;
         entry.quote = null;
-        if (method !== 'name.renewLease') {
-          // Best-effort primary-name link; a failed link must not masquerade as a failed
-          // registration — the search card remains the single source of truth afterwards.
-          try {
-            const rootForLink = customRegister ? custom.root : registry.registry.rootRegistrar;
-            const linked = await bridge.send('name.linkPrimary', { name: state.name, rootAddress: rootForLink });
-            if (destroyed || !card.isConnected) return;
-            primary = linked;
-            toast('Primary name updated');
-          } catch { /* registration itself is done */ }
-        }
+        // Do NOT automatically set primary domain per user rule
       } catch (err) {
-        if (destroyed || !card.isConnected) return;
-        if (err?.code === 'TX_RESULT_MISSING' || err?.retryable) {
-          setStatus('Confirmation pending. Check the outcome before trying again.', 'warn');
+        if (destroyed || !card.isConnected) { submitToast.dismiss(); return; }
+        const classified = classifyReviewError(err);
+        if (classified.kind === 'uncertain') {
+          // NOT a failure: the request may have been broadcast. The toast says what is known and
+          // tells the user where to look, and the CTA becomes "Check outcome" — the affordance,
+          // not a second copy of the message, is what makes the unknown state persist.
+          submitToast.update({
+            tone: 'warning',
+            title: 'Confirmation unavailable',
+            message: 'The network did not answer. Check Activity before trying again.',
+          });
           entry.outcomeUnknown = true;
           entry.recheckRequired = true;
           leaseState = null;
           ctaBtn.classList.remove('hidden');
           ctaLabel().textContent = 'Check outcome';
-        } else if (String(err?.code || '').startsWith('REVIEW_')) {
-          banner.set('Transaction details changed. Review the updated details before signing.');
+        } else if (classified.kind === 'stale') {
+          // The review is void (expired, changed on-chain, or the wallet refused to vouch for it),
+          // so no verdict belongs on the toast: the only path is a fresh read, and that
+          // instruction is screen state until the user acts on it.
+          submitToast.dismiss();
+          banner.set('This review can no longer be signed. Review the updated details before signing.', 'warning');
           leaseState = null;
           await load();
         } else {
-          banner.set(err?.message || 'Transaction failed. Please try again.');
-          setStatus('Transaction failed. Check availability before trying again.', 'bad');
-          entry.recheckRequired = true;
-          leaseState = null;
-          ctaBtn.classList.remove('hidden');
-          ctaLabel().textContent = 'Check again';
+          // A REFUSED or failed submission is still the same event, so the toast that carried it
+          // becomes the failure instead of a second notification appearing beside it.
+          submitToast.update({
+            tone: 'error',
+            title: `${opName} failed`,
+            message: classified.message,
+          });
         }
       } finally {
         submissionInFlight = false;
@@ -703,19 +1116,49 @@ export function NameRoute({ back }) {
       }
     }
 
+
+    bodyDisposer.on(importBtn, 'click', async () => {
+      banner.set('');
+      const importable = leaseState?.kind === 'mine' || leaseState?.kind === 'custom-mine';
+      if (!importable) return;
+      importBtn.disabled = true;
+      try {
+        const ctx = { expectedNetworkId: network.id, expectedAccountAddress: account.address };
+        await bridge.send('name.trackDomain', { name: leaseState.name, ...ctx });
+        if (destroyed || !card.isConnected) return;
+        toast({
+          tone: 'success',
+          key: 'domain-list-update',
+          title: 'Domain imported',
+          message: `${leaseState.name}.thru is now saved in My Domains.`,
+        });
+        importBtn.querySelector('span').textContent = 'Imported';
+        await load();
+      } catch (err) {
+        banner.set(err?.message || 'Could not import that name.');
+        importBtn.disabled = false;
+      }
+    });
+
     bodyDisposer.on(linkBtn, 'click', async () => {
       banner.set('');
       const linkable = leaseState?.kind === 'mine' || leaseState?.kind === 'custom-mine';
       if (!linkable) return;
       linkBtn.disabled = true;
       try {
-        const rootForLink = leaseState?.kind === 'custom-mine'
-          ? custom.root
-          : registryUp
-            ? registry.registry.rootRegistrar
-            : leaseState.rootAddress || '';
-        primary = await bridge.send('name.linkPrimary', { name: leaseState.name, rootAddress: rootForLink });
-        toast(`'${leaseState.name}' verified — linked to active account.`);
+        const ctx = { expectedNetworkId: network.id, expectedAccountAddress: account.address };
+        const imported = await bridge.send('name.trackDomain', { name: leaseState.name, ...ctx });
+        if (destroyed || !card.isConnected) return;
+        const linked = await bridge.send('name.setPrimaryDomain', { domainAddress: imported.domainAddress, ...ctx });
+        if (destroyed || !card.isConnected) return;
+        primary = linked;
+        toast({
+          tone: 'success',
+          key: 'name-primary',
+          title: 'Primary name updated',
+          message: `${leaseState.name}.thru now resolves to this account.`,
+        });
+        linkBtn.querySelector('span').textContent = 'Primary';
         await load();
       } catch (err) {
         banner.set(err?.message || 'Could not verify that name on-chain.');
@@ -729,12 +1172,14 @@ export function NameRoute({ back }) {
       priceLine,
       balanceLine,
       ctaBtn,
-      linkBtn,
+      ownerActionsRow,
     ];
-    for (const node of additions) cardInner.appendChild(node);
 
-    // Kick off the initial availability read when a linked name was pre-filled.
-    if (searchField.value?.trim?.()) queueCheck();
+    for (const node of additions) cardInner.appendChild(node);
+    refreshSearchActions = () => armForState(leaseState);
+
+    // Kick off the initial availability read immediately when a name was pre-filled.
+    if (searchField.value?.trim?.()) void backgroundCheck(searchField.value.trim());
   }
 
   // --------------------------------------------------------------------------
@@ -744,7 +1189,7 @@ export function NameRoute({ back }) {
     const tabs = h('div', { class: 'name-tabs', role: 'tablist', 'aria-label': 'Domain sections' });
     const panel = h('div', { class: 'name-tab-content stack stack-3', role: 'tabpanel', 'aria-labelledby': `domain-tab-${activeTab}` });
     const tabButtons = [];
-    for (const [key, label] of [['register', 'Register'], ['domains', 'My Domains'], ['renew', 'Renew']]) {
+    for (const [key, label] of [['register', 'Register'], ['domains', 'My Domains']]) {
       const tab = h('button', {
         type: 'button', class: `name-tab${activeTab === key ? ' selected' : ''}`,
         id: `domain-tab-${key}`, role: 'tab',
@@ -755,8 +1200,12 @@ export function NameRoute({ back }) {
       tab.disabled = submissionInFlight;
       tabButtons.push(tab);
       bodyDisposer.on(tab, 'click', () => {
-        if (activeTab === key) return;
+        if (submissionInFlight || (activeTab === key && !(key === 'register' && isRenewOnly))) return;
         activeTab = key;
+        if (key === 'register') {
+          if (isRenewOnly) draft = { name: '', years: 1, quote: null };
+          isRenewOnly = false;
+        }
         render();
       });
       tabs.appendChild(tab);
@@ -767,16 +1216,21 @@ export function NameRoute({ back }) {
       if (current < 0 || !['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
       event.preventDefault();
       const next = (current + (event.key === 'ArrowRight' ? 1 : tabButtons.length - 1)) % tabButtons.length;
-      activeTab = ['register', 'domains', 'renew'][next];
+      activeTab = ['register', 'domains'][next];
+      if (activeTab === 'register') {
+        if (isRenewOnly) draft = { name: '', years: 1, quote: null };
+        isRenewOnly = false;
+      }
       render();
       body.querySelectorAll('.name-tab')[next]?.focus();
     });
     body.appendChild(tabs);
     body.appendChild(panel);
 
+
     if (activeTab === 'register') {
-      panel.appendChild(h('div', { class: 'hint', text: 'Your name on Thru. Find and register a .thru domain.' }));
-      void renderSearchCard(panel);
+      panel.appendChild(h('div', { class: 'hint', text: isRenewOnly ? 'Renew your domain lease.' : 'Your name on Thru. Find, register or renew a .thru domain.' }));
+      void renderSearchCard(panel, draft, isRenewOnly);
       const refresh = h('button', { type: 'button', class: 'btn text', text: 'Refresh availability' });
       mutationControls.add(refresh);
       refresh.disabled = submissionInFlight;
@@ -790,88 +1244,83 @@ export function NameRoute({ back }) {
     }
 
     if (activeTab === 'domains') {
-      panel.appendChild(h('div', { class: 'hint', text: 'Link your .thru domain to use it as your wallet address.' }));
-      if (!primaryLoaded) {
-        panel.appendChild(h('div', { class: 'name-empty', role: 'status', text: 'Checking your primary name…' }));
-      } else if (primaryReadError) {
-        panel.appendChild(h('div', { class: 'name-empty name-status-warn', role: 'status', text: 'Your primary name could not be checked. Try again shortly.' }));
-      } else if (primary?.name) {
-        renderLinkedBadge(panel);
-      } else {
-        panel.appendChild(h('div', { class: 'name-empty stack stack-2' }, [
-          h('div', { class: 'row-title', text: 'No domains linked yet' }),
-          h('div', { class: 'hint', text: 'Search for a domain you own in Register to link it.' }),
-        ]));
-      }
+      renderDomains(panel);
       return;
     }
 
-    panel.appendChild(h('div', { class: 'name-renew-intro stack stack-2' }, [
-      h('div', { class: 'row-title', text: 'Keep your name' }),
-      h('div', { class: 'hint', text: 'Extend your registration period to maintain ownership.' }),
-    ]));
-    if (primary?.name) {
-      const linked = h('button', { type: 'button', class: 'btn secondary', text: `Check linked name: ${primary.name}` });
-      bodyDisposer.on(linked, 'click', () => {
-        draft = { name: primary.name, rootAddress: primary.rootAddress, years: 1, provider: 'registry', quote: null };
-        activeTab = 'register';
-        render();
-      });
-      panel.appendChild(linked);
-    }
-    const renewField = track(Field({
-      label: 'Domain name',
-      placeholder: 'yourname',
-      autocomplete: 'off',
-      maxLength: 64,
-      hint: 'Renewal is available for eligible paid-registry domains only.',
-    }));
-    const checkRenew = h('button', { type: 'button', class: 'btn primary', text: 'Check renewal eligibility' });
-    bodyDisposer.on(checkRenew, 'click', () => {
-      const name = renewField.value.trim();
-      if (!name) { banner.set('Enter one base name to check.'); renewField.control.focus(); return; }
-      banner.set('');
-      draft = { name, years: 1, provider: 'registry', quote: null };
-      activeTab = 'register';
-      render();
-    });
-    panel.appendChild(h('div', { class: 'stack stack-2' }, [renewField.el, checkRenew]));
   }
 
-  async function load() {
+  async function load(resetContext = false) {
     if (destroyed) return;
+    const attempt = ++loadSeq;
+    const initial = contextReady === null;
+    const previousAddress = account?.address;
+    const previousNetwork = network?.id;
+    prepareSeq++;
+    reviewSheet?.close();
     providerReads.clear();
     mintReads.clear();
+    contextReady = Promise.all([
+      bridge.send('network.getActive'), bridge.send('account.getActive'),
+    ]).then(([nextNetwork, nextAccount]) => {
+      if (destroyed || attempt !== loadSeq) return;
+      network = nextNetwork;
+      account = nextAccount;
+    });
+    if (resetContext) {
+      network = null;
+      account = null;
+      primary = null;
+      cachedDomainItems = [];
+      draft = { name: '', years: 1, quote: null };
+      isRenewOnly = false;
+      render();
+    }
     try {
-      network = await bridge.send('network.getActive');
-      account = await bridge.send('account.getActive');
+      await contextReady;
+      if (destroyed || attempt !== loadSeq) return;
+      const contextSwitched = Boolean(
+        (previousAddress && previousAddress !== account?.address)
+        || (previousNetwork && previousNetwork !== network?.id),
+      );
+      if (contextSwitched && !resetContext) {
+        draft = { name: '', years: 1, quote: null };
+        isRenewOnly = false;
+        primary = null;
+        cachedDomainItems = [];
+      }
+      if ((!resetContext && (contextSwitched || !initial)) || activeTab === 'domains') {
+        render();
+      } else {
+        body.querySelector('.eyebrow').textContent = `Network: ${network?.label || network?.id || 'loading…'}`;
+      }
     } catch (err) {
-      primaryLoaded = true;
-      primaryReadError = err?.message || 'account or network could not be read';
+      if (destroyed || attempt !== loadSeq) return;
       banner.set(err?.message || 'Could not read the selected account and network.');
-      if (!destroyed) render();
       return;
     }
-    // Re-verification happens INSIDE the backend read: a stored link whose owner changed
-    // on chain comes back as null rather than a stale badge.
+    if (activeTab === 'domains') return; // this view owns its cached/live hydration
     try {
-      primary = await bridge.send('name.getPrimary');
-      primaryReadError = null;
-    } catch (err) {
-      primary = null;
-      primaryReadError = err?.message || 'name lookup failed';
-    }
-    primaryLoaded = true;
-    if (!destroyed) render();
+      const result = await bridge.send('name.getCachedDomains', {
+        expectedNetworkId: network.id, expectedAccountAddress: account.address,
+      });
+      if (destroyed || attempt !== loadSeq || activeTab === 'domains') return;
+      if (result?.networkId !== network?.id || result?.accountAddress !== account?.address) return;
+      cachedDomainItems = Array.isArray(result?.items) ? result.items : [];
+      primary = result?.items?.find(item => item.isPrimary) ?? null;
+      refreshSearchActions?.();
+    } catch { /* no cache: keep the immediately painted route */ }
   }
 
-  render();
+  d.add(bridge.onEvents({ networkChanged: () => { void load(true); }, accountsChanged: () => { void load(true); } }));
   void load();
+  render();
 
   return {
     el,
     destroy() {
       destroyed = true;
+      abortController.abort();
       clearBody();
       header.destroy();
       banner.destroy();

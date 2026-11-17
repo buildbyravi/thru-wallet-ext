@@ -1,328 +1,138 @@
-# Manual smoke checklist
+# Manual Smoke Checklist
 
-The automated suite includes `test/test-route-lifecycle.mjs`, which mounts all 14 routes in all
-three vault states through the real Router, guards, bridge and kit and asserts route behavior,
-teardown, focus trapping and secret hygiene. `scripts/check-routes.mjs` checks route consistency
-and used CSS classes. These are specific deterministic checks, not a substitute for Chrome.
+**Document Class:** Operational Runbook (Real-Chrome & Live-Chain Verification)
 
-What none of that can prove is **how the thing looks and behaves in Chrome**: real layout at real
-widths, real focus rings, the side panel, the toolbar popup, service-worker eviction, and the
-clipboard permission prompt. That gap is what this checklist is for. It is deliberately short enough
-to run in about 20 minutes, and every item is something that has either broken before or is new
-enough to have never been checked in a browser at all.
-
-
-### Evidence boundary — keep these checks open
-
-- **Automated/local:** Node tests and build guards cover source structure, contract agreement, route behavior, deterministic cache/registration fixtures, and DOM assertions. They do not certify rendered layout or Chrome scheduling.
-- **Real browser — OPEN:** popup and side-panel layout/focus/QR, actual mutual exclusion and toolbar-mode behavior, clipboard prompt, and MV3 worker suspension/restart. Complete the relevant boxes below in Chrome.
-- **Live chain — OPEN where marked:** v12 account activation, token-transfer recipient-owner/fee behavior, current block-time availability/latency, charged-fee source, and explorer route. A historical native-Betanet observation or a mocked test does not close these checks.
-- **Custom registrar (D-016) — VERIFIED AGAINST LIVE BETANET:** `contracts/thru-custom-registrar` byte-pins pass in `npm test`; deployed at `ta2vDCBzzptN2qVZgz6PXsCp5cNB7Nef4yeQ3W-OqzZcfF` (v3) on Betanet. Root `thru` (`taNP1MFOO2shpn6ORofIGSNiQ-qJ9VE2lDkDwvUmgUmaQZ`) and config (`ta_9lLvhxurg4J5DyZ82W14rzzGWCEfj9B7Y8wa99amPBa`, 1000 base units/yr, treasury `taShrn6v-TM_h81ZjmDZLifdhLRlDMfIw_EAIaNKIIdPX-`) initialized on-chain. End-to-end registration probe (`scripts/registrar/probe-live-registrar.mjs`) verified live with `vmError 0` (sig `ts99vYWOXONCDIicCZtUw_Qf1Q2wYVH_IKZDkJO5-qMvv9yUXFx0tbRP_l_WKNYDr9WpIds0JTj0xU7poNz4vWCiEg`): domain `probe14agql` created under root `thru` with owner = user, and lease account `tajnX52BZa-Eh-O4qM9XvE8Y2ZB7lFJZMNpqDJ-fyGA8vA` created with exact 1-year expiry. Evidence: `scripts/defi-evidence/registrar-probe-betanet-probe14agql-1792889728542.json`. (The separate faucet ceiling question is CLOSED: `scripts/defi-evidence/2026-10-24-faucet-cap.json` proves the cap is exactly 10 000 base units per transaction — 10 001+ reverts vmError −765 — while repeated claims accumulate freely.)
-
-Run it before merging any change to `src/ui/**`, `src/popup/**` or `src/manifest.json`, and after any
-change to the side panel, the popup width, or the modal/focus behaviour.
+`test/test-route-lifecycle.mjs` mounts all **15 routes** across no-vault, locked, and unlocked states against a deterministic Node DOM shim, and `scripts/check-routes.mjs` verifies route reachability and CSS class definitions. Because the Node shim has **no layout engine**, **no Chrome side-panel host**, and **no MV3 service-worker scheduler**, this checklist is mandatory before merging changes to `src/ui/**`, `src/popup/**`, or `src/manifest.json` (`AGENTS.md` Rule 14).
 
 ---
 
-## 0. Load it, and do not get fooled by a stale build
+## 0. Build, Load, and Avoid the Stale-Extension Trap
 
-1. `npm run build` — `build.mjs` wipes `dist/` first, so a deleted file cannot survive in the
-   output. If the build fails, stop; nothing below is meaningful.
-2. `chrome://extensions` → **Developer mode** on → **Load unpacked** → select `dist/`.
-3. **The reload trap.** After *every* edit-and-rebuild cycle you must press the reload arrow on the
-   extension card, and then **close and reopen the popup**. Two failure modes hide here:
-   - The open popup keeps running the *old* bundle. It is a separate document and reloading the
-     extension does not refresh it, so you end up testing code you deleted.
-   - The service worker is evicted and restarted by the reload, which clears in-memory state and
-     fires `onStartup`-style paths a warm worker never runs.
-   If a result looks wrong, reload the extension and reopen the popup before believing it.
-4. Open DevTools on the popup (right-click the popup → Inspect) and keep the Console visible while
-   you work. Any red line is a failure, even if the screen looks right.
+1. Run `npm run build && npm test` (`build.mjs` wipes `dist/` before bundling). Stop immediately if either fails.
+2. In Chrome: `chrome://extensions` -> **Developer mode** ON -> **Load unpacked** -> select `dist/`.
+3. **The reload trap:** After *every* rebuild, click the **Reload** icon on the extension card in `chrome://extensions`, then **close and reopen the popup** (and side panel). Reopening the popup without reloading the extension runs new UI against a cached old service worker; reloading the extension without reopening an open panel leaves the old DOM bundle running.
+4. Right-click the popup -> **Inspect** and keep the **Console** open. Any uncaught error or CSP violation fails the run.
 
-## 1. Both contexts
+---
 
-The toolbar popup loads `popup.html`; the side panel loads that **same HTML file** with a
-non-secret context marker (`popup.html?thru_panel=1` in `side_panel.default_path`). They are not the
-same environment — the panel is resizable, can stay open for hours, and shares one session with
-the popup.
+## 1. Both Contexts: Toolbar Popup and Side Panel
 
-| Check | Toolbar popup | Side panel |
+The toolbar popup loads `popup.html`; the side panel loads `popup.html?thru_panel=1` (`side_panel.default_path` in `src/manifest.json`).
+
+| Check | Toolbar Popup | Side Panel |
 | --- | --- | --- |
-| Opens and lands on the right screen | [ ] | [ ] |
-| Console clean | [ ] | [ ] |
-| Scrollbar hidden but content reachable by wheel/trackpad | [ ] | [ ] |
-| Locking in one context locks the other | [ ] | [ ] |
+| Opens and lands on expected route | [ ] | [ ] |
+| Console clean (zero errors / CSP warnings) | [ ] | [ ] |
+| Content scrollable by wheel/trackpad without horizontal overflow | [ ] | [ ] |
+| Locking in one context immediately locks the other | [ ] | [ ] |
 
-To open the panel two ways, and check both:
+- **Opening the side panel:** Test both Dashboard header's side-panel icon (`"Open in side panel beside your tab"` — opens panel and closes popup) and Chrome's browser side-panel picker.
+- **Side Panel Mode toggle (`/settings`):** Default **OFF** -> clicking toolbar icon opens the **popup**. Toggle **ON** -> toolbar icon opens the **side panel**, and preference persists across service-worker restarts (`preferences.sidePanelMode`).
+- **Mutual exclusion:** With Side Panel Mode **OFF**, open the side panel, then click the toolbar icon: the popup must open **and** the side panel must close, including on short laptop windows where the side-panel height is `<= 600px` (`THRU_CLOSE_SIDE_PANEL` broadcast + `chrome.sidePanel.close({ windowId })`).
 
-- **From the wallet**: Dashboard → header **side-panel icon** (its hover title reads "Open in
-  side panel beside your tab" — no separate explainer UI). This is the deliberate, visible
-  action. It must open the panel on the current window without changing anything else, and close
-  the popup. Settings carries the "Side Panel Mode" toggle directly (no "Window" section header —
-  an explicit opt-in that swaps the toolbar icon to open the panel) but NO redundant "Open side panel"
-  button — the dashboard header owns the one-off open action.
-- **From the browser**: the toolbar icon's context menu / the side panel picker.
+---
 
-Confirm what the toggle does and does not do. With Side Panel Mode **off** (the default),
-clicking the toolbar icon opens the **popup**, not the panel. With it **on**, the toolbar icon
-opens the panel — that is the explicit opt-in, applied on the toggle's click and re-applied by
-the background on every service-worker restart from the versioned `preferences.sidePanelMode` value.
-`test/test-route-lifecycle.mjs` asserts that `setPanelBehavior` is called ONLY by that settings toggle
-(allowlist) and never by load/boot/anything else. If the toolbar icon ever starts opening the
-panel while the toggle is off, that is a regression, not a feature.
+## 2. Both Widths (`400px` Popup, `<400px` Narrow, `>=800px` Wide / Desktop)
 
-**Mutual exclusion** — with Side Panel Mode **off**, open the panel from the side panel picker,
-then click the toolbar icon: the popup must appear AND the panel must close. Repeat after making
-the browser window short enough that the panel's viewport is **600px or less** (a common laptop
-size). Do not infer surface type from viewport height: a short panel is still a panel. The popup
-broadcasts `THRU_CLOSE_SIDE_PANEL` (panel listener is registered before any async boot work);
-Chrome 141+ also closes the global panel by its current `windowId`, even if that panel's page
-has not finished loading and missed the broadcast. Older Chrome uses the broadcast. Inspect the
-panel URL to confirm `?thru_panel=1` is present; if Chrome rejects the marked manifest path, the
-extension will fail to load, which is a failure. The reverse direction is the dashboard button:
-it opens the panel and closes the popup. Reload the **extension**, not just the popup, before
-retesting so both pages and the worker run the new bundles.
+`--popup-width` is **400px** (`400x600`). Drag the resizable side panel to test both extremes:
 
-## 2. Both widths
+1. **Narrow (`~300px`, below `400px`):**
+   - [ ] Nothing clips at the right edge (`body { max-width: 100% }`).
+   - [ ] Display addresses ellipsis cleanly; `.screen-actions` buttons wrap cleanly; `/export` seed-phrase grid remains legible.
+2. **Wide / desktop (`>= 800px`):**
+   - [ ] The `400px` column and border sit cleanly without distorted stretching or unreachable controls.
+3. **Live resize:**
+   - [ ] Dragging between narrow and wide while a route or sheet is open produces zero layout jumps or console errors.
 
-`--popup-width` is **400px** and `--popup-height` is 600px. The popup is therefore always 400px
-wide; the side panel is whatever the user drags it to.
+---
 
-1. **Narrow**: drag the side panel to its narrowest (roughly 300px, and below 400px in any case).
-   - [ ] No content is cut off at the right edge. `body { max-width: 100% }` exists for exactly this
-     case, and scrollbars are hidden globally, so clipping would be silent.
-   - [ ] Long addresses truncate with an ellipsis instead of pushing the layout wider.
-   - [ ] Buttons in a `.screen-actions` row wrap rather than overflow.
-   - [ ] The seed grid (Export → reveal) still shows its numbered words legibly.
-2. **Wide / desktop**: drag the panel to about 800px or more.
-   - [ ] The 400px column and the empty space beside it look intentional (border-right visible, no
-     stray stretch). **This is the known open question** — if it looks broken, the fix is to make the
-     width fluid in the panel only, and it must be decided with a browser open, not by guessing:
-     a plain `width: 100%` on `body` would change how Chrome sizes the toolbar popup.
-   - [ ] Nothing is centred oddly or stretched to full width.
-3. Resize the panel while a screen is open.
-   - [ ] No layout jump leaves a control unreachable, and no console error appears.
+## 3. All 15 Routes in Popup and Side Panel
 
-## 3. Every route, in both contexts
-
-Visit each route in the popup and in the side panel, at the narrow width and the wide width. Use the
-hash directly (`#/send`) where the UI has no link, so unmigrated or unreachable screens cannot hide.
-
-| Route | What must be true | Popup | Panel |
+| Route | Required Behavior | Popup | Panel |
 | --- | --- | --- | --- |
-| `/welcome` | Create/import steps advance; the phrase grid is blurred until revealed; nothing is written to the URL | [ ] | [ ] |
-| `/unlock` | Wrong password shows an inline error and keeps focus in the field; lockout countdown runs; Back/Reset reachable | [ ] | [ ] |
-| `/dashboard` | Balance, account pill, action tiles, health dot and network badge all populate; the header copy button is the same size and colour as its icon neighbours (no white 32px box); the balance refresh is a quiet frameless icon, not a grey card; the side-panel icon's hover title says "Open in side panel beside your tab"; the token ledger has a single "Tokens" tab (no Activity tab — History owns that); no 24h delta or placeholder number is ever shown; token rows show a real balance, a proven-zero (0), or a dash — never a fabricated number; a send that already confirmed shows NO "transaction pending" note; the action panel renders EXACTLY like main 14e16b1: 6 tiles / 2 rows (Send, Receive, Swap / History, Security, Faucet), each a same-size 88px cell, no orphan row, no full-width bar; the main action grid holds EXACTLY 6 tiles identical to main (88px cells, 2x3); BELOW it a services grid uses tiles the SAME size as Send/Receive — currently only Domain (Register a .thru name); spare row slots stay empty with no styling divergence | [ ] | [ ] |
-| `/accounts` | List, balances, pin/switch, "Add account" | [ ] | [ ] |
-| `/account` | Detail for a real ref (`#/account?ref=...` from the Accounts screen); invalid ref shows an error, not a blank screen | [ ] | [ ] |
-| `/add-account` | HD preview renders; adding an account returns to `/accounts` | [ ] | [ ] |
-| `/keyring` | Source list, rename, backed-up state; `#/keyring?id=<id>` from Accounts | [ ] | [ ] |
-| `/export` | Password prompt before any secret; reveal shows the phrase; navigating away removes it (see §5) | [ ] | [ ] |
-| `/send` | Form appears after account/network metadata, without waiting for live balances or token reads; unknown/last-known balance is labelled and cannot unlock Max/Review; recipient validation, amount parsing, fee, confirmation and receipt work after verification | [x] | [ ] |
-| `/send` (token) | Pending reads say checking, failures say unknown (not zero); only a token with a verified positive balance and on-chain mint decimals is selectable; amount re-denominates correctly; review discloses recipient token-account init fee; MAX excludes broken values | [ ] | [ ] |
-| `/receive` | Address, QR renders in the raised Thru palette (gradient red tiles, slate finder eyes, ice paper) and scans from a phone; clicking the address box copies it, the box says \"Copied\", then returns to the address after ~1s | [ ] | [ ] |
-|| `/faucet` | Claim state, disabled when already claimed, error when the network has no faucet; **rate-limit readout (v24)**: a "Faucet rate limit" note appears under the form with real per-rule usage and (unix-windowed) reset time when the policy is readable — pause/exhaustion disables the claim button, an exhausted window surfaces as a warning banner with reset time (verified vs the on-chain policy `BOOTSTRAP_FAUCET_RATE_LIMIT_POLICY_ADDRESS`, never fabricated), unknown/unreadable limit state stays silent and claiming stays possible | [ ] | [ ] |
-| `/history` | Cards form one flat stream without Today/Yesterday headers. A known block time appears as local-calendar `YYYY/MM/DD HH:mm` matching the detail sheet; a missing header falls back to `Block <slot>` (or an actual local submission time for an own send), not a made-up date. Same-numbered slots on two networks must not share dates. Entries, filter chips, "load more" appends instead of refetching; token sends appear as "Sent \<amount\> \<SYM\>", receipts as "Received …", mints as "Minted …", and a token-account init never appears as a THRU transfer; a confirmed send never appears BOTH in the list AND as a "Waiting for confirmation" Pending row | [ ] | [ ] |
-| `/name` | Domain screen mounts from the Domain tile in the services grid (same size as Send/Receive tiles) and is ENS-style: ONE hero search field — typing debounce-triggers a BACKGROUND on-chain availability check (typing never blocks); a linked name pre-fills the search and shows a compact badge at top (re-verify, unlink). With a `.thru` registry (paid flow): available → years stepper 1–10 + Register with live price (price/year × years from chain config + mint decimals); taken → owner + expiry; yours → renew armed; claimable → claim armed. WITHOUT a registry but WITH a canonical root on Betanet (today: `.id`): same debounced check via name lookup — available + **your account IS the root's authority** → "free" Register CTA armed (0n protocol fee, NO price/stepper); available but the root's authority is a DIFFERENT key (today: `.id` root is closed — live-verified 2026-10-24, chain reverts foreign signers with error 3) → plain "root is closed" state with the authority shown, NO Register CTA; taken → owner shown; yours → "Link as my name" armed; successful free register then links as primary best-effort. The search suffix (.thru/.id) comes from the chain, not a string constant. Neither registry nor root → plain reason, nothing clickable. Password sheet Cancel signs/broadcasts NOTHING (name.register is auth:signing since v23) **v25 custom registrar provider**: when the evidence-pinned deployment exists on the network (Betanet: `.thru` custom @1000 base units/yr) a provider toggle appears above the status line with one pill per offered route (`.thru — 1000 base units/yr` / `.id — free (0n)`); switching re-arms the card: placeholder/title/status copy follow the ACTIVE provider's root. Custom mode: available → years stepper 1–10 + Register armed with `years × feePerYear` quoted from the on-chain config (base units, treasury shown); taken → owner + expiry; yours → "Link as my name"; expired lease → honest "claim/renew not yet wired" with NO CTA (only Register is live-verified 2026-10-25); domain-existing-without-lease → honest taken-by-domain; config absent/unparseable or root-mismatch → provider tile omitted. Successful custom register links as primary best-effort; the write is `name.register (via=custom, years)` — still auth:signing, fee 0n header, the program charges its own fee to the config treasury (best-effort on native EOAs on Betanet — the quote line says so) | [ ] | [ ] |
-| `/history` detail sheet (P2) | Tapping a card opens the sheet from the bottom; it shows the tapped transaction (not a neighbour), full signature copies to clipboard, the displayed explorer link opens in a new tab, and Escape/backdrop close it with focus returning to the card. **Live-chain checks remain open for the current path:** the optional block-time lookup/provenance and first-load latency must be checked on an enabled network; a prior Alphanet detail-sheet observation (2026-09-20) is historical evidence, not certification of the v12 cache/feed path or every RPC. A node may omit block time; in that case the list must use an actual own-send submission time or `Block <slot>`, never the current clock or another entry's date. Confirm the detail row says **"Fee (declared)"** and does not claim a charged fee. The list card has no per-card fee line. Verify the live explorer route before treating it as supported. | [ ] | [ ] |
-| `/history` detail sheet — overflow (REGRESSION) | Open a sheet with EVERY row present (status, amount, counterparty, network, block, block time, fee, program) and a signature long enough to wrap. The sheet must **scroll**, and the last row (`Program`) must be readable in full. No row may be sliced horizontally, and the fee note must not sit on top of a clipped row. This shipped broken once: flex children compressed instead of overflowing, so `.detail-table` clipped its own last rows and no scrollbar appeared — see `docs/DEFECT_LOG.md`. The DOM shim has no layout engine and **cannot** catch this; `scripts/preview-tx-sheet.html` renders both states side by side. | [ ] | [ ] |
-| `/history` detail sheet — keyboard | Tab reaches a card (visible focus ring), Enter AND Space both open it, Tab wraps inside the sheet without reaching the list behind it, Escape closes. Clicking the in-card copy button or explorer icon must NOT also open the sheet. | [ ] | [ ] |
-| `/settings` | Built-in network controls; any saved custom row says **not selectable**, is inert, and exposes only Remove; auto-lock, security (Signing: **Session-only is the default**, "Require password" is the password-gated opt-in), appearance, version. **The four "?" popovers (Signing, Auto-lock, Side Panel Mode, Appearance):** each is a dark in-wallet card that opens on hover (and on click) and stays strictly inside the popup — no native browser tooltip, so nothing may render outside the 400px surface — and it closes when the pointer leaves; no explanatory paragraphs may sit under the rows. There is **no Danger zone / full reset on this screen** — an unlocked wallet is never one tap from total destruction (account/seed removal is in Manage Accounts). **Side Panel Mode** toggle only, with no "Window" section header (on → toolbar icon opens the panel, off → popup; persists across worker restarts) — and **no** "Open side panel" button (the dashboard header owns that) | [ ] | [ ] |
-| `/reset` | Reachable **only from the lock screen** (forgotten-password recovery), not from Settings. Warning copy, confirmation text required, reset returns to `/welcome` | [ ] | [ ] |
+| `/welcome` | Create/import flows advance; phrase blurred until revealed; zero secrets in URL/hash | [ ] | [ ] |
+| `/unlock` | Wrong password keeps focus in input and shows backoff; `Reset` reachable | [ ] | [ ] |
+| `/dashboard` | `196px` ink header, account pill, copy & side-panel icons, `Tokens` drawer trigger (real balances, proven `0`, or `—`), frozen `2x3` `88px` action grid, secondary services grid (`Domain`), `CurrentConnection` footer; shell topbar hidden | [ ] | [ ] |
+| `/accounts` | Account list, balances, pin/hide/switch, `Add account` | [ ] | [ ] |
+| `/account` | Detail for `#/account?ref=...`; rename, provenance, export/remove actions; invalid ref shows clean error | [ ] | [ ] |
+| `/add-account` | Non-persisting HD preview renders; batch/single add returns to `/accounts` | [ ] | [ ] |
+| `/keyring` | Source details (`#/keyring?id=...`), password-gated rename/remove, backup status | [ ] | [ ] |
+| `/export` | Password prompt before reveal; phrase/key cleared immediately on navigate-away or lock (§5) | [ ] | [ ] |
+| `/send` | Form paints immediately before RPC reads; `last known`/unknown balances cannot unlock Max/Review; JIT activation runs only for vault-owned absent recipients; shared `TxReviewCard` (§7) | [x] | [ ] |
+| `/send` (token) | Only verified positive-balance mints with chain decimals selectable; review discloses sender-paid recipient token-account init when needed; fee states `not confirmed (paid in THRU)` | [ ] | [ ] |
+| `/receive` | Thru-styled QR scans from phone; clicking address box shows `"Copied"` for ~1s; network clearly shown | [ ] | [ ] |
+| `/faucet` | Rate-limit policy readout (`tx.getFaucetLimit`); paused/exhausted window disables Claim; reviewed via `faucet-claim` card | [ ] | [ ] |
+| `/name` | Two tabs (`Register` & `My Domains`); `.thru`-only search/tier pill (`3` / `4` / `5+` chars) with live on-chain config quote; owned `.thru` search shows `Renew` & `Import`; `My Domains` paints cached rows as stale before live ownership enables `Make primary` / `Unlink` / `Renew` / `Remove`; single toast per submission (`Rule 29`) | [ ] | [ ] |
+| `/history` | Flat stream (no `Today`/`Yesterday` headers, no per-card fee); cache-first paint; `YYYY/MM/DD HH:mm` block time or own-send fallback or `Block <slot>`; `Load more` appends cleanly; Detail sheet (`tx-detail-sheet.js`) scrolls all rows to `Program` without flex-shrink clipping (`scripts/preview-tx-sheet.html`) and labels **`Fee (declared)`** | [ ] | [ ] |
+| `/settings` | Built-in networks (legacy custom rows inert with `Remove` only); Signing (`Session-only` default vs password-gated `Require password`); Auto-lock; Side Panel Mode; four in-popup `?` help cards stay inside `400px`; no full-wallet reset button here | [ ] | [ ] |
+| `/reset` | Reachable from `/unlock` only; requires uppercase `RESET` confirmation; returns to `/welcome` | [ ] | [ ] |
 
-### Send: slow/offline, cross-context and bridge smoke (after reloading the extension)
+### Redirect & Offline Resilience Checks
+- [ ] `#/welcome` while unlocked redirects to `/dashboard`; `#/dashboard` while locked redirects to `/unlock?returnTo=%2Fdashboard`; `#/nope` redirects to `/unlock`.
+- [ ] Block `rpc.betanet.thru.org` in DevTools: Dashboard, Send, Domains, and History paint cached/stale or unavailable states immediately without infinite spinners or false `0` balances.
 
-- [ ] Open Send on Betanet with a funded account and multiple registered tokens. The **form**
-  appears once the active account and network are known; the token ledger may still be checking.
-  A slow token query must NOT leave Send on a full-screen "Loading" spinner. Type recipient and
-  amount while it is checking; those inputs and focus must survive the balance update.
-- [ ] In a throwaway wallet, add two or more HD indices together without visiting Dashboard.
-  Check **every newly added address**, not only the one made active, eventually exists on the
-  selected chain. Interrupt the RPC during addition: account creation must still return, and
-  retries must stop after three exponential backoffs (the MV3 worker may be evicted between
-  timers). No background loop should sign for unrelated idle accounts. Repeat after a network
-  switch to ensure an old creation attempt does not sign on the newly selected chain.
-- [ ] Select an **unregistered account you own** as a native Send recipient. The form should
-  show “Activating your account on-chain…” and keep Review disabled until registration
-  confirms; then Review must show its friendly label **above the full address**. Try an
-  unregistered external contact: the wallet must NOT register or sign for it. In an offline
-  case, failed activation must not claim success or enable Review. Repeat with signing
-  password re-auth enabled: activation is the explicit unlocked-only v12 exception;
-  actually moving value still requires the configured signing prompt.
-- [ ] Block the betanet RPC for the extension worker (DevTools request blocking, or go
-  offline at the OS level) and revisit Send. A saved balance, if any, says **last
-  known**. Otherwise the UI says checking/unavailable, never a fabricated `0 THRU`. Max and
-  Review remain disabled until a live balance AND a usable native fee reserve arrive. Retry
-  checks is offered on failure. A token read failure says **balance unknown**, not "no balance";
-  a genuinely absent token account alone says "no balance".
-- [ ] Restore network access and click Retry checks. Recipient and amount stay typed; a fresh
-  THRU balance and fee enable native Review even if token reads are still pending. An amount
-  greater than the verified spendable amount keeps Review disabled. Token rows become selectable
-  only once their mint denomination is confirmed on-chain; wrong imported registry decimals
-  must never determine a positive token's Send amount.
-- [ ] If possible, open two trusted extension pages, put one on Send/Review, and switch active
-  account or network in the other. The old Review must be invalidated; a signing attempt using
-  that old context must fail with **sending account or network changed** and require a new review.
-  Do not test this by sending real funds. If a sign request times out, the UI must call the
-  outcome **unknown** and say to check Activity/explorer, not invite an immediate retry.
-- [ ] Per-network token-registry isolation (same mint imported on two networks, pre-tag
-  imports visible on the default network only) is covered automatically by
-  `test/test-api-router.mjs` [10] — no manual step; note it if you are auditing coverage.
-- [ ] With a read blocked after a transfer returns a signature (worker DevTools network
-  throttling, only in a safe test wallet), confirm that the **submission receipt** is not held
-  behind the subsequent THRU balance refresh. Activity records the signature for the sending
-  chain even if another trusted extension page switches networks while the send settles.
-- [ ] After warming History online, block its RPC and reopen the route: cached cards should
-  paint **before** the feed/pending calls return, with a clearly stale/checking or offline
-  label (not an eternal spinner or a false “No transactions”). Reconnect: fresh rows replace
-  them and the warning clears. Repeat across an account and network switch; a late reply for
-  the old selection must never appear on the new one. Load more must not race the stale cursor.
-- [ ] In Dashboard (including its refresh button), Accounts and Add-account HD preview,
-  a disconnected node with NO previous successful read must not appear as a verified zero.
-  A previously verified balance may remain visible only as last-known/stale. Repeat after
-  switching networks, then reconnect and check that a fresh value replaces it.
+---
 
-**Single header per screen.** The shell topbar (wordmark, network badge, settings, lock) is now
-hidden on **every** route: the dashboard owns the 196px ink header, and every sub-screen owns its
-own PageHeader with a Back button. If any route shows the topbar stacked above its own header
-(the 36px double-header it used to be), that is a regression. The network badge's remaining home
-is the dashboard footer; on sub-screens the network is reachable via Settings → Network.
+## 4. Keyboard, Focus Trap, and Zoom
 
-Also check the redirects a browser can trigger but the tests cannot:
+- [ ] Password dialogs, `TxReviewCard` sheets, and `tx-detail-sheet` trap `Tab` and `Shift+Tab`, close on `Escape`, and restore focus to the opener control.
+- [ ] `prefers-reduced-motion` suppresses non-essential motion; `150%` and `200%` browser zoom clip no controls.
 
-- [ ] `#/welcome` with an unlocked wallet bounces to `/dashboard`.
-- [ ] `#/dashboard` with a locked wallet bounces to `/unlock?returnTo=%2Fdashboard`, and unlocking
-  lands back on `/dashboard`.
-- [ ] A garbage hash (`#/nope`) lands on `/unlock` rather than a blank panel.
-- [ ] Browser Back from a deep screen returns to the previous screen, not to a dead end.
+---
 
-### Tokens: deploy, add, send, receive (betanet)
+## 5. Secret Hygiene in Live DOM
 
-Run from a machine that can reach `https://rpc.betanet.thru.org` (a sandboxed environment
-fails every call with "fetch failed" — that is the network, not the wallet).
+1. On a disposable test wallet in the side panel, open `/export` and reveal the recovery phrase. Confirm words appear only in visible text nodes — never in `location.hash`, attributes, `data-*`, or input `value`s.
+2. Navigate to `/dashboard` (and repeat with background lock): verify zero phrase words or private-key hex strings remain anywhere in the live DOM.
 
-1. `node scripts/token-lab.mjs --show-keys` — all six steps report OK and the summary
-   prints a mint ("contract") address, a deploy tx, a supply-mint tx, and a transfer tx.
-   Each `scan.thru.org` link opens with `?network=betanet` and shows the transaction.
-2. Import the printed disposable creator key (Add account → Import private key). The
-   dashboard shows the creator's LAB balance (1,000.000000).
-3. Click anywhere in the balance box (or the Tokens strip) — the token drawer slides up
-   with the THRU row, the LAB row, search, and **Add custom token**. Search filters the
-   list live; Escape or Close dismisses it.
-4. **Add custom token** → paste the mint address → **Check on chain**. Symbol and
-   Decimals fill from the chain ("Verified on chain"). An unknown address is refused
-   with "No token mint exists at that address." Then **Add to wallet** — the row joins
-   the drawer list with the on-chain balance, and a "Token added to your token list."
-   notice appears behind the drawer.
-5. Send 250.5 LAB to the recipient address the script printed. Review shows the plain
-   summary (never a seed or key), and the confirmed row shows the tx. The recipient's
-   balance appears after the next refresh (~6s blocks) with no action from them.
+---
 
-## 4. Keyboard and focus
+## 6. Service Worker Lifecycle, Auto-Lock, and Quarantine
 
-`src/ui/kit/focus-trap.js` is unit-tested against a DOM shim. These are the parts only a browser can
-confirm:
+- [ ] Close popup for `>30s` until MV3 service worker goes idle, then reopen: boots cleanly without error.
+- [ ] Set Auto-lock to `1 min`, close popup for `2 min`, reopen -> lands on `/unlock`; while actively moving pointer on a screen -> stays unlocked.
+- [ ] Seed a legacy `thru_custom_networks` entry + `thru_active_network: 'legacy-smoke'` in worker console and reload extension: self-heals to `'betanet'`, renders inert in `/settings`, and `network.setActive` returns `CUSTOM_NETWORK_DISABLED`.
 
-- [ ] Open any password dialog (Export → reveal). Tab repeatedly: focus cycles **inside** the dialog
-  and never reaches the screen behind the overlay.
-- [ ] Shift+Tab from the first control wraps to the last.
-- [ ] Escape cancels the dialog.
-- [ ] After the dialog closes, focus is back on the control that opened it — not on the page body.
-- [ ] The dialog opens with focus already in the password field, and the field is not scrolled out of
-  view by that focus.
-- [ ] Navigating between routes moves focus to the new screen (a screen-reader user hears the new
-  title) without drawing a focus ring around a control they did not choose.
-- [ ] With the OS "reduce motion" setting on, nothing animates distractingly.
-- [ ] Zoom the browser to 150% and 200%: no control becomes unreachable, no text is clipped.
+---
 
-## 5. Secret hygiene, in a real document
+## 7. Shared Transaction Review Card (`v29`–`v32`) & Toast Harnesses
 
-The route test verifies that a revealed phrase is confined to text nodes, passwords and secrets do
-not enter attributes, datasets, inputs or URLs, and navigating away/locking clears the route DOM.
-Confirm the same in the side-panel document, which can stay open for days. Use a disposable test
-wallet; never paste a real seed into DevTools or its command history:
+Serve local visual harnesses first (`node scripts/serve-dist.mjs --root . --port 8000` -> `scripts/preview-tx-review.html` [9 fixtures] and `scripts/preview-toast.html`), then verify in the unpacked extension:
 
-1. In the side panel, go to `/export` and reveal the disposable phrase with its password.
-2. While the phrase is intentionally visible, its words may appear in visible text nodes. They must
-   not appear in attributes, datasets, inputs or the URL. Do not use `outerHTML.includes()` as a
-   blanket false check while the phrase is on screen: visible text is part of the DOM.
-3. Navigate to `/dashboard`. The old export subtree and the live page must now contain no phrase;
-   no input may retain the password.
-4. Return to `/export`, reveal again, then trigger a background lock (wait out auto-lock or lock
-   from the popup). The phrase must disappear immediately and the screen must go to `/unlock`.
-5. Check the URL bar / `location.hash` at every step: no phrase, no key, no password.
+- [ ] **Header & Counterparty:** Title states verb + amount (`Send 0.0015 THRU`, `Register name.thru for 1 year`) beside one network badge (`Betanet`) and `From <account> · test network`. Counterparty shows matched name/label above the **full, unshortened 46-character address** (`word-break: break-all`).
+- [ ] **Two Compact Tables + One Disclosure:** Money table (`You pay` / `You receive`, `Network fee` as `about ...` or `not confirmed` or `none`, `Total` omitted when fee is `0` or currencies differ) + non-money facts table + closed `Details` disclosure (`open` by default for `Unrecognised transaction`). Confirm button stays reachable at `400x600`.
+- [ ] **Honest States & Blocking:** No post-transaction balance or fake simulation (`Simulation: Unavailable` inside `Details`). Blocking warnings appear unfolded on the card and disable Confirm.
+- [ ] **Single-Use, Consent & One Toast (`v32`, `Rule 29`):** Confirming opens **one** `pending` toast that updates in place (`success` / `error` / `warning`), without duplicating the verdict into `Banner` or field text; re-submitting a consumed review is impossible; timeout reports outcome unknown (`Check outcome`).
 
-## 6. Network and service worker
+---
 
-- [ ] Switch network in Settings: balances, history and pending transactions all change, and the
-  network in the dashboard footer (and the active row in Settings → Network) matches. The shell
-  topbar — the badge's former home on sub-screens — is hidden on every route.
-- [ ] Switch to a network whose RPC is unreachable: the health dot goes offline, screens show an
-  error state rather than an eternal spinner, and the wallet is still usable.
-- [ ] Let the service worker go idle (wait ~30s with the popup closed), then open the popup: it must
-  load without a "service did not respond" banner.
-- [ ] **Contract-v7 startup heal.** In the extension service-worker console, seed one disposable
-  legacy record and select it as stale state, then reload the extension:
-  ```js
-  await chrome.storage.local.set({
-    thru_custom_networks: [{ id: 'legacy-smoke', name: 'Legacy smoke',
-      rpcUrl: 'https://legacy.invalid', explorerUrl: '', environment: 'devnet' }],
-    thru_active_network: 'legacy-smoke',
-  });
-  ```
-  Open the popup. It must show Betanet, and
-  `(await chrome.storage.local.get('thru_active_network')).thru_active_network` must be
-  `'betanet'`; the legacy endpoint must never appear as the bound/active network.
-- [ ] In Settings, **Legacy smoke** is still listed, says **not selectable**, and its main row cannot
-  be focused or clicked as a network control. **Remove** is its only action.
-- [ ] From an extension-page console, send the bypass request directly:
-  ```js
-  await chrome.runtime.sendMessage({ method: 'network.setActive',
-    params: { networkId: 'legacy-smoke' } });
-  ```
-  It must return `{ ok: false, error: { code: 'CUSTOM_NETWORK_DISABLED', retryable: false, ... } }`;
-  the badge and stored active id must remain Betanet.
-- [ ] Click Remove. The legacy row disappears and built-in switching still works. There is
-  deliberately no Add control; re-enablement requires all four conditions in
-  `docs/STATUS_AND_ROADMAP.md` Step 2b.
+## 8. Smoke Run Record Template & Log
 
-### Auto-lock
-
-1. Settings → Lock after inactivity → **1 min** (password prompt appears).
-2. Touch nothing for ~2 minutes (close the popup first). Reopen: the wallet asks to unlock.
-   **The regression this pins:** auto-lock used to be defeated by the service worker
-   re-stamping activity on every alarm tick — it never fired at any setting.
-3. The toolbar icon is the plain branded one at every state (the lock-badge variant was
-   dropped on 2026-09-30 as clutter). After a browser restart with a wallet set up, the
-   icon should simply show the plain Thru icon, locked or not.
-4. With a **1 min** window, sit on the send review screen and move the pointer occasionally:
-   the wallet must NOT lock while you are actively using it (presence counts as activity).
-
-## 7. Recording the result
-
-Copy this block into the PR description and fill it in. An unchecked box with a reason is far more
-useful than a silently skipped section.
-
-```
-Manual smoke: <date>, Chrome <version>, build <git short sha>
+```text
+Manual smoke: <YYYY-MM-DD>, Chrome <version>, commit <short-sha>
   contexts: popup [ ] side panel [ ]    widths: narrow (<400px) [ ] wide (>=800px) [ ]
-  routes: 14/14 [ ]   redirects [ ]   keyboard/focus [ ]   secret hygiene [ ]
-  browser: mutual exclusion [ ]   QR/layout [ ]   worker lifecycle [ ]
-  live chain: v12 activation [ ]   token owner/fee [ ]   block time/latency [ ]   explorer route [ ]
-  registrar (host scripts): cargo host tests [ ]   deploy+initialize [ ]   live register probe [ ]   (faucet ceiling: CLOSED 2026-10-24 — cap is exactly 10 000)
-  failures found: <none | list, each with the route and the context>
+  routes: 15/15 [ ]   redirects/offline [ ]   keyboard/focus/zoom [ ]   secret hygiene [ ]
+  review card & toast: layout [ ]   fee/no-sim honesty [ ]   blocking/single-use [ ]   one-toast [ ]
+  worker/quarantine: idle wake [ ]   auto-lock [ ]   v7 custom-RPC heal [ ]
+  live chain (throwaway wallet): v12 JIT [ ]   token transfer [ ]   registrar/record [ ]   history/explorer [ ]
+  failures: <none | route + context + symptom>
 ```
 
-### Recorded runs
+### Recorded Runs
+- **2026-11-16 (Chrome 157 visual harness, mocked bridge):** Tested source-module boot and real rebuilt `dist/popup.css` at `400x600` and `300x600`, light/dark. Confirmed no intermediate Checking-wallet page, deep-link input preservation, reset/late-bootstrap behavior, readable toast text, wrapping long addresses, and a 14px gap above the actual dashboard network footer with working hit-testing. Evidence: local temporary directory `ui-recheck-20261116-1021-evidence` contains `report.json` and 43 screenshots with asset hashes. This does not verify unpacked-extension hosting, real MV3 suspension, live signing, or later source changes.
+- **2026-10-04 (Partial, popup only):** Local build post-`14e16b1` in real Chrome; native Betanet self-send on `/send` verified recipient validation, amount parsing, Review fee, confirmation, and `/history` entry (`/send` popup cell ticked; charged fee not captured; JIT activation, side panel, widths, and `1.4.1` store package remain open).
+- **2026-10-27 (Visual harness only):** Chrome inspection of `NameRoute`/`Sheet` with `dist/popup.css` and mocked bridge at `400x600` (light/dark) and `320x700` / `320x400` with a 64-char name confirmed scroll-reachable confirmation actions without document height expansion.
 
-- **2026-10-04 — partial run, popup context only.** Real Chrome (version not recorded); a
-  local build of the current source tree (post-`14e16b1`) loaded unpacked. One native
-  Betanet send to the tester's own account, exercised in the toolbar popup: the recipient
-  was accepted, the amount parsed, Review showed the fee, the send confirmed, and the
-  transaction appeared in History. No failures observed. **Boundary:** the charged-fee
-  figure was not captured; the send was self-directed, so v12 recipient activation was not
-  exercised; and the tester used other flows informally without itemizing them against
-  checklist items, so **no other box is ticked on their behalf**. The side panel, both
-  widths, and every other section remain OPEN. This run says nothing about the `1.4.1`
-  store package, which was built before the 2026-10-04 fee-provenance/dead-code fixes and
-  has never been opened in a browser.
+---
+
+## 9. Appendix: Chrome DevTools Layout Inspection Snippets
+
+Paste into the popup/side-panel DevTools Console (`$0` = element selected in Elements panel) when checking overflow or flex clipping:
+
+```js
+// Inspect computed box & flex/scroll geometry on selected element ($0)
+(() => { const s = getComputedStyle($0), r = $0.getBoundingClientRect(); return { rect: r, display: s.display, flexShrink: s.flexShrink, overflowY: s.overflowY, maxHeight: s.maxHeight, clientH: $0.clientHeight, scrollH: $0.scrollHeight }; })();
+
+// Find any element overflowing the 400px popup viewport horizontally
+[...document.querySelectorAll('*')].filter(el => el.getBoundingClientRect().right > window.innerWidth + 0.5);
+```

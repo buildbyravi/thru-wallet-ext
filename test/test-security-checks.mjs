@@ -23,8 +23,8 @@ console.log('\n[a fully protected wallet]');
     keyrings: [{ id: 'k1', type: 'seed', origin: 'generated', backedUpAt: 1 }],
   });
   ok('level is good', r.level === 'good');
-  // backup + auto-lock + signing + an ENABLED whitelist are all graded; a disabled whitelist is not.
-  ok('every graded check is ok', r.okCount === r.gradedCount && r.gradedCount === 4, `${r.okCount}/${r.gradedCount}`);
+  // Optional whitelist never changes the three required protections.
+  ok('every required check is ok', r.okCount === r.gradedCount && r.gradedCount === 3, `${r.okCount}/${r.gradedCount}`);
   ok('whitelist count is stated', byId(r, 'whitelist').detail.includes('2 saved addresses'));
 }
 
@@ -87,6 +87,52 @@ console.log('\n[optional and contextual rows never lower the grade]');
     byId(r, 'connections').detail.includes('does not expose a provider'));
   const main = evaluateSecurity({ prefs: {}, autoLockMinutes: 15, keyrings: [], isTestNetwork: false });
   ok('the test-network row disappears on mainnet', !byId(main, 'network'));
+}
+
+console.log('\n[partial and malformed reads never become fully protected]');
+{
+  const good = { prefs: { requirePasswordForSigning: true, enforceWhitelist: false, whitelist: [] },
+    autoLockMinutes: 5, keyrings: [{ id: 'k', type: 'seed', origin: 'generated', backedUpAt: 1 }] };
+  for (const field of ['prefs', 'autoLockMinutes', 'keyrings']) {
+    const partial = evaluateSecurity({ ...good, [field]: null });
+    ok(`${field} failure keeps required unknown aggregated`, partial.hasUnknown && partial.level === 'unknown'
+      && partial.okCount === partial.gradedCount);
+    const warning = evaluateSecurity({ ...good, autoLockMinutes: 0, [field]: null,
+      prefs: field === 'prefs' ? null : { requirePasswordForSigning: false } });
+    ok(`${field} failure preserves independently known warnings`, warning.hasUnknown && warning.level === 'attention');
+  }
+  for (const autoLockMinutes of [NaN, Infinity, -Infinity, -1, '', '5', undefined]) {
+    ok(`malformed auto-lock ${autoLockMinutes} is unknown`,
+      byId(evaluateSecurity({ ...good, autoLockMinutes }), 'autolock').status === CHECK_STATUS.UNKNOWN);
+  }
+  for (const prefs of [{}, { requirePasswordForSigning: 'true' }, { requirePasswordForSigning: 1 }]) {
+    ok('missing or malformed signing preference is unknown',
+      byId(evaluateSecurity({ ...good, prefs }), 'signing').status === CHECK_STATUS.UNKNOWN);
+  }
+  for (const keyrings of [[null], [{}], [{ id: 'k', type: 'seed', origin: 'generated' }]]) {
+    ok('malformed keyring facts are unknown',
+      byId(evaluateSecurity({ ...good, keyrings }), 'backup').status === CHECK_STATUS.UNKNOWN);
+  }
+  const off = evaluateSecurity(good);
+  const on = evaluateSecurity({ ...good, prefs: { ...good.prefs, enforceWhitelist: true, whitelist: ['a'] } });
+  ok('enabled whitelist cannot inflate grade', on.gradedCount === off.gradedCount && on.okCount === off.okCount
+    && byId(on, 'whitelist').status === CHECK_STATUS.INFO);
+  const migrated = evaluateSecurity({
+    ...good,
+    keyrings: [
+      { id: 'legacy', type: 'seed', origin: 'unknown', backedUpAt: null },
+      { id: 'fresh', type: 'seed', origin: 'generated', backedUpAt: null },
+    ],
+  });
+  ok('migrated origin:unknown keyring is valid and never suppresses unbacked generated seed warning',
+    byId(migrated, 'backup').status === CHECK_STATUS.WARN && migrated.level === 'attention');
+  const unknown = evaluateSecurity({ ...good,
+    keyrings: [{ id: 'legacy', type: 'seed', origin: 'unknown', backedUpAt: null }] });
+  ok('unknown-origin phrase alone never claims backup', byId(unknown, 'backup').status === CHECK_STATUS.UNKNOWN
+    && unknown.level === 'unknown' && unknown.gradedCount === 2);
+  const acknowledged = evaluateSecurity({ ...good,
+    keyrings: [{ id: 'legacy', type: 'seed', origin: 'unknown', backedUpAt: 1 }] });
+  ok('explicit backup acknowledgement resolves unknown origin', byId(acknowledged, 'backup').status === CHECK_STATUS.OK);
 }
 
 console.log(`\nsecurity-check tests: ${passed} passed.`);

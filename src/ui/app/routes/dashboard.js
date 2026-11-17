@@ -41,28 +41,13 @@ import { SecuritySheet } from '../../domain/security-sheet.js';
 import * as bridge from '../bridge.js';
 import { formatThru } from '../../../shared/format.js';
 
-/**
- * Format indicative USD value from raw base units.
- * 1 THRU = $0.152415 (1e9 units). Integer math only.
- */
-function formatUsdFromThru(rawUnits) {
-  if (rawUnits == null) return '$0.00';
-  const raw = BigInt(rawUnits);
-  if (raw === 0n) return '$0.00';
-  const cents = (raw * 152415n) / 1_000_000_000_000n;
-  const dollars = cents / 100n;
-  const rem = cents % 100n;
-  return `$${dollars.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',')}.${rem.toString().padStart(2, '0')}`;
-}
-
 export function DashboardRoute({ navigate }) {
   const d = disposer();
   const owned = [];
   let account = null;
   let currentNetwork = null;
-  // '$0.00' until the first REAL value lands. The old default painted a fabricated
-  // '$12,847.20' on first frame for every wallet, including fresh ones with a zero balance.
-  let currentBalanceUsd = '$0.00';
+  // No authoritative fiat price source is available.
+  let currentBalanceUsd = null;
 
   function track(c) {
     owned.push(c);
@@ -319,7 +304,7 @@ export function DashboardRoute({ navigate }) {
       assets: assetsSnapshot,
       networkLabel: currentNetwork?.label || currentNetwork?.id || 'Betanet',
       onReadMint: (mintAddress) => bridge.send('token.readMint', { mintAddress }),
-      onImportToken: (params) => bridge.send('token.import', params),
+      onImportToken: (params) => bridge.send('token.importVerified', params),
       // The drawer waits for this BEFORE it shows the list again and raises its own
       // "added" toast, so the user never sees a half-refreshed list.
       onChanged: () => load({ force: true }),
@@ -340,7 +325,7 @@ export function DashboardRoute({ navigate }) {
     ]);
     return {
       prefs: prefs.status === 'fulfilled' ? prefs.value : null,
-      autoLockMinutes: autoLock.status === 'fulfilled' ? Number(autoLock.value) : null,
+      autoLockMinutes: autoLock.status === 'fulfilled' ? autoLock.value : null,
       keyrings: keyrings.status === 'fulfilled' ? keyrings.value : null,
       networkLabel: currentNetwork?.label || currentNetwork?.id || 'Betanet',
       isTestNetwork: (currentNetwork?.id || 'betanet') !== 'mainnet',
@@ -425,6 +410,11 @@ export function DashboardRoute({ navigate }) {
       return;
     }
 
+    if (!account?.address) {
+      balanceHero.setSpinning(false);
+      return;
+    }
+
     // Cached balance first paint; retain it (visibly labelled by the warning) if the live
     // call fails. A stale batch placeholder with fetchedAt:0 is never a cache snapshot.
     let nativeText = '—';
@@ -432,12 +422,14 @@ export function DashboardRoute({ navigate }) {
     try {
       const cached = await bridge.send('tx.getCachedBalances', { addresses: [account.address] });
       const entry = cached?.[account.address];
-      if (entry) {
+      if (entry?.balance != null && /^[0-9]+$/.test(String(entry.balance))
+        && Number.isFinite(entry.fetchedAt) && entry.fetchedAt > 0) {
         const raw = BigInt(entry.balance);
         const formatted = `${formatThru(raw)} THRU`;
         nativeText = formatted;
         hasCachedBalance = true;
-        currentBalanceUsd = formatUsdFromThru(raw);
+        hasKnownBalance = true;
+        currentBalanceUsd = null;
         balanceHero.update({
           usd: currentBalanceUsd,
           native: formatted,
@@ -487,18 +479,25 @@ export function DashboardRoute({ navigate }) {
     // A forced refresh uses tx.getBalances, which may return a stale placeholder on an
     // offline node. Only a successful live read may replace the hero as a new balance.
     if (infoResult.status === 'fulfilled' && infoResult.value && !infoResult.value.stale
-      && infoResult.value.balance != null) {
+      && infoResult.value.balance != null && /^[0-9]+$/.test(String(infoResult.value.balance))) {
       const info = infoResult.value;
       const raw = BigInt(info.balance);
       nativeText = `${formatThru(raw)} THRU`;
-      currentBalanceUsd = formatUsdFromThru(raw);
+      hasKnownBalance = true;
+      currentBalanceUsd = null;
       balanceHero.update({
         usd: currentBalanceUsd,
         native: nativeText,
       });
 
       if (info.exists === false) {
-        bridge.send('tx.autoCreateAccount').catch(() => {});
+        // Activate THIS account through the v12 owned-address path, not the legacy
+        // `tx.autoCreateAccount` (auth: 'signing'). The legacy method demanded the signing
+        // password whenever the user opted into per-sign re-auth, so a fire-and-forget call
+        // from a background refresh silently failed for exactly those users. registerAccount
+        // is the sanctioned unlocked-only exception: it proves the address is owned by this
+        // vault, signs with that account's own key, and re-checks the network before signing.
+        bridge.send('tx.registerAccount', { address: account.address }).catch(() => {});
       }
     } else {
       // Do not leave the neutral "$0.00" default looking like a verified zero when no
@@ -533,6 +532,7 @@ export function DashboardRoute({ navigate }) {
     servicesPanel,
   ]);
 
+  let hasKnownBalance = false;
   load();
 
   d.add(
@@ -541,15 +541,19 @@ export function DashboardRoute({ navigate }) {
       if (!entry) return;
       if (entry.stale && !entry.fetchedAt) {
         // The batched reader reports a legacy "0" placeholder when there was no cache;
-        // it is UNKNOWN, not a zero the dashboard may display as a new balance.
-        balanceHero.update({ usd: '—', native: 'Balance unavailable' });
-        currentBalanceUsd = '—';
-        updateAssets('Balance unavailable', assetsSnapshot.tokens, true, assetsSnapshot.tokenState);
+        // it is UNKNOWN, not a zero — and must not clobber a previously verified cached balance.
+        if (!hasKnownBalance) {
+          balanceHero.update({ usd: '—', native: 'Balance unavailable' });
+          currentBalanceUsd = '—';
+          updateAssets('Balance unavailable', assetsSnapshot.tokens, true, assetsSnapshot.tokenState);
+        }
         return;
       }
-      const raw = BigInt(entry.balance || '0');
+      if (!/^[0-9]+$/.test(String(entry.balance ?? ''))) return;
+      const raw = BigInt(entry.balance);
       const formatted = `${formatThru(raw)} THRU`;
-      currentBalanceUsd = formatUsdFromThru(raw);
+      hasKnownBalance = true;
+      currentBalanceUsd = null;
       balanceHero.update({
         usd: currentBalanceUsd,
         native: formatted,

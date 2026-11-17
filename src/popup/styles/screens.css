@@ -1482,83 +1482,6 @@ form > .btn.text {
   pointer-events: none;
 }
 
-/* Option C: Rabby-style security card for repeated send confirmation */
-.security-repeat-card {
-  background: var(--surface-inset);
-  border: 1px solid var(--accent-border);
-  border-radius: var(--radius-md);
-  padding: 12px 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-top: var(--sp-3);
-}
-
-[data-theme="dark"] .security-repeat-card {
-  background: #241417;
-  border-color: rgba(230, 91, 98, 0.28);
-}
-
-.security-repeat-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.security-repeat-badge {
-  width: 26px;
-  height: 26px;
-  border-radius: 6px;
-  background: var(--accent-tint);
-  border: 1px solid var(--accent-border);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--accent);
-  flex-shrink: 0;
-}
-
-[data-theme="dark"] .security-repeat-badge {
-  background: rgba(230, 91, 98, 0.18);
-  border-color: rgba(230, 91, 98, 0.35);
-  color: #ed3845;
-}
-
-.security-repeat-titles {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-
-.security-repeat-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-1);
-}
-
-[data-theme="dark"] .security-repeat-title {
-  color: #f3a8ae;
-}
-
-.security-repeat-desc {
-  font-size: 11px;
-  color: var(--text-3);
-  line-height: 1.4;
-}
-
-[data-theme="dark"] .security-repeat-desc {
-  color: #c98e94;
-}
-
-.security-repeat-confirm {
-  padding-top: 8px;
-  border-top: 1px solid var(--border-hairline);
-}
-
-[data-theme="dark"] .security-repeat-confirm {
-  border-top-color: rgba(255, 255, 255, 0.08);
-}
-
 /* ---- /name register card -------------------------------------------------- */
 .name-tabs {
   display: flex;
@@ -1599,7 +1522,6 @@ form > .btn.text {
   border-radius: var(--radius-lg, 12px);
   background: var(--surface-1);
 }
-.name-renew-intro,
 .name-empty {
   padding: var(--sp-3, 12px);
   border: 1px solid var(--border);
@@ -1627,15 +1549,41 @@ form > .btn.text {
 .name-confirm-sheet .detail-val {
   overflow-wrap: anywhere;
 }
-.name-confirm-hero {
+.name-confirm-progress {
+  padding: var(--sp-2) var(--sp-3);
   text-align: center;
-  padding: var(--sp-2) 0;
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface-elevated, rgba(255, 255, 255, 0.04));
 }
-.name-confirm-title {
-  margin: 0;
-  font-size: var(--fs-xl);
-  line-height: 1.3;
+.name-domain-list {
+  min-width: 0;
+}
+.name-domain-title {
+  flex: 1;
+  min-width: 0;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
   overflow-wrap: anywhere;
+}
+.name-domain-heading > svg,
+.name-domain-heading > .tag-native {
+  flex-shrink: 0;
+}
+.name-domain-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--sp-2);
+}
+.name-domain-actions .btn {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 4px;
+  font-size: var(--fs-xs);
+  text-align: center;
+  justify-content: center;
+  white-space: nowrap;
 }
 .name-stepper .name-step-btn {
   min-width: 32px;
@@ -1643,14 +1591,141 @@ form > .btn.text {
   padding: 0 8px;
 }
 .name-stepper .name-years {
-  min-width: 5ch;
+  min-width: 8ch;
   text-align: center;
+  white-space: nowrap;
+  flex-shrink: 0;
+  display: inline-block;
+}
+.name-owner-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-2);
+  width: 100%;
+}
+.name-owner-actions .btn {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 12px;
+  font-size: var(--fs-sm);
+  text-align: center;
+  justify-content: center;
+  white-space: nowrap;
 }
 .name-price,
 .name-balance {
   /* spacing comes from the surrounding stack; the class exists for the register card's
      price/balance truth-lines so they can be targeted (e.g. balance warning) later. */
-  color: var(--text-secondary, #475569);
+  color: var(--text-2);
+}
+/* ---- Modernized Domain Screen UI (Design System Blueprint) --------- */
+.domain-card {
+  padding: var(--sp-3, 12px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg, 12px);
+  background: var(--surface-1);
+  box-shadow: 0 1px 3px rgba(21, 27, 30, 0.04);
+}
+.domain-card-header {
+  justify-content: space-between;
+  align-items: center;
+}
+.domain-avatar-box {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-2);
+  flex-shrink: 0;
+}
+.domain-title {
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  color: var(--text-1);
+  overflow-wrap: anywhere;
+}
+.domain-primary-tag {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-tint);
+  color: var(--accent);
+  border: 1px solid var(--accent-border);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.domain-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.pill-positive {
+  background: var(--positive-tint);
+  color: var(--positive);
+  border: 1px solid var(--positive-border);
+}
+.pill-warning {
+  background: var(--gold-tint);
+  color: var(--gold);
+  border: 1px solid var(--gold-border);
+}
+.pill-negative {
+  background: var(--negative-tint);
+  color: var(--negative);
+  border: 1px solid var(--negative-border);
+}
+.pill-neutral {
+  background: var(--surface-2);
+  color: var(--text-2);
+  border: 1px solid var(--border);
+}
+.domain-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-2);
+  padding: var(--sp-2) 0;
+  border-top: 1px solid var(--border-hairline);
+  border-bottom: 1px solid var(--border-hairline);
+}
+.domain-meta-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.domain-meta-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-3);
+  font-weight: 600;
+}
+.domain-meta-value {
+  font-size: var(--fs-xs);
+  color: var(--text-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.domain-tier-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-inset);
+  border: 1px solid var(--border-hairline);
+  font-size: var(--fs-xs);
+  color: var(--text-2);
 }
 /* ---- Dashboard ecosystem services grid (2026-10-24 owner directive) --------- */
 /* Same classes (.dashboard-panel-grid + .panel-item) => tiles are the EXACT same size

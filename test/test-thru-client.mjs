@@ -5,11 +5,15 @@ import {
   formatThru,
   parseThruAmount,
   isValidThruAddress,
+  canonicalizeThruAddress,
   UNITS_PER_THRU,
   FAUCET_PROGRAM_ID,
   TRANSFER_PROGRAM_ID,
   ACCOUNT_CREATE_PROGRAM_ID,
   getClient,
+  getAccountInfo,
+  getAccountOwnerAddress,
+  parseMintAccount,
 } from '../src/lib/thru-client.js';
 import { Transaction, keys, Signature } from '@thru/sdk';
 
@@ -29,6 +33,18 @@ function decode(data) {
 }
 
 console.log('\n[1] Faucet instruction encoding round-trips correctly');
+const boundRead = await getAccountInfo('bound-account', { accounts: { get: async address => {
+  assert(address === 'bound-account', 'bound account read uses the requested address');
+  return { meta: { balance: 7n } };
+} } });
+assert(boundRead.balance === 7n, 'an explicit captured RPC client is used instead of the mutable global binding');
+const metadataOwner = Pubkey.from(new Uint8Array(32).fill(0x43));
+const metadataAddress = metadataOwner.toThruFmt();
+assert(String(metadataOwner) === '[object Object]', 'SDK metadata Pubkey must not be compared through String coercion');
+assert(getAccountOwnerAddress({ meta: { owner: metadataOwner } }) === metadataAddress, 'SDK Pubkey owner normalizes to its exact Thru address');
+assert(getAccountOwnerAddress({ meta: { owner: metadataAddress } }) === metadataAddress, 'string owner metadata retains its exact address');
+assert(getAccountOwnerAddress({ meta: { owner: {} } }) === null, 'malformed owner metadata is unknown');
+assert(getAccountOwnerAddress({}) === null, 'absent owner metadata is unknown');
 const encoded = encodeFaucetInstructionData(0, 1, 1000n);
 assert(encoded.length === 16, 'instruction data is exactly 16 bytes');
 const decoded = decode(encoded);
@@ -176,6 +192,27 @@ assert(isValidThruAddress('not-an-address') === false, 'obvious garbage is rejec
 assert(isValidThruAddress('') === false, 'empty string is rejected');
 const tamperedAddr = realAddr.slice(0, -1) + (realAddr.at(-1) === 'a' ? 'b' : 'a');
 assert(isValidThruAddress(tamperedAddr) === false, 'flipping the last character breaks the checksum and is correctly rejected');
+
+console.log('\n[9b] canonical address identity uses the pinned SDK for every accepted spelling');
+{
+  const canonical = 'taEREREREREREREREREREREREREREREREREREREREREREg';
+  const hex = '11'.repeat(32);
+  const bytes = new Uint8Array(32).fill(0x11);
+  const forms = [canonical, hex, `0x${hex}`, bytes, Pubkey.from(bytes)];
+  for (const [index, value] of forms.entries()) {
+    assert(canonicalizeThruAddress(value) === canonical, `SDK address form ${index} has the fixed canonical identity`);
+    assert(isValidThruAddress(value) === true, `existing address validation still accepts SDK form ${index}`);
+  }
+  assert(bytes.every(byte => byte === 0x11), 'canonicalization does not mutate caller bytes');
+  for (const [index, value] of [null, undefined, {}, 17, '', '   ', '0xinvalid',
+    '11'.repeat(31), 'gg'.repeat(32), tamperedAddr].entries()) {
+    assert(canonicalizeThruAddress(value) === null, `invalid address form ${index} returns null`);
+    assert(isValidThruAddress(value) === false, `existing address validation still rejects invalid form ${index}`);
+  }
+  const other = Pubkey.from(new Uint8Array(32).fill(0x12)).toThruFmt();
+  assert(canonicalizeThruAddress(other) === other && other !== canonical,
+    'distinct public keys never collapse to one canonical identity');
+}
 
 console.log('\n[10] Mint seed generator follows the SDK contract, and mint/token-account derivation matches golden vectors');
 import {
@@ -588,8 +625,107 @@ console.log('\n[15] formatTokenAmount / parseTokenAmount convert exactly at any 
 
   for (let i = 0; i < buildAndSignMatches.length; i++) {
     const callBody = buildAndSignMatches[i][1];
-    const hasHeader = /header:\s*(?:units|\{\s*nonce:\s*0n,\s*\.\.\.units\s*\})/.test(callBody);
-    assert(hasHeader, `buildAndSign site #${i + 1} explicitly supplies header: units or ...units`);
+    // `{ ...units, expiryAfter: SEND_EXPIRY_SLOTS }` is the send shape: same explicit units, plus
+    // the slot deadline. Anything else must supply the units directly.
+    const hasHeader = /header:\s*(?:units|\{\s*nonce:\s*0n,\s*\.\.\.units\s*\}|\{\s*\.\.\.units,\s*expiryAfter:\s*SEND_EXPIRY_SLOTS\s*\})/.test(callBody);
+    assert(hasHeader, `buildAndSign site #${i + 1} explicitly supplies header units`);
+  }
+}
+
+// Every wallet-signed send states its own deadline instead of inheriting the SDK's 100 slots
+// (~3s at betanet's busy rate). The failure this prevents is specific: a send that expires on the
+// way in reports an UNKNOWN outcome, and an unknown outcome invites the user to send again.
+{
+  console.log('\n[13] send, faucet and token transfer set an explicit expiry; the registrar keeps its own');
+  const { readFileSync } = await import('node:fs');
+  const clientSource = readFileSync('./src/lib/thru-client.js', 'utf8');
+  assert(/export const SEND_EXPIRY_SLOTS = 1000;/.test(clientSource),
+    'SEND_EXPIRY_SLOTS is 1,000 slots');
+  for (const fn of ['claimFaucet', 'sendTransfer', 'sendTokenTransfer']) {
+    const start = clientSource.indexOf(`export async function ${fn}(`);
+    assert(start > 0, `${fn} exists`);
+    const body = clientSource.slice(start, start + 4000);
+    assert(/header: \{ \.\.\.units, expiryAfter: SEND_EXPIRY_SLOTS \}/.test(body),
+      `${fn} builds its header with the explicit expiry`);
+    assert(/startSlot: String\(built\?\.startSlot/.test(body),
+      `${fn} reports the built startSlot to its caller`);
+  }
+  const registrar = readFileSync('./src/background/services/registrar-service.js', 'utf8');
+  assert(/expiryAfter: 10_000/.test(registrar), 'the registrar keeps its 10,000-slot window');
+  assert(!/SEND_EXPIRY_SLOTS/.test(registrar), 'the registrar does not inherit the send expiry');
+  // The pending record must be able to answer "may still land" later.
+  const pendingSource = readFileSync('./src/background/services/pending-tx-service.js', 'utf8');
+  const deadlineGuard = source => /startSlot: tx\.startSlot/.test(source)
+    && /expiryAfter: tx\.expiryAfter != null.*Number\.isSafeInteger/.test(source);
+  assert(deadlineGuard(pendingSource), 'pending records store exact built deadlines and preserve null');
+    assert(!deadlineGuard(pendingSource.replace(/expiryAfter:.*?\r?\n/, 'expiryAfter: Number.isFinite(Number(tx.expiryAfter)) ? Number(tx.expiryAfter) : null,\n')),
+      'control: the old Number(null)=0 deadline coercion is rejected');
+}
+
+{
+  console.log('\n[14] parseMintAccount enforces token-program owner, SDK mint footprint, and BigInt supply');
+  const { TokenMintAccount, TickerField } = await import('@thru/programs/token');
+  const strict = (await import('node:assert/strict')).default;
+  const { readMintAccount, configureNetwork } = await import('../src/lib/thru-client.js');
+  const { Pubkey } = await import('@thru/sdk');
+  const { NETWORKS } = await import('../src/lib/networks.js');
+  const tokenProg = NETWORKS.betanet.tokenProgramId;
+  const dummyPubkey = new Uint8Array(32).fill(7);
+  const ticker = TickerField.builder().set_length(3).set_bytes([80, 65, 89, 0, 0, 0, 0, 0]).build();
+  const raw = TokenMintAccount.builder().set_decimals(6).set_supply(9007199254740993n)
+    .set_creator(dummyPubkey).set_mint_authority(dummyPubkey).set_freeze_authority(dummyPubkey)
+    .set_has_freeze_authority(1).set_ticker(ticker).build();
+  const mintSample = {
+    meta: { owner: Pubkey.from(tokenProg) },
+    data: { data: raw },
+  };
+  const parsed = parseMintAccount(mintSample, tokenProg);
+  assert(parsed.exists === true && parsed.decimals === 6 && typeof parsed.supply === 'bigint',
+    'parseMintAccount parses valid TokenMintAccount and returns supply as BigInt');
+  strict.equal(parsed.supply, 9007199254740993n);
+  strict.equal(parsed.ticker, 'PAY');
+  strict.equal(parsed.creator, Pubkey.from(dummyPubkey).toThruFmt());
+  strict.equal(parsed.mintAuthority, parsed.creator);
+  strict.equal(parsed.freezeAuthority, parsed.creator);
+  strict.equal(parsed.hasFreezeAuthority, true);
+  let rejectedWrongOwner = false;
+  try {
+    parseMintAccount({ meta: { owner: Pubkey.from(dummyPubkey) }, data: { data: raw } }, tokenProg);
+  } catch { rejectedWrongOwner = true; }
+  assert(rejectedWrongOwner, 'parseMintAccount rejects non-token-program owner');
+  let rejectedShort = false;
+  try {
+    parseMintAccount({ meta: { owner: Pubkey.from(tokenProg) }, data: { data: new Uint8Array(12) } }, tokenProg);
+  } catch { rejectedShort = true; }
+  assert(rejectedShort, 'parseMintAccount rejects wrong byte footprint');
+  const client = getClient();
+  const originalGet = client.accounts.get;
+  try {
+    client.accounts.get = async () => mintSample;
+    strict.deepEqual(await readMintAccount('mint'), parsed);
+    for (const owner of [undefined, null, {}, Pubkey.from(dummyPubkey)]) {
+      client.accounts.get = async () => ({ ...mintSample, meta: { owner } });
+      await strict.rejects(readMintAccount('mint'), /not owned/);
+    }
+    client.accounts.get = async () => ({ ...mintSample, data: { data: raw.slice(0, -1) } });
+    await strict.rejects(readMintAccount('mint'), /footprint/);
+    const malformed = TokenMintAccount.builder().set_ticker(TickerField.builder().set_length(9).build()).build();
+    client.accounts.get = async () => ({ ...mintSample, data: { data: malformed } });
+    await strict.rejects(readMintAccount('mint'), /ticker/);
+    client.accounts.get = async () => { throw Object.assign(new Error('absent'), { code: 5 }); };
+    strict.deepEqual(await readMintAccount('mint'), { exists: false });
+    client.accounts.get = async () => { throw new Error('offline'); };
+    await strict.rejects(readMintAccount('mint'), /offline/);
+    let release;
+    client.accounts.get = () => new Promise(resolve => { release = resolve; });
+    const reading = readMintAccount('mint');
+    configureNetwork({ ...NETWORKS.localnet, tokenProgramId: Pubkey.from(dummyPubkey).toThruFmt() });
+    release(mintSample);
+    strict.deepEqual(await reading, parsed, 'owner validation uses the network captured before the await');
+    assert(true, 'readMintAccount fails closed and captures its client and token program');
+  } finally {
+    client.accounts.get = originalGet;
+    configureNetwork(NETWORKS.betanet);
   }
 }
 

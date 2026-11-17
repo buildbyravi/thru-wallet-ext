@@ -13,7 +13,7 @@
 //
 // What it does NOT do: contact any chain, docs site or registry. Package-surface facts are
 // declarations, not live-network evidence; live rows of the Gate 0 dossier
-// (docs/defi/G0_DOSSIER.md) require the scripts/verify-* / probe-* tools on a
+// (docs/defi/DOSSIER_AND_CAPABILITIES.md) require the scripts/verify-* / probe-* tools on a
 // network-reachable machine.
 //
 // Usage:
@@ -40,7 +40,7 @@ const OUT = argValue('--out') || join(ROOT, 'scripts', 'defi-evidence', `${DATE}
 const THRU_PKGS = ['@thru/sdk', '@thru/programs'];
 const PROGRAM_SUBPATHS = ['bootstrap-addresses', 'token', 'amm', 'multicall', 'oracle'];
 
-// The existing methods the DeFi shared contract (docs/defi/G0_DOSSIER.md, S6) builds on.
+// The existing methods the DeFi shared contract (docs/defi/DOSSIER_AND_CAPABILITIES.md) builds on.
 // A missing entry here blocks M0 planning, so --check fails on it.
 const SHARED_CONTRACT_RELIES_ON = [
   'tx.getBalances', 'tx.getCachedBalances', 'tx.getTotalBalance',

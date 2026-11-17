@@ -125,6 +125,6 @@ try {
   }
 } catch (err) {
   console.error(`\nUNREACHABLE from this environment: ${err.name}: ${err.message}`);
-  console.error('Record the spike step as BLOCKED in docs/EXPLORER_SPIKE.md — do not fabricate shapes.');
+  console.error('Record the spike step as BLOCKED in docs/guides/protocol-and-rpc.md — do not fabricate shapes.');
   process.exit(1);
 }

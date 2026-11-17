@@ -121,7 +121,7 @@ const intentRecord = async (intentId) => {
   return list.find((r) => r.intentId === intentId) ?? null;
 };
 
-// [11] scoping (asserted early: a regression here is the cross-chain leak MAINNET_READINESS warms of)
+// [11] scoping (asserted early: a regression here is the cross-chain leak docs/AUDIT_REPORT.md warns of)
 const emptyList = await handleApiRequest({ method: 'intent.list' });
 assert.equal(emptyList.ok, true);
 assert.deepEqual(emptyList.data.intents, []);

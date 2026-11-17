@@ -28,6 +28,7 @@ import {
   createMintToInstruction as sdkCreateMintToInstruction,
   parseTokenAccountData as sdkParseTokenAccountData,
   parseMintAccountData as sdkParseMintAccountData,
+  TokenMintAccount,
   isAccountNotFoundError as sdkIsAccountNotFoundError,
 } from '@thru/programs/token';
 import { BOOTSTRAP_PROGRAM_ADDRESSES, BOOTSTRAP_FAUCET_VAULT_ADDRESS } from '@thru/programs/bootstrap-addresses';
@@ -111,6 +112,12 @@ export function configureNetwork(config) {
 /** The network this module is currently pointed at. */
 export function getConfiguredNetwork() {
   return activeNetwork;
+}
+
+/** SDK-canonical address, or null when the input cannot identify a public key. */
+export function canonicalizeThruAddress(address) {
+  try { return Pubkey.from(address).toThruFmt(); }
+  catch { return null; }
 }
 
 /** Validate a Thru address using the SDK's own parsing + checksum logic, not a guessed regex. */
@@ -200,9 +207,18 @@ export function getClient() {
  * `exists: false` means the key is valid but has no on-chain account yet — that's the normal
  * state for a freshly generated key, not an error.
  */
-export async function getAccountInfo(address) {
+// RPC metadata uses SDK Pubkey instances, not strings. Keep owner normalization at
+// the SDK boundary; malformed or absent metadata must never pass an ownership check.
+export function getAccountOwnerAddress(raw) {
+  const owner = raw?.meta?.owner ?? raw?.owner;
+  if (owner == null) return null;
+  try { return Pubkey.from(owner).toThruFmt(); }
+  catch { return null; }
+}
+
+export async function getAccountInfo(address, boundClient = getClient()) {
   try {
-    const account = await getClient().accounts.get(address);
+    const account = await boundClient.accounts.get(address);
     if (account?.meta?.balance == null) {
       throw new Error('The node returned an account without a balance.');
     }
@@ -384,6 +400,21 @@ export function encodeFaucetInstructionData(stateIdx, recipientIdx, amountUnits)
 }
 
 /**
+ * How long a wallet-signed transaction may wait for inclusion, in slots.
+ *
+ * The SDK default is 100. Betanet produces blocks continuously (~30/s when busy), so 100 slots is
+ * about three seconds, while a proof fetch, a sign and a broadcast routinely take longer under load
+ * (the RPC round trips in this sandbox run 5-10s). A transaction that expires on the way in comes
+ * back as an *unknown* outcome — the worst possible answer, because it invites a resend of something
+ * that may still land.
+ *
+ * 1,000 slots is roughly 33 seconds: long enough to survive a slow round trip, short enough that a
+ * dropped send cannot arrive minutes later. Registrar calls stay at 10,000 because they pin
+ * `startSlot` to a lease slot and need the headroom (registrar-service.js).
+ */
+export const SEND_EXPIRY_SLOTS = 1000;
+
+/**
  * Submission notice for sendAndTrack streams.
  *
  * The stream delivers the accepted submission's signature BEFORE the executionResult
@@ -395,14 +426,17 @@ export function encodeFaucetInstructionData(stateIdx, recipientIdx, amountUnits)
  * `onSubmitted(signature)` exactly once, never throws into the stream, and every send's
  * return semantics are unchanged.
  */
-async function* withSubmittedNotice(updates, onSubmitted) {
+async function* withSubmittedNotice(updates, onSubmitted, builtHeader = null) {
   let fired = false;
   for await (const update of updates) {
     if (!fired && update.signature?.value) {
       fired = true;
       if (typeof onSubmitted === 'function') {
         try {
-          const p = onSubmitted(Signature.from(update.signature.value).toThruFmt());
+          // The header is handed over because the pending record must outlive the send: without
+          // startSlot + expiryAfter it cannot tell "may still land" from "expired", and the UI
+          // cannot tell the user which of the two they are looking at.
+          const p = onSubmitted(Signature.from(update.signature.value).toThruFmt(), builtHeader);
           if (p && typeof p.catch === 'function') p.catch(() => {});
         } catch {
           // Tracking is best-effort; never affect the send stream.
@@ -463,16 +497,17 @@ export async function claimFaucet(feePayer, amount, { onSubmitted = null } = {})
     accounts: 1,
     balanceUnits: info.balance ?? 0n,
   });
-  const { rawTransaction } = await getClient().transactions.buildAndSign({
+  const { rawTransaction, transaction: built } = await getClient().transactions.buildAndSign({
     feePayer: { publicKey: feePayer.publicKey, privateKey: feePayer.privateKey },
     program: net.faucetProgramId,
-    header: units,
+    header: { ...units, expiryAfter: SEND_EXPIRY_SLOTS },
     accounts: { readWrite: [net.faucetStateAccount] },
     instructionData: ({ getAccountIndex }) =>
       encodeFaucetInstructionData(getAccountIndex(net.faucetStateAccount), getAccountIndex(address), amountUnits),
   });
+  const builtHeader = { startSlot: String(built?.startSlot ?? ''), expiryAfter: built?.expiryAfter ?? SEND_EXPIRY_SLOTS };
 
-  for await (const update of withSubmittedNotice(getClient().transactions.sendAndTrack(rawTransaction), onSubmitted)) {
+  for await (const update of withSubmittedNotice(getClient().transactions.sendAndTrack(rawTransaction), onSubmitted, builtHeader)) {
     if (update.executionResult) {
       noteExecution(UNIT_CLASS.CLAIM, update.executionResult);
       if (update.executionResult.vmError === 0) {
@@ -540,16 +575,17 @@ export async function sendTransfer(feePayer, toAddress, amount, { onSubmitted = 
     accounts: readWrite.length,
     balanceUnits: info.balance ?? 0n,
   });
-  const { rawTransaction } = await getClient().transactions.buildAndSign({
+  const { rawTransaction, transaction: built } = await getClient().transactions.buildAndSign({
     feePayer: { publicKey: feePayer.publicKey, privateKey: feePayer.privateKey },
     program: activeNetwork.transferProgramId,
-    header: units,
+    header: { ...units, expiryAfter: SEND_EXPIRY_SLOTS },
     accounts: readWrite.length > 0 ? { readWrite } : undefined,
     instructionData: ({ getAccountIndex }) =>
       encodeTransferInstructionData(getAccountIndex(feePayer.address), getAccountIndex(toAddress), amountUnits),
   });
+  const builtHeader = { startSlot: String(built?.startSlot ?? ''), expiryAfter: built?.expiryAfter ?? SEND_EXPIRY_SLOTS };
 
-  for await (const update of withSubmittedNotice(getClient().transactions.sendAndTrack(rawTransaction), onSubmitted)) {
+  for await (const update of withSubmittedNotice(getClient().transactions.sendAndTrack(rawTransaction), onSubmitted, builtHeader)) {
     if (update.executionResult) {
       noteExecution(UNIT_CLASS.TRANSFER, update.executionResult);
       if (update.executionResult.vmError === 0) {
@@ -928,25 +964,39 @@ export async function readTokenAccount(tokenAccountAddress) {
  *
  * @param {string} mintAddress
  */
+/** Validate owner and the pinned SDK mint type on ONE captured account snapshot. */
+export function parseMintAccount(account, tokenProgramId) {
+  const expectedOwner = canonicalizeThruAddress(tokenProgramId);
+  const actualOwner = canonicalizeThruAddress(getAccountOwnerAddress(account));
+  if (!expectedOwner || actualOwner !== expectedOwner) {
+    throw new Error('The account is not owned by the expected token program.');
+  }
+  const data = account?.data?.data;
+  if (!(data instanceof Uint8Array) || data.length !== TokenMintAccount.footprint()) {
+    throw new Error('The account does not have the pinned SDK mint footprint.');
+  }
+  const typed = TokenMintAccount.from_array(data);
+  const ticker = typed?.get_ticker();
+  if (!ticker || ticker.get_length() > ticker.get_bytes().length) {
+    throw new Error('The mint ticker is malformed.');
+  }
+  const info = sdkParseMintAccountData(account);
+  return { exists: true, decimals: info.decimals, supply: info.supply,
+    creator: info.creator, mintAuthority: info.mintAuthority, freezeAuthority: info.freezeAuthority,
+    hasFreezeAuthority: info.hasFreezeAuthority, ticker: info.ticker };
+}
+
 export async function readMintAccount(mintAddress) {
+  const client = getClient();
+  const tokenProgramId = activeNetwork.tokenProgramId;
   let account;
   try {
-    account = await getClient().accounts.get(mintAddress);
+    account = await client.accounts.get(mintAddress);
   } catch (err) {
     if (sdkIsAccountNotFoundError(err)) return { exists: false };
     throw err;
   }
-  const info = sdkParseMintAccountData(account);
-  return {
-    exists: true,
-    decimals: info.decimals,
-    supply: info.supply,
-    ticker: info.ticker,
-    creator: info.creator,
-    mintAuthority: info.mintAuthority,
-    freezeAuthority: info.freezeAuthority,
-    hasFreezeAuthority: info.hasFreezeAuthority,
-  };
+  return parseMintAccount(account, tokenProgramId);
 }
 
 /**
@@ -1157,17 +1207,18 @@ export async function sendTokenTransfer({ feePayer, mintAddress, recipientAddres
     balanceUnits: payerInfo.balance ?? 0n,
   });
 
-  const { rawTransaction } = await getClient().transactions.buildAndSign({
+  const { rawTransaction, transaction: built } = await getClient().transactions.buildAndSign({
     feePayer: { publicKey: feePayer.publicKey, privateKey: feePayer.privateKey },
     program: activeNetwork.tokenProgramId,
-    header: units,
+    header: { ...units, expiryAfter: SEND_EXPIRY_SLOTS },
     accounts: {
       readWrite: rwAccounts,
     },
     instructionData: instrData,
   });
+  const builtHeader = { startSlot: String(built?.startSlot ?? ''), expiryAfter: built?.expiryAfter ?? SEND_EXPIRY_SLOTS };
 
-  for await (const update of withSubmittedNotice(getClient().transactions.sendAndTrack(rawTransaction), onSubmitted)) {
+  for await (const update of withSubmittedNotice(getClient().transactions.sendAndTrack(rawTransaction), onSubmitted, builtHeader)) {
     if (update.executionResult) {
       noteExecution(UNIT_CLASS.TOKEN_OP, update.executionResult);
       if (update.executionResult.vmError === 0) {

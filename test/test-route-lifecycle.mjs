@@ -35,6 +35,11 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { applyTheme } from '../src/popup/theme.js';
 import { CONTRACT_VERSION } from '../src/shared/contract/manifest.js';
+// The route tests drive the REAL review decoders through mocked bridge replies, so a decoder
+// regression fails here as well as in test-tx-review.mjs.
+import { decodeReview } from '../src/shared/tx-review/registry.js';
+import '../src/shared/tx-review/decoders/index.js';
+import { stateFromWarnings } from '../src/shared/tx-review/model.js';
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -262,6 +267,8 @@ class ShimStyle {
 }
 
 class ShimElement extends ShimNode {
+  get isConnected() { return isConnected(this); }
+
   constructor(tagName, namespaceURI = null) {
     super();
     this.nodeType = 1;
@@ -741,9 +748,18 @@ const HISTORY_URLS = [];
 function makeWindow(doc) {
   const listeners = [];
   let location = null;
+  const localStore = new Map();
+  const localStorage = {
+    getItem(key) { return localStore.get(String(key)) ?? null; },
+    setItem(key, value) { localStore.set(String(key), String(value)); },
+    removeItem(key) { localStore.delete(String(key)); },
+    clear() { localStore.clear(); },
+    get length() { return localStore.size; },
+  };
   const win = {
     listeners,
     document: doc,
+    localStorage,
     // The popup is fixed-size (400x600, tokens.css), but the panel may be
     // shorter than 600px. Its manifest URL marker, not this size, identifies it.
     innerWidth: 400,
@@ -1108,6 +1124,216 @@ function apiError(code, message, retryable = false) {
   return err;
 }
 
+/** Prepared reviews held by the mocked background, keyed by review id. */
+const preparedReviews = new Map();
+let reviewCounter = 0;
+
+function reviewEnvelope(kind, facts) {
+  const network = activeNetwork();
+  const account = activeAccount();
+  const content = decodeReview(kind, {
+    network: { id: network.id, label: network.label, isTestnet: Boolean(network.isTestnet) },
+    account: { address: account.address, label: account.label },
+    facts,
+  });
+  const review = {
+    reviewVersion: 1,
+    reviewId: `review_${++reviewCounter}`,
+    kind,
+    state: stateFromWarnings(content.warnings),
+    createdAt: Date.now(),
+    expiresAt: Date.now() + 120_000,
+    bindingHash: `binding_${reviewCounter}`,
+    network: { id: network.id, label: network.label, isTestnet: Boolean(network.isTestnet) },
+    account: { address: account.address, label: account.label },
+    ...content,
+    assets: { ...content.assets, balanceAfter: null },
+    simulation: {
+      status: 'unavailable',
+      reason: 'Transaction simulation requires a dry-run RPC that has not been verified on Thru.',
+      provenance: 'tx.simulate (capability stub)',
+      checkedAt: Date.now(),
+    },
+    submitPolicy: null,
+  };
+  return review;
+}
+
+function prepareReviewFixture(kind, params) {
+  const network = activeNetwork();
+  const account = activeAccount();
+  let facts;
+  if (kind === 'native-send') {
+    facts = {
+      fromAddress: account.address,
+      fromLabel: account.label,
+      toAddress: params.toAddress,
+      recipientLabel: backend.contacts.find((c) => c.address === params.toAddress)?.label || null,
+      amountUnits: String(params.amountUnits),
+      recipient: { exists: true },
+      balanceUnits: account.balance,
+      fee: FIXTURES['tx.estimateFee'](),
+      duplicate: null,
+      selfSend: params.toAddress === account.address,
+      transferProgramId: network.transferProgramId,
+      networkId: network.id,
+      networkLabel: network.label,
+    };
+  } else if (kind === 'token-transfer') {
+    const token = backend.tokens.find((t) => t.mintAddress === params.mintAddress) || TOKEN_FIXTURE;
+    facts = {
+      fromAddress: account.address,
+      fromLabel: account.label,
+      toAddress: params.toAddress,
+      recipientLabel: null,
+      mintAddress: token.mintAddress,
+      symbol: token.symbol,
+      name: token.name,
+      decimals: token.decimals,
+      metadataVerified: true,
+      metadataSource: 'mint-account',
+      mintExists: true,
+      amountUnits: String(params.amountUnits),
+      recipient: { exists: true },
+      sourceTokenAccount: { address: TOKEN_ACCOUNT_FIXTURE, exists: true },
+      recipientTokenAccount: { address: TOKEN_ACCOUNT_FIXTURE, exists: true },
+      balanceUnits: '9000000',
+      fee: { supported: false, reason: 'No measured fee for token transfers on this chain.' },
+      duplicate: null,
+      tokenProgramId: network.tokenProgramId,
+      networkId: network.id,
+      networkLabel: network.label,
+    };
+  } else if (kind === 'faucet-claim') {
+    // Mirrors faucetClaimFacts: the policy read decides paused/exhausted, and an unavailable
+    // policy is declared rather than treated as "no limit".
+    const limit = FIXTURES['tx.getFaucetLimit']();
+    const summary = Array.isArray(limit?.rules) ? limit.rules[0]?.summary ?? null : null;
+    facts = {
+      fromAddress: account.address,
+      fromLabel: account.label,
+      amountUnits: String(params.amountUnits),
+      capUnits: String(network.faucetMaxPerClaim ?? '10000'),
+      accountExists: true,
+      limit: limit?.supported
+        ? {
+          supported: true,
+          paused: Boolean(limit.paused),
+          exhausted: summary?.exhausted === true,
+          targetMatchesFaucet: limit.targetMatchesFaucet !== false,
+          remainingAmount: summary?.remainingAmount ?? null,
+          window: summary?.window ?? null,
+          resetAtUnixSec: summary?.resetAtUnixSec ?? null,
+          maxAmountPerCall: limit.maxAmountPerCall ?? null,
+          reason: null,
+        }
+        : { supported: false, reason: limit?.reason || 'The faucet policy could not be read.' },
+      fee: {
+        supported: false,
+        reason: 'The faucet claim path does not report a charged fee, so none is shown.',
+      },
+      programAddress: network.faucetProgramId,
+      vaultAddress: network.faucetStateAccount ?? null,
+      networkId: network.id,
+      networkLabel: network.label,
+    };
+  } else if (kind === 'domain-register') {
+    facts = {
+      fromAddress: account.address,
+      fromLabel: account.label,
+      name: params.name,
+      tld: 'thru',
+      years: params.years,
+      provider: 'custom',
+      pricePerYear: '1000',
+      totalPriceUnits: String(1000n * BigInt(params.years)),
+      nativeBalanceUnits: account.balance,
+      availability: { state: 'available', readError: null },
+      root: 'ta1rootfixture00000000000000000000000000000',
+      configAddress: 'ta1configfixture00000000000000000000000000',
+      treasury: 'ta1treasuryfixture000000000000000000000000',
+      program: { name: 'Custom `.thru` registrar', address: 'ta1registrarfixture00000000000000000000000', verified: true, source: 'fixture' },
+      instruction: { name: 'Register domain', opcode: 1 },
+      feeReserveUnits: '1000',
+      networkId: network.id,
+      networkLabel: network.label,
+    };
+  } else if (kind === 'domain-renew' || kind === 'domain-claim' || kind === 'domain-purchase') {
+    const registryFixture = FIXTURES['name.getRegistry']?.()?.registry;
+    const leaseFixture = FIXTURES['name.checkLease']?.({ name: params.name })?.lease;
+    const isMine = leaseFixture ? (leaseFixture.owner === account.address) : (kind === 'domain-renew');
+    facts = {
+      fromAddress: account.address,
+      fromLabel: account.label,
+      name: params.name,
+      tld: 'thru',
+      years: params.years,
+      provider: params.via === 'custom' ? 'custom' : 'official',
+      pricePerYear: registryFixture?.pricePerYear || '1000',
+      totalPriceUnits: String(BigInt(registryFixture?.pricePerYear || '1000') * BigInt(params.years)),
+      payment: {
+        symbol: 'LAB',
+        decimals: 6,
+        mintAddress: CUSTOM_MINT_FIXTURE,
+        verified: true,
+        source: 'mint-account',
+      },
+      paymentBalanceUnits: '100000',
+      availability: isMine ? 'mine' : (leaseFixture?.expiredHint ? 'expired' : 'taken'),
+      lease: leaseFixture ? {
+        owner: leaseFixture.owner,
+        endTime: String(leaseFixture.endTime),
+        expiredHint: Boolean(leaseFixture.expiredHint),
+        mine: isMine,
+      } : {
+        owner: account.address,
+        endTime: '1800000000',
+        expiredHint: false,
+        mine: true,
+      },
+      program: {
+        name: 'Official `.thru` registry',
+        address: 'taRegistryProgram',
+        verified: true,
+        source: 'fixture',
+      },
+      networkId: network.id,
+      networkLabel: network.label,
+    };
+  } else {
+    return { supported: false, kind, reason: 'KIND_UNSUPPORTED', knownKinds: [] };
+  }
+  const review = reviewEnvelope(kind, facts);
+  const submit = kind === 'native-send'
+    ? { method: 'tx.sendChecked', params: { toAddress: facts.toAddress, amountUnits: facts.amountUnits, fromAddress: account.address, networkId: network.id } }
+    : kind === 'faucet-claim'
+      ? { method: 'tx.claimFaucet', params: { amountUnits: facts.amountUnits, fromAddress: account.address, networkId: network.id } }
+    : kind === 'token-transfer'
+      ? { method: 'token.transferChecked', params: { mintAddress: facts.mintAddress, toAddress: facts.toAddress, amountUnits: facts.amountUnits, fromAddress: account.address, networkId: network.id } }
+      : kind === 'domain-register'
+        ? { method: 'name.register', params: { name: facts.name, years: facts.years, via: 'custom', expectedAccountAddress: account.address, expectedNetworkId: network.id, expectedPricePerYear: facts.pricePerYear } }
+        : kind === 'domain-renew'
+          ? { method: 'name.renewLease', params: { name: facts.name, years: facts.years, ...(params.via === 'custom' ? { via: 'custom' } : {}), expectedAccountAddress: account.address, expectedNetworkId: network.id, expectedPricePerYear: facts.pricePerYear, expectedLeaseEndTime: facts.lease?.endTime } }
+          : kind === 'domain-claim'
+            ? { method: 'name.claimExpired', params: { name: facts.name, years: facts.years, expectedAccountAddress: account.address, expectedNetworkId: network.id, expectedPricePerYear: facts.pricePerYear, expectedLeaseEndTime: facts.lease?.endTime } }
+            : { method: 'name.purchase', params: { name: facts.name, years: facts.years, expectedAccountAddress: account.address, expectedNetworkId: network.id, expectedPricePerYear: facts.pricePerYear } };
+  review.submitPolicy = { method: submit.method, auth: 'signing', passwordRequired: Boolean(backend.preferences.requirePasswordForSigning) };
+  preparedReviews.set(review.reviewId, {
+    kind,
+    review,
+    submit,
+    submitPolicy: review.submitPolicy,
+    bindingHash: review.bindingHash,
+  });
+  return {
+    supported: true,
+    reviewId: review.reviewId,
+    bindingHash: review.bindingHash,
+    expiresAt: review.expiresAt,
+    review,
+  };
+}
+
 const FIXTURES = {
   'system.bootstrap': () => ({
     contractVersion: CONTRACT_VERSION,
@@ -1165,6 +1391,7 @@ const FIXTURES = {
   'wallet.reset': () => {
     backend.hasVault = false;
     backend.unlocked = false;
+    emitEvent('lockStateChanged', { unlocked: false, hasVault: false });
     return { reset: true };
   },
   'wallet.exportSecret': ({ ref, password } = {}) => {
@@ -1328,6 +1555,11 @@ const FIXTURES = {
   'name.getPrimary': () => null,
   'name.linkPrimary': () => { throw new Error('fixture: no on-chain name service'); },
   'name.unlinkPrimary': () => ({ unlinked: false }),
+  'name.getCachedDomains': () => ({ networkId: activeNetwork().id, accountAddress: activeAccount().address, source: 'tracked', items: [] }),
+  'name.listDomains': () => ({ networkId: activeNetwork().id, accountAddress: activeAccount().address, source: 'tracked', items: [] }),
+  'name.trackDomain': ({ name }) => ({ name, rootAddress: 'taRoot', domainAddress: 'taDomain', verifiedAt: Date.now() }),
+  'name.setPrimaryDomain': () => ({ name: 'alice', rootAddress: 'taRoot', domainAddress: 'taDomain', verifiedAt: Date.now() }),
+  'name.untrackDomain': () => ({ untracked: true }),
   // v22 registrar slice: the mount reads must render the honest unsupported state (the
   // fixture chain has no `.thru` registry) — never a fabricated price on mount.
   'name.getRegistry': () => ({ supported: false, reason: 'fixture: no .thru registry initialized' }),
@@ -1346,6 +1578,15 @@ const FIXTURES = {
     root: 'taNP1MFOO2shpn6ORofIGSNiQ-qJ9VE2lDkDwvUmgUmaQZ',
     rootName: 'thru',
     rootMatchesNameService: true,
+    // The deployed Betanet config is layout 1 (flat 1000/yr, best-effort collection). The
+    // tiers read equal to the flat fee, exactly as state.rs presents a layout-1 account.
+    layout: 1,
+    feePolicy: 0,
+    feePolicyName: 'best effort',
+    feeEnforced: false,
+    fee3PerYear: '1000',
+    fee4PerYear: '1000',
+    fee5PlusPerYear: '1000',
     feePerYear: '1000',
     treasury: 'taShrn6v-TM_h81ZjmDZLifdhLRlDMfIw_EAIaNKIIdPX-',
     admin: 'tabDLDL9EVZYhRnbgPr0HrQuIvv01AZm9vtV8yIX26KO2J',
@@ -1405,6 +1646,15 @@ const FIXTURES = {
       .filter((t) => t.mintAddress !== mintAddress)
       .concat(record);
     return { ...record, networkId: activeNetwork().id };
+  },
+  'token.importVerified': (params = {}) => {
+    if (Object.keys(params).some((key) => !['mintAddress', 'symbol'].includes(key))) {
+      throw apiError('INVALID_INPUT', 'Import accepts mint identity only.');
+    }
+    const mint = FIXTURES['token.readMint'](params);
+    if (!mint.exists) throw apiError('ACCOUNT_MISSING', 'No mint account.');
+    return FIXTURES['token.import']({ ...params, name: mint.ticker,
+      symbol: mint.ticker || params.symbol, decimals: mint.decimals });
   },
   'token.transferChecked': ({ fromAddress, networkId } = {}) => {
     if (fromAddress !== activeAccount().address || networkId !== activeNetwork().id) {
@@ -1561,6 +1811,35 @@ const FIXTURES = {
       throw apiError('SEND_CONTEXT_CHANGED', 'Review source or network changed.');
     }
     return FIXTURES['tx.send']();
+  },
+  // ---- contract v29: the shared review pipeline --------------------------------------
+  // These fixtures deliberately run the REAL decoder for the requested kind, then add the
+  // envelope the background adds. A route can therefore only render what a decoder produced.
+  'tx.prepareReview': ({ kind, params = {} } = {}) => prepareReviewFixture(kind, params),
+  'tx.confirmReview': ({ reviewId, bindingHash, acknowledgements = [] } = {}) => {
+    const record = preparedReviews.get(reviewId);
+    if (!record) throw apiError('REVIEW_NOT_FOUND', 'That review is no longer available.');
+    if (record.bindingHash !== bindingHash) throw apiError('BINDING_MISMATCH', 'Binding mismatch.');
+    const missing = record.review.acknowledgements
+      .map((ack) => ack.id)
+      .filter((id) => !acknowledgements.includes(id));
+    if (missing.length) throw apiError('ACKNOWLEDGEMENT_REQUIRED', 'Acknowledgement required.');
+    return {
+      reviewId,
+      kind: record.kind,
+      submit: record.submit,
+      submitPolicy: record.submitPolicy,
+      // The real background mints a one-time consent token here and refuses every signing method
+      // without it. This harness fakes the bridge, not the router, so it must carry the field —
+      // and the assertions below check that the UI actually forwards it.
+      consentToken: `ct_${reviewId}`,
+      revalidatedAt: Date.now(),
+      expiresAt: record.review.expiresAt,
+    };
+  },
+  'tx.discardReview': ({ reviewId } = {}) => {
+    preparedReviews.delete(reviewId);
+    return { reviewId, discarded: true };
   },
   'tx.claimFaucet': () => ({ signature: 'sig_faucet_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', amountUnits: '10000' }),
 };
@@ -1926,9 +2205,11 @@ const { installSidePanelExclusion } = await import('../src/ui/app/side-panel-exc
 const { isSidePanelPage, SIDE_PANEL_SEARCH, CLOSE_SIDE_PANEL_ACTION } = await import('../src/shared/side-panel.js');
 const { Router } = await import('../src/ui/app/router.js');
 const { SendRoute } = await import('../src/ui/app/routes/send.js');
+const { FaucetRoute } = await import('../src/ui/app/routes/faucet.js');
 const { HistoryRoute } = await import('../src/ui/app/routes/history.js');
 const { DashboardRoute } = await import('../src/ui/app/routes/dashboard.js');
 const { AccountsRoute } = await import('../src/ui/app/routes/accounts.js');
+const { NameRoute } = await import('../src/ui/app/routes/name.js');
 
 function isInside(node, root) {
   for (let n = node; n; n = n.parentNode) {
@@ -2542,6 +2823,8 @@ async function exportSecretTest() {
   const exportEl = router.current?.el;
   TORN_DOWN.push(exportEl);
   router.navigate('/dashboard');
+  ok('navigation wipes the revealed phrase synchronously, before any guard reply',
+    !textOf(exportEl).includes('thistle') && !textOf(DOC.body).includes('thistle'));
   await settle();
   const detachedHits = findSecretsInTornDown(SECRETS);
   ok('navigating away leaves no phrase in the DOM the export route handed back',
@@ -3259,8 +3542,11 @@ async function panelExclusionTest() {
     resumeTheme = () => resolve({ ...backend.preferences });
   });
   const pendingBoot = boot({ root: DOC.getElementById('app') });
+  for (const listener of [...chromeLog.listeners]) {
+    listener({ action: CLOSE_SIDE_PANEL_ACTION }, { id: chrome.runtime.id });
+  }
   ok('the panel listener is installed synchronously, before theme preferences return',
-    chromeLog.listeners.size === 1);
+    WIN.closed === true && typeof resumeTheme !== 'function');
   await settle();
   ok('theme loading is blocked at the backend preference boundary', typeof resumeTheme === 'function');
   ok('booting the panel does not broadcast or call sidePanel.close',
@@ -3393,7 +3679,7 @@ async function navigationTest() {
     [...findSecrets(SECRETS), ...findSecretsInTornDown(SECRETS)].slice(0, 3).join(' | '));
 
   backend.unlocked = true;
-  guards.invalidate();
+  emitEvent('lockStateChanged', { unlocked: true });
   router.navigate('/dashboard');
   await settle();
 
@@ -4253,7 +4539,9 @@ function negativeControls() {
   broken.start();
   releaseConsole();
   ok('control: a throwing route is caught by the console capture',
-    routerErrors().some((line) => line.includes('synthetic mount failure')),
+    routerErrors().some((line) => line.includes('[router] failed to mount route'))
+      && !consoleErrors.some((line) => line.includes('synthetic mount failure'))
+      && /could not be opened/i.test(textOf(brokenRoot)),
     routerErrors().join(' | '));
   broken.stop();
 }
@@ -4436,12 +4724,23 @@ async function progressiveSendTest() {
   await settle();
   click(buttons(switched.el, /^review$/i)[0]);
   await settle();
-  click(buttons(switched.el, /sign & send/i)[0]);
+  // Owner decision (2026-10-30): the confirm action is one word and carries no glyph, so the
+  // button cannot out-shout the amount it is about.
+  const sendBtn = buttons(switched.el, /^send$/i)[0];
+  ok('the send confirm button says exactly "Send" and carries no icon',
+    Boolean(sendBtn)
+      && sendBtn.textContent.trim() === 'Send'
+      && sendBtn.querySelector('.icon, svg') === null,
+    `${sendBtn?.textContent} icon=${Boolean(sendBtn?.querySelector('.icon, svg'))}`);
+  click(sendBtn);
   await settle();
   ok('native signing uses the checked method, with the reviewed account and network',
     chromeLog.calls.includes('tx.sendChecked')
       && /0\.0001 THRU sent/.test(textOf(switched.el))
       && /Submitted on Betanet/.test(textOf(switched.el)),
+    chromeLog.calls.slice(-12).join(','));
+  ok('the Send review is consumed on success, so the same reviewId cannot sign twice',
+    chromeLog.calls.lastIndexOf('tx.discardReview') > chromeLog.calls.indexOf('tx.sendChecked'),
     chromeLog.calls.slice(-12).join(','));
   switched.destroy();
   accountHolds.restore();
@@ -4466,7 +4765,26 @@ async function progressiveSendTest() {
   await settle();
   click(buttons(tokenRoute.el, /^review$/i)[0]);
   await settle();
-  click(buttons(tokenRoute.el, /sign & send/i)[0]);
+
+  // Owner review (2026-10-28 → v1.5.0): the send review is the previous-main shape — what you
+  // pay, what it costs, the total, everything else folded. The 2026-10-29 audit of the rendered
+  // card replaced the From/To/Amount table rows with a counterparty line and a signed amount, so
+  // the assertions moved with the shape instead of being deleted: the money is still all present,
+  // exactly once, and the technical detail is still folded.
+  const tokenCard = tokenRoute.el.querySelector('.tx-review-card');
+  ok('the send review is a money table plus a folded Details, not a stack of sections',
+    tokenCard?.querySelectorAll('.detail-table').length === 1
+      && tokenCard.querySelectorAll('.tx-review-section').length === 0
+      && /You pay/.test(tokenCard.textContent) && /Network fee/.test(tokenCard.textContent)
+      && !/\bFrom\b/.test(tokenCard.textContent) && !/\bAmount\b/.test(tokenCard.textContent),
+    tokenCard?.textContent?.slice(0, 240));
+  ok('the send review states the outgoing value and labels an unmeasured fee honestly',
+    /\u22121 SMK/.test(tokenCard?.textContent || '')
+      && /not confirmed \(paid in THRU\)/.test(tokenCard?.textContent || '')
+      && tokenCard?.querySelector('.tx-review-details')?.classList.contains('hidden') === true,
+    tokenCard?.textContent?.slice(0, 240));
+
+  click(buttons(tokenRoute.el, /^send$/i)[0]);
   await settle();
   ok('token signing uses token.transferChecked, never a native send or legacy token method',
     chromeLog.calls.includes('token.transferChecked')
@@ -4493,17 +4811,305 @@ async function progressiveSendTest() {
   await settle();
   click(buttons(uncertain.el, /^review$/i)[0]);
   await settle();
-  click(buttons(uncertain.el, /sign & send/i)[0]);
+  click(buttons(uncertain.el, /^send$/i)[0]);
   await settle();
   ok('a signing timeout reports UNKNOWN outcome and warns against an immediate retry',
     /Could not confirm whether this transfer was submitted/.test(textOf(uncertain.el))
       && /Check Activity and the explorer/.test(textOf(uncertain.el))
       && !/wallet service did not respond/.test(textOf(uncertain.el)));
+  // Reviewer #5 (major): the message alone was not the contract. `finally` re-enabled Confirm
+  // because the card still held its acknowledgements, so the same review could be submitted
+  // again after a timeout — a second transfer if the first one had broadcast.
+  const blockedConfirm = buttons(uncertain.el, /^send$/i)[0];
+  ok('an uncertain outcome keeps Confirm disabled instead of inviting a retry',
+    blockedConfirm?.disabled === true,
+    `disabled=${blockedConfirm?.disabled}`);
+  const sendsBefore = chromeLog.calls.filter((c) => c === 'tx.sendChecked').length;
+  click(blockedConfirm);
+  await settle();
+  ok('clicking the blocked Confirm cannot resubmit the same review',
+    chromeLog.calls.filter((c) => c === 'tx.sendChecked').length === sendsBefore);
   uncertain.destroy();
   FIXTURES['tx.sendChecked'] = realCheckedSend;
   await settle();
   ok('uncertain-outcome view leaves no detached listeners', detachedListeners().length === 0);
   uncertain.el.remove();
+}
+
+// ---- Reviewer #10: leaving the review step must invalidate it ---------------------------
+
+async function reviewStepInvalidationTest() {
+  section('send: going back from a review cancels the preparation instead of being repainted');
+
+  // Hold `tx.prepareReview` at the real bridge seam so the user can act while it is in flight.
+  // Installed AFTER resetBackend, which rebuilds the chrome stub.
+  const held = [];
+  let restore = () => {};
+  const flush = () => {
+    restore();
+    for (const item of held.splice(0)) {
+      item.callback({ ok: false, error: { code: 'NETWORK_ERROR', message: 'Test finished', retryable: true } });
+    }
+  };
+
+  try {
+    resetBackend(SCENARIOS[2]);
+    resetDom();
+    const original = chrome.runtime.sendMessage;
+    chrome.runtime.sendMessage = (message, callback) => {
+      if (message?.method !== 'tx.prepareReview') return original(message, callback);
+      chromeLog.calls.push(message.method);
+      held.push({ message, callback });
+      return undefined;
+    };
+    restore = () => { chrome.runtime.sendMessage = original; };
+    const route = SendRoute({ params: {}, navigate() {}, back() {} });
+    DOC.body.appendChild(route.el);
+    await settle();
+    type(route.el.querySelector('input[placeholder="0.0"]'), '0.001');
+    type(route.el.querySelector('input[placeholder="ta…"]'),
+      'ta1validrecipient00000000000000000000000000000000000000000');
+    await sleep(450);
+    await settle();
+    click(buttons(route.el, /^review$/i)[0]);
+    await settle();
+    ok('the review step waits for the preparation', held.length === 1,
+      `held=${held.length} ${chromeLog.calls.slice(-6).join(',')}`);
+
+    // The header back arrow is the step back: it must take the user to the form, not wait.
+    const backBtn = [...route.el.querySelectorAll('button')]
+      .find((node) => node.getAttribute('title') === 'Back');
+    click(backBtn);
+    await settle();
+    ok('back returns to the form while the preparation is still in flight',
+      Boolean(route.el.querySelector('input[placeholder="ta…"]')));
+
+    // The late reply must not paint a review over the form the user just returned to.
+    const pending = held.shift();
+    pending.callback({ ok: true, data: FIXTURES['tx.prepareReview'](pending.message.params) });
+    await settle();
+    ok('a preparation that resolves after Back cannot repaint the review screen',
+      !route.el.querySelector('.tx-review-card')
+        && Boolean(route.el.querySelector('input[placeholder="ta…"]')),
+      textOf(route.el).slice(0, 160));
+
+    // A review the user actually saw is discarded when they leave it, not left in storage.
+    click(buttons(route.el, /^review$/i)[0]);
+    await settle();
+    const second = held.shift();
+    second.callback({ ok: true, data: FIXTURES['tx.prepareReview'](second.message.params) });
+    await settle();
+    ok('the review is rendered before the discard check',
+      Boolean(route.el.querySelector('.tx-review-card')));
+    const callsBefore = chromeLog.calls.filter((c) => c === 'tx.discardReview').length;
+    click([...route.el.querySelectorAll('button')].find((n) => n.getAttribute('title') === 'Back'));
+    await settle();
+    ok('leaving a rendered review discards it instead of leaving it confirmable',
+      chromeLog.calls.filter((c) => c === 'tx.discardReview').length === callsBefore + 1
+        && !route.el.querySelector('.tx-review-card'),
+      chromeLog.calls.slice(-6).join(','));
+    route.destroy();
+    await settle();
+  } finally {
+    flush();
+  }
+}
+
+// ---- v29: the faucet claim is a reviewed transaction, not a direct signing call --------
+
+async function faucetReviewTest() {
+  section('faucet: the claim is prepared, reviewed and gated by the shared pipeline');
+  resetBackend(SCENARIOS[2]);
+  resetDom();
+
+  const prepared = [];
+  const realPrepare = FIXTURES['tx.prepareReview'];
+  FIXTURES['tx.prepareReview'] = (params) => {
+    prepared.push(params);
+    return realPrepare(params);
+  };
+  const realLimit = FIXTURES['tx.getFaucetLimit'];
+
+  const route = FaucetRoute({ params: {}, navigate() {}, back() {} });
+  DOC.body.appendChild(route.el);
+  await settle();
+
+  const claimBtn = buttons(route.el, /claim on-chain/i)[0];
+  ok('the faucet form offers a claim without any review pre-fetched',
+    Boolean(claimBtn) && prepared.length === 0,
+    `${route.el.textContent.slice(0, 120)}`);
+
+  // The claim amount is fixed by the faucet, so the field is a VALUE, not an input. It is
+  // read-only and shows the cap the network reported — never an editable box that silently
+  // sends a different number than the one on screen.
+  const amountInput = route.el.querySelector('input');
+  ok('the claim amount is a read-only field showing the faucet cap',
+    amountInput?.getAttribute('readonly') !== null
+      && amountInput?.value === '0.00001 THRU',
+    JSON.stringify({ readonly: amountInput?.getAttribute('readonly'), value: amountInput?.value }));
+  ok('the claim field carries no base-units jargon next to a THRU-denominated amount',
+    /Fixed claim of 0\.00001 THRU per request/.test(textOf(route.el))
+      && !/raw units/i.test(textOf(route.el)),
+    textOf(route.el).slice(0, 200));
+
+  click(claimBtn);
+  await settle();
+  ok('claiming prepares a faucet-claim review instead of calling the signing method',
+    prepared.length === 1 && prepared[0].kind === 'faucet-claim'
+      && prepared[0].params.amountUnits === '10000'
+      && !chromeLog.calls.includes('tx.claimFaucet'),
+    JSON.stringify(prepared.map((p) => [p.kind, p.params])));
+  ok('the review sheet renders the canonical card, not a bespoke confirm list',
+    Boolean(DOC.querySelector('.tx-review-card')) && /Claim .* from the faucet/i.test(
+      DOC.querySelector('.tx-review-card')?.textContent || ''),
+    DOC.querySelector('.tx-review-card')?.textContent?.slice(0, 160));
+
+  // v29 + owner review (2026-10-28): the card must read as one screen — the value it moves,
+  // then one fact table, with the protocol/instruction/fee detail folded away. These are DOM
+  // assertions against the real component; no screenshot is implied.
+  const cardEl = DOC.querySelector('.tx-review-card');
+  ok('the card states the incoming value with an exact, signed amount',
+    /\+0\.00001 THRU/.test(cardEl?.textContent || ''),
+    cardEl?.textContent?.slice(0, 200));
+  // A faucet claim has no non-money facts, so it renders exactly one table: the money.
+  // v1.5.0 splits the tables: money first (you receive / network fee), then the operation's
+  // non-money facts (the faucet's remaining allowance). Never a third, never stacked sections.
+  ok('the card carries the money table plus at most one facts table, and no stacked sections',
+    cardEl?.querySelectorAll('.detail-table').length >= 1
+      && cardEl?.querySelectorAll('.detail-table').length <= 2
+      && cardEl?.querySelectorAll('.tx-review-section').length === 0
+      && /You receive/.test(cardEl.querySelector('.detail-table').textContent),
+    `${cardEl?.querySelectorAll('.detail-table').length} tables`);
+  ok('the technical detail starts folded for a decoded review',
+    cardEl?.querySelector('.tx-review-details')?.classList.contains('hidden') === true);
+  const advancedToggle = [...(cardEl?.querySelectorAll('button') || [])]
+    .find((btn) => btn.textContent === 'Details');
+  click(advancedToggle);
+  await settle();
+  // The fee note is only a fee note when a fee was actually reported; when the faucet path
+  // reports none, Details must carry that refusal instead of a number. Both are honest, so the
+  // assertion accepts either and still requires the balance caveat next to them.
+  ok('opening the disclosure shows the program, the fee basis and the simulation status',
+    prepared.length === 1
+      && !cardEl.querySelector('.tx-review-details').classList.contains('hidden')
+      && /Program/.test(cardEl.querySelector('.tx-review-details').textContent)
+      && /Simulation/.test(cardEl.querySelector('.tx-review-details').textContent)
+      && advancedToggle.textContent === 'Hide details',
+    JSON.stringify({
+      prepared: prepared.length,
+      hidden: cardEl.querySelector('.tx-review-details').classList.contains('hidden'),
+      toggle: advancedToggle.textContent,
+      text: cardEl.querySelector('.tx-review-details').textContent.slice(0, 120),
+    }));
+
+  const reviewConfirm = buttons(DOC.body, /^claim$/i)[0];
+  ok('a clean review enables its confirm control', reviewConfirm?.disabled === false,
+    `disabled=${reviewConfirm?.disabled}`);
+
+  click(reviewConfirm);
+  await settle();
+  ok('confirming revalidates through tx.confirmReview, then submits via tx.claimFaucet',
+    chromeLog.calls.includes('tx.confirmReview') && chromeLog.calls.includes('tx.claimFaucet')
+      && chromeLog.calls.indexOf('tx.confirmReview') < chromeLog.calls.indexOf('tx.claimFaucet'),
+    chromeLog.calls.slice(-8).join(','));
+  ok('a review that produced a signature is discarded, so it cannot be replayed',
+    chromeLog.calls.lastIndexOf('tx.discardReview') > chromeLog.calls.indexOf('tx.claimFaucet')
+      && prepared.length === 1,
+    chromeLog.calls.slice(-8).join(','));
+  ok('the success screen reports what the chain returned, never a bare "done"',
+    /Claimed|Claim submitted|Received/.test(textOf(route.el)), textOf(route.el).slice(0, 160));
+  route.destroy();
+  await settle();
+  ok('the faucet route tears down without leaving a listener behind',
+    detachedListeners().length === 0, JSON.stringify(detachedListeners().slice(0, 3)));
+  route.el.remove();
+
+  // A paused faucet is proof of failure. The route refuses BEFORE preparing a review, which is
+  // the strongest form: no decoder runs, nothing is ever confirmable.
+  resetBackend(SCENARIOS[2]);
+  resetDom();
+  prepared.length = 0;
+  FIXTURES['tx.getFaucetLimit'] = () => ({ ...realLimit(), paused: true });
+  const pausedRoute = FaucetRoute({ params: {}, navigate() {}, back() {} });
+  DOC.body.appendChild(pausedRoute.el);
+  await settle();
+  const pausedClaim = buttons(pausedRoute.el, /claim on-chain/i)[0];
+  ok('a paused faucet disables the claim and says why, before any review exists',
+    pausedClaim?.disabled === true
+      && /paused by its administrator/i.test(textOf(pausedRoute.el))
+      && prepared.length === 0,
+    `disabled=${pausedClaim?.disabled} prepared=${prepared.length}`);
+  click(pausedClaim);
+  await settle();
+  ok('clicking the disabled claim cannot reach a prepare or a signing call',
+    prepared.length === 0 && !chromeLog.calls.includes('tx.claimFaucet')
+      && !chromeLog.calls.includes('tx.confirmReview'));
+  pausedRoute.destroy();
+  FIXTURES['tx.getFaucetLimit'] = realLimit;
+  await settle();
+  pausedRoute.el.remove();
+
+  // A timeout during submission is an UNKNOWN outcome, never a failure message.
+  // Reviewer #16: the window between "sheet closed" and "submit settled" must be guarded —
+  // a second claim during a slow submit used to open a second review over the same account.
+  resetBackend(SCENARIOS[2]);
+  resetDom();
+  const inFlightHeld = [];
+  const inFlightOriginal = chrome.runtime.sendMessage;
+  const realClaimData = FIXTURES['tx.claimFaucet']({ amountUnits: '10000' });
+  chrome.runtime.sendMessage = (message, callback) => {
+    if (message?.method !== 'tx.claimFaucet') return inFlightOriginal(message, callback);
+    chromeLog.calls.push(message.method);
+    inFlightHeld.push({ message, callback });
+    return undefined;
+  };
+  const inFlightRoute = FaucetRoute({ params: {}, navigate() {}, back() {} });
+  DOC.body.appendChild(inFlightRoute.el);
+  await settle();
+  click(buttons(inFlightRoute.el, /claim on-chain/i)[0]);
+  await settle();
+  click(buttons(DOC.body, /^claim$/i)[0]);
+  await settle();
+  const busyClaim = buttons(inFlightRoute.el, /claim on-chain|claiming/i)[0];
+  ok('a submitted claim disables the claim control until it settles',
+    inFlightHeld.length === 1 && busyClaim?.disabled === true,
+    `held=${inFlightHeld.length} disabled=${busyClaim?.disabled}`);
+  const preparesBefore = chromeLog.calls.filter((c) => c === 'tx.prepareReview').length;
+  click(busyClaim);
+  await settle();
+  ok('a second click during submission cannot start another claim',
+    chromeLog.calls.filter((c) => c === 'tx.prepareReview').length === preparesBefore,
+    `${preparesBefore} -> ${chromeLog.calls.filter((c) => c === 'tx.prepareReview').length}; tail ${chromeLog.calls.slice(-8).join(',')}; disabled=${busyClaim?.disabled}`);
+  for (const item of inFlightHeld.splice(0)) item.callback({ ok: true, data: realClaimData });
+  await settle();
+  inFlightRoute.destroy();
+  chrome.runtime.sendMessage = inFlightOriginal;
+  inFlightRoute.el.remove();
+
+  resetBackend(SCENARIOS[2]);
+  resetDom();
+  const realClaim = FIXTURES['tx.claimFaucet'];
+  FIXTURES['tx.claimFaucet'] = () => {
+    throw apiError('SERVICE_TIMEOUT', 'The wallet service did not respond. Try again.', true);
+  };
+  const uncertainRoute = FaucetRoute({ params: {}, navigate() {}, back() {} });
+  DOC.body.appendChild(uncertainRoute.el);
+  await settle();
+  click(buttons(uncertainRoute.el, /claim on-chain/i)[0]);
+  await settle();
+  click(buttons(DOC.body, /^claim$/i)[0]);
+  await settle();
+  ok('a claim timeout reports an unknown outcome and forbids an immediate retry',
+    /Could not confirm whether this claim was submitted/.test(textOf(uncertainRoute.el))
+      && !/wallet service did not respond/.test(textOf(uncertainRoute.el)),
+    textOf(uncertainRoute.el).slice(0, 200));
+  uncertainRoute.destroy();
+  FIXTURES['tx.claimFaucet'] = realClaim;
+  FIXTURES['tx.prepareReview'] = realPrepare;
+  await settle();
+  ok('an uncertain faucet claim leaves no detached listeners',
+    detachedListeners().length === 0);
+  uncertainRoute.el.remove();
 }
 
 // ---- Contract v12: creation-bound recipient activation + cache-before-RPC History -------
@@ -4579,12 +5185,14 @@ async function ownRecipientRegistrationTest() {
         && activeAccount().address === ADDRESS_A);
     click(buttons(route.el, /^review$/i)[0]);
     await settle();
-    const toRow = [...route.el.querySelectorAll('.detail-row')]
-      .find((node) => textOf(node).startsWith('To'));
-    ok('review shows the own-account label ABOVE the FULL address',
+    // v1.5.0: the counterparty line prints "To <label>" with the shortened address beside it,
+    // and the whole address is one tap away plus always in Details. The label-before-address
+    // ordering (the point of the original assertion) is preserved on that line.
+    const toRow = route.el.querySelector('.tx-review-counterparty');
+    ok('review shows the own-account label with the address behind it',
       Boolean(toRow) && /Spending/.test(textOf(toRow))
-        && textOf(toRow).includes(ADDRESS_B)
-        && textOf(toRow).indexOf('Spending') < textOf(toRow).indexOf(ADDRESS_B),
+        && textOf(toRow).indexOf('Spending') < textOf(toRow).indexOf('ta')
+        && textOf(route.el).includes(ADDRESS_B),
       textOf(toRow).slice(0, 190));
 
     click(buttons(route.el, /^edit$/i)[0]);
@@ -4600,12 +5208,11 @@ async function ownRecipientRegistrationTest() {
     await settle();
     click(buttons(route.el, /^review$/i)[0]);
     await settle();
-    const contactRow = [...route.el.querySelectorAll('.detail-row')]
-      .find((node) => textOf(node).startsWith('To'));
-    ok('a saved contact also shows its name above the full destination address',
+    const contactRow = route.el.querySelector('.tx-review-counterparty');
+    ok('a saved contact also shows its name with the full destination address available',
       Boolean(contactRow) && textOf(contactRow).includes('Coffee shop')
-        && textOf(contactRow).includes(contact)
-        && textOf(contactRow).indexOf('Coffee shop') < textOf(contactRow).indexOf(contact));
+        && textOf(contactRow).indexOf('Coffee shop') < textOf(contactRow).indexOf('ta')
+        && textOf(route.el).includes(contact));
 
     click(buttons(route.el, /^edit$/i)[0]);
     type(route.el.querySelector('input[placeholder="ta…"]'), ADDRESS_B);
@@ -4791,6 +5398,59 @@ async function offlineBalanceConsumersTest() {
   }
 }
 
+// ---- Dashboard activation goes through the v12 owned-address path -----------
+
+/**
+ * Regression for a direct signing call from the UI: Dashboard used to fire
+ * `tx.autoCreateAccount` (auth: 'signing') for an unregistered active account. That bypassed
+ * the one review/signing boundary AND silently failed whenever the user enabled per-sign
+ * password re-auth, because a background refresh cannot answer a password prompt. The v12
+ * `tx.registerAccount` path is unlocked-only, proves the vault owns the address, and signs with
+ * that account's own key.
+ */
+async function dashboardActivationTest() {
+  section('dashboard activation: owned-address path, never a signing-gated direct call');
+  const original = {
+    info: FIXTURES['tx.getAccountInfo'],
+    register: FIXTURES['tx.registerAccount'],
+  };
+  const activationArgs = [];
+  try {
+    resetBackend(SCENARIOS[2]);
+    resetDom();
+    chromeLog.calls.length = 0;
+    FIXTURES['tx.getAccountInfo'] = () => ({ exists: false, balance: '0', stale: false });
+    FIXTURES['tx.registerAccount'] = (args) => {
+      activationArgs.push(args);
+      return { address: args?.address, networkId: 'betanet', exists: true, created: true,
+        signature: 'activation-signature' };
+    };
+    const dash = DashboardRoute({ navigate() {} });
+    DOC.body.appendChild(dash.el);
+    await settle();
+    const registerCall = chromeLog.calls.includes('tx.registerAccount');
+    const activationCall = chromeLog.calls.indexOf('tx.registerAccount');
+    ok('an unregistered active account is activated with tx.registerAccount',
+      registerCall, chromeLog.calls.slice(-12).join(','));
+    ok('Dashboard never calls the signing-gated tx.autoCreateAccount',
+      !chromeLog.calls.includes('tx.autoCreateAccount'),
+      chromeLog.calls.slice(-12).join(','));
+    ok('the activation targets the active account address, not an arbitrary one',
+      activationArgs.length === 1 && activationArgs[0]?.address === activeAccount().address,
+      JSON.stringify(activationArgs));
+    ok('the activation passes no password and no recipient-shaped field',
+      activationArgs.length === 1 && Object.keys(activationArgs[0]).join(',') === 'address',
+      JSON.stringify(activationArgs));
+    dash.destroy();
+    dash.el.remove();
+    ok('dashboard activation tears down without listeners on detached nodes',
+      detachedListeners().length === 0, JSON.stringify(detachedListeners().slice(0, 3)));
+  } finally {
+    FIXTURES['tx.getAccountInfo'] = original.info;
+    FIXTURES['tx.registerAccount'] = original.register;
+  }
+}
+
 // ---- Last key source: a spelled-out wipe, never a dead end ------------------
 
 /**
@@ -4930,6 +5590,733 @@ async function lastSourceRemovalTest() {
   }
 }
 
+async function nameReviewTest() {
+  section('domains: single-name review, checked signing, cancellation and stale replies');
+  const originals = { ...FIXTURES };
+  let route;
+  let writes = [];
+  let failure = null;
+  const mount = async (password = false) => {
+    resetBackend(SCENARIOS[2]);
+    resetDom();
+    backend.preferences.requirePasswordForSigning = password;
+    route = NameRoute({ back() {} });
+    DOC.body.appendChild(route.el);
+    await settle();
+    return route.el.querySelector('input');
+  };
+  const check = async (name = 'alice') => {
+    type(route.el.querySelector('input'), name);
+    ok('typing stays quiet until the debounce fires', route.el.querySelector('.name-status').textContent === '');
+    await sleep(500);
+    await settle();
+  };
+  const review = async () => {
+    const opener = buttons(route.el, /^review /i)[0];
+    opener.focus();
+    click(opener);
+    await settle();
+    return DOC.body.querySelector('.name-confirm-sheet');
+  };
+  const destroy = () => { route.destroy(); route.el.remove(); };
+  const sign = (params) => {
+    writes.push(params);
+    if (failure) throw failure;
+    return { signature: 'domain-confirmed-fixture' };
+  };
+  FIXTURES['name.register'] = sign;
+  FIXTURES['name.purchase'] = sign;
+  FIXTURES['name.renewLease'] = sign;
+  FIXTURES['name.claimExpired'] = sign;
+  try {
+    await mount();
+    ok('registration has one input and no batch controls or inline review',
+      route.el.querySelectorAll('input').length === 1
+      && !/Name 1|Add another name|atomic batch|base units|Header fee/.test(textOf(route.el))
+      && !route.el.querySelector('.name-review'));
+    await check();
+    ok('available status is concise', route.el.querySelector('.name-status').textContent === 'Available');
+    click(buttons(route.el, /increase registration period/i)[0]);
+    let sheet = await review();
+    ok('review is a body-level modal, never part of the route layout',
+      sheet?.getAttribute('role') === 'dialog' && !isInside(sheet, route.el));
+    // The deployed config is best-effort at 1000/yr, so the card names the price AND says it is
+    // not enforced — it never calls it free, and never puts it in the money table. The term is
+    // in the title and the network is named once in the context line.
+    ok('review shows the name, term, account and network',
+      /alice\.thru/.test(textOf(sheet)) && /2 years/.test(textOf(sheet))
+      && textOf(sheet).includes(ADDRESS_A)
+      && textOf(sheet).includes(activeNetwork().label),
+      textOf(sheet).slice(0, 240));
+    ok('the review discloses the declared price as unenforced instead of promising it is free',
+      /0\.000001 THRU|not enforced/i.test(textOf(sheet))
+        && !/No registration fee/.test(textOf(sheet)),
+      textOf(sheet).slice(0, 300));
+    const oldConfirm = buttons(sheet, /confirm and sign/i)[0];
+    pressKey(DOC.activeElement, 'Escape');
+    await settle();
+    click(oldConfirm);
+    ok('Escape restores the opener and detached confirm cannot sign',
+      !sheet.isConnected && /^review /i.test(labelOf(DOC.activeElement)) && writes.length === 0);
+    sheet = await review();
+    click(buttons(sheet, /^cancel$/i)[0]);
+    ok('Cancel closes review without signing', !sheet.isConnected && writes.length === 0);
+    sheet = await review();
+    click(buttons(route.el, /increase registration period/i)[0]);
+    ok('changing duration invalidates an open review', !sheet.isConnected);
+    sheet = await review();
+    type(route.el.querySelector('input'), 'bob');
+    ok('editing a name invalidates an open review', !sheet.isConnected);
+    await sleep(500);
+    await settle();
+    sheet = await review();
+    const confirm = buttons(sheet, /confirm and sign/i)[0];
+    click(confirm);
+    click(confirm);
+    await settle();
+    ok('double confirmation signs exactly once using reviewed values', writes.length === 1
+      && writes[0].name === 'bob' && writes[0].years === 3 && writes[0].via === 'custom'
+      && writes[0].expectedPricePerYear === '1000'
+      && writes[0].expectedAccountAddress === ADDRESS_A && writes[0].expectedNetworkId === 'betanet');
+    // Rule 29: the confirmation claim lives on ONE surface — the toast that carried the attempt.
+    // The route text must not restate it (it used to say it in the banner and the field line too).
+    const confirmedToasts = (await import('../src/ui/kit/toast.js')).activeToasts()
+      .filter((t) => /registration confirmed/i.test(t.text));
+    ok('only a returned confirmation renders success, once, on the toast',
+      confirmedToasts.length === 1 && !/Registration confirmed/.test(textOf(route.el)),
+      JSON.stringify({ confirmedToasts, route: textOf(route.el).slice(-160) }));
+    destroy();
+
+    // Old availability must not win during the replacement query's debounce window.
+    await mount();
+    const originalSend = chrome.runtime.sendMessage;
+    let held;
+    chrome.runtime.sendMessage = (message, callback) => {
+      if (message.method === 'name.checkCustomLease' && message.params.name === 'alice') {
+        held = callback;
+        return;
+      }
+      return originalSend(message, callback);
+    };
+    await check();
+    type(route.el.querySelector('input'), 'carol');
+    held({ ok: true, data: originals['name.checkCustomLease']({ name: 'alice' }) });
+    await settle();
+    ok('old availability cannot arm the replacement draft during debounce',
+      route.el.querySelector('.name-status').textContent === ''
+      && buttons(route.el, /^review /i)[0].classList.contains('hidden'));
+    chrome.runtime.sendMessage = originalSend;
+    destroy();
+
+    // Password authentication has one trap and transaction errors must exit that dialog.
+    await mount(true);
+    await check();
+    sheet = await review();
+    click(buttons(sheet, /confirm and sign/i)[0]);
+    await settle();
+    let password = DOC.body.querySelector('input[type="password"]');
+    ok('password replaces review instead of stacking focus traps',
+      !sheet.isConnected && DOC.body.querySelectorAll('[role="dialog"]').length === 1 && password);
+    type(password, SECRET_PASSWORD);
+    failure = apiError('AUTH_REQUIRED', 'Incorrect password.');
+    click(buttons(DOC.body.querySelector('[role="dialog"]'), /confirm and sign/i)[0]);
+    await settle();
+    ok('wrong password clears the secret and allows an authentication retry', password.isConnected && password.value === '');
+    failure = apiError('TX_RESULT_MISSING', 'Result unavailable', true);
+    type(password, SECRET_PASSWORD);
+    click(buttons(DOC.body.querySelector('[role="dialog"]'), /confirm and sign/i)[0]);
+    await settle();
+    const unknownToasts = (await import('../src/ui/kit/toast.js')).activeToasts()
+      .filter((t) => /Confirmation unavailable/.test(t.text));
+    ok('unknown submission closes password dialog, clears secret and offers outcome check',
+      !password.isConnected && password.value === '' && !DOC.body.querySelector('[role="dialog"]')
+      && unknownToasts.length === 1 && unknownToasts[0].tone === 'warning'
+      && buttons(route.el, /check outcome/i).length === 1
+      && !/Registration confirmed/.test(textOf(route.el))
+      && !/Confirmation unavailable/.test(textOf(route.el)));
+    destroy();
+    failure = null;
+
+    await mount(true);
+    await check();
+    sheet = await review();
+    click(buttons(sheet, /confirm and sign/i)[0]);
+    await settle();
+    password = DOC.body.querySelector('input[type="password"]');
+    type(password, SECRET_PASSWORD);
+    const writeCount = writes.length;
+    const authConfirm = buttons(DOC.body.querySelector('[role="dialog"]'), /confirm and sign/i)[0];
+    destroy();
+    click(authConfirm);
+    await settle();
+    ok('route teardown aborts authentication, clears secret and removes submit listeners',
+      !DOC.body.querySelector('[role="dialog"]') && password.value === '' && writes.length === writeCount);
+
+    await mount();
+    await check();
+    sheet = await review();
+    const sendBeforeHold = chrome.runtime.sendMessage;
+    let confirmReply;
+    chrome.runtime.sendMessage = (message, callback) => {
+      if (message.method === 'tx.confirmReview') { confirmReply = callback; return; }
+      return sendBeforeHold(message, callback);
+    };
+    click(buttons(sheet, /confirm and sign/i)[0]);
+    destroy();
+    confirmReply({ ok: true, data: { submit: { method: 'name.register', params: {} }, submitPolicy: { passwordRequired: false } } });
+    await settle();
+    chrome.runtime.sendMessage = sendBeforeHold;
+    ok('a late confirm response after teardown cannot initiate signing', writes.length === writeCount);
+
+    // Official renewal and expired-claim paths keep the same reviewed price/lease binding.
+    FIXTURES['name.getCustomRegistrar'] = () => ({ supported: false });
+    FIXTURES['name.getRegistry'] = () => ({ supported: true, registry: {
+      rootName: 'thru', rootRegistrar: 'taRegistryRoot', tokenMint: CUSTOM_MINT_FIXTURE, pricePerYear: '1000',
+    } });
+    FIXTURES['name.getPaymentBalance'] = () => ({ supported: true, exists: true, amount: '100000' });
+    for (const mine of [true, false]) {
+      FIXTURES['name.checkLease'] = () => ({ supported: true, leaseExists: true,
+        lease: { owner: mine ? ADDRESS_A : ADDRESS_B, endTime: '1800000000', expiredHint: !mine } });
+      await mount();
+      await check();
+      sheet = await review();
+      ok('official registrar review formats the verified payment-token decimals', /0\.001 LAB/.test(textOf(sheet)));
+      click(buttons(sheet, /confirm and sign/i)[0]);
+      await settle();
+      const last = writes.at(-1);
+      ok('renewal/claim retains reviewed lease expiry, account, price and network',
+        last.expectedLeaseEndTime === '1800000000' && last.expectedPricePerYear === '1000'
+        && last.expectedAccountAddress === ADDRESS_A && last.expectedNetworkId === 'betanet'
+        && chromeLog.calls.includes(mine ? 'name.renewLease' : 'name.claimExpired'));
+      destroy();
+    }
+  } finally {
+    route?.destroy();
+    for (const key of Object.keys(FIXTURES)) if (!(key in originals)) delete FIXTURES[key];
+    Object.assign(FIXTURES, originals);
+  }
+}
+
+// ---- One notification per event ------------------------------------------------------------
+//
+// AGENTS.md rule 29. The owner's 2026-10-27 screenshots showed a refused review printed twice
+// ("This review did not receive a signing confirmation." in the banner AND under the name field)
+// and a renewal that wrote the same attempt to a toast, an info banner and a field line. These
+// checks count a verdict across everything the user can see on this screen — the route (banner and
+// field line) and the live toasts — and require exactly one copy, with the in-flight bar retired
+// when the verdict lands. They failed on the pre-fix file with 3 copies of "Registration confirmed"
+// and a live success toast, which is why they exist (docs/DEFECT_LOG.md §22).
+async function nameNotificationTest() {
+  section('domains: one notification per event, never a second copy (rule 29)');
+  const { activeToasts, dismissAllToasts } = await import('../src/ui/kit/toast.js');
+  const originals = { ...FIXTURES };
+  let route;
+  let failure = null;
+  let renewalOwned = false;
+  const writes = [];
+  const baseCheckLease = originals['name.checkCustomLease'];
+  FIXTURES['name.checkCustomLease'] = ({ name } = {}) => {
+    const result = baseCheckLease({ name });
+    return renewalOwned ? {
+      ...result,
+      domainExists: true,
+      leaseExists: true,
+      lease: { owner: ADDRESS_A, expiresAtSeconds: '1800000000' },
+      expiredHint: false,
+    } : result;
+  };
+  const sign = (params) => {
+    writes.push(params);
+    if (failure) throw failure;
+    return { signature: 'domain-confirmed-fixture' };
+  };
+  FIXTURES['name.register'] = sign;
+  FIXTURES['name.purchase'] = sign;
+  FIXTURES['name.renewLease'] = sign;
+  FIXTURES['name.claimExpired'] = sign;
+
+  const mount = async (password = false) => {
+    dismissAllToasts();
+    resetBackend(SCENARIOS[2]);
+    resetDom();
+    backend.preferences.requirePasswordForSigning = password;
+    route = NameRoute({ back() {} });
+    DOC.body.appendChild(route.el);
+    await settle();
+  };
+  const destroy = () => {
+    route.destroy();
+    route.el.remove();
+    dismissAllToasts();
+  };
+  // Type a free name, wait out the availability debounce, open the review and confirm it inside
+  // the sheet. Every scenario starts from a real review so the submit path runs end to end.
+  const submit = async (name = 'alice', password = false) => {
+    await mount(password);
+    type(route.el.querySelector('input'), name);
+    await sleep(500);
+    await settle();
+    click(buttons(route.el, /^review /i)[0]);
+    await settle();
+    const sheet = DOC.body.querySelector('.name-confirm-sheet');
+    click(buttons(sheet, /confirm and sign/i)[0]);
+    await settle();
+  };
+  // How many times a sentence appears across the route text and every live toast.
+  const copies = (text) => {
+    const seen = [textOf(route.el), ...activeToasts().map((t) => t.text)].join(' ');
+    return (seen.match(new RegExp(text, 'gi')) || []).length;
+  };
+  const fieldLine = () => route.el.querySelector('.name-status').textContent;
+  const detail = (text) => JSON.stringify({
+    copies: copies(text), toasts: activeToasts(), route: textOf(route.el).slice(-200),
+  });
+
+  try {
+    // ---- the outcome of a successful submission: one copy, on the toast ----------------
+    failure = null;
+    await submit();
+    ok('a confirmed registration is announced exactly once',
+      copies('registration confirmed') === 1, detail('registration confirmed'));
+    ok('the in-flight bar becomes the verdict instead of a banner appearing beside it',
+      activeToasts().length === 1 && activeToasts()[0].key === 'name-submit'
+      && activeToasts()[0].tone === 'success', JSON.stringify(activeToasts()));
+    ok('the name field line keeps availability text only, never transaction text',
+      fieldLine() === '', JSON.stringify({ fieldLine: fieldLine() }));
+    destroy();
+
+    // The owner's second screenshot was a renewal in flight, so exercise the same shared submit
+    // handler with an owned lease, not just the registration branch.
+    renewalOwned = true;
+    failure = null;
+    await submit();
+    ok('a confirmed renewal is announced exactly once on the pending toast',
+      copies('renewal confirmed') === 1 && activeToasts().length === 1
+      && activeToasts()[0].tone === 'success' && fieldLine() === '',
+      detail('renewal confirmed'));
+    destroy();
+    renewalOwned = false;
+
+    // ---- the outcome of a refusal: the same bar, turned into the error -----------------
+    failure = apiError('TX_REJECTED', 'The network refused this transaction.');
+    await submit();
+    ok('a refused registration is reported exactly once',
+      copies('The network refused this transaction') === 1,
+      detail('The network refused this transaction'));
+    ok('the refusal reuses the in-flight bar rather than adding a second notification',
+      activeToasts().length === 1 && activeToasts()[0].tone === 'error'
+      && /Registration failed/.test(activeToasts()[0].text), JSON.stringify(activeToasts()));
+    ok('a refusal leaves the field line empty', fieldLine() === '', JSON.stringify({ fieldLine: fieldLine() }));
+    destroy();
+
+    // ---- an unknown outcome: one warning, and the CTA is what persists ------------------
+    failure = apiError('TX_RESULT_MISSING', 'Result unavailable', true);
+    await submit();
+    ok('an unknown outcome is stated exactly once, as a warning',
+      copies('Confirmation unavailable') === 1 && activeToasts().length === 1
+      && activeToasts()[0].tone === 'warning', detail('Confirmation unavailable'));
+    ok('the unknown state persists as "Check outcome", not as a second message',
+      buttons(route.el, /check outcome/i).length === 1
+      && !/Registration confirmed/.test(textOf(route.el)));
+    destroy();
+
+    // ---- a cancelled submission: the pending bar answers, nothing else speaks -----------
+    failure = null;
+    await submit('alice', true);
+    const passwordDialog = DOC.body.querySelector('[role="dialog"]');
+    click(buttons(passwordDialog, /^cancel$/i)[0]);
+    await settle();
+    ok('cancelling answers the pending bar and says nothing twice',
+      copies('Registration cancelled') === 1 && !DOC.body.querySelector('[role="dialog"]')
+      && fieldLine() === '', detail('Registration cancelled'));
+    destroy();
+
+    // ---- a review that can no longer be signed: screen state, not an event --------------
+    failure = apiError('REVIEW_EXPIRED', 'That review expired.');
+    await submit();
+    ok('a void review is screen state, and no verdict toast is left behind',
+      copies('can no longer be signed') === 1 && activeToasts().length === 0,
+      detail('can no longer be signed'));
+    destroy();
+
+    // ---- the screenshot: confirmReview without a consent token --------------------------
+    // A worker built before the consent gate replies with submit instructions and no token. The
+    // raw contract sentence must not reach the screen at all, and nothing may be signed.
+    failure = null;
+    const realConfirm = FIXTURES['tx.confirmReview'];
+    FIXTURES['tx.confirmReview'] = ({ reviewId } = {}) => ({
+      reviewId,
+      submit: { method: 'name.register', params: {} },
+      submitPolicy: { passwordRequired: false },
+    });
+    const writesBefore = writes.length;
+    await submit();
+    ok('a review the wallet cannot vouch for is explained once, in words the user can act on',
+      copies('This review did not receive a signing confirmation') === 0
+      && copies('can no longer be signed') === 1, detail('can no longer be signed'));
+    ok('a review without a consent token signs nothing and leaves no spinner',
+      writes.length === writesBefore && activeToasts().length === 0,
+      JSON.stringify({ writes: writes.length - writesBefore, toasts: activeToasts() }));
+    FIXTURES['tx.confirmReview'] = realConfirm;
+    destroy();
+  } finally {
+    dismissAllToasts();
+    FIXTURES['tx.confirmReview'] = originals['tx.confirmReview'];
+    for (const key of Object.keys(FIXTURES)) if (!(key in originals)) delete FIXTURES[key];
+    Object.assign(FIXTURES, originals);
+  }
+}
+
+async function trackedDomainsTest() {
+  section('domains: cached tracked list, imports, primary selection and stale contexts');
+  resetBackend(SCENARIOS[2]);
+  resetDom();
+  const originals = { ...FIXTURES };
+  const originalSend = chrome.runtime.sendMessage;
+  const held = [];
+  let holdLive = true;
+  let holdCache = false;
+  let items = ['alice', 'bob'].map((name, index) => ({
+    name, rootName: 'thru', rootAddress: 'taNP1MFOO2shpn6ORofIGSNiQ-qJ9VE2lDkDwvUmgUmaQZ', domainAddress: `taDomain${index}`,
+    verifiedAt: 1700000000000, checkedAt: 1700000000000, status: 'owned', stale: false, isPrimary: index === 0,
+  }));
+  const data = (stale = false) => ({ networkId: activeNetwork().id, accountAddress: activeAccount().address, source: 'tracked',
+    items: activeAccount().address === ADDRESS_A ? items.map(r => ({ ...r, stale })) : [] });
+  let chosen = null;
+  FIXTURES['name.getCachedDomains'] = () => data(true);
+  FIXTURES['name.listDomains'] = () => data();
+  FIXTURES['name.checkCustomLease'] = ({ name } = {}) => {
+    const isAliceOrBob = name === 'alice' || name === 'bob' || name === 'carol';
+    return {
+      ...originals['name.checkCustomLease']({ name }),
+      domainAddress: name === 'alice' ? 'taDomain0' : name === 'bob' ? 'taDomain1' : 'taImported',
+      domainExists: isAliceOrBob,
+      leaseExists: isAliceOrBob,
+      lease: isAliceOrBob ? {
+        owner: ADDRESS_A,
+        label: name,
+        expiresAtSeconds: name === 'bob' ? '18446744073709551615' : '1800000000',
+      } : null,
+    };
+  };
+  FIXTURES['name.setPrimaryDomain'] = params => {
+    chosen = params;
+    items = items.map(r => ({ ...r, isPrimary: r.domainAddress === params.domainAddress }));
+    return items.find(r => r.isPrimary);
+  };
+  FIXTURES['name.unlinkPrimary'] = () => { items = items.map(r => ({ ...r, isPrimary: false })); return { unlinked: true }; };
+  FIXTURES['name.trackDomain'] = ({ name }) => {
+    if (name === 'foreign.thru') throw apiError('NOT_NAME_OWNER', 'This domain belongs to another account.');
+    items.push({ ...items[0], name: name.replace('.thru', ''), domainAddress: 'taImported', isPrimary: false });
+    return items.at(-1);
+  };
+  FIXTURES['name.untrackDomain'] = ({ domainAddress }) => {
+    items = items.filter(r => r.domainAddress !== domainAddress);
+    return { untracked: true };
+  };
+  chrome.runtime.sendMessage = (message, callback) => {
+    if ((holdLive && message.method === 'name.listDomains') || (holdCache && message.method === 'name.getCachedDomains')) {
+      held.push({ method: message.method, callback, result: data(message.method === 'name.getCachedDomains') });
+      return;
+    }
+    return originalSend(message, callback);
+  };
+  const route = NameRoute({ back() {} });
+  DOC.body.appendChild(route.el);
+  try {
+    await settle();
+    click(buttons(route.el, /^my domains$/i)[0]);
+    await settle();
+    ok('saved domains paint before a live owner read finishes',
+      held.length === 1 && /alice.thru/.test(textOf(route.el)) && /bob.thru/.test(textOf(route.el)));
+    ok('cached ownership is labelled and cannot enable primary or renewal actions',
+      /Ownership not verified/.test(textOf(route.el)) && buttons(route.el, /^make primary$/i)[0].disabled
+      && buttons(route.el.querySelector('.name-domain-list'), /^renew$/i).length === 2
+      && buttons(route.el.querySelector('.name-domain-list'), /^renew$/i).every(b => b.disabled));
+    holdLive = false;
+    held.shift().callback({ ok: true, data: data() });
+    await settle();
+    ok('live verification replaces cache and enables only owned-domain actions',
+      !/Ownership not verified/.test(textOf(route.el)) && !buttons(route.el, /^make primary$/i)[0].disabled);
+    click(buttons(route.el.querySelector('.name-domain-list'), /^renew$/i)[0]);
+    await settle();
+    ok('domain Renew preselects its name and enables renewal review',
+      route.el.querySelector('input')?.value === 'alice'
+      && /Owned by you/.test(textOf(route.el))
+      && buttons(route.el, /^review renewal$/i).length === 1);
+    click(buttons(route.el, /^my domains$/i)[0]);
+    await settle();
+    click(buttons(route.el, /^make primary$/i)[0]);
+    await settle();
+    ok('primary selection carries reviewed account/network identity and retains both domains',
+      chosen.domainAddress === 'taDomain1' && chosen.expectedAccountAddress === ADDRESS_A
+      && chosen.expectedNetworkId === 'betanet' && /alice.thru/.test(textOf(route.el)) && /bob.thru/.test(textOf(route.el)));
+    click(buttons(route.el, /^unlink/i)[0]);
+    await settle();
+    ok('unlink leaves both domains in My Domains', buttons(route.el, /^make primary$/i).length === 2);
+    ok('out-of-range lease timestamp is handled honestly without claiming Active or a date',
+      /18446744073709551615 \(chain time, seconds\)/.test(textOf(route.el)) && !/Active|Invalid Date|Valid through/.test(textOf(route.el)));
+    click(buttons(route.el, /^register$/i)[0]);
+    await settle();
+    const regInput = route.el.querySelector('input[placeholder="Search yourname.thru"]');
+    type(regInput, 'ab');
+    await settle(50);
+    ok('draft under 3 chars hides tier pill', Boolean(route.el.querySelector('.domain-tier-pill.hidden')));
+    type(regInput, 'carol');
+    await settle(450);
+    ok('valid draft shows tier pill', !route.el.querySelector('.domain-tier-pill.hidden'));
+    ok('owned domain in Register tab shows Import button', buttons(route.el, /^import$/i).length === 1);
+    click(buttons(route.el, /^import$/i)[0]);
+    await settle();
+    click(buttons(route.el, /^my domains$/i)[0]);
+    await settle();
+    ok('import adds another domain without replacing the existing list', /carol.thru/.test(textOf(route.el))
+      && /alice.thru/.test(textOf(route.el)));
+    click(buttons(route.el, /^remove/i)[1]);
+    await settle();
+    ok('untrack removes only the selected local entry', !/bob.thru/.test(textOf(route.el)) && /alice.thru/.test(textOf(route.el)));
+
+    holdCache = true;
+    click(buttons(route.el, /^refresh ownership$/i)[0]);
+    await settle();
+    held.shift().callback({ ok: true, data: data(true) });
+    await settle();
+    holdCache = false;
+    ok('late cache cannot overwrite a fresh live verification', !/Ownership not verified/.test(textOf(route.el)));
+    holdLive = true;
+    click(buttons(route.el, /^refresh ownership$/i)[0]);
+    await settle();
+    const oldReply = held.shift();
+    backend.activeIndex = 1;
+    emitEvent('accountsChanged', { active: activeAccount() });
+    await settle();
+    oldReply.callback({ ok: true, data: oldReply.result });
+    await settle();
+    ok('old account replies cannot populate the newly selected account', !/alice.thru|carol.thru/.test(textOf(route.el)));
+    route.destroy();
+    route.el.remove();
+    for (const reply of held.splice(0)) reply.callback({ ok: true, data: reply.result });
+    await settle();
+    // This mounts without Router: clean up application-owned toasts separately from
+    // route-owned row listeners, including the toast host from earlier shim documents.
+    (await import('../src/ui/kit/toast.js')).dismissAllToasts();
+    const leaked = detachedListeners();
+    ok('domain list teardown removes row listeners and ignores late reads', leaked.length === 0, JSON.stringify(leaked));
+  } finally {
+    route.destroy();
+    route.el.remove();
+    chrome.runtime.sendMessage = originalSend;
+    for (const reply of held.splice(0)) reply.callback({ ok: true, data: reply.result });
+    Object.assign(FIXTURES, originals);
+  }
+}
+
+async function nonBlockingBootTest() {
+  section('boot: immediate public UI, no backend gate after unlock, stale bootstrap discarded');
+  resetBackend(SCENARIOS[1]); resetDom(); guards.invalidate();
+  const originalSend = chrome.runtime.sendMessage;
+  let bootstrapReply;
+  let guardReads = 0;
+  chrome.runtime.sendMessage = (message, callback) => {
+    if (message.method === 'system.bootstrap') { bootstrapReply = callback; return; }
+    if (['wallet.hasVault', 'wallet.isUnlocked'].includes(message.method)) guardReads++;
+    return originalSend(message, callback);
+  };
+  const root = DOC.getElementById('app');
+  const booting = boot({ root });
+  ok('boot paints usable password input synchronously before bootstrap replies',
+    Boolean(root.querySelector('input')) && !/Checking wallet/.test(textOf(root))
+      && buttons(root, /^reload$/i).length === 0);
+  const router = await booting;
+  try {
+    const input = root.querySelector('input');
+    type(input, SECRET_PASSWORD);
+    input.focus();
+    bootstrapReply({ ok: true, data: { hasVault: true, unlocked: false } });
+    await settle();
+    ok('locked bootstrap preserves the typed password field and its focus',
+      root.querySelector('input') === input && input.value === SECRET_PASSWORD && DOC.activeElement === input);
+    click(buttons(root, /^unlock$/i)[0]);
+    await settle();
+    ok('unlock reaches dashboard with no extra auth round-trip or checking screen',
+      router.currentPath === '/dashboard' && guardReads === 0 && !/Checking wallet/.test(textOf(root)));
+    await settle(450);
+    router.navigate('/receive', { replace: true });
+    await settle();
+    ok('normal navigation past the old 400ms cache lifetime never requests auth again',
+      router.currentPath === '/receive' && guardReads === 0);
+    backend.unlocked = false;
+    emitEvent('lockStateChanged', { unlocked: false });
+    await settle();
+    ok('background lock still removes private UI and returns to unlock', router.currentPath === '/unlock');
+    router.navigate('/send', { replace: true });
+    await settle();
+    ok('private navigation remains refused after lock', router.currentPath === '/unlock');
+  } finally {
+    WIN.dispatchEvent({ type: 'unload' });
+    router.stop();
+    chrome.runtime.sendMessage = originalSend;
+  }
+
+  resetBackend(SCENARIOS[1]); resetDom(); guards.invalidate();
+  chrome.runtime.sendMessage = (message, callback) => {
+    if (message.method === 'system.bootstrap') { bootstrapReply = callback; return; }
+    return originalSend(message, callback);
+  };
+  const newer = await boot({ root: DOC.getElementById('app') });
+  try {
+    type(newer.root.querySelector('input'), SECRET_PASSWORD);
+    click(buttons(newer.root, /^unlock$/i)[0]);
+    await settle();
+    ok('unlock can finish while the original bootstrap is still held', newer.currentPath === '/dashboard');
+    bootstrapReply({ ok: true, data: { hasVault: true, unlocked: false } });
+    await settle();
+    ok('late locked bootstrap cannot undo a newer successful unlock', newer.currentPath === '/dashboard');
+  } finally {
+    WIN.dispatchEvent({ type: 'unload' });
+    newer.stop(); chrome.runtime.sendMessage = originalSend;
+  }
+
+  for (const hash of ['#/send', '#/unlock?returnTo=%2Freceive']) {
+    resetBackend(SCENARIOS[1]); resetDom(); guards.invalidate(); WIN.location.hash = hash;
+    let unlockReply;
+    chrome.runtime.sendMessage = (message, callback) => {
+      if (message.method === 'system.bootstrap') { bootstrapReply = callback; return; }
+      if (message.method === 'wallet.unlock') { unlockReply = callback; return; }
+      return originalSend(message, callback);
+    };
+    const deep = await boot({ root: DOC.getElementById('app') });
+    try {
+      const input = deep.root.querySelector('input');
+      type(input, SECRET_PASSWORD); input.focus();
+      click(buttons(deep.root, /^unlock$/i)[0]);
+      await settle();
+      bootstrapReply({ ok: true, data: { hasVault: true, unlocked: false } });
+      await settle();
+      ok(`${hash}: bootstrap preserves an in-flight unlock and its input`,
+        deep.root.querySelector('input') === input && input.value === SECRET_PASSWORD);
+      backend.unlocked = true;
+      unlockReply({ ok: true, data: { unlocked: true } });
+      await settle();
+      ok(`${hash}: successful in-flight unlock reaches the requested route`,
+        deep.currentPath === (hash === '#/send' ? '/send' : '/receive'));
+    } finally {
+      WIN.dispatchEvent({ type: 'unload' }); deep.stop(); chrome.runtime.sendMessage = originalSend;
+    }
+  }
+
+  resetBackend(SCENARIOS[1]); resetDom(); guards.invalidate();
+  chrome.runtime.sendMessage = (message, callback) => {
+    if (message.method === 'system.bootstrap') { bootstrapReply = callback; return; }
+    if (['wallet.hasVault', 'wallet.isUnlocked'].includes(message.method)) return;
+    return originalSend(message, callback);
+  };
+  const early = await boot({ root: DOC.getElementById('app') });
+  try {
+    click(buttons(early.root, /reset wallet on this device/i)[0]);
+    await settle();
+    ok('early Reset paints its real form even with bootstrap/auth reads held',
+      early.currentPath === '/reset' && /This erases your keys/.test(textOf(early.root)));
+    bootstrapReply({ ok: true, data: { hasVault: true, unlocked: false } });
+  } finally {
+    WIN.dispatchEvent({ type: 'unload' }); early.stop(); chrome.runtime.sendMessage = originalSend;
+  }
+
+  resetBackend(SCENARIOS[2]); resetDom(); guards.invalidate(); WIN.location.hash = '#/welcome';
+  const existing = await boot({ root: DOC.getElementById('app') });
+  await settle();
+  ok('initial /welcome cannot bypass the existing unlocked-wallet redirect', existing.currentPath === '/dashboard');
+  emitEvent('lockStateChanged', { unlocked: false, hasVault: false });
+  await settle();
+  ok('reset event in another page removes private UI and opens onboarding', existing.currentPath === '/welcome');
+  existing.navigate('/welcome', { replace: true }); await settle();
+  emitEvent('lockStateChanged', { unlocked: false, hasVault: false }); await settle();
+  ok('reset event arriving after reset navigation cannot resurrect unlock', existing.currentPath === '/welcome');
+  WIN.dispatchEvent({ type: 'unload' }); existing.stop();
+
+  resetBackend(SCENARIOS[1]); resetDom(); guards.invalidate();
+  chrome.runtime.sendMessage = (message, callback) => {
+    if (message.method === 'system.bootstrap') { bootstrapReply = callback; return; }
+    return originalSend(message, callback);
+  };
+  const external = await boot({ root: DOC.getElementById('app') });
+  try {
+    backend.unlocked = true;
+    emitEvent('lockStateChanged', { unlocked: true });
+    bootstrapReply({ ok: true, data: { hasVault: true, unlocked: false } });
+    await settle();
+    external.navigate('/receive', { replace: true }); await settle();
+    ok('late locked bootstrap cannot overwrite a newer external unlock event', external.currentPath === '/receive');
+  } finally {
+    WIN.dispatchEvent({ type: 'unload' }); external.stop(); chrome.runtime.sendMessage = originalSend;
+  }
+
+  resetBackend(SCENARIOS[0]); resetDom(); guards.invalidate(); WIN.location.hash = '#/welcome';
+  let refReply;
+  chrome.runtime.sendMessage = (message, callback) => {
+    if (message.method === 'system.bootstrap') { bootstrapReply = callback; return; }
+    if (message.method === 'account.getActiveRef') { refReply = callback; return; }
+    return originalSend(message, callback);
+  };
+  const creating = await boot({ root: DOC.getElementById('app') });
+  try {
+    click(buttons(creating.root, /create a new wallet/i)[0]);
+    const inputs = allElements(creating.root).filter((el) => el.localName === 'input' && el.getAttribute('type') === 'password');
+    inputs.forEach((input) => type(input, SECRET_PASSWORD));
+    click(buttons(creating.root, /^create wallet$/i)[0]);
+    await settle();
+    ok('new wallet creation finishes before the held account-ref read', backend.hasVault && typeof refReply === 'function');
+    bootstrapReply({ ok: true, data: { hasVault: false, unlocked: false } });
+    await settle();
+    refReply({ ok: true, data: FIXTURES['account.getActiveRef']() });
+    await settle();
+    ok('stale no-vault bootstrap cannot interrupt required backup after creation',
+      creating.currentPath === '/export' && textOf(creating.root).includes('thistle'));
+  } finally {
+    WIN.dispatchEvent({ type: 'unload' }); creating.stop(); chrome.runtime.sendMessage = originalSend;
+  }
+
+
+  resetBackend(SCENARIOS[2]); resetDom(); guards.invalidate();
+  WIN.localStorage.setItem('thru_auth_hint', 'unlocked');
+  chrome.runtime.sendMessage = (message, callback) => {
+    if (message.method === 'system.bootstrap') { bootstrapReply = callback; return; }
+    return originalSend(message, callback);
+  };
+  const unlockedBootRoot = DOC.getElementById('app');
+  const unlockedBooting = boot({ root: unlockedBootRoot });
+  ok('unlocked boot does not mount password input before bootstrap replies (no lockscreen flash)',
+    !unlockedBootRoot.querySelector('input') && buttons(unlockedBootRoot, /^unlock$/i).length === 0);
+  const unlockedRouter = await unlockedBooting;
+  bootstrapReply({ ok: true, data: { hasVault: true, unlocked: true } });
+  await settle();
+  ok('unlocked boot lands directly on dashboard once bootstrap replies',
+    unlockedRouter.currentPath === '/dashboard');
+  WIN.dispatchEvent({ type: 'unload' }); unlockedRouter.stop(); chrome.runtime.sendMessage = originalSend;
+
+  resetBackend(SCENARIOS[1]); resetDom(); guards.invalidate();
+  WIN.localStorage.setItem('thru_auth_hint', 'unlocked');
+  chrome.runtime.sendMessage = (message, callback) => {
+    if (message.method === 'system.bootstrap') { bootstrapReply = callback; return; }
+    return originalSend(message, callback);
+  };
+  const staleBootRoot = DOC.getElementById('app');
+  const staleBooting = boot({ root: staleBootRoot });
+  ok('stale unlocked hint does not mount password input before bootstrap replies',
+    !staleBootRoot.querySelector('input'));
+  ok('stale unlocked hint renders no private account address before bootstrap replies',
+    !/ta[A-Za-z0-9_-]{40,}/.test(staleBootRoot.textContent));
+  ok('stale unlocked hint renders no secret data before bootstrap replies',
+    findSecrets(SECRETS).length === 0);
+  const staleRouter = await staleBooting;
+  bootstrapReply({ ok: true, data: { hasVault: true, unlocked: false } });
+  await settle();
+  ok('stale unlocked hint safely lands on /unlock once background reports locked',
+    staleRouter.currentPath === '/unlock' && Boolean(staleBootRoot.querySelector('input'))
+      && WIN.localStorage.getItem('thru_auth_hint') === 'locked');
+  WIN.dispatchEvent({ type: 'unload' }); staleRouter.stop(); chrome.runtime.sendMessage = originalSend;
+}
+
 // ---- Run -------------------------------------------------------------------
 
 const startedAt = Date.now();
@@ -4948,10 +6335,17 @@ try {
   await lastSourceRemovalTest();
   await navigationTest();
   await progressiveSendTest();
+  await reviewStepInvalidationTest();
+  await faucetReviewTest();
   await ownRecipientRegistrationTest();
   await historyCacheFirstTest();
   await offlineBalanceConsumersTest();
+  await nameReviewTest();
+  await nameNotificationTest();
+  await trackedDomainsTest();
+  await dashboardActivationTest();
   await panelExclusionTest();
+  await nonBlockingBootTest();
   negativeControls();
 } finally {
   releaseConsole();

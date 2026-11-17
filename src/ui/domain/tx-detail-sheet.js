@@ -1,4 +1,4 @@
-// Transaction detail sheet — P2 of docs/HISTORY_REDESIGN_PLAN.md.
+// Transaction detail sheet — see docs/guides/history-and-activity.md §4.
 //
 // Tapping a card in Activity opens this: the full signature with a copy action, an explorer
 // link, and a label/value table of everything we can HONESTLY state about the transaction.
@@ -13,7 +13,7 @@
 // Two rows carry provenance in the row itself rather than relying on the reader to know:
 //
 //   Fee   — Thru's TransactionExecutionResult has NO charged-fee field (verified against the
-//           generated protobuf; see docs/archive/TX_DETAIL_SPIKE.md §3.3). The only fee obtainable is
+//           generated protobuf; see docs/guides/protocol-and-rpc.md §3). The only fee obtainable is
 //           the one DECLARED IN THE HEADER by the sender. That is a different claim from
 //           "what this cost you", so the row says which one it is. Absent => "Not available".
 //   Time  — transactions carry no time; the containing BLOCK does, optionally. When the node

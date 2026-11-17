@@ -38,7 +38,7 @@ export function Field(props = {}) {
   const {
     label, type = 'text', name, placeholder, hint, value = '',
     multiline = false, rows = 3, secret = false, autofocus = false,
-    inputMode, maxLength, onInput, onEnter,
+    inputMode, maxLength, onInput, onEnter, readonly = false,
   } = props;
 
   const controlId = nextId('f');
@@ -66,6 +66,7 @@ export function Field(props = {}) {
     });
 
   control.value = value;
+  if (readonly || props.readOnly) control.setAttribute('readonly', '');
 
   // Secret inputs must never reach a spell checker, an autofill store, or an
   // autocapitalise pass. With Chrome's Enhanced Spell Check enabled, a spellchecked

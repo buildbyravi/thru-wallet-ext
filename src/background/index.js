@@ -1,14 +1,16 @@
 // MV3 background service worker entry point for Thru Wallet.
 // Handles inactivity-based auto-lock and dispatches UI RPC requests.
 
-import { lock } from '../lib/vault.js';
+import { isUnlocked, lock as lockWallet } from './services/wallet-service.js';
 import { handleApiRequest } from './api-router.js';
 import { ensureAutoLockAlarm, shouldAutoLock } from './services/system-service.js';
 import { syncActionIcon } from './services/icon-service.js';
-import { emitLockStateChanged } from './services/event-service.js';
 import { CLOSE_SIDE_PANEL_ACTION } from '../shared/side-panel.js';
+import { discardAllReviews } from './services/review-service.js';
 import { getPreferences } from './services/preferences-service.js';
 import { openNotificationTx } from './services/history-service.js';
+import * as pending from './services/pending-tx-service.js';
+import * as primaryNames from './services/primary-name-service.js';
 
 const AUTO_LOCK_ALARM = 'thru-auto-lock';
 
@@ -52,25 +54,52 @@ async function syncSidePanelBehavior() {
 
 syncSidePanelBehavior();
 
+pending.configureRegistrationRecovery({ remember: primaryNames.rememberConfirmedRegistration,
+  clear: primaryNames.clearAllDomains });
+async function recoverPending() {
+  await pending.reconcile();
+}
+void recoverPending().catch(() => {});
+chrome.storage?.onChanged?.addListener((changes, area) => {
+  if (area === 'local' && changes.thru_active_network) void recoverPending().catch(() => {});
+});
+
 chrome.runtime.onInstalled.addListener(() => {
   ensureAutoLockAlarm();
   syncSidePanelBehavior();
+  void recoverPending().catch(() => {});
 });
 
-chrome.runtime.onStartup.addListener(() => {
+chrome.runtime.onStartup.addListener(async () => {
   ensureAutoLockAlarm();
   syncSidePanelBehavior();
+  void recoverPending().catch(() => {});
+  // A browser restart ends whatever session the user had. If the wallet came back locked, any
+  // prepared review is consent from a session that no longer exists — discard it now rather than
+  // leave it to the 120-second TTL (2026-11-01 audit).
+  try {
+    const unlocked = await isUnlocked();
+    if (!unlocked) await discardAllReviews();
+  } catch {
+    // never let startup cleanup kill the worker
+  }
 });
 
 // The alarm is a heartbeat, not the lock timer itself. It wakes roughly every minute and
 // locks only once the configured inactivity window has actually elapsed, so an active
 // signing flow is never interrupted mid-way.
 chrome.alarms.onAlarm.addListener(async (alarm) => {
+  if (alarm.name === pending.PENDING_ALARM) {
+    await recoverPending().catch(() => {});
+    return;
+  }
   if (alarm.name !== AUTO_LOCK_ALARM) return;
   try {
     if (await shouldAutoLock()) {
-      await lock();
-      emitLockStateChanged(false);
+      // Through the wallet service, not the vault: locking has side effects beyond destroying the
+      // session key (prepared reviews are discarded — Hard rule 21), and a second lock path that
+      // forgets them is exactly the defect this replaced (2026-11-01 audit).
+      await lockWallet();
     }
   } catch {
     // never let a background throw kill the worker

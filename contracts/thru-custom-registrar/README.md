@@ -1,129 +1,86 @@
 # thru-custom-registrar
 
-Side-by-side name registrar program for the Thru L1 (ThruVM / RISC-V), built to run
-next to the native name-service program — never replacing it. Owner directive
-2026-10-24: open public subdomain registration under our own namespace root with a
-protocol-collected fee (testnet: **1000 base units/year**; mainnet price decided later
-against the THRU market price, changed at runtime via `UpdateConfig`).
+Side-by-side name registrar program for the Thru L1 (ThruVM / RISC-V), operating alongside the official system Name Service program (`taNAMEqRNEDeMWp0cDYmMVdZyTZiF5NyGDR9zTwH42rWQG`) without replacing it. Implements tiered per-year `.thru` subdomain registration and renewal (`D-016`, `D-019`).
+
+> **Current Artifact vs Live Betanet State (Read First)**
+>
+> | Target | State |
+> | --- | --- |
+> | **Checked-in `thru-custom-registrar.bin`** | **33,714 bytes**, `sha256 f93c112b…35dd2`. Includes layout-2 tiered pricing (`fee_3_char`, `fee_4_char`, `fee_5plus_char`, `fee_policy`) **and** canonical config PDA enforcement (`ERR_WRONG_CONFIG` = `0xD112`). |
+> | **Deployed on Betanet (`ta2vDCBzzptN2qVZgz6PXsCp5cNB7Nef4yeQ3W-OqzZcfF`)** | **2026-10-31** build (**30,000 bytes**): layout-2 config (`ta_9lLvhxurg4J5DyZ82W14rzzGWCEfj9B7Y8wa99amPBa`) updated on-chain to `100,000 / 10,000 / 1,000` base units/yr with `fee_policy = strict` (`1`), **without** the `0xD112` canonical-PDA check (`scripts/defi-evidence/registrar-deploy-betanet-thru-1793443647724.json`). |
+> | **Open Verification Gate** | (1) Upgrade Betanet program to the 33,714-byte `.bin`; (2) execute one live `Register` and `Renew` while measuring the treasury balance delta (`collectionProbe.measured` is currently `false`). |
 
 ```text
  user (signer, idx 0)
-   │  Register{label, years, target}            fee = fee_per_year × years (u64 checked)
-   ▼
- ┌────────────────────────────┐  CPI init-root / register-subdomain
- │  thru-custom-registrar     │ ────────────────────────────────▶ native name-service
- │  (this program)            │    InvokeAuth{config account}     (tag 0 / tag 1)
- └────────────────────────────┘
-   │ sys_account_transfer(user → treasury, fee)
-   ▼
+   |  Register{label, years, target}     fee = total_for_term(label_len, years) (u64 checked)
+   v
+ +----------------------------+  CPI init-root / register-subdomain
+ |  thru-custom-registrar     | ------------------------------------> native name-service
+ |  (this program)            |    InvokeAuth{config account}         (tag 0 / tag 1)
+ +----------------------------+
+   | sys_account_transfer(user -> treasury, total_fee) [strict reverts on refusal; best-effort ignores]
+   v
  treasury account
 ```
 
-## Why this design
+## Why This Design
 
-The native name-service program enforces **parent authority**: register-subdomain
-reverts (error 3) unless the authority account is authorized. The name-service's
-`.id`/`.thru`-style roots are closed to foreign signers — live-verified on Betanet
-2026-10-24 (owner's probe: `scripts/probe-live-name.mjs`; error -765 / user error 3 in
-subsequent transaction traces). ThruVM's CPI framework (`INVOKE` syscall 0x0A +
-`InvokeAuth`) lets a *program-owned* account be passed as an authorized authority to a
-callee (`is_account_idx_owned_by_current_program`). So:
+The native Name Service program enforces parent authority: `register-subdomain` reverts (user error `3`) unless signed or CPI-authorized by the root's authority. ThruVM's CPI syscall (`INVOKE` + `InvokeAuth`) allows a program-owned config account to authorize subdomain creation:
 
-1. `Initialize` creates the program-owned **config account** (32-byte caller-chosen
-   seed), stores admin/treasury/fee/root, then CPIs `init-root` with the config account
-   as the root's authority.
-2. `Register` validates policy, collects the fee by `sys_account_transfer` user →
-   treasury, creates the program-owned **lease account**, then CPIs
-   `register-subdomain` with the config account authorized via `InvokeAuth`.
-3. `Renew` extends the lease (no name-service CPI needed; the domain record persists):
-   new expiry = max(now, expires_at) + years × 31_536_000 s.
-4. `UpdateConfig` (admin only) adjusts `fee_per_year` and/or `treasury`.
+1. `InitializeV2` (tag `4`) creates the program-owned `RegistrarConfig` PDA (`TCR:config:v1`), stores admin, treasury, 3/4/5+ character annual tiers, `fee_policy`, and root metadata, then CPIs `init-root` with the config account as root authority. (Legacy flat-fee tag `0` `Initialize` is explicitly rejected with `0xD006`.)
+2. `Register` (tag `1`) validates label rules and canonical config PDA, writes the `DomainLease` PDA, applies `collect_fee()` according to `fee_policy`, and CPIs `register-subdomain` via `InvokeAuth`.
+3. `Renew` (tag `2`) extends an existing lease (`new_expiry = max(now, expires_at) + years * 31,536,000 s`) and collects the tiered renewal fee.
+4. `UpdateConfig` (tag `3`, admin only) updates `treasury`, any of the three character-length tiers (`fee_per_year` remains a derived mirror of `fee_5plus_char`), and/or `fee_policy`, resizing a 144-byte layout-1 account to 176-byte layout-2 in place (`sys_account_resize`).
 
-Checks–Effects–Interactions order is strict: all transaction-account identity checks
-and the lease write happen *before* the fee transfer and the CPI; a CPI failure reverts
-the whole transaction (fee transfer included).
+## Pinned Byte Formats (Shared with `src/lib/custom-registrar.js`)
 
-## Byte formats (pinned, shared with the JS client)
+All integers are little-endian. Because `@thru/sdk@0.4.2` byte-sorts `readWrite` and `readOnly` account lists (`normalizeAccountList`), every instruction encodes explicit `u16` account-table indices resolved via `InstructionContext.getAccountIndex` (`test/test-custom-registrar.mjs`).
 
-All integers little-endian. Instruction header: `u32 tag`, followed by the instruction's
-u16 **account-table indices**, then the semantic args.
+| Tag | Instruction | Payload |
+| ---: | --- | --- |
+| `0` | `Initialize` *(superseded)* | Rejected with `0xD006` so stale flat-fee clients cannot miswrite layout-2 slots. |
+| `4` | `InitializeV2` | `u16 config_idx`, `u16 root_idx`, `u16 ns_idx`, `u64 fee_3`, `u64 fee_4`, `u64 fee_5plus`, `u8 fee_policy`, `32B treasury`, `u32 root_name_len`, `root_name[32]`, `32B config_seed`, `u32 config_proof_len + proof`, `u32 root_proof_len + proof` |
+| `1` | `Register` | `u16 treasury_idx`, `u16 root_idx`, `u16 domain_idx`, `u16 lease_idx`, `u16 config_idx`, `u16 ns_idx`, `u16 target_idx`, `u16 duration_years`, `u32 label_len`, `label[32]`, `32B target_pubkey`, `u32 domain_proof_len + proof`, `u32 lease_proof_len + proof` |
+| `2` | `Renew` | `u16 treasury_idx`, `u16 lease_idx`, `u16 config_idx`, `u16 duration_years`, `u32 label_len`, `label[32]` |
+| `3` | `UpdateConfig` | `u16 config_idx`, `u8 mask` (`b0 treasury`, `b1 fee_3`, `b2 fee_4`, `b3 fee_5plus`, `b4 fee_policy`), `32B new_treasury`, `u64 new_fee_3`, `u64 new_fee_4`, `u64 new_fee_5plus`, `u8 new_fee_policy` |
 
-**Account-index convention (ABI v2, corrected 2026-10-24).** Indices are carried *inside the
-instruction data* — the first-party convention (`txn_tools.rs` builders) — because the published
-`@thru/sdk@0.4.2` npm dist byte-sorts each readWrite/readOnly segment before serializing
-(`normalizeAccountList` → `.sort(compareAccounts)`; proven live in the sandbox and pinned as a
-regression sentinel by `test/test-custom-registrar.mjs`). The VM-visible table is
-`[feePayer(0), this program(1), sorted-readWrite…, sorted-readOnly…]`; positional constants are
-therefore invalid. Clients must resolve indices via the SDK `InstructionContext.getAccountIndex`
-inside the `instructionData` callback (`scripts/registrar/*.mjs` shows exactly how).
+### State Accounts (`TCR1` / `RLS1`)
 
-| tag | ix           | body |
-|-----|--------------|------|
-| 0   | Initialize   | `u16 config_idx`, `u16 root_idx`, `u16 ns_idx`; `u64 fee_per_year`, `32 treasury`, `u32 root_name_len`, `root_name[32]` (zero-padded), `32 config_seed`, `u32 config_proof_len + proof`, `u32 root_proof_len + proof` (admin == fee payer idx 0) |
-| 1   | Register     | `u16 treasury_idx`, `u16 root_idx`, `u16 domain_idx`, `u16 lease_idx`, `u16 config_idx`, `u16 ns_idx`, `u16 target_idx` (may be 0 when the fee payer self-registers); `u16 duration_years`, `u32 label_len`, `label[32]`, `32 target_pubkey` (must equal accounts[target_idx].pubkey), `u32 domain_proof_len + proof`, `u32 lease_proof_len + proof` |
-| 2   | Renew        | `u16 treasury_idx`, `u16 lease_idx`, `u16 config_idx`; `u16 duration_years`, `u32 label_len`, `label[32]` |
-| 3   | UpdateConfig | `u16 config_idx`; `u8 mask` (bit0 fee, bit1 treasury), `u64 new_fee`, `32 new_treasury` |
+- **`RegistrarConfig`:**
+  - **Layout 1 (`144 B`):** `admin[32]`, `treasury[32]`, `fee_per_year u64`, `root_address[32]`, `root_name[32]+len u8`, `bump u8` (parsed as flat tiers + `best-effort` policy).
+  - **Layout 2 (`176 B`):** Appends `fee_3_char u64`, `fee_4_char u64`, `fee_5plus_char u64`, `fee_policy u8` at offset `144`.
+- **`fee_policy`:** `0` = `best-effort` (attempts transfer, ignores VM refusal; wallet displays `registrar-fee-unenforced` / "no charge reported"); `1` = `strict` (reverts with `0xD206` on refused transfer or `0xD207` on insufficient balance; configured on Betanet as of 2026-10-31, collection delta still unmeasured).
+- **`DomainLease` (`120 B`):** `owner[32]`, `resolver[32]`, `expires_at u64`, `registered_at u64`, `label[32]+len u8`.
 
-Role sets per instruction (order in these lists is meaningless — the SDK sorts):
+## Build & Host Unit Tests
 
-| ix           | roles |
-|--------------|-------|
-| Initialize   | 0 admin(fee payer) · 1 this program · config(rw,new) · root(rw,new) · name-service(ro) |
-| Register     | 0 user(fee payer) · 1 this program · treasury(rw) · root(rw) · domain(rw,new) · lease(rw,new) · config(ro) · name-service(ro) · target(0 if self, else an extra ro entry) |
-| Renew        | 0 user(fee payer) · 1 this program · treasury(rw) · lease(rw) · config(ro) |
-| UpdateConfig | 0 admin(fee payer) · 1 this program · config(rw) |
-
-Index hygiene enforced in-program (`ERR_BAD_ACCOUNT_INDEX` = 0xD005): role indices may not be
-the reserved slots 0/1 (target excepted) and disjoint roles may not share an index. In addition
-to the index, the program cross-checks what each index *is*: treasury and root pubkeys must equal
-the values stored in the config account, and `accounts[target_idx]` must equal the instruction's
-`target_pubkey`. Never trust an index alone.
-
-State accounts (both owned by this program; magic discriminators `TCR1` / `RLS1`):
-
-- **RegistrarConfig** (144 B): `admin[32]`, `treasury[32]`, `fee_per_year u64`,
-  `root_address[32]`, `root_name[32]+len u8`, `bump u8`.
-- **DomainLease** (120 B): `owner[32]`, `resolver[32]`, `expires_at u64` (epoch s),
-  `registered_at u64`, `label[32]+len u8`.
-
-The name-service CPI payloads are re-encoded inside the program from the FIRST-PARTY
-layout (Unto-Labs/thru@`a058dd8` `rpc/thru-base/src/txn_tools.rs`,
-`#[repr(C, packed)]` args + inline creation proofs) — see `src/cpi.rs` tests; the
-extension registers the same byte formats against the live CLI since 2026-10-24.
-
-## Build
+Requires stable Rust + `rustup target add riscv64imac-unknown-none-elf` + `cargo-binutils`. First-party Rust SDK crates are vendored in `./vendor` (`../VENDORED.md`).
 
 ```bash
-cargo build --release --bin thru-custom-registrar            # → ELF
+cargo build --release --bin thru-custom-registrar
 rust-objcopy -O binary \
   target/riscv64imac-unknown-none-elf/release/thru-custom-registrar \
-  thru-custom-registrar.bin                                   # deployable blob
-```
-
-Requirements: current stable Rust + `rustup target add riscv64imac-unknown-none-elf` +
-`cargo install cargo-binutils`. The first-party SDK is **vendored** under `./vendor`
-(pin + provenance: `../VENDORED.md`).
-
-Host-side unit tests (byte layouts only — no VM):
-
-```bash
+  thru-custom-registrar.bin
 cargo test --lib
-# or, explicitly on the host target:
-cargo test --lib --target "$(rustc -vV | sed -n 's/^host: //p')"
 ```
 
-## Deploy & initialize (scripts in `scripts/registrar/`)
+## Deploy, Initialize, and Prove Fee Collection
 
-Deployment and root setup are driven from the wallet repo (this monorepo) with the
-pinned `@thru/programs` deploy workflows — `scripts/registrar/deploy-and-init.mjs`.
-It needs the owner host (live RPC is sandbox-blocked here):
+Run on an RPC-reachable host using `scripts/registrar/deploy-and-init.mjs` (which verifies `admin` and `treasury` ownership after readback and persists `collectionAttested` / `collectionNote`):
 
 ```bash
+# 1) Initialize or update with best-effort while measuring treasury collection:
 THRU_SEED="..." node scripts/registrar/deploy-and-init.mjs \
-  --root thru --fee 1000 --treasury <OWNER_TREASURY_ADDRESS> \
-  --bin contracts/thru-custom-registrar/target/riscv64imac-unknown-none-elf/release/thru-custom-registrar.bin
+  --root thru --fee-3 100000 --fee-4 10000 --fee-5plus 1000 \
+  --fee-policy best-effort --treasury <OWNER_TREASURY_ADDRESS> \
+  --bin contracts/thru-custom-registrar/thru-custom-registrar.bin
+
+# 2) Record pre/post treasury balance across a real Register + Renew (--probe-collection),
+#    then enable strict only with verified delta attestation:
+THRU_SEED="..." node scripts/registrar/deploy-and-init.mjs \
+  --root thru --fee-policy strict \
+  --collection-proven "Observed treasury delta after tx <sig>" \
+  --bin contracts/thru-custom-registrar/thru-custom-registrar.bin
 ```
 
-Live-verification happens on the owner host (same machine, `npm run test:live`
-pattern); nothing about this program is presented in the wallet UI until that evidence
-lands.
+Wallet integration details live in `docs/guides/domains-and-registrar.md`.

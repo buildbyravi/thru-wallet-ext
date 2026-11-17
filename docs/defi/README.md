@@ -1,97 +1,64 @@
-# DeFi backend workstream — index
+# DeFi Backend Workstream — Architecture and Gate Status
 
-Started: 2026-10-05 by explicit owner directive (decision `docs/DECISIONS.md` D-012, amending the
-2026-10-04 "wallet core first" order — see `docs/STATUS_AND_ROADMAP.md` §2 amendment).
-Scope: **backend only** — contract manifest/router, background services, adapters, registry,
-risk engine, intent pipeline, market reads, storage, permissions, live-verification scripts,
-privacy docs. A companion *frontend* prompt exists and joins at the M0 contract drop; its owner
-runs it in a separate session.
+**Document Class:** Operational Verification & Dark-Launched Backend Spec (`PARTIALLY IMPLEMENTED` in backend; **ALL `FLAGS.DEFI_* === false` — ZERO UI SHIPPED**)
+**Baseline:** Contract **v33** (`43` DeFi methods in `DEFI_METHODS`, `src/shared/contract/defi-schema.js`)
+**Related Authorities:** `AGENTS.md` (Rules 5, 16, 19, 25, 28) · `docs/DECISIONS.md` (D-005, D-012, D-021) · `docs/MODULE_BOUNDARIES.md` · `docs/roadmap/FUTURE_ROADMAP.md` (§3)
 
-Class of every document here: **Operational verification** (records and runbooks). Nothing in
-this folder is a claim of shipped behavior; the authority documents remain
-`docs/STATUS_AND_ROADMAP.md`, `docs/BUILD_SPEC.md`, `docs/BACKEND_GAPS.md` and `src/`.
+---
 
-## Governing prompt
+## 1. Current Gate Status (All Runtime Flags OFF)
 
-The workstream runs under an imported two-file build prompt (backend file given to this session;
-frontend file is its companion). Shared-contract fingerprint (both files must match):
-`ca11b7bc900656e4580369ccc319d6c03ca86f2dd0c353f7cc560a671b3147e5`, SHARED CONTRACT v1.0.0.
-The prompt text itself is not stored in the repo; this folder records its recon corrections,
-answered inputs, dossier results, gate state and CCR traffic.
+Every `DEFI*` flag in `src/shared/flags.js` (`DEFI`, `DEFI_READ`, `DEFI_DEX`, `DEFI_LAUNCHPAD`, `DEFI_MARKET`, `DEFI_RISK`, `DEFI_INTENT`, `DEFI_FEED`, `DEFI_DESKTOP`) is **`false`** (`test/test-release-flags.mjs`). No DeFi UI exists in `src/ui/` or `dist/` (`test/test-launchpad-quarantine.mjs`).
 
-## Documents
+| Gate | Scope | Status | Verification Evidence |
+| --- | --- | --- | --- |
+| **G0** | Protocol dossier, 19-role registry seed, capability seed | **CLOSED** (owner direction, 2026-10-05) | `docs/defi/DOSSIER_AND_CAPABILITIES.md`, `scripts/defi-evidence/` |
+| **M0** | 43-method contract (`v17` READ+LOCAL, `v18` PREPARE+EXECUTE), schema, fixtures | **CLOSED** (owner sign-off, 2026-10-05) | `test/test-defi-m0.mjs` (schema <-> manifest <-> seed <-> router parity) |
+| **G1** | Registry + stateless B3 genesis binding, signed feed records, coalescing market read cache | **CLOSED** (owner sign-off, 2026-10-06) | `test/test-defi-registry.mjs`, `test/test-defi-feed.mjs`, `test/test-defi-market.mjs` |
+| **G2-S0** | Intent store & lifecycle proven on native send (`v20`, flag-off) | **IMPLEMENTED / TESTED** (flag off) | `test/test-defi-intent.mjs` |
+| **G2** | Mint-only launch pipeline (`launchpad.*`) | **PLANNED / GATED** | Live P3 token-transfer passed (`2026-10-23-live-chain-run3.json`); `launchMint` seed promotion & Q11 authority policy pending |
+| **G3** | AMM pool reads, constant-product quotes, `dex.prepareSwap` (`dex-service.js`) | **IMPLEMENTED / TESTED** (flag off; brief v26 UI enablement withdrawn same day by owner, 2026-10-26) | `test/test-dex-swap.mjs`; live Betanet AMM pool + swap verified in `2026-10-25-live-swap-probe.json` |
+| **G4–G6** | Liquidity add/withdraw (exit-first R2), curve/migration, indexer scale | **PLANNED / BLOCKED** | No curve program on Betanet (`role=curve` null); no public indexer (`NO_INDEXER`) |
 
-| File | Owns |
+---
+
+## 2. Implemented Backend Architecture (Flag-Off)
+
+### 2.1 Capability Snapshot & Stateless Genesis Binding (`G1-A`)
+- **Files:** `src/background/services/defi/capability-snapshot.js`, `src/background/services/registry-service.js`, `src/background/services/program-service.js`.
+- `program.list` returns **19** `ProgramRecord` entries (`18` canonical bootstrap roles from `@thru/programs@0.4.2` + `curve: null`). `program.capabilities` derives per-feature `{ state, reason }` via `deriveFeatureState` precedence (`CUSTOM_NETWORK` -> `NETWORK_MISMATCH` -> `NETWORK_RESET` -> `KILL_SWITCH` -> `FEED_STALE`/`FEED_QUORUM_FAILED` -> dossier seed) in `src/background/services/defi/gating.js`.
+- **B3 Genesis Binding:** Static `SEED_FINGERPRINT` (`chainFingerprint('betanet')`) binds cached records to the network's genesis identity; a genesis reset invalidates records, caches, and prepared intents with `NETWORK_RESET`.
+
+### 2.2 Signed Off-Chain Feed Verification (`G1-B`)
+- **Files:** `src/background/services/defi/feed-record.js`, `src/lib/feed-crypto.js`, `src/background/services/feed-service.js`.
+- Verifies `SignedFeedRecord` (`FEED_RECORD_VERSION = 1`) envelopes under domain-separated Ed25519 `SignatureDomain.MSG` (`0x01 || canonicalJson`, non-replayable as transactions) in strict order (`MALFORMED` -> `NETWORK_MISMATCH` -> `GENESIS_MISMATCH` -> `PUBLISHER_UNPINNED` -> `SIGNATURE_INVALID` -> `RECORD_STALE` -> `VALID`), with one-publisher-one-vote quorum (`INERT | NO_FEEDS | QUORUM_NOT_MET | LIVE`) against `FEED_POLICY`. Feeds are **narrowing-only** (`ops: { kill: string[] }`). Because no publisher key is pinned today, `feed.status` / `feed.lookup` return empty/`FEED_MISSING` states cleanly.
+
+### 2.3 Coalescing Read Cache & Market Slices (`G1-C`)
+- **Files:** `src/background/services/defi/read-cache.js`, `src/background/services/defi/market-reads.js`, `src/background/services/market-service.js`, `src/background/services/risk-service.js`.
+- `createReadCache` (`maxEntries = 256` FIFO, errors never cached) deduplicates concurrent in-flight reads per `(networkId, fingerprint, method, canonicalParams)` and drops cross-network replies. All `21` DeFi `R` methods sit in `SYNC_READ_METHODS` so background polling never resets auto-lock. `market-reads.js` enforces chain-before-index slice ladders; `candles`, `trades`, and `holders` return `{ supported: false, reason: 'NO_INDEXER' }`.
+
+### 2.4 Intent Store, Preferences & AMM Swap Service (`G2-S0` & `G3`)
+- **Files:** `src/background/services/defi/intent-store.js`, `src/background/services/intent-service.js`, `src/background/services/dex-service.js`, `src/background/features/dex/`, `src/background/features/launchpad/`, `src/lib/amm.js`.
+- `preferences-service.js` already schemas DeFi preference keys (`defiSlippageBps`, `defiLoadImages`, `defiShowUnverified`, `defiNotifications`, `defiTosAcceptedVersion`, `defiRiskAckVersion`, plus password-gated `defiAlwaysRequirePassword`).
+- `dex-service.js` implements `dex.listPools`, `dex.getPool`, `dex.positions`, `dex.quote` (`quoteAmmSwapExactIn`, `15s` TTL), and `dex.prepareSwap` when `DEFI` + `DEFI_READ` / `DEFI_DEX` are enabled in tests. Liquidity addition remains gated behind live `withdrawLiquidity` verification ("exit before entry").
+
+---
+
+## 3. Mandatory Pre-Enablement Guards Before Flipping Any `DEFI_*` Flag
+
+Before any `DEFI_*` flag may be proposed for enablement (`Rule 25`), the following backend items must be resolved and tested:
+
+1. **Converge Signing onto Contract v29/v32 Review Consent (`Rule 16` & `Rule 28`):** Register DeFi review decoders in `src/shared/tx-review/` + `src/background/services/review/kinds.js` and require a `tx.confirmReview` one-time `consentToken` rather than leaving `intent.submit` as a separate `CONSENT_EXEMPT` execution lifecycle.
+2. **Intent-Store & Outcome Hardening:** Ensure per-network single-flight write serialization on `defi_intents`, preserve `unknown` timeout outcomes (`result?.signature` string/object normalization) with chain lookup before `rePrepare`.
+3. **AMM Slippage, Quotes & Output Token Account Guards:** Reject `minOut === 0n` (`ZERO_BOUND`, because `@thru/programs/amm` treats `0` as unlimited slippage), reconcile `MAX_SLIPPAGE_BPS = 1000` (`10%` enforced in `dex-service.js` for standard/popup flows) with `SNAPSHOT.LIMITS.slippageMaxBps = 2000` (`20%` Desktop-advanced-only seed proposal) into one authoritative constant without silently raising popup slippage, add `>= 12` edge-case quote vectors (`Q19`), and prepend `createInitializeAccountInstruction` when the buyer lacks an output token account.
+4. **Flags & Feed Hardening (`A9`, `A10`, `uploadImage`):** Freeze `FLAGS` in `src/shared/flags.js` (separating `?debug=1` routing inspection from the flag map), add monotonic per-publisher sequence numbers (`seq`) on `SignedFeedRecord` updates (`feed-record.js`), and reject `image/svg+xml` in `defi-schema.js` before enabling `launchpad.uploadImage`.
+
+---
+
+## 4. Directory Map
+
+| File | Responsibility |
 | --- | --- |
-| `G0_DOSSIER.md` | Gate 0: preconditions P1–P5, the Q1–Q26 evidence table, the unsupported matrix, leads disposition. Gate state: **G0 delivered; owner-side review agent verified the repo state green on 2026-10-05 and the owner directed M0; P3 (live token-transfer verification) remains an open live-chain task tracked separately** |
-| `DECISIONS_G0.md` | Answered PROJECT INPUTS (all defaults), recon corrections (incl. contract-version correction to READ 17 / EXEC 18), CCR candidates |
-| `M0_INVENTORY.md` | M0 contract drop: per-method code inventory (handler/service/flag gate/env), deliverables checklist, changelog, and boundary statement |
-| `REGISTRY_AND_CAPABILITY_SEED.md` | How the registry and capability seeds work, the unsupported matrix and the reason mapping |
-| `README.md` | this index |
-
-Machine-readable artefacts: `scripts/defi-evidence/` (evidence entries, registry seed,
-capability-matrix seed) with its own README; `scripts/collect-offline-evidence.mjs` regenerates
-the package-surface entry (`--check` fails on pin drift or missing shared-contract methods).
-
-## Boundaries (restated from `AGENTS.md`, D-005 and the prompt)
-
-- **No feature code at G0.** First code is the M0 contract drop; the deliberate
-  `test/test-launchpad-quarantine.mjs` rewrite (B16) travels in the **same** change — never
-  earlier, never silently.
-- D-005 re-entry conditions bind: new work only as isolated `src/features/<name>/` +
-  `src/background/features/<name>/` modules with own namespaces (`launchpad.*`, `dex.*`),
-  centralized signing through one pipeline, verified chain data only, same-PR quarantine update.
-  Core wallet must not depend on any of it.
-- The chain and programs are Layer 0: verified and integrated, never authored (D1).
-- Live-chain facts require `live-chain` evidence (`scripts/defi-evidence/README.md`); this build
-  sandbox cannot reach Thru endpoints (evidence `2026-10-05-environment-egress`), so live rows
-  are scheduled for a network-reachable machine — they are **not** claimed here.
-- "Guides 09–11" referenced by the prompt are **not present in this checkout**; the methods they
-  assume (`price.get`, `tx.waitFor`, `featureflags.all`, …) never existed here. Closest
-  ancestors are the already-frozen `docs/archive/` originals (`DOCS_INDEX.md` §5). Treat both as
-  superseded wherever they conflict with this folder and the maintained docs.
-
-## Gate plan (S12, backend side)
-
-G0 recon/dossier/seeds (this folder) → **M0 contract drop — CLOSED 2026-10-05 by owner
-sign-off** (manifest v17/v18 entries, `src/shared/contract/defi-schema.js`, honest gated
-handlers, fixtures/presets/intent scripts under `test/fixtures/defi/`, integrity gate
-`test/test-defi-m0.mjs`; code inventory in `M0_INVENTORY.md`) → **G1 read-only +
-registry/feeds/market layer — CLOSED 2026-10-06 by owner sign-off** (triad delivered and
-forensically audited: G1-A registry + stateless B3 genesis binding `G1_REGISTRY.md`, G1-B
-SignedFeedRecord verification + narrowing `G1_FEED.md`, G1-C coalescing read cache +
-per-slice market assembly `G1_MARKET.md`; plus the live battery `npm run test:live` —
-amm deployment confirmed live, q22 live-negative, faucet regression recorded in
-`scripts/defi-evidence/2026-10-06-live-chain.json`; AMM read-side probe continues the
-verified-matrix track, `scripts/probe-amm.mjs`) → G2 intent pipeline proven on send, then
-mint-only launch (G2 is gated on P3 per B17 — P3 was owner-closed 2026-10-09
-and **G2-S0 shipped the same day**: the intent pipeline proven on native send, real behind
-the unchanged flag, contract v20 — see DECISIONS_G0.md entry G2-S0 and
-test/test-defi-intent.mjs) → G3 swap (exit first) → G4 pools and direct-pool launch → G5 curve (only if
-Q20/Q21 allow) → G6 scale. Sequence per the owner: G0 → M0 → verified capability matrix →
-real fixtures → mint-only launch pipeline. Each gate closes only on human sign-off.
-
-M0 boundary (still standing): the contract drop is the *contract*, not the feature. No DeFi flag
-is on, no chain read/write DeFi path exists, the intent store is unbuilt, and the only two
-"real" derivations (`risk.assetAssess`, `launchpad.validateDraft`) are deterministic offline
-functions of the evidence layer — proven on the flag-on rung, unreachable with flags off.
-G1 keeps the boundary: the registry reads evidence; it does not create it. Live rows land only
-via the evidence session (`scripts/verify-token-transfer.mjs` and successors).
-
-**G3 landed 2026-10-25 (DEX swap intents, all DEFI_* flags still build-time OFF):** the DEX
-backend graduated from the M0 stub. `src/background/services/dex-service.js` (feature keeps a
-thin seam in `features/dex/`) implements real pool discovery/reads (`dex.listPools`,
-`dex.getPool`), first-party constant-product quotes (`dex.quote`, `quoteAmmSwapExactIn`,
-15s quote ttl per dossier limits), exchangeable `dex.prepareSwap` intents, and a `dex-swap`
-kind driver registered into the v20 intent pipeline (`intent.submit` dispatches per kind;
-`services/intent-service.js`). The dossier rows advanced with dated evidence:
-`pools` → **enabled** (2026-10-07 live-chain q14/q15 verified derivation+parser+reads), `swap`
-→ **EXECUTION_UNVERIFIED** (new S10 reason — program verified, first on-chain swap not yet
-observed; the row graduates with a dated live-swap probe once a pool exists, and until then
-`dex.quote`/`dex.prepareSwap` answer the dossier reason even with flags on). R2 exit-first
-stands: `dex.quoteLiquidity`/`dex.prepareLiquidity` still defer add-liquidity until the remove
-path verifies live; `dex.positions` reads LP balances honestly. Offline proof:
-`test/test-dex-swap.mjs` (25 checks, in-process zero-network via the declared chain seams).
-Live follow-up rungs, in order: seed a demo token+pool (needs the P1 token-deploy rung live),
-observe one live swap and file it, then the dossier row flips `swap` → enabled and the flag
-flip becomes reviewable.
+| `docs/defi/README.md` | This architecture overview, gate status, and pre-enablement checklist. |
+| `docs/defi/DOSSIER_AND_CAPABILITIES.md` | Betanet protocol dossier (`P1–P5`, `Q1–Q26`), 19-role registry seed, capability matrix, and live evidence reconciliation. |
+| `docs/defi/M0_CONTRACT_INVENTORY.md` | Exact 43-method DeFi contract table (`READ`, `LOCAL`, `PREPARE`, `EXECUTE`), gates, handlers, and fixture rules. |

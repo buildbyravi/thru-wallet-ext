@@ -13,6 +13,7 @@
 // explicitly empty slot rather than as a real identity.
 
 import { h } from '../kit/dom.js';
+import { shortAddress } from '../../shared/format.js';
 import { icon } from '../kit/icon.js';
 
 /**
@@ -46,9 +47,9 @@ export function AccountAvatar({ address, imported = false, size = 'md' } = {}) {
  */
 export function AddressText({ address, chars = 6 } = {}) {
   const addr = String(address || '');
-  const short = addr.length > chars * 2 + 3
-    ? `${addr.slice(0, chars)}…${addr.slice(-chars)}`
-    : addr;
+  // One truncation implementation for the whole wallet (src/shared/format.js): the same address
+  // must not read two ways on two screens.
+  const short = shortAddress(addr, { head: chars, tail: chars });
   return h('span', {
     class: 'mono truncate',
     text: short,

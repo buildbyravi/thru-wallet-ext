@@ -461,6 +461,10 @@ section('BalanceHero renders USD-first, native balance, and responds to refresh'
 
 const { BalanceHero } = await import('../src/ui/domain/balance-hero.js');
 
+const unknownHero = BalanceHero();
+ok('initial native fiat value is unknown, not an invented zero',
+  unknownHero.el.querySelector('.dash-balance-usd')?.textContent === '\u2014');
+unknownHero.destroy();
 let refreshFired = false;
 const hero = BalanceHero({
   usd: '$12,847.20',

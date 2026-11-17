@@ -65,7 +65,7 @@ await primitive('node.getStatus', () => client.node.getStatus(), (s) => JSON.str
 await primitive('chain.getChainInfo', () => client.chain.getChainInfo(), (s) => JSON.stringify(s, JSON_SAFE));
 // Chain-identity pinning (learned the hard way by the entire ecosystem, and independently
 // observed diverging 2026-10-05→10-07: third-party verification read chainId 1 + slot ~2.9M
-// on 10-05 while our battery read chainId 2 + finalized ~0.6M on 10-07 — see DECISIONS_G0):
+// on 10-05 while our battery read chainId 2 + finalized ~0.6M on 10-07 — see docs/defi/DOSSIER_AND_CAPABILITIES.md):
 // every live run pins these three numbers to the dated evidence so any drift is visible at
 // the battery level instead of being discovered as an unexplained regression.
 {

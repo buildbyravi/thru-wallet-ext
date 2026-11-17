@@ -2,7 +2,7 @@
 /* Pins for the automatic resource-unit budgeting module (src/lib/tx-units.js):
  * live-proven floors, payload scaling parity with the SDK's own estimator, ceiling
  * clamps, and the fee policy. */
-import { autoUnits, payloadFloor, noteExecution, observedMaxima, UNIT_CLASS, GLOBAL_CEILINGS } from '../src/lib/tx-units.js';
+import { autoUnits, payloadFloor, noteExecution, observedMaxima, networkFeeUnits, UNIT_CLASS, GLOBAL_CEILINGS } from '../src/lib/tx-units.js';
 
 let pass = 0;
 let fail = 0;
@@ -48,6 +48,17 @@ eq(customCeiling.stateUnits, 100, 'small live ceiling honoured below the thrusca
 let threw = false;
 try { autoUnits({ kind: 'alchemy' }); } catch { threw = true; }
 ok(threw, 'unknown class is refused honestly');
+
+// — The declared network fee: ONE policy for every wallet-initiated write (2026-11-12) —
+// Before this, registrar/name-service writes hard-coded `fee: 0n` while sends tipped the base
+// unit, and the domain review card rendered the builder constant as "Network fee — none".
+eq(networkFeeUnits({ baseFeeUnits: 1n, balanceUnits: 5n }), 1n, 'a funded payer declares the measured base fee');
+eq(networkFeeUnits({ baseFeeUnits: 1n, balanceUnits: 0n }), 0n, 'an unfunded payer declares 0 (the runtime pre-check rejects a fee it cannot cover)');
+eq(networkFeeUnits({ baseFeeUnits: 1n, balanceUnits: null }), 0n, 'an unreadable balance declares 0 rather than an unpayable fee');
+eq(networkFeeUnits({ baseFeeUnits: null, balanceUnits: 5n }), 0n, 'an unmeasured chain declares 0 — the review says "not confirmed" instead');
+eq(networkFeeUnits({ baseFeeUnits: 1n, balanceUnits: 5n, sponsored: true }), 0n, 'sponsored protocol flows stay free');
+eq(networkFeeUnits({ baseFeeUnits: 7n, balanceUnits: 1n }), 7n, 'the value follows the network config, not a literal 1');
+eq(autoUnits({ kind: UNIT_CLASS.TRANSFER, balanceUnits: 5n }).fee, 1n, 'autoUnits keeps the funded-transfer tip');
 
 // calibration hook accumulates worst-case readings
 noteExecution(UNIT_CLASS.CLAIM, { consumedComputeUnits: 5_000, consumedMemoryUnits: 2_000, consumedStateUnits: 12 });

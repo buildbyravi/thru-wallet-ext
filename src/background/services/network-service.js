@@ -35,6 +35,13 @@ import { assertNetworkSwitchAllowed } from './signing-guard.js';
 const ACTIVE_NETWORK_KEY = 'thru_active_network';
 const CUSTOM_NETWORKS_KEY = 'thru_custom_networks';
 
+let networkGeneration = 0;
+
+/** Process-local context boundary, including roundtrips that retain the same SDK client. */
+export function getNetworkGeneration() {
+  return networkGeneration;
+}
+
 /** Error code returned when a caller asks to activate a saved custom network. */
 export const CUSTOM_NETWORK_DISABLED = 'CUSTOM_NETWORK_DISABLED';
 
@@ -116,6 +123,7 @@ async function readActiveNetworkId() {
   if (builtInIds().has(stored)) return { id: stored, healedFrom: null };
 
   await chrome.storage.local.set({ [ACTIVE_NETWORK_KEY]: DEFAULT_NETWORK });
+  networkGeneration += 1;
   return { id: DEFAULT_NETWORK, healedFrom: stored };
 }
 
@@ -194,6 +202,9 @@ export async function setActiveNetwork(networkId) {
   // Rebind immediately so the next RPC call already targets the new endpoint, rather than
   // waiting for whoever happens to read the config next.
   configureNetwork(config);
+  // Even same-id selection already writes, emits and discards reviews through the router.
+  // Keep that explicit context boundary distinct from idempotent config reads.
+  networkGeneration += 1;
   emitNetworkChanged(toPublicNetwork(config));
   return config;
 }
@@ -221,13 +232,43 @@ export async function getAvailableNetworks() {
  *
  * @param {{ id: string, name: string, rpcUrl: string, explorerUrl?: string, environment?: string }} config
  */
+// Custom RPC endpoints are OFF, and this constant is the one place that says so.
+//
+// Why: `src/manifest.json` pins `connect-src` to the Thru RPC host. Any endpoint saved through
+// `network.upsertCustom` would therefore be unreachable the moment it was stored — the row would
+// list, look selectable, and then fail every call with a CSP error that reads like an outage.
+// Contract v7 already refuses to ACTIVATE such an id; accepting the URL anyway only manufactures a
+// broken row for the user to clean up.
+//
+// Turning this on is a feature, not a flag flip. It needs, together:
+//   1. an HTTPS-only policy (the check below stays for that day);
+//   2. a narrow, user-granted host permission for the one endpoint (optional_host_permissions),
+//      because a connect-src that allows every host is worse than no custom networks;
+//   3. a verified capability record per network (chain id, program addresses actually present)
+//      instead of silently inheriting the built-in program ids;
+//   4. an explicit warning plus password re-authentication before the wallet talks to that host.
+export const CUSTOM_RPC_SUPPORTED = false;
+
 export async function upsertCustomNetwork(config) {
   const id = String(config?.id || '').trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
   if (!id) throw new Error('A network id is required (letters, numbers and dashes).');
   if (builtInIds().has(id)) throw new Error(`'${id}' is a built-in network and cannot be replaced.`);
 
+  if (!CUSTOM_RPC_SUPPORTED) {
+    const failure = new Error(
+      'Custom RPC endpoints are not supported in this build: the extension security policy allows '
+      + 'connections only to the Thru RPC host, so a saved endpoint could never be reached. '
+      + 'Existing custom networks can still be removed.',
+    );
+    failure.code = 'CUSTOM_NETWORK_DISABLED';
+    failure.retryable = false;
+    throw failure;
+  }
+
+  // HTTPS only. Plain http would be blocked by the CSP even after widening, and silently storing it
+  // would repeat the exact defect this function now refuses.
   const rpcUrl = String(config?.rpcUrl || '').trim();
-  if (!/^https?:\/\/\S+$/i.test(rpcUrl)) throw new Error('RPC URL must be a valid http(s) URL.');
+  if (!/^https:\/\/\S+$/i.test(rpcUrl)) throw new Error('RPC URL must be a valid https URL.');
 
   const explorerUrl = String(config?.explorerUrl || '').trim();
   if (explorerUrl && !/^https?:\/\/\S+$/i.test(explorerUrl)) {
@@ -248,14 +289,6 @@ export async function upsertCustomNetwork(config) {
   return record;
 }
 
-/**
- * Remove a custom network.
- *
- * Since v7 a custom record cannot be active. Reading the active config after deletion also clears a
- * legacy pointer through the one self-healing path, then binds and announces the built-in default.
- *
- * @param {string} networkId
- */
 export async function removeCustomNetwork(networkId) {
   const id = String(networkId || '').trim();
   if (builtInIds().has(id)) throw new Error('Built-in networks cannot be removed.');

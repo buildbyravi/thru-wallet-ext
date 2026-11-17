@@ -5,6 +5,8 @@
 #![allow(dead_code)]
 
 // ---- parse-layer (instruction.rs) -------------------------------------------------
+pub const ERR_TAG_SUPERSEDED: u64 = 0xD006;
+pub const ERR_BAD_FEE_POLICY: u64 = 0xD007;
 pub const ERR_BAD_LABEL: u64 = 0xD100;
 pub const ERR_BAD_DURATION: u64 = 0xD101;
 
@@ -23,6 +25,9 @@ pub const ERR_LEASE_LABEL_MISMATCH: u64 = 0xD10C;
 pub const ERR_TARGET_NOT_IN_TX: u64 = 0xD10D;
 pub const ERR_FEE_OVERFLOW: u64 = 0xD10E;
 pub const ERR_WRONG_TREASURY_INDEX: u64 = 0xD10F;
+pub const ERR_WRONG_NAME_SERVICE_PROGRAM: u64 = 0xD110;
+pub const ERR_WRONG_CONFIG_SEED: u64 = 0xD111;
+pub const ERR_WRONG_CONFIG: u64 = 0xD112;
 
 // ---- effects/interactions -----------------------------------------------------------
 pub const ERR_CREATE_CONFIG: u64 = 0xD200;
@@ -31,3 +36,7 @@ pub const ERR_TRANSFER: u64 = 0xD202;
 pub const ERR_CPI_INIT_ROOT: u64 = 0xD203;
 pub const ERR_CPI_REGISTER: u64 = 0xD204;
 pub const ERR_PROOF_PARSE: u64 = 0xD205;
+/// The tiered charge reached the VM and was refused (strict policy). Includes the case where
+/// the payer cannot cover it; see ERR_INSUFFICIENT_FEE for the specific one.
+pub const ERR_FEE_TRANSFER: u64 = 0xD206;
+pub const ERR_INSUFFICIENT_FEE: u64 = 0xD207;
