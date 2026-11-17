@@ -6304,6 +6304,10 @@ async function nonBlockingBootTest() {
   const staleBooting = boot({ root: staleBootRoot });
   ok('stale unlocked hint does not mount password input before bootstrap replies',
     !staleBootRoot.querySelector('input'));
+  ok('stale unlocked hint renders no private account address before bootstrap replies',
+    !/ta[A-Za-z0-9_-]{40,}/.test(staleBootRoot.textContent));
+  ok('stale unlocked hint renders no secret data before bootstrap replies',
+    findSecrets(SECRETS).length === 0);
   const staleRouter = await staleBooting;
   bootstrapReply({ ok: true, data: { hasVault: true, unlocked: false } });
   await settle();
