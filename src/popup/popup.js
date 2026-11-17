@@ -42,8 +42,14 @@ async function init() {
   document.getElementById('app')?.classList.remove('hidden');
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => {
+    init().catch((error) => {
+      console.error('[popup] failed to start:', error);
+    });
+  });
+} else {
   init().catch((error) => {
     console.error('[popup] failed to start:', error);
   });
-});
+}

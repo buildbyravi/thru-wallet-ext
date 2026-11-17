@@ -204,7 +204,10 @@ export async function boot({ root } = {}) {
         guards.seed({ hasVault: true, unlocked: true });
         // Keep the mounted public form (including an in-flight local unlock) intact,
         // but enable navigation when another page unlocks before bootstrap completes.
-        if (!router._started) router.start({ resolve: false });
+        if (router.currentPath === '/unlock') {
+          router.navigate('/dashboard', { replace: true });
+        }
+        if (!router._started) router.start();
       }
     },
     accountsChanged: () => {
@@ -243,24 +246,20 @@ export async function boot({ root } = {}) {
     const isUnlockedHint = hint === 'unlocked';
     // Only public UI is mounted before authentication is known. Background auth still
     // protects every action; this surface remains usable while bootstrap hydrates.
-    // When the wallet is known to be unlocked from the active session, skip mounting
-    // /unlock to avoid a momentary flash of the lock screen before dashboard paints.
+    // When the wallet is known to be unlocked from the active session, mount /dashboard
+    // immediately to avoid a momentary flash of the lock screen before dashboard paints.
     const safePath = requested.path === '/welcome' || hint === 'no_vault'
       ? '/welcome'
-      : (requested.path === '/unlock' || !isUnlockedHint ? '/unlock' : null);
-    if (safePath) {
-      applyChrome(safePath);
-      router.mountImmediate(safePath, requested.path === '/unlock' ? requested.params : {
-        returnTo: requested.path === '/' ? '/dashboard' : window.location.hash.slice(1),
-      });
-    } else {
-      applyChrome(requested.path === '/' || !known.has(requested.path) ? '/dashboard' : requested.path);
-    }
+      : (requested.path === '/unlock' || !isUnlockedHint ? '/unlock' : '/dashboard');
+    applyChrome(safePath);
+    router.mountImmediate(safePath, requested.path === '/unlock' ? requested.params : {
+      returnTo: requested.path === '/' ? '/dashboard' : window.location.hash.slice(1),
+    });
     try {
       const initial = await bridge.bootstrap();
       if (!current()) return;
       if (authRevision !== guards.stateRevision()) {
-        if (!router._started) router.start({ resolve: false });
+        if (!router._started) router.start();
         return;
       }
       if (typeof initial?.hasVault !== 'boolean' || typeof initial?.unlocked !== 'boolean') {

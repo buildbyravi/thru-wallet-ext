@@ -117,7 +117,7 @@ export class Router {
 
   /** Mount a safe local route before bootstrap/guards resolve. */
   mountImmediate(path, params = {}) {
-    if (path !== '/unlock' && path !== '/welcome') return false;
+    if (path !== '/unlock' && path !== '/welcome' && path !== '/dashboard') return false;
     const route = this.routes.get(path);
     if (!route) return false;
     try {

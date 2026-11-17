@@ -410,6 +410,11 @@ export function DashboardRoute({ navigate }) {
       return;
     }
 
+    if (!account?.address) {
+      balanceHero.setSpinning(false);
+      return;
+    }
+
     // Cached balance first paint; retain it (visibly labelled by the warning) if the live
     // call fails. A stale batch placeholder with fetchedAt:0 is never a cache snapshot.
     let nativeText = '—';
