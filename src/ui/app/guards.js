@@ -13,28 +13,6 @@ let cache = { hasVault: null, unlocked: null, at: 0 };
 let revision = 0;
 export function stateRevision() { return revision; }
 
-const AUTH_HINT_KEY = 'thru_auth_hint';
-
-/** Read non-secret session state hint for boot screen selection (Hard Rule 9: never secrets). */
-export function getAuthHint() {
-  try {
-    return (typeof window !== 'undefined' && window.localStorage?.getItem(AUTH_HINT_KEY)) || null;
-  } catch {
-    return null;
-  }
-}
-
-/** Record non-secret session state hint. */
-export function setAuthHint(status) {
-  try {
-    if (typeof window === 'undefined' || !window.localStorage) return;
-    if (status) window.localStorage.setItem(AUTH_HINT_KEY, status);
-    else window.localStorage.removeItem(AUTH_HINT_KEY);
-  } catch {
-    // Storage access or quota exceptions are non-fatal
-  }
-}
-
 /** Clear the UI snapshot at boot; unknown auth can only show public screens. */
 export function invalidate() {
   revision++;
@@ -54,14 +32,11 @@ export function invalidate() {
 export function seed(state) {
   if (!state || typeof state !== 'object') return;
   revision++;
-  const hasVault = typeof state.hasVault === 'boolean' ? state.hasVault : null;
-  const unlocked = state.unlocked === true;
   cache = {
-    hasVault,
-    unlocked,
+    hasVault: typeof state.hasVault === 'boolean' ? state.hasVault : null,
+    unlocked: state.unlocked === true,
     at: Date.now(),
   };
-  setAuthHint(hasVault === false ? 'no_vault' : (unlocked ? 'unlocked' : 'locked'));
 }
 
 /**
