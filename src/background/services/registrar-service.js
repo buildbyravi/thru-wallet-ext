@@ -855,9 +855,9 @@ export async function registerCustom({ name, years, expectedNetworkId, expectedA
       expiryAfter: 10_000,
     },
     accounts: {
-      // The FEE PAYER is listed writable: it is the transfer source (`account_transfer(0, …)`),
-      // and the deployed program's charge was refused with -10 AccountNotWritable (0xD20A).
-      readWrite: [feePayer.address, info.treasury, info.root, domainAddress, leaseAddress],
+      // feePayer is implicit index 0 (writable & signer); adding it here duplicates accounts
+      // (transfer source is account 0; EOA debits return AccountNotWritable if unowned)
+      readWrite: [info.treasury, info.root, domainAddress, leaseAddress],
       readOnly: [info.configAddress, NAME_SERVICE_PROGRAM],
     },
     instructionData: ({ getAccountIndex }) => tcr.buildTcrRegisterInstructionData({
@@ -952,7 +952,7 @@ export async function renewCustom({ name, years, expectedNetworkId, expectedAcco
       expiryAfter: 10_000,
     },
     accounts: {
-      readWrite: [feePayer.address, info.treasury, leaseAddress],
+      readWrite: [info.treasury, leaseAddress],
       readOnly: [info.configAddress],
     },
     instructionData: ({ getAccountIndex }) => tcr.buildTcrRenewInstructionData({
