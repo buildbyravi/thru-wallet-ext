@@ -1,0 +1,35 @@
+{
+  "date": "2026-11-17T15:18:51.000Z",
+  "network": "betanet",
+  "feePayer": "tabDLDL9EVZYhRnbgPr0HrQuIvv01AZm9vtV8yIX26KO2J",
+  "registrarProgramAddress": "ta2vDCBzzptN2qVZgz6PXsCp5cNB7Nef4yeQ3W-OqzZcfF",
+  "configAddress": "ta_9lLvhxurg4J5DyZ82W14rzzGWCEfj9B7Y8wa99amPBa",
+  "rootAddress": "taNP1MFOO2shpn6ORofIGSNiQ-qJ9VE2lDkDwvUmgUmaQZ",
+  "rootName": "thru",
+  "treasury": "taShrn6v-TM_h81ZjmDZLifdhLRlDMfIw_EAIaNKIIdPX-",
+  "feePolicy": "strict",
+  "feePolicyValue": 1,
+  "feeTiers": {
+    "fee3PerYearBaseUnits": "100000",
+    "fee4PerYearBaseUnits": "10000",
+    "fee5PlusPerYearBaseUnits": "1000"
+  },
+  "attemptedAction": "registerCustom",
+  "signature": "ts2AmXxldU0nMHCcbvXfP6d_DsxQv0eGtnaUj8Jp-jCG9BMrcTE6Rv0Ky0FarclEPhOkTunDrjFC_TLdlF1lpABiAM",
+  "consensusStatus": 5,
+  "executionResult": {
+    "vmError": -765,
+    "consumedComputeUnits": 47062,
+    "userErrorCode": "53766",
+    "decodedError": "0xD206 ERR_FEE_TRANSFER (the registrar fee could not be collected)"
+  },
+  "collectionProbe": {
+    "measured": false,
+    "reason": "ThruVM sys_account_transfer returned AccountNotWritable on EOA debit; under fee_policy: 1 (strict), collect_fee reverted on-chain with 0xD206, preventing domain creation"
+  },
+  "verifiedOnChain": {
+    "domainCreated": false,
+    "leaseCreated": false,
+    "freeMintPossible": false
+  }
+}
