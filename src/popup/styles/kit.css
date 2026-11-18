@@ -231,6 +231,18 @@
   transform: translateY(16px);
 }
 
+/* The scrolled-sheet frame cannot host `.screen-actions`. That rule is sticky to the BOTTOM of
+   its scroll container (screens.css) — correct for a short screen whose form scrolls under a
+   pinned button row, wrong inside a sheet: the row parked ~90px above the sheet's bottom and
+   covered the money table, so at a 360x445 side panel "Network fee" sat behind the buttons and
+   "Details" rendered INSIDE the table box (found in a real Chrome 150 side panel, 2026-11-18).
+   Inside a sheet the actions belong to the document flow: scroll with the card, sit below it. */
+.tx-sheet .screen-actions {
+  position: static;
+  background: none;
+  z-index: auto;
+}
+
 /* DEFECT FIX (P2): the sheet is a flex COLUMN (inherited from .modal-card) that is also the
    scroll container. A flex item defaults to `flex-shrink: 1`, so when the content exceeded
    `max-height` the children were COMPRESSED to fit instead of overflowing. `.detail-table`

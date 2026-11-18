@@ -91,11 +91,15 @@ export function collectFocusable(root) {
  *   onEscape     () => void   called on Escape; the caller decides what cancelling means
  *   initial      Element      element to focus on open (defaults to the first focusable)
  *   restoreFocus boolean      put focus back where it was on destroy (default true)
+ *   restoreTo    Element      explicit opener, for dialogs opened from an async action whose button
+ *                             was disabled while the work ran (a disabled control cannot hold
+ *                             focus, so the browser has already moved it to <body> by then)
  * @returns {{ destroy: () => void, focusables: () => Element[], focusFirst: () => void }}
  */
-export function focusTrap(container, { onEscape, initial = null, restoreFocus = true } = {}) {
-  // Captured before anything moves, so destroy() can put it back.
-  const previouslyFocused = typeof document !== 'undefined' ? document.activeElement : null;
+export function focusTrap(container, { onEscape, initial = null, restoreFocus = true, restoreTo = null } = {}) {
+  // Captured before anything moves, so destroy() can put it back. `restoreTo` wins when the
+  // caller knows the opener even though focus had already left it (see above).
+  const previouslyFocused = typeof restoreTo === 'function' ? null : (restoreTo ?? (typeof document !== 'undefined' ? document.activeElement : null));
 
   // The container itself is the fallback target when the dialog holds nothing focusable, so it
   // has to be focusable. tabindex="-1" is script-focusable but not a Tab stop, which is exactly
@@ -176,9 +180,9 @@ export function focusTrap(container, { onEscape, initial = null, restoreFocus = 
       if (!restoreFocus) return;
       // Only restore to something still in the document and still focusable; restoring to a node
       // the caller just removed would silently drop focus to <body> anyway.
-      const target = previouslyFocused;
+      const target = typeof restoreTo === 'function' ? restoreTo() : previouslyFocused;
       if (!target || target === (typeof document !== 'undefined' ? document.body : null)) return;
-      if (!target.parentNode) return;
+      if (!target.parentNode || (typeof target.isConnected === 'boolean' && !target.isConnected)) return;
       try {
         target.focus?.();
       } catch {

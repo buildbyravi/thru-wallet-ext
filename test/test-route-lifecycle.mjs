@@ -358,6 +358,10 @@ class ShimElement extends ShimNode {
     this._disabled = Boolean(next);
     if (this._disabled) this.setAttribute('disabled', '');
     else this.removeAttribute('disabled');
+    // Chrome's real behaviour: a disabled control cannot hold focus, so the document drops focus
+    // to <body> — with no focus event and no way for the page to observe it. Modelling it here is
+    // what lets the suite catch the "sheet restores focus to <body>" class of bug.
+    if (this._disabled && DOC?.activeElement === this) DOC.activeElement = DOC.body;
   }
 
   get checked() {
@@ -3378,6 +3382,21 @@ function sourceTest() {
     'without this, tall sheets compress and .detail-table clips its own rows instead of scrolling');
   ok('.tx-sheet contains its scroll chain so the list behind the backdrop does not move',
     /overscroll-behavior:\s*contain/.test(txSheet));
+  // DEFECT (found in a real Chrome 150 side panel at 360x445, 2026-11-18): the sheet's action
+  // row reused `.screen-actions`, which is `position: sticky; bottom: 0` — a rule written for a
+  // scrolling SCREEN, not for a sheet that is itself the scroll container. Inside the sheet the
+  // row parked ~90px above the sheet's bottom and covered the money table: "Network fee" sat
+  // behind the buttons and "Details" rendered inside the table's box. The sheet must put its
+  // actions back in the flow.
+  const sheetActions = cssBlock(kitCss, '.tx-sheet .screen-actions');
+  const stripCssComments = (s) => (s || '').replace(/\/\*[\s\S]*?\*\//g, '');
+  const isStaticPosition = (css) => /position:\s*static\b/.test(stripCssComments(css));
+  ok('.tx-sheet neutralises the sticky .screen-actions row it inherits',
+    isStaticPosition(sheetActions),
+    'without this, the action row covers the money table in a short side panel');
+  ok('NEGATIVE CONTROL: the sticky action row would be detected inside a sheet',
+    !isStaticPosition('.tx-sheet .screen-actions { position: sticky; bottom: 0; }'));
+
   // Negative control: the assertions above must be capable of failing.
   ok('NEGATIVE CONTROL: a sheet without the shrink guard would be detected',
     !/flex-shrink:\s*0/.test('.tx-sheet > * { flex-shrink: 1; }'));
@@ -4989,6 +5008,70 @@ async function faucetReviewTest() {
   ok('the faucet route tears down without leaving a listener behind',
     detachedListeners().length === 0, JSON.stringify(detachedListeners().slice(0, 3)));
   route.el.remove();
+
+  // Focus restoration. The claim button is disabled while the review is prepared, and a disabled
+  // control cannot hold focus, so the sheet's opener is NOT document.activeElement. A real-browser
+  // smoke run of the built popup found Escape/Cancel/rejection all returning focus to <body>
+  // (2026-11-18). The browser run is the evidence; these assertions are the regression guard.
+  {
+    resetBackend(SCENARIOS[2]);
+    resetDom();
+    const focusRoute = FaucetRoute({ params: {}, navigate() {}, back() {} });
+    DOC.body.appendChild(focusRoute.el);
+    await settle();
+    const focusOpener = buttons(focusRoute.el, /claim on-chain/i)[0];
+    const nextFrame = () => new Promise((resolve) => requestAnimationFrame(() => resolve()));
+    const openReviewSheet = async () => {
+      focusOpener.focus();
+      ok('(setup) the claim control holds focus before the claim',
+        DOC.activeElement === focusOpener);
+      click(focusOpener);
+      await settle();
+      await nextFrame();
+      ok('the review sheet opened', Boolean(DOC.querySelector('[role="dialog"]')));
+    };
+    const focusLabel = () => (DOC.activeElement === DOC.body
+      ? '<body>' : (DOC.activeElement?.textContent || '').trim().slice(0, 40));
+
+    await openReviewSheet();
+    pressKey(DOC.activeElement, 'Escape');
+    await settle();
+    ok('Escape returns focus to the claim control that opened the review',
+      DOC.activeElement === focusOpener, focusLabel());
+
+    await openReviewSheet();
+    click(buttons(DOC.body, /^cancel$/i)[0]);
+    await settle();
+    ok('Cancel returns focus to the claim control that opened the review',
+      DOC.activeElement === focusOpener, focusLabel());
+
+    // A rejected submission: the submit disables the claim control, the error banner replaces the
+    // dialog, and the control must come back enabled with the keyboard still on it.
+    const realClaimFixture = FIXTURES['tx.claimFaucet'];
+    FIXTURES['tx.claimFaucet'] = () => {
+      throw apiError('INVALID_INPUT', 'The faucet rejected this claim.');
+    };
+    await openReviewSheet();
+    click(buttons(DOC.body, /^claim$/i)[0]);
+    await settle();
+    ok('a rejected claim reports the failure and re-enables the claim control',
+      /faucet rejected this claim/i.test(textOf(focusRoute.el)) && focusOpener.disabled === false,
+      textOf(focusRoute.el).slice(0, 160));
+    ok('a rejected claim does not strand focus on <body>',
+      DOC.activeElement === focusOpener, focusLabel());
+    FIXTURES['tx.claimFaucet'] = realClaimFixture;
+
+    await openReviewSheet();
+    pressKey(DOC.activeElement, 'Escape');
+    await settle();
+    ok('the review after a rejection still returns focus to the claim control',
+      DOC.activeElement === focusOpener, focusLabel());
+    focusRoute.destroy();
+    await settle();
+    ok('the focus regression route leaves no detached listeners',
+      detachedListeners().length === 0, JSON.stringify(detachedListeners().slice(0, 3)));
+    focusRoute.el.remove();
+  }
 
   // A timeout during submission is an UNKNOWN outcome, never a failure message.
   // Reviewer #16: the window between "sheet closed" and "submit settled" must be guarded —

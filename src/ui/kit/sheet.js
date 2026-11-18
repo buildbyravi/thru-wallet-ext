@@ -36,8 +36,12 @@ import { focusTrap } from './focus-trap.js';
  *   dismissible  backdrop click / Escape close the sheet (default true)
  *   onEscape     () => void   overrides the default Escape action (which is close)
  *   onClose      () => void   called exactly once when the sheet closes
+ *   opener       Element      control to return focus to on close. Pass it when the control is
+ *                             disabled while the sheet is being prepared: by then the browser has
+ *                             already moved focus off it, so capturing activeElement would
+ *                             restore focus to <body>.
  */
-export function Sheet({ label, className = null, dismissible = true, onEscape = null, onClose = null } = {}) {
+export function Sheet({ label, className = null, dismissible = true, onEscape = null, onClose = null, opener = null } = {}) {
   if (!label) throw new Error('Sheet: `label` is required as the dialog\'s accessible name.');
 
   const d = disposer();
@@ -75,10 +79,14 @@ export function Sheet({ label, className = null, dismissible = true, onEscape = 
 
   // Backdrop click closes; a click inside the card must not.
   d.on(overlay, 'mousedown', (event) => {
-    if (canDismiss && event.target === overlay) close();
+    if (canDismiss && event.target === overlay) {
+      event.preventDefault?.();
+      close();
+    }
   });
 
   trap = focusTrap(card, {
+    restoreTo: opener,
     onEscape: () => {
       if (!canDismiss) return;
       if (typeof onEscape === 'function') onEscape();
