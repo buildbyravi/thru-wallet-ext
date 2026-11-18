@@ -25,6 +25,39 @@ export function Button(props = {}) {
   const d = disposer();
   let current = { variant: 'secondary', size: 'md', type: 'button', full: true, ...props };
   let busy = false;
+  // A disabled control cannot hold focus: Chrome moves focus to <body> the moment `disabled`
+  // is set, and it does not come back when the control is enabled again. Disabling on submit
+  // therefore used to silently strand the keyboard — and any sheet opened from that button
+  // captured <body> as its "opener", so closing it restored focus to the top of the page.
+  // Remember where focus was and hand it back once the button is live again, unless something
+  // else (a dialog that just opened) has already taken focus somewhere meaningful.
+  let focusBeforeBusy = null;
+  function captureFocus() {
+    if (typeof document === 'undefined') return;
+    if (document.activeElement === el) focusBeforeBusy = el;
+  }
+  // The browser drops focus to <body> without firing a focus event, so the only reliable way to
+  // tell "we were disabled and stole the focus" from "the user clicked somewhere empty" is to
+  // remember the element at disable time and restore it once the control is live again.
+  function restoreFocusIfStolen() {
+    // Keep the memory until the button is actually re-enabled: a route may set `disabled: false`
+    // while the button is still busy, and dropping it there would strand focus on <body>.
+    if (!focusBeforeBusy || el.disabled) return;
+    if (typeof document === 'undefined') return;
+    // Someone else (usually a dialog that just opened) has taken focus: leave it alone.
+    if (document.activeElement !== document.body) {
+      focusBeforeBusy = null;
+      return;
+    }
+    // The button itself must still be on screen; a re-rendered form has replaced it.
+    const target = focusBeforeBusy;
+    focusBeforeBusy = null;
+    try {
+      target.focus?.();
+    } catch {
+      // Focus restoration is a courtesy; never let it break the control.
+    }
+  }
 
   const labelNode = h('span', { text: current.label ?? '' });
   const el = h('button', {
@@ -64,10 +97,14 @@ export function Button(props = {}) {
   });
 
   function setBusy(next) {
+    // Capture on the way IN only: at that moment focus is still on this button if the user
+    // activated it from the keyboard.
+    if (next) captureFocus();
     busy = next;
     el.disabled = next || Boolean(current.disabled);
     el.setAttribute('aria-busy', next ? 'true' : 'false');
     paint();
+    if (!next) restoreFocusIfStolen();
   }
 
   return {
@@ -85,7 +122,12 @@ export function Button(props = {}) {
         if (prevSize !== 'md') el.classList.remove(prevSize);
         if (current.size !== 'md') el.classList.add(current.size);
       }
-      if ('disabled' in next) el.disabled = Boolean(next.disabled) || busy;
+      if ('disabled' in next) {
+        const wasDisabled = el.disabled;
+        if (!wasDisabled && next.disabled) captureFocus();
+        el.disabled = Boolean(next.disabled) || busy;
+        if (wasDisabled && !el.disabled) restoreFocusIfStolen();
+      }
       if ('title' in next) el.title = next.title ?? '';
       paint();
     },

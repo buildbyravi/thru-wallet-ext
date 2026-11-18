@@ -171,6 +171,10 @@ export function FaucetRoute({ navigate, back }) {
     const sheet = Sheet({
       label: 'Confirm faucet claim',
       className: 'name-confirm-sheet',
+      // The claim button is disabled while the review is prepared, and a disabled control cannot
+      // keep focus. Name it explicitly so closing the sheet returns the keyboard there instead
+      // of to the top of the document.
+      opener: claimBtnEl?.el ?? null,
       onClose: () => { if (reviewSheet === sheet) reviewSheet = null; },
     });
     reviewSheet = sheet;

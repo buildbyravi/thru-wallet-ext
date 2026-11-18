@@ -91,11 +91,15 @@ export function collectFocusable(root) {
  *   onEscape     () => void   called on Escape; the caller decides what cancelling means
  *   initial      Element      element to focus on open (defaults to the first focusable)
  *   restoreFocus boolean      put focus back where it was on destroy (default true)
+ *   restoreTo    Element      explicit opener, for dialogs opened from an async action whose button
+ *                             was disabled while the work ran (a disabled control cannot hold
+ *                             focus, so the browser has already moved it to <body> by then)
  * @returns {{ destroy: () => void, focusables: () => Element[], focusFirst: () => void }}
  */
-export function focusTrap(container, { onEscape, initial = null, restoreFocus = true } = {}) {
-  // Captured before anything moves, so destroy() can put it back.
-  const previouslyFocused = typeof document !== 'undefined' ? document.activeElement : null;
+export function focusTrap(container, { onEscape, initial = null, restoreFocus = true, restoreTo = null } = {}) {
+  // Captured before anything moves, so destroy() can put it back. `restoreTo` wins when the
+  // caller knows the opener even though focus had already left it (see above).
+  const previouslyFocused = restoreTo ?? (typeof document !== 'undefined' ? document.activeElement : null);
 
   // The container itself is the fallback target when the dialog holds nothing focusable, so it
   // has to be focusable. tabindex="-1" is script-focusable but not a Tab stop, which is exactly
