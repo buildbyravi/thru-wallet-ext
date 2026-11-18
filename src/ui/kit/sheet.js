@@ -79,7 +79,10 @@ export function Sheet({ label, className = null, dismissible = true, onEscape = 
 
   // Backdrop click closes; a click inside the card must not.
   d.on(overlay, 'mousedown', (event) => {
-    if (canDismiss && event.target === overlay) close();
+    if (canDismiss && event.target === overlay) {
+      event.preventDefault?.();
+      close();
+    }
   });
 
   trap = focusTrap(card, {

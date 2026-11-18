@@ -3389,11 +3389,13 @@ function sourceTest() {
   // behind the buttons and "Details" rendered inside the table's box. The sheet must put its
   // actions back in the flow.
   const sheetActions = cssBlock(kitCss, '.tx-sheet .screen-actions');
+  const stripCssComments = (s) => (s || '').replace(/\/\*[\s\S]*?\*\//g, '');
+  const isStaticPosition = (css) => /position:\s*static\b/.test(stripCssComments(css));
   ok('.tx-sheet neutralises the sticky .screen-actions row it inherits',
-    /position:\s*static/.test(sheetActions),
+    isStaticPosition(sheetActions),
     'without this, the action row covers the money table in a short side panel');
   ok('NEGATIVE CONTROL: the sticky action row would be detected inside a sheet',
-    !/position:\s*static/.test('.tx-sheet .screen-actions { position: sticky; bottom: 0; }'));
+    !isStaticPosition('.tx-sheet .screen-actions { position: sticky; bottom: 0; }'));
 
   // Negative control: the assertions above must be capable of failing.
   ok('NEGATIVE CONTROL: a sheet without the shrink guard would be detected',
@@ -5056,7 +5058,7 @@ async function faucetReviewTest() {
       /faucet rejected this claim/i.test(textOf(focusRoute.el)) && focusOpener.disabled === false,
       textOf(focusRoute.el).slice(0, 160));
     ok('a rejected claim does not strand focus on <body>',
-      DOC.activeElement !== DOC.body, focusLabel());
+      DOC.activeElement === focusOpener, focusLabel());
     FIXTURES['tx.claimFaucet'] = realClaimFixture;
 
     await openReviewSheet();

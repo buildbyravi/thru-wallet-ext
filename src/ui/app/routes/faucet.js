@@ -173,8 +173,8 @@ export function FaucetRoute({ navigate, back }) {
       className: 'name-confirm-sheet',
       // The claim button is disabled while the review is prepared, and a disabled control cannot
       // keep focus. Name it explicitly so closing the sheet returns the keyboard there instead
-      // of to the top of the document.
-      opener: claimBtnEl?.el ?? null,
+      // of to the top of the document. If a background event rebuilds the form, resolve dynamically.
+      opener: () => (claimBtnEl?.el?.isConnected ? claimBtnEl.el : el.querySelector('button, [tabindex="0"]')),
       onClose: () => { if (reviewSheet === sheet) reviewSheet = null; },
     });
     reviewSheet = sheet;

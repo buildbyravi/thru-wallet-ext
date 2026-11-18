@@ -99,7 +99,7 @@ export function collectFocusable(root) {
 export function focusTrap(container, { onEscape, initial = null, restoreFocus = true, restoreTo = null } = {}) {
   // Captured before anything moves, so destroy() can put it back. `restoreTo` wins when the
   // caller knows the opener even though focus had already left it (see above).
-  const previouslyFocused = restoreTo ?? (typeof document !== 'undefined' ? document.activeElement : null);
+  const previouslyFocused = typeof restoreTo === 'function' ? null : (restoreTo ?? (typeof document !== 'undefined' ? document.activeElement : null));
 
   // The container itself is the fallback target when the dialog holds nothing focusable, so it
   // has to be focusable. tabindex="-1" is script-focusable but not a Tab stop, which is exactly
@@ -180,9 +180,9 @@ export function focusTrap(container, { onEscape, initial = null, restoreFocus = 
       if (!restoreFocus) return;
       // Only restore to something still in the document and still focusable; restoring to a node
       // the caller just removed would silently drop focus to <body> anyway.
-      const target = previouslyFocused;
+      const target = typeof restoreTo === 'function' ? restoreTo() : previouslyFocused;
       if (!target || target === (typeof document !== 'undefined' ? document.body : null)) return;
-      if (!target.parentNode) return;
+      if (!target.parentNode || (typeof target.isConnected === 'boolean' && !target.isConnected)) return;
       try {
         target.focus?.();
       } catch {

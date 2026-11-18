@@ -17,7 +17,7 @@ Machine-readable evidence records supporting `docs/defi/DOSSIER_AND_CAPABILITIES
 
 1. **Offline & Spec Snapshots (`collect-offline-evidence.mjs` / Dated Docs):**
    - `2026-10-05-environment-egress.json` — records sandbox TLS egress boundary to `*.thru.org`.
-   - Package snapshots record the installed manifests, not a license audit or a chain read. [2026-10-05](2026-10-05-package-surface.json) covers `@thru/sdk` and `@thru/programs` at `0.4.1`; [2026-11-18](2026-11-18-package-surface.json) covers both at `0.4.4` (`node scripts/collect-offline-evidence.mjs --check`).
+   - Package snapshots record the installed manifests, not a license audit or a chain read. [2026-10-05](2026-10-05-package-surface.json) covers `@thru/sdk` and `@thru/programs` at `0.4.1`; [2026-11-18](2026-11-18-package-surface.json) covers both at `0.4.4` (`node scripts/collect-offline-evidence.mjs --check --out /tmp/package-surface-check.json` validates installed packages without rewriting committed snapshots).
    - `2026-10-05-official-docs.json`, `2026-10-08-official-docs.json`, `2026-10-09-registrar-nameservice-official.json` — dated retrievals of official Thru transaction, runtime, resource, registrar, and name-service specifications.
    - `2026-10-09-claim-variants.json` — SDK `0.4.0` vs `0.4.1` unit-budget root-cause record (`src/lib/tx-units.js`).
 2. **Live Betanet Battery & DeFi Probes (`npm run test:live` / `scripts/probe-*.mjs`):**
