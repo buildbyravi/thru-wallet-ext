@@ -117,6 +117,7 @@ console.log('  ok - the same intent cannot run twice, while distinct mints/netwo
 console.log('[verified import] real router, SDK mint bytes, detached persisted preferences');
 const { Pubkey } = await import('@thru/sdk');
 const { TokenMintAccount } = await import('@thru/programs/token');
+const { mintAccountBytes } = await import('./fixtures/token-accounts.mjs');
 const { handleApiRequest } = await import('../src/background/api-router.js');
 const client = await import('../src/lib/thru-client.js');
 const networks = await import('../src/background/services/network-service.js');
@@ -148,8 +149,8 @@ function mintAccount({ decimals = 6, ticker = 'CHAIN', owner = network.tokenProg
   const tickerBytes = new Uint8Array(9);
   tickerBytes[0] = ticker.length;
   tickerBytes.set(new TextEncoder().encode(ticker), 1);
-  const bytes = TokenMintAccount.builder().set_decimals(decimals).set_supply(42n)
-    .set_has_freeze_authority(0).set_ticker(tickerBytes).finish().buffer;
+  const bytes = mintAccountBytes(TokenMintAccount.builder().set_decimals(decimals).set_supply(42n)
+    .set_has_freeze_authority(0).set_ticker(tickerBytes).finish().buffer);
   return { meta: { balance: 1n, owner: Pubkey.from(owner) }, data: { data: bytes } };
 }
 const callImport = (params = { mintAddress, symbol: 'LOCAL' }) =>

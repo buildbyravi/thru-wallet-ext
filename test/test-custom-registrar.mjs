@@ -4,7 +4,7 @@
 // the SAME bytes from the other side; a drift on either side fails here.
 //
 // ABI v2 (2026-10-24): instruction data carries u16 account-table INDICES (first-party
-// convention; txn_tools.rs builders do the same) because @thru/sdk 0.4.4 byte-SORTS the
+// convention; txn_tools.rs builders do the same) because @thru/sdk 0.5.1 byte-SORTS the
 // readWrite/readOnly account lists before serializing — positional constants in the
 // program would silently address the wrong accounts. The "SDK sort sentinel" section at
 // the bottom proves the installed SDK's ordering behavior directly.
@@ -414,7 +414,7 @@ ok('years 11 rejected', !!yearsProblem(11));
     buildInstructionData: (ctx) => new Uint8Array([ctx.getAccountIndex(passed[0]), ctx.getAccountIndex(passed[1])]),
   }).instructionData];
   // passed[0] is bytewise HIGHER → in a sorted table it must get the LATER index (3).
-  ok('SDK 0.4.4 account table is byte-sorted (descending input → indices [3,2])',
+  ok('SDK 0.5.1 account table is byte-sorted (descending input → indices [3,2])',
     idxs.length === 2 && idxs[0] === 3 && idxs[1] === 2,
     `got indices ${JSON.stringify(idxs)} for descending input`);
 }

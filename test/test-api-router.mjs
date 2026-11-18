@@ -830,6 +830,7 @@ console.log('[token.readMint] custom-token lookup reads the chain and validates 
   const sdkForMint = clientForRace.getClient();
   const beforeGet = sdkForMint.accounts.get;
   const { TokenMintAccount } = await import('@thru/programs/token');
+  const { mintAccountBytes } = await import('./fixtures/token-accounts.mjs');
   // TickerField layout is [length, 8 chars] — the length byte goes first.
   const tickerBytes = new Uint8Array(9);
   tickerBytes[0] = 3;
@@ -839,7 +840,7 @@ console.log('[token.readMint] custom-token lookup reads the chain and validates 
   built.set_supply(42n);
   built.set_has_freeze_authority(0);
   built.set_ticker(tickerBytes);
-  const mintBytes = built.finish().buffer;
+  const mintBytes = mintAccountBytes(built.finish().buffer);
   const FIXTURE_MINT = 'taMINTLOOKUPFIXTURE00000000000000000000000000';
   try {
     sdkForMint.accounts.get = (address) => {

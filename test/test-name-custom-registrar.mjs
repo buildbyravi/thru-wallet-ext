@@ -12,6 +12,7 @@ import { dirname, join } from 'node:path';
 import assert from 'node:assert/strict';
 import { Pubkey } from '@thru/sdk';
 import { TokenMintAccount, TokenAccount } from '@thru/programs/token';
+import { mintAccountBytes, tokenAccountBytes } from './fixtures/token-accounts.mjs';
 
 import { NETWORKS } from '../src/lib/networks.js';
 import * as tcr from '../src/lib/custom-registrar.js';
@@ -336,8 +337,8 @@ console.log('custom registrar write boundaries (stubbed builder and RPC)');
   client.accounts.get = async address => {
     if (address === ns.registrarConfigAddress()) return { meta: { balance: 1n, owner: Pubkey.from(reg.THRU_REGISTRAR_PROGRAM) }, data: { data: officialConfig } };
     if (address === mint) return { meta: { balance: 1n, owner: Pubkey.from(NETWORKS.betanet.tokenProgramId) },
-      data: { data: TokenMintAccount.builder().set_decimals(6).set_supply(100n).build() } };
-    if (address === tokenAddress) return { meta: { balance: 1n }, data: { data: TokenAccount.builder().set_amount(100n).build() } };
+      data: { data: mintAccountBytes(TokenMintAccount.builder().set_decimals(6).set_supply(100n).build()) } };
+    if (address === tokenAddress) return { meta: { balance: 1n }, data: { data: tokenAccountBytes(TokenAccount.builder().set_amount(100n).build()) } };
     if (address === payer.address) return { meta: { balance: 1000000n } };
     return missing();
   };

@@ -1,6 +1,6 @@
 # CONTEXT.md — File Map for `thru-wallet-ext`
 
-Last source-verified update: 2026-11-16 (Contract **v33**, `154` methods, `15` routes, `9` review kinds, `128` runtime JS files, `41` test suites + `9` guard scripts). Always verify `src/` directly before editing.
+Last source-verified update: 2026-11-18 (Contract **v33**, `154` methods, `15` routes, `9` review kinds, `128` runtime JS files, `41` test suites + `9` guard scripts). Always verify `src/` directly before editing.
 
 Read `AGENTS.md` first for repository rules, `docs/DOCS_INDEX.md` for the SSoT map, and `docs/STATUS_AND_ROADMAP.md` for shipped state and open verification gates.
 
@@ -72,7 +72,7 @@ Enforced by `scripts/check-layering.mjs` (`128` runtime JS files scanned, `0` DO
 | Guard / Suite Group | Files | What It Enforces |
 | --- | --- | --- |
 | **Structural Guards (`9`)** | `scripts/check-{layering,agents,cycles,docs-truth,check-controls,csp,routes,css-nesting,panel-tiles}.mjs` | Import direction, 0 DOM sinks, 30 ordered `AGENTS.md` rules + path existence, cycle ratchet, doc-count parity, guard negative controls, CSP <-> enabled networks, 15/15 route reachability + CSS class definitions, flat CSS, Dashboard 6-tile geometry. |
-| **Crypto, Contract & Quarantine** | `test-{derivation,qr,launchpad-quarantine,contract,signing-surface,release-flags,security-checks}.mjs` | `@thru/sdk@0.4.4` golden derivation vectors, QR canvas encoding, deleted launchpad absence in `src/` & `dist/`, manifest <-> router <-> UI agreement, signing parameter enumeration, all `FLAGS === false`, password validation. |
+| **Crypto, Contract & Quarantine** | `test-{derivation,qr,launchpad-quarantine,contract,signing-surface,release-flags,security-checks}.mjs` | `@thru/sdk@0.5.1` golden derivation vectors, QR canvas encoding, deleted launchpad absence in `src/` & `dist/`, manifest <-> router <-> UI agreement, signing parameter enumeration, all `FLAGS === false`, password validation. |
 | **Review, Consent & UI Lifecycle** | `test-{tx-review,tx-review-card,review-lifecycle,review-consent,ui-dom,toast,shared-platform,route-lifecycle}.mjs` | All 9 review decoders/kinds, row/block budgets, forbidden-vocabulary scan, lock/switch discard, v32 `REVIEW_REQUIRED` router token gate, safe `h()` DOM, `toast()`/`Banner()` rules, 1,133-check mount/teardown/secret sweep across all 15 routes. |
 | **Vault, Client, Tokens & History** | `test-{storage-migrations,vault,thru-client,tx-units,native-faucet,token-balances,balance-network,history-cache,history-block-time,registration,api-router,autolock}.mjs` | Schema v0->v1 migrations & fail-closed future versions, V2 multi-keyring vault, EOA/token/detail wire goldens, `autoUnits`/`networkFeeUnits`, native-faucet no-policy behavior, network-scoped caches, block-time provenance, v12 self-registration, router auth/serialization, inactivity auto-lock. |
 | **Domains & Dark-Launched DeFi** | `test-{name-service,name-registrar,name-custom-registrar,custom-registrar,name-primary,name-records,name-reverse,name-ui,defi-m0,defi-registry,defi-feed,defi-market,defi-intent,dex-swap}.mjs` | Name Service & official/custom registrar byte goldens, tiered pricing, SDK sorted-account sentinel, tracked domain registry, opcode-2 record append, reverse lookup, DeFi M0 schema/seed parity, B3 genesis binding, signed feeds, market cache, intents, AMM swap quotes. |

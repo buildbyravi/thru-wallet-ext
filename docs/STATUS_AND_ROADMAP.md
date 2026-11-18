@@ -1,13 +1,14 @@
 # Status and Roadmap
 
 **Document Class:** Authority (Single Source of Truth for Current Shipped State & Active Verification Work)
-Source baseline re-verified on `main` at contract v33 (2026-11-16). `src/`, `test/`, and `scripts/` remain authoritative.
+Source baseline re-verified on `main` at contract v33 (2026-11-18). `src/`, `test/`, and `scripts/` remain authoritative.
 
 ---
 
 ## 1. Shipped Baseline (Contract v33)
 
-- **Shared Contract (`v33`, `154` methods, `15` routes):** Declared in `src/shared/contract/manifest.js` (`88` wallet-core + `23` `name.*` + `43` DeFi M0 methods in `src/shared/contract/defi-schema.js` whose build-time flags in `src/shared/flags.js` are all `false`). Exact pins: `@thru/sdk@0.4.4` and `@thru/programs@0.4.4`.
+- **Shared Contract (`v33`, `154` methods, `15` routes):** Declared in `src/shared/contract/manifest.js` (`88` wallet-core + `23` `name.*` + `43` DeFi M0 methods in `src/shared/contract/defi-schema.js` whose build-time flags in `src/shared/flags.js` are all `false`). Exact pins: `@thru/sdk@0.5.1` and `@thru/programs@0.5.1`.
+- **SDK 0.5.1 upgrade (`TESTED` offline, `UNVERIFIED` live):** `@thru/sdk`/`@thru/programs` 0.4.4 → 0.5.1 per D-030. HD coin type moved 9999 → 8478 (goldens regenerated, no legacy path), `ROOT_MANAGER_PROGRAM_ADDRESS` → `CORE_MANAGER_PROGRAM_ADDRESS`, token accounts gained an account-type discriminator, and managed program addresses were re-pinned from the packages. Existing 0.4.x seed keyrings derive new addresses after this upgrade. Offline build + suite pass; new addresses have NOT been reverified against live Betanet.
 - **Verified Token Import (`v33`):** Dashboard uses `token.importVerified` (`auth: 'unlocked'`, mint address and optional fallback symbol only). The background verifies mint ownership, SDK layout and denomination from a captured account snapshot before network-scoped persistence, rejects caller-supplied name/decimals and duplicate imports, and fences network-generation changes. Legacy `token.import` retains its metadata-only contract. Deterministic router coverage is in `test/test-token-balances.mjs`; browser and live-network import verification remain `UNVERIFIED`.
 - **One UI Stack (`15` Routes):** `/welcome`, `/unlock`, `/dashboard`, `/accounts`, `/account`, `/add-account`, `/keyring`, `/export`, `/send`, `/receive`, `/faucet`, `/name`, `/history`, `/settings`, `/reset`. Toolbar popup (`400x600`) and resizable side panel (`popup.html?thru_panel=1`) share one HTML shell with synchronous close-listener registration and mutual exclusion; Side Panel Mode is an explicit Settings opt-in.
 - **Transaction Review & Background Consent Gate (`v29`–`v32`):** Every value-moving screen (`/send` native & token, `/name` register/purchase/renew/claim, `/faucet` claim — plus contract-level `domain-record`, `9` review kinds total including display-only `raw`) prepares via `tx.prepareReview`, renders `src/ui/domain/tx-review/review-card.js`, and confirms via `tx.confirmReview`. As of **v32**, `tx.confirmReview` mints a single-use 60s `consentToken` (`src/background/services/review/consent.js`) bound to `{ method, sha256(canonicalParams), accountAddress, networkId }`, and `api-router.js` rejects any non-exempt value-moving call lacking a valid token (`REVIEW_REQUIRED`). Full spec: `docs/guides/transaction-review.md`.
@@ -60,7 +61,7 @@ Version `1.5.0` released per owner directive (`docs/DECISIONS.md` D-029) on 2026
 3. **Live Multi-Account `v12` Activation & `scripts/verify-live-e2e.mjs betanet`:** Exercise multi-HD creation registration, `/send` JIT activation for an owned absent recipient, and MV3 worker suspension/restart during in-flight registration/send.
 4. **Promote Measured Token Fee Config (Optional Follow-Up):** Decide whether to wire the `2026-10-23` observed `1`-base-unit Token Program fee into `src/lib/networks.js` with dated provenance, and wire `tx-units.autoUnits` to read `network.baseFeeUnits` rather than literal `1n` ahead of Mainnet.
 5. **Live History & Explorer Route Confirmation:** Measure `blocks.get` block-time availability/latency on Betanet, verify `https://scan.thru.org` `/tx/` deep links, and confirm no typed RPC/explorer field exposes charged fees.
-6. **Dependency & Security Audit Gate:** Re-run `npm audit --omit=dev`, verify `@thru/*@0.4.4` & `esbuild` advisories, and complete an **independent external security audit** (`EXTERNAL AUDIT REQUIRED` — `docs/AUDIT_REPORT.md` Gate E).
+6. **Dependency & Security Audit Gate:** Re-run `npm audit --omit=dev`, verify `@thru/*@0.5.1` & `esbuild` advisories, and complete an **independent external security audit** (`EXTERNAL AUDIT REQUIRED` — `docs/AUDIT_REPORT.md` Gate E).
 7. **Mainnet Configuration & Live Re-Verification:** Measure Mainnet fees (`baseFeeUnits` is `null` today), verify Mainnet program deployments and explorer routes, update `src/manifest.json` `connect-src`, and re-run live verification against Mainnet.
 
 Unshipped product expansions (DeFi/Launchpad UI, `.thru` public profiles, Passkey smart accounts, local MCP companion) are tracked separately in `docs/roadmap/FUTURE_ROADMAP.md`.
