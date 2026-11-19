@@ -4915,7 +4915,7 @@ async function faucetReviewTest() {
   DOC.body.appendChild(route.el);
   await settle();
 
-  const claimBtn = buttons(route.el, /claim on-chain/i)[0];
+  const claimBtn = buttons(route.el, /^claim$/i)[0];
   ok('the faucet form offers a claim without any review pre-fetched',
     Boolean(claimBtn) && prepared.length === 0,
     `${route.el.textContent.slice(0, 120)}`);
@@ -4987,7 +4987,7 @@ async function faucetReviewTest() {
       text: cardEl.querySelector('.tx-review-details').textContent.slice(0, 120),
     }));
 
-  const reviewConfirm = buttons(DOC.body, /^claim$/i)[0];
+  const reviewConfirm = buttons(DOC.querySelector('[role="dialog"]'), /^claim$/i)[0];
   ok('a clean review enables its confirm control', reviewConfirm?.disabled === false,
     `disabled=${reviewConfirm?.disabled}`);
 
@@ -5019,7 +5019,7 @@ async function faucetReviewTest() {
     const focusRoute = FaucetRoute({ params: {}, navigate() {}, back() {} });
     DOC.body.appendChild(focusRoute.el);
     await settle();
-    const focusOpener = buttons(focusRoute.el, /claim on-chain/i)[0];
+    const focusOpener = buttons(focusRoute.el, /^claim$/i)[0];
     const nextFrame = () => new Promise((resolve) => requestAnimationFrame(() => resolve()));
     const openReviewSheet = async () => {
       focusOpener.focus();
@@ -5052,7 +5052,7 @@ async function faucetReviewTest() {
       throw apiError('INVALID_INPUT', 'The faucet rejected this claim.');
     };
     await openReviewSheet();
-    click(buttons(DOC.body, /^claim$/i)[0]);
+    click(buttons(DOC.querySelector('[role="dialog"]'), /^claim$/i)[0]);
     await settle();
     ok('a rejected claim reports the failure and re-enables the claim control',
       /faucet rejected this claim/i.test(textOf(focusRoute.el)) && focusOpener.disabled === false,
@@ -5090,14 +5090,15 @@ async function faucetReviewTest() {
   const inFlightRoute = FaucetRoute({ params: {}, navigate() {}, back() {} });
   DOC.body.appendChild(inFlightRoute.el);
   await settle();
-  click(buttons(inFlightRoute.el, /claim on-chain/i)[0]);
+  click(buttons(inFlightRoute.el, /^claim$/i)[0]);
   await settle();
-  click(buttons(DOC.body, /^claim$/i)[0]);
+  click(buttons(DOC.querySelector('[role="dialog"]'), /^claim$/i)[0]);
   await settle();
-  const busyClaim = buttons(inFlightRoute.el, /claim on-chain|claiming/i)[0];
-  ok('a submitted claim disables the claim control until it settles',
-    inFlightHeld.length === 1 && busyClaim?.disabled === true,
-    `held=${inFlightHeld.length} disabled=${busyClaim?.disabled}`);
+  const busyClaim = buttons(inFlightRoute.el, /^claim$|claiming/i)[0];
+  ok('a submitted claim disables the claim control and shows busy feedback until it settles',
+    inFlightHeld.length === 1 && busyClaim?.disabled === true && /claiming/i.test(textOf(busyClaim))
+      && /submitting claim/i.test(textOf(inFlightRoute.el)),
+    `held=${inFlightHeld.length} disabled=${busyClaim?.disabled} text=${textOf(inFlightRoute.el)}`);
   const preparesBefore = chromeLog.calls.filter((c) => c === 'tx.prepareReview').length;
   click(busyClaim);
   await settle();
@@ -5119,9 +5120,9 @@ async function faucetReviewTest() {
   const uncertainRoute = FaucetRoute({ params: {}, navigate() {}, back() {} });
   DOC.body.appendChild(uncertainRoute.el);
   await settle();
-  click(buttons(uncertainRoute.el, /claim on-chain/i)[0]);
+  click(buttons(uncertainRoute.el, /^claim$/i)[0]);
   await settle();
-  click(buttons(DOC.body, /^claim$/i)[0]);
+  click(buttons(DOC.querySelector('[role="dialog"]'), /^claim$/i)[0]);
   await settle();
   ok('a claim timeout reports an unknown outcome and forbids an immediate retry',
     /Could not confirm whether this claim was submitted/.test(textOf(uncertainRoute.el))
