@@ -603,3 +603,5 @@ derivation adapter, per-keyring coin-type field, or storage migration is added. 
 created under 0.4.x resolve to their new 8478 addresses after the upgrade; users must re-import
 a phrase elsewhere if they need the old addresses. This is a deliberate owner decision, not a
 silent SDK drift.
+
+**Follow-up (2026-11-18).** Patched both exact pins to `@thru/sdk@0.5.2` and `@thru/programs@0.5.2`. The patch adds Ledger path helpers and signature-context limits only; the 8478 derivation, program addresses, token layouts and wire formats are unchanged, so no code or golden-address change was needed.

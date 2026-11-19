@@ -26,7 +26,7 @@ Every `DEFI*` flag in `src/shared/flags.js` (`DEFI`, `DEFI_READ`, `DEFI_DEX`, `D
 
 ### 2.1 Capability Snapshot & Stateless Genesis Binding (`G1-A`)
 - **Files:** `src/background/services/defi/capability-snapshot.js`, `src/background/services/registry-service.js`, `src/background/services/program-service.js`.
-- `program.list` returns **19** `ProgramRecord` entries (`18` canonical bootstrap roles from `@thru/programs@0.5.1` + `curve: null`). `program.capabilities` derives per-feature `{ state, reason }` via `deriveFeatureState` precedence (`CUSTOM_NETWORK` -> `NETWORK_MISMATCH` -> `NETWORK_RESET` -> `KILL_SWITCH` -> `FEED_STALE`/`FEED_QUORUM_FAILED` -> dossier seed) in `src/background/services/defi/gating.js`.
+- `program.list` returns **19** `ProgramRecord` entries (`18` canonical bootstrap roles from `@thru/programs@0.5.2` + `curve: null`). `program.capabilities` derives per-feature `{ state, reason }` via `deriveFeatureState` precedence (`CUSTOM_NETWORK` -> `NETWORK_MISMATCH` -> `NETWORK_RESET` -> `KILL_SWITCH` -> `FEED_STALE`/`FEED_QUORUM_FAILED` -> dossier seed) in `src/background/services/defi/gating.js`.
 - **B3 Genesis Binding:** Static `SEED_FINGERPRINT` (`chainFingerprint('betanet')`) binds cached records to the network's genesis identity; a genesis reset invalidates records, caches, and prepared intents with `NETWORK_RESET`.
 
 ### 2.2 Signed Off-Chain Feed Verification (`G1-B`)

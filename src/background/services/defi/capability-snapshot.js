@@ -1,7 +1,7 @@
 // Program addresses are DERIVED from the pinned package at build time (2026-10-08,
 // owner directive): the registry must never hand-audit strings against a moving chain — if
 // a package upgrade moves a managed address, the snapshot follows the pin and the dated
-// evidence seed (scripts/defi-evidence/betanet.registry-seed.json, re-pinned to 0.5.1) starts
+// evidence seed (scripts/defi-evidence/betanet.registry-seed.json, re-pinned to 0.5.2) starts
 // disagreeing with it loudly, which is exactly the B3 fail-loud design.
 import { BOOTSTRAP_PROGRAM_ADDRESSES } from '../../../lib/bootstrap-pins.js';
 
@@ -58,7 +58,7 @@ export const PROGRAMS = Object.freeze([
     changeStatus: 'unknown',
     managementState: 'bootstrap-managed (package-declared; live upgrade authority unverified)',
     updatedAt: '2026-11-18',
-    evidenceRef: ['2026-10-05-package-surface', 'repo: wire goldens vs @thru/programs/token 0.4.1', '2026-11-18-package-surface-0.5.1'],
+    evidenceRef: ['2026-10-05-package-surface', 'repo: wire goldens vs @thru/programs/token 0.4.1', '2026-11-18-package-surface-0.5.2'],
   }),
   Object.freeze({
     role: 'amm',
@@ -90,7 +90,7 @@ export const PROGRAMS = Object.freeze([
     changeStatus: 'unknown',
     managementState: 'bootstrap-managed (package-declared)',
     updatedAt: '2026-11-18',
-    evidenceRef: ['2026-10-05-package-surface', '2026-10-05-official-docs', '2026-11-18-package-surface-0.5.1'],
+    evidenceRef: ['2026-10-05-package-surface', '2026-10-05-official-docs', '2026-11-18-package-surface-0.5.2'],
   }),
   Object.freeze({
     role: 'oracle',
@@ -110,7 +110,7 @@ export const PROGRAMS = Object.freeze([
     changeStatus: 'unknown',
     managementState: 'bootstrap-managed (package-declared)',
     updatedAt: '2026-11-18',
-    evidenceRef: ['2026-10-05-package-surface', '2026-10-08-official-docs', '2026-11-18-package-surface-0.5.1'],
+    evidenceRef: ['2026-10-05-package-surface', '2026-10-08-official-docs', '2026-11-18-package-surface-0.5.2'],
     // ABI manager program — feeds Q-series ABI reads if ever needed for program introspection.
   }),
   Object.freeze({
@@ -121,7 +121,7 @@ export const PROGRAMS = Object.freeze([
     changeStatus: 'unknown',
     managementState: 'bootstrap-managed (package-declared)',
     updatedAt: '2026-11-18',
-    evidenceRef: ['2026-10-05-package-surface', '2026-10-08-official-docs', '2026-11-18-package-surface-0.5.1'],
+    evidenceRef: ['2026-10-05-package-surface', '2026-10-08-official-docs', '2026-11-18-package-surface-0.5.2'],
     // Block producer program per the 0.4.1 bootstrap table; fee distribution to live producers per the transaction-execution spec (2026-10-08-official-docs).
   }),
   Object.freeze({
@@ -143,7 +143,7 @@ export const PROGRAMS = Object.freeze([
     changeStatus: 'unknown',
     managementState: 'bootstrap-managed (package-declared)',
     updatedAt: '2026-11-18',
-    evidenceRef: ['2026-10-05-package-surface', '2026-10-08-official-docs', '2026-11-18-package-surface-0.5.1'],
+    evidenceRef: ['2026-10-05-package-surface', '2026-10-08-official-docs', '2026-11-18-package-surface-0.5.2'],
     // Account compression program — matches the client compression* groups (getAccountStatuses/compressAccount); fee-payer compression-timeout error -498 exists per spec.
   }),
   Object.freeze({
@@ -154,7 +154,7 @@ export const PROGRAMS = Object.freeze([
     changeStatus: 'unknown',
     managementState: 'bootstrap-managed (package-declared)',
     updatedAt: '2026-11-18',
-    evidenceRef: ['2026-10-05-package-surface', '2026-10-08-official-docs', '2026-11-18-package-surface-0.5.1'],
+    evidenceRef: ['2026-10-05-package-surface', '2026-10-08-official-docs', '2026-11-18-package-surface-0.5.2'],
     // Consensus validator program per the 0.4.1 bootstrap table.
   }),
   Object.freeze({
@@ -165,7 +165,7 @@ export const PROGRAMS = Object.freeze([
     changeStatus: 'unknown',
     managementState: 'bootstrap-managed (package-declared)',
     updatedAt: '2026-11-18',
-    evidenceRef: ['2026-10-05-package-surface', '2026-10-08-official-docs', '2026-11-18-package-surface-0.5.1'],
+    evidenceRef: ['2026-10-05-package-surface', '2026-10-08-official-docs', '2026-11-18-package-surface-0.5.2'],
     // Externally-owned-account program: fresh-account activation path (the P3 createOnChainAccount program). Live-relevant: the current activation/claim regression is in this neighborhood.
   }),
   Object.freeze({
@@ -209,7 +209,7 @@ export const PROGRAMS = Object.freeze([
     changeStatus: 'unknown',
     managementState: 'bootstrap-managed (package-declared)',
     updatedAt: '2026-11-18',
-    evidenceRef: ['2026-10-05-package-surface', '2026-10-08-official-docs', '2026-11-18-package-surface-0.5.1'],
+    evidenceRef: ['2026-10-05-package-surface', '2026-10-08-official-docs', '2026-11-18-package-surface-0.5.2'],
     // System program per @thru/programs/bootstrap-addresses 0.4.1 (canonical pin).
   }),
   Object.freeze({
@@ -242,7 +242,7 @@ export const PROGRAMS = Object.freeze([
     changeStatus: 'unknown',
     managementState: 'bootstrap-managed (package-declared)',
     updatedAt: '2026-11-18',
-    evidenceRef: ['2026-10-05-package-surface', '2026-10-08-official-docs', '2026-11-18-package-surface-0.5.1'],
+    evidenceRef: ['2026-10-05-package-surface', '2026-10-08-official-docs', '2026-11-18-package-surface-0.5.2'],
     // Program uploader (deploy pipeline) per the 0.4.1 bootstrap table.
   }),
   Object.freeze({
@@ -253,7 +253,7 @@ export const PROGRAMS = Object.freeze([
     changeStatus: 'unknown',
     managementState: 'bootstrap-managed (package-declared)',
     updatedAt: '2026-11-18',
-    evidenceRef: ['2026-10-05-package-surface', '2026-10-08-official-docs', '2026-11-18-package-surface-0.5.1'],
+    evidenceRef: ['2026-10-05-package-surface', '2026-10-08-official-docs', '2026-11-18-package-surface-0.5.2'],
     // System program per @thru/programs/bootstrap-addresses 0.4.1 (canonical pin).
   }),
 ]);

@@ -45,7 +45,7 @@ import { BOOTSTRAP_PROGRAM_ADDRESSES, BOOTSTRAP_FAUCET_VAULT_ADDRESS } from '@th
  *   null when baseFeeUnits is null. tx.estimateFee reports it verbatim.
  */
 
-// Program addresses come from the official 0.5.1 packages — the managed-genesis registry that
+// Program addresses come from the official 0.5.2 packages — the managed-genesis registry that
 // replaced the old reserved "marker byte" system table at the 2026-09-26 managed-genesis
 // reset. (The old
 // zero-filled addresses with byte 31 = 0x00 transfer / 0x03 account-create / 0xaa token /

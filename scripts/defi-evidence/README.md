@@ -8,7 +8,7 @@ Machine-readable evidence records supporting `docs/defi/DOSSIER_AND_CAPABILITIES
 
 `test/test-defi-m0.mjs` enforces parity between these two seed files and `src/background/services/defi/capability-snapshot.js`. Never edit one without updating all three and running `npm test`:
 
-- `betanet.registry-seed.json` — 19 `ProgramRecord` entries (`18` canonical `@thru/programs/bootstrap-addresses` roles + `curve: null`). Re-pinned 2026-11-18 to the 0.5.1 package declarations; only package-declared facts changed, and no live-chain verification was repeated for the new addresses.
+- `betanet.registry-seed.json` — 19 `ProgramRecord` entries (`18` canonical `@thru/programs/bootstrap-addresses` roles + `curve: null`). Re-pinned 2026-11-18 to the 0.5.2 package declarations (first done on 0.5.1, unchanged in 0.5.2); only package-declared facts changed, and no live-chain verification was repeated for the new addresses.
 - `betanet.capability-matrix.json` — 13 capability keys (`balances`, `tokenTransfer`, `swap`, `pools` enabled in seed; remaining DeFi/launchpad/chart/simulation/USD keys `unsupported` with explicit `UNSUPPORTED_REASONS`).
 
 ---
@@ -17,7 +17,7 @@ Machine-readable evidence records supporting `docs/defi/DOSSIER_AND_CAPABILITIES
 
 1. **Offline & Spec Snapshots (`collect-offline-evidence.mjs` / Dated Docs):**
    - `2026-10-05-environment-egress.json` — records sandbox TLS egress boundary to `*.thru.org`.
-   - Package snapshots record the installed manifests, not a license audit or a chain read. [2026-10-05](2026-10-05-package-surface.json) covers `@thru/sdk` and `@thru/programs` at `0.4.1`; [2026-11-18](2026-11-18-package-surface.json) covers both at `0.4.4`; [2026-11-18 0.5.1](2026-11-18-package-surface-0.5.1.json) covers the current `0.5.1` pins (`node scripts/collect-offline-evidence.mjs --check --out /tmp/package-surface-check.json` validates installed packages without rewriting committed snapshots).
+   - Package snapshots record the installed manifests, not a license audit or a chain read. [2026-10-05](2026-10-05-package-surface.json) covers `@thru/sdk` and `@thru/programs` at `0.4.1`; [2026-11-18](2026-11-18-package-surface.json) covers both at `0.4.4`; [2026-11-18 0.5.1](2026-11-18-package-surface-0.5.1.json) covers `0.5.1`; [2026-11-18 0.5.2](2026-11-18-package-surface-0.5.2.json) covers the current `0.5.2` pins (`node scripts/collect-offline-evidence.mjs --check --out /tmp/package-surface-check.json` validates installed packages without rewriting committed snapshots).
    - `2026-10-05-official-docs.json`, `2026-10-08-official-docs.json`, `2026-10-09-registrar-nameservice-official.json` — dated retrievals of official Thru transaction, runtime, resource, registrar, and name-service specifications.
    - `2026-10-09-claim-variants.json` — SDK `0.4.0` vs `0.4.1` unit-budget root-cause record (`src/lib/tx-units.js`).
 2. **Live Betanet Battery & DeFi Probes (`npm run test:live` / `scripts/probe-*.mjs`):**

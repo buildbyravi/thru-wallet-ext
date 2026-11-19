@@ -13,7 +13,7 @@
 //   - CPI payload re-encoding (init-root tag 0 / register-subdomain tag 1, packed args,
 //     inline proofs): first-party txn_tools.rs @ a058dd8 — same source our live-proven
 //     name-service register path used on Betanet 2026-10-24.
-//   - Account-table ABI: v2 index-carrying formats. @thru/sdk 0.5.1 (the PUBLISHED npm
+//   - Account-table ABI: v2 index-carrying formats. @thru/sdk 0.5.2 (the PUBLISHED npm
 //     dist — normalizeAccountList sorting with compareAccounts, covered by the pinned
 //     account-index regression test) byte-sorts each readWrite/readOnly segment;
 //     the VM-visible table is [feePayer, program, sorted RW, sorted RO]. Positional
@@ -513,7 +513,7 @@ export function buildTcrUpdateConfigInstructionData({
   return out;
 }
 
-// ---- Account lists (semantic roles; ORDER IS IRRELEVANT — SDK 0.5.1 byte-sorts) ---
+// ---- Account lists (semantic roles; ORDER IS IRRELEVANT — SDK 0.5.2 byte-sorts) ---
 // Pass these sets to buildAndSign({ accounts: { readWrite, readOnly } }) and resolve
 // indices through the SDK InstructionContext inside the instructionData callback.
 // `target` (the future domain owner) appears as an extra read-only entry only when it

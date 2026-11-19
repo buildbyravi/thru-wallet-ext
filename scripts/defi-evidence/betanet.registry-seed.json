@@ -20,9 +20,9 @@
       "evidenceRef": [
         "2026-10-05-package-surface",
         "repo: test/test-thru-client.mjs + test/test-token-balances.mjs wire goldens vs @thru/programs/token 0.4.1",
-        "2026-11-18-package-surface-0.5.1"
+        "2026-11-18-package-surface-0.5.2"
       ],
-      "note": "Instruction byte formats and derivation are golden-tested against the pinned binding locally. LIVE SEMANTICS OPEN: recipient-owner acceptance of sender-created token accounts and the token-program fee (docs/BACKEND_GAPS.md C1/C2 = dossier Q12/Q13 = precondition P3). Re-pinned from @thru/programs 0.5.1 declared addresses; live deployment was NOT re-verified."
+      "note": "Instruction byte formats and derivation are golden-tested against the pinned binding locally. LIVE SEMANTICS OPEN: recipient-owner acceptance of sender-created token accounts and the token-program fee (docs/BACKEND_GAPS.md C1/C2 = dossier Q12/Q13 = precondition P3). Re-pinned from @thru/programs 0.5.2 declared addresses (same as 0.5.1); live deployment was NOT re-verified."
     },
     {
       "role": "amm",
@@ -62,9 +62,9 @@
       "evidenceRef": [
         "2026-10-05-package-surface",
         "2026-10-05-official-docs",
-        "2026-11-18-package-surface-0.5.1"
+        "2026-11-18-package-surface-0.5.2"
       ],
-      "note": "Needed for atomic multi-step flows (Q1): the spec shows one program call per transaction, so atomicity wants a verified multicall. Signer-privilege, failure and trust semantics need ABI read + a live multi-call transaction with a deliberate failure. Re-pinned from @thru/programs 0.5.1 declared addresses; live deployment was NOT re-verified."
+      "note": "Needed for atomic multi-step flows (Q1): the spec shows one program call per transaction, so atomicity wants a verified multicall. Signer-privilege, failure and trust semantics need ABI read + a live multi-call transaction with a deliberate failure. Re-pinned from @thru/programs 0.5.2 declared addresses (same as 0.5.1); live deployment was NOT re-verified."
     },
     {
       "role": "oracle",
@@ -90,9 +90,9 @@
       "evidenceRef": [
         "2026-10-05-package-surface",
         "2026-10-08-official-docs",
-        "2026-11-18-package-surface-0.5.1"
+        "2026-11-18-package-surface-0.5.2"
       ],
-      "note": "ABI manager program \u2014 feeds Q-series ABI reads if ever needed for program introspection. Re-pinned from @thru/programs 0.5.1 declared addresses; live deployment was NOT re-verified."
+      "note": "ABI manager program \u2014 feeds Q-series ABI reads if ever needed for program introspection. Re-pinned from @thru/programs 0.5.2 declared addresses (same as 0.5.1); live deployment was NOT re-verified."
     },
     {
       "role": "block_producer",
@@ -105,9 +105,9 @@
       "evidenceRef": [
         "2026-10-05-package-surface",
         "2026-10-08-official-docs",
-        "2026-11-18-package-surface-0.5.1"
+        "2026-11-18-package-surface-0.5.2"
       ],
-      "note": "Block producer program per the 0.4.1 bootstrap table; fee distribution to live producers per the transaction-execution spec (2026-10-08-official-docs). Re-pinned from @thru/programs 0.5.1 declared addresses; live deployment was NOT re-verified."
+      "note": "Block producer program per the 0.4.1 bootstrap table; fee distribution to live producers per the transaction-execution spec (2026-10-08-official-docs). Re-pinned from @thru/programs 0.5.2 declared addresses (same as 0.5.1); live deployment was NOT re-verified."
     },
     {
       "role": "clob",
@@ -134,9 +134,9 @@
       "evidenceRef": [
         "2026-10-05-package-surface",
         "2026-10-08-official-docs",
-        "2026-11-18-package-surface-0.5.1"
+        "2026-11-18-package-surface-0.5.2"
       ],
-      "note": "Account compression program \u2014 matches the client compression* groups (getAccountStatuses/compressAccount); fee-payer compression-timeout error -498 exists per spec. Re-pinned from @thru/programs 0.5.1 declared addresses; live deployment was NOT re-verified."
+      "note": "Account compression program \u2014 matches the client compression* groups (getAccountStatuses/compressAccount); fee-payer compression-timeout error -498 exists per spec. Re-pinned from @thru/programs 0.5.2 declared addresses (same as 0.5.1); live deployment was NOT re-verified."
     },
     {
       "role": "consensus_validator",
@@ -149,9 +149,9 @@
       "evidenceRef": [
         "2026-10-05-package-surface",
         "2026-10-08-official-docs",
-        "2026-11-18-package-surface-0.5.1"
+        "2026-11-18-package-surface-0.5.2"
       ],
-      "note": "Consensus validator program per the 0.4.1 bootstrap table. Re-pinned from @thru/programs 0.5.1 declared addresses; live deployment was NOT re-verified."
+      "note": "Consensus validator program per the 0.4.1 bootstrap table. Re-pinned from @thru/programs 0.5.2 declared addresses (same as 0.5.1); live deployment was NOT re-verified."
     },
     {
       "role": "eoa",
@@ -164,9 +164,9 @@
       "evidenceRef": [
         "2026-10-05-package-surface",
         "2026-10-08-official-docs",
-        "2026-11-18-package-surface-0.5.1"
+        "2026-11-18-package-surface-0.5.2"
       ],
-      "note": "Externally-owned-account program: fresh-account activation path (the P3 createOnChainAccount program). Live-relevant: the current activation/claim regression is in this neighborhood. Re-pinned from @thru/programs 0.5.1 declared addresses; live deployment was NOT re-verified."
+      "note": "Externally-owned-account program: fresh-account activation path (the P3 createOnChainAccount program). Live-relevant: the current activation/claim regression is in this neighborhood. Re-pinned from @thru/programs 0.5.2 declared addresses (same as 0.5.1); live deployment was NOT re-verified."
     },
     {
       "role": "faucet",
@@ -221,9 +221,9 @@
       "evidenceRef": [
         "2026-10-05-package-surface",
         "2026-10-08-official-docs",
-        "2026-11-18-package-surface-0.5.1"
+        "2026-11-18-package-surface-0.5.2"
       ],
-      "note": "System program per @thru/programs/bootstrap-addresses 0.4.1 (canonical pin). Re-pinned from @thru/programs 0.5.1 declared addresses; live deployment was NOT re-verified."
+      "note": "System program per @thru/programs/bootstrap-addresses 0.4.1 (canonical pin). Re-pinned from @thru/programs 0.5.2 declared addresses (same as 0.5.1); live deployment was NOT re-verified."
     },
     {
       "role": "passkey_manager",
@@ -264,9 +264,9 @@
       "evidenceRef": [
         "2026-10-05-package-surface",
         "2026-10-08-official-docs",
-        "2026-11-18-package-surface-0.5.1"
+        "2026-11-18-package-surface-0.5.2"
       ],
-      "note": "Program uploader (deploy pipeline) per the 0.4.1 bootstrap table. Re-pinned from @thru/programs 0.5.1 declared addresses; live deployment was NOT re-verified."
+      "note": "Program uploader (deploy pipeline) per the 0.4.1 bootstrap table. Re-pinned from @thru/programs 0.5.2 declared addresses (same as 0.5.1); live deployment was NOT re-verified."
     },
     {
       "role": "wthru",
@@ -279,19 +279,19 @@
       "evidenceRef": [
         "2026-10-05-package-surface",
         "2026-10-08-official-docs",
-        "2026-11-18-package-surface-0.5.1"
+        "2026-11-18-package-surface-0.5.2"
       ],
-      "note": "System program per @thru/programs/bootstrap-addresses 0.4.1 (canonical pin). Re-pinned from @thru/programs 0.5.1 declared addresses; live deployment was NOT re-verified."
+      "note": "System program per @thru/programs/bootstrap-addresses 0.4.1 (canonical pin). Re-pinned from @thru/programs 0.5.2 declared addresses (same as 0.5.1); live deployment was NOT re-verified."
     }
   ],
   "relatedDeclaredConstants": {
     "wthru": "taWTHRUThPRK79mTeD-1Bt0eODfqzkkO2jbYE8vvIndjE6",
     "wthru_mint": "tafHKrDiuT82jF-aWYs5t1HLIoLiNeduKAfUEm2cNORmd2",
     "wthru_vault": "tavJCZVMaqKvAa-9F0vpwZeb0udajFHeK2o-UhWU1BXVnR",
-    "note": "Q17 lead: how native THRU enters a pool (wrapped or direct) is unverified live. | 2026-10-08: program map completed to the full 0.4.1 bootstrap declaration set (18 roles; pgreyy/thruscan SYSTEM table corroborates token/eoa/multicall/name_service/faucet/noop/amm/clob/oracle/nft/wthru addresses) | 2026-11-18: re-pinned from @thru/programs 0.5.1 declarations; live deployment not re-verified.",
+    "note": "Q17 lead: how native THRU enters a pool (wrapped or direct) is unverified live. | 2026-10-08: program map completed to the full 0.4.1 bootstrap declaration set (18 roles; pgreyy/thruscan SYSTEM table corroborates token/eoa/multicall/name_service/faucet/noop/amm/clob/oracle/nft/wthru addresses) | 2026-11-18: re-pinned from @thru/programs 0.5.2 declarations (same as 0.5.1); live deployment not re-verified.",
     "evidenceRef": [
       "2026-10-05-package-surface",
-      "2026-11-18-package-surface-0.5.1"
+      "2026-11-18-package-surface-0.5.2"
     ]
   },
   "customNetworks": "DeFi disabled with reason CUSTOM_NETWORK per D14 and the shipped contract-v7 quarantine; no override path exists or may be added."

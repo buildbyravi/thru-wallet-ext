@@ -36,9 +36,9 @@ import { keys, Pubkey } from '@thru/sdk';
 
 // A deliberately public, well-known test phrase. It must never hold real funds.
 const VECTORS = {
-  // Regenerated on 0.5.1 (`node scripts/gen-derivation-vectors.mjs`) after the SDK moved
-  // from coin type 9999 to 8478. The owner chose not to keep a legacy derivation path (D-030).
-  sdkVersion: '0.5.1',
+  // Regenerated after the SDK moved from coin type 9999 to 8478. Verified unchanged on 0.5.2.
+  // The owner chose not to keep a legacy derivation path (D-030).
+  sdkVersion: '0.5.2',
   phrase: 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about',
   hd: [
     { index: 0, address: 'taHWXdTRD0-KOS2eF8TYzep8aOKj6tw1mXu7ZzjjnMDm6A' },
@@ -151,4 +151,4 @@ if (failures > 0) {
   );
   process.exit(1);
 }
-console.log('Derivation matches the pinned SDK 0.5.1 vectors (coin type 8478, D-030).');
+console.log('Derivation matches the pinned SDK 0.5.2 vectors (coin type 8478, D-030).');

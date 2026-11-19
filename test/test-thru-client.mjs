@@ -251,7 +251,7 @@ import { Pubkey } from '@thru/sdk';
   const PRE_RESET_TOKEN_PROGRAM = 'taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKqq';
   const GOLDEN_MINT = 'tawqbPfCF69Kyo2hdPTIfoz5Safk--tIB3g2q0Z9dZFUBR';
   const GOLDEN_TOKEN_ACCOUNT = 'taz4AOOlJBtn8IzaX97sKpL9_leQlC0HHg6EuAnw6U3cmh';
-  // 0.5.1 managed-genesis pin (token program moved again from the 0.4.x address).
+  // 0.5.2 managed-genesis pin (token program moved again from the 0.4.x address).
   const GOLDEN_MINT_CURRENT = 'tac2DlYjiL-P8ebL9ysqdRQEomJzrrw9jLQNXzHD-PO3A4';
   const GOLDEN_TOKEN_ACCOUNT_CURRENT = 'tamh22IqgJlGjBmpsMRLyXt3qCsa-M4ZOnmDZ68HXtCxZK';
 

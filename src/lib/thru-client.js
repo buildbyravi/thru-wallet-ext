@@ -38,7 +38,7 @@ import { autoUnits, noteExecution, UNIT_CLASS } from './tx-units.js';
 
 export const BETANET_RPC = 'https://rpc.betanet.thru.org';
 
-// Canonical program addresses, taken from the 0.5.1 packages rather than hand-copied: the
+// Canonical program addresses, taken from the 0.5.2 packages rather than hand-copied: the
 // betanet reset replaced the old reserved "marker byte" system table (zero-filled 32-byte
 // addresses with byte 31 = 0x00 transfer / 0x03 account-create / 0xaa token / 0xfa faucet)
 // with managed-genesis addresses, and the packages are where the next redeployment will land
