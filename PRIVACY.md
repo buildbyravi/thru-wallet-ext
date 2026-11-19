@@ -3,7 +3,7 @@
 **Last Updated:** November 2026
 **Repository:** [github.com/buildbyravi/thru-wallet-ext](https://github.com/buildbyravi/thru-wallet-ext)
 
-Thru Wallet is a self-custody Chrome extension for Thru's betanet (a non-EVM RISC-V Layer-1 blockchain). It is designed from the ground up to respect user privacy and operate under strict zero-telemetry principles.
+This policy describes data stored by the extension and requests sent to the Thru Betanet RPC.
 
 ---
 
@@ -38,13 +38,13 @@ https://rpc.betanet.thru.org
 
 ## 3. What Data Is NEVER Collected
 
-Thru Wallet adheres to a strict zero-collection policy. The extension does **NOT**:
+Thru Wallet does not:
 
-*   **No Analytics or Telemetry:** No usage statistics, click tracking, performance metrics, or error reports are collected.
-*   **No User Tracking:** No IP tracking, user identification, advertising IDs, or behavioral profiling.
-*   **No Third-Party Scripts:** No Google Analytics, Mixpanel, Segment, Sentry, or external tracking libraries.
-*   **No Remote Code:** All JavaScript is bundled locally into the extension package. No remote scripts (`<script src="...">`), external code injection, or `eval()` calls are used.
-*   **No Key Transmission:** Your master password, recovery phrase, and private keys NEVER leave your browser's local memory and are never transmitted over the network.
+*   Collect analytics, click tracking, performance metrics, or error reports.
+*   Track IP addresses, user identity, advertising IDs, or behavior.
+*   Load third-party scripts or tracking libraries.
+*   Load remote code. JavaScript is bundled into the extension package; no remote scripts, code injection, or `eval()` calls are used.
+*   Transmit your master password, recovery phrase, or private keys. They remain in local memory.
 
 ---
 

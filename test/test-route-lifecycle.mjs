@@ -4940,7 +4940,7 @@ async function faucetReviewTest() {
       && amountInput?.value === '0.00001 THRU',
     JSON.stringify({ readonly: amountInput?.getAttribute('readonly'), value: amountInput?.value }));
   ok('the claim field carries no base-units jargon next to a THRU-denominated amount',
-    /Fixed claim of 0\.00001 THRU per request/.test(textOf(route.el))
+    /Paid to your active account\. No balance is required\./.test(textOf(route.el))
       && !/raw units/i.test(textOf(route.el)),
     textOf(route.el).slice(0, 200));
 

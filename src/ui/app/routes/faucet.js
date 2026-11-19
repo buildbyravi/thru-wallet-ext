@@ -93,7 +93,7 @@ export function FaucetRoute({ navigate, back }) {
       type: 'text',
       readonly: true,
       value: `${fixedThru} THRU`,
-      hint: `Fixed claim of ${fixedThru} THRU per request — paid to your active account, free with no balance required.`,
+      hint: 'Paid to your active account. No balance is required.',
     }));
 
     const claimBtn = track(Button({

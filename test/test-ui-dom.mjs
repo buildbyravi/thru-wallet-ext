@@ -548,7 +548,7 @@ ok('panel-item destroy() removes the click handler',
   sendItem.el.listeners.length === 0 && disabledItem.el.listeners.length === 0);
 
 
-section('CurrentConnection renders connection status, network switcher button, and live health');
+section('CurrentConnection renders measured RPC status and network switcher');
 
 const { CurrentConnection } = await import('../src/ui/domain/current-connection.js');
 
@@ -561,9 +561,9 @@ const conn = CurrentConnection({
 ok('CurrentConnection root is rendered',
   conn.el.classList.contains('current-connection'));
 
-const dAppText = conn.el.querySelector('.current-connection-text');
-ok('default dApp status displays Not connected to any Dapp',
-  dAppText?.textContent === 'Not connected to any Dapp');
+const statusText = conn.el.querySelector('.current-connection-text');
+ok('default RPC status is checking until measured',
+  statusText?.textContent === 'Checking…');
 
 const netBtn = conn.el.querySelector('.current-connection-net');
 ok('network badge is a distinct clickable button', Boolean(netBtn) && netBtn.tagName === 'button');
@@ -572,22 +572,22 @@ ok('network badge has descriptive title for settings', netBtn.getAttribute('titl
 netBtn.listeners?.[0]?.handler();
 ok('clicking network badge fires onNetworkClick handler', netClicked === true);
 
-conn.update({ origin: 'https://app.uniswap.org' }, 'Testnet', 45, 'healthy');
-ok('conn.update updates dApp origin', dAppText?.textContent === 'https://app.uniswap.org');
+conn.update({ network: 'Testnet', latencyMs: 45, healthStatus: 'healthy' });
 ok('conn.update updates network label', netBtn.textContent?.includes('Testnet'));
+ok('conn.update updates RPC status', statusText?.textContent === 'Online');
 
 const pipEl = conn.el.querySelector('.current-connection-pip');
 ok('conn.update applies healthy pip status', pipEl?.classList?.contains('healthy'));
 
-conn.update(undefined, undefined, null, 'offline');
+conn.update({ healthStatus: 'offline' });
 ok('conn.update applies offline pip status', pipEl?.classList?.contains('offline'));
 
 // Object form: the preferred call style. No `undefined` padding for untouched slots.
-conn.update({ site: { origin: 'https://app.thru.org' }, network: 'Mainnet', latencyMs: 120, healthStatus: 'slow' });
-ok('conn.update(object) updates dApp origin', dAppText?.textContent === 'https://app.thru.org');
+conn.update({ network: 'Mainnet', latencyMs: 120, healthStatus: 'slow' });
 ok('conn.update(object) updates network label', netBtn.textContent?.includes('Mainnet'));
 ok('conn.update(object) applies slow pip with latency', pipEl?.classList?.contains('slow')
-  && conn.el.querySelector('.current-connection-latency')?.textContent === '120ms');
+  && conn.el.querySelector('.current-connection-latency')?.textContent === '120 ms');
+ok('conn.update(object) updates RPC status', statusText?.textContent === 'Slow');
 
 conn.update({ healthStatus: 'offline' });
 ok('conn.update({ healthStatus }) alone flips the pip to offline', pipEl?.classList?.contains('offline'));

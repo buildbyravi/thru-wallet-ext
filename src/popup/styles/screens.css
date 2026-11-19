@@ -646,23 +646,12 @@ form > .btn.text {
   border-bottom: 0;
   box-sizing: border-box;
 }
-.current-connection-dapp {
+.current-connection-health {
   display: flex;
   align-items: center;
   gap: 8px;
   flex: 1;
   min-width: 0;
-}
-.current-connection-globe {
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: var(--surface-2, #eef1f4);
-  color: var(--foot, #6a7580);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
 }
 .current-connection-text {
   font-size: 12px;

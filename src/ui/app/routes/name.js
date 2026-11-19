@@ -193,7 +193,6 @@ export function NameRoute({ back }) {
     const list = h('div', { class: 'stack stack-3 name-domain-list' });
     const status = h('div', { class: 'hint', role: 'status', text: 'Loading saved domains…' });
     const refresh = h('button', { type: 'button', class: 'btn text', text: 'Refresh ownership' });
-    host.appendChild(h('p', { class: 'hint', text: 'Domains saved in this wallet.' }));
     host.appendChild(list);
     host.appendChild(status);
     host.appendChild(refresh);

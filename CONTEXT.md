@@ -1,6 +1,6 @@
 # CONTEXT.md — File Map for `thru-wallet-ext`
 
-Last source-verified update: 2026-11-18 (Contract **v33**, `154` methods, `15` routes, `9` review kinds, `128` runtime JS files, `41` test suites + `9` guard scripts). Always verify `src/` directly before editing.
+Last source-verified update: 2026-11-19 (Contract **v33**, `154` methods, `15` routes, `9` review kinds, `128` runtime JS files, `41` test suites + `9` guard scripts). Always verify `src/` directly before editing.
 
 Read `AGENTS.md` first for repository rules, `docs/DOCS_INDEX.md` for the SSoT map, and `docs/STATUS_AND_ROADMAP.md` for shipped state and open verification gates.
 

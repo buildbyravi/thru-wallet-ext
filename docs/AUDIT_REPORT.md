@@ -1,13 +1,13 @@
 # Audit Report — Thru Wallet Extension
 
 **Document Class:** Operational Verification (Current Audit Summary, Mainnet-Readiness Gates & Historical Audit Index)
-**Baseline:** The tree is at contract **v33** with **154 methods** and **15 routes** (synchronized 2026-11-16).
+**Baseline:** The tree is at contract **v33** with **154 methods** and **15 routes** (synchronized 2026-11-19).
 
 ---
 
 ## 1. Current Audit Conclusion
 
-**Current repair pass: IMPLEMENTED and TESTED (`v33`, 2026-11-16). External audit: NOT PERFORMED (`EXTERNAL AUDIT REQUIRED`).** This records the scoped repairs below, not a claim that all possible security defects are resolved.
+**Current repair pass: IMPLEMENTED and TESTED (`v33`, 2026-11-19). External audit: NOT PERFORMED (`EXTERNAL AUDIT REQUIRED`).** This records the scoped repairs below, not a claim that all possible security defects are resolved.
 
 - All findings from the 2026-10-03 Mainnet-readiness audit (`MR-01…MR-07`), 2026-10-04 conformance audit (`F-01…F-08`), 2026-10-28 v30 domain audit (`D-1…D-6`), 2026-10-29 v31 record-write audit (`E-1…E-8`), 2026-10-30 review-lifecycle audit (`F-1…F-5`), and 2026-10-30 shared-platform audit are fixed in `src/` and guarded by automated regression tests with negative controls.
 - Subsequent `2026-11-01..13` security passes closed the direct-handler review bypass by adding the **contract v32 background `consentToken` gate** (`src/background/services/review/consent.js` + `REVIEW_REQUIRED` in `api-router.js`, `test/test-review-consent.mjs`), wired `walletService.lock()` review/token discard onto the inactivity alarm and startup lock paths (`test/test-review-lifecycle.mjs`), added explicit `SEND_EXPIRY_SLOTS = 1000` transaction deadlines (`test/test-thru-client.mjs`), refused custom-RPC writes (`CUSTOM_RPC_SUPPORTED = false`), unified registrar/record header fees via `tx-units.networkFeeUnits` (`D-022`), and enforced one notification surface per submission event (`Rule 29`).
@@ -24,11 +24,11 @@ Verification classes are never merged: a green Node test never closes a browser 
 - `npm test` — **PASS** across **41 test suites** (`test/test-*.mjs`) and **9 guard scripts** (`scripts/check-*.mjs`):
   - Exact pins `@thru/sdk@0.5.2` & `@thru/programs@0.5.2` with 16/16 derivation golden vectors (`test/test-derivation.mjs`); native faucet tests verify no THRUSD-only rate-limit policy is applied (`test/test-native-faucet.mjs`).
   - Layering across `128` runtime JS files (`0` boundary violations, `0` HTML-injection sinks), cycle ratchet (`1` legacy 5-service cycle), CSP <-> enabled-network parity, `30/30` ordered `AGENTS.md` rules, docs-truth parity, guard negative controls, `15/15` routes reachable with all used CSS classes defined, flat CSS, Dashboard 6-tile geometry, launchpad quarantine, and all `11` build-time `FLAGS === false`.
-  - Contract **v33** (`154` methods) parity and verified-token import; signing consent and session cleanup; nine review kinds (`205` decoder/service checks and `67` card checks); `1,153` route-lifecycle checks; strict mint parsing, registrar rechecks, pending unknown-outcome retention, storage migrations, and passive-polling auto-lock regression coverage.
+  - Contract **v33** (`154` methods) parity and verified-token import; signing consent and session cleanup; nine review kinds (`206` decoder/service checks and `68` card checks); `1,174` route-lifecycle checks; strict mint parsing, registrar rechecks, pending unknown-outcome retention, storage migrations, and passive-polling auto-lock regression coverage.
 
 ### Gate B — Real-Browser Verification (Chrome MV3): `PARTIAL — OPEN` (`UNVERIFIED`)
 - **Recorded:** One partial real-Chrome toolbar-popup run (`2026-10-04`, `docs/MANUAL_SMOKE_CHECKLIST.md` §8: native Betanet self-send verified recipient, amount, Review fee, confirmation, and History entry) plus an isolated Chrome visual-harness check of `NameRoute`/`Sheet` at `400x600` and `320px` (`2026-10-27`, mocked bridge).
-- **Still Open:** Full `docs/MANUAL_SMOKE_CHECKLIST.md` across popup and side panel (`<400px` narrow and `>=800px` wide), popup/panel mutual exclusion, real focus rings, QR scan, `TxReviewCard` §7 (`scripts/preview-tx-review.html`), `toast()` bar (`scripts/preview-toast.html`), clipboard permission prompt, MV3 worker eviction/restart, and browser verification of the `1.4.1` CWS package.
+- **Still Open:** Full `docs/MANUAL_SMOKE_CHECKLIST.md` across popup and side panel (`<400px` narrow and `>=800px` wide), popup/panel mutual exclusion, real focus rings, QR scan, `TxReviewCard` §7 (`scripts/preview-tx-review.html`), `toast()` bar (`scripts/preview-toast.html`), clipboard permission prompt, MV3 worker eviction/restart, and browser verification of the current CWS package.
 
 ### Gate C — Betanet Live-Network Verification: `PARTIAL — OPEN`
 - **Verified on Betanet (`VERIFIED AGAINST LIVE NETWORK`):**

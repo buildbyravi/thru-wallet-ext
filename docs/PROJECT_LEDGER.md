@@ -1,6 +1,6 @@
 # Project Ledger — Identifiers and Contract History
 
-Date: 2026-10-04; refreshed 2026-11-16 (contract v33, additive verified token import).
+Date: 2026-10-04; refreshed 2026-11-19 (contract v33, SDK 0.5.2 and registrar verification).
 Purpose: canonical record of shipped repository identifiers and the append-only contract version history (`v5–v33`). `src/`, `test/`, and `scripts/` are authoritative; current verification status and next tasks live in `docs/STATUS_AND_ROADMAP.md`.
 
 ---

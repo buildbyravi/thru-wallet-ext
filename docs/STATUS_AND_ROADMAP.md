@@ -19,12 +19,12 @@ Source baseline re-verified on `main` at contract v33 (2026-11-19, v1.6.0). `src
 
 ### Recorded Automated Baseline (`IMPLEMENTED`, `TESTED`)
 
-Full build and test gates were rerun successfully on 2026-11-16 after integrating the startup,
-verified-import, registrar, pending-outcome, and passive-polling auto-lock repairs. Browser
-evidence is limited to the mocked-runtime Chrome harness recorded in the smoke checklist.
+Full build and test gates were rerun successfully on 2026-11-19. The smoke checklist records both
+mocked-runtime visual checks and partial unpacked-extension checks in real Chrome; remaining browser
+and live-chain verification gates are listed below.
 
 - `npm run build` -> **PASS** (`dist/` regenerated cleanly from `src/`, zero warnings).
-- `npm test` -> **PASS** across all **9 guard scripts** and **41 test suites**: contract v33 (`154` methods), `1,153/1,153` route-lifecycle checks, `205/205` review pipeline checks, and `67/67` review-card checks. Structural guards retain zero DOM-injection sinks and the existing import-cycle ratchet.
+- `npm test` -> **PASS** across all **9 guard scripts** and **41 test suites**: contract v33 (`154` methods), `1,174/1,174` route-lifecycle checks, `206/206` review pipeline checks, and `68/68` review-card checks. Structural guards retain zero DOM-injection sinks and the existing import-cycle ratchet.
 - Deterministic Node tests use a hand-rolled DOM shim and stubbed RPCs; **they never close real-browser or live-chain verification gates**.
 
 ---
@@ -34,9 +34,9 @@ evidence is limited to the mocked-runtime Chrome harness recorded in the smoke c
 | Area | Status | Recorded Evidence & Exact Scope |
 | --- | --- | --- |
 | **Native THRU Transfer & Fee** | `VERIFIED AGAINST LIVE NETWORK` *(partial UI smoke)* | `1` base-unit transfer fee measured on managed-genesis deployment (`2026-09-26`); one native Betanet self-send exercised end-to-end in real Chrome popup (`2026-10-04`, `docs/MANUAL_SMOKE_CHECKLIST.md` §8 — charged fee not captured; JIT activation not exercised). |
-| **Faucet Claim & Cap** | `VERIFIED AGAINST LIVE NETWORK` *(script)* | Raw base-unit amount confirmed (`2026-09-26`); SDK `0.4.1` zero-unit regression resolved via `src/lib/tx-units.js` (`2026-10-09`); exact `10,000` base-unit per-tx cap confirmed (`2026-10-24-faucet-cap.json`). Browser v29/v32 faucet review smoke remains `UNVERIFIED`. |
+| **Faucet Claim & Cap** | `VERIFIED AGAINST LIVE NETWORK` *(script)* | Raw base-unit amount confirmed (`2026-09-26`); the historical SDK `0.4.1` zero-unit regression was resolved via `src/lib/tx-units.js` (`2026-10-09`); exact `10,000` base-unit per-tx cap confirmed (`2026-10-24-faucet-cap.json`). Browser v29/v32 faucet review smoke remains `UNVERIFIED`. |
 | **Token Mint, Init & Transfer (`P3`)** | `VERIFIED AGAINST LIVE NETWORK` *(script, 2026-10-23)* | `scripts/defi-evidence/2026-10-23-live-chain-run3.json`: all 13 rungs passed on Betanet using pre-funded sender; proved sender-paid token-account initialization succeeds for a **never-registered** recipient wallet (`created: true`) while recipient native wallet stays unregistered, and observed `2` base units across init + transfer (`1` base unit/tx). Promoting token fee from `"unmeasured"` into `src/lib/networks.js` awaits explicit config decision. |
-| **18 Bootstrap Programs & AMM Swap** | `VERIFIED AGAINST LIVE NETWORK` *(script, 2026-10-23..25)* | All 18 `@thru/programs@0.4.2` bootstrap addresses verified deployed on Betanet (`2026-10-23`); AMM pool init, LP add, and exact-in swap verified with `vmError: 0` (`2026-10-25-live-swap-probe.json`). All `DEFI_*` flags remain `false`. |
+| **18 Bootstrap Programs & AMM Swap** | `VERIFIED AGAINST LIVE NETWORK` *(historical script, 2026-10-23..25)* | The historical probe used `@thru/programs@0.4.2` to verify all 18 bootstrap addresses on Betanet, plus AMM pool init, LP add, and exact-in swap with `vmError: 0` (`2026-10-25-live-swap-probe.json`). The current exact pin is `0.5.2`; all `DEFI_*` flags remain `false`. |
 | **Custom `.thru` Registrar** | `VERIFIED AGAINST LIVE NETWORK` *(script, 2026-11-19)* | Compiled with `link.x.in` (29,416 B), deployed/upgraded on Betanet (`ta2vDCBzzptN2qVZgz6PXsCp5cNB7Nef4yeQ3W-OqzZcfF`), initialized layout-2 root registrar + config (`ta_9lLvhxurg4J5DyZ82W14rzzGWCEfj9B7Y8wa99amPBa`) with `vmError: 0`. Live subdomain `probe4pwpy.thru` registered via custom registrar on Betanet (`vmError: 0`), creating on-chain domain and lease accounts. |
 | **Full Domain Enumeration** | `BLOCKED` | Betanet `ListAccounts` filtered by Name Service program returned `RESOURCE_EXHAUSTED` (`2026-10-27`); wallet uses explicit local tracked registry (`thru_registered_domains`). |
 | **`name.setRecord` & `reverseLookup` (`v31`)** | `UNVERIFIED` *(live chain)* | Deterministic router/decoder suites pass (`test-name-records.mjs`, `test-name-reverse.mjs`); zero live Betanet writes/reads executed yet; no UI screen exposes `domain-record`. |
@@ -48,16 +48,16 @@ evidence is limited to the mocked-runtime Chrome harness recorded in the smoke c
 
 ### Release Status & Ordered Next Work
 
-Version `1.5.0` released per owner directive (`docs/DECISIONS.md` D-029) on 2026-11-18, packaging @thru 0.4.4, Betanet registrar best-effort configuration, and contract v29–v33 security and review consent hardening.
+Version `1.6.0` released per owner directive (`docs/DECISIONS.md` D-031) on 2026-11-19, with `@thru/sdk` and `@thru/programs` 0.5.2, contract v33, and live Betanet registrar and token-transfer verification.
 
-1. **Custom Registrar Upgrade & Measured Treasury Delta:** Deploy the checked-in `33,714`-byte `contracts/thru-custom-registrar/thru-custom-registrar.bin` to Betanet, execute one real `Register` **and** `Renew` with `--probe-collection`, verify the non-canonical config `0xD112` rejection, and record an observed treasury balance delta before any surface claims a registration charge was collected. (Mainnet contract release additionally requires gating `Initialize` on upgrade authority and adding a `max_fee` bound on `Register`/`Renew` per `docs/GLOBAL_SMART_CONTRACT_POLICY.md`.)
+1. **Registrar Fee Verification:** Execute a real `Register` and `Renew` with `--probe-collection`, verify the non-canonical config `0xD112` rejection, and measure the treasury balance delta before claiming that a registration charge was collected. The deployed Betanet registrar still requires Mainnet upgrade-authority gating and a `max_fee` bound on `Register`/`Renew` per `docs/GLOBAL_SMART_CONTRACT_POLICY.md`.
 2. **`name.setRecord` Product & Surface Disposition (`D-028`):** Per owner directive, the extension remains focused on Option B (high-speed minting, renewal, primary aliases; complex editing deferred to web / future desktop tab "Expand" button), while Option A remains enabled at the contract layer to support external profile builders and monetize registrations. Live Betanet probe of append-only limits remains planned prior to any UI editing surface.
 3. **Owner-Deferred Domain Copy:** `"Import"` (`name.trackDomain`, read-only local watching) and `"Unlink"` (`name.unlinkPrimary`, local alias removal without signing) are held for owner-chosen replacement labels.
 
 ### Ordered Wallet-Core Verification Sequence
 
 1. **Complete `docs/MANUAL_SMOKE_CHECKLIST.md` in Real Chrome:** Toolbar popup + side panel (`<400px` and `>=800px`), mutual exclusion, QR scan, focus traps, `toast()` bar, and §7 `TxReviewCard` across Send, Token Send, Domain, and Faucet.
-2. **Close Release Blockers (1) & (2) on an RPC-Reachable Host:** Custom registrar `.bin` upgrade + treasury-collection measurement + `name.setRecord` probe.
+2. **Close Release Blockers (1) & (2) on an RPC-Reachable Host:** Registrar fee measurement + `name.setRecord` probe.
 3. **Live Multi-Account `v12` Activation & `scripts/verify-live-e2e.mjs betanet`:** Exercise multi-HD creation registration, `/send` JIT activation for an owned absent recipient, and MV3 worker suspension/restart during in-flight registration/send.
 4. **Promote Measured Token Fee Config (Optional Follow-Up):** Decide whether to wire the `2026-10-23` observed `1`-base-unit Token Program fee into `src/lib/networks.js` with dated provenance, and wire `tx-units.autoUnits` to read `network.baseFeeUnits` rather than literal `1n` ahead of Mainnet.
 5. **Live History & Explorer Route Confirmation:** Measure `blocks.get` block-time availability/latency on Betanet, verify `https://scan.thru.org` `/tx/` deep links, and confirm no typed RPC/explorer field exposes charged fees.
