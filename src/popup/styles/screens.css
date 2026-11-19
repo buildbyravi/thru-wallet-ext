@@ -524,6 +524,16 @@ form > .btn.text {
 .token-ledger-row:hover {
   background: var(--surface-2);
 }
+.token-ledger-row:hover .token-row-name,
+.token-ledger-row:hover .token-row-usd,
+.token-ledger-row:hover .token-row-amount.stale,
+.token-ledger-row:hover .addr {
+  color: var(--text-2);
+}
+.token-ledger-row:hover .token-net-badge {
+  background: var(--surface-1);
+  color: var(--text-2);
+}
 
 .token-row-avatar {
   width: 32px;
@@ -944,6 +954,7 @@ form > .btn.text {
   display: block;
 }
 .toggle-switch.active .toggle-knob {
+  background: var(--ink-ink);
   transform: translateX(18px);
 }
 
@@ -1054,7 +1065,9 @@ form > .btn.text {
   color: var(--negative);
 }
 .name-status-warn {
-  color: var(--gold);
+  color: var(--text-2);
+  border-left: 2px solid var(--gold);
+  padding-left: var(--sp-2);
 }
 .name-stepper {
   justify-content: space-between;

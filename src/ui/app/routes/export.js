@@ -31,6 +31,8 @@ import { decodeRef } from '../../../shared/refs.js';
 
 export function ExportRoute({ params, navigate, back }) {
   const d = disposer();
+  const lifecycle = new AbortController();
+  d.add(() => lifecycle.abort());
   const ref = decodeRef(params.ref);
   const isBackupFlow = params.mode === 'backup';
   // 'key' exports only THIS account's private key. 'phrase' exports the whole recovery
@@ -39,6 +41,9 @@ export function ExportRoute({ params, navigate, back }) {
 
   /** The only copy of the secret. Never leaves this closure. */
   let secret = null;
+  let locked = false;
+  let destroyed = false;
+  d.add(() => { destroyed = true; });
   let grid = null;
   let challenge = null;
   /**
@@ -110,6 +115,8 @@ export function ExportRoute({ params, navigate, back }) {
   // left the value readable and copyable after lock.
   d.add(bridge.onEvent('lockStateChanged', ({ unlocked } = {}) => {
     if (!unlocked) {
+      locked = true;
+      lifecycle.abort();
       wipe();
       clearBody();
       navigate('/unlock', { replace: true });
@@ -144,6 +151,7 @@ export function ExportRoute({ params, navigate, back }) {
           body: 'Your password is re-checked against the encrypted vault, even though the '
             + 'wallet is already unlocked.',
           confirmLabel: 'Reveal secret',
+          signal: lifecycle.signal,
           // The password goes straight into this one call and is discarded. The returned
           // secret never touches the URL, the store, or a data attribute.
           verify: (password) => bridge.send(
@@ -151,7 +159,7 @@ export function ExportRoute({ params, navigate, back }) {
             { ref, password },
           ),
         });
-        if (!result) return;
+        if (!result || locked || destroyed) return;
         secret = result;
         renderSecret();
       },

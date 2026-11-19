@@ -6,9 +6,9 @@ Side-by-side name registrar program for the Thru L1 (ThruVM / RISC-V), operating
 >
 > | Target | State |
 > | --- | --- |
-> | **Checked-in `thru-custom-registrar.bin`** | **33,714 bytes**, `sha256 f93c112b…35dd2`. Includes layout-2 tiered pricing (`fee_3_char`, `fee_4_char`, `fee_5plus_char`, `fee_policy`) **and** canonical config PDA enforcement (`ERR_WRONG_CONFIG` = `0xD112`). |
-> | **Deployed on Betanet (`ta2vDCBzzptN2qVZgz6PXsCp5cNB7Nef4yeQ3W-OqzZcfF`)** | **2026-10-31** build (**30,000 bytes**): layout-2 config (`ta_9lLvhxurg4J5DyZ82W14rzzGWCEfj9B7Y8wa99amPBa`) updated on-chain to `100,000 / 10,000 / 1,000` base units/yr with `fee_policy = strict` (`1`), **without** the `0xD112` canonical-PDA check (`scripts/defi-evidence/registrar-deploy-betanet-thru-1793443647724.json`). |
-> | **Open Verification Gate** | (1) Upgrade Betanet program to the 33,714-byte `.bin`; (2) execute one live `Register` and `Renew` while measuring the treasury balance delta (`collectionProbe.measured` is currently `false`). |
+> | **Checked-in `thru-custom-registrar.bin`** | **29,416 bytes**, `sha256 4c5095e1…7bd515` (compiled with `link.x.in`). Includes layout-2 tiered pricing (`fee_3_char`, `fee_4_char`, `fee_5plus_char`, `fee_policy`) **and** canonical config PDA enforcement (`ERR_WRONG_CONFIG` = `0xD112`). |
+> | **Deployed on Betanet (`ta2vDCBzzptN2qVZgz6PXsCp5cNB7Nef4yeQ3W-OqzZcfF`)** | **2026-11-18** deployment/upgrade (`scripts/defi-evidence/registrar-deploy-betanet-thru-1795038501279.json`): layout-2 config (`ta_9lLvhxurg4J5DyZ82W14rzzGWCEfj9B7Y8wa99amPBa`) updated on-chain to `100,000 / 10,000 / 1,000` base units/yr with `fee_policy = best-effort` (`0`), `collectionProbe.measured: false`. |
+> | **Open Verification Gate** | (1) Probe canonical config `0xD112` rejection on Betanet; (2) execute one live `Register` and `Renew` with `--probe-collection` while measuring the treasury balance delta (`collectionProbe.measured` is currently `false`). |
 
 ```text
  user (signer, idx 0)

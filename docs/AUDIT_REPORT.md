@@ -36,9 +36,9 @@ Verification classes are never merged: a green Node test never closes a browser 
   - Faucet `10,000` base-unit per-claim ceiling (`2026-10-24-faucet-cap.json`) and explicit `autoUnits` resource budgets (`2026-10-09`).
   - Full 13-rung Token Program live verification (`2026-10-23-live-chain-run3.json`: mint deploy, sender-created token account for never-registered recipient wallet `created: true`, transfer, `2` base units across init + transfer) and all `18` bootstrap program addresses verified deployed on-chain.
   - Live AMM pool init, LP add, and exact-in swap (`2026-10-25-live-swap-probe.json`, `vmError: 0`; DeFi flags remain `false`).
-  - Custom `.thru` registrar deployment read (`2026-10-26`), router `Register` (`2026-10-27`), and layout-2 tiered `UpdateConfig` (`2026-10-31`, `registrar-deploy-betanet-thru-1793443647724.json`, `feePolicy: "strict"`).
+  - Custom `.thru` registrar deployment read (`2026-10-26`), router `Register` (`2026-10-27`), and layout-2 tiered `UpdateConfig` + Betanet program upgrade (`2026-11-18`, `registrar-deploy-betanet-thru-1795038501279.json`, `feePolicy: "best-effort"`, `collectionProbe.measured: false`).
 - **Still Open on Betanet (`UNVERIFIED` / `Release Blockers`):**
-  1. Deploy checked-in `33,714`-byte `thru-custom-registrar.bin` (`0xD112` canonical-PDA check) and measure treasury balance delta across a live `Register` and `Renew` (`collectionProbe.measured` is `false`), plus live broadcast with `1`-base-unit `networkFeeUnits`.
+  1. Probe the deployed `29,416`-byte `thru-custom-registrar.bin` (`0xD112` canonical-PDA check) and measure treasury balance delta across a live `Register` and `Renew` (`collectionProbe.measured` is `false`), plus live broadcast with `1`-base-unit `networkFeeUnits`.
   2. Probe `name.setRecord` (`v31` opcode 2) and `name.reverseLookup` against live Betanet (or gate `name.setRecord` off).
   3. Multi-account `v12` `tx.registerAccount` creation + `/send` JIT activation (`scripts/verify-live-e2e.mjs betanet`).
   4. Live `blocks.get` block-time availability/latency and confirmation of `https://scan.thru.org` `/tx/` deep-link routing.

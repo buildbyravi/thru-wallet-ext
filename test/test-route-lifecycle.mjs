@@ -2556,6 +2556,19 @@ async function themeTest() {
   ok('the persisted value is the word “system”, not the resolved theme',
     backend.preferences.theme === 'system');
 
+  const realSetSettings = FIXTURES['settings.set'];
+  FIXTURES['settings.set'] = () => { throw apiError('STORAGE_ERROR', 'Storage write failed'); };
+  click(darkChip);
+  await settle();
+  ok('a failed theme save does not move the selected chip or aria-pressed state',
+    !buttons(tree, /^dark$/i)[0]?.classList.contains('selected')
+      && buttons(tree, /^dark$/i)[0]?.getAttribute('aria-pressed') === 'false'
+      && buttons(tree, /^system$/i)[0]?.classList.contains('selected')
+      && buttons(tree, /^system$/i)[0]?.getAttribute('aria-pressed') === 'true'
+      && /Storage write failed/.test(textOf(tree)),
+    `dark.selected=${buttons(tree, /^dark$/i)[0]?.classList.contains('selected')} text=${textOf(tree).slice(0, 200)}`);
+  FIXTURES['settings.set'] = realSetSettings;
+
   // An unrecognised stored value never reaches the DOM.
   backend.preferences.theme = 'midnight-blue';
   guards.invalidate();
@@ -2825,6 +2838,38 @@ async function exportSecretTest() {
   ok('a background lock leaves no secret in the document or in the wiped screen',
     lockedHits.length === 0, lockedHits.slice(0, 3).join(' | '));
   ok('the wiped export subtree holds no phrase', !textOf(lockedEl).includes('thistle'));
+
+  // Locking while requirePassword is still awaiting wallet.exportSecret must abort the
+  // prompt and ignore any late response so the secret never enters DOM or closure state.
+  resetBackend(SCENARIOS[2]);
+  resetDom();
+  guards.invalidate();
+  const router2 = await boot({ root: DOC.getElementById('app') });
+  await settle();
+  router2.navigate(`/export?ref=${encodeRef(activeAccount().ref)}`);
+  await settle();
+  const raceHolds = holdReplies((msg) => msg.method === 'wallet.exportSecret');
+  click(buttons(router2.root, /enter password to reveal/i)[0]);
+  await settle();
+  const raceOverlay = DOC.body.lastChild;
+  type(allElements(raceOverlay).find((el) => el.localName === 'input'), SECRET_PASSWORD);
+  click(buttons(raceOverlay, /reveal secret/i)[0]);
+  await settle();
+  const raceExportEl = router2.current?.el;
+  TORN_DOWN.push(raceExportEl);
+  backend.unlocked = false;
+  emitEvent('lockStateChanged', { unlocked: false });
+  await settle();
+  raceHolds.resolve('wallet.exportSecret', { mnemonic: SECRET_MNEMONIC });
+  raceHolds.restore();
+  await settle();
+  ok('locking during password verification closes the prompt and blocks late secret render',
+    router2.currentPath === '/unlock'
+      && !isConnected(raceOverlay)
+      && findSecrets(SECRETS).length === 0
+      && findSecretsInTornDown(SECRETS).length === 0,
+    `path=${router2.currentPath} hits=${findSecrets(SECRETS).length + findSecretsInTornDown(SECRETS).length}`);
+  router2.stop();
 
   router.stop();
   await settle();
@@ -4532,43 +4577,43 @@ function negativeControls() {
 
 // ---- Send: progressive load, offline recovery and cross-context identity -----------------
 
+// Hold specific replies at the real UI bridge's chrome.runtime.sendMessage seam. Other
+// methods continue through the fixture, including authoritative recipient validation.
+// This is deliberately NOT a fake SendRoute: the real route, Button, Field, AssetSelector,
+// bridge timeout, and teardown all run. An unreleased reply would leave a 30s timer alive.
+function holdReplies(shouldHold) {
+  const original = chrome.runtime.sendMessage;
+  const held = [];
+  chrome.runtime.sendMessage = (message, callback) => {
+    if (!message?.method || !shouldHold(message)) return original(message, callback);
+    chromeLog.calls.push(message.method);
+    held.push({ message, callback });
+    return undefined;
+  };
+  const take = (method, predicate = () => true) => {
+    const index = held.findIndex(({ message }) => message.method === method && predicate(message));
+    if (index < 0) throw new Error(`No held ${method} reply: ${held.map((x) => x.message.method).join(', ')}`);
+    return held.splice(index, 1)[0];
+  };
+  return {
+    held,
+    resolve(method, data, predicate) { take(method, predicate).callback({ ok: true, data }); },
+    reject(method, message = 'Node offline', predicate) {
+      take(method, predicate).callback({
+        ok: false, error: { code: 'NETWORK_ERROR', message, retryable: true },
+      });
+    },
+    restore() {
+      chrome.runtime.sendMessage = original;
+      for (const item of held.splice(0)) item.callback({
+        ok: false, error: { code: 'NETWORK_ERROR', message: 'Test finished', retryable: true },
+      });
+    },
+  };
+}
+
 async function progressiveSendTest() {
   section('send: slow bridge replies never hold the form or turn unknown balances into zero');
-
-  // Hold specific replies at the real UI bridge's chrome.runtime.sendMessage seam. Other
-  // methods continue through the fixture, including authoritative recipient validation.
-  // This is deliberately NOT a fake SendRoute: the real route, Button, Field, AssetSelector,
-  // bridge timeout, and teardown all run. An unreleased reply would leave a 30s timer alive.
-  function holdReplies(shouldHold) {
-    const original = chrome.runtime.sendMessage;
-    const held = [];
-    chrome.runtime.sendMessage = (message, callback) => {
-      if (!message?.method || !shouldHold(message)) return original(message, callback);
-      chromeLog.calls.push(message.method);
-      held.push({ message, callback });
-      return undefined;
-    };
-    const take = (method, predicate = () => true) => {
-      const index = held.findIndex(({ message }) => message.method === method && predicate(message));
-      if (index < 0) throw new Error(`No held ${method} reply: ${held.map((x) => x.message.method).join(', ')}`);
-      return held.splice(index, 1)[0];
-    };
-    return {
-      held,
-      resolve(method, data, predicate) { take(method, predicate).callback({ ok: true, data }); },
-      reject(method, message = 'Node offline', predicate) {
-        take(method, predicate).callback({
-          ok: false, error: { code: 'NETWORK_ERROR', message, retryable: true },
-        });
-      },
-      restore() {
-        chrome.runtime.sendMessage = original;
-        for (const item of held.splice(0)) item.callback({
-          ok: false, error: { code: 'NETWORK_ERROR', message: 'Test finished', retryable: true },
-        });
-      },
-    };
-  }
 
   resetBackend(SCENARIOS[2]);
   resetDom();
@@ -5118,6 +5163,27 @@ async function faucetReviewTest() {
   chrome.runtime.sendMessage = inFlightOriginal;
   inFlightRoute.el.remove();
 
+  // If the route is destroyed while the pre-claim account balance check is still pending,
+  // resolving that promise afterward must not render the success panel into a torn-down view.
+  resetBackend(SCENARIOS[2]);
+  resetDom();
+  const faucetInfoHolds = holdReplies((msg) => msg.method === 'tx.getAccountInfo');
+  const destroyedFaucet = FaucetRoute({ params: {}, navigate() {}, back() {} });
+  DOC.body.appendChild(destroyedFaucet.el);
+  await settle();
+  click(buttons(destroyedFaucet.el, /^claim$/i)[0]);
+  await settle();
+  click(buttons(DOC.querySelector('[role="dialog"]'), /^claim$/i)[0]);
+  await settle();
+  destroyedFaucet.destroy();
+  faucetInfoHolds.resolve('tx.getAccountInfo', { exists: true, balance: '10000' });
+  faucetInfoHolds.restore();
+  await settle();
+  ok('destroying /faucet during a pending beforePromise skips renderSuccess',
+    !/Paid to your active account/.test(textOf(destroyedFaucet.el)),
+    textOf(destroyedFaucet.el).slice(0, 200));
+  destroyedFaucet.el.remove();
+
   resetBackend(SCENARIOS[2]);
   resetDom();
   const realClaim = FIXTURES['tx.claimFaucet'];
@@ -5423,6 +5489,36 @@ async function offlineBalanceConsumersTest() {
         && !/\b0 THRU\b/.test(textOf(accountsRoute.el)), textOf(accountsRoute.el).slice(0, 240));
     accountsRoute.destroy();
     accountsRoute.el.remove();
+
+    resetBackend(SCENARIOS[2]);
+    resetDom();
+    FIXTURES['account.list'] = () => backend.accounts.map((a) =>
+      ({ ...a, balance: a.address === ADDRESS_A ? '500000000' : null, balanceStale: true }));
+    const sendBalanceHolds = holdReplies((msg) => msg.method === 'tx.getAccountInfo');
+    const sendRoute = SendRoute({ params: {}, navigate() {}, back() {} });
+    DOC.body.appendChild(sendRoute.el);
+    await settle();
+    click(buttons(sendRoute.el, /thru native token/i)[0]);
+    await settle();
+    const checkingNativeRow = buttons(sendRoute.el, /Thru Native Token/i)[0]?.querySelector('.row-value');
+    ok('AssetSelector marks native balance as updating while balance check is in flight',
+      Boolean(checkingNativeRow)
+        && checkingNativeRow.classList.contains('balance-updating')
+        && checkingNativeRow.getAttribute('aria-busy') === 'true',
+      checkingNativeRow?.className);
+    sendBalanceHolds.reject('tx.getAccountInfo');
+    sendBalanceHolds.restore();
+    await settle();
+    const staleNativeRow = buttons(sendRoute.el, /Thru Native Token/i)[0]?.querySelector('.row-value');
+    ok('AssetSelector marks cached native balance as stale when the live check fails',
+      Boolean(staleNativeRow)
+        && staleNativeRow.classList.contains('stale')
+        && !staleNativeRow.classList.contains('balance-updating')
+        && /0\.5 THRU/.test(textOf(staleNativeRow)),
+      `${staleNativeRow?.className}: ${textOf(staleNativeRow)}`);
+    sendRoute.destroy();
+    sendRoute.el.remove();
+
     ok('audited balance screens tear down without listeners on detached nodes',
       detachedListeners().length === 0, JSON.stringify(detachedListeners().slice(0, 3)));
   } finally {

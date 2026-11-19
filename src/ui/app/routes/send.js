@@ -792,6 +792,8 @@ export function SendRoute({ params, navigate, back }) {
     const selector = track(AssetSelector({
       nativeBalance: balanceUnits?.toString() ?? null,
       nativeBalanceLabel: nativeBalanceText(),
+      nativeBalanceStale: isNativeBalanceStale(),
+      nativeBalanceUpdating: isNativeBalanceUpdating(),
       balancesPending: tokenBalanceStatus === 'checking',
       tokens: mergedTokens(),
       selectedMint: asset.mintAddress,
@@ -1249,6 +1251,7 @@ export function SendRoute({ params, navigate, back }) {
         if (cached != null && /^(0|[1-9]\d*)$/.test(String(cached))) {
           cachedBalanceUnits = BigInt(cached);
           updateFormBalances();
+          if (subView === 'asset') renderAssetPicker();
         }
         if (subView === 'from' || subView === 'recipient') refreshPickerIfOpen();
         // A user can type an unregistered own address before account.list returns. When the

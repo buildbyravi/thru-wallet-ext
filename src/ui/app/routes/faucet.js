@@ -252,6 +252,7 @@ export function FaucetRoute({ navigate, back }) {
       });
       if (outcome.status === 'cancelled' || destroyed) return;
       const before = await beforePromise;
+      if (destroyed) return;
       await renderSuccess(outcome.result, before, units);
     } catch (error) {
       if (destroyed) return;

@@ -382,12 +382,12 @@ unless the operator passes `--collection-proven "<note>"`, an attestation that a
 delta was observed after a real registration. `--probe-collection` records the balance for exactly
 that measurement. Switching to strict is a one-transaction `UpdateConfig` once the probe passes.
 
-**Consequences.** The checked-in `contracts/thru-custom-registrar/thru-custom-registrar.bin` (`33,714`
-bytes, `sha256 f93c112b…35dd2`) was subsequently rebuilt with the tiered layout-2 fields and the
-canonical-config-PDA check (`0xD112`), while Betanet currently runs the prior `2026-10-31` `30,000`-byte
-layout-2 build (`feePolicy: "strict"`, `collectionProbe.measured: false`). Deploying the `33,714`-byte
-artifact and recording a measured treasury balance delta on an RPC-reachable host remain required
-before claiming on-chain fee collection (`docs/guides/domains-and-registrar.md`).
+**Consequences.** The checked-in `contracts/thru-custom-registrar/thru-custom-registrar.bin` (`29,416`
+bytes, `sha256 4c5095e1…7bd515`, rebuilt with `link.x.in`, the tiered layout-2 fields, and the
+canonical-config-PDA check `0xD112`) was deployed to Betanet on `2026-11-18` (`feePolicy:
+"best-effort"`, `collectionProbe.measured: false`, `scripts/defi-evidence/registrar-deploy-betanet-thru-1795038501279.json`).
+Verifying `0xD112` rejection on-chain and recording a measured treasury balance delta on an
+RPC-reachable host remain required before claiming on-chain fee collection (`docs/guides/domains-and-registrar.md`).
 
 ## D-020 — Agent rules get checks, not more prose (2026-10-31)
 

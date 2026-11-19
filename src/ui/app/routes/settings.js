@@ -248,8 +248,15 @@ export function SettingsRoute({ navigate, back }) {
       });
       d.on(chip, 'click', async () => {
         banner.clear();
-        theme = option.value;
-        await setTheme(option.value).catch(() => {});
+        const previous = theme;
+        try {
+          await setTheme(option.value);
+          theme = option.value;
+        } catch (err) {
+          theme = previous;
+          banner.set(err?.message || 'Could not update theme.');
+          return;
+        }
         // Reflow the selected state by identity — never by DOM position.
         options.forEach((o, i) => {
           const active = o.value === theme;
