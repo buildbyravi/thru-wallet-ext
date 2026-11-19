@@ -11,7 +11,7 @@ Thru Wallet is a self-custody Chrome extension for Thru's betanet (a non-EVM RIS
 
 All sensitive cryptographic material and application settings remain exclusively on your local device within the extension's isolated browser storage:
 
-*   **Encrypted Seed Phrase & Private Keys:** Your BIP-39 12-word recovery phrase, derived Ed25519 seed keys, and any individually imported private keys.
+*   **Encrypted Seed Phrase & Private Keys:** Your BIP-39 12- or 24-word recovery phrase, derived Ed25519 seed keys, and any individually imported private keys.
 *   **Public Keys & Account Metadata:** Derived public keys, account labels, and account indices.
 *   **Extension Preferences:** Local settings, UI state, and auto-lock preferences.
 *   **Key Derivation Parameters:** Cryptographic salt and PBKDF2 iteration counters required for vault decryption.
@@ -55,7 +55,7 @@ To ensure your cryptographic keys remain safe while on your device, Thru Wallet 
 *   **Key Derivation Function (KDF):** PBKDF2 using HMAC-SHA-256 with **600,000 iterations** and a cryptographically secure random salt.
 *   **Symmetric Encryption:** AES-256-GCM (Galois/Counter Mode) authenticated encryption with a fresh 12-byte Initialization Vector (IV) generated for every encryption operation.
 *   **At-Rest Storage:** Encrypted vault ciphertexts are stored in local extension storage (`chrome.storage.local`).
-*   **In-Memory Lifecycle:** Unlocked session keys reside exclusively in memory-only session storage (`chrome.storage.session`). Memory contents are automatically cleared and unrecoverable upon browser shutdown, extension reload, or when the 15-minute inactivity auto-lock timer fires.
+*   **In-Memory Lifecycle:** Unlocked session keys reside exclusively in memory-only session storage (`chrome.storage.session`). Memory contents are automatically cleared and unrecoverable upon browser shutdown, extension reload, or when the inactivity auto-lock timer fires (15 minutes by default, configurable in Settings).
 
 ---
 

@@ -19,7 +19,7 @@
 import { h, disposer } from '../kit/dom.js';
 import { icon } from '../kit/icon.js';
 import { CopyButton } from '../kit/button.js';
-import { formatThru, formatTokenAmount, truncateAddress, shortenMiddle } from '../../shared/format.js';
+import { formatThru, formatTokenAmount, truncateAddress, shortenMiddle, explorerTxUrl } from '../../shared/format.js';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -158,8 +158,7 @@ export function TxCard({ entry, network, knownAccounts, onOpen } = {}) {
         owned.push(copy);
         bits.push(copy.el);
       }
-      const explorer = network?.explorerUrl && entry.signature
-        ? `${network.explorerUrl}/tx/${entry.signature}` : '';
+      const explorer = explorerTxUrl(network, entry.signature);
       if (explorer) {
         bits.push(h('a', {
           class: 'icon-btn icon-btn-ghost sm',

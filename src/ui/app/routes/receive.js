@@ -16,6 +16,7 @@ import { icon } from '../../kit/icon.js';
 import { PageHeader, Banner, Spinner } from '../../kit/feedback.js';
 import { AccountAvatar } from '../../domain/account-avatar.js';
 import { renderQR } from '../../../popup/qr.js';
+import { explorerAddressUrl } from '../../../shared/format.js';
 import * as bridge from '../bridge.js';
 
 export function ReceiveRoute({ back }) {
@@ -129,9 +130,7 @@ export function ReceiveRoute({ back }) {
     const actions = [];
 
     // '' when the network declares no explorer, in which case no link is shown at all.
-    const explorer = network?.explorerUrl
-      ? `${network.explorerUrl}/address/${account.address}?network=${network.id}`
-      : '';
+    const explorer = explorerAddressUrl(network, account.address);
     if (explorer) {
       actions.push(h('a', {
         class: 'btn secondary',

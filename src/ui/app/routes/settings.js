@@ -156,20 +156,19 @@ export function SettingsRoute({ navigate, back }) {
    */
   function renderCustomNetworkNotice(hostEl) {
     hostEl.appendChild(h('p', { class: 'hint', text:
-      'Adding a custom network is temporarily unavailable. Before this wallet will build '
-      + 'transactions against an endpoint you supply, that endpoint has to be reachable under the '
-      + 'security policy of this extension, and its chain programs have to be verified rather than '
-      + 'assumed. For the same reason a network you saved earlier stays listed but cannot be '
-      + 'selected; the wallet uses a built-in network and you can remove the saved one here.' }));
+      'Adding a custom network is temporarily unavailable until custom RPC endpoints and chain '
+      + 'programs can be verified. Saved custom networks cannot be selected, though you can remove them here.' }));
   }
 
   // ---- Auto-lock ----------------------------------------------------------
   function renderAutoLock(hostEl, current) {
     const chips = AUTO_LOCK_CHOICES.map((minutes) => {
       const label = minutes === 0 ? 'Never' : minutes < 60 ? `${minutes} min` : `${minutes / 60} hr`;
+      const selected = minutes === current;
       const chip = h('button', {
         type: 'button',
-        class: ['chip-option', minutes === current ? 'selected' : null].filter(Boolean),
+        class: ['chip-option', selected ? 'selected' : null].filter(Boolean),
+        'aria-pressed': String(selected),
         text: label,
       });
       d.on(chip, 'click', async () => {
@@ -203,6 +202,7 @@ export function SettingsRoute({ navigate, back }) {
       const chip = h('button', {
         type: 'button',
         class: ['chip-option', selected ? 'selected' : null].filter(Boolean),
+        'aria-pressed': String(selected),
         text: option.label,
       });
       if (!selected) {
@@ -243,6 +243,7 @@ export function SettingsRoute({ navigate, back }) {
       const chip = h('button', {
         type: 'button',
         class: ['chip-option', selected ? 'selected' : null].filter(Boolean),
+        'aria-pressed': String(selected),
         text: option.label,
       });
       d.on(chip, 'click', async () => {
@@ -250,7 +251,11 @@ export function SettingsRoute({ navigate, back }) {
         theme = option.value;
         await setTheme(option.value).catch(() => {});
         // Reflow the selected state by identity — never by DOM position.
-        options.forEach((o, i) => chips[i].classList.toggle('selected', o.value === theme));
+        options.forEach((o, i) => {
+          const active = o.value === theme;
+          chips[i].classList.toggle('selected', active);
+          chips[i].setAttribute('aria-pressed', String(active));
+        });
       });
       return chip;
     });
@@ -462,7 +467,7 @@ export function SettingsRoute({ navigate, back }) {
     body.appendChild(h('section', { class: 'stack stack-2' }, [
       SectionHeader('Session'),
       lockSessionBtn.el,
-      h('p', { class: 'muted', text: 'Lock your wallet immediately to protect decrypted keys. Shortcut: Ctrl+L' }),
+      h('p', { class: 'muted', text: 'Clears decrypted keys from memory. Shortcut: Ctrl+L' }),
     ]));
 
     // There is deliberately NO full-wallet reset on this screen: an unlocked wallet

@@ -23,10 +23,6 @@ import { formatTokenAmount, shortAddress } from '../../../shared/format.js';
 import { NATIVE_TOKEN } from '../../../shared/tokens.js';
 import { availableThruProviders } from './name-providers.js';
 
-function truncateMiddle(value, chars = 10) {
-  return shortAddress(value, { head: chars, tail: chars });
-}
-
 function formatVerifiedAt(ms) {
   if (!ms) return 'unknown';
   try {
@@ -253,7 +249,7 @@ export function NameRoute({ back }) {
         const resolved = facts?.resolution;
         const resolvedAddress = resolved?.valid === true && typeof resolved.resolvedAddress === 'string'
           && resolved.resolvedName === label ? resolved.resolvedAddress : null;
-        const targetDisplay = resolvedAddress ? truncateMiddle(resolvedAddress, 6)
+        const targetDisplay = resolvedAddress ? shortAddress(resolvedAddress, { head: 6, tail: 6 })
           : facts === 'loading' ? 'Checking…' : 'Unknown';
 
         const select = h('button', { type: 'button', class: 'btn secondary', text: item.isPrimary ? 'Unlink' : 'Make primary',
@@ -474,8 +470,8 @@ export function NameRoute({ back }) {
       if (mintInfo?.ticker?.trim?.()) symbol = mintInfo.ticker.trim();
     }
     const fmt = (raw) => (decimals == null
-      ? `${raw} base units of payment mint ${truncateMiddle(registry?.registry?.tokenMint || '', 6)}`
-      : `${formatTokenAmount(String(raw), decimals)} ${symbol || `payment mint ${truncateMiddle(registry.registry.tokenMint, 6)}`}`);
+      ? `${raw} base units of payment mint ${shortAddress(registry?.registry?.tokenMint || '', { head: 6, tail: 6 })}`
+      : `${formatTokenAmount(String(raw), decimals)} ${symbol || `payment mint ${shortAddress(registry.registry.tokenMint, { head: 6, tail: 6 })}`}`);
 
     // The mint suffix is fixed; chain facts decide only whether a `.thru` registrar exists.
     if (provider) searchField.control.placeholder = 'Search yourname.thru';
@@ -683,7 +679,7 @@ export function NameRoute({ back }) {
         return;
       }
       const cost = fmt(String(baseCost()));
-      entry.quote = { assetId: registry.registry.tokenMint, ticker: symbol || `payment mint ${truncateMiddle(registry.registry.tokenMint, 6)}`, decimals, raw: baseCost() };
+      entry.quote = { assetId: registry.registry.tokenMint, ticker: symbol || `payment mint ${shortAddress(registry.registry.tokenMint, { head: 6, tail: 6 })}`, decimals, raw: baseCost() };
       priceLine.textContent = `${renewable ? 'Renewal' : 'Registration'} quote: ${cost}`;
       if (payment?.exists && payment.amount != null) {
         balanceLine.classList.remove('hidden');
@@ -1229,7 +1225,7 @@ export function NameRoute({ back }) {
 
 
     if (activeTab === 'register') {
-      panel.appendChild(h('div', { class: 'hint', text: isRenewOnly ? 'Renew your domain lease.' : 'Your name on Thru. Find, register or renew a .thru domain.' }));
+      panel.appendChild(h('div', { class: 'hint', text: isRenewOnly ? 'Renew your domain lease.' : 'Search and register a .thru name.' }));
       void renderSearchCard(panel, draft, isRenewOnly);
       const refresh = h('button', { type: 'button', class: 'btn text', text: 'Refresh availability' });
       mutationControls.add(refresh);

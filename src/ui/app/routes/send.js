@@ -38,7 +38,7 @@ import {
   submitReviewedReview, classifyReviewError, discardReview,
 } from '../../domain/tx-review/confirm.js';
 import * as bridge from '../bridge.js';
-import { formatThru, parseThruAmount, formatTokenAmount, parseTokenAmount, truncateAddress } from '../../../shared/format.js';
+import { formatThru, parseThruAmount, formatTokenAmount, parseTokenAmount, truncateAddress, explorerTxUrl } from '../../../shared/format.js';
 import { safeAddressParam } from '../../../shared/refs.js';
 
 export function SendRoute({ params, navigate, back }) {
@@ -1023,8 +1023,7 @@ export function SendRoute({ params, navigate, back }) {
 
       // explorerUrl is '' on networks without an explorer, and h() drops an unsafe href, so a
       // missing or bad URL renders nothing rather than a dead link.
-      const explorer = reviewed.network.explorerUrl
-        ? `${reviewed.network.explorerUrl}/tx/${result.signature}` : '';
+      const explorer = explorerTxUrl(reviewed.network, result.signature);
       if (explorer) {
         body.appendChild(h('a', {
           class: 'btn secondary',

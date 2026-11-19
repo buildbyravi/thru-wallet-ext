@@ -74,6 +74,8 @@
 .password-toggle {
   position: absolute;
   right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
   width: 26px;
   height: 26px;
   display: flex;

@@ -128,3 +128,21 @@ export function shortAddress(address, { head = 8, tail = 6 } = {}) {
 export function truncateAddress(address) {
   return shortAddress(address, { head: 8, tail: 6 });
 }
+
+/**
+ * Build a block-explorer URL for an account address, or '' if the network has no explorer.
+ * Kept here rather than importing `src/lib/networks.js` in UI code so the popup bundle does
+ * not pull in `@thru/sdk`.
+ */
+export function explorerAddressUrl(network, address) {
+  if (!network?.explorerUrl || !address) return '';
+  return `${network.explorerUrl}/address/${address}?network=${network.id}`;
+}
+
+/**
+ * Build a block-explorer URL for a transaction signature, or '' if the network has no explorer.
+ */
+export function explorerTxUrl(network, signature) {
+  if (!network?.explorerUrl || !signature) return '';
+  return `${network.explorerUrl}/tx/${signature}`;
+}

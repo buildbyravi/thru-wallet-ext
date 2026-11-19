@@ -608,6 +608,37 @@ ok('fresh footer pip is neutral until the first health check',
   !pip2.classList.contains('healthy') && !pip2.classList.contains('slow') && !pip2.classList.contains('offline'));
 conn2.destroy();
 
+section('OptionCard and shared explorer URL helpers');
+
+const { OptionCard } = await import('../src/ui/kit/button.js');
+let optionClicked = 0;
+const opt = OptionCard({
+  iconName: 'plus',
+  title: 'Create a new wallet',
+  body: 'Generates a new recovery phrase.',
+  onClick: () => { optionClicked += 1; },
+});
+ok('OptionCard renders a button.option-card',
+  opt.el.tagName === 'button' && opt.el.classList.contains('option-card'));
+ok('OptionCard renders title and subtitle',
+  opt.el.querySelector('.option-card-title')?.textContent === 'Create a new wallet'
+    && opt.el.querySelector('.option-card-sub')?.textContent === 'Generates a new recovery phrase.');
+opt.el.listeners?.[0]?.handler();
+ok('OptionCard click invokes onClick', optionClicked === 1);
+opt.destroy();
+ok('OptionCard destroy() removes its click listener', opt.el.listeners.length === 0);
+
+const { explorerAddressUrl, explorerTxUrl } = await import('../src/shared/format.js');
+ok('explorerAddressUrl builds address URL with network query param',
+  explorerAddressUrl({ id: 'betanet', explorerUrl: 'https://scan.thru.org' }, 'ta123')
+    === 'https://scan.thru.org/address/ta123?network=betanet');
+ok('explorerTxUrl builds tx URL',
+  explorerTxUrl({ id: 'betanet', explorerUrl: 'https://scan.thru.org' }, 'ts999')
+    === 'https://scan.thru.org/tx/ts999');
+ok('explorer URL helpers return empty string when explorerUrl is absent',
+  explorerAddressUrl({ id: 'custom', explorerUrl: '' }, 'ta123') === ''
+    && explorerTxUrl({ id: 'custom', explorerUrl: '' }, 'ts999') === '');
+
 // ---- Result ---------------------------------------------------------------
 
 console.log(`\ndom.js checks: ${checks - failures}/${checks} passed.`);

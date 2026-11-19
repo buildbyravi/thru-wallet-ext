@@ -29,7 +29,7 @@ import {
   submitReviewedReview, classifyReviewError, discardReview,
 } from '../../domain/tx-review/confirm.js';
 import * as bridge from '../bridge.js';
-import { formatThru } from '../../../shared/format.js';
+import { formatThru, explorerTxUrl } from '../../../shared/format.js';
 
 // Fallback display value for networks that do not publish a per-claim cap. The service
 // validates the amount against the active network before signing.
@@ -91,7 +91,7 @@ export function FaucetRoute({ navigate, back }) {
       type: 'text',
       readonly: true,
       value: `${fixedThru} THRU`,
-      hint: `Fixed claim of ${fixedThru} THRU per request. Claiming is free and does not need a balance.`,
+      hint: `Fixed claim of ${fixedThru} THRU per request — paid to your active account, free with no balance required.`,
     }));
 
     const claimBtn = track(Button({
@@ -104,8 +104,6 @@ export function FaucetRoute({ navigate, back }) {
     claimBtnEl = claimBtn;
 
     body.appendChild(amount.el);
-    body.appendChild(h('p', { class: 'hint', text:
-      'The faucet pays your active account. Claiming is free and does not need a balance.' }));
     body.appendChild(h('div', { class: 'screen-actions' }, claimBtn.el));
   }
 
@@ -291,7 +289,7 @@ export function FaucetRoute({ navigate, back }) {
           h('div', { class: 'detail-val mono', style: { wordBreak: 'break-all' }, text: result.signature }),
         ]),
       ]));
-      const explorer = network?.explorerUrl ? `${network.explorerUrl}/tx/${result.signature}` : '';
+      const explorer = explorerTxUrl(network, result.signature);
       if (explorer) {
         body.appendChild(h('a', {
           class: 'btn secondary',
