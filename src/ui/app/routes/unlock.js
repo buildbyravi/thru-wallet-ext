@@ -171,6 +171,7 @@ export function UnlockRoute({ params, navigate, knownPaths }) {
       h('div', { class: 'unlock-brand' }, [
         h('img', { src: APP_ICON_URL, width: 64, height: 64, class: 'unlock-logo', alt: 'Thru' }),
         h('h1', { text: 'Welcome back' }),
+        h('p', { class: 'muted', text: 'Enter your password to unlock your wallet.' }),
       ]),
       form,
     ]),

@@ -8,7 +8,7 @@
 // each screen's PageHeader. It stays in the shell as chrome of last resort for a future
 // route that has no header of its own.
 //
-// The footer shows measured RPC health and the active network.
+// The footer is the Rabby-style CurrentConnection bar showing connection state and active network.
 
 import { h, disposer } from '../kit/dom.js';
 import { icon } from '../kit/icon.js';

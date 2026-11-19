@@ -4985,7 +4985,8 @@ async function faucetReviewTest() {
       && amountInput?.value === '0.00001 THRU',
     JSON.stringify({ readonly: amountInput?.getAttribute('readonly'), value: amountInput?.value }));
   ok('the claim field carries no base-units jargon next to a THRU-denominated amount',
-    /Paid to your active account\. No balance is required\./.test(textOf(route.el))
+    /Fixed claim of 0\.00001 THRU per request/.test(textOf(route.el))
+      && /no gas required to claim/i.test(textOf(route.el))
       && !/raw units/i.test(textOf(route.el)),
     textOf(route.el).slice(0, 200));
 
@@ -5180,7 +5181,7 @@ async function faucetReviewTest() {
   faucetInfoHolds.restore();
   await settle();
   ok('destroying /faucet during a pending beforePromise skips renderSuccess',
-    !/Paid to your active account/.test(textOf(destroyedFaucet.el)),
+    !/Claim again/i.test(textOf(destroyedFaucet.el)),
     textOf(destroyedFaucet.el).slice(0, 200));
   destroyedFaucet.el.remove();
 
