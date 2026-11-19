@@ -132,7 +132,7 @@ step(domainProof?.length > 0 && leaseProof?.length > 0, 'creation proofs generat
 const { rawTransaction } = await client.transactions.buildAndSign({
   feePayer: { publicKey: user.publicKey, privateKey: user.privateKey },
   program: PROGRAM,
-  header: { computeUnits: 2_000_000, memoryUnits: 32_768, stateUnits: 6, fee: 0n, startSlot: slot, expiryAfter: 10_000 },
+  header: { computeUnits: 2_000_000, memoryUnits: 10_000, stateUnits: 6, fee: 0n, startSlot: slot, expiryAfter: 10_000 },
   accounts: {
     readWrite: [cfg.treasury, rootAddress, domainAddress, leaseAddress],
     readOnly: [configAddress, nsLib.NAME_SERVICE_PROGRAM],

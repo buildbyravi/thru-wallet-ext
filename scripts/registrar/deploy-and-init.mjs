@@ -255,7 +255,7 @@ if (existingCfg?.exists) {
     const { rawTransaction } = await client.transactions.buildAndSign({
       feePayer: { publicKey: deployer.publicKey, privateKey: deployer.privateKey },
       program: registrarProgramAddress,
-      header: { computeUnits: 2_000_000, memoryUnits: 32_768, stateUnits: 4, fee: 0n, startSlot: slot, expiryAfter: 10_000 },
+      header: { computeUnits: 2_000_000, memoryUnits: 10_000, stateUnits: 4, fee: 0n, startSlot: slot, expiryAfter: 10_000 },
       accounts: {
         readWrite: [configAddress],
         readOnly: [],
@@ -294,7 +294,7 @@ if (existingCfg?.exists) {
   const { rawTransaction } = await client.transactions.buildAndSign({
     feePayer: { publicKey: deployer.publicKey, privateKey: deployer.privateKey },
     program: registrarProgramAddress,
-    header: { computeUnits: 2_000_000, memoryUnits: 32_768, stateUnits: 4, fee: 0n, startSlot: slot, expiryAfter: 10_000 },
+    header: { computeUnits: 2_000_000, memoryUnits: 10_000, stateUnits: 4, fee: 0n, startSlot: slot, expiryAfter: 10_000 },
     accounts: {
       readWrite: [configAddress, rootAddress],
       readOnly: [NS_PROGRAM],
