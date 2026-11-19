@@ -59,11 +59,16 @@ export function CurrentConnection({
           pip.classList.add('slow');
           statusText.textContent = 'Slow';
           latencyEl.textContent = Number.isFinite(latencyMs) ? `${latencyMs} ms` : '';
-        } else {
+        } else if (healthStatus === 'healthy' || healthStatus === 'ok') {
           pip.classList.add('healthy');
           statusText.textContent = 'Online';
           latencyEl.textContent = Number.isFinite(latencyMs) ? `${latencyMs} ms` : '';
+        } else {
+          statusText.textContent = 'Checking…';
+          latencyEl.textContent = '';
         }
+      } else if (latencyMs !== undefined) {
+        latencyEl.textContent = Number.isFinite(latencyMs) ? `${latencyMs} ms` : '';
       }
     },
     destroy() {

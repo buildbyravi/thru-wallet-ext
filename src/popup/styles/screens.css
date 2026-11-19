@@ -698,6 +698,8 @@ form > .btn.text {
   font-size: 10px;
   color: var(--foot, #6a7580);
   font-family: var(--font-mono);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .account-pill-chevron {

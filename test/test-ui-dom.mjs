@@ -565,9 +565,15 @@ const statusText = conn.el.querySelector('.current-connection-text');
 ok('default RPC status is checking until measured',
   statusText?.textContent === 'Checking…');
 
+const healthGroup = conn.el.querySelector('.current-connection-health');
+ok('CurrentConnection health group has role=status and aria-live=polite',
+  healthGroup?.getAttribute('role') === 'status' && healthGroup?.getAttribute('aria-live') === 'polite');
+
 const netBtn = conn.el.querySelector('.current-connection-net');
 ok('network badge is a distinct clickable button', Boolean(netBtn) && netBtn.tagName === 'button');
 ok('network badge has descriptive title for settings', netBtn.getAttribute('title')?.includes('Settings'));
+ok('network badge has accessible aria-label with settings hint',
+  netBtn.getAttribute('aria-label') === 'Active network Betanet; open Settings to change');
 
 netBtn.listeners?.[0]?.handler();
 ok('clicking network badge fires onNetworkClick handler', netClicked === true);
@@ -581,6 +587,19 @@ ok('conn.update applies healthy pip status', pipEl?.classList?.contains('healthy
 
 conn.update({ healthStatus: 'offline' });
 ok('conn.update applies offline pip status', pipEl?.classList?.contains('offline'));
+ok('conn.update offline clears latency display',
+  conn.el.querySelector('.current-connection-latency')?.textContent === '');
+
+conn.update({ healthStatus: 'healthy', latencyMs: null });
+ok('conn.update with null latencyMs clears latency display',
+  conn.el.querySelector('.current-connection-latency')?.textContent === '');
+
+conn.update({ healthStatus: null });
+ok('conn.update with falsy healthStatus resets to checking and removes status classes',
+  statusText?.textContent === 'Checking…'
+    && !pipEl.classList.contains('healthy')
+    && !pipEl.classList.contains('slow')
+    && !pipEl.classList.contains('offline'));
 
 // Object form: the preferred call style. No `undefined` padding for untouched slots.
 conn.update({ network: 'Mainnet', latencyMs: 120, healthStatus: 'slow' });
