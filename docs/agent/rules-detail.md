@@ -46,13 +46,6 @@ rule 14 (layout needs eyes), `test-launchpad-quarantine.mjs` cites rule 6 (BigIn
     gate and two independent code audits, and was found by a user on a real popup
     (`docs/DEFECT_LOG.md`).
 
-    Before implementing or modifying UI layouts, routes, components, or visual styles, agents
-    with access to the Figma connector must also check the canonical extension design file
-    ([thru-Extension](https://www.figma.com/design/qKl8tsbCmSdtY6uZ0G8tnb/thru-Extension),
-    `file_key: qKl8tsbCmSdtY6uZ0G8tnb`) via `get_file` / `get_file_nodes` / `get_images` /
-    `get_comments` alongside `docs/BUILD_SPEC.md` (§5) and `src/popup/styles/tokens.css`. Under
-    `docs/DOCS_INDEX.md` §1, shipped `src/` remains authoritative if Figma and source diverge.
-
 ## Rule 15
 
 15. **The frontend never waits on a chain/RPC/backend read before its first paint.** The UI and
