@@ -1,7 +1,7 @@
 {
   "registryVersion": 0,
   "networkId": "betanet",
-  "updatedAt": "2026-10-06",
+  "updatedAt": "2026-11-18",
   "purpose": "Gate 0 seed for the DeFi program registry (docs/defi/DOSSIER_AND_CAPABILITIES.md). Addresses come from the pinned official packages exactly as src/lib/networks.js already sources them (@thru/programs/bootstrap-addresses, @thru/sdk), never from literals; verification state is layered on top here. Package-declared addresses are NOT proof of live deployment or current management authority (Q14/Q20).",
   "genesisBinding": {
     "status": "pending",
@@ -11,17 +11,18 @@
   "programs": [
     {
       "role": "token",
-      "address": "taTOKENKRgcl3vO0yVhftATDbXuhgWcfaaxv9xpEEdMdUE",
+      "address": "taTOKEN7TE2HRGzqz7EjLibc6ieCwuXys5Bhb2-Sq8ZZ_1",
       "trust": "unverified",
       "verification": "goldenTested",
       "changeStatus": "unknown",
       "managementState": "bootstrap-managed (package-declared; live upgrade authority unverified)",
-      "updatedAt": "2026-10-05",
+      "updatedAt": "2026-11-18",
       "evidenceRef": [
         "2026-10-05-package-surface",
-        "repo: test/test-thru-client.mjs + test/test-token-balances.mjs wire goldens vs @thru/programs/token 0.4.1"
+        "repo: test/test-thru-client.mjs + test/test-token-balances.mjs wire goldens vs @thru/programs/token 0.4.1",
+        "2026-11-18-package-surface-0.5.2"
       ],
-      "note": "Instruction byte formats and derivation are golden-tested against the pinned binding locally. LIVE SEMANTICS OPEN: recipient-owner acceptance of sender-created token accounts and the token-program fee (docs/BACKEND_GAPS.md C1/C2 = dossier Q12/Q13 = precondition P3)."
+      "note": "Instruction byte formats and derivation are golden-tested against the pinned binding locally. LIVE SEMANTICS OPEN: recipient-owner acceptance of sender-created token accounts and the token-program fee (docs/BACKEND_GAPS.md C1/C2 = dossier Q12/Q13 = precondition P3). Re-pinned from @thru/programs 0.5.2 declared addresses (same as 0.5.1); live deployment was NOT re-verified."
     },
     {
       "role": "amm",
@@ -52,17 +53,18 @@
     },
     {
       "role": "multicall",
-      "address": "taMULTIrOL8WpIFr16C1ECsO60qAsuwmwJephZHDOTvSeP",
+      "address": "taMULTIsEUjoNbAJ13_s5LGWnqJg3-HjHZqeM_vukdrOm9",
       "trust": "unverified",
       "verification": "unknown",
       "changeStatus": "unknown",
       "managementState": "bootstrap-managed (package-declared)",
-      "updatedAt": "2026-10-05",
+      "updatedAt": "2026-11-18",
       "evidenceRef": [
         "2026-10-05-package-surface",
-        "2026-10-05-official-docs"
+        "2026-10-05-official-docs",
+        "2026-11-18-package-surface-0.5.2"
       ],
-      "note": "Needed for atomic multi-step flows (Q1): the spec shows one program call per transaction, so atomicity wants a verified multicall. Signer-privilege, failure and trust semantics need ABI read + a live multi-call transaction with a deliberate failure."
+      "note": "Needed for atomic multi-step flows (Q1): the spec shows one program call per transaction, so atomicity wants a verified multicall. Signer-privilege, failure and trust semantics need ABI read + a live multi-call transaction with a deliberate failure. Re-pinned from @thru/programs 0.5.2 declared addresses (same as 0.5.1); live deployment was NOT re-verified."
     },
     {
       "role": "oracle",
@@ -79,31 +81,33 @@
     },
     {
       "role": "abi_manager",
-      "address": "taABII8WXcPaPIt47cXjOBbyoBUGBDXznAMHorVMeok3mw",
+      "address": "taABIIUrvJgJ-TotN7GtwSJVlAQH6YlM3Gs0zwULqn8Hrf",
       "trust": "unverified",
       "verification": "unknown",
       "changeStatus": "unknown",
       "managementState": "bootstrap-managed (package-declared)",
-      "updatedAt": "2026-10-08",
+      "updatedAt": "2026-11-18",
       "evidenceRef": [
         "2026-10-05-package-surface",
-        "2026-10-08-official-docs"
+        "2026-10-08-official-docs",
+        "2026-11-18-package-surface-0.5.2"
       ],
-      "note": "ABI manager program \u2014 feeds Q-series ABI reads if ever needed for program introspection."
+      "note": "ABI manager program \u2014 feeds Q-series ABI reads if ever needed for program introspection. Re-pinned from @thru/programs 0.5.2 declared addresses (same as 0.5.1); live deployment was NOT re-verified."
     },
     {
       "role": "block_producer",
-      "address": "taBPUH9m3CXZcBQyCrTmclHtltipiPelIHzdAf8QdIDvnt",
+      "address": "taBLOCKZ_ovpZ8TsejTZYrX8gu1NrQOUHaamzNcb_b8I3R",
       "trust": "unverified",
       "verification": "unknown",
       "changeStatus": "unknown",
       "managementState": "bootstrap-managed (package-declared)",
-      "updatedAt": "2026-10-08",
+      "updatedAt": "2026-11-18",
       "evidenceRef": [
         "2026-10-05-package-surface",
-        "2026-10-08-official-docs"
+        "2026-10-08-official-docs",
+        "2026-11-18-package-surface-0.5.2"
       ],
-      "note": "Block producer program per the 0.4.1 bootstrap table; fee distribution to live producers per the transaction-execution spec (2026-10-08-official-docs)."
+      "note": "Block producer program per the 0.4.1 bootstrap table; fee distribution to live producers per the transaction-execution spec (2026-10-08-official-docs). Re-pinned from @thru/programs 0.5.2 declared addresses (same as 0.5.1); live deployment was NOT re-verified."
     },
     {
       "role": "clob",
@@ -121,45 +125,48 @@
     },
     {
       "role": "compression",
-      "address": "taRB54_92jNbBdcmt2jus88F-xrOSne1GR9mmyOh4RidAK",
+      "address": "taCOMPyXTPshiN6_to2P0L05lyH0GIx7DEHfROiMVzPiUO",
       "trust": "unverified",
       "verification": "unknown",
       "changeStatus": "unknown",
       "managementState": "bootstrap-managed (package-declared)",
-      "updatedAt": "2026-10-08",
+      "updatedAt": "2026-11-18",
       "evidenceRef": [
         "2026-10-05-package-surface",
-        "2026-10-08-official-docs"
+        "2026-10-08-official-docs",
+        "2026-11-18-package-surface-0.5.2"
       ],
-      "note": "Account compression program \u2014 matches the client compression* groups (getAccountStatuses/compressAccount); fee-payer compression-timeout error -498 exists per spec."
+      "note": "Account compression program \u2014 matches the client compression* groups (getAccountStatuses/compressAccount); fee-payer compression-timeout error -498 exists per spec. Re-pinned from @thru/programs 0.5.2 declared addresses (same as 0.5.1); live deployment was NOT re-verified."
     },
     {
       "role": "consensus_validator",
-      "address": "taCONStGMCE1RJ9ttceyt0FZhYapGJ7zzBuCE5qqYdLhaF",
+      "address": "taCONSqR-MAUMBXTlESaeaFq5oKzlETM67WqHIBkiOdKSa",
       "trust": "unverified",
       "verification": "unknown",
       "changeStatus": "unknown",
       "managementState": "bootstrap-managed (package-declared)",
-      "updatedAt": "2026-10-08",
+      "updatedAt": "2026-11-18",
       "evidenceRef": [
         "2026-10-05-package-surface",
-        "2026-10-08-official-docs"
+        "2026-10-08-official-docs",
+        "2026-11-18-package-surface-0.5.2"
       ],
-      "note": "Consensus validator program per the 0.4.1 bootstrap table."
+      "note": "Consensus validator program per the 0.4.1 bootstrap table. Re-pinned from @thru/programs 0.5.2 declared addresses (same as 0.5.1); live deployment was NOT re-verified."
     },
     {
       "role": "eoa",
-      "address": "taEOAD2uLK1SLzPgtabFLUAx22yDlBs9DE9nZFTOESIGRr",
+      "address": "taEOApimkowJve0JG2gZqRXJj84GwzB9QmkNAJUFoxykj2",
       "trust": "unverified",
       "verification": "unknown",
       "changeStatus": "unknown",
       "managementState": "bootstrap-managed (package-declared)",
-      "updatedAt": "2026-10-08",
+      "updatedAt": "2026-11-18",
       "evidenceRef": [
         "2026-10-05-package-surface",
-        "2026-10-08-official-docs"
+        "2026-10-08-official-docs",
+        "2026-11-18-package-surface-0.5.2"
       ],
-      "note": "Externally-owned-account program: fresh-account activation path (the P3 createOnChainAccount program). Live-relevant: the current activation/claim regression is in this neighborhood."
+      "note": "Externally-owned-account program: fresh-account activation path (the P3 createOnChainAccount program). Live-relevant: the current activation/claim regression is in this neighborhood. Re-pinned from @thru/programs 0.5.2 declared addresses (same as 0.5.1); live deployment was NOT re-verified."
     },
     {
       "role": "faucet",
@@ -205,17 +212,18 @@
     },
     {
       "role": "noop",
-      "address": "taNOOPV4A7S3WTsirr149To2GoGZ9q8zllQaBrbekHfkJT",
+      "address": "taNOOP7zyQMAKczxK6lbJcGzHDsfe5A_QNZY-uObL99Rx8",
       "trust": "unverified",
       "verification": "unknown",
       "changeStatus": "unknown",
       "managementState": "bootstrap-managed (package-declared)",
-      "updatedAt": "2026-10-08",
+      "updatedAt": "2026-11-18",
       "evidenceRef": [
         "2026-10-05-package-surface",
-        "2026-10-08-official-docs"
+        "2026-10-08-official-docs",
+        "2026-11-18-package-surface-0.5.2"
       ],
-      "note": "System program per @thru/programs/bootstrap-addresses 0.4.1 (canonical pin)."
+      "note": "System program per @thru/programs/bootstrap-addresses 0.4.1 (canonical pin). Re-pinned from @thru/programs 0.5.2 declared addresses (same as 0.5.1); live deployment was NOT re-verified."
     },
     {
       "role": "passkey_manager",
@@ -247,40 +255,43 @@
     },
     {
       "role": "uploader",
-      "address": "taUPLMH5QYOAT4ktwQeO7DXAEKtqBhYehalNGf5BJFQDYq",
+      "address": "taUPLOAD4b3cfH-xpelVCGBnvvpGpBqOZa1bkXUhFRpG3D",
       "trust": "unverified",
       "verification": "unknown",
       "changeStatus": "unknown",
       "managementState": "bootstrap-managed (package-declared)",
-      "updatedAt": "2026-10-08",
+      "updatedAt": "2026-11-18",
       "evidenceRef": [
         "2026-10-05-package-surface",
-        "2026-10-08-official-docs"
+        "2026-10-08-official-docs",
+        "2026-11-18-package-surface-0.5.2"
       ],
-      "note": "Program uploader (deploy pipeline) per the 0.4.1 bootstrap table."
+      "note": "Program uploader (deploy pipeline) per the 0.4.1 bootstrap table. Re-pinned from @thru/programs 0.5.2 declared addresses (same as 0.5.1); live deployment was NOT re-verified."
     },
     {
       "role": "wthru",
-      "address": "taWTHRUBelpONhTRjYc7n4OovodUsUtZKTIuREWAi9G9lm",
+      "address": "taWTHRUThPRK79mTeD-1Bt0eODfqzkkO2jbYE8vvIndjE6",
       "trust": "unverified",
       "verification": "unknown",
       "changeStatus": "unknown",
       "managementState": "bootstrap-managed (package-declared)",
-      "updatedAt": "2026-10-08",
+      "updatedAt": "2026-11-18",
       "evidenceRef": [
         "2026-10-05-package-surface",
-        "2026-10-08-official-docs"
+        "2026-10-08-official-docs",
+        "2026-11-18-package-surface-0.5.2"
       ],
-      "note": "System program per @thru/programs/bootstrap-addresses 0.4.1 (canonical pin)."
+      "note": "System program per @thru/programs/bootstrap-addresses 0.4.1 (canonical pin). Re-pinned from @thru/programs 0.5.2 declared addresses (same as 0.5.1); live deployment was NOT re-verified."
     }
   ],
   "relatedDeclaredConstants": {
-    "wthru": "taWTHRUBelpONhTRjYc7n4OovodUsUtZKTIuREWAi9G9lm",
-    "wthru_mint": "taaoXQw03WlYWdo1jhfFi2Nqfqsf4RqYySn_89mchjCiLb",
-    "wthru_vault": "taEqcObTD3WldMGFOW28FBKF6_mQfSbci1TC77YyssQQhP",
-    "note": "Q17 lead: how native THRU enters a pool (wrapped or direct) is unverified live. | 2026-10-08: program map completed to the full 0.4.1 bootstrap declaration set (18 roles; pgreyy/thruscan SYSTEM table corroborates token/eoa/multicall/name_service/faucet/noop/amm/clob/oracle/nft/wthru addresses)",
+    "wthru": "taWTHRUThPRK79mTeD-1Bt0eODfqzkkO2jbYE8vvIndjE6",
+    "wthru_mint": "tafHKrDiuT82jF-aWYs5t1HLIoLiNeduKAfUEm2cNORmd2",
+    "wthru_vault": "tavJCZVMaqKvAa-9F0vpwZeb0udajFHeK2o-UhWU1BXVnR",
+    "note": "Q17 lead: how native THRU enters a pool (wrapped or direct) is unverified live. | 2026-10-08: program map completed to the full 0.4.1 bootstrap declaration set (18 roles; pgreyy/thruscan SYSTEM table corroborates token/eoa/multicall/name_service/faucet/noop/amm/clob/oracle/nft/wthru addresses) | 2026-11-18: re-pinned from @thru/programs 0.5.2 declarations (same as 0.5.1); live deployment not re-verified.",
     "evidenceRef": [
-      "2026-10-05-package-surface"
+      "2026-10-05-package-surface",
+      "2026-11-18-package-surface-0.5.2"
     ]
   },
   "customNetworks": "DeFi disabled with reason CUSTOM_NETWORK per D14 and the shipped contract-v7 quarantine; no override path exists or may be added."

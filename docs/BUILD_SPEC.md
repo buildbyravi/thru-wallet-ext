@@ -1,7 +1,7 @@
 # Thru Wallet — Product and Security Build Specification
 
 **Document Class:** Authority (Shipped Product, UX, Security & QA Specification)
-**Baseline:** Contract **v33** (`154` methods, `15` routes, `@thru/sdk@0.4.4`, `@thru/programs@0.4.4`)
+**Baseline:** Contract **v33** (`154` methods, `15` routes, `@thru/sdk@0.5.2`, `@thru/programs@0.5.2`)
 **Companion SSoT Docs:** `docs/DOCS_INDEX.md` · `docs/STATUS_AND_ROADMAP.md` · `docs/PROJECT_LEDGER.md` · `docs/ARCHITECTURE.md` · `CONTEXT.md` · `docs/MODULE_BOUNDARIES.md`
 
 Where another document disagrees with `src/`, `src/` wins. Where documents disagree on **product or security behavior**, this specification wins (`AGENTS.md`). Unshipped features belong exclusively in `docs/roadmap/FUTURE_ROADMAP.md`.
@@ -12,7 +12,7 @@ Where another document disagrees with `src/`, `src/` wins. Where documents disag
 
 Maintain the production-grade self-custody Chrome MV3 wallet for the **Thru native Layer 1**: encrypted multi-keyring vault, owned-account activation, network-scoped native and token balances, reviewed value-moving operations (`Send`, `Token Send`, `Domains`, `Faucet`), `Receive`, `History`, and `Settings`.
 
-- **Stack:** Vanilla ES modules bundled with `esbuild` (`0.28.1`), exact-pinned `@thru/sdk@0.4.4` (including `@thru/sdk/crypto`) and `@thru/programs@0.4.4`. Zero UI frameworks, zero CSS preprocessors, zero external runtime dependencies (`Rule 5`). The native THRU faucet has no per-account rate-limit policy; `tx.getFaucetLimit` remains a compatibility response only and does not read the separate THRUSD faucet policy.
+- **Stack:** Vanilla ES modules bundled with `esbuild` (`0.28.1`), exact-pinned `@thru/sdk@0.5.2` (including `@thru/sdk/crypto`) and `@thru/programs@0.5.2`. Zero UI frameworks, zero CSS preprocessors, zero external runtime dependencies (`Rule 5`). The native THRU faucet has no per-account rate-limit policy; `tx.getFaucetLimit` remains a compatibility response only and does not read the separate THRUSD faucet policy.
 - **Delivery Sequence:** `Preserve -> Understand -> Reuse -> Centralize -> Isolate -> Test -> Verify -> Ship -> Document -> Delete obsolete code`.
 - **Rabby Reference Boundary:** Rabby Wallet (`MIT`, brand/logo reserved) informs UX hierarchy and approval legibility only — never copy Rabby source code, icons, or EVM/ABI/gas assumptions.
 - **Mandatory Local Gate:** Run `npm run build && npm test` before and after every code or doc change.

@@ -1,0 +1,24 @@
+{
+  "date": "2026-11-18T21:48:41.469Z",
+  "network": "betanet",
+  "program": "ta2vDCBzzptN2qVZgz6PXsCp5cNB7Nef4yeQ3W-OqzZcfF",
+  "label": "probe4pwpy",
+  "years": 1,
+  "config": {
+    "rootName": "thru",
+    "feePerYear": "1000",
+    "treasury": "taYqo1zV5VbNmtEuedubnI51UsvQjsEcDK-MD5cVMlvPJ_"
+  },
+  "rootAddress": "taNP1MFOO2shpn6ORofIGSNiQ-qJ9VE2lDkDwvUmgUmaQZ",
+  "domainAddress": "taXeRp-v1jvo5NNpAZ-hFTxVEapqs4QCLHBBnwVAAZaMZk",
+  "leaseAddress": "taUQg9AOuJAWnkKfx0_tnBoBeyJOkQbhfdk5ZbIm-2J9U4",
+  "signature": "tsd6IeN94zPeZ_YLJe1COk1uPDcx-mt0uGz3wzWqqoU55w1L_IbKOcvVttbjzbfiKTbzIbQQ6iYMoVyi69Kbn_DB_E",
+  "vmError": 0,
+  "executionResult": {
+    "vmError": 0,
+    "consumedComputeUnits": 129843,
+    "userErrorCode": "0"
+  },
+  "treasuryBefore": "0",
+  "treasuryAfter": "0"
+}

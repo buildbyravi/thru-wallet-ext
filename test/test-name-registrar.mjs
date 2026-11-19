@@ -47,6 +47,7 @@ const { handleApiRequest } = await import('../src/background/api-router.js');
 const { sendWithConsent } = await import('./fixtures/consent.mjs');
 const { Pubkey } = await import('@thru/sdk');
 const { TokenMintAccount } = await import('@thru/programs/token');
+const { mintAccountBytes } = await import('./fixtures/token-accounts.mjs');
 const reg = await import('../src/lib/registrar.js');
 const ns = await import('../src/lib/name-service.js');
 const tcr = await import('../src/lib/custom-registrar.js');
@@ -68,7 +69,7 @@ console.log('harness: wallet created (offline), sender', SENDER.slice(0, 12) + '
 // ---- synthetic chain fixtures ------------------------------------------------
 const CONFIG_ADDR = ns.registrarConfigAddress();
 const ROOT_THRU = await ns.rootRegistrarAddress('thru');
-const TOKEN_PROGRAM = 'taTOKENKRgcl3vO0yVhftATDbXuhgWcfaaxv9xpEEdMdUE';
+const TOKEN_PROGRAM = NETWORKS.betanet.tokenProgramId;
 const TREASURER = Pubkey.from(new Uint8Array(32).fill(0x21)).toThruFmt();
 const MINT = Pubkey.from(new Uint8Array(32).fill(0x42)).toThruFmt();
 const NAME = 'alice';
@@ -121,8 +122,8 @@ const notFound = () => { const e = new Error('account not found'); e.code = 5; t
 client.accounts.get = async (address) => {
   if (address === MINT) {
     const ticker = new Uint8Array(9); ticker[0] = 3; ticker.set(new TextEncoder().encode('PAY'), 1);
-    const data = TokenMintAccount.builder().set_decimals(6).set_supply(1000000n)
-      .set_has_freeze_authority(0).set_ticker(ticker).finish().buffer;
+    const data = mintAccountBytes(TokenMintAccount.builder().set_decimals(6).set_supply(1000000n)
+      .set_has_freeze_authority(0).set_ticker(ticker).finish().buffer);
     return { meta: { balance: 1n, owner: Pubkey.from(TOKEN_PROGRAM) }, data: { data } };
   }
   if (address === CONFIG_ADDR) {

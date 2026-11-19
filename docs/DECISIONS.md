@@ -587,3 +587,21 @@ dated September/October audits remain historical evidence, not implementation in
 3. **Unified Review Pipeline & Single-Use Consent (v29–v32):** Value-moving operations enforce background consent tokens (`confirmReview`), single-surface toast notifications (Rule 29), and strict account/network binding.
 4. **Verified Token Management & Name Services (v31–v33):** Added `token.importVerified` (`auth: 'unlocked'`) with verified decimals persistence, and contract methods `name.setRecord` and `name.reverseLookup`.
 5. **Version Bumps:** Bumped `package.json`, `package-lock.json`, and `src/manifest.json` from `1.4.1` to `1.5.0`.
+
+## D-030 — SDK 0.5.1 upgrade without legacy vault derivation (2026-11-18, owner directive)
+
+**Owner directive.** No legacy vault derivation path is needed for the SDK 0.5.1 upgrade.
+
+**Context.** `@thru/sdk@0.5.1` changes the BIP-44 coin type from 9999 to 8478, so a fixed
+recovery phrase derives different addresses than under 0.4.4. The default treatment in
+`AGENTS.md`/`test/test-derivation.mjs` is a migration path for existing installs. The owner
+explicitly declined that path for this upgrade.
+
+**Chosen.** Pin `@thru/sdk@0.5.1` and `@thru/programs@0.5.1`, use the SDK's 8478 derivation
+everywhere, and regenerate the golden derivation vectors on the new version. No compatibility
+derivation adapter, per-keyring coin-type field, or storage migration is added. Seed keyrings
+created under 0.4.x resolve to their new 8478 addresses after the upgrade; users must re-import
+a phrase elsewhere if they need the old addresses. This is a deliberate owner decision, not a
+silent SDK drift.
+
+**Follow-up (2026-11-18).** Patched both exact pins to `@thru/sdk@0.5.2` and `@thru/programs@0.5.2`. The patch adds Ledger path helpers and signature-context limits only; the 8478 derivation, program addresses, token layouts and wire formats are unchanged, so no code or golden-address change was needed.

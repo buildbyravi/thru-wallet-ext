@@ -79,12 +79,12 @@ const SENDER = walletRes.data.address;
 // addresses, evidence row pins). They never hit the network in this suite — every read of them
 // is fixtured — but every address that ever crosses a codec (sortMints / Pubkey decode at
 // sign-time) must be a REAL thrufmt string or the SDK rightly refuses.
-const MINT_A = 'taEOAD2uLK1SLzPgtabFLUAx22yDlBs9DE9nZFTOESIGRr';
-const MINT_B = 'taTOKENKRgcl3vO0yVhftATDbXuhgWcfaaxv9xpEEdMdUE';
+const MINT_A = 'taEOApimkowJve0JG2gZqRXJj84GwzB9QmkNAJUFoxykj2';
+const MINT_B = 'taTOKEN7TE2HRGzqz7EjLibc6ieCwuXys5Bhb2-Sq8ZZ_1';
 const POOL = 'taAMMx8gG44RcOyRqNYZ55pDaAJoGS0R8kPYxBN96sO8kD';
 const VAULT_ONE = 'taFCTxR0y2eabGGaEdtTwC9pHz7ZY4CYD7FOiBFUJeAW16';
 const VAULT_TWO = 'taTigKYAf5mNxUNUVXeXq1HQodKc07DBzF4Pl7tCi1iXxt';
-const LP_MINT = 'taNOOPV4A7S3WTsirr149To2GoGZ9q8zllQaBrbekHfkJT';
+const LP_MINT = 'taNOOP7zyQMAKczxK6lbJcGzHDsfe5A_QNZY-uObL99Rx8';
 const INPUT_TA = 'taLjMDKiBDra1EGIKoF_7B-tGFJMnf8MejLDu3VVWTRJRQ';
 const OUTPUT_TA = 'taLu3d1rxGdQWWHJxUOK6eT9ti4lWeTijNp0Kk_5YKHARg';
 

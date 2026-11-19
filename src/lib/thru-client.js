@@ -1,7 +1,7 @@
 // Thin wrapper around @thru/sdk.
 //
 // NOTE: betanet is Thru's FINAL testnet before mainnet — unaudited infrastructure. Expect
-// instability and resets until mainnet; the SDK (0.4.x) may still see breaking changes.
+// instability and resets until mainnet; the SDK (0.5.x) may still see breaking changes.
 //
 // NETWORK BINDING: this module used to hardcode an RPC URL and memoize a single
 // client at first use, while the program addresses were module constants duplicating the ones
@@ -14,7 +14,7 @@
 // still does not import networks.js or any service — it holds whatever it was given and falls
 // back to the betanet defaults, so it stays independently testable.
 
-import { createThruClient, Signature, Pubkey, PageRequest, BlockView, keys as sdkKeys, EOA_PROGRAM_ID, TOKEN_PROGRAM_ADDRESS, NOOP_PROGRAM_ADDRESS, ROOT_MANAGER_PROGRAM_ADDRESS } from '@thru/sdk';
+import { createThruClient, Signature, Pubkey, PageRequest, BlockView, keys as sdkKeys, EOA_PROGRAM_ID, TOKEN_PROGRAM_ADDRESS, NOOP_PROGRAM_ADDRESS, CORE_MANAGER_PROGRAM_ADDRESS } from '@thru/sdk';
 // Official program bindings. BUILD_SPEC Part IX: prefer @thru/sdk (including its crypto
 // subpath) and @thru/programs over hand-written protocol code wherever the SDK provides it.
 // These replace a hand-rolled derivation that called a non-existent SDK method.
@@ -28,7 +28,8 @@ import {
   createMintToInstruction as sdkCreateMintToInstruction,
   parseTokenAccountData as sdkParseTokenAccountData,
   parseMintAccountData as sdkParseMintAccountData,
-  TokenMintAccount,
+  decodeTokenMintAccount,
+  TOKEN_MINT_ACCOUNT_SIZE,
   isAccountNotFoundError as sdkIsAccountNotFoundError,
 } from '@thru/programs/token';
 import { BOOTSTRAP_PROGRAM_ADDRESSES, BOOTSTRAP_FAUCET_VAULT_ADDRESS } from '@thru/programs/bootstrap-addresses';
@@ -37,7 +38,7 @@ import { autoUnits, noteExecution, UNIT_CLASS } from './tx-units.js';
 
 export const BETANET_RPC = 'https://rpc.betanet.thru.org';
 
-// Canonical program addresses, taken from the 0.4.0 packages rather than hand-copied: the
+// Canonical program addresses, taken from the 0.5.2 packages rather than hand-copied: the
 // betanet reset replaced the old reserved "marker byte" system table (zero-filled 32-byte
 // addresses with byte 31 = 0x00 transfer / 0x03 account-create / 0xaa token / 0xfa faucet)
 // with managed-genesis addresses, and the packages are where the next redeployment will land
@@ -139,14 +140,14 @@ export function isValidThruAddress(address) {
  * used to BE the EOA program account and simply answered; after the 0.4.0 reset the zero
  * account exists nowhere, so ACCOUNT_NOT_FOUND came back and every healthy node was
  * reported "offline". Two rules keep this honest: probe a genesis address that any
- * deployment of this chain family has (the immutable root Manager), and treat the SDK's
+ * deployment of this chain family has (the immutable core Manager), and treat the SDK's
  * own ACCOUNT_NOT_FOUND as a SUCCESSFUL probe — the node answered, which is all a health
  * ping measures.
  */
 export async function checkNetworkHealth() {
   const start = performance.now();
   try {
-    await getClient().accounts.get(ROOT_MANAGER_PROGRAM_ADDRESS);
+    await getClient().accounts.get(CORE_MANAGER_PROGRAM_ADDRESS);
   } catch (err) {
     if (!sdkIsAccountNotFoundError(err)) {
       return { status: 'offline', latencyMs: null };
@@ -972,11 +973,16 @@ export function parseMintAccount(account, tokenProgramId) {
     throw new Error('The account is not owned by the expected token program.');
   }
   const data = account?.data?.data;
-  if (!(data instanceof Uint8Array) || data.length !== TokenMintAccount.footprint()) {
+  // @thru/programs 0.5.x prefixes every Token Program account with an account-type byte
+  // (1 = mint, 2 = token account). The old 115-byte bare payload is no longer a mint and
+  // must be rejected rather than read as one.
+  const typed = data instanceof Uint8Array && data.length === TOKEN_MINT_ACCOUNT_SIZE
+    ? decodeTokenMintAccount(data)
+    : null;
+  if (!typed) {
     throw new Error('The account does not have the pinned SDK mint footprint.');
   }
-  const typed = TokenMintAccount.from_array(data);
-  const ticker = typed?.get_ticker();
+  const ticker = typed.get_ticker();
   if (!ticker || ticker.get_length() > ticker.get_bytes().length) {
     throw new Error('The mint ticker is malformed.');
   }

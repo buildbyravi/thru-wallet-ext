@@ -114,7 +114,7 @@ These destinations replace active read instructions, not the original dated evid
 
 ## 5. Official External Cross-Check References
 
-Match external documentation strictly to the exact package versions pinned in `package.json` (`@thru/sdk@0.4.4`, `@thru/programs@0.4.4`). Although 0.4.4 removes the old `@thru/programs/ratelimit` subpath, it is not replaced for the native THRU faucet: that faucet has no per-account rate-limit policy.
+Match external documentation strictly to the exact package versions pinned in `package.json` (`@thru/sdk@0.5.2`, `@thru/programs@0.5.2`). The old `@thru/programs/ratelimit` subpath was removed in 0.4.x and is not restored in 0.5.x; the native THRU faucet has no per-account rate-limit policy.
 
 - **Thru Protocol & SDKs:** [Thru Docs](https://thru.org/docs/) · [LLM Protocol Index](https://thru.org/docs/llm.txt) · [API/SDK Overview](https://thru.org/docs/api-ref/overview/) · [`@thru/sdk`](https://thru.org/docs/sdks/web-packages/sdk/) · [`@thru/programs`](https://thru.org/docs/sdks/web-packages/programs/) · [gRPC Overview](https://thru.org/docs/api-ref/grpc/overview/) · [Unto-Labs/thru GitHub](https://github.com/Unto-Labs/thru).
 - **Hosted Wallet Boundary (Not Extension Provider):** [Embedded Wallet Integration](https://thru.org/docs/wallet/embedded-wallet-integration/) (`https://app.tid.sh/embedded`; standalone `https://wallet.tid.sh` sends `X-Frame-Options: DENY`).

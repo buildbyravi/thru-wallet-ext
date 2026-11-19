@@ -3,8 +3,8 @@
 // PROVENANCE (2026-10-08, recorded because it is third-party-adjacent and the official
 // @thru/programs package deliberately binds NOTHING for this program today):
 //   - the @thru/programs export map has NO name-service module — verified 0.4.1, re-verified
-//     0.4.2 on 2026-10-23 (0.4.2 adds a ratelimit program client + policy pins for THRUSD,
-//     not the native THRU faucet; still nothing name-service/registrar — those formats remain our own first-party encode);
+//     0.4.2 on 2026-10-23 and 0.5.2 on 2026-11-18; the package adds other clients over time,
+//     but still nothing name-service/registrar — those formats remain our own first-party encode;
 //     the program ADDRESS comes from the package pin (BOOTSTRAP_PROGRAM_ADDRESSES.name_service)
 //     — that part is canonical and follows the pin on bumps.
 //   - the WIRE FORMATS (account layouts, opcodes, instruction shapes, derivation) are

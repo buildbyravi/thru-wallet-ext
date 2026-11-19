@@ -856,7 +856,7 @@ export async function registerCustom({ name, years, expectedNetworkId, expectedA
     program: info.program,
     header: {
       computeUnits: 2_000_000,
-      memoryUnits: 32_768,
+      memoryUnits: 10_000,
       stateUnits: 6,
       fee: networkFee,
       startSlot: slot,
@@ -954,7 +954,7 @@ export async function renewCustom({ name, years, expectedNetworkId, expectedAcco
     program: info.program,
     header: {
       computeUnits: 1_000_000,
-      memoryUnits: 32_768,
+      memoryUnits: 10_000,
       stateUnits: 0,
       fee: networkFee,
       expiryAfter: 10_000,

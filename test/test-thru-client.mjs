@@ -251,8 +251,9 @@ import { Pubkey } from '@thru/sdk';
   const PRE_RESET_TOKEN_PROGRAM = 'taAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKqq';
   const GOLDEN_MINT = 'tawqbPfCF69Kyo2hdPTIfoz5Safk--tIB3g2q0Z9dZFUBR';
   const GOLDEN_TOKEN_ACCOUNT = 'taz4AOOlJBtn8IzaX97sKpL9_leQlC0HHg6EuAnw6U3cmh';
-  const GOLDEN_MINT_CURRENT = 'ta-HTfNxabKvpVUFaijWJZtcbBbr5UIfgRI799VFmxEe3d';
-  const GOLDEN_TOKEN_ACCOUNT_CURRENT = 'taX3La-pAH8Q_k2_zJH3sK0z2tv_BSGNqambsc9CMCcs12';
+  // 0.5.2 managed-genesis pin (token program moved again from the 0.4.x address).
+  const GOLDEN_MINT_CURRENT = 'tac2DlYjiL-P8ebL9ysqdRQEomJzrrw9jLQNXzHD-PO3A4';
+  const GOLDEN_TOKEN_ACCOUNT_CURRENT = 'tamh22IqgJlGjBmpsMRLyXt3qCsa-M4ZOnmDZ68HXtCxZK';
 
   // Sanity: the fixture authority really is the 0x11-filled key, so the vectors below can
   // never silently flip to "whatever the generator produced this run".
@@ -665,6 +666,7 @@ console.log('\n[15] formatTokenAmount / parseTokenAmount convert exactly at any 
 {
   console.log('\n[14] parseMintAccount enforces token-program owner, SDK mint footprint, and BigInt supply');
   const { TokenMintAccount, TickerField } = await import('@thru/programs/token');
+  const { mintAccountBytes } = await import('./fixtures/token-accounts.mjs');
   const strict = (await import('node:assert/strict')).default;
   const { readMintAccount, configureNetwork } = await import('../src/lib/thru-client.js');
   const { Pubkey } = await import('@thru/sdk');
@@ -672,9 +674,9 @@ console.log('\n[15] formatTokenAmount / parseTokenAmount convert exactly at any 
   const tokenProg = NETWORKS.betanet.tokenProgramId;
   const dummyPubkey = new Uint8Array(32).fill(7);
   const ticker = TickerField.builder().set_length(3).set_bytes([80, 65, 89, 0, 0, 0, 0, 0]).build();
-  const raw = TokenMintAccount.builder().set_decimals(6).set_supply(9007199254740993n)
+  const raw = mintAccountBytes(TokenMintAccount.builder().set_decimals(6).set_supply(9007199254740993n)
     .set_creator(dummyPubkey).set_mint_authority(dummyPubkey).set_freeze_authority(dummyPubkey)
-    .set_has_freeze_authority(1).set_ticker(ticker).build();
+    .set_has_freeze_authority(1).set_ticker(ticker).build());
   const mintSample = {
     meta: { owner: Pubkey.from(tokenProg) },
     data: { data: raw },
@@ -709,7 +711,7 @@ console.log('\n[15] formatTokenAmount / parseTokenAmount convert exactly at any 
     }
     client.accounts.get = async () => ({ ...mintSample, data: { data: raw.slice(0, -1) } });
     await strict.rejects(readMintAccount('mint'), /footprint/);
-    const malformed = TokenMintAccount.builder().set_ticker(TickerField.builder().set_length(9).build()).build();
+    const malformed = mintAccountBytes(TokenMintAccount.builder().set_ticker(TickerField.builder().set_length(9).build()).build());
     client.accounts.get = async () => ({ ...mintSample, data: { data: malformed } });
     await strict.rejects(readMintAccount('mint'), /ticker/);
     client.accounts.get = async () => { throw Object.assign(new Error('absent'), { code: 5 }); };

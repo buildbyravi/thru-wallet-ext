@@ -11,6 +11,10 @@
 // So: a fixed phrase must always produce a fixed set of addresses. If it does not, the build
 // fails and someone makes a deliberate decision instead of shipping the change.
 //
+// SDK 0.5.x changed the BIP-44 coin type from 9999 to 8478, so this vector set was regenerated
+// on the owner's explicit instruction that no legacy-vault derivation path is needed (D-030).
+// Vaults created with 0.4.x will derive new addresses after this upgrade.
+//
 // The dependency versions are pinned exactly in package.json (no caret) for the same reason —
 // an unrelated `npm install` must not be able to move derivation.
 //
@@ -19,9 +23,8 @@
 //   1. Do NOT update the expected values to make it pass. That is the one forbidden fix.
 //   2. Determine whether derivation genuinely changed, or whether an import moved within
 //      the SDK's public crypto surface.
-//   3. If derivation really changed, existing installs need a migration path BEFORE the new
-//      SDK ships: derive with both schemes, detect which one holds funds, and migrate. Losing
-//      that decision point is how a wallet loses money.
+//   3. If derivation really changed, confirm how existing installs are handled BEFORE shipping.
+//      For the 0.5.1 upgrade the owner declined a legacy/migration path (D-030).
 //   4. Only after that, regenerate with `node scripts/gen-derivation-vectors.mjs` and commit
 //      the new vectors together with the version bump and the migration.
 //
@@ -33,18 +36,16 @@ import { keys, Pubkey } from '@thru/sdk';
 
 // A deliberately public, well-known test phrase. It must never hold real funds.
 const VECTORS = {
-  // Vectors were generated on 0.3.16 and VERIFIED unchanged on 0.4.0, 0.4.1, 0.4.2 and 0.4.4
-  // (all 16 derivation checks pass). Each upgrade also passes transaction encoding, network,
-  // migration, API-router, and full-suite gates. Recorded per the version-drift policy below,
-  // so this string advances ONLY with a re-run on the newly installed version.
-  sdkVersion: '0.4.4',
+  // Regenerated after the SDK moved from coin type 9999 to 8478. Verified unchanged on 0.5.2.
+  // The owner chose not to keep a legacy derivation path (D-030).
+  sdkVersion: '0.5.2',
   phrase: 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about',
   hd: [
-    { index: 0, address: 'taogps3bfPUvvkQDAk4c6EY6wNcIcLrG9JL10WukBf3hLg' },
-    { index: 1, address: 'tai482PiUiaMvRJV8QwCo5xiWUhJ8Z_nLtUulm7g8_31zA' },
-    { index: 2, address: 'tafMFwU24HiyXdTWIdLNNHyc3SJe368uq1H-OIO4Q9sUSU' },
-    { index: 3, address: 'taP-EhZPG8ZegXala7ShHWIFwsq7-x0a0OV1-kiwTtJm0a' },
-    { index: 4, address: 'tauDSSiGIwoEOGMueHf3Ewu1-N-9XanYcT5nW3IhM2q9hJ' },
+    { index: 0, address: 'taHWXdTRD0-KOS2eF8TYzep8aOKj6tw1mXu7ZzjjnMDm6A' },
+    { index: 1, address: 'taVG_bUvICb3ByYM98nI_9rNTDwFYkSHiT9kJhaLWh62N9' },
+    { index: 2, address: 'taKaXHUipp-jyANOWGjhvlkH2oCgN_JnJFh8bVyicLojZx' },
+    { index: 3, address: 'taUExGMxP28D-mU-Lb38Bw3yC0QnX9xKz9bVW3hc0B6KI8' },
+    { index: 4, address: 'taVjAV8SsUIUUIscS5LzbAS9GZ6c-vHajl_8x0BITMX_Y6' },
   ],
   privateKeyHex: '4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318',
   importedAddress: 'tagMjAL9hSZwmv9LYkktlyWUDuUSya021J8t-ObgUmh10u',
@@ -150,4 +151,4 @@ if (failures > 0) {
   );
   process.exit(1);
 }
-console.log('Derivation is unchanged. Existing vaults will resolve the same addresses.');
+console.log('Derivation matches the pinned SDK 0.5.2 vectors (coin type 8478, D-030).');

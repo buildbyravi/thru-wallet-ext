@@ -228,7 +228,7 @@ if (!parsedPool?.isInitialized) {
   const initUnits = {
     computeUnits: 2_000_000,
     stateUnits: 4_096,
-    memoryUnits: 60_000,
+    memoryUnits: 10_000,
     fee: 0n,
   };
 
@@ -323,7 +323,7 @@ if (!balVaultOne?.amount || balVaultOne.amount < 10_000_000n || !balVaultTwo?.am
   const addLiqUnits = {
     computeUnits: 1_500_000,
     stateUnits: 2_048,
-    memoryUnits: 60_000,
+    memoryUnits: 10_000,
     fee: 0n,
   };
 
@@ -395,7 +395,7 @@ const swapInstruction = amm.createSwapInstruction({
 const swapUnits = {
   computeUnits: 1_000_000,
   stateUnits: 2_048,
-  memoryUnits: 60_000,
+  memoryUnits: 10_000,
   fee: 0n,
 };
 

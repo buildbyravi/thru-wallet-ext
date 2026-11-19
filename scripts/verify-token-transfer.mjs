@@ -338,7 +338,20 @@ if (outcome) {
 }
 
 // ---- 4. History decodes the token entries ------------------------------------
-const histories = await thruClient.listAccountHistory(sender.address, 25);
+await new Promise((r) => setTimeout(r, 1200));
+let histories = [];
+for (let retry = 0; retry < 5; retry++) {
+  try {
+    histories = await thruClient.listAccountHistory(sender.address, 6);
+    break;
+  } catch (e) {
+    if (/rate limit|resource_exhausted|429/i.test(e.message) && retry < 4) {
+      await new Promise((r) => setTimeout(r, 1500 * (retry + 1)));
+      continue;
+    }
+    throw e;
+  }
+}
 const tokenEntries = histories.filter((e) => typeof e.kind === 'string' && e.kind.startsWith('token'));
 report(
   'token entries visible in sender history (transfer, mint, account-init)',
@@ -386,6 +399,7 @@ try {
   completed = true;
 } catch (err) {
   console.log(`\nAborted early: ${err.message}`);
+  console.log(err.stack);
   console.log('If this is a fetch/connect error, the RPC is unreachable from this environment —');
   console.log('run the script where the network is reachable. Nothing here requires a real vault.');
   process.exitCode = 1;
