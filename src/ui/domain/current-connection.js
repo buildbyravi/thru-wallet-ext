@@ -112,6 +112,7 @@ export function CurrentConnection({
     },
     destroy() {
       d.dispose();
+      el.remove();
     },
   };
 }
