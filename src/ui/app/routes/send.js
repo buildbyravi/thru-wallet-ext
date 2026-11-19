@@ -418,7 +418,7 @@ export function SendRoute({ params, navigate, back }) {
     // 100%-wide Max read as heavily as the primary Review action, which made a convenience
     // shortcut compete visually with the thing that actually advances the flow.
     const amount = track(Field({
-      label: 'Amount',
+      label: `Amount (${asset.symbol || 'TOKEN'})`,
       type: 'text',
       inputMode: 'decimal',
       placeholder: '0.0',

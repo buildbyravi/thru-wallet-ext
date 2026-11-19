@@ -3831,8 +3831,7 @@ async function navigationTest() {
     if (tokenRow) {
       click(tokenRow);
       await settle();
-      ok('the amount field keeps a neutral Amount label without pinning a token suffix',
-        !textOf(router.root).includes('Amount (') && textOf(router.root).includes('Spendable: 250 SMK'));
+      ok('the amount field re-denominates to the token', textOf(router.root).includes('Amount (SMK)'));
       ok('the spendable line shows the token balance', textOf(router.root).includes('Spendable: 250 SMK'),
         textOf(router.root).slice(0, 240));
 
