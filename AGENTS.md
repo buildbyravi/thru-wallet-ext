@@ -53,7 +53,7 @@ factually necessary.
 | history, activity, transaction detail | `docs/guides/history-and-activity.md` (sections 1-5), `docs/BACKEND_GAPS.md` (C2b, C2c) |
 | SDK, RPC, units, token wire formats | `docs/guides/protocol-and-rpc.md` (sections 1-3); stop and ask on unverified protocol semantics |
 | storage, migration, persisted state | `docs/agent/engineering-directive.md`, `test/test-storage-migrations.mjs` |
-| layout, sheets, overlays, CSS | rule 14 (`docs/agent/rules-detail.md`), `docs/MANUAL_SMOKE_CHECKLIST.md`, `docs/DEFECT_LOG.md` |
+| layout, sheets, overlays, CSS, UI | rule 14 (`docs/agent/rules-detail.md`), `docs/BUILD_SPEC.md` (§5), [Figma](https://www.figma.com/design/qKl8tsbCmSdtY6uZ0G8tnb/thru-Extension), `docs/MANUAL_SMOKE_CHECKLIST.md`, `docs/DEFECT_LOG.md` |
 | contracts, on-chain programs | `docs/GLOBAL_SMART_CONTRACT_POLICY.md`, `contracts/thru-custom-registrar/README.md` |
 | unshipped features, roadmap | `docs/roadmap/FUTURE_ROADMAP.md` (PLANNED only — never treat as shipped) |
 | docs | `docs/DOCS_INDEX.md` — it owns the read order, document classes, and anti-sprawl rules |
