@@ -13,7 +13,7 @@ included) so diffs here are real listing diffs.
 | Website (listing) | <https://thruwallet.vercel.app> (`homepage_url` in `src/manifest.json`) |
 | Support | Telegram channel <https://t.me/walletext> (store listing + `SUPPORT.md`) · Telegram group <https://t.me/+dA8TwsOECcIxZWZl> (shown in Settings → About) |
 | Privacy policy URL (as submitted) | <https://github.com/buildbyravi/thru-wallet-ext/blob/main/PRIVACY.md> |
-| Package version at last sync | `1.5.0` (`src/manifest.json`) |
+| Package version at last sync | `1.6.0` (`src/manifest.json`) |
 | Last synced with the live listing | 2026-10-04 |
 
 ---

@@ -1,7 +1,7 @@
 # Status and Roadmap
 
 **Document Class:** Authority (Single Source of Truth for Current Shipped State & Active Verification Work)
-Source baseline re-verified on `main` at contract v33 (2026-11-18). `src/`, `test/`, and `scripts/` remain authoritative.
+Source baseline re-verified on `main` at contract v33 (2026-11-19, v1.6.0). `src/`, `test/`, and `scripts/` remain authoritative.
 
 ---
 

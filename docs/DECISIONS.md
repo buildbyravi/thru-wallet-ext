@@ -605,3 +605,16 @@ a phrase elsewhere if they need the old addresses. This is a deliberate owner de
 silent SDK drift.
 
 **Follow-up (2026-11-18).** Patched both exact pins to `@thru/sdk@0.5.2` and `@thru/programs@0.5.2`. The patch adds Ledger path helpers and signature-context limits only; the 8478 derivation, program addresses, token layouts and wire formats are unchanged, so no code or golden-address change was needed.
+
+## D-031 — Release v1.6.0 (2026-11-19, owner directive)
+
+**Owner directive.** Release version 1.6.0 for the Chrome extension and repository.
+
+**Context.** Following the upgrade of `@thru/sdk` and `@thru/programs` to `0.5.2`, transition of the BIP-44 coin type to 8478 (`m/44'/8478'/index'/0'`), recompilation and live Betanet deployment of `thru-custom-registrar` with verified `.thru` domain minting, and enforcement of Betanet RPC 10,000 memory units ceiling, the repository advances to release version 1.6.0.
+
+**Shipped scope in v1.6.0:**
+1. **SDK & Programs 0.5.2 Upgrade:** Pinned exact `@thru/sdk@0.5.2` and `@thru/programs@0.5.2` (BIP-44 coin type 8478, token account 1-byte discriminator, `CORE_MANAGER_PROGRAM_ADDRESS`, Ledger hardware wallet compatibility helpers).
+2. **On-Chain Betanet Registrar:** Recompiled `contracts/thru-custom-registrar` binary (29,416 B with valid ROM header/entrypoint via GNU toolchain), deployed and upgraded to `ta2vDCBzzptN2qVZgz6PXsCp5cNB7Nef4yeQ3W-OqzZcfF`, initialized root registrar for `.thru` (`tsh-o--5Ktns...`, `vmError: 0`), configured treasury to `taYqo1zV5VbNmtEuedubnI51UsvQjsEcDK-MD5cVMlvPJ_` (`vmError: 0`), and live-minted domain `probe4pwpy.thru` (`tsd6IeN94zPeZ...`, `vmError: 0`).
+3. **RPC Rate & Resource Compliance:** Enforced maximum 10,000 memory units floor across transfer/swap/registrar transactions to conform to Betanet RPC constraints, with rate-limiting backoff for history and token queries.
+4. **Token Operations Live Verification:** 16-rung live token transfer suite passed against Betanet.
+5. **Version Bumps:** Bumped `package.json`, `package-lock.json`, and `src/manifest.json` from `1.5.0` to `1.6.0`.
