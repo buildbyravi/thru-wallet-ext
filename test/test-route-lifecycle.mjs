@@ -3786,7 +3786,8 @@ async function navigationTest() {
     if (tokenRow) {
       click(tokenRow);
       await settle();
-      ok('the amount field re-denominates to the token', textOf(router.root).includes('Amount (SMK)'));
+      ok('the amount field keeps a neutral Amount label without pinning a token suffix',
+        !textOf(router.root).includes('Amount (') && textOf(router.root).includes('Spendable: 250 SMK'));
       ok('the spendable line shows the token balance', textOf(router.root).includes('Spendable: 250 SMK'),
         textOf(router.root).slice(0, 240));
 
@@ -4588,8 +4589,11 @@ async function progressiveSendTest() {
 
   holds.resolve('account.list', [makeAccount(0), makeAccount(1)]);
   await settle();
-  ok('cached account balance is visibly last-known, never a spendable live balance',
-    /0\.0015 THRU \(last known\)/.test(textOf(route.el))
+  const balanceValues = [...route.el.querySelectorAll('.row-value')];
+  ok('cached account balance renders with live-updating shimmer, never as a spendable live balance',
+    /0\.0015 THRU/.test(textOf(route.el))
+      && !/last known/i.test(textOf(route.el))
+      && balanceValues.some((el) => el.classList.contains('balance-updating'))
       && /Spendable: unavailable/.test(textOf(route.el))
       && buttons(route.el, /^max$/i)[0]?.disabled === true);
 
@@ -4608,8 +4612,10 @@ async function progressiveSendTest() {
 
   holds.reject('tx.getAccountInfo');
   await settle();
-  ok('offline native balance shows Retry without claiming zero or unlocking Max',
-    /last known/.test(textOf(route.el))
+  ok('offline native balance clears the updating wave, marks stale, and shows Retry without unlocking Max',
+    /0\.0015 THRU/.test(textOf(route.el))
+      && balanceValues.every((el) => !el.classList.contains('balance-updating'))
+      && balanceValues.some((el) => el.classList.contains('stale'))
       && buttons(route.el, /retry checks/i)[0]?.classList.contains('hidden') === false
       && buttons(route.el, /^max$/i)[0]?.disabled === true
       && buttons(route.el, /^review$/i)[0]?.disabled === true);
@@ -4663,7 +4669,8 @@ async function progressiveSendTest() {
   emitEvent('networkChanged', { id: 'localnet' });
   await settle();
   ok('external network switch exits the token form and locks Review again',
-    /Amount \(THRU\)/.test(textOf(route.el))
+    /Thru Native Token/.test(textOf(route.el))
+      && !/SMK/.test(textOf(route.el))
       && buttons(route.el, /^review$/i)[0]?.disabled === true);
   holds.resolve('tx.estimateFee', FIXTURES['tx.estimateFee']({}));
   holds.resolve('account.list', [makeAccount(0), makeAccount(1)]);
