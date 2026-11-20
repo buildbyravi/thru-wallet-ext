@@ -581,6 +581,12 @@ form > .btn.text {
   overflow: hidden;
   margin-right: 10px;
 }
+/* The native artwork fills its circular crop; the shared avatar and image
+   borders would otherwise draw two rims around the THRU mark. */
+.token-row-avatar.native,
+.token-row-avatar.native > .token-row-logo {
+  border: 0;
+}
 .token-row-avatar.native {
   background: var(--accent, #c43a40);
   color: #ffffff;

@@ -80,12 +80,25 @@ try {
   const asset = (symbol) => page.locator('.token-ledger-row').filter({
     has: page.locator('.token-row-symbol', { hasText: new RegExp(`^${symbol}$`) }),
   });
+  async function assertNativeLogoHasNoRim(avatar) {
+    const shape = await avatar.locator('img').evaluate(async (image) => {
+      await image.decode();
+      return {
+        src: image.getAttribute('src'),
+        avatarBorder: getComputedStyle(image.parentElement).borderTopWidth,
+        imageBorder: getComputedStyle(image).borderTopWidth,
+        radius: getComputedStyle(image.parentElement).borderTopLeftRadius,
+      };
+    });
+    assert.deepEqual(shape, { src: 'icons/thru.png', avatarBorder: '0px', imageBorder: '0px', radius: '50%' });
+  }
   for (const count of [10, 100, 200]) {
     await page.setViewportSize({ width: count === 200 ? 320 : 400, height: 600 });
     await page.goto(`${origin}/popup.html?tokens=${count}`);
     const summary = page.locator('.dash-balance-summary');
     await summary.getByText(`+${count - 3}`, { exact: true }).waitFor();
     assert.equal(await summary.locator('.token-row-avatar').count(), 4);
+    if (!process.env.MEASURE_ONLY) await assertNativeLogoHasNoRim(summary.locator('.token-row-avatar.native'));
     assert.equal(await summary.innerText(), `+${count - 3}`, 'no token names or initials in the balance header');
     const bounds = await page.locator('.dash-balance-card').evaluate((card) => {
       const cta = card.querySelector('.dash-balance-cta').getBoundingClientRect();
@@ -97,6 +110,7 @@ try {
     });
     assert.deepEqual(bounds, { ctaFits: true, cardFits: true });
     await page.getByRole('button', { name: 'Open token list' }).click();
+    if (!process.env.MEASURE_ONLY) await assertNativeLogoHasNoRim(asset('THRU').locator('.token-row-avatar.native'));
     await asset('LAB').click();
     await page.getByText('22.918766 LAB', { exact: true }).waitFor();
     await page.getByRole('button', { name: 'Back to tokens' }).click();
