@@ -1,0 +1,31 @@
+# PR #26 — temporary pre-merge verification queue
+
+[PR #26](https://github.com/buildbyravi/thru-wallet-ext/pull/26) · `arena/1b860a7c-thru-wallet-ext`
+
+Use this queue to collect checks while we build. **During development:** rebuild and verify each change in the preview; keep running the automated gates and commit fixes separately. **When the owner calls the PR ready:** run the deferred checks together against one exact candidate SHA. Keep unchecked items visible; a blocked check is not a pass. This is a PR worklist, not a new runbook. After review, retain results in the PR and in the existing smoke log where appropriate, then remove this temporary file before merge. If removal changes HEAD, verify it is docs-only and rerun final CI; retest any runtime changes on the new SHA. No automatic merge or release.
+
+## While building — preview and deterministic tests
+
+- [ ] For each UI change, rebuild with `npm run build`, refresh the preview from the current bundles, run `npm test` and applicable browser regressions, and record the SHA, scenario, and result. Preview path: `/scripts/preview-tx-review.html?tokens=200` on the live preview; `?tokens=10` and `?tokens=100` switch sample sizes. Preview uses synthetic data only: no real keys, vault access, signing, or production RPC.
+- [ ] Dashboard at popup size (~400×600) and narrow (~320px), light/dark and keyboard: balance card and icon strip (THRU, up to three token icons, then `+N`), no token names on the card, no clipped Assets opener, guarded network chooser, correct dismissal and focus return. Token names remain in Assets.
+- [ ] Assets with 10/100/200 synthetic tokens: search, detail and back, Hidden tokens, restore, Add custom token and close controls; verify empty/error states and reachable actions. Simulate a refresh: changed balances update in place without losing row identity, focus or scroll. `test/browser/token-cache.mjs` covers cached first paint, partial refresh, verified zero and uncached failure with the isolated bridge.
+- [ ] Independently check the two open review leads with deterministic regressions: a post-import or other registry-mutation balance refresh must not reuse an in-flight request for stale registry data; a late `token.list` must not undo a completed hide/restore. Also verify late replies across account/network changes and away/back routing. Fix any confirmed issue before final sign-off; do not leave correctness verification to the visual preview.
+
+Prior evidence at `638f2e3`: build, full Node suite, CSP, mock Chromium and the large-list preview passed. The 200-token fixture updated the last balance from 200 to 201 with the same row, focus and scroll. That is preview evidence, not native Chrome, RPC performance or chain evidence. The available headless Chromium could not load unpacked MV3; native checks below remain open.
+
+## One batch at merge readiness — unpacked Chrome
+
+Follow the canonical [Manual Smoke Checklist](MANUAL_SMOKE_CHECKLIST.md), including its reload steps and 15-route matrix. Use a disposable Chrome profile, never a personal browser profile or wallet. Build the exact candidate; reload the extension in `chrome://extensions`, then close and reopen both contexts.
+
+- [ ] Open the actual toolbar popup and Chrome side panel, including both panel entry points. Verify Settings opt-in, toolbar/panel mutual exclusion (including a short window), persistence, correct routes, and lock propagation. A web page using `?thru_panel=1` does not count.
+- [ ] Run the route matrix in both contexts, including redirects and offline behavior. Check narrow and wide panel, short popup, live resize, zoom, light/dark, keyboard, focus trap and return, usable scrolling, and no clipping or console/CSP errors.
+- [ ] Repeat Dashboard and Assets interactions through the real extension: icon strip, network picker, first paint, token names/details, hide/restore, import and refresh where supported. Confirm opening/closing with keyboard returns focus to the opener. Keep large-list numbers in preview coverage unless a safe native fixture is available.
+- [ ] Check Receive copy and scan the QR on a second device against the same disposable address. Check History details and honest time/fee labels; if this PR adds local-day grouping, only verified timestamps may drive it. Recheck any additional UI landed during development.
+- [ ] Exercise shared review and toast across native send, token send, domains and faucet: correct context, fees and full counterparties, blocking and single-use behavior, no fake simulation, honest unknown outcome and one toast. Check worker idle/wake and restart, auto-lock, secret cleanup on lock/navigation, and custom-RPC quarantine as described in the runbook.
+
+## Same batch — live Betanet and final sign-off
+
+- [ ] On an RPC-reachable host, with owner-approved disposable Betanet accounts and test funds only: verify token import with a known mint, rejection of invalid/duplicate mints, balance and cache behavior after real reads, reviewed native/token send and recipient activation, faucet, and History/explorer reconciliation. Record exact scope and outcome, public test transaction IDs where useful, and failures; never record secrets.
+- [ ] Review the existing [release blockers and verification sequence](STATUS_AND_ROADMAP.md#3-release-blockers--ordered-next-work) and [audit gates](AUDIT_REPORT.md). Record separately which apply to this PR vs a later release (e.g. registrar fees/records, multi-account live verification, independent audit and Mainnet). Do not mark inherited checks done without evidence or enable Mainnet, custom RPC, or quarantined features.
+- [ ] On the final candidate run `npm run build && npm test`, the browser regression, and applicable release checks, including `npm audit --omit=dev` where required. Confirm CI and independent review at the final SHA, resolve remaining findings, and confirm no preview fixtures, permissions changes or release changes were unintentionally included.
+- [ ] Record candidate SHA, OS/Chrome version, date, tester, contexts/sizes, and each result as pass/fail/blocked/not applicable, with links or a brief reason. Keep preview, native Chrome, live Betanet and audit evidence separate. Stop for owner review and explicit merge approval.
