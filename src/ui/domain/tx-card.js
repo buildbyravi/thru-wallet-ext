@@ -1,7 +1,7 @@
 // Transaction card — the Rabby-inspired P1 render unit for Activity.
 //
-// One transaction per card: head carries the relative time on the left and the
-// network + shortened signature + copy/explorer actions on the right; the body carries
+// One transaction per card: head carries the transaction time on the left and the
+// network + shortened signature and copy action on the right; the body carries
 // the method glyph and verb on the left and the signed, right-aligned amount delta on
 // the right. Honesty rules carried over from the row era:
 //   - a failed entry states it (badge + red glyph), never masquerades as a silent row;
@@ -21,11 +21,8 @@ import { icon } from '../kit/icon.js';
 import { CopyButton } from '../kit/button.js';
 import { formatThru, formatTokenAmount, truncateAddress, shortenMiddle, explorerTxUrl } from '../../shared/format.js';
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
 /** Formatted time for the card head: YYYY/MM/DD HH:mm like Rabby, falling back to Block <slot>. */
-export function relTime(ts, slot, status = null) {
-  if (status === 'submitted') return 'Pending · Just now';
+export function relTime(ts, slot) {
   const t = Number(ts);
   if (Number.isFinite(t) && t > 0 && Number.isFinite(new Date(t).getTime())) {
     const d = new Date(t);
@@ -37,24 +34,6 @@ export function relTime(ts, slot, status = null) {
     return `${YYYY}/${MM}/${DD} ${HH}:${mm}`;
   }
   return slot != null ? `Block ${slot}` : '';
-}
-
-/** Local calendar day; an invalid or unavailable block time has no day. */
-export function dayKey(ts) {
-  const t = Number(ts);
-  if (!Number.isFinite(t) || t <= 0) return null;
-  const d = new Date(t);
-  if (!Number.isFinite(d.getTime())) return null;
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
-export function dayLabelForKey(key) {
-  const today = new Date();
-  if (key === dayKey(today)) return 'Today';
-  const yesterday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1);
-  if (key === dayKey(yesterday)) return 'Yesterday';
-  const [year, month, day] = key.split('-').map(Number);
-  return `${day} ${MONTHS[month - 1]}${year === today.getFullYear() ? '' : ` ${year}`}`;
 }
 
 function glyphFor(entry) {
@@ -135,17 +114,27 @@ export function TxCard({ entry, network, knownAccounts, onOpen } = {}) {
   const glyph = glyphFor(entry);
   const delta = deltaFor(entry);
   const failed = entry.success === false;
+  const pending = entry.status === 'submitted';
+  const explorer = explorerTxUrl(network, entry.signature);
   const owned = [];
   const d = disposer();
   const interactive = typeof onOpen === 'function';
 
   const head = h('div', { class: 'tx-card-head' }, [
-    h('span', { class: 'tx-card-time', text: relTime(entry.timestamp, entry.slot, entry.status) }),
+    h('span', { class: 'tx-card-time', text: relTime(entry.timestamp, entry.slot) }),
     h('span', { class: 'tx-card-meta' }, (() => {
       const bits = [];
       if (network?.label) bits.push(h('span', { class: 'tx-card-net', text: network.label }));
       if (entry.signature) {
-        bits.push(h('span', { class: 'tx-card-sig', text: shortSignature(entry.signature) }));
+        const signature = shortSignature(entry.signature);
+        bits.push(explorer ? h('a', {
+          class: 'tx-card-sig',
+          href: explorer,
+          target: '_blank',
+          rel: 'noopener noreferrer',
+          'aria-label': `View on explorer: ${entry.signature}`,
+          text: signature,
+        }) : h('span', { class: 'tx-card-sig', text: signature }));
         const copy = CopyButton({
           getValue: () => String(entry.signature),
           title: 'Copy transaction signature',
@@ -154,33 +143,23 @@ export function TxCard({ entry, network, knownAccounts, onOpen } = {}) {
         owned.push(copy);
         bits.push(copy.el);
       }
-      const explorer = explorerTxUrl(network, entry.signature);
-      if (explorer) {
-        bits.push(h('a', {
-          class: 'icon-btn icon-btn-ghost sm',
-          href: explorer,
-          target: '_blank',
-          rel: 'noopener noreferrer',
-          title: 'View on explorer',
-          'aria-label': 'View on explorer',
-        }, icon('external', 12)));
-      }
       return bits;
     })()),
   ]);
 
-  const titleRow = h('span', { class: 'tx-card-title' }, verbFor(entry));
   const sub = contextFor(entry, knownAccounts);
-
+  const badge = pending ? h('span', { class: 'tx-card-badge pending', text: 'Pending' })
+    : failed ? h('span', { class: 'tx-card-badge failed', text: 'Failed on-chain' }) : null;
   const body = h('div', { class: 'tx-card-body' }, [
-    h('span', { class: ['row-glyph', glyph.cls].filter(Boolean) }, icon(glyph.name, 14, glyph.name === 'spinner' ? { className: 'spinning' } : {})),
-    h('span', { class: 'tx-card-main' }, (() => {
-      const pieces = [titleRow];
-      if (entry.status === 'submitted') pieces.push(h('span', { class: 'tx-card-badge pending', text: 'Pending' }));
-      else if (failed) pieces.push(h('span', { class: 'tx-card-badge failed', text: 'Failed on-chain' }));
-      if (sub) pieces.push(h('span', { class: 'tx-card-sub', text: sub }));
-      return pieces;
-    })()),
+    h('span', { class: ['tx-card-glyph', glyph.cls].filter(Boolean) },
+      icon(glyph.name, 18, pending ? { className: 'spinning' } : {})),
+    h('span', { class: 'tx-card-main' }, [
+      h('span', { class: 'tx-card-method' }, [
+        h('span', { class: 'tx-card-title', text: verbFor(entry) }),
+        badge,
+      ].filter(Boolean)),
+      sub ? h('span', { class: 'tx-card-sub', text: sub }) : null,
+    ].filter(Boolean)),
     h('span', { class: 'tx-card-amounts' }, delta
       ? [h('span', { class: ['tx-amount', delta.cls].join(' '), text: delta.text })]
       : []),

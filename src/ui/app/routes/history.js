@@ -16,7 +16,7 @@ import { Button } from '../../kit/button.js';
 import { PageHeader, Banner, Spinner, Empty } from '../../kit/feedback.js';
 import * as bridge from '../bridge.js';
 import { formatThru } from '../../../shared/format.js';
-import { TxCard, dayKey, dayLabelForKey } from '../../domain/tx-card.js';
+import { TxCard } from '../../domain/tx-card.js';
 import { TxDetailSheet } from '../../domain/tx-detail-sheet.js';
 
 const FILTERS = [
@@ -234,19 +234,8 @@ export function HistoryRoute({ back }) {
       return;
     }
 
-    // Only block-derived times can set day headings. Undated runs get their own neutral
-    // heading in a mixed feed, without moving cards out of chain order.
-    const keys = shown.map((entry) => entry.timestampSource === 'block' && entry.status !== 'submitted'
-      ? dayKey(entry.timestamp) : null);
-    const hasDays = keys.some(Boolean);
-    let previousDay;
-    for (const [i, entry] of shown.entries()) {
-      const key = keys[i];
-      if (hasDays && key !== previousDay) {
-        const label = key ? dayLabelForKey(key) : 'Block date unavailable';
-        listHost.appendChild(h('h2', { class: 'list-group-header', text: label }));
-      }
-      previousDay = key;
+    // One flat transaction stream. Date and slot belong on the card, never in day sections.
+    for (const entry of shown) {
       // `entry` is captured by identity, not by index: the sheet must open against the
       // transaction the user actually tapped even after a filter change reorders the list.
       const card = TxCard({ entry, network, knownAccounts, onOpen: openDetail });

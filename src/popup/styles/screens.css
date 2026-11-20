@@ -845,21 +845,14 @@ form > .btn.text {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* ---- Activity cards (P1, Rabby-inspired) --------------------------------
-   One transaction per card: calm time + net/signature meta on top, the method
-   glyph and verb on the left, the signed delta right-aligned. Failed entries
-   wear a badge. P2: .tx-card-open marks a card that opens the detail sheet. */
+/* ---- Activity cards ----------------------------------------------------- */
 .tx-card {
   background: var(--surface-1);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   padding: var(--sp-3);
-  margin-bottom: var(--sp-2);
 }
 
-/* An openable card must LOOK openable — a card that responds to Enter but gives no hover
-   or focus feedback reads as broken. The focus ring is inherited from base.css's
-   :focus-visible rule, which already targets any focusable element. */
 .tx-card-open {
   cursor: pointer;
   transition: border-color var(--t-fast), background var(--t-fast);
@@ -870,86 +863,96 @@ form > .btn.text {
 }
 .tx-card-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: var(--sp-2);
+  column-gap: var(--sp-2);
   margin-bottom: var(--sp-2);
   font-size: var(--fs-xs);
 }
 .tx-card-time {
-  color: var(--text-3);
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
 }
 .tx-card-meta {
   display: flex;
   align-items: center;
   gap: var(--sp-1);
+  margin-inline-start: auto;
 }
 .tx-card-net {
-  color: var(--text-3);
-}
-.tx-card-net::after {
-  content: " ·";
+  color: var(--text-2);
+  margin-inline-end: var(--sp-1);
 }
 .tx-card-sig {
   font-family: var(--font-mono);
-  color: var(--text-3);
+  color: var(--text-2);
+}
+.tx-card-meta a.tx-card-sig {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 .tx-card-body {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) fit-content(46%);
   align-items: center;
-  gap: var(--sp-3);
-}
-.tx-card-main {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
   gap: var(--sp-2);
+  min-height: 34px;
+}
+.tx-card-glyph {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  color: var(--text-3);
+}
+.tx-card-glyph.failed { color: var(--negative); }
+.tx-card-glyph.pending { color: var(--gold); }
+.tx-card-main {
+  display: grid;
+  gap: var(--sp-1);
+  min-width: 0;
+  line-height: 1.2;
+}
+.tx-card-method {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px var(--sp-1);
   min-width: 0;
 }
-/* line-height:1 on both lines removes the inherited 1.5 half-leading, so the 11px
-   counterparty no longer hangs top-level with the 13px verb; inline-flex centres the
-   sub's cap-height against the title's own. */
 .tx-card-title {
   font-weight: 600;
   font-size: var(--fs-md);
   color: var(--text-1);
-  line-height: 1;
-  display: inline-flex;
-  align-items: center;
+  overflow-wrap: anywhere;
 }
 .tx-card-sub {
   font-size: var(--fs-xs);
-  color: var(--text-3);
-  line-height: 1;
-  display: inline-flex;
-  align-items: center;
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .tx-card-badge {
   font-size: var(--fs-xs);
-  padding: 1px var(--sp-2);
-  border-radius: var(--radius-md);
+  color: var(--text-2);
 }
-.tx-card-badge.failed {
-  color: var(--negative);
-  background: var(--negative-tint);
-  border: 1px solid var(--negative-border);
-}
+.tx-card-badge.failed { color: var(--negative); }
 .tx-card-amounts {
-  margin-left: auto;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
+  min-width: 0;
+  text-align: end;
 }
 .tx-amount {
-  font-family: var(--font-mono);
-  font-size: var(--fs-md);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
   color: var(--text-1);
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
-.tx-amount.positive {
-  color: var(--positive);
-}
+.tx-amount.positive { color: var(--positive); }
 
 /* ---- Toggle Switch (Side Panel Mode) ---- */
 .toggle-row {

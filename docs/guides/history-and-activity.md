@@ -8,7 +8,7 @@
 
 ## 1. Activity Stream and Cache-First Paint (`Rule 15`)
 
-The `/history` route (`src/ui/app/routes/history.js`) renders cards in feed order using `src/ui/domain/tx-card.js`. Contiguous entries with valid, block-derived wall-clock times receive local-day headings. Local submission times and slot-only entries never establish a day; in a mixed feed they sit under a neutral heading. No per-card fee line.
+The `/history` route (`src/ui/app/routes/history.js`) renders cards in feed order using `src/ui/domain/tx-card.js`. Dates and slot fallbacks belong on individual cards; do not regroup into Today, Yesterday, or other date sections. The method and counterparty are stacked, and the shortened signature opens the explorer when available. No per-card fee line.
 
 1. **First Paint (`tx.getCachedHistory`):** Storage-only read scoped by `(networkId, address)` via `src/shared/network-scope.js`. Paints cached entries immediately without touching RPC. If fresh network hydration subsequently fails, cached rows remain visible and are explicitly labelled unsynced/stale rather than wiped or replaced by a false "No transactions" state.
 2. **Fresh Feed & Pagination (`tx.getHistoryFeed` / `tx.listHistory`):** Merges live RPC history with tracked local submissions (`pending-tx-service.js`), supports numeric-cursor "Load more" (currently re-reads a prefix plus a sentinel row; header times are requested only for the visible page), and auto-refreshes every five seconds while open.

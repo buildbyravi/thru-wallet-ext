@@ -4106,7 +4106,7 @@ async function navigationTest() {
     !/cached activity/i.test(textOf(router.root)), textOf(router.root).slice(0, 160));
   FIXTURES['tx.getHistoryFeed'] = realFeed;
 
-  // ---- P1 cards: day grouping, verbs/deltas, failed badge, signature copy ----
+  // ---- P1 cards: flat stream, verbs/deltas, failed badge, signature copy ----
   const NOW = Date.now();
   // Anchoring to local midnight keeps those days distinct even during early-hour test runs.
   const startOfToday = new Date(NOW).setHours(0, 0, 0, 0);
@@ -4143,9 +4143,14 @@ async function navigationTest() {
     clipboardLog.writes.includes('tsCARD_A_sent_today_aaaaaaaaaaaaaaaaaaaaaaa'),
     JSON.stringify(clipboardLog.writes));
 
+  const cardExplorer = router.root.querySelectorAll('.tx-card-sig')[0];
+  ok('the shortened card signature is the network-scoped explorer link',
+    cardExplorer?.tagName === 'A' && cardExplorer.getAttribute('href')
+      === `${NETWORK_BETANET.explorerUrl}/tx/${CARD_ENTRIES[0].signature}?network=betanet`);
+
   const dayHeaders = [...router.root.querySelectorAll('.list-group-header')].filter((el) => el.tagName === 'H2').map(textOf);
-  ok('verified block times produce local-calendar day headings',
-    dayHeaders.length === 3 && dayHeaders[0] === 'Today' && dayHeaders[1] === 'Yesterday',
+  ok('verified times on different days never add date headings',
+    dayHeaders.length === 0,
     JSON.stringify(dayHeaders));
   const txCards = [...router.root.querySelectorAll('.tx-card')];
   ok('every transaction renders as a card in the list',
@@ -4198,8 +4203,8 @@ async function navigationTest() {
   await settle();
   const streamCards = [...router.root.querySelectorAll('.tx-card')];
   const mixedHeaders = [...router.root.querySelectorAll('.list-group-header')].filter((el) => el.tagName === 'H2').map(textOf);
-  ok('mixed History keeps all cards but groups only verified dates',
-    streamCards.length === 3 && mixedHeaders.join('|') === 'Today|Block date unavailable',
+  ok('mixed History keeps all cards in one flat list without date headings',
+    streamCards.length === 3 && mixedHeaders.length === 0,
     JSON.stringify(mixedHeaders));
   ok('the middle timestampless card still shows its block fallback',
     /Block 30400/.test(textOf(router.root)),
