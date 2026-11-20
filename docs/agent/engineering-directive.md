@@ -8,6 +8,29 @@ migration change.
 The hard rules (1–30) live in `AGENTS.md`. The long text behind rules 10, 14, 15, 16, 17 and 30 is in
 `docs/agent/rules-detail.md`.
 
+## Modern Web Guidance for frontend work
+
+Before editing HTML, CSS, or browser-facing JavaScript (including isolated lab work):
+
+- Check for the project-installed skill at `.agents/skills/modern-web-guidance/SKILL.md` and read it
+  explicitly; do not assume your agent loaded it. Restore the ignored install from `skills-lock.json`
+  with `DISABLE_TELEMETRY=1 npx --yes skills@1.9.0 experimental_install --agent codex --frozen-lockfile`,
+  or select the agent you actually use. This is development tooling, not a wallet dependency.
+- Run `DISABLE_TELEMETRY=1 npx --yes modern-web-guidance@1.0.1 search "<focused browser topic>"`
+  before implementation, then `retrieve "<matching IDs>"` with the same CLI. Include relevant
+  accessibility and performance guidance, not just the API example. If the skill or CLI is
+  unavailable, report what failed, consult installed guides or official platform docs where
+  accessible, and do not claim that the tool ran.
+- Apply the relevant findings and report the guides and choices in the change review. Check support
+  against the target browser versions, including extension-specific APIs: the `chrome115` esbuild
+  target is not a runtime support guarantee or a polyfill. Feature-detect or use a supported
+  alternative for newer APIs; verify keyboard order, focus, status announcements, reduced motion,
+  and rendering in real Chrome where applicable. Keep first paint independent of wallet reads.
+- Guidance cannot override wallet rules, including flat production CSS, the safe DOM kit, strict
+  CSP, no remote assets, no unauthorized dependencies, no secret leakage, and the existing signing
+  and architecture boundaries. Keep this workflow under review, alongside Rule 14 browser evidence
+  and the unchanged repository guards.
+
 ## Mainnet-ready engineering directive
 
 This repository is production software now. Betanet is a deployment stage, not permission for

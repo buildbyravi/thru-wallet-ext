@@ -54,6 +54,7 @@ factually necessary.
 | SDK, RPC, units, token wire formats | `docs/guides/protocol-and-rpc.md` (sections 1-3); stop and ask on unverified protocol semantics |
 | storage, migration, persisted state | `docs/agent/engineering-directive.md`, `test/test-storage-migrations.mjs` |
 | layout, sheets, overlays, CSS | rule 14 (`docs/agent/rules-detail.md`), `docs/MANUAL_SMOKE_CHECKLIST.md`, `docs/DEFECT_LOG.md` |
+| HTML, CSS, browser APIs, or frontend behavior | Before implementation, follow Modern Web Guidance in `docs/agent/engineering-directive.md`: check availability, search, retrieve, apply accessibility/performance guidance, and verify browser support without weakening wallet rules. |
 | contracts, on-chain programs | `docs/GLOBAL_SMART_CONTRACT_POLICY.md`, `contracts/thru-custom-registrar/README.md` |
 | unshipped features, roadmap | `docs/roadmap/FUTURE_ROADMAP.md` (PLANNED only — never treat as shipped) |
 | docs | `docs/DOCS_INDEX.md` — it owns the read order, document classes, and anti-sprawl rules |
