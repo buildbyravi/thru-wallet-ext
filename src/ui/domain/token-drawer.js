@@ -1,7 +1,7 @@
 // Token drawer: mutually exclusive asset list, mint details, and verified import views.
 // The shared Sheet owns keyboard trapping, dismissals, focus restoration and teardown.
 
-import { h, clear } from '../kit/dom.js';
+import { h } from '../kit/dom.js';
 import { icon } from '../kit/icon.js';
 import { Button, IconButton } from '../kit/button.js';
 import { Field } from '../kit/field.js';
@@ -11,6 +11,7 @@ import { AssetRow } from './token-row.js';
 import { formatTokenAmount, shortAddress } from '../../shared/format.js';
 import { isVerifiedTokenBalance } from '../../shared/tokens.js';
 
+const NATIVE_ROW = Symbol('native asset row');
 const STEP = Object.freeze({ IDLE: 'idle', CHECKING: 'checking', VERIFIED: 'verified', SAVING: 'saving' });
 
 function shortMint(mint) {
@@ -42,7 +43,7 @@ export function TokenDrawer({
   onChanged,
   onClose,
 } = {}) {
-  let rows = [];
+  const rows = new Map();
   let view = 'list';
   let step = STEP.IDLE;
   let lookup = null;
@@ -75,8 +76,8 @@ export function TokenDrawer({
   const { track } = sheet;
   sheet.cleanup(() => {
     attempt += 1; // invalidate any in-flight lookup
-    for (const row of rows) row.destroy();
-    rows = [];
+    for (const { row } of rows.values()) row.destroy();
+    rows.clear();
   });
   const close = () => sheet.close();
 
@@ -98,12 +99,6 @@ export function TokenDrawer({
   const listHost = h('div', { class: 'token-ledger' });
   const emptyHint = h('p', { class: 'token-drawer-empty hidden', text: '' });
 
-  function disposeRows() {
-    for (const row of rows) row.destroy();
-    rows = [];
-    clear(listHost);
-  }
-
   function matchesQuery(query, { symbol, name, mintAddress }) {
     if (!query) return true;
     return [symbol, name, mintAddress]
@@ -120,54 +115,67 @@ export function TokenDrawer({
   }
 
   function renderList() {
-    disposeRows();
     const query = searchField.value.trim().toLowerCase();
-
-    // Native THRU row. No changePercent: this wallet has no market-data source.
-    if (!showHidden && matchesQuery(query, { symbol: 'THRU', name: 'Thru Native Token' })) {
-      rows.push(AssetRow({
-        symbol: 'THRU',
-        name: 'Thru Native Token',
-        balanceText: data.nativeText,
-        usdValue: data.nativeUsd,
-        network: networkLabel,
-        isNative: true,
-        stale: data.stale,
-        onClick: () => openDetails({ symbol: 'THRU', name: 'Thru Native Token' }),
-      }));
+    const visible = new Map();
+    const native = { symbol: 'THRU', name: 'Thru Native Token' };
+    if (!showHidden && matchesQuery(query, native)) visible.set(NATIVE_ROW, native);
+    for (const token of data.tokens || []) {
+      if (Boolean(token.hidden) === showHidden && matchesQuery(query, token)) visible.set(token.mintAddress, token);
     }
 
-    const allTokens = [...(data.tokens || [])];
-
-    for (const token of allTokens) {
-      if (Boolean(token.hidden) !== showHidden || !matchesQuery(query, token)) continue;
-      const balanceState = data.tokenState?.get(token.mintAddress);
-      const row = AssetRow({
-        symbol: token.symbol,
-        name: token.name,
-        balanceText: tokenBalance(token),
-        network: networkLabel,
-        mintAddress: token.mintAddress,
-        imageUrl: token.imageUrl,
-        usdValue: null,
-        stale: Boolean(balanceState?.stale),
-        balanceNote: balanceState?.stale ? 'Cached' : balanceState?.error ? 'Unavailable' : null,
-        onClick: () => openDetails(token),
-      });
-      if (highlightMint && token.mintAddress === highlightMint) row.el.classList.add('just-added');
-      rows.push(row);
+    // Remove only rows no longer in view. Balance-only refreshes keep the elements,
+    // listeners, focused item, and scroll anchor where the user left them.
+    for (const [key, { row }] of rows) {
+      if (visible.has(key)) continue;
+      row.destroy();
+      rows.delete(key);
+    }
+    let index = 0;
+    for (const [key, token] of visible) {
+      const isNative = key === NATIVE_ROW;
+      const balanceState = isNative ? null : data.tokenState?.get(key);
+      const balanceText = isNative ? data.nativeText : tokenBalance(token);
+      const stale = isNative ? data.stale : Boolean(balanceState?.stale);
+      const balanceNote = balanceState?.stale ? 'Cached' : balanceState?.error ? 'Unavailable' : null;
+      const usdValue = isNative ? data.nativeUsd : null;
+      let entry = rows.get(key);
+      // An identity/display change is rare. Rebuild only the affected row, not its neighbours.
+      if (!entry || entry.token.symbol !== token.symbol || entry.token.imageUrl !== token.imageUrl) {
+        entry?.row.destroy();
+        entry = { token };
+        entry.row = AssetRow({
+          symbol: token.symbol,
+          name: token.name,
+          mintAddress: token.mintAddress,
+          imageUrl: token.imageUrl,
+          network: networkLabel,
+          isNative,
+          balanceText,
+          stale,
+          balanceNote,
+          usdValue,
+          onClick: () => openDetails(entry.token),
+        });
+        rows.set(key, entry);
+      } else {
+        entry.token = token;
+        entry.row.setBalance(balanceText, stale, usdValue, balanceNote);
+      }
+      const position = listHost.childNodes[index++] || null;
+      if (entry.row.el !== position) listHost.insertBefore(entry.row.el, position);
     }
 
-    for (const row of rows) listHost.appendChild(row.el);
-    const empty = rows.length === 0;
+    const empty = visible.size === 0;
     emptyHint.classList.toggle('hidden', !empty);
-    emptyHint.textContent = !empty ? '' : query ? `No tokens match “${searchField.value.trim()}”.`
+    const hint = !empty ? '' : query ? `No tokens match “${searchField.value.trim()}”.`
       : showHidden ? 'No hidden tokens.' : 'No tokens to display.';
+    if (emptyHint.textContent !== hint) emptyHint.textContent = hint;
 
     if (highlightMint) {
-      const target = rows.find((r) => r.el.classList.contains('just-added'));
-      target?.el.scrollIntoView?.({ block: 'nearest' });
-      highlightMint = null; // one-shot: the highlight fades, it never sticks to later repaints
+      const item = rows.get(highlightMint)?.row.el;
+      item?.classList.add('just-added');
+      item?.scrollIntoView?.({ block: 'nearest' });
+      highlightMint = null;
     }
   }
 

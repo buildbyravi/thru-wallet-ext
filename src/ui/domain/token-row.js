@@ -61,7 +61,6 @@ export function AssetRow({
 } = {}) {
   const d = disposer();
   const ticker = String(symbol || (isNative ? 'THRU' : 'TOKEN'));
-  const initials = ticker.slice(0, 3).toUpperCase();
   const networkName = String(network || 'Betanet');
 
   const avatar = TokenAvatar({ symbol: ticker, imageUrl, isNative });
@@ -94,8 +93,8 @@ export function AssetRow({
       class: changePercentClasses(String(changePercent)),
       text: changePercent,
     });
-  const subvaluesRow = h('div', { class: 'token-row-subvalues' }, [usdEl, changeEl,
-    balanceNote ? h('span', { class: 'token-row-balance-note', text: balanceNote }) : null]);
+  const noteEl = h('span', { class: 'token-row-balance-note', text: balanceNote ?? '', hidden: !balanceNote });
+  const subvaluesRow = h('div', { class: 'token-row-subvalues' }, [usdEl, changeEl, noteEl]);
 
   const valuesCol = h('div', { class: 'token-row-values' }, [amountEl, subvaluesRow]);
 
@@ -111,11 +110,19 @@ export function AssetRow({
 
   return {
     el,
-    setBalance(text, isStale, nextUsd) {
-      amountEl.textContent = text == null ? '—' : extractAmount(text);
-      amountEl.classList.toggle('stale', Boolean(isStale));
-      if (nextUsd !== undefined) {
-        usdEl.textContent = nextUsd;
+    setBalance(text, isStale, nextUsd, nextNote) {
+      const amount = extractAmount(text);
+      if (amountEl.textContent !== amount) amountEl.textContent = amount;
+      if (amountEl.classList.contains('stale') !== Boolean(isStale)) {
+        amountEl.classList.toggle('stale', Boolean(isStale));
+      }
+      if (nextUsd !== undefined && usdEl.textContent !== (nextUsd ?? '—')) {
+        usdEl.textContent = nextUsd ?? '—';
+      }
+      if (nextNote !== undefined && noteEl.textContent !== (nextNote ?? '')) {
+        noteEl.textContent = nextNote ?? '';
+        if (nextNote) noteEl.removeAttribute('hidden');
+        else noteEl.setAttribute('hidden', '');
       }
     },
     destroy() {
