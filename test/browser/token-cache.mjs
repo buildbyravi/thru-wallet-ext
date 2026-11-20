@@ -81,11 +81,26 @@ try {
     has: page.locator('.token-row-symbol', { hasText: new RegExp(`^${symbol}$`) }),
   });
   for (const count of [10, 100, 200]) {
+    await page.setViewportSize({ width: count === 200 ? 320 : 400, height: 600 });
     await page.goto(`${origin}/popup.html?tokens=${count}`);
+    const summary = page.locator('.dash-balance-summary');
+    await summary.getByText(`+${count - 3}`, { exact: true }).waitFor();
+    assert.equal(await summary.locator('.token-row-avatar').count(), 4);
+    assert.equal(await summary.innerText(), `+${count - 3}`, 'no token names or initials in the balance header');
+    const bounds = await page.locator('.dash-balance-card').evaluate((card) => {
+      const cta = card.querySelector('.dash-balance-cta').getBoundingClientRect();
+      const cardRect = card.getBoundingClientRect();
+      return {
+        ctaFits: cta.left >= cardRect.left && cta.right <= cardRect.right,
+        cardFits: cardRect.left >= 0 && cardRect.right <= document.documentElement.clientWidth,
+      };
+    });
+    assert.deepEqual(bounds, { ctaFits: true, cardFits: true });
     await page.getByRole('button', { name: 'Open token list' }).click();
     await asset('LAB').click();
     await page.getByText('22.918766 LAB', { exact: true }).waitFor();
     await page.getByRole('button', { name: 'Back to tokens' }).click();
+    await page.waitForFunction(() => document.activeElement?.getAttribute('placeholder') === 'Symbol, name, or mint address');
     const last = asset(`ASSET-${count - 1}`);
     await last.focus();
     await last.evaluate((row) => {

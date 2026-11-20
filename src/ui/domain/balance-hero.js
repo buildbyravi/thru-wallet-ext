@@ -1,5 +1,8 @@
 import { h, disposer } from '../kit/dom.js';
 import { icon } from '../kit/icon.js';
+import { TokenAvatar } from './token-avatar.js';
+
+const MAX_SUMMARY_TOKENS = 3;
 
 /**
  * Balance readout: show native THRU first when there is no fiat quote.
@@ -13,8 +16,7 @@ import { icon } from '../kit/icon.js';
  * @param {Object} props
  *   usd       formatted sourced USD balance, unknown until a price is available
  *   native    formatted native THRU amount (default '—' until the first real value)
- *   summary   one quiet line of token symbols (e.g. 'THRU · LAB') — real symbols only,
- *             the Rabby balance-card chain-chips analog
+ *   assets    visible non-native token records, summarized using a bounded icon strip
  *   onRefresh handler for the refresh balance icon button
  *   onOpen    handler for the box itself: the whole hero is the token-drawer entry;
  *             it also renders an 'Assets ›' cue inside the box (no separate button)
@@ -25,7 +27,7 @@ import { icon } from '../kit/icon.js';
 export function BalanceHero({
   usd = '\u2014',
   native = '—',
-  summary = '',
+  assets = [],
   onRefresh,
   onOpen,
 } = {}) {
@@ -61,10 +63,21 @@ export function BalanceHero({
     nativeEl.classList.toggle('dash-balance-primary', !hasQuote);
   }
   showFiat(usd);
-  const summaryEl = h('div', {
-    class: `dash-balance-summary${summary ? '' : ' hidden'}`,
-    text: summary,
-  });
+  const summaryEl = h('div', { class: 'dash-balance-summary', 'aria-hidden': 'true' });
+  const nativeIcon = TokenAvatar({ isNative: true, glyphOnly: true });
+  let visibleIcons;
+  let count;
+
+  function showAssets(tokens) {
+    const visible = tokens.slice(0, MAX_SUMMARY_TOKENS);
+    if (count === tokens.length && visible.every((token, i) => token.imageUrl === visibleIcons[i].imageUrl)) return;
+    visibleIcons = visible;
+    count = tokens.length;
+    const remaining = count - visible.length;
+    summaryEl.replaceChildren(nativeIcon, ...visible.map(({ imageUrl }) => TokenAvatar({ imageUrl, glyphOnly: true })),
+      ...(remaining ? [h('span', { class: 'dash-balance-summary-more', text: `+${remaining}` })] : []));
+  }
+  showAssets(assets);
 
   // The in-box cue replaces the old standalone "Tokens" strip below the action grid. It is
   // decoration for the box's own click target (aria-hidden): the box already has a role,
@@ -102,13 +115,10 @@ export function BalanceHero({
 
   return {
     el,
-    update({ usd: u, native: n, summary: s } = {}) {
+    update({ usd: u, native: n, assets: nextAssets } = {}) {
       if (u !== undefined) showFiat(u);
       if (n !== undefined) nativeEl.textContent = n;
-      if (s !== undefined) {
-        summaryEl.textContent = s;
-        summaryEl.classList.toggle('hidden', !s);
-      }
+      if (nextAssets !== undefined) showAssets(nextAssets);
     },
     setSpinning(spinning) {
       refreshBtn.classList.toggle('spinning', Boolean(spinning));

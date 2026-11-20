@@ -290,11 +290,7 @@ export function DashboardRoute({ navigate }) {
       stale,
       tokenState: tokenState === undefined ? assetsSnapshot.tokenState : tokenState,
     };
-    // The balance box summarizes what the drawer holds — real symbols only.
-    const realTokens = assetsSnapshot.tokens.filter((t) => !t.hidden);
-    balanceHero.update({
-      summary: ['THRU', ...realTokens.map((t) => t.symbol)].join(' · '),
-    });
+    balanceHero.update({ assets: assetsSnapshot.tokens.filter((token) => !token.hidden) });
     drawer?.update(assetsSnapshot);
   }
 

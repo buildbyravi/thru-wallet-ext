@@ -216,6 +216,7 @@ form > .btn.text {
 .dash-balance-card {
   position: relative;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   align-items: stretch;
   flex: 1;
   border-radius: 12px;
@@ -366,16 +367,6 @@ form > .btn.text {
   outline-offset: 2px;
 }
 
-/* Quiet token-symbols line inside the box — the Rabby chain-chips analog. REAL symbols
-   only; the sample preview row never appears here. */
-.dash-balance-summary {
-  margin-top: 4px;
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.55);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
 .dash-balance-row {
   display: flex;
   align-items: flex-start;

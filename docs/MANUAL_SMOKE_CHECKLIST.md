@@ -25,7 +25,8 @@ keyboard focus and dismissal, and scrolling at the widths in §2.
 For the Assets drawer, the optional [Playwright cache regression](../test/browser/token-cache.mjs)
 loads the built popup with an isolated bridge fixture and no chain access. It checks cached first paint,
 partial refresh, a verified zero, an uncached failure, and row/focus/scroll stability at 10, 100, and
-200 synthetic tokens. The script header gives the invocation;
+200 synthetic tokens. It also checks that the icon-only balance summary and Assets cue stay inside
+the card at 320px and 400px. The script header gives the invocation;
 run it with a separately installed Playwright and browser. This is not unpacked MV3 evidence.
 
 ## 1. Both Contexts: Toolbar Popup and Side Panel

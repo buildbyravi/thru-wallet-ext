@@ -139,10 +139,26 @@ body:has(.current-connection:not(.hidden)) .toast-host {
   margin-top: 4px;
   min-width: 0;
 }
-.dash-balance-foot .dash-balance-summary {
-  flex: 1;
+.dash-balance-summary {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   min-width: 0;
-  margin-top: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+.dash-balance-summary .token-row-avatar {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  background: rgba(255, 255, 255, 0.13);
+  color: #fff;
+}
+.dash-balance-summary-more {
+  flex-shrink: 0;
+  color: #fff;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
 }
 .dash-balance-cta {
   display: inline-flex;
