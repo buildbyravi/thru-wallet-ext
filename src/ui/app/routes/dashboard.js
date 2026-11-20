@@ -180,6 +180,7 @@ export function DashboardRoute({ navigate }) {
   const pendingBadge = h('div', { class: 'dash-pending-badge hidden', text: '1 pending' });
 
   const dashHeader = h('header', { class: 'dash-header' }, [
+    h('img', { class: 'dash-header-art', src: 'icons/balance-art.svg', alt: '', width: 520, height: 340 }),
     headerTop,
     balanceHero.el,
     pendingBadge,

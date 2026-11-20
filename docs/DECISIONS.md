@@ -618,3 +618,13 @@ silent SDK drift.
 3. **RPC Rate & Resource Compliance:** Enforced maximum 10,000 memory units floor across transfer/swap/registrar transactions to conform to Betanet RPC constraints, with rate-limiting backoff for history and token queries.
 4. **Token Operations Live Verification:** 16-rung live token transfer suite passed against Betanet.
 5. **Version Bumps:** Bumped `package.json`, `package-lock.json`, and `src/manifest.json` from `1.5.0` to `1.6.0`.
+
+## D-032 — Keep the current extension and reuse only the balance artwork (2026-11-20, owner directive)
+
+After reviewing the isolated frontend prototype, the owner declined a replacement. The prototype
+and its integration plan were removed. Keep the existing dashboard structure and Settings, and
+reuse only the prototype's local decorative SVG behind the existing balance readout. This does
+not change permissions, network policy, wallet behavior, or backend code.
+
+Project-scoped Modern Web Guidance remains development tooling under the
+[engineering directive](agent/engineering-directive.md#modern-web-guidance-for-frontend-work).

@@ -202,7 +202,8 @@ form > .btn.text {
 .dash-header {
   position: relative;
   height: 196px;
-  background: var(--header-gradient, radial-gradient(135% 125% at 50% 90%, #4a1820 0%, #2e1116 55%, #1d0a0d 100%));
+  background: linear-gradient(#ffffff0a, #ffffff0a),
+    var(--header-gradient, radial-gradient(135% 125% at 50% 90%, #4a1820 0%, #2e1116 55%, #1d0a0d 100%));
   color: #ffffff;
   padding: 12px 16px 14px;
   overflow: hidden;
@@ -210,6 +211,21 @@ form > .btn.text {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
+}
+
+/* Local decoration stays below the balance and account controls. */
+.dash-header-art {
+  position: absolute;
+  right: -24px;
+  bottom: -7px;
+  width: 325px;
+  height: auto;
+  pointer-events: none;
+  opacity: 0.74;
+}
+
+@media (forced-colors: active) {
+  .dash-header-art { display: none; }
 }
 
 .dash-header-top {
