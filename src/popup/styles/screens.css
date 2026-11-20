@@ -961,6 +961,35 @@ form > .btn.text {
 }
 .tx-amount.positive { color: var(--positive); }
 
+/* ---- Settings sections -------------------------------------------------- */
+.settings-heading {
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+.settings-subheading {
+  font-size: var(--fs-md);
+  font-weight: 600;
+}
+.settings-general-controls {
+  min-inline-size: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+}
+.settings-appearance {
+  padding: var(--sp-3);
+}
+.settings-general-controls > .toggle-row {
+  border: 0;
+  border-block-start: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  gap: var(--sp-2);
+}
+.settings-general-controls .toggle-switch {
+  flex-shrink: 0;
+}
+
 /* ---- Toggle Switch (Side Panel Mode) ---- */
 .toggle-row {
   display: flex;

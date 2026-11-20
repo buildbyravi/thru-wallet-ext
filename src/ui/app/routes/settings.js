@@ -22,7 +22,7 @@ import { getTheme, setTheme } from '../../../popup/theme.js';
 import { AUTO_LOCK_CHOICES } from '../../../shared/autolock.js';
 
 function SectionHeader(text) {
-  return h('header', { class: 'list-group-header' }, h('span', { text }));
+  return h('h2', { class: 'settings-heading', text });
 }
 
 export function SettingsRoute({ navigate, back, params = {} }) {
@@ -321,7 +321,7 @@ export function SettingsRoute({ navigate, back, params = {} }) {
 
     // ---- Networks ----
     const networkSection = h('section', { class: 'stack stack-2' }, [
-      SectionHeader('Network'),
+      networkOnly ? h('h2', { class: 'list-group-header', text: 'Network' }) : SectionHeader('Network'),
       h('div', { class: 'list' }, networks.map(networkRow)),
     ]);
     body.appendChild(networkSection);
@@ -332,6 +332,11 @@ export function SettingsRoute({ navigate, back, params = {} }) {
       return;
     }
     renderCustomNetworkNotice(networkSection);
+
+    // General preferences share one group; no duplicate control or write path.
+    const generalControls = h('div', { class: 'settings-general-controls' });
+    const general = h('section', { class: 'stack stack-2' }, [SectionHeader('General'), generalControls]);
+    body.appendChild(general);
 
     // ---- Security ----
     const security = h('section', { class: 'stack stack-2' }, [SectionHeader('Security')]);
@@ -367,8 +372,8 @@ export function SettingsRoute({ navigate, back, params = {} }) {
     renderAutoLock(security, Number(autoLockMinutes));
 
     // ---- Accounts shortcut ----
-    // Self-describing button — deliberately no section header.
     body.appendChild(h('section', { class: 'stack stack-2' }, [
+      SectionHeader('Accounts'),
       track(Button({
         label: 'Manage accounts and recovery phrases',
         variant: 'secondary',
@@ -377,7 +382,7 @@ export function SettingsRoute({ navigate, back, params = {} }) {
       })).el,
     ]));
 
-    // ---- Side Panel Mode (no section header; the toggle is self-describing) ----
+    // ---- Side Panel Mode ----
     // The "Side Panel Mode" toggle only — the explicit "Open side panel" button is not
     // restored here because the dashboard header already provides it.
     const switchKnob = h('span', { class: 'toggle-knob' });
@@ -423,10 +428,7 @@ export function SettingsRoute({ navigate, back, params = {} }) {
     owned.push(sidePanelHelp);
     sidePanelLabelGroup.appendChild(sidePanelHelp.trigger);
 
-    // Self-describing toggle row — deliberately no section header.
-    body.appendChild(h('section', { class: 'stack stack-2' }, [
-      sidePanelRow,
-    ]));
+    generalControls.appendChild(sidePanelRow);
 
     // ---- Desktop Notifications ----
     const notifKnob = h('span', { class: 'toggle-knob' });
@@ -459,12 +461,11 @@ export function SettingsRoute({ navigate, back, params = {} }) {
     ]);
     const notifRow = h('div', { class: 'toggle-row' }, [notifLabelGroup, notifSwitch]);
 
-    body.appendChild(h('section', { class: 'stack stack-2' }, [
-      notifRow,
-    ]));
+    generalControls.appendChild(notifRow);
 
     // ---- Appearance ----
-    const appearanceHeader = SectionHeader('Appearance');
+    const appearanceHeader = h('div', { class: 'row-flex align-center' },
+      h('h3', { class: 'settings-subheading', text: 'Appearance' }));
     const appearanceHelp = HelpTooltip({
       host: appearanceHeader,
       label: 'About appearance',
@@ -472,10 +473,10 @@ export function SettingsRoute({ navigate, back, params = {} }) {
     });
     owned.push(appearanceHelp);
     appearanceHeader.appendChild(appearanceHelp.trigger);
-    body.appendChild(h('section', { class: 'stack stack-2' }, [
+    generalControls.insertBefore(h('div', { class: 'stack stack-2 settings-appearance' }, [
       appearanceHeader,
       h('div', { class: 'row-flex wrap' }, themeChips()),
-    ]));
+    ]), sidePanelRow);
 
     // ---- Session ----
     const lockSessionBtn = track(Button({

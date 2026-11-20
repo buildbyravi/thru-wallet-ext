@@ -65,7 +65,8 @@ All 15 routes are registered in `src/ui/app/boot.js`, mount immediately from loc
 9. **History (`/history`, `v9`–`v12`):**
    - Flat newest-first stream without day headers, cache-first `tx.getCachedHistory`, provenance-tagged timestamps (`block` -> own `submitted` -> `Block <slot>`), and lazy `tx.getDetail` sheet reporting `Fee (declared)`. Full specification: `docs/guides/history-and-activity.md`.
 10. **Settings (`/settings`):**
-    - Built-in network switcher (`betanet` enabled; legacy custom RPC rows inert with `Remove` only, `v7`), password-gated Signing policy (`Session-only` default vs `Require password`, `D-003`), password-gated Auto-lock (`1–240` min or `Never`, `15` min default), Side Panel Mode opt-in, Send whitelist, notifications toggle, and theme selector, with bounded in-popup `?` help cards (`help-tooltip.js`).
+    - Network stays first. General groups Appearance, Side Panel Mode, and Desktop Notifications; Security, Accounts, Session, and About stay separate. The dashboard's focused network view continues to use this route's existing network controls.
+   - Built-in network switcher (`betanet` enabled; legacy custom RPC rows inert with `Remove` only, `v7`), password-gated Signing policy (`Session-only` default vs `Require password`, `D-003`), password-gated Auto-lock (`1–240` min or `Never`, `15` min default), Side Panel Mode opt-in, Send whitelist, notifications toggle, and theme selector, with bounded in-popup `?` help cards (`help-tooltip.js`).
 
 ---
 

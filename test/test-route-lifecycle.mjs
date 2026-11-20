@@ -2568,6 +2568,14 @@ async function themeTest() {
   const tree = router.root;
   const text = textOf(tree);
 
+  ok('Settings uses semantic, ordered Network, General, Security, Accounts, Session and About headings',
+    [...tree.querySelectorAll('.settings-heading')].map((node) => `${node.tagName}:${textOf(node)}`).join('|')
+      === 'H2:Network|H2:General|H2:Security|H2:Accounts|H2:Session|H2:About');
+  const general = tree.querySelector('.settings-general-controls');
+  ok('Appearance, Side Panel Mode and Desktop Notifications are grouped once under General',
+    Boolean(general) && /Appearance/.test(textOf(general))
+      && allElements(general).filter((node) => node.getAttribute?.('role') === 'switch')
+        .map((node) => node.getAttribute('aria-label')).join('|') === 'Side Panel Mode|Desktop Notifications');
   ok('settings offers a user-facing Appearance section', /appearance/i.test(text));
   const lightChip = buttons(tree, /^light$/i)[0];
   const darkChip = buttons(tree, /^dark$/i)[0];
