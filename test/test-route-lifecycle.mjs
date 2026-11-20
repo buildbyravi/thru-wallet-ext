@@ -2495,6 +2495,69 @@ async function settingsTest() {
     modeSwitch.getAttribute('aria-checked') === 'false'
       && !modeSwitch.classList.contains('active'));
 
+  const behaviorChanges = () => chromeLog.setPanelBehavior.slice(2).map((item) => item.openPanelOnActionClick);
+  const holds = holdReplies((message) => message.method === 'settings.set' && 'sidePanelMode' in message.params.patch);
+  try {
+    click(modeSwitch);
+    await settle();
+    click(modeSwitch);
+    await settle();
+    ok('Side Panel Mode is busy and ignores a second click while the save is pending',
+      modeSwitch.getAttribute('aria-busy') === 'true' && modeSwitch.getAttribute('aria-disabled') === 'true'
+        && modeSwitch.getAttribute('aria-checked') === 'false' && holds.held.length === 1
+        && behaviorChanges().join() === 'true');
+    // Only release the first held request so the duplicate-click regression still fails safely.
+    holds.reject('settings.set', 'Storage write failed');
+    await settle();
+    ok('a rejected preference write restores the previous toolbar behavior and leaves the switch off',
+      behaviorChanges().join() === 'true,false' && backend.preferences.sidePanelMode === false
+        && modeSwitch.getAttribute('aria-checked') === 'false'
+        && !modeSwitch.hasAttribute('aria-busy') && /restored/i.test(textOf(tree)));
+  } finally {
+    holds.restore();
+  }
+  await settle();
+
+  const originalSetPanelBehavior = chrome.sidePanel.setPanelBehavior;
+  const originalSave = FIXTURES['settings.set'];
+  try {
+    chrome.sidePanel.setPanelBehavior = async () => { throw new Error('Chrome rejected the change'); };
+    const writesBeforeBrowserFailure = chromeLog.calls.filter((method) => method === 'settings.set').length;
+    click(modeSwitch);
+    await settle();
+    ok('a browser failure does not write a mode Chrome rejected',
+      chromeLog.calls.filter((method) => method === 'settings.set').length === writesBeforeBrowserFailure
+        && modeSwitch.getAttribute('aria-checked') === 'false' && /was not saved/.test(textOf(tree)));
+
+    chrome.sidePanel.setPanelBehavior = async (options) => {
+      await originalSetPanelBehavior(options);
+      if (!options.openPanelOnActionClick) throw new Error('Chrome rejected rollback');
+    };
+    FIXTURES['settings.set'] = () => { throw apiError('STORAGE_ERROR', 'Storage write failed'); };
+    click(modeSwitch);
+    await settle();
+    ok('a failed rollback warns that Chrome may differ from the saved setting',
+      /could not restore.*may not match/i.test(textOf(tree))
+        && modeSwitch.getAttribute('aria-checked') === 'false' && !modeSwitch.hasAttribute('aria-busy'));
+
+    chrome.sidePanel.setPanelBehavior = originalSetPanelBehavior;
+    FIXTURES['settings.set'] = (params) => {
+      originalSave(params); // Persist but lose the reply.
+      throw apiError('PORT_ERROR', 'Reply lost');
+    };
+    const behaviorCount = chromeLog.setPanelBehavior.length;
+    click(modeSwitch);
+    await settle();
+    ok('readback keeps the new toolbar behavior when the write succeeded but the reply was lost',
+      chromeLog.setPanelBehavior.length === behaviorCount + 1 && backend.preferences.sidePanelMode === true
+        && modeSwitch.getAttribute('aria-checked') === 'true' && !modeSwitch.hasAttribute('aria-busy'));
+  } finally {
+    chrome.sidePanel.setPanelBehavior = originalSetPanelBehavior;
+    FIXTURES['settings.set'] = originalSave;
+  }
+  click(modeSwitch); // Exercise a normal OFF save after recovery.
+  await settle();
+
   // Removing the saved network still works end to end.
   click(buttons(open(/^Network/i), /remove my node/i)[0]);
   await settle();

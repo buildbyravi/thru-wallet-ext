@@ -71,6 +71,7 @@ export function SettingsRoute({ navigate, back, params = {} }) {
 
   function clearBody() {
     picker?.sheet.close();
+    sidePanelSwitch = null;
     rowEvents.dispose();
     rowEvents = disposer();
     for (const c of owned) c.destroy?.();
@@ -329,8 +330,74 @@ export function SettingsRoute({ navigate, back, params = {} }) {
   // The redundant "Open side panel" button that lived here is gone: the dashboard header
   // carries the explicit open action, and this section only owns the MODE.
   let sidePanelMode = false;
+  let sidePanelSaving = false;
+  let sidePanelRevision = 0;
+  let sidePanelSwitch = null;
+
+  function paintSidePanelMode() {
+    if (!sidePanelSwitch) return;
+    sidePanelSwitch.classList.toggle('active', sidePanelMode);
+    sidePanelSwitch.setAttribute('aria-checked', String(sidePanelMode));
+    // Retain focus while a save is pending; the click guard enforces the disabled state.
+    for (const attr of ['aria-disabled', 'aria-busy']) {
+      if (sidePanelSaving) sidePanelSwitch.setAttribute(attr, 'true');
+      else sidePanelSwitch.removeAttribute(attr);
+    }
+  }
+
+  async function toggleSidePanelMode() {
+    if (disposed || sidePanelSaving) return;
+    banner.clear();
+    const panel = globalThis.chrome?.sidePanel;
+    if (typeof panel?.setPanelBehavior !== 'function') {
+      banner.set('This browser has no side panel API. The popup keeps working as usual.', 'warning');
+      return;
+    }
+
+    const previous = sidePanelMode;
+    const next = !previous;
+    const apply = (enabled) => panel.setPanelBehavior({ openPanelOnActionClick: enabled });
+    sidePanelRevision += 1;
+    sidePanelSaving = true;
+    paintSidePanelMode();
+    let warning;
+    try {
+      // Don't save a mode this browser rejected. Both directions require an explicit click.
+      await apply(next);
+      let saved;
+      try {
+        saved = await bridge.send('settings.set', { patch: { sidePanelMode: next } });
+      } catch {
+        // The worker may have committed the preference but lost the reply. Check before undoing it.
+        saved = await bridge.send('settings.get').catch(() => null);
+      }
+      const confirmed = typeof saved?.sidePanelMode === 'boolean';
+      sidePanelMode = confirmed ? saved.sidePanelMode : previous;
+      if (preferences && confirmed) preferences.sidePanelMode = sidePanelMode;
+      if (sidePanelMode !== next) {
+        try {
+          await apply(sidePanelMode);
+          warning = confirmed
+            ? 'Side Panel Mode could not be saved. The previous toolbar behavior was restored.'
+            : 'Could not confirm whether Side Panel Mode was saved. The previous toolbar behavior was restored. Reopen Settings to check.';
+        } catch {
+          warning = 'Chrome could not restore the previous toolbar behavior. It may not match the saved switch. Try again.';
+        }
+      }
+    } catch {
+      warning = 'Chrome could not change the toolbar behavior. Side Panel Mode was not saved.';
+    } finally {
+      sidePanelRevision += 1;
+      sidePanelSaving = false;
+      if (!disposed) {
+        paintSidePanelMode();
+        if (warning) banner.set(warning, 'warning');
+      }
+    }
+  }
 
   async function load() {
+    const panelRevisionAtLoad = sidePanelRevision;
     banner.clear();
     try {
       const [netList, active, autoLock, prefs] = await Promise.all([
@@ -346,7 +413,9 @@ export function SettingsRoute({ navigate, back, params = {} }) {
         return;
       }
       preferences = prefs || {};
-      sidePanelMode = preferences.sidePanelMode === true;
+      if (!sidePanelSaving && panelRevisionAtLoad === sidePanelRevision) {
+        sidePanelMode = preferences.sidePanelMode === true;
+      }
       theme = await getTheme().catch(() => 'system');
       if (!disposed) render(autoLock);
     } catch (error) {
@@ -455,34 +524,15 @@ export function SettingsRoute({ navigate, back, params = {} }) {
     // The "Side Panel Mode" toggle only — the explicit "Open side panel" button is not
     // restored here because the dashboard header already provides it.
     const switchKnob = h('span', { class: 'toggle-knob' });
-    const sidePanelSwitch = h('button', {
+    sidePanelSwitch = h('button', {
       type: 'button',
-      class: ['toggle-switch', sidePanelMode ? 'active' : null].filter(Boolean),
+      class: 'toggle-switch',
       role: 'switch',
-      'aria-checked': String(sidePanelMode),
       'aria-label': 'Side Panel Mode',
     }, switchKnob);
 
-    rowEvents.on(sidePanelSwitch, 'click', async () => {
-      const next = !sidePanelMode;
-      banner.clear();
-      try {
-        if (!chrome?.sidePanel?.setPanelBehavior) {
-          banner.set('This browser has no side panel API. The popup keeps working as usual.', 'warning');
-          return;
-        }
-        // Both directions are applied explicitly: ON makes the toolbar icon open the
-        // panel; OFF restores the popup, so a user who turned it off is never left
-        // with a stale behaviour.
-        await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: next });
-        preferences = await bridge.send('settings.set', { patch: { sidePanelMode: next } });
-        sidePanelMode = preferences.sidePanelMode === true;
-        sidePanelSwitch.classList.toggle('active', next);
-        sidePanelSwitch.setAttribute('aria-checked', String(next));
-      } catch (err) {
-        banner.set(err?.message || 'Could not update side panel mode.', 'warning');
-      }
-    });
+    paintSidePanelMode();
+    rowEvents.on(sidePanelSwitch, 'click', toggleSidePanelMode);
 
     const sidePanelLabel = h('span', { class: 'settings-label-with-help' }, 'Side Panel Mode');
     const sidePanelRow = SettingsRow('div', { label: sidePanelLabel, glyph: 'sidePanel', control: sidePanelSwitch });

@@ -41,7 +41,7 @@ The toolbar popup loads `popup.html`; the side panel loads `popup.html?thru_pane
 | Locking in one context immediately locks the other | [ ] | [ ] |
 
 - **Opening the side panel:** Test both Dashboard header's side-panel icon (`"Open in side panel beside your tab"` — opens panel and closes popup) and Chrome's browser side-panel picker.
-- **Side Panel Mode toggle (`/settings`):** Default **OFF** -> clicking toolbar icon opens the **popup**. Toggle **ON** -> toolbar icon opens the **side panel**, and preference persists across service-worker restarts (`preferences.sidePanelMode`).
+- **Side Panel Mode toggle (`/settings`):** Default **OFF** -> clicking toolbar icon opens the **popup**. Toggle **ON** -> toolbar icon opens the **side panel**, and preference persists across service-worker restarts (`preferences.sidePanelMode`). Toggle **OFF** again and confirm the toolbar opens the popup. In fixtures, a rejected save must restore the previous toolbar behavior; a failed restoration must show a warning.
 - **Mutual exclusion:** With Side Panel Mode **OFF**, open the side panel, then click the toolbar icon: the popup must open **and** the side panel must close, including on short laptop windows where the side-panel height is `<= 600px` (`THRU_CLOSE_SIDE_PANEL` broadcast + `chrome.sidePanel.close({ windowId })`).
 
 ---

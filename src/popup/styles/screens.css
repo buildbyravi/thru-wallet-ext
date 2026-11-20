@@ -1058,6 +1058,10 @@ form > .btn.text {
   align-items: center;
   flex-shrink: 0;
 }
+.toggle-switch[aria-busy="true"] {
+  cursor: wait;
+  opacity: 0.72;
+}
 .toggle-switch.active {
   background: var(--positive);
 }
