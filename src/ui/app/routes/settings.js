@@ -58,6 +58,8 @@ export function SettingsRoute({ navigate, back, params = {} }) {
   const routeAbort = new AbortController();
   let picker = null;
   let savingTheme = false;
+  let themeRevision = 0;
+  let themeValue = null;
   let rowEvents = disposer();
   let networks = [];
   let activeNetworkId = null;
@@ -72,6 +74,7 @@ export function SettingsRoute({ navigate, back, params = {} }) {
   function clearBody() {
     picker?.sheet.close();
     sidePanelSwitch = null;
+    themeValue = null;
     rowEvents.dispose();
     rowEvents = disposer();
     for (const c of owned) c.destroy?.();
@@ -274,48 +277,59 @@ export function SettingsRoute({ navigate, back, params = {} }) {
 
   // ---- Appearance ------------------------------------------------------
   // The shared theme helper persists the preference before applying it.
-  function themeChips(onChange, events) {
-    const options = [
-      { value: 'light', label: 'Light' },
-      { value: 'dark', label: 'Dark' },
-      { value: 'system', label: 'System' },
-    ];
+  function themeLabel() {
+    return theme[0].toUpperCase() + theme.slice(1);
+  }
+
+  function paintThemeMode() {
+    if (themeValue) themeValue.textContent = themeLabel();
+    if (picker?.key === 'theme') picker.paintTheme?.();
+  }
+
+  function themeChips(activePicker) {
+    const options = ['light', 'dark', 'system'];
     const chips = options.map((option) => {
-      const selected = option.value === theme;
       const chip = h('button', {
-        type: 'button',
-        class: ['chip-option', selected ? 'selected' : null].filter(Boolean),
-        'aria-pressed': String(selected),
-        text: option.label,
+        type: 'button', class: 'chip-option', text: option[0].toUpperCase() + option.slice(1),
       });
-      events.on(chip, 'click', async () => {
+      activePicker.sheet.d.on(chip, 'click', async () => {
         if (savingTheme) return;
-        const activePicker = picker;
-        activePicker?.notice.clear();
-        if (option.value === theme) { activePicker?.sheet.close(); return; }
+        activePicker.notice.clear();
+        if (option === theme) { activePicker.sheet.close(); return; }
         savingTheme = true;
+        themeRevision += 1;
+        paintThemeMode();
+        let error;
         try {
-          await setTheme(option.value);
-          theme = option.value;
+          await setTheme(option);
+          theme = option;
         } catch (err) {
-          if (!disposed) (activePicker?.sheet.closed ? banner : activePicker?.notice || banner)
-            .set(err?.message || 'Could not update theme.');
-          return;
+          error = err?.message || 'Could not update theme.';
         } finally {
+          themeRevision += 1;
           savingTheme = false;
         }
         if (disposed) return;
-        onChange(option.label);
-        activePicker?.sheet.close();
-        // Reflow the selected state by identity — never by DOM position.
-        options.forEach((o, i) => {
-          const active = o.value === theme;
-          chips[i].classList.toggle('selected', active);
-          chips[i].setAttribute('aria-pressed', String(active));
-        });
+        // The original sheet may have been dismissed. Paint the current row and picker,
+        // and only dismiss the picker the user was in when they selected the theme.
+        paintThemeMode();
+        if (error) (picker?.key === 'theme' ? picker.notice : banner).set(error);
+        else activePicker.sheet.close();
       });
       return chip;
     });
+    activePicker.paintTheme = () => {
+      options.forEach((option, index) => {
+        const selected = option === theme;
+        const chip = chips[index];
+        chip.classList.toggle('selected', selected);
+        chip.setAttribute('aria-pressed', String(selected));
+        // Keep focus in place while blocking a second write.
+        if (savingTheme) chip.setAttribute('aria-disabled', 'true');
+        else chip.removeAttribute('aria-disabled');
+      });
+    };
+    activePicker.paintTheme();
     return chips;
   }
 
@@ -398,6 +412,7 @@ export function SettingsRoute({ navigate, back, params = {} }) {
 
   async function load() {
     const panelRevisionAtLoad = sidePanelRevision;
+    const themeRevisionAtLoad = themeRevision;
     banner.clear();
     try {
       const [netList, active, autoLock, prefs] = await Promise.all([
@@ -416,7 +431,8 @@ export function SettingsRoute({ navigate, back, params = {} }) {
       if (!sidePanelSaving && panelRevisionAtLoad === sidePanelRevision) {
         sidePanelMode = preferences.sidePanelMode === true;
       }
-      theme = await getTheme().catch(() => 'system');
+      const storedTheme = await getTheme().catch(() => 'system');
+      if (!savingTheme && themeRevisionAtLoad === themeRevision) theme = storedTheme;
       if (!disposed) render(autoLock);
     } catch (error) {
       if (disposed) return;
@@ -499,10 +515,10 @@ export function SettingsRoute({ navigate, back, params = {} }) {
       return panel;
     };
     const active = networks.find((network) => network.id === activeNetworkId);
-    const themeValue = RowValue(theme[0].toUpperCase() + theme.slice(1));
+    themeValue = RowValue(themeLabel());
     const appearance = (sheet) => {
       const panel = choices(sheet, 'Choose a theme', 'About appearance', 'Choose Light, Dark, or System to follow your device theme.');
-      panel.appendChild(h('div', { class: 'row-flex wrap' }, themeChips((label) => { themeValue.textContent = label; }, sheet.d)));
+      panel.appendChild(h('div', { class: 'row-flex wrap' }, themeChips(picker)));
       return panel;
     };
     const requirePasswordForSigning = preferences?.requirePasswordForSigning === true;

@@ -2701,6 +2701,29 @@ async function themeTest() {
       && themeRow() === 'Theme Mode System' && /Storage write failed/.test(textOf(themeSheet)));
   FIXTURES['settings.set'] = realSetSettings;
 
+  const themeSave = holdReplies((msg) => msg.method === 'settings.set' && 'theme' in msg.params.patch);
+  try {
+    click(chip(/^dark$/i));
+    await settle();
+    const originalSheet = themeSheet;
+    click(buttons(originalSheet, /^Close$/i)[0]);
+    themeSheet = openTheme();
+    ok('the theme picker can be dismissed and reopened during a save without claiming success',
+      themeSheet !== originalSheet && chip(/^system$/i)?.getAttribute('aria-pressed') === 'true'
+        && DOC.documentElement.dataset.theme === 'light');
+    click(chip(/^light$/i));
+    await settle();
+    ok('the reopened picker does not start a second theme write during the first', themeSave.held.length === 1);
+    themeSave.resolve('settings.set', realSetSettings({ patch: { theme: 'dark' } }));
+    await settle();
+    ok('a reopened theme picker stays open and matches the saved row and applied theme',
+      themeSheet === DOC.body.querySelector('.settings-picker') && themeRow() === 'Theme Mode Dark'
+        && DOC.documentElement.dataset.theme === 'dark' && chip(/^dark$/i)?.getAttribute('aria-pressed') === 'true'
+        && chip(/^system$/i)?.getAttribute('aria-pressed') === 'false');
+  } finally {
+    themeSave.restore();
+  }
+
   click(buttons(tree, /^Transaction history$/i)[0]);
   await settle();
   ok('the Features history row opens the existing History route', router.currentPath === '/history');
