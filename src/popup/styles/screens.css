@@ -892,6 +892,7 @@ form > .btn.text {
   display: inline-flex;
   align-items: center;
   min-height: 24px;
+  border-bottom: 0;
   text-decoration: underline;
   text-underline-offset: 2px;
 }
