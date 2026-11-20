@@ -5596,6 +5596,83 @@ async function dashboardTokenRefreshTest() {
   }
 }
 
+async function dashboardVisibilityRefreshTest() {
+  section('dashboard Assets: completed hide and restore survive stale registry reads');
+  resetBackend(SCENARIOS[2]);
+  resetDom();
+  const originalVisibility = FIXTURES['token.setVisibility'];
+  FIXTURES['token.setVisibility'] = ({ mintAddress, hidden }) => {
+    backend.tokens = backend.tokens.map((token) => token.mintAddress === mintAddress ? { ...token, hidden } : token);
+    return { mintAddress, hidden };
+  };
+  let heldMethod;
+  const holds = holdReplies((message) => message.method === heldMethod);
+  let dash;
+  try {
+    dash = DashboardRoute({ navigate() {} });
+    DOC.body.appendChild(dash.el);
+    await settle();
+    click(dash.el.querySelector('.dash-balance-hero'));
+    await settle();
+    const drawer = () => DOC.body.querySelector('.token-drawer');
+    const row = () => [...drawer().querySelectorAll('.token-ledger-row')]
+      .find((node) => textOf(node.querySelector('.token-row-symbol')) === 'SMK');
+    const toggleHidden = () => click(buttons(drawer(), /^Hidden tokens$/i)[0]);
+    const refresh = () => click(dash.el.querySelector('[title="Refresh balance"]'));
+
+    heldMethod = 'token.getCachedBalances';
+    refresh();
+    await settle(); // Cached token.list has already replied without NEW.
+    backend.tokens.push({ ...backend.tokens[0], mintAddress: 'taNewRegistryMint', symbol: 'NEW' });
+    holds.resolve(heldMethod, { networkId: NETWORK_BETANET.id, balances: [] });
+    heldMethod = 'token.getBalances';
+    await settle(); // Live token.list has returned NEW and still marks SMK visible.
+    click(row());
+    await settle();
+    click(buttons(drawer(), /^Remove from Assets$/i)[0]);
+    await settle();
+    ok('the completed hide immediately removes the token from Assets', !row());
+    holds.resolve(heldMethod, { networkId: NETWORK_BETANET.id, balances: [] });
+    await settle();
+    ok('a live refresh using the old token list cannot bring the hidden token back', !row());
+    ok('other registry entries survive reconciliation with the saved visibility',
+      /NEW/.test(textOf(drawer())));
+    toggleHidden();
+    ok('the hidden token remains available under Hidden tokens after refresh', Boolean(row()));
+    if (!row()) return;
+
+    heldMethod = 'token.getCachedBalances';
+    refresh();
+    await settle(); // the cached phase has already received the old "hidden" registry
+    click(row());
+    await settle();
+    click(buttons(drawer(), /^Show in Assets$/i)[0]);
+    await settle();
+    ok('restoring a token removes it from Hidden tokens immediately', !row());
+    toggleHidden();
+    ok('restoring makes the token visible in Assets immediately', Boolean(row()));
+    holds.resolve(heldMethod, { networkId: NETWORK_BETANET.id, balances: [] });
+    // Observe the cached repaint separately, before the new live reply can mask it.
+    heldMethod = 'token.getBalances';
+    await settle();
+    ok('an old cached registry cannot hide a restored token again', Boolean(row()));
+    holds.resolve(heldMethod, { networkId: NETWORK_BETANET.id, balances: [] });
+    await settle();
+    ok('the restored token stays visible after both refresh phases', Boolean(row()));
+    backend.tokens = backend.tokens.map((token) => token.symbol === 'SMK' ? { ...token, hidden: true } : token);
+    heldMethod = undefined;
+    refresh();
+    await settle();
+    ok('a later authoritative list still updates visibility', !row());
+  } finally {
+    dash?.destroy();
+    dash?.el.remove();
+    holds.restore();
+    if (originalVisibility) FIXTURES['token.setVisibility'] = originalVisibility;
+    else delete FIXTURES['token.setVisibility'];
+  }
+}
+
 // ---- Audit: other consumers of tx.getBalances must not display its stale zero ---------
 
 async function offlineBalanceConsumersTest() {
@@ -6624,6 +6701,7 @@ try {
   await historyCacheFirstTest();
   await offlineBalanceConsumersTest();
   await dashboardTokenRefreshTest();
+  await dashboardVisibilityRefreshTest();
   await nameReviewTest();
   await nameNotificationTest();
   await trackedDomainsTest();

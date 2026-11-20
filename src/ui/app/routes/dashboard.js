@@ -312,6 +312,33 @@ export function DashboardRoute({ navigate }) {
     }));
   }
 
+  let registryRevision = 0;
+  let registryRead = 0;
+  let appliedRegistryRead = 0;
+  const visibilityChanges = new Map();
+
+  async function readTokenRegistry() {
+    const revision = registryRevision;
+    const read = ++registryRead;
+    const tokens = await bridge.send('token.list');
+    return { revision, read, tokens };
+  }
+
+  function acceptTokenRegistry(snapshot) {
+    // A refresh can receive token.list quickly, then wait on cached or live balances.
+    // Preserve only the changed visibility flags; registry metadata and other mints
+    // can still hydrate. A newer read supersedes the patch, and older reads cannot repaint.
+    if (!Array.isArray(snapshot?.tokens) || snapshot.read < appliedRegistryRead) return undefined;
+    appliedRegistryRead = snapshot.read;
+    for (const [mint, change] of visibilityChanges) {
+      if (change.revision <= snapshot.revision) visibilityChanges.delete(mint);
+    }
+    return snapshot.tokens.map((token) => {
+      const change = visibilityChanges.get(token.mintAddress);
+      return change ? { ...token, hidden: change.hidden } : token;
+    });
+  }
+
   function openDrawer() {
     if (drawer) return;
     drawer = TokenDrawer({
@@ -320,9 +347,10 @@ export function DashboardRoute({ navigate }) {
       onReadMint: (mintAddress) => bridge.send('token.readMint', { mintAddress }),
       onReadDetails: readTokenDetails,
       onSetVisibility: async (mintAddress, hidden) => {
-        const source = drawer;
+        const context = assetContext;
         await bridge.send('token.setVisibility', { mintAddress, hidden });
-        if (!source || drawer !== source) return;
+        if (context !== assetContext) return;
+        visibilityChanges.set(mintAddress, { revision: ++registryRevision, hidden });
         const { nativeText, stale, tokens } = assetsSnapshot;
         updateAssets(nativeText, tokens.map((token) => token.mintAddress === mintAddress ? { ...token, hidden } : token), stale);
       },
@@ -484,7 +512,7 @@ export function DashboardRoute({ navigate }) {
     {
       try {
         const [cachedList, cachedBal] = await Promise.all([
-          bridge.send('token.list'),
+          readTokenRegistry(),
           bridge.send('token.getCachedBalances', { address: address }),
         ]);
         if (context !== assetContext) return;
@@ -494,7 +522,7 @@ export function DashboardRoute({ navigate }) {
             cachedState.set(row.mintAddress, { ...row, stale: true });
           }
         }
-        updateAssets(assetsSnapshot.nativeText, Array.isArray(cachedList) ? cachedList : undefined,
+        updateAssets(assetsSnapshot.nativeText, acceptTokenRegistry(cachedList),
           assetsSnapshot.stale, cachedState);
       } catch {
         // Cache miss is not an error; live hydration follows.
@@ -507,7 +535,7 @@ export function DashboardRoute({ navigate }) {
         ? bridge.send('tx.getBalances', { addresses: [address] })
           .then((m) => m?.[address])
         : bridge.send('tx.getAccountInfo', { address: address }),
-      bridge.send('token.list'),
+      readTokenRegistry(),
       bridge.send('tx.getPending'),
       bridge.send('token.getBalances', { address: address }),
     ]);
@@ -547,8 +575,7 @@ export function DashboardRoute({ navigate }) {
       }
     }
 
-    const tokens = tokensResult.status === 'fulfilled' && Array.isArray(tokensResult.value)
-      ? tokensResult.value : assetsSnapshot.tokens;
+    const tokens = acceptTokenRegistry(tokensResult.value) ?? assetsSnapshot.tokens;
     const tokenState = reconcileTokenBalances(tokens, tokenBalancesResult.value);
     updateAssets(nativeText, tokens,
       infoResult.status === 'rejected' || infoResult.value?.stale === true, tokenState);
@@ -573,6 +600,7 @@ export function DashboardRoute({ navigate }) {
   let hasKnownBalance = false;
   function resetAssetsContext() {
     assetContext += 1;
+    visibilityChanges.clear();
     drawer?.destroy();
     account = null;
     hasKnownBalance = false;
