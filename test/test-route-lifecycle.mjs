@@ -3173,6 +3173,19 @@ async function createFlowBackupTest() {
     views().length === 3 && !listViewHidden() && addViewHidden()
       && views()[2]?.classList?.contains?.('hidden'));
 
+  // Start the import from a filtered Hidden tokens list with an older balance reply held.
+  click(buttons(drawerCard(), /^Hidden tokens$/i)[0]);
+  const search = views()[0].querySelector('input');
+  type(search, 'unrelated search');
+  let holdOldBalance = true;
+  const oldBalance = FIXTURES['token.getBalances']();
+  const holds = holdReplies((message) => holdOldBalance && message.method === 'token.getBalances');
+  click(router.root.querySelector('[title="Refresh balance"]'));
+  await settle();
+  holdOldBalance = false;
+  ok('ordinary refresh preserves the Hidden tokens mode',
+    buttons(drawerCard(), /^Hidden tokens$/i)[0].getAttribute('aria-pressed') === 'true');
+
   click(buttons(drawerCard(), /add custom token/i)[0]);
   await settle();
   const opened = textOf(views()[1]);
@@ -3229,6 +3242,19 @@ async function createFlowBackupTest() {
   ok('the imported token joins the drawer list', textOf(views()[0]).includes('LAB'), textOf(views()[0]).slice(0, 200));
   ok('the new row is highlighted once',
     allElements(views()[0]).some((el) => el.classList?.contains?.('just-added')));
+
+  const importedRow = () => [...views()[0].querySelectorAll('.token-ledger-row')]
+    .find((node) => textOf(node.querySelector('.token-row-symbol')) === 'LAB');
+  const importedAmount = () => importedRow()?.querySelector('.token-row-amount');
+  ok('a successful import clears the old filter and returns to the visible Tokens list',
+    search.value === '' && buttons(drawerCard(), /^Hidden tokens$/i)[0].getAttribute('aria-pressed') === 'false'
+      && !listViewHidden() && textOf(importedAmount()) === '250');
+  holds.resolve('token.getBalances', oldBalance);
+  await settle();
+  holds.restore();
+  ok('the older reply cannot mark the newly imported balance as cached or unavailable',
+    textOf(importedAmount()) === '250' && !importedAmount().classList.contains('stale')
+      && importedRow().querySelector('.token-row-balance-note').hasAttribute('hidden'));
 
   // A mint already in the list is refused without a network call.
   click(buttons(drawerCard(), /add custom token/i)[0]);

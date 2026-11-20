@@ -311,10 +311,11 @@ async function readTokenBalanceCache(networkId = null) {
   }
 }
 
-async function writeTokenBalanceCache(owner, balances, networkId) {
+async function writeTokenBalanceCache(owner, balances, networkId, isCurrent) {
   try {
     const key = await tokenCacheKey(networkId);
     const cache = await readTokenBalanceCache(networkId);
+    if (!isCurrent()) return;
     cache[owner] = { balances, fetchedAt: Date.now() };
     await chrome.storage.local.set({ [key]: cache });
   } catch {
@@ -355,23 +356,32 @@ export async function getTokenBalances({ address } = {}) {
   const networkId = (await getActiveNetworkConfig()).id; // bind SDK before reading mints
   const generation = getNetworkGeneration();
   const key = JSON.stringify([networkId, generation, owner]);
+  const registry = await listDeployedTokens();
+  if (getNetworkGeneration() !== generation) throw tokenBalanceNetworkChanged();
+
+  // Capture the registry once, both for coalescing and for the actual RPC work. A fresh
+  // registry starts new work; another caller of that same snapshot still shares it.
+  const signature = JSON.stringify(registry);
   const existing = inFlightTokenBalances.get(key);
-  if (existing) return existing;
-  const request = refreshTokenBalances(owner, networkId, generation)
-    .finally(() => inFlightTokenBalances.delete(key));
-  inFlightTokenBalances.set(key, request);
-  return request;
+  if (existing?.signature === signature) return existing.request;
+  const entry = { signature, request: null };
+  const isCurrent = () => inFlightTokenBalances.get(key) === entry && getNetworkGeneration() === generation;
+  entry.request = refreshTokenBalances(owner, networkId, generation, registry, isCurrent)
+    .finally(() => {
+      if (inFlightTokenBalances.get(key) === entry) inFlightTokenBalances.delete(key);
+    });
+  inFlightTokenBalances.set(key, entry);
+  return entry.request;
 }
 
-async function refreshTokenBalances(owner, networkId, generation) {
-  const registry = await listDeployedTokens();
+function tokenBalanceNetworkChanged() {
+  return tokenError('NETWORK_CHANGED', 'The network changed while token balances were loading. Retry on the active network.', true);
+}
 
+async function refreshTokenBalances(owner, networkId, generation, registry, isCurrent) {
   const { balances: results, anyError } = await readRegisteredTokenBalances(owner, registry);
   if (await getActiveNetworkId() !== networkId || getNetworkGeneration() !== generation) {
-    const error = new Error('The network changed while token balances were loading. Retry on the active network.');
-    error.code = 'NETWORK_CHANGED';
-    error.retryable = true;
-    throw error;
+    throw tokenBalanceNetworkChanged();
   }
   const response = {
     supported: true,
@@ -381,9 +391,10 @@ async function refreshTokenBalances(owner, networkId, generation) {
       ? 'One or more token balances or mint details could not be verified on the network; those are unknown, not zero.'
       : null,
   };
-  // Cache only clean reads: a partial-failure result never overwrites a good snapshot.
-  if (!anyError && results.every(isVerifiedTokenBalance)) {
-    writeTokenBalanceCache(owner, results, networkId); // fire-and-forget
+  // A partial result or a superseded registry cannot replace the last verified snapshot.
+  if (isCurrent() && !anyError && results.every(isVerifiedTokenBalance)) {
+    await writeTokenBalanceCache(owner, results, networkId, isCurrent);
+    if (getNetworkGeneration() !== generation) throw tokenBalanceNetworkChanged();
   }
   return response;
 }

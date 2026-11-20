@@ -192,10 +192,13 @@ export function TokenDrawer({
     'aria-label': 'Hidden tokens',
     'aria-pressed': 'false',
   }, icon('eyeOff', 16));
-  sheet.d.on(hiddenBtn, 'click', () => {
-    showHidden = !showHidden;
+  function setHiddenMode(next) {
+    showHidden = next;
     hiddenBtn.setAttribute('aria-pressed', String(showHidden));
     listTitle.textContent = showHidden ? 'Hidden tokens' : 'Tokens';
+  }
+  sheet.d.on(hiddenBtn, 'click', () => {
+    setHiddenMode(!showHidden);
     renderList();
   });
   const listTitle = h('h2', { text: 'Tokens' });
@@ -438,13 +441,16 @@ export function TokenDrawer({
     if (sheet.closed) return;
     sheet.setDismissible(true);
 
+    // A just-added mint belongs in the visible list, not under a previous Hidden/search filter.
+    setHiddenMode(false);
+    searchField.value = '';
     highlightMint = added.mint;
     resetAdd();
     setView('list');
     toast({
       tone: 'success',
       title: `${symbol} added`,
-      message: 'It now appears in your token list.',
+      message: rows.has(added.mint) ? 'It now appears in your token list.' : 'Token saved. Refresh Assets to update the list.',
     });
   }
 

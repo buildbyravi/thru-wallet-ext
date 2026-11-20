@@ -315,6 +315,8 @@ export function DashboardRoute({ navigate }) {
   let registryRevision = 0;
   let registryRead = 0;
   let appliedRegistryRead = 0;
+  let tokenBalanceRead = 0;
+  let appliedTokenBalanceRead = 0;
   const visibilityChanges = new Map();
 
   async function readTokenRegistry() {
@@ -530,6 +532,7 @@ export function DashboardRoute({ navigate }) {
     }
 
     if (context !== assetContext) return;
+    const balanceRead = ++tokenBalanceRead;
     const [infoResult, tokensResult, pendingResult, tokenBalancesResult] = await Promise.allSettled([
       force
         ? bridge.send('tx.getBalances', { addresses: [address] })
@@ -576,7 +579,13 @@ export function DashboardRoute({ navigate }) {
     }
 
     const tokens = acceptTokenRegistry(tokensResult.value) ?? assetsSnapshot.tokens;
-    const tokenState = reconcileTokenBalances(tokens, tokenBalancesResult.value);
+    // An older overlapping refresh can contain fewer mints. Do not let it mark
+    // the fresh balance of a newly imported mint as cached (or replace its neighbours).
+    let tokenState = assetsSnapshot.tokenState;
+    if (balanceRead > appliedTokenBalanceRead) {
+      appliedTokenBalanceRead = balanceRead;
+      tokenState = reconcileTokenBalances(tokens, tokenBalancesResult.value);
+    }
     updateAssets(nativeText, tokens,
       infoResult.status === 'rejected' || infoResult.value?.stale === true, tokenState);
 

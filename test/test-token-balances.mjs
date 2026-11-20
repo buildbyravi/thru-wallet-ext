@@ -215,6 +215,35 @@ try {
     'a failed refresh preserves the verified snapshot and its original timestamp');
   console.log('  ok - verified absence persists; a transport failure does not overwrite the snapshot');
 
+  const secondMint = Pubkey.from(new Uint8Array(32).fill(36)).toThruFmt();
+  const oldGate = gate();
+  let balanceReads = 0;
+  sdk.accounts.get = async (address) => {
+    if (address === secondMint) return mintAccount({ ticker: 'NEW' });
+    if (++balanceReads === 1) { oldGate.enter(); await oldGate.wait; }
+    throw Object.assign(new Error('absent'), { code: 5 });
+  };
+  const oldRefresh = readBalances('token.getBalances');
+  await oldGate.entered;
+  const added = await callImport({ mintAddress: secondMint });
+  assert.equal(added.ok, true, JSON.stringify(added));
+  const afterImport = readBalances('token.getBalances');
+  const sameSnapshot = readBalances('token.getBalances');
+  let freshResult;
+  afterImport.then((reply) => { freshResult = reply; });
+  await new Promise(setImmediate); // all fresh fixture reads can finish without releasing the old RPC
+  const completedBeforeRelease = freshResult;
+  oldGate.release();
+  const [old, refreshed, joined] = await Promise.all([oldRefresh, afterImport, sameSnapshot]);
+  assert.ok(completedBeforeRelease?.data?.balances.some((row) => row.mintAddress === secondMint),
+    'the first refresh after import reads the new mint without waiting for the old refresh');
+  assert.equal(old.data.balances.length, 1);
+  assert.deepEqual(joined.data, refreshed.data, 'concurrent requests for the same registry still coalesce');
+  assert.equal(balanceReads, 3, 'one old read plus one read per mint in the new registry');
+  assert.deepEqual((await readBalances('token.getCachedBalances')).data.balances, refreshed.data.balances,
+    'the slower pre-import read cannot replace the fresh two-mint cache');
+  console.log('  ok - post-import refresh includes the new mint while older RPC is pending and protects its cache');
+
   for (const [label, response, code] of [
     ['wrong owner', () => mintAccount({ owner: mintAddress }), 'UNSUPPORTED'],
     ['unsupported decimals', () => mintAccount({ decimals: 19 }), 'UNSUPPORTED'],
