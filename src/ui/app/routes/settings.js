@@ -25,7 +25,10 @@ function SectionHeader(text) {
   return h('header', { class: 'list-group-header' }, h('span', { text }));
 }
 
-export function SettingsRoute({ navigate, back }) {
+export function SettingsRoute({ navigate, back, params = {} }) {
+  const networkOnly = params.view === 'network';
+  let disposed = false;
+  let switchingNetwork = false;
   const d = disposer();
   const owned = [];
   let networks = [];
@@ -35,7 +38,7 @@ export function SettingsRoute({ navigate, back }) {
 
   const banner = Banner({ tone: 'error' });
   const body = h('div', { class: 'stack stack-5' }, Spinner({ label: 'Loading settings' }).el);
-  const header = PageHeader({ title: 'Settings', onBack: () => back() });
+  const header = PageHeader({ title: networkOnly ? 'Choose network' : 'Settings', onBack: () => back() });
   const el = h('section', { class: 'screen' }, [header.el, banner.el, body]);
 
   function track(c) { owned.push(c); return c; }
@@ -80,32 +83,38 @@ export function SettingsRoute({ navigate, back }) {
       children.push(h('span', { class: 'row-value' }, icon('check', 14)));
     }
 
-    const row = selectable
+    const row = selectable && !(networkOnly && isActive)
       ? h('button', {
         type: 'button',
         class: ['row', isActive ? 'active' : null].filter(Boolean),
         'aria-current': isActive ? 'true' : null,
       }, children)
-      : h('div', { class: 'row', 'aria-disabled': 'true' }, children);
+      : h('div', { class: 'row', 'aria-current': isActive ? 'true' : null, 'aria-disabled': !isActive ? 'true' : null }, children);
 
     if (selectable && !isActive) {
       d.on(row, 'click', async () => {
+        if (switchingNetwork) return;
+        switchingNetwork = true;
         banner.clear();
         try {
           await bridge.send('network.setActive', { networkId: network.id });
+          if (disposed) return;
           // Balances, tokens and pending transactions are all per-network, so the whole
           // wallet view changes. Going back to the dashboard makes that obvious rather than
           // leaving the user on a settings screen wondering whether it took effect.
-          navigate('/dashboard');
+          if (networkOnly) back();
+          else navigate('/dashboard');
         } catch (error) {
-          banner.set(error.message || 'Could not switch network.');
+          if (!disposed) banner.set(error.message || 'Could not switch network.');
+        } finally {
+          switchingNetwork = false;
         }
       });
     }
 
     const wrap = h('div', { class: 'row-flex' }, [row]);
 
-    if (network.custom) {
+    if (network.custom && !networkOnly) {
       const removeBtn = h('button', {
         type: 'button',
         class: 'icon-btn icon-btn-ghost sm danger-hover',
@@ -287,18 +296,23 @@ export function SettingsRoute({ navigate, back }) {
       const [netList, active, autoLock, prefs] = await Promise.all([
         bridge.send('network.list'),
         bridge.send('network.getActive'),
-        bridge.send('system.getAutoLock'),
-        bridge.send('settings.get'),
+        ...(networkOnly ? [] : [bridge.send('system.getAutoLock'), bridge.send('settings.get')]),
       ]);
+      if (disposed) return;
       networks = netList || [];
       activeNetworkId = active?.id || null;
+      if (networkOnly) {
+        render();
+        return;
+      }
       preferences = prefs || {};
       sidePanelMode = preferences.sidePanelMode === true;
       theme = await getTheme().catch(() => 'system');
-      render(autoLock);
+      if (!disposed) render(autoLock);
     } catch (error) {
+      if (disposed) return;
       clearBody();
-      banner.set(error.message || 'Could not load settings.');
+      banner.set(error.message || (networkOnly ? 'Could not load networks.' : 'Could not load settings.'));
     }
   }
 
@@ -311,6 +325,12 @@ export function SettingsRoute({ navigate, back }) {
       h('div', { class: 'list' }, networks.map(networkRow)),
     ]);
     body.appendChild(networkSection);
+    if (networkOnly) {
+      if (!networks.some((network) => !network.custom && network.selectable !== false && network.id !== activeNetworkId)) {
+        networkSection.appendChild(h('p', { class: 'hint', text: 'No other networks are available to switch to.' }));
+      }
+      return;
+    }
     renderCustomNetworkNotice(networkSection);
 
     // ---- Security ----
@@ -535,6 +555,7 @@ export function SettingsRoute({ navigate, back }) {
   return {
     el,
     destroy() {
+      disposed = true;
       for (const c of owned) c.destroy?.();
       owned.length = 0;
       header.destroy();

@@ -59,11 +59,12 @@ assert.deepEqual(mintReads.sort(), ['funded', 'mint-invalid', 'mint-missing', 'm
 console.log('  ok - no registry decimals are used for a positive balance without a live mint');
 
 console.log('[token balances] bounded concurrent RPC, stable list order under out-of-order replies');
+const tokenCount = 100;
 let inFlight = 0;
 let peak = 0;
 const started = [];
 const gates = new Map();
-const running = readRegisteredTokenBalances('owner', registry(Array.from({ length: 11 }, (_, i) => `mint-${i}`)), {
+const running = readRegisteredTokenBalances('owner', registry(Array.from({ length: tokenCount }, (_, i) => `mint-${i}`)), {
   readBalance: async (_owner, mintAddress) => {
     started.push(mintAddress);
     inFlight += 1;
@@ -78,7 +79,7 @@ const running = readRegisteredTokenBalances('owner', registry(Array.from({ lengt
   readMint: async () => { throw new Error('Zero requires no mint read'); },
 });
 assert.equal(started.length, 4, 'four RPC reads may start before any finishes');
-for (let i = 0; i < 11; i += 1) {
+for (let i = 0; i < tokenCount; i += 1) {
   const id = started[i] || `mint-${i}`;
   assert.equal(gates.has(id), true, `mint ${id} should have started`);
   gates.get(id)();
@@ -87,14 +88,14 @@ for (let i = 0; i < 11; i += 1) {
   assert.ok(inFlight <= 4, 'concurrency must stay bounded');
 }
 const bounded = await running;
-assert.equal(started.length, 11);
+assert.equal(started.length, tokenCount);
 assert.equal(peak, 4, 'a slow first read must not serialize other mints');
 assert.deepEqual(bounded.balances.map((row) => row.mintAddress),
-  Array.from({ length: 11 }, (_, i) => `mint-${i}`));
+  Array.from({ length: tokenCount }, (_, i) => `mint-${i}`));
 assert.equal(bounded.anyError, false);
 assert.ok(bounded.balances.every((row) => row.amountUnits === '0' && row.error === false));
 assert.deepEqual(await readRegisteredTokenBalances('owner', []), { balances: [], anyError: false });
-console.log('  ok - eleven mints were checked with at most four concurrent reads');
+console.log('  ok - 100 mints were checked with at most four concurrent reads');
 
 console.log('[send intent] in-flight guard includes chain and mint, releases after failure');
 const { beginTransfer } = await import('../src/background/services/pending-tx-service.js');

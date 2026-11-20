@@ -1,39 +1,5 @@
-// Token drawer — the Rabby-style slide-up sheet behind the balance box.
-//
-// The dashboard's balance box is the entry point ("click anywhere in the box", exactly like
-// Rabby's BalanceView -> activePopup('AssetList')): tapping it opens THIS sheet, which owns
-// the whole token list — search, rows, and the "Add custom token" flow.
-//
-// TWO VIEWS, NEVER BOTH  (fixes "wallet tokens show up in the middle of adding a token")
-//
-//   list view : head, search, token rows, "Add custom token"
-//   add view  : back, mint field, verification, preview, "Add token"
-//
-// The previous drawer kept ONE column — head, search, add-form, token list, add button — and
-// merely toggled the form open, so the whole wallet ledger stayed on screen between the form
-// and the button while the user was mid-add. On save it also closed the form BEFORE awaiting
-// the host reload, so the list flashed stale rows. Now the views are mutually exclusive
-// (`.hidden` on the inactive one, which also removes it from the focus trap), and the drawer
-// only returns to the list AFTER the host has reloaded, with the new row highlighted.
-//
-// ADD FLOW (Rabby "Add custom token": paste address -> we look it up -> confirm)
-//
-//   idle -> checking -> verified -> saving -> (back to list, new row highlighted)
-//
-//   - Decimals are ALWAYS taken from the chain and shown read-only. Sends burn base units
-//     of the real decimals, so a free-typed value corrupts amounts; the old form offered an
-//     editable Decimals input while its own comment forbade it.
-//   - The symbol is taken from the chain too; the field only appears when the mint carries
-//     no ticker.
-//   - A mint already in the list is refused before the network call.
-//   - Every async step is guarded by an attempt counter, so editing the address mid-lookup
-//     can never apply a stale result.
-//
-// Honesty rules, unchanged: a balance that could not be read is "—", never a zero.
-//
-// Overlay, backdrop, focus trap, open animation and teardown come from kit/sheet.js (shared with
-// the security sheet). Every node comes from h(); every handler goes through the sheet's
-// disposer, so teardown leaves no listener on a detached node.
+// Token drawer: mutually exclusive asset list, mint details, and verified import views.
+// The shared Sheet owns keyboard trapping, dismissals, focus restoration and teardown.
 
 import { h, clear } from '../kit/dom.js';
 import { icon } from '../kit/icon.js';
@@ -57,6 +23,8 @@ function shortMint(mint) {
  *   assets        { nativeText, nativeUsd, tokens, stale, tokenState } snapshot to render
  *   networkLabel  network label for the rows (e.g. 'Betanet')
  *   onReadMint    async (mintAddress) => mint info; powers the on-chain lookup
+ *   onReadDetails async cached read used only by the detail view
+ *   onSetVisibility async (mintAddress, hidden) updates local asset visibility
  *   onImportToken async ({ mintAddress, symbol, name, decimals }) => saved record
  *   onChanged     async () => called after a successful import so the host can reload;
  *                 the drawer waits for it BEFORE showing the list again
@@ -67,6 +35,8 @@ export function TokenDrawer({
   assets = {},
   networkLabel = 'Betanet',
   onReadMint,
+  onReadDetails = onReadMint,
+  onSetVisibility,
   onImportToken,
   onChanged,
   onClose,
@@ -77,6 +47,10 @@ export function TokenDrawer({
   let lookup = null;
   let attempt = 0;
   let highlightMint = null;
+  let showHidden = false;
+  let selection = null;
+  let mintDetails = null;
+  let visibilityPending = false;
   let data = {
     nativeText: '—',
     nativeUsd: null,
@@ -92,7 +66,8 @@ export function TokenDrawer({
     className: 'token-drawer',
     onClose,
     onEscape: () => {
-      if (view === 'add' && step !== STEP.SAVING) setView('list');
+      if (view === 'detail' && !visibilityPending) setView('list');
+      else if (view === 'add' && step !== STEP.SAVING) setView('list');
       else if (view === 'list') sheet.close();
     },
   });
@@ -107,13 +82,12 @@ export function TokenDrawer({
   // ============================================================================================
   // LIST VIEW
   // ============================================================================================
-  const closeBtn = track(Button({ label: 'Close', variant: 'text', onClick: () => close() }));
-  const listHead = h('div', { class: 'modal-head token-drawer-head' }, [
-    h('span', { class: 'modal-icon' }, icon('coins', 18)),
-    h('h2', { text: 'Tokens' }),
-    closeBtn.el,
-  ]);
-
+  function closeButton() {
+    const button = h('button', { type: 'button', class: 'icon-btn icon-btn-ghost token-drawer-close', 'aria-label': 'Close' },
+      h('img', { src: 'icons/rabby-close.svg', alt: '', width: 16, height: 16 }));
+    sheet.d.on(button, 'click', () => { if (!visibilityPending) close(); });
+    return button;
+  }
   const searchField = track(Field({
     label: 'Search',
     placeholder: 'Symbol, name, or mint address',
@@ -136,12 +110,25 @@ export function TokenDrawer({
       .some((v) => String(v).toLowerCase().includes(query));
   }
 
+  function tokenBalance(token) {
+    const state = data.tokenState?.get(token.mintAddress);
+    if (!state || state.error) return null;
+    const symbol = state.symbol || token.symbol || 'TOKEN';
+    if (state.amountUnits != null && /^\d+$/.test(String(state.amountUnits))) {
+      const decimals = Number.isInteger(state.decimals) ? state.decimals : token.decimals;
+      if (Number.isInteger(decimals) && decimals >= 0 && decimals <= 18) {
+        return `${formatTokenAmount(BigInt(state.amountUnits), decimals)} ${symbol}`;
+      }
+    }
+    return state.tokenAccountExists === false ? `0 ${symbol}` : null;
+  }
+
   function renderList() {
     disposeRows();
     const query = searchField.value.trim().toLowerCase();
 
     // Native THRU row. No changePercent: this wallet has no market-data source.
-    if (matchesQuery(query, { symbol: 'THRU', name: 'Thru Native Token' })) {
+    if (!showHidden && matchesQuery(query, { symbol: 'THRU', name: 'Thru Native Token' })) {
       rows.push(AssetRow({
         symbol: 'THRU',
         name: 'Thru Native Token',
@@ -150,31 +137,24 @@ export function TokenDrawer({
         network: networkLabel,
         isNative: true,
         stale: data.stale,
+        onClick: () => openDetails({ symbol: 'THRU', name: 'Thru Native Token' }),
       }));
     }
 
     const allTokens = [...(data.tokens || [])];
 
     for (const token of allTokens) {
-      if (token.hidden) continue;
-      if (!matchesQuery(query, token)) continue;
-      const state = data.tokenState?.get(token.mintAddress);
-      let balanceText = null;
-      if (state && state.error !== true && state.amountUnits != null) {
-        const decimals = Number.isInteger(state.decimals) ? state.decimals
-          : (Number.isInteger(token.decimals) ? token.decimals : 0);
-        balanceText = `${formatTokenAmount(BigInt(state.amountUnits), decimals)} ${token.symbol || 'TOKEN'}`;
-      } else if (state && state.error !== true && state.tokenAccountExists === false) {
-        balanceText = `0 ${token.symbol || 'TOKEN'}`;
-      }
+      if (Boolean(token.hidden) !== showHidden || !matchesQuery(query, token)) continue;
       const row = AssetRow({
         symbol: token.symbol,
         name: token.name,
-        balanceText,
+        balanceText: tokenBalance(token),
         network: networkLabel,
         mintAddress: token.mintAddress,
         imageUrl: token.imageUrl,
         usdValue: null,
+        stale: Boolean(data.tokenStateStale),
+        onClick: () => openDetails(token),
       });
       if (highlightMint && token.mintAddress === highlightMint) row.el.classList.add('just-added');
       rows.push(row);
@@ -183,7 +163,8 @@ export function TokenDrawer({
     for (const row of rows) listHost.appendChild(row.el);
     const empty = rows.length === 0;
     emptyHint.classList.toggle('hidden', !empty);
-    emptyHint.textContent = empty ? `No tokens match “${searchField.value.trim()}”.` : '';
+    emptyHint.textContent = !empty ? '' : query ? `No tokens match “${searchField.value.trim()}”.`
+      : showHidden ? 'No hidden tokens.' : 'No tokens to display.';
 
     if (highlightMint) {
       const target = rows.find((r) => r.el.classList.contains('just-added'));
@@ -192,19 +173,37 @@ export function TokenDrawer({
     }
   }
 
-  const addTokenBtn = track(Button({
-    label: 'Add custom token',
+  const addTokenBtn = track(IconButton({
+    title: 'Add custom token',
     iconName: 'plus',
+    variant: 'icon-btn-ghost',
     onClick: () => setView('add'),
   }));
-  addTokenBtn.el.classList.add('token-drawer-add');
+  const hiddenBtn = h('button', {
+    type: 'button',
+    class: 'icon-btn icon-btn-ghost',
+    title: 'Hidden tokens',
+    'aria-label': 'Hidden tokens',
+    'aria-pressed': 'false',
+  }, icon('eyeOff', 16));
+  sheet.d.on(hiddenBtn, 'click', () => {
+    showHidden = !showHidden;
+    hiddenBtn.setAttribute('aria-pressed', String(showHidden));
+    listTitle.textContent = showHidden ? 'Hidden tokens' : 'Tokens';
+    renderList();
+  });
+  const listTitle = h('h2', { text: 'Tokens' });
+  const listHead = h('div', { class: 'modal-head token-drawer-head' }, [
+    h('span', { class: 'modal-icon' }, icon('coins', 18)),
+    listTitle,
+    h('div', { class: 'token-drawer-toolbar' }, [hiddenBtn, addTokenBtn.el, closeButton()]),
+  ]);
 
   const listView = h('div', { class: 'token-view' }, [
     listHead,
     searchField.el,
     listHost,
     emptyHint,
-    addTokenBtn.el,
   ]);
 
   // ============================================================================================
@@ -444,21 +443,123 @@ export function TokenDrawer({
   }
 
   // ============================================================================================
+  // DETAIL VIEW — one read for the selected mint, zero RPCs for list rows.
+  const detailsBack = track(IconButton({ iconName: 'back', title: 'Back to tokens', onClick: () => setView('list') }));
+  const detailsTitle = h('h2', { text: 'Token details' });
+  const balanceValue = h('strong');
+  const detailFreshness = h('p', { class: 'hint' });
+  const mintFacts = h('dl', { class: 'token-detail-card token-mint-facts' });
+  const detailStatus = h('p', { class: 'hint', role: 'status' });
+  const retryBtn = track(Button({ label: 'Retry details', variant: 'secondary', onClick: () => loadDetails() }));
+  const visibilityBtn = h('button', { type: 'button', class: 'btn secondary' });
+  const visibilityNote = h('p', { class: 'hint' });
+  const detailView = h('div', { class: 'token-view hidden' }, [
+    h('header', { class: 'modal-head token-drawer-head' }, [detailsBack.el, detailsTitle, closeButton()]),
+    h('section', { class: 'token-detail-card' }, [h('h3', { text: 'My balance' }), balanceValue, detailFreshness]),
+    mintFacts, detailStatus, retryBtn.el, visibilityBtn, visibilityNote,
+  ]);
+
+  function currentSelection() {
+    return data.tokens?.find((token) => token.mintAddress === selection?.mintAddress) || selection;
+  }
+
+  function renderDetails() {
+    const token = currentSelection();
+    if (!token) return;
+    const mint = token.mintAddress;
+    detailsTitle.textContent = mintDetails?.ticker || token.symbol || token.name || 'Token details';
+    balanceValue.textContent = (mint ? tokenBalance(token) : data.nativeText) || 'Balance unavailable';
+    detailFreshness.textContent = (mint ? data.tokenStateStale : data.stale) ? 'Cached · may be out of date' : '';
+    const facts = [['Network', networkLabel]];
+    if (mint) facts.push(['Mint address', mint]);
+    if (mintDetails?.exists) {
+      const { decimals, supply, hasFreezeAuthority } = mintDetails;
+      if (Number.isInteger(decimals) && decimals >= 0 && decimals <= 18) {
+        facts.push(['Decimals', String(decimals)]);
+        if (supply != null && /^\d+$/.test(String(supply))) {
+          facts.push(['Total supply', formatTokenAmount(BigInt(supply), decimals)]);
+        }
+      }
+      if (typeof hasFreezeAuthority === 'boolean') facts.push(['Freeze authority', hasFreezeAuthority ? 'Present' : 'None']);
+    }
+    mintFacts.replaceChildren(...facts.flatMap(([term, value]) => [h('dt', { text: term }), h('dd', { text: value })]));
+    visibilityBtn.classList.toggle('hidden', !mint || !onSetVisibility);
+    visibilityBtn.textContent = token.hidden ? 'Show in Assets' : 'Remove from Assets';
+    visibilityNote.textContent = mint && onSetVisibility
+      ? 'This only changes what Assets shows. It does not move funds or delete the token.' : '';
+  }
+
+  async function loadDetails() {
+    const mint = selection?.mintAddress;
+    const id = ++attempt;
+    retryBtn.el.classList.add('hidden');
+    if (!mint || !onReadDetails) return;
+    detailStatus.textContent = 'Checking mint details…';
+    try {
+      const verified = await onReadDetails(mint);
+      if (sheet.closed || view !== 'detail' || id !== attempt) return;
+      mintDetails = verified?.exists ? verified : null;
+      detailStatus.textContent = mintDetails ? '' : 'Mint details unavailable.';
+      retryBtn.el.classList.toggle('hidden', Boolean(mintDetails));
+      renderDetails();
+    } catch {
+      if (sheet.closed || view !== 'detail' || id !== attempt) return;
+      detailStatus.textContent = 'Mint details could not be loaded.';
+      retryBtn.el.classList.remove('hidden');
+    }
+  }
+
+  function openDetails(token) {
+    selection = token;
+    mintDetails = null;
+    detailStatus.textContent = '';
+    setView('detail');
+    loadDetails();
+  }
+
+  sheet.d.on(visibilityBtn, 'click', async () => {
+    const token = currentSelection();
+    if (!token?.mintAddress || !onSetVisibility || visibilityPending) return;
+    const hidden = !token.hidden;
+    visibilityPending = true;
+    visibilityBtn.disabled = true;
+    sheet.setDismissible(false);
+    try {
+      await onSetVisibility(token.mintAddress, hidden);
+      if (sheet.closed) return;
+      data = { ...data, tokens: (data.tokens || []).map((row) => row.mintAddress === token.mintAddress
+        ? { ...row, hidden } : row) };
+      visibilityPending = false;
+      setView('list');
+    } catch {
+      if (!sheet.closed) visibilityNote.textContent = 'Could not update token visibility. Try again.';
+    } finally {
+      visibilityPending = false;
+      visibilityBtn.disabled = false;
+      if (!sheet.closed) sheet.setDismissible(true);
+    }
+  });
+
   // VIEW SWITCH
   // ============================================================================================
   function setView(next) {
     if (sheet.closed || next === view) return;
-    if (step === STEP.SAVING) return; // never abandon a save mid-flight
+    if (step === STEP.SAVING || visibilityPending) return; // never abandon a save mid-flight
+    attempt += 1;
     view = next;
     listView.classList.toggle('hidden', next !== 'list');
     addView.classList.toggle('hidden', next !== 'add');
+    detailView.classList.toggle('hidden', next !== 'detail');
     sheet.card.classList.toggle('is-adding', next === 'add');
     if (next === 'add') {
       resetAdd();
       requestAnimationFrame(() => mintField.focus());
+    } else if (next === 'detail') {
+      renderDetails();
+      requestAnimationFrame(() => { if (!sheet.closed && view === 'detail') detailsBack.el.focus(); });
     } else {
       renderList();
-      requestAnimationFrame(() => searchField.focus());
+      requestAnimationFrame(() => { if (!sheet.closed && view === 'list') searchField.focus(); });
     }
   }
 
@@ -467,6 +568,7 @@ export function TokenDrawer({
   // ============================================================================================
   sheet.card.appendChild(listView);
   sheet.card.appendChild(addView);
+  sheet.card.appendChild(detailView);
 
   renderList();
   // The drawer's job is browsing tokens — put the caret in the search, not on Close.
@@ -482,6 +584,7 @@ export function TokenDrawer({
       if (sheet.closed) return;
       data = { ...data, ...next };
       if (view === 'list') renderList();
+      else if (view === 'detail') renderDetails();
     },
     destroy() {
       close();

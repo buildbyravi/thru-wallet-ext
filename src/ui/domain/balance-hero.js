@@ -2,7 +2,7 @@ import { h, disposer } from '../kit/dom.js';
 import { icon } from '../kit/icon.js';
 
 /**
- * USD-first balance readout inside the 196px ink header.
+ * Balance readout: show native THRU first when there is no fiat quote.
  *
  * There is deliberately no 24h-delta line: this wallet has no price or market-data
  * source, so any percentage here would be fabricated. The previous iteration rendered
@@ -49,8 +49,18 @@ export function BalanceHero({
   }
 
   const usdEl = h('div', { class: 'dash-balance-usd', text: usd ?? '\u2014' });
-  const row = h('div', { class: 'dash-balance-row' }, [usdEl, refreshBtn]);
   const nativeEl = h('div', { class: 'dash-balance-native', text: native });
+  const row = h('div', { class: 'dash-balance-row' }, [
+    h('div', { class: 'dash-balance-amounts' }, [usdEl, nativeEl]), refreshBtn,
+  ]);
+
+  function showFiat(value) {
+    const hasQuote = Boolean(value && value !== '—');
+    usdEl.textContent = hasQuote ? value : '—';
+    usdEl.classList.toggle('hidden', !hasQuote);
+    nativeEl.classList.toggle('dash-balance-primary', !hasQuote);
+  }
+  showFiat(usd);
   const summaryEl = h('div', {
     class: `dash-balance-summary${summary ? '' : ' hidden'}`,
     text: summary,
@@ -75,7 +85,7 @@ export function BalanceHero({
     elAttrs['aria-label'] = 'Open token list';
     elAttrs.class = 'dash-balance-hero clickable';
   }
-  const el = h('div', elAttrs, [row, nativeEl, footRow]);
+  const el = h('div', elAttrs, [row, footRow]);
 
   if (onOpen) {
     d.on(el, 'click', () => onOpen());
@@ -93,7 +103,7 @@ export function BalanceHero({
   return {
     el,
     update({ usd: u, native: n, summary: s } = {}) {
-      if (u !== undefined) usdEl.textContent = u ?? '\u2014';
+      if (u !== undefined) showFiat(u);
       if (n !== undefined) nativeEl.textContent = n;
       if (s !== undefined) {
         summaryEl.textContent = s;

@@ -80,7 +80,7 @@ export function AppShell({ navigate, onNetworkChange }) {
   // ---- CurrentConnection Footer -------------------------------------------
   const connectionFooter = CurrentConnection({
     networkLabel: 'Betanet',
-    onNetworkClick: () => navigate('/settings'),
+    onNetworkClick: () => navigate('/settings?view=network'),
   });
 
   // Where routes render.

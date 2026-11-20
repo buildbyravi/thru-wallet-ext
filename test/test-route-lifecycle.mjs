@@ -2335,6 +2335,44 @@ async function runScenario(scenario) {
 
 // ---- Settings: custom networks withdrawn, side panel offered ---------------
 
+async function dashboardNetworkChooserTest() {
+  section('dashboard network control opens the guarded network-only chooser');
+  resetBackend(SCENARIOS[2]);
+  resetDom();
+  guards.invalidate();
+  const app = DOC.getElementById('app');
+  const router = await boot({ root: app });
+  await settle();
+
+  const netButton = buttons(app, /active network betanet; choose network/i)[0];
+  ok('dashboard has a named network control', Boolean(netButton));
+  click(netButton);
+  await settle();
+  const tree = router.root;
+  ok('network control opens only the chooser, not unrelated Settings',
+    /Choose network/.test(textOf(tree)) && !/Side Panel Mode/.test(textOf(tree)), textOf(tree));
+  const rows = allElements(tree).filter((el) => el.classList.contains('row'));
+  const custom = rows.find((el) => /My node/.test(textOf(el)));
+  const current = rows.find((el) => /Betanet/.test(textOf(el)));
+  ok('active network is marked current and does not offer a same-network switch',
+    current?.getAttribute('aria-current') === 'true' && current?.localName !== 'button');
+  ok('custom network cannot be chosen or managed in the switcher',
+    custom?.getAttribute('aria-disabled') === 'true' && custom?.localName !== 'button'
+    && buttons(tree, /remove my node/i).length === 0);
+  const switchCount = () => chromeLog.calls.filter((method) => method === 'network.setActive').length;
+  const before = switchCount();
+  click(current);
+  click(custom);
+  ok('clicking the active or quarantined network sends no switch request', switchCount() === before);
+  click(buttons(tree, /^Testnet/i)[0]);
+  await settle();
+  ok('a selectable fixture network switches through the existing API',
+    switchCount() === before + 1 && backend.activeNetworkId === 'testnet');
+  ok('switching returns to the dashboard', router.currentPath === '/dashboard', router.currentPath);
+  router.stop();
+  await settle();
+}
+
 async function settingsTest() {
   section('settings: no custom-network form; Side Panel Mode is an explicit opt-in');
 
@@ -3089,8 +3127,9 @@ async function createFlowBackupTest() {
   const views = () => allElements(drawerCard()).filter((el) => el.classList?.contains?.('token-view'));
   const listViewHidden = () => views()[0]?.classList?.contains?.('hidden') === true;
   const addViewHidden = () => views()[1]?.classList?.contains?.('hidden') === true;
-  ok('the drawer has exactly two views and opens on the list',
-    views().length === 2 && !listViewHidden() && addViewHidden());
+  ok('the drawer has exactly three views and opens on the list only',
+    views().length === 3 && !listViewHidden() && addViewHidden()
+      && views()[2]?.classList?.contains?.('hidden'));
 
   click(buttons(drawerCard(), /add custom token/i)[0]);
   await settle();
@@ -3242,6 +3281,30 @@ async function createFlowBackupTest() {
   ok('the drawer lists the native row', textOf(drawerCard()).includes('Thru Native Token'),
     textOf(drawerCard()).slice(0, 160));
   ok('the drawer lists the registered token', textOf(drawerCard()).includes('SMK'));
+
+  const smkRow = buttons(drawerCard(), /SMK/)[0];
+  click(smkRow);
+  await settle();
+  const shownViews = () => allElements(drawerCard()).filter((el) =>
+    el.classList.contains('token-view') && !el.classList.contains('hidden'));
+  ok('clicking a token opens details as the only visible view',
+    shownViews().length === 1 && textOf(shownViews()[0]).includes('My balance'));
+  const detailBack = buttons(shownViews()[0], /Back to tokens/i)[0];
+  click(detailBack);
+  await settle();
+  ok('the detail Back control restores only the list',
+    shownViews().length === 1 && buttons(shownViews()[0], /^Add custom token$/i).length === 1);
+  const toolbar = shownViews()[0]?.querySelector('.token-drawer-toolbar');
+  ok('hidden tokens and add are beside close in the list header',
+    Boolean(toolbar) && allElements(toolbar).filter((el) => el.localName === 'button')
+      .map(labelOf).join(',') === 'Hidden tokens,Add custom token,Close');
+  const hiddenToggle = buttons(toolbar, /^Hidden tokens$/i)[0];
+  click(hiddenToggle);
+  ok('hidden filter is announced as pressed and shows the hidden list',
+    hiddenToggle?.getAttribute('aria-pressed') === 'true' && /No hidden tokens/.test(textOf(drawerCard())));
+  click(hiddenToggle);
+  ok('turning the hidden filter off restores the normal list',
+    hiddenToggle?.getAttribute('aria-pressed') === 'false' && textOf(drawerCard()).includes('SMK'));
 
   // Search narrows the list live.
   const searchInput = allElements(drawerCard()).find((el) =>
@@ -6454,6 +6517,7 @@ try {
     await runScenario(scenario);
   }
   await settingsTest();
+  await dashboardNetworkChooserTest();
   await themeTest();
   focusTrapTest();
   await passwordModalTest();

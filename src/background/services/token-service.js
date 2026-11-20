@@ -346,14 +346,27 @@ export async function getCachedTokenBalances({ address } = {}) {
   };
 }
 
+const inFlightTokenBalances = new Map();
+
 export async function getTokenBalances({ address } = {}) {
   const owner = address || (await vault.getActiveAccount())?.address;
   if (!owner) throw new Error('An address is required to read token balances.');
   const networkId = (await getActiveNetworkConfig()).id; // bind SDK before reading mints
+  const generation = getNetworkGeneration();
+  const key = JSON.stringify([networkId, generation, owner]);
+  const existing = inFlightTokenBalances.get(key);
+  if (existing) return existing;
+  const request = refreshTokenBalances(owner, networkId, generation)
+    .finally(() => inFlightTokenBalances.delete(key));
+  inFlightTokenBalances.set(key, request);
+  return request;
+}
+
+async function refreshTokenBalances(owner, networkId, generation) {
   const registry = await listDeployedTokens();
 
   const { balances: results, anyError } = await readRegisteredTokenBalances(owner, registry);
-  if (await getActiveNetworkId() !== networkId) {
+  if (await getActiveNetworkId() !== networkId || getNetworkGeneration() !== generation) {
     const error = new Error('The network changed while token balances were loading. Retry on the active network.');
     error.code = 'NETWORK_CHANGED';
     error.retryable = true;
