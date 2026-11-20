@@ -10,6 +10,7 @@ import { formatTokenAmount } from '../../shared/format.js';
 import { DEFAULT_NETWORK } from '../../lib/networks.js';
 import { assertSendContext } from './send-context.js';
 import { scopedKey } from '../../shared/network-scope.js';
+import { isVerifiedTokenBalance } from '../../shared/tokens.js';
 
 /**
  * Deploy a new native token mint on ThruVM using the active account.
@@ -381,7 +382,7 @@ async function refreshTokenBalances(owner, networkId, generation) {
       : null,
   };
   // Cache only clean reads: a partial-failure result never overwrites a good snapshot.
-  if (!anyError && results.every((r) => r && r.amountUnits != null)) {
+  if (!anyError && results.every(isVerifiedTokenBalance)) {
     writeTokenBalanceCache(owner, results, networkId); // fire-and-forget
   }
   return response;

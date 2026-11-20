@@ -42,6 +42,7 @@ function extractAmount(text) {
  *   imageUrl       optional remote logo URL
  *   isNative       renders the Native bolt glyph
  *   stale          balance is cached and possibly out of date
+ *   balanceNote    optional explicit cache or availability label
  *   onClick        optional row click handler
  */
 export function AssetRow({
@@ -55,6 +56,7 @@ export function AssetRow({
   imageUrl = null,
   isNative = false,
   stale = false,
+  balanceNote = null,
   onClick,
 } = {}) {
   const d = disposer();
@@ -92,7 +94,8 @@ export function AssetRow({
       class: changePercentClasses(String(changePercent)),
       text: changePercent,
     });
-  const subvaluesRow = h('div', { class: 'token-row-subvalues' }, [usdEl, changeEl]);
+  const subvaluesRow = h('div', { class: 'token-row-subvalues' }, [usdEl, changeEl,
+    balanceNote ? h('span', { class: 'token-row-balance-note', text: balanceNote }) : null]);
 
   const valuesCol = h('div', { class: 'token-row-values' }, [amountEl, subvaluesRow]);
 

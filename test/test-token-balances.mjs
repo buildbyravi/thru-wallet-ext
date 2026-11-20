@@ -196,6 +196,25 @@ try {
   assert.deepEqual(savedImports(), [imported.data], 'duplicates cannot replace verified metadata');
   console.log('  ok - unlocked import persists chain decimals; locked/extra-field/duplicate calls refuse');
 
+  const balanceOwner = Pubkey.from(new Uint8Array(32).fill(23)).toThruFmt();
+  const readBalances = (method) => handleApiRequest({ method, params: { address: balanceOwner } });
+  sdk.accounts.get = async () => { throw Object.assign(new Error('absent'), { code: 5 }); };
+  const unheld = await readBalances('token.getBalances');
+  assert.equal(unheld.ok, true);
+  assert.equal(unheld.data.balances[0]?.tokenAccountExists, false);
+  assert.equal(unheld.data.balances[0]?.amountUnits, null, 'proven zero keeps the existing wire shape');
+  await new Promise(setImmediate); // the snapshot write is intentionally asynchronous
+  const cachedUnheld = await readBalances('token.getCachedBalances');
+  assert.ok(cachedUnheld.data.fetchedAt > 0, 'a clean snapshot with a proven zero is stored');
+  assert.deepEqual(cachedUnheld.data.balances, unheld.data.balances);
+  sdk.accounts.get = async () => { throw new Error('RPC unavailable'); };
+  const offline = await readBalances('token.getBalances');
+  assert.equal(offline.data.balances[0]?.error, true, 'transport failure is not a zero');
+  await new Promise(setImmediate);
+  assert.deepEqual((await readBalances('token.getCachedBalances')).data, cachedUnheld.data,
+    'a failed refresh preserves the verified snapshot and its original timestamp');
+  console.log('  ok - verified absence persists; a transport failure does not overwrite the snapshot');
+
   for (const [label, response, code] of [
     ['wrong owner', () => mintAccount({ owner: mintAddress }), 'UNSUPPORTED'],
     ['unsupported decimals', () => mintAccount({ decimals: 19 }), 'UNSUPPORTED'],

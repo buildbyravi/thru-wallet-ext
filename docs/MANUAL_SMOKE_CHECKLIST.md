@@ -22,6 +22,11 @@ keyboard focus and dismissal, and scrolling at the widths in §2.
 
 ---
 
+For the Assets drawer, the optional [Playwright cache regression](../test/browser/token-cache.mjs)
+loads the built popup with an isolated bridge fixture and no chain access. It checks cached first paint,
+partial refresh, a verified zero, and an uncached failure. The script header gives the invocation;
+run it with a separately installed Playwright and browser. This is not unpacked MV3 evidence.
+
 ## 1. Both Contexts: Toolbar Popup and Side Panel
 
 The toolbar popup loads `popup.html`; the side panel loads `popup.html?thru_panel=1` (`side_panel.default_path` in `src/manifest.json`).

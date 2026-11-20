@@ -13,6 +13,7 @@ import { TokenDrawer } from '../../domain/token-drawer.js';
 import { SecuritySheet } from '../../domain/security-sheet.js';
 import * as bridge from '../bridge.js';
 import { formatThru } from '../../../shared/format.js';
+import { isVerifiedTokenBalance } from '../../../shared/tokens.js';
 
 export function DashboardRoute({ navigate }) {
   const d = disposer();
@@ -276,20 +277,18 @@ export function DashboardRoute({ navigate }) {
     tokens: [],
     stale: false,
     tokenState: null,
-    tokenStateStale: false,
   };
 
   // `tokens` / `tokenState` === undefined mean "keep what the drawer already has". The cached
   // first paint used to pass [] here, which BLANKED every real token in an open drawer until the
   // live reads landed (the "wallet tokens flash while adding a custom token" bug).
-  function updateAssets(nativeText, tokens, stale, tokenState, tokenStateStale = assetsSnapshot.tokenStateStale) {
+  function updateAssets(nativeText, tokens, stale, tokenState) {
     assetsSnapshot = {
       nativeText,
       nativeUsd: currentBalanceUsd,
       tokens: tokens === undefined ? assetsSnapshot.tokens : (tokens || []),
       stale,
       tokenState: tokenState === undefined ? assetsSnapshot.tokenState : tokenState,
-      tokenStateStale,
     };
     // The balance box summarizes what the drawer holds — real symbols only.
     const realTokens = assetsSnapshot.tokens.filter((t) => !t.hidden);
@@ -297,6 +296,24 @@ export function DashboardRoute({ navigate }) {
       summary: ['THRU', ...realTokens.map((t) => t.symbol)].join(' · '),
     });
     drawer?.update(assetsSnapshot);
+  }
+
+  function tokenRows(snapshot) {
+    if (!currentNetwork?.id || snapshot?.networkId !== currentNetwork.id || !Array.isArray(snapshot.balances)) {
+      return [];
+    }
+    return snapshot.balances;
+  }
+
+  function reconcileTokenBalances(tokens, snapshot) {
+    const live = new Map(tokenRows(snapshot).map((row) => [row.mintAddress, row]));
+    return new Map(tokens.map(({ mintAddress }) => {
+      const row = live.get(mintAddress);
+      const previous = assetsSnapshot.tokenState?.get(mintAddress);
+      return [mintAddress, isVerifiedTokenBalance(row) ? { ...row, stale: false }
+        : isVerifiedTokenBalance(previous) ? { ...previous, stale: true }
+          : { error: true }];
+    }));
   }
 
   function openDrawer() {
@@ -419,12 +436,15 @@ export function DashboardRoute({ navigate }) {
         pillAddr.replaceChildren(AddressText({ address: account.address, chars: 6 }));
       }
     } catch (error) {
+      if (context !== assetContext) return;
       banner.set(error.message || 'Could not load the active account.');
       balanceHero.setSpinning(false);
       return;
     }
 
-    if (!account?.address) {
+    if (context !== assetContext) return;
+    const address = account?.address;
+    if (!address) {
       balanceHero.setSpinning(false);
       return;
     }
@@ -434,9 +454,9 @@ export function DashboardRoute({ navigate }) {
     let nativeText = '—';
     let hasCachedBalance = false;
     try {
-      const cached = await bridge.send('tx.getCachedBalances', { addresses: [account.address] });
+      const cached = await bridge.send('tx.getCachedBalances', { addresses: [address] });
       if (context !== assetContext) return;
-      const entry = cached?.[account.address];
+      const entry = cached?.[address];
       if (entry?.balance != null && /^[0-9]+$/.test(String(entry.balance))
         && Number.isFinite(entry.fetchedAt) && entry.fetchedAt > 0) {
         const raw = BigInt(entry.balance);
@@ -455,11 +475,13 @@ export function DashboardRoute({ navigate }) {
       // cache miss is not an error
     }
 
+    if (context !== assetContext) return;
+
     // Auto-discovery (v26, Solana-parity ask 2026-10-26): any incoming token mint observed in
     // cached history is chain-verified and registered serverside, so the asset list below
     // shows it without the user pasting an address. Best-effort and non-blocking: a chain that
     // cannot reach some mints yields skipped-reasons, never a failed dashboard.
-    bridge.send('token.discover', { address: account.address }).catch(() => null);
+    bridge.send('token.discover', { address: address }).catch(() => null);
 
     // Hard rule 15 (2026-10-26): token list paints from the network-scoped snapshot BEFORE
     // any live read. A slow chain replaces the rows; it never blocks them.
@@ -467,27 +489,31 @@ export function DashboardRoute({ navigate }) {
       try {
         const [cachedList, cachedBal] = await Promise.all([
           bridge.send('token.list'),
-          bridge.send('token.getCachedBalances', { address: account.address }),
+          bridge.send('token.getCachedBalances', { address: address }),
         ]);
         if (context !== assetContext) return;
-        const cachedState = new Map((cachedBal?.balances || []).map((b) => [b.mintAddress, b]));
-        if (cachedBal?.balances?.length || (Array.isArray(cachedList) && cachedList.length)) {
-          updateAssets(nativeText, Array.isArray(cachedList) ? cachedList : [],
-            cachedBal?.stale !== false, cachedState, cachedBal?.stale !== false);
+        const cachedState = new Map(assetsSnapshot.tokenState || []);
+        for (const row of tokenRows(cachedBal)) {
+          if (isVerifiedTokenBalance(row) && !isVerifiedTokenBalance(cachedState.get(row.mintAddress))) {
+            cachedState.set(row.mintAddress, { ...row, stale: true });
+          }
         }
+        updateAssets(assetsSnapshot.nativeText, Array.isArray(cachedList) ? cachedList : undefined,
+          assetsSnapshot.stale, cachedState);
       } catch {
         // Cache miss is not an error; live hydration follows.
       }
     }
 
+    if (context !== assetContext) return;
     const [infoResult, tokensResult, pendingResult, tokenBalancesResult] = await Promise.allSettled([
       force
-        ? bridge.send('tx.getBalances', { addresses: [account.address] })
-          .then((m) => m?.[account.address])
-        : bridge.send('tx.getAccountInfo', { address: account.address }),
+        ? bridge.send('tx.getBalances', { addresses: [address] })
+          .then((m) => m?.[address])
+        : bridge.send('tx.getAccountInfo', { address: address }),
       bridge.send('token.list'),
       bridge.send('tx.getPending'),
-      bridge.send('token.getBalances', { address: account.address }),
+      bridge.send('token.getBalances', { address: address }),
     ]);
 
     if (context !== assetContext) return;
@@ -514,7 +540,7 @@ export function DashboardRoute({ navigate }) {
         // from a background refresh silently failed for exactly those users. registerAccount
         // is the sanctioned unlocked-only exception: it proves the address is owned by this
         // vault, signs with that account's own key, and re-checks the network before signing.
-        bridge.send('tx.registerAccount', { address: account.address }).catch(() => {});
+        bridge.send('tx.registerAccount', { address: address }).catch(() => {});
       }
     } else {
       // Do not leave the neutral "$0.00" default looking like a verified zero when no
@@ -525,12 +551,11 @@ export function DashboardRoute({ navigate }) {
       }
     }
 
-    const tokens = tokensResult.status === 'fulfilled' ? tokensResult.value : [];
-    const tokenState = tokenBalancesResult.status === 'fulfilled'
-      ? new Map((tokenBalancesResult.value?.balances || []).map((b) => [b.mintAddress, b]))
-      : undefined;
-    updateAssets(nativeText, tokensResult.status === 'fulfilled' ? tokens : undefined,
-      infoResult.status === 'rejected' || infoResult.value?.stale === true, tokenState, tokenBalancesResult.status !== 'fulfilled');
+    const tokens = tokensResult.status === 'fulfilled' && Array.isArray(tokensResult.value)
+      ? tokensResult.value : assetsSnapshot.tokens;
+    const tokenState = reconcileTokenBalances(tokens, tokenBalancesResult.value);
+    updateAssets(nativeText, tokens,
+      infoResult.status === 'rejected' || infoResult.value?.stale === true, tokenState);
 
     if (pendingResult.status === 'fulfilled') {
       let pendings = pendingResult.value;
@@ -557,7 +582,7 @@ export function DashboardRoute({ navigate }) {
     hasKnownBalance = false;
     currentBalanceUsd = null;
     balanceHero.update({ usd: null, native: '—' });
-    updateAssets('—', [], false, null, false);
+    updateAssets('—', [], false, null);
   }
   load();
 

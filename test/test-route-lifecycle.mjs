@@ -5505,6 +5505,90 @@ async function historyCacheFirstTest() {
   }
 }
 
+async function dashboardTokenRefreshTest() {
+  section('dashboard Assets: partial refresh keeps verified rows and fences late replies');
+  resetBackend(SCENARIOS[2]);
+  resetDom();
+  const source = backend.tokens[0];
+  const tokens = ['CACHED', 'FRESH', 'EMPTY', 'UNKNOWN'].map((symbol, index) => ({
+    ...source, symbol, mintAddress: `${source.mintAddress}-${index}`, decimals: 6,
+  }));
+  backend.tokens = tokens;
+  const row = (index, amountUnits, props = {}) => ({ ...tokens[index], amountUnits,
+    tokenAccountExists: true, error: false, ...props });
+  const originalCache = FIXTURES['token.getCachedBalances'];
+  FIXTURES['token.getCachedBalances'] = () => ({ networkId: activeNetwork().id,
+    balances: [row(0, '22918766'), row(1, '1000000')], fetchedAt: Date.now(), stale: false });
+  const holds = holdReplies((message) => message.method === 'token.getBalances');
+  let dash;
+  try {
+    dash = DashboardRoute({ navigate() {} });
+    DOC.body.appendChild(dash.el);
+    await settle();
+    const openDrawer = () => click(dash.el.querySelector('.dash-balance-hero'));
+    const tokenRow = (symbol) => allElements(DOC.body).find((el) =>
+      el.classList.contains('token-ledger-row') && textOf(el.querySelector('.token-row-symbol')) === symbol);
+    const amount = (symbol) => textOf(tokenRow(symbol)?.querySelector('.token-row-amount'));
+    openDrawer();
+    ok('cached amount paints before a held live response', amount('CACHED') === '22.918766');
+    const partial = { networkId: NETWORK_BETANET.id, balances: [
+      row(0, null, { error: true }), row(1, '2000000'),
+      row(2, null, { tokenAccountExists: false }), row(3, null, { error: true }),
+    ] };
+    holds.resolve('token.getBalances', partial);
+    await settle();
+    ok('failed live row keeps verified value with a cached label',
+      amount('CACHED') === '22.918766' && /Cached/.test(textOf(tokenRow('CACHED'))));
+    ok('unrelated successful and proven-zero rows remain fresh',
+      amount('FRESH') === '2' && amount('EMPTY') === '0'
+        && !/Cached/.test(textOf(tokenRow('FRESH'))) && !/Cached/.test(textOf(tokenRow('EMPTY'))));
+    ok('failed uncached row displays unavailable and not zero',
+      amount('UNKNOWN') === '—' && /Unavailable/.test(textOf(tokenRow('UNKNOWN'))));
+    click(tokenRow('UNKNOWN'));
+    await settle();
+    ok('unknown row detail says Balance unavailable', /Balance unavailable/.test(textOf(DOC.body)));
+
+    click(dash.el.querySelector('[title="Refresh balance"]'));
+    await settle();
+    const old = holds.held[0].message;
+    backend.activeNetworkId = NETWORK_TESTNET.id;
+    emitEvent('networkChanged', NETWORK_TESTNET);
+    await settle();
+    backend.activeNetworkId = NETWORK_BETANET.id;
+    emitEvent('networkChanged', NETWORK_BETANET);
+    await settle();
+    holds.resolve('token.getBalances', partial, (message) => message === holds.held.at(-1).message);
+    await settle();
+    openDrawer();
+    holds.resolve('token.getBalances', { ...partial, balances: [row(0, '99000000')] }, (message) => message === old);
+    await settle();
+    ok('an old response for the same network ID cannot overwrite the active generation',
+      amount('CACHED') === '22.918766' && !/99/.test(amount('CACHED')));
+
+    click(dash.el.querySelector('[title="Refresh balance"]'));
+    await settle();
+    const oldAccountRead = holds.held.at(-1).message;
+    backend.activeIndex = 1;
+    emitEvent('accountsChanged');
+    await settle();
+    backend.activeIndex = 0;
+    emitEvent('accountsChanged');
+    await settle();
+    holds.resolve('token.getBalances', partial, (message) => message === holds.held.at(-1).message);
+    await settle();
+    openDrawer();
+    holds.resolve('token.getBalances', { ...partial, balances: [row(0, '88000000')] },
+      (message) => message === oldAccountRead);
+    await settle();
+    ok('switching accounts away and back discards the old account response', amount('CACHED') === '22.918766');
+  } finally {
+    dash?.destroy();
+    dash?.el.remove();
+    holds.restore();
+    FIXTURES['token.getCachedBalances'] = originalCache;
+  }
+}
+
 // ---- Audit: other consumers of tx.getBalances must not display its stale zero ---------
 
 async function offlineBalanceConsumersTest() {
@@ -6532,6 +6616,7 @@ try {
   await ownRecipientRegistrationTest();
   await historyCacheFirstTest();
   await offlineBalanceConsumersTest();
+  await dashboardTokenRefreshTest();
   await nameReviewTest();
   await nameNotificationTest();
   await trackedDomainsTest();

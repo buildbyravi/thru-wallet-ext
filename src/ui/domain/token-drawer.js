@@ -9,6 +9,7 @@ import { Sheet } from '../kit/sheet.js';
 import { toast } from '../kit/toast.js';
 import { AssetRow } from './token-row.js';
 import { formatTokenAmount, shortAddress } from '../../shared/format.js';
+import { isVerifiedTokenBalance } from '../../shared/tokens.js';
 
 const STEP = Object.freeze({ IDLE: 'idle', CHECKING: 'checking', VERIFIED: 'verified', SAVING: 'saving' });
 
@@ -112,15 +113,10 @@ export function TokenDrawer({
 
   function tokenBalance(token) {
     const state = data.tokenState?.get(token.mintAddress);
-    if (!state || state.error) return null;
+    if (!isVerifiedTokenBalance(state)) return null;
     const symbol = state.symbol || token.symbol || 'TOKEN';
-    if (state.amountUnits != null && /^\d+$/.test(String(state.amountUnits))) {
-      const decimals = Number.isInteger(state.decimals) ? state.decimals : token.decimals;
-      if (Number.isInteger(decimals) && decimals >= 0 && decimals <= 18) {
-        return `${formatTokenAmount(BigInt(state.amountUnits), decimals)} ${symbol}`;
-      }
-    }
-    return state.tokenAccountExists === false ? `0 ${symbol}` : null;
+    if (state.tokenAccountExists === false || state.amountUnits === '0') return `0 ${symbol}`;
+    return `${formatTokenAmount(BigInt(state.amountUnits), state.decimals)} ${symbol}`;
   }
 
   function renderList() {
@@ -145,6 +141,7 @@ export function TokenDrawer({
 
     for (const token of allTokens) {
       if (Boolean(token.hidden) !== showHidden || !matchesQuery(query, token)) continue;
+      const balanceState = data.tokenState?.get(token.mintAddress);
       const row = AssetRow({
         symbol: token.symbol,
         name: token.name,
@@ -153,7 +150,8 @@ export function TokenDrawer({
         mintAddress: token.mintAddress,
         imageUrl: token.imageUrl,
         usdValue: null,
-        stale: Boolean(data.tokenStateStale),
+        stale: Boolean(balanceState?.stale),
+        balanceNote: balanceState?.stale ? 'Cached' : balanceState?.error ? 'Unavailable' : null,
         onClick: () => openDetails(token),
       });
       if (highlightMint && token.mintAddress === highlightMint) row.el.classList.add('just-added');
@@ -447,7 +445,7 @@ export function TokenDrawer({
   const detailsBack = track(IconButton({ iconName: 'back', title: 'Back to tokens', onClick: () => setView('list') }));
   const detailsTitle = h('h2', { text: 'Token details' });
   const balanceValue = h('strong');
-  const detailFreshness = h('p', { class: 'hint' });
+  const detailFreshness = h('p', { class: 'hint', role: 'status' });
   const mintFacts = h('dl', { class: 'token-detail-card token-mint-facts' });
   const detailStatus = h('p', { class: 'hint', role: 'status' });
   const retryBtn = track(Button({ label: 'Retry details', variant: 'secondary', onClick: () => loadDetails() }));
@@ -469,7 +467,7 @@ export function TokenDrawer({
     const mint = token.mintAddress;
     detailsTitle.textContent = mintDetails?.ticker || token.symbol || token.name || 'Token details';
     balanceValue.textContent = (mint ? tokenBalance(token) : data.nativeText) || 'Balance unavailable';
-    detailFreshness.textContent = (mint ? data.tokenStateStale : data.stale) ? 'Cached · may be out of date' : '';
+    detailFreshness.textContent = (mint ? data.tokenState?.get(mint)?.stale : data.stale) ? 'Cached · may be out of date' : '';
     const facts = [['Network', networkLabel]];
     if (mint) facts.push(['Mint address', mint]);
     if (mintDetails?.exists) {

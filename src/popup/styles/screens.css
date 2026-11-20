@@ -652,7 +652,8 @@ form > .btn.text {
   align-items: center;
   gap: 6px;
 }
-.token-row-usd {
+.token-row-usd,
+.token-row-balance-note {
   font-size: 11px;
   color: var(--foot, #6a7580);
 }
