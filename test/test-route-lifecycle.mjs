@@ -4031,6 +4031,8 @@ async function navigationTest() {
     chromeLog.calls.includes('tx.getHistoryFeed'));
   ok('the feed-served page still renders the familiar entries',
     /sig1|transfer|faucet/i.test(textOf(router.root)), textOf(router.root).slice(0, 200));
+  ok('faucet claims still appear in All as transaction cards',
+    [...router.root.querySelectorAll('.tx-card-title')].some((el) => textOf(el) === 'Claim'));
   ok('the feed path does not burn an RPC page for page one',
     chromeLog.calls.filter((m) => m === 'tx.listHistory').length === 0,
     chromeLog.calls.join(',').slice(-120));
@@ -4127,6 +4129,8 @@ async function navigationTest() {
   router.navigate('/history');
   await settle();
   const histText = textOf(router.root);
+  ok('History has only the All, Sent, Received and Failed filter chips',
+    [...router.root.querySelectorAll('.chip-option')].map(textOf).join('|') === 'All|Sent|Received|Failed');
   ok('a send shows its signed negative delta',
     histText.includes('-0.0001 THRU'), histText.slice(0, 220));
   ok('a receipt shows its signed positive delta',

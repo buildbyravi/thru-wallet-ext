@@ -23,7 +23,6 @@ const FILTERS = [
   { id: 'all', label: 'All' },
   { id: 'sent', label: 'Sent' },
   { id: 'received', label: 'Received' },
-  { id: 'faucet', label: 'Faucet' },
   { id: 'failed', label: 'Failed' },
 ];
 
