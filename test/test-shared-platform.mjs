@@ -160,12 +160,9 @@ section('2] no second middle-truncation in the display layer');
 section('3] no second clipboard write, toast host, or toast markup');
 {
   const writers = SRC.filter((f) => /navigator\.clipboard\.writeText/.test(readFileSync(f, 'utf8')));
-  // Two by design: the shared CopyButton, and the Receive address box that swaps its own label to
-  // "Copied" (an affordance, not a button). Both surface failure to the user.
-  eq('clipboard writes live in exactly the two documented places', writers.length, 2);
-  ok('they are the copy button and the receive box',
-    writers.includes('src/ui/kit/button.js') && writers.includes('src/ui/app/routes/receive.js'),
-    writers.join(', '));
+  eq('the shared copy button is the sole clipboard writer', writers.join(', '), 'src/ui/kit/button.js');
+  ok('Receive reuses the shared copy button',
+    /\bCopyButton\(/.test(readFileSync('src/ui/app/routes/receive.js', 'utf8')));
 
   const hosts = SRC.filter((f) => /'toast-host'|"toast-host"/.test(readFileSync(f, 'utf8')));
   eq('there is exactly one toast host', hosts.length, 1);

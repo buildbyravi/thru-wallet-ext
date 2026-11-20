@@ -1347,3 +1347,54 @@ form > .btn.text {
     color: var(--text-3);
   }
 }
+
+/* ---- Receive ----------------------------------------------------------- */
+.receive-network {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  color: var(--text-1);
+  font-weight: 600;
+}
+.receive-qr {
+  display: grid;
+  place-items: center;
+  inline-size: min(100%, 240px);
+  margin-inline: auto;
+  padding: 15px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+.receive-qr canvas {
+  display: block;
+  max-inline-size: 100%;
+  block-size: auto;
+  image-rendering: pixelated;
+}
+.receive-address {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-inset);
+}
+.receive-address code {
+  min-inline-size: 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+.receive-copy-status {
+  min-block-size: 1lh;
+  text-align: end;
+}

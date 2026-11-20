@@ -38,7 +38,7 @@ For former documentation paths, use `docs/DOCS_INDEX.md` section 3.4 to find the
 | BigInt amount formatting & address shortening | `src/shared/format.js` (`formatThru`, `parseThruAmount`, `formatTokenAmount`, `shortenMiddle`, `shortAddress`) |
 | Opaque account URL references | `src/shared/refs.js` |
 | Notifications (`toast`) vs screen state (`Banner`) | `src/ui/kit/toast.js` (events, `Rule 26` & `Rule 29`) / `src/ui/kit/feedback.js` (persistent state) |
-| Copy-to-clipboard button | `src/ui/kit/button.js` (`CopyButton`; `/receive` owns its inline `"Copied"` box) |
+| Copy-to-clipboard button | `src/ui/kit/button.js` (`CopyButton`; Receive uses its result callback for inline feedback) |
 | Add/change a transaction review kind | `src/shared/tx-review/decoders/` + `decoders/index.js` + `src/background/services/review/kinds.js` |
 | Review validation, TTL, error codes | `src/shared/tx-review/model.js` |
 | Review card UI / confirm & consent flow | `src/ui/domain/tx-review/review-card.js` + `confirm.js` + `src/background/services/review/{consent,store}.js` |

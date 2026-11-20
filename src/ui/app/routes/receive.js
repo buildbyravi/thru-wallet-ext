@@ -1,18 +1,7 @@
-// Receive route — address, QR, and explorer link.
-//
-// Replaces screens/receive.js. Same information, three fixes:
-//   - the address was interpolated into innerHTML; it is now a text node
-//   - explorerAddressUrl returns '' on a network with no explorer, so the link is
-//     omitted rather than rendered dead
-//   - the network is named explicitly. An address is only meaningful on the chain it is on, and
-//     "which network is this for" is the question a receive screen must answer.
-//   - the QR renders raised in the Thru palette (qr.js); the canvas carries an accessible name
-//   - a second, hidden CopyButton sat dead in the DOM ("for keyboard users" — but .hidden is
-//     display:none, so it reached nobody). Removed entirely later, when the address box
-//     itself became the copy affordance (click copies, box confirms inline).
-
+// Receive: one captured account/network pair for the displayed, copied and encoded address.
 import { h, disposer } from '../../kit/dom.js';
 import { icon } from '../../kit/icon.js';
+import { CopyButton } from '../../kit/button.js';
 import { PageHeader, Banner, Spinner } from '../../kit/feedback.js';
 import { AccountAvatar } from '../../domain/account-avatar.js';
 import { renderQR } from '../../../popup/qr.js';
@@ -21,158 +10,99 @@ import * as bridge from '../bridge.js';
 
 export function ReceiveRoute({ back }) {
   const d = disposer();
-  const owned = [];
-  let account = null;
-  let network = null;
-
-  function track(c) { owned.push(c); return c; }
-
-  const banner = Banner({ tone: 'error' });
-  const body = h('div', { class: 'stack stack-4' }, Spinner({ label: 'Loading' }).el);
-  let copyTimer = null;
-  let removeAddressCopy = null;
-  let removeQrToggle = null;
+  const banner = Banner();
+  const body = h('div', { class: 'stack stack-3' });
   const header = PageHeader({ title: 'Receive', onBack: () => back() });
   const el = h('section', { class: 'screen' }, [header.el, banner.el, body]);
+  let copy;
+  let revision = 0;
 
-  function clearBody() {
-    if (copyTimer) { clearTimeout(copyTimer); copyTimer = null; }
-    if (removeAddressCopy) { removeAddressCopy(); removeAddressCopy = null; }
-    if (removeQrToggle) { removeQrToggle(); removeQrToggle = null; }
-    for (const c of owned) c.destroy?.();
-    owned.length = 0;
-    while (body.firstChild) body.removeChild(body.firstChild);
+  function clear() {
+    copy?.destroy();
+    copy = null;
+    body.replaceChildren();
+    banner.clear();
   }
 
-  function render() {
-    clearBody();
-
-    const canvas = h('canvas', { width: 200, height: 200 });
-    // The artwork is nice until a scanner disagrees: some QR readers fail on rounded,
-    // graduated modules. Tap (or Enter) flips between the raised Thru style and a plain
-    // high-contrast version instantly — no settings trip, no leaving the screen.
-    let qrTheme = 'raised';
-    const qrBtn = h('button', {
-      type: 'button',
-      class: 'qr-toggle',
-      'aria-label': 'QR code of your receive address, styled — tap for a plain version',
-      title: 'Trouble scanning? Tap for a plain QR',
-    }, canvas);
-
-    const drawQR = () => {
-      // Canvas drawing only — no network fetch, no third-party image.
-      try {
-        renderQR(canvas, account.address, { theme: qrTheme });
-      } catch {
-        banner.set('Could not render the QR code. The address below is still correct.', 'warning');
-      }
-    };
-    drawQR();
-
-    const onQrClick = () => {
-      qrTheme = qrTheme === 'raised' ? 'flat' : 'raised';
-      qrBtn.setAttribute('aria-label', qrTheme === 'raised'
-        ? 'QR code of your receive address, styled — tap for a plain version'
-        : 'QR code of your receive address, plain — tap for the Thru-styled version');
-      drawQR();
-    };
-    qrBtn.addEventListener('click', onQrClick);
-    removeQrToggle = () => qrBtn.removeEventListener('click', onQrClick);
-
-    body.appendChild(h('div', { class: 'qr-container' }, qrBtn));
-
-    body.appendChild(h('div', { class: 'row-flex center' }, [
-      AccountAvatar({ address: account.address, imported: account.keyring?.type === 'privateKey' }),
-      h('div', {}, [
-        h('div', { class: 'row-title center', text: account.label || 'Account' }),
-        h('div', { class: 'hint center', text: account.keyring?.label || '' }),
-      ]),
-    ]));
-
-    body.appendChild(h('p', { class: 'muted center', text:
-      `Send only THRU on ${network?.label || 'this network'} to this address.` }));
-
-    // Full address on one tuned line (ellipsis would only trigger below the popup's
-    // minimum width; the CLIPBOARD always receives the complete string) — and the
-    // click/tap/Enter copies it and the box confirms inline ("Copied") for ~1s
-    // before returning to the address. One surface for the one thing an address
-    // is for, instead of address + separate button duplicating each other.
-    const addrText = h('span', { class: 'copy-address-text', text: account.address });
-    const addressBox = h('button', {
-      type: 'button',
-      class: 'monospace-block copy-address',
-      'aria-label': `Copy address: ${account.address}`,
-    }, [addrText, icon('copy', 14)]);
-    body.appendChild(addressBox);
-
-    // Raw listeners are bound to the box's own lifetime (clearBody), not the route's —
-    // a re-rendered box that outlives its listener would be a detached-listener leak.
-    const onAddressClick = async () => {
-      try {
-        await navigator.clipboard.writeText(account.address);
-      } catch {
-        banner.set('Could not copy — clipboard permission denied.');
-        return;
-      }
-      addrText.textContent = 'Copied';
-      addressBox.setAttribute('aria-label', 'Address copied to clipboard');
-      addressBox.classList.add('copied');
-      if (copyTimer) clearTimeout(copyTimer);
-      copyTimer = setTimeout(() => {
-        addrText.textContent = account.address;
-        addressBox.setAttribute('aria-label', `Copy address: ${account.address}`);
-        addressBox.classList.remove('copied');
-      }, 1100);
-    };
-    addressBox.addEventListener('click', onAddressClick);
-    removeAddressCopy = () => addressBox.removeEventListener('click', onAddressClick);
-
-    const actions = [];
-
-    // '' when the network declares no explorer, in which case no link is shown at all.
-    const explorer = explorerAddressUrl(network, account.address);
-    if (explorer) {
-      actions.push(h('a', {
-        class: 'btn secondary',
-        href: explorer,
-        target: '_blank',
-        rel: 'noopener noreferrer',
-      }, [icon('external', 14), h('span', { text: 'View on explorer' })]));
+  function render(account, network) {
+    const { address } = account;
+    const name = account.label || 'Account';
+    const networkName = network.label || network.id;
+    const canvas = h('canvas', { role: 'img', 'aria-label': `Receive address QR code for ${name} on ${networkName}` });
+    let qrTile;
+    try {
+      renderQR(canvas, address);
+      qrTile = h('div', { class: 'receive-qr' }, canvas);
+    } catch {
+      banner.set('Could not render the QR code. Copy the address below instead.', 'warning');
     }
 
-    body.appendChild(h('div', { class: 'stack stack-2' }, actions));
+    const copyStatus = h('p', { class: 'receive-copy-status hint', role: 'status' });
+    copy = CopyButton({
+      title: 'Copy address',
+      getValue: address,
+      onResult: (error) => {
+        copyStatus.textContent = error ? 'Could not copy. Select the address to copy it manually.' : 'Address copied';
+      },
+    });
+    const registration = h('p', { class: 'notice warning hidden', role: 'status' });
+    const explorer = explorerAddressUrl(network, address);
+
+    body.replaceChildren(...[
+      h('div', { class: 'receive-network' }, [icon('globe', 16), h('span', { text: `Receiving on ${networkName}` })]),
+      registration,
+      qrTile,
+      h('div', { class: 'row-flex center' }, [
+        AccountAvatar({ address, imported: account.keyring?.type === 'privateKey' }),
+        h('div', { class: 'row-title', text: name }),
+      ]),
+      h('div', { class: 'stack stack-1' }, [
+        h('div', { class: 'receive-address' }, [h('code', { text: address }), copy.el]),
+        copyStatus,
+      ]),
+      h('p', { class: 'hint center', text: `Use this address for native THRU on ${networkName}. Check the network before sending.` }),
+      explorer ? h('a', {
+        class: 'btn secondary', href: explorer, target: '_blank', rel: 'noopener noreferrer',
+      }, [icon('external', 14), h('span', { text: 'View on explorer' })]) : null,
+    ].filter(Boolean));
+    return registration;
   }
 
   async function load() {
-    banner.clear();
+    const current = ++revision;
+    clear();
+    body.appendChild(Spinner({ label: 'Loading receive address' }).el);
     try {
-      const [active, net] = await Promise.all([
+      const [account, network] = await Promise.all([
         bridge.send('account.getActive'),
         bridge.send('network.getActive'),
       ]);
-      account = active;
-      network = net;
-      render();
+      if (current !== revision) return;
+      if (!account?.address || !network?.id) throw new Error('Could not load the active account and network.');
+      const registration = render(account, network);
+      // Chain state is advisory and must never hold the address or QR behind RPC.
+      void bridge.send('tx.getAccountInfo', { address: account.address }).then((info) => {
+        if (current !== revision || info?.exists !== false) return;
+        registration.textContent = 'This account is not registered yet and cannot receive native THRU until it is registered.';
+        registration.classList.remove('hidden');
+      }).catch(() => {});
     } catch (error) {
-      clearBody();
-      banner.set(error.message || 'Could not load your address.');
+      if (current !== revision) return;
+      clear();
+      banner.set(error.message || 'Could not load your receive address.', 'error');
     }
   }
 
+  d.add(bridge.onEvents({ accountsChanged: load, networkChanged: load }));
   load();
-  d.add(bridge.onEvent('accountsChanged', () => load()));
-
   return {
     el,
     destroy() {
-      if (copyTimer) clearTimeout(copyTimer);
-      if (removeAddressCopy) removeAddressCopy();
-      if (removeQrToggle) removeQrToggle();
-      for (const c of owned) c.destroy?.();
-      owned.length = 0;
+      ++revision;
+      d.dispose();
+      clear();
       header.destroy();
       banner.destroy();
-      d.dispose();
     },
   };
 }
