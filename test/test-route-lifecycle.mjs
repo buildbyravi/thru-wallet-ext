@@ -5489,10 +5489,11 @@ async function historyCacheFirstTest() {
   const originalCache = FIXTURES['tx.getCachedHistory'];
   const originalSendMessage = chrome.runtime.sendMessage;
   const held = [];
+  let cachedCursor = 15;
   FIXTURES['tx.getCachedHistory'] = ({ address } = {}) => ({
     address, networkId: activeNetwork().id,
     entries: [activeNetwork().id === 'betanet' ? alpha : testnet],
-    nextCursor: 15, updatedAt: Date.now(),
+    nextCursor: cachedCursor, updatedAt: Date.now(),
   });
   chrome.runtime.sendMessage = (message, callback) => {
     if (['tx.getHistoryFeed', 'tx.getPending', 'account.list'].includes(message?.method)) {
@@ -5541,6 +5542,25 @@ async function historyCacheFirstTest() {
     await settle();
     ok('a failed feed keeps cached cards and does not make a second raw RPC request',
       /Block 101/.test(textOf(route.el)) && /cached activity.*could not sync/i.test(textOf(route.el))
+        && chromeLog.calls.filter((method) => method === 'tx.listHistory').length === rawCallsBefore);
+
+    cachedCursor = null;
+    emitEvent('pendingTxChanged', {});
+    await settle();
+    reply('tx.getHistoryFeed', { entries: [alpha], nextCursor: null, synced: false });
+    await settle();
+    ok('the offline feed keeps the last-page card without offering Load more',
+      /Block 101/.test(textOf(route.el)) && /cached activity/i.test(textOf(route.el))
+        && buttons(route.el, /load more/i).length === 0);
+
+    emitEvent('pendingTxChanged', {});
+    await settle();
+    const terminalRead = held.findIndex((item) => item.message.method === 'tx.getHistoryFeed');
+    held.splice(terminalRead, 1)[0].callback({ ok: false,
+      error: { code: 'NETWORK_ERROR', message: 'RPC offline', retryable: true } });
+    await settle();
+    ok('a terminal cache-first page has no Load more when the feed call fails outright',
+      /Block 101/.test(textOf(route.el)) && buttons(route.el, /load more/i).length === 0
         && chromeLog.calls.filter((method) => method === 'tx.listHistory').length === rawCallsBefore);
 
     // A further refresh is still awaiting the BETANET feed when another extension page

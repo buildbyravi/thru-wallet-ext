@@ -86,10 +86,17 @@ async function readScope(networkId) {
   return { key, scope: stored };
 }
 
+// Offset zero starts a fresh history read; a continuation always advances past it.
+// Older workers could persist zero when appending a local row to a terminal page.
+function continuationCursor(value) {
+  return Number.isSafeInteger(value) && value > 0 ? value : null;
+}
+
 function cachedPage(scope, address) {
   const cached = Object.prototype.hasOwnProperty.call(scope, address) ? scope[address] : null;
   return cached && typeof cached === 'object' && Array.isArray(cached.entries)
-    ? cached : { entries: [], nextCursor: 0, updatedAt: 0 };
+    ? { ...cached, nextCursor: continuationCursor(cached.nextCursor) }
+    : { entries: [], nextCursor: null, updatedAt: 0 };
 }
 
 // Several extension views can refresh DIFFERENT addresses on the same chain concurrently.
@@ -132,7 +139,7 @@ export async function getCachedHistory(address) {
     address,
     networkId,
     entries: cached.entries,
-    nextCursor: cached.nextCursor ?? 0,
+    nextCursor: cached.nextCursor,
     updatedAt: cached.updatedAt ?? 0,
   };
 }
@@ -169,7 +176,7 @@ export async function getHistoryFeed(address) {
     });
     assertCurrent(await getActiveNetworkId());
     const fresh = Array.isArray(page) ? page : (page?.entries || []);
-    const nextCursor = Array.isArray(page) ? fresh.length : (page?.nextCursor ?? null);
+    const nextCursor = continuationCursor(page?.nextCursor);
 
     // The history wire has slots, not wall-clock times. Resolve block headers OUTSIDE the
     // shared storage-write queue; a slow header for address A must not block address B's
@@ -269,7 +276,7 @@ export async function getHistoryFeed(address) {
   } catch (error) {
     if (error?.code === 'NETWORK_CHANGED') throw error;
     // Offline / unreachable RPC: the cached page, honestly labelled as not synced.
-    return { entries: cached.entries, nextCursor: cached.nextCursor ?? 0, synced: false };
+    return { entries: cached.entries, nextCursor: cached.nextCursor, synced: false };
   }
 }
 
@@ -312,7 +319,7 @@ export async function recordSubmittedTransaction(tx) {
     const existing = page.entries.filter((e) => e?.signature !== entry.signature);
     if (!page.entries.some(keepChainRow)) scope[tx.from] = {
       entries: [entry, ...existing].slice(0, CACHE_LIMIT),
-      nextCursor: page.nextCursor ?? 0,
+      nextCursor: page.nextCursor,
       updatedAt: Date.now(),
     };
 
@@ -327,7 +334,7 @@ export async function recordSubmittedTransaction(tx) {
       const existingRecipient = recipientPage.entries.filter((e) => e?.signature !== entry.signature);
       if (!recipientPage.entries.some(keepChainRow)) scope[tx.to] = {
         entries: [recipientEntry, ...existingRecipient].slice(0, CACHE_LIMIT),
-        nextCursor: recipientPage.nextCursor ?? 0,
+        nextCursor: recipientPage.nextCursor,
         updatedAt: Date.now(),
       };
     }

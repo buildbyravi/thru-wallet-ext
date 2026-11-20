@@ -11,6 +11,7 @@ Use this queue to collect checks while we build. **During development:** rebuild
 - [ ] Assets with 10/100/200 synthetic tokens: search, detail and back, Hidden tokens, restore, Add custom token and close controls; verify empty/error states and reachable actions. Simulate a refresh: changed balances update in place without losing row identity, focus or scroll. `test/browser/token-cache.mjs` covers cached first paint, partial refresh, verified zero and uncached failure with the isolated bridge.
 - [x] Reproduce a late registry snapshot undoing Hide during refresh. Fence both cached and live paints after a completed hide/restore, and cover the race in the route suite.
 - [x] Reproduce and fix post-import refresh joining the old registry. Deterministic tests cover same-snapshot coalescing, late replies, cache protection, and importing from Hidden tokens without keeping an old search filter. Native import/refresh remains part of the batch below.
+- [x] Preserve History's terminal cursor on cache hits, offline fallback, and local submissions. Regression tests cover legacy cached zero, missing cache, and a last page without a Load more action.
 
 Prior evidence at `638f2e3`: build, full Node suite, CSP, mock Chromium and the large-list preview passed. The 200-token fixture updated the last balance from 200 to 201 with the same row, focus and scroll. That is preview evidence, not native Chrome, RPC performance or chain evidence. The available headless Chromium could not load unpacked MV3; native checks below remain open.
 
