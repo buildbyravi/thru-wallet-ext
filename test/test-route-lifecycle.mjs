@@ -2386,11 +2386,17 @@ async function settingsTest() {
   await settle();
 
   const tree = router.root;
-  const text = textOf(tree);
+  const open = (name) => {
+    click(buttons(tree, name)[0]);
+    return DOC.body.querySelector('.settings-picker');
+  };
+  const close = (sheet) => click(buttons(sheet, /^Close$/i)[0]);
+  const network = open(/^Network/i);
+  const text = textOf(network);
 
-  ok('settings has no "Add custom network" control', buttons(tree, /add custom/i).length === 0,
-    buttons(tree, /add custom/i).map((b) => labelOf(b)).join(', '));
-  const rpcInputs = allElements(tree).filter((el) => el.localName === 'input'
+  ok('settings has no "Add custom network" control', buttons(network, /add custom/i).length === 0,
+    buttons(network, /add custom/i).map((b) => labelOf(b)).join(', '));
+  const rpcInputs = allElements(network).filter((el) => el.localName === 'input'
     && /rpc|endpoint|explorer|chain/i.test(`${el.getAttribute('placeholder') || ''} ${el.getAttribute('aria-label') || ''}`));
   ok('settings has no custom-endpoint input fields', rpcInputs.length === 0,
     rpcInputs.map((el) => el.getAttribute('placeholder')).join(', '));
@@ -2400,7 +2406,7 @@ async function settingsTest() {
   ok('the legacy row carries a clear not-selectable warning',
     /not selectable/i.test(text) && /will not build or sign/i.test(text), text.slice(0, 500));
 
-  const customRow = allElements(tree).find((candidate) => (
+  const customRow = allElements(network).find((candidate) => (
     candidate.classList.contains('row') && /My node/.test(textOf(candidate))
   ));
   ok('the saved custom network is rendered as a row', Boolean(customRow));
@@ -2409,8 +2415,9 @@ async function settingsTest() {
   ok('the custom row is exposed as disabled to assistive technology',
     customRow?.getAttribute('aria-disabled') === 'true',
     `aria-disabled=${customRow?.getAttribute('aria-disabled')}`);
-  ok('built-in network rows remain selectable buttons',
-    buttons(tree, /^Betanet/i).length === 1, buttons(tree, /Betanet/i).map(labelOf).join(', '));
+  ok('the active Betanet row is status, not a dead button',
+    buttons(network, /^Betanet/i).length === 0
+      && allElements(network).some((row) => row.getAttribute('aria-current') === 'true' && /Betanet/.test(textOf(row))));
 
   const callsBeforeInertClick = chromeLog.calls.filter((method) => method === 'network.setActive').length;
   click(customRow);
@@ -2439,12 +2446,14 @@ async function settingsTest() {
   ok('direct rejection leaves the built-in network active',
     backend.activeNetworkId === 'betanet', backend.activeNetworkId);
 
-  const removeButtons = buttons(tree, /remove my node/i);
+  const removeButtons = buttons(network, /remove my node/i);
   ok('Remove is the custom row\'s only button action',
-    removeButtons.length === 1 && buttons(tree, /My node/i).length === 1,
-    buttons(tree, /My node/i).map(labelOf).join(', '));
+    removeButtons.length === 1 && buttons(network, /My node/i).length === 1,
+    buttons(network, /My node/i).map(labelOf).join(', '));
   ok('no UI call reached network.upsertCustom',
     !chromeLog.calls.includes('network.upsertCustom') && chromeLog.unexpected.length === 0);
+
+  close(network);
 
   // Side Panel Mode: an explicit user opt-in, so the ONLY panel-shaped control on this
   // screen is the toggle itself. The redundant "Open side panel" button stays gone — the
@@ -2487,20 +2496,31 @@ async function settingsTest() {
       && !modeSwitch.classList.contains('active'));
 
   // Removing the saved network still works end to end.
-  click(buttons(tree, /remove my node/i)[0]);
+  click(buttons(open(/^Network/i), /remove my node/i)[0]);
   await settle();
   ok('removing a saved custom network calls network.removeCustom',
     chromeLog.calls.includes('network.removeCustom'));
   ok('removal deletes the legacy record from backend state', backend.customNetworks.length === 0,
     `${backend.customNetworks.length} custom records remain`);
+  const updatedNetwork = open(/^Network/i);
   ok('the removed custom row disappears while the quarantine notice remains',
-    !/My node/.test(textOf(tree)) && /temporarily unavailable/i.test(textOf(tree)),
+    !/My node/.test(textOf(updatedNetwork)) && /temporarily unavailable/i.test(textOf(updatedNetwork)),
     textOf(tree).slice(0, 300));
 
   // ---- Signing & friends: the explanations are in-wallet "?" popovers, not paragraphs
   // ---- and not the native title tooltip (the browser owns that one, and it can render
   // ---- outside the fixed 400x600 popup).
-  const helpTriggers = allElements(tree).filter((el) => el.classList?.contains?.('help-circle-icon'));
+  const hintParas = allElements(updatedNetwork).filter((el) => el.classList?.contains?.('hint'));
+  close(updatedNetwork);
+  const themeSheet = open(/^Theme Mode/i);
+  const themeContents = allElements(themeSheet);
+  close(themeSheet);
+  const autoLockSheet = open(/^Auto-lock/i);
+  const autoLockContents = allElements(autoLockSheet);
+  close(autoLockSheet);
+  const signingSheet = open(/^Signing security/i);
+  const helpContents = [...allElements(tree), ...themeContents, ...autoLockContents, ...allElements(signingSheet)];
+  const helpTriggers = helpContents.filter((el) => el.classList?.contains?.('help-circle-icon'));
   ok('settings explains signing, auto-lock, side panel mode and appearance with "?" controls',
     helpTriggers.length === 4
       && helpTriggers.map((el) => el.getAttribute('aria-label')).sort().join(', ')
@@ -2508,7 +2528,7 @@ async function settingsTest() {
     helpTriggers.map((el) => el.getAttribute('aria-label')).join(', '));
   ok('no "?" trigger carries a native title (the browser tooltip can overflow the popup)',
     helpTriggers.every((el) => !el.hasAttribute('title')));
-  const tips = allElements(tree).filter((el) => el.classList?.contains?.('inline-tooltip'));
+  const tips = helpContents.filter((el) => el.classList?.contains?.('inline-tooltip'));
   ok('each "?" owns an in-wallet popover, hidden at rest',
     tips.length === 4 && tips.every((t) => t.hasAttribute('hidden')),
     `tips=${tips.length}`);
@@ -2533,7 +2553,7 @@ async function settingsTest() {
   }
   // The descriptive hint paragraphs are gone; the ONLY surviving hint text is the
   // functional custom-network quarantine notice.
-  const hintParas = allElements(tree).filter((el) => el.classList?.contains?.('hint'));
+  close(signingSheet);
   ok('only the custom-network notice remains as hint text',
     hintParas.length === 1 && /temporarily unavailable/i.test(hintParas[0].textContent),
     hintParas.map((el) => (el.textContent || '').slice(0, 60)).join(' | '));
@@ -2566,59 +2586,56 @@ async function themeTest() {
   router.navigate('/settings');
   await settle();
   const tree = router.root;
-  const text = textOf(tree);
+  const openTheme = () => {
+    click(buttons(tree, /^Theme Mode/i)[0]);
+    return DOC.body.querySelector('.settings-picker');
+  };
+  const themeRow = () => textOf(buttons(tree, /^Theme Mode/i)[0]);
 
   ok('Settings has semantic Features, Settings and About headings',
     [...tree.querySelectorAll('.settings-heading')].map((node) => `${node.tagName}:${textOf(node)}`).join('|')
       === 'H2:Features|H2:Settings|H2:About');
-  ok('Settings uses native disclosures for Network, Signing security, Theme Mode and Auto-lock time',
-    [...tree.querySelectorAll('.settings-disclosure')].map((node) => `${node.tagName}:${textOf(node.firstChild)}`).join('|')
-      === 'DETAILS:Network Betanet|DETAILS:Signing security Session-only|DETAILS:Theme Mode Dark|DETAILS:Auto-lock time 15 min');
+  ok('Settings declares separate dialogs for Network, Signing security, Theme Mode and Auto-lock time',
+    buttons(tree, /^(Network|Signing security|Theme Mode|Auto-lock time)/).filter((node) => node.getAttribute('aria-haspopup') === 'dialog')
+      .map(textOf).join('|') === 'Network Betanet|Signing security Session-only|Theme Mode Dark|Auto-lock time 15 min');
+  ok('picker choices are not mounted inline', buttons(tree, /^(Light|Dark|System)$/).length === 0);
   const disabledRows = buttons(tree, /^(Language|Currency)Planned$/);
   ok('Language and Currency appear once each as disabled, labelled Planned rows',
     disabledRows.length === 2 && disabledRows.every((node) => node.hasAttribute('disabled')));
   ok('Side Panel Mode and Desktop Notifications remain single switches',
     allElements(tree).filter((node) => node.getAttribute?.('role') === 'switch')
       .map((node) => node.getAttribute('aria-label')).join('|') === 'Side Panel Mode|Desktop Notifications');
-  const lightChip = buttons(tree, /^light$/i)[0];
-  const darkChip = buttons(tree, /^dark$/i)[0];
-  const systemChip = buttons(tree, /^system$/i)[0];
-  ok('all three theme choices are real buttons', [lightChip, darkChip, systemChip].every(Boolean));
-  ok('the stored choice renders as the selected chip', darkChip?.classList.contains('selected'),
-    `dark.selected=${darkChip?.classList.contains('selected')}`);
+  let themeSheet = openTheme();
+  const chip = (pattern) => buttons(themeSheet, pattern)[0];
+  ok('all three theme choices are real buttons inside a named dialog',
+    themeSheet?.getAttribute('aria-label') === 'Theme Mode' && [/^light$/i, /^dark$/i, /^system$/i].every(chip));
+  ok('the stored choice renders as the selected chip', chip(/^dark$/i)?.classList.contains('selected'));
 
-  click(lightChip);
+  click(chip(/^light$/i));
   await settle();
-  ok('switching to Light applies immediately', DOC.documentElement.dataset.theme === 'light',
-    `data-theme=${DOC.documentElement.dataset.theme}`);
-  ok('the Theme Mode row updates to the saved choice',
-    [...tree.querySelectorAll('summary')].some((node) => textOf(node) === 'Theme Mode Light'));
-  ok('the choice persists through the versioned preferences service',
-    backend.preferences.theme === 'light', JSON.stringify(backend.preferences));
+  ok('switching to Light applies immediately', DOC.documentElement.dataset.theme === 'light');
+  ok('the Theme Mode row updates and the picker closes after a saved choice',
+    themeRow() === 'Theme Mode Light' && !DOC.body.querySelector('.settings-picker'));
+  ok('the choice persists through the versioned preferences service', backend.preferences.theme === 'light');
+  themeSheet = openTheme();
   ok('the selection moves to the newly chosen chip',
-    buttons(tree, /^light$/i)[0]?.classList.contains('selected')
-      && !buttons(tree, /^dark$/i)[0]?.classList.contains('selected'));
+    chip(/^light$/i)?.classList.contains('selected') && !chip(/^dark$/i)?.classList.contains('selected'));
 
-  click(systemChip);
+  click(chip(/^system$/i));
   await settle();
-  ok('System resolves through the OS preference, here to Light',
-    DOC.documentElement.dataset.theme === 'light',
-    `data-theme=${DOC.documentElement.dataset.theme}`);
-  ok('the persisted value is the word “system”, not the resolved theme',
-    backend.preferences.theme === 'system');
+  ok('System resolves through the OS preference, here to Light', DOC.documentElement.dataset.theme === 'light');
+  ok('the persisted value is the word “system”, not the resolved theme', backend.preferences.theme === 'system');
 
   const realSetSettings = FIXTURES['settings.set'];
   FIXTURES['settings.set'] = () => { throw apiError('STORAGE_ERROR', 'Storage write failed'); };
-  click(darkChip);
+  themeSheet = openTheme();
+  click(chip(/^dark$/i));
   await settle();
-  ok('a failed theme save does not move the selected chip or aria-pressed state',
-    !buttons(tree, /^dark$/i)[0]?.classList.contains('selected')
-      && buttons(tree, /^dark$/i)[0]?.getAttribute('aria-pressed') === 'false'
-      && buttons(tree, /^system$/i)[0]?.classList.contains('selected')
-      && buttons(tree, /^system$/i)[0]?.getAttribute('aria-pressed') === 'true'
-      && [...tree.querySelectorAll('summary')].some((node) => textOf(node) === 'Theme Mode System')
-      && /Storage write failed/.test(textOf(tree)),
-    `dark.selected=${buttons(tree, /^dark$/i)[0]?.classList.contains('selected')} text=${textOf(tree).slice(0, 200)}`);
+  ok('a failed theme save keeps the picker open, announces the error there, and preserves the selected state',
+    themeSheet === DOC.body.querySelector('.settings-picker')
+      && !chip(/^dark$/i)?.classList.contains('selected') && chip(/^dark$/i)?.getAttribute('aria-pressed') === 'false'
+      && chip(/^system$/i)?.classList.contains('selected') && chip(/^system$/i)?.getAttribute('aria-pressed') === 'true'
+      && themeRow() === 'Theme Mode System' && /Storage write failed/.test(textOf(themeSheet)));
   FIXTURES['settings.set'] = realSetSettings;
 
   click(buttons(tree, /^Transaction history$/i)[0]);
@@ -2629,6 +2646,8 @@ async function themeTest() {
   click(buttons(router.root, /^Manage accounts and recovery phrases$/i)[0]);
   await settle();
   ok('the Features account row opens the existing Accounts route', router.currentPath === '/accounts');
+
+  ok('navigation closes an open Settings picker', !DOC.body.querySelector('.settings-picker'));
 
   // An unrecognised stored value never reaches the DOM.
   backend.preferences.theme = 'midnight-blue';

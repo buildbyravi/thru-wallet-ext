@@ -1011,12 +1011,11 @@ form > .btn.text {
   text-align: end;
   overflow-wrap: anywhere;
 }
-:is(button:not(:disabled), a, summary).settings-row {
+:is(button:not(:disabled), a).settings-row {
   cursor: pointer;
 }
-:is(button:not(:disabled), a, summary).settings-row:hover,
-:is(button:not(:disabled), a, summary).settings-row:focus-visible,
-.settings-disclosure[open] > summary {
+:is(button:not(:disabled), a).settings-row:hover,
+:is(button:not(:disabled), a).settings-row:focus-visible {
   background: var(--surface-2);
 }
 .settings-row:focus-visible { outline-offset: -2px; }
@@ -1025,13 +1024,13 @@ form > .btn.text {
   opacity: 1;
   color: var(--text-2);
 }
-.settings-disclosure > summary { list-style: none; }
-.settings-disclosure > summary::-webkit-details-marker { display: none; }
-.settings-disclosure[open] > summary > svg:last-child { transform: rotate(90deg); }
-.settings-detail {
-  padding: var(--sp-3) 14px var(--sp-4);
-  border-block-start: 1px solid var(--border-hairline);
+.settings-picker { max-height: 82%; }
+.settings-picker-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
+.settings-detail { padding-block-end: var(--sp-2); }
 .settings-choice-title, .settings-label-with-help, .settings-footer {
   display: flex;
   align-items: center;
@@ -1044,30 +1043,7 @@ form > .btn.text {
 .settings-footer { justify-content: center; }
 .settings-footer img { border-radius: 50%; }
 
-/* ---- Toggle Switch (Side Panel Mode) ---- */
-.toggle-switch {
-  flex-shrink: 0;
-}
-
-/* ---- Toggle Switch (Side Panel Mode) ---- */
-.toggle-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 14px;
-  background: var(--surface-1, #ffffff);
-  border: 1px solid var(--border-hairline, #e0e5ec);
-  border-radius: var(--radius-md, 8px);
-  gap: 12px;
-}
-.toggle-label-group {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-weight: 600;
-  font-size: var(--fs-md, 13px);
-  color: var(--text-1, #151b1e);
-}
+/* ---- Settings switches ---- */
 .toggle-switch {
   width: 42px;
   height: 24px;

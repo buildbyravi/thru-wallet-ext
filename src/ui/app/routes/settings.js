@@ -13,6 +13,8 @@
 
 import { h, disposer } from '../../kit/dom.js';
 import { icon } from '../../kit/icon.js';
+import { Button } from '../../kit/button.js';
+import { Sheet } from '../../kit/sheet.js';
 import { PageHeader, Banner, Spinner } from '../../kit/feedback.js';
 import { HelpTooltip } from '../../kit/help-tooltip.js';
 import { requirePassword } from '../../domain/password-prompt.js';
@@ -52,7 +54,10 @@ export function SettingsRoute({ navigate, back, params = {} }) {
   let switchingNetwork = false;
   const d = disposer();
   const owned = [];
-  const disclosures = new Map();
+  const pickerRows = new Map();
+  const routeAbort = new AbortController();
+  let picker = null;
+  let savingTheme = false;
   let rowEvents = disposer();
   let networks = [];
   let activeNetworkId = null;
@@ -65,6 +70,7 @@ export function SettingsRoute({ navigate, back, params = {} }) {
   const el = h('section', { class: networkOnly ? 'screen' : 'screen settings-screen' }, [header.el, banner.el, body]);
 
   function clearBody() {
+    picker?.sheet.close();
     rowEvents.dispose();
     rowEvents = disposer();
     for (const c of owned) c.destroy?.();
@@ -73,7 +79,7 @@ export function SettingsRoute({ navigate, back, params = {} }) {
   }
 
   // ---- Network rows -------------------------------------------------------
-  function networkRow(network) {
+  function networkRow(network, events) {
     const isActive = network.id === activeNetworkId;
     const isLive = network.isTestnet === false;
     // Contract v7: a saved custom network remains visible and removable, but can never become the
@@ -107,16 +113,15 @@ export function SettingsRoute({ navigate, back, params = {} }) {
       children.push(h('span', { class: 'row-value' }, icon('check', 14)));
     }
 
-    const row = selectable && !(networkOnly && isActive)
+    const row = selectable && !isActive
       ? h('button', {
         type: 'button',
-        class: ['row', isActive ? 'active' : null].filter(Boolean),
-        'aria-current': isActive ? 'true' : null,
+        class: 'row',
       }, children)
-      : h('div', { class: 'row', 'aria-current': isActive ? 'true' : null, 'aria-disabled': !isActive ? 'true' : null }, children);
+      : h('div', { class: isActive ? 'row active' : 'row', 'aria-current': isActive ? 'true' : null, 'aria-disabled': !isActive ? 'true' : null }, children);
 
     if (selectable && !isActive) {
-      rowEvents.on(row, 'click', async () => {
+      events.on(row, 'click', async () => {
         if (switchingNetwork) return;
         switchingNetwork = true;
         banner.clear();
@@ -129,7 +134,7 @@ export function SettingsRoute({ navigate, back, params = {} }) {
           if (networkOnly) back();
           else navigate('/dashboard');
         } catch (error) {
-          if (!disposed) banner.set(error.message || 'Could not switch network.');
+          if (!disposed) (picker?.notice || banner).set(error.message || 'Could not switch network.');
         } finally {
           switchingNetwork = false;
         }
@@ -145,13 +150,13 @@ export function SettingsRoute({ navigate, back, params = {} }) {
         title: `Remove ${network.label || network.id}`,
         'aria-label': `Remove ${network.label || network.id}`,
       }, icon('trash', 13));
-      rowEvents.on(removeBtn, 'click', async () => {
+      events.on(removeBtn, 'click', async () => {
         banner.clear();
         try {
           await bridge.send('network.removeCustom', { networkId: network.id });
           load();
         } catch (error) {
-          banner.set(error.message || 'Could not remove that network.');
+          if (!disposed) (picker?.notice || banner).set(error.message || 'Could not remove that network.');
         }
       });
       wrap.appendChild(removeBtn);
@@ -194,7 +199,7 @@ export function SettingsRoute({ navigate, back, params = {} }) {
   }
 
   // ---- Auto-lock ----------------------------------------------------------
-  function renderAutoLock(hostEl, current) {
+  function renderAutoLock(hostEl, current, events) {
     const chips = AUTO_LOCK_CHOICES.map((minutes) => {
       const label = autoLockLabel(minutes);
       const selected = minutes === current;
@@ -204,10 +209,13 @@ export function SettingsRoute({ navigate, back, params = {} }) {
         'aria-pressed': String(selected),
         text: label,
       });
-      rowEvents.on(chip, 'click', async () => {
+      events.on(chip, 'click', async () => {
         banner.clear();
-        if (minutes === current) return;
+        if (minutes === current) { picker?.sheet.close(); return; }
+        // The password prompt owns focus. Do not run two modal focus traps at once.
+        picker?.sheet.close();
         const result = await requirePassword({
+          signal: routeAbort.signal,
           title: minutes === 0 ? 'Disable auto-lock?' : 'Change auto-lock?',
           body: minutes === 0
             ? 'Enter your password to set auto-lock to Never. This keeps the wallet unlocked until you lock it or the browser closes.'
@@ -216,7 +224,7 @@ export function SettingsRoute({ navigate, back, params = {} }) {
           danger: minutes === 0,
           verify: (password) => bridge.send('system.setAutoLock', { minutes, password }),
         });
-        if (result) load();
+        if (result && !disposed) load();
       });
       return chip;
     });
@@ -225,7 +233,7 @@ export function SettingsRoute({ navigate, back, params = {} }) {
     hostEl.appendChild(h('div', { class: 'row-flex wrap' }, chips));
   }
 
-  function renderSigningReauth(hostEl, requirePasswordForSigning) {
+  function renderSigningReauth(hostEl, requirePasswordForSigning, events) {
     const options = [
       { value: true, label: 'Require password' },
       { value: false, label: 'Session-only' },
@@ -238,24 +246,25 @@ export function SettingsRoute({ navigate, back, params = {} }) {
         'aria-pressed': String(selected),
         text: option.label,
       });
-      if (!selected) {
-        rowEvents.on(chip, 'click', async () => {
-          banner.clear();
-          const result = await requirePassword({
-            title: option.value ? 'Require password for signing' : 'Disable signing password prompt',
-            body: option.value
-              ? 'Enter your password to require re-authentication before every signing action.'
-              : 'Enter your password to allow transaction signing from an unlocked session. This is less secure.',
-            confirmLabel: option.value ? 'Require password' : 'Allow session-only signing',
-            danger: option.value === false,
-            verify: (password) => bridge.send('settings.setSecurity', {
-              patch: { requirePasswordForSigning: option.value },
-              password,
-            }),
-          });
-          if (result) load();
+      events.on(chip, 'click', async () => {
+        banner.clear();
+        picker?.sheet.close();
+        if (selected) return;
+        const result = await requirePassword({
+          signal: routeAbort.signal,
+          title: option.value ? 'Require password for signing' : 'Disable signing password prompt',
+          body: option.value
+            ? 'Enter your password to require re-authentication before every signing action.'
+            : 'Enter your password to allow transaction signing from an unlocked session. This is less secure.',
+          confirmLabel: option.value ? 'Require password' : 'Allow session-only signing',
+          danger: option.value === false,
+          verify: (password) => bridge.send('settings.setSecurity', {
+            patch: { requirePasswordForSigning: option.value },
+            password,
+          }),
         });
-      }
+        if (result && !disposed) load();
+      });
       return chip;
     });
     hostEl.appendChild(h('div', { class: 'row-flex wrap' }, chips));
@@ -264,7 +273,7 @@ export function SettingsRoute({ navigate, back, params = {} }) {
 
   // ---- Appearance ------------------------------------------------------
   // The shared theme helper persists the preference before applying it.
-  function themeChips(onChange) {
+  function themeChips(onChange, events) {
     const options = [
       { value: 'light', label: 'Light' },
       { value: 'dark', label: 'Dark' },
@@ -278,19 +287,25 @@ export function SettingsRoute({ navigate, back, params = {} }) {
         'aria-pressed': String(selected),
         text: option.label,
       });
-      rowEvents.on(chip, 'click', async () => {
-        banner.clear();
-        const previous = theme;
+      events.on(chip, 'click', async () => {
+        if (savingTheme) return;
+        const activePicker = picker;
+        activePicker?.notice.clear();
+        if (option.value === theme) { activePicker?.sheet.close(); return; }
+        savingTheme = true;
         try {
           await setTheme(option.value);
           theme = option.value;
         } catch (err) {
-          theme = previous;
-          banner.set(err?.message || 'Could not update theme.');
+          if (!disposed) (activePicker?.sheet.closed ? banner : activePicker?.notice || banner)
+            .set(err?.message || 'Could not update theme.');
           return;
+        } finally {
+          savingTheme = false;
         }
         if (disposed) return;
         onChange(option.label);
+        activePicker?.sheet.close();
         // Reflow the selected state by identity — never by DOM position.
         options.forEach((o, i) => {
           const active = o.value === theme;
@@ -342,16 +357,14 @@ export function SettingsRoute({ navigate, back, params = {} }) {
   }
 
   function render(autoLockMinutes) {
-    const focused = document.activeElement?.closest('.settings-disclosure');
-    const focusedDisclosure = [...disclosures].find(([, el]) => el === focused)?.[0];
-    const expanded = new Set([...disclosures].filter(([, el]) => el.hasAttribute('open')).map(([key]) => key));
-    disclosures.clear();
+    const focusedKey = picker?.key ?? [...pickerRows].find(([, row]) => row === document.activeElement)?.[0];
+    pickerRows.clear();
     clearBody();
 
-    const networkList = h('div', { class: 'list' }, networks.map(networkRow));
+    const networkList = (events) => h('div', { class: 'list' }, networks.map((network) => networkRow(network, events)));
     if (networkOnly) {
       const networkSection = h('section', { class: 'stack stack-2' }, [
-        h('h2', { class: 'list-group-header', text: 'Network' }), networkList,
+        h('h2', { class: 'list-group-header', text: 'Network' }), networkList(rowEvents),
       ]);
       body.appendChild(networkSection);
       if (!networks.some((network) => !network.custom && network.selectable !== false && network.id !== activeNetworkId)) {
@@ -360,23 +373,35 @@ export function SettingsRoute({ navigate, back, params = {} }) {
       return;
     }
 
-    function disclosure(key, label, glyph, value, content) {
-      const details = h('details', { class: 'settings-disclosure', open: expanded.has(key) }, [
-        SettingsRow('summary', { label, glyph, value, trailing: 'chevronRight' }), content,
-      ]);
-      disclosures.set(key, details);
-      return details;
+    function pickerRow(key, label, glyph, value, renderContent) {
+      const row = SettingsRow('button', {
+        label, glyph, value, attrs: { type: 'button', 'aria-haspopup': 'dialog' }, trailing: 'chevronRight',
+      });
+      pickerRows.set(key, row);
+      rowEvents.on(row, 'click', () => {
+        if (picker) return;
+        const sheet = Sheet({ label, className: 'settings-picker', opener: row, onClose: () => { picker = null; } });
+        const notice = sheet.track(Banner({ tone: 'error' }));
+        const close = sheet.track(Button({ label: 'Close', variant: 'text', onClick: () => sheet.close() }));
+        sheet.card.appendChild(h('div', { class: 'modal-head settings-picker-head' }, [h('h2', { text: label }), close.el]));
+        sheet.card.appendChild(notice.el);
+        picker = { sheet, notice, key };
+        sheet.card.appendChild(renderContent(sheet));
+        sheet.open();
+      });
+      return row;
     }
 
-    function help(host, label, text) {
+    function help(host, label, text, sheet) {
       const tooltip = HelpTooltip({ host, label, text });
-      owned.push(tooltip);
+      if (sheet) sheet.track(tooltip);
+      else owned.push(tooltip);
       return tooltip.trigger;
     }
 
-    function choices(label, helpLabel, helpText) {
+    function choices(sheet, label, helpLabel, helpText) {
       const title = h('div', { class: 'settings-choice-title' }, h('span', { text: label }));
-      title.appendChild(help(title, helpLabel, helpText));
+      title.appendChild(help(title, helpLabel, helpText, sheet));
       return h('div', { class: 'settings-detail stack stack-2' }, title);
     }
 
@@ -399,21 +424,32 @@ export function SettingsRoute({ navigate, back, params = {} }) {
       action('Manage accounts and recovery phrases', 'wallet', () => navigate('/accounts')),
     ]));
 
-    const networkPanel = h('div', { class: 'settings-detail stack stack-2' }, networkList);
-    renderCustomNetworkNotice(networkPanel);
+    const networkPanel = (sheet) => {
+      const panel = h('div', { class: 'settings-detail stack stack-2' }, networkList(sheet.d));
+      renderCustomNetworkNotice(panel);
+      return panel;
+    };
     const active = networks.find((network) => network.id === activeNetworkId);
     const themeValue = RowValue(theme[0].toUpperCase() + theme.slice(1));
-    const appearance = choices('Choose a theme', 'About appearance', 'Choose Light, Dark, or System to follow your device theme.');
-    appearance.appendChild(h('div', { class: 'row-flex wrap' }, themeChips((label) => { themeValue.textContent = label; })));
-
+    const appearance = (sheet) => {
+      const panel = choices(sheet, 'Choose a theme', 'About appearance', 'Choose Light, Dark, or System to follow your device theme.');
+      panel.appendChild(h('div', { class: 'row-flex wrap' }, themeChips((label) => { themeValue.textContent = label; }, sheet.d)));
+      return panel;
+    };
     const requirePasswordForSigning = preferences?.requirePasswordForSigning === true;
-    const signing = choices('Signing policy', 'About signing security',
-      'Session-only allows signing freely while unlocked. Require password prompts before every transaction.');
-    renderSigningReauth(signing, requirePasswordForSigning);
-    const autoLock = choices('Lock after inactivity', 'About auto-lock',
-      'Automatically locks your wallet after inactivity to protect decrypted keys.');
+    const signing = (sheet) => {
+      const panel = choices(sheet, 'Signing policy', 'About signing security',
+        'Session-only allows signing freely while unlocked. Require password prompts before every transaction.');
+      renderSigningReauth(panel, requirePasswordForSigning, sheet.d);
+      return panel;
+    };
     const minutes = Number(autoLockMinutes);
-    renderAutoLock(autoLock, minutes);
+    const autoLock = (sheet) => {
+      const panel = choices(sheet, 'Lock after inactivity', 'About auto-lock',
+        'Automatically locks your wallet after inactivity to protect decrypted keys.');
+      renderAutoLock(panel, minutes, sheet.d);
+      return panel;
+    };
 
     // ---- Side Panel Mode ----
     // The "Side Panel Mode" toggle only — the explicit "Open side panel" button is not
@@ -484,14 +520,14 @@ export function SettingsRoute({ navigate, back, params = {} }) {
     });
 
     body.appendChild(SettingsGroup('Settings', [
-      disclosure('network', 'Network', 'globe', RowValue(active?.label || activeNetworkId || '—'), networkPanel),
+      pickerRow('network', 'Network', 'globe', RowValue(active?.label || activeNetworkId || '—'), networkPanel),
       sidePanelRow,
       notifications,
-      disclosure('signing', 'Signing security', 'shield', RowValue(requirePasswordForSigning ? 'Require password' : 'Session-only'), signing),
-      disclosure('theme', 'Theme Mode', 'settings', themeValue, appearance),
+      pickerRow('signing', 'Signing security', 'shield', RowValue(requirePasswordForSigning ? 'Require password' : 'Session-only'), signing),
+      pickerRow('theme', 'Theme Mode', 'settings', themeValue, appearance),
       plannedRow('Language', 'language'),
       plannedRow('Currency', 'coins'),
-      disclosure('auto-lock', 'Auto-lock time', 'clock', RowValue(Number.isFinite(minutes) ? autoLockLabel(minutes) : '—'), autoLock),
+      pickerRow('auto-lock', 'Auto-lock time', 'clock', RowValue(Number.isFinite(minutes) ? autoLockLabel(minutes) : '—'), autoLock),
     ]));
 
     // There is deliberately NO full-wallet reset on this screen: an unlocked wallet
@@ -523,7 +559,7 @@ export function SettingsRoute({ navigate, back, params = {} }) {
       h('img', { src: 'icons/thru.png', alt: '', width: 20, height: 20 }),
       h('span', { text: 'Thru Wallet' }),
     ]));
-    disclosures.get(focusedDisclosure)?.firstChild.focus();
+    pickerRows.get(focusedKey)?.focus();
   }
 
   load();
@@ -534,7 +570,8 @@ export function SettingsRoute({ navigate, back, params = {} }) {
     destroy() {
       disposed = true;
       clearBody();
-      disclosures.clear();
+      routeAbort.abort();
+      pickerRows.clear();
       header.destroy();
       banner.destroy();
       d.dispose();
