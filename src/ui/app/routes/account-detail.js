@@ -20,16 +20,8 @@ import { keyringTypeLabel } from '../../domain/account-row.js';
 import { requirePassword } from '../../domain/password-prompt.js';
 import * as bridge from '../bridge.js';
 import { seed } from '../guards.js';
+import { explorerAddressUrl } from '../../../shared/format.js';
 import { decodeRef, encodeRef, refsEqual } from '../../../shared/refs.js';
-
-// The network config is already serialized across the background seam. Keep this route from
-// importing lib/networks.js: that module imports Pubkey from @thru/sdk and would put the SDK's
-// protobuf/runtime graph in the popup bundle for a URL-builder helper.
-function explorerAddressUrl(network, address) {
-  return network?.explorerUrl
-    ? `${network.explorerUrl}/address/${address}?network=${network.id}`
-    : '';
-}
 
 /** One label/value row in the detail table. */
 function DetailRow(label, valueNode) {
@@ -41,6 +33,7 @@ function DetailRow(label, valueNode) {
 
 export function AccountDetailRoute({ params, navigate, back }) {
   const d = disposer();
+  let destroyed = false;
   const ref = decodeRef(params.ref);
 
   const banner = Banner({ tone: 'error' });
@@ -71,6 +64,7 @@ export function AccountDetailRoute({ params, navigate, back }) {
         bridge.send('account.getActiveRef'),
         bridge.send('network.getActive'),
       ]);
+      if (destroyed) return;
 
       const account = (accounts || []).find((a) => refsEqual(a.ref, ref));
       if (!account) {
@@ -86,6 +80,7 @@ export function AccountDetailRoute({ params, navigate, back }) {
 
       render({ account, keyring, isSeed, isActive, network, accounts, totalKeyrings: (keyrings || []).length });
     } catch (error) {
+      if (destroyed) return;
       while (body.firstChild) body.removeChild(body.firstChild);
       banner.set(error.message || 'Could not load this account.');
     }
@@ -313,6 +308,7 @@ export function AccountDetailRoute({ params, navigate, back }) {
   return {
     el,
     destroy() {
+      destroyed = true;
       for (const c of owned) c.destroy?.();
       owned.length = 0;
       header.destroy();

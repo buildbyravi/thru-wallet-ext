@@ -29,7 +29,7 @@ import {
   submitReviewedReview, classifyReviewError, discardReview,
 } from '../../domain/tx-review/confirm.js';
 import * as bridge from '../bridge.js';
-import { formatThru } from '../../../shared/format.js';
+import { formatThru, explorerTxUrl } from '../../../shared/format.js';
 
 // Fallback display value for networks that do not publish a per-claim cap. The service
 // validates the amount against the active network before signing.
@@ -46,6 +46,7 @@ export function FaucetRoute({ navigate, back }) {
   let network = null;
   let capUnits = 0n;
   let claimBtnEl = null;
+  let statusHostEl = null;
 
   function track(c) { owned.push(c); return c; }
 
@@ -55,6 +56,7 @@ export function FaucetRoute({ navigate, back }) {
   const el = h('section', { class: 'screen' }, [header.el, banner.el, body]);
 
   function clearBody() {
+    statusHostEl = null;
     for (const c of owned) c.destroy?.();
     owned.length = 0;
     while (body.firstChild) body.removeChild(body.firstChild);
@@ -91,22 +93,23 @@ export function FaucetRoute({ navigate, back }) {
       type: 'text',
       readonly: true,
       value: `${fixedThru} THRU`,
-      hint: `Fixed claim of ${fixedThru} THRU per request. Claiming is free and does not need a balance.`,
+      hint: `Fixed claim of ${fixedThru} THRU per request — paid to your active account, no gas required to claim.`,
     }));
 
     const claimBtn = track(Button({
-      label: 'Claim on-chain',
+      label: 'Claim',
       variant: 'primary',
-      iconName: 'faucet',
       busyLabel: 'Claiming…',
       onClick: () => claim(claimUnits, claimBtn),
     }));
     claimBtnEl = claimBtn;
 
+    const statusHost = h('div', { class: 'hidden' });
+
     body.appendChild(amount.el);
-    body.appendChild(h('p', { class: 'hint', text:
-      'The faucet pays your active account. Claiming is free and does not need a balance.' }));
+    body.appendChild(statusHost);
     body.appendChild(h('div', { class: 'screen-actions' }, claimBtn.el));
+    return statusHost;
   }
 
   let claiming = false;
@@ -116,6 +119,17 @@ export function FaucetRoute({ navigate, back }) {
   let submitting = false;
   let destroyed = false;
   let reviewSheet = null;
+
+  function setSubmittingStatus(message) {
+    if (!statusHostEl || !statusHostEl.isConnected) return;
+    while (statusHostEl.firstChild) statusHostEl.removeChild(statusHostEl.firstChild);
+    if (!message) {
+      statusHostEl.classList.add('hidden');
+      return;
+    }
+    statusHostEl.classList.remove('hidden');
+    statusHostEl.appendChild(Spinner({ label: message }).el);
+  }
 
   async function claim(renderedUnits, claimBtn) {
     if (claiming || submitting || reviewSheet) return;
@@ -131,12 +145,12 @@ export function FaucetRoute({ navigate, back }) {
     // new amount rather than sign something the read-only field does not show.
     if (capUnits !== renderedUnits) {
       banner.set(`The faucet cap changed to ${formatThru(capUnits)} THRU. Review the updated claim.`);
-      renderForm();
+      statusHostEl = renderForm();
       return;
     }
 
     claiming = true;
-    claimBtn?.update({ disabled: true });
+    claimBtn?.setBusy(true);
     banner.clear();
     const units = capUnits;
 
@@ -151,18 +165,18 @@ export function FaucetRoute({ navigate, back }) {
     } catch (error) {
       banner.set(error?.message || 'The faucet claim review could not be prepared.');
       claiming = false;
-      claimBtn?.update({ disabled: false });
+      claimBtn?.setBusy(false);
       return;
     }
     if (!prepared?.supported) {
       banner.set('This wallet has no decoder for that transaction, so it cannot be signed.');
       claiming = false;
-      claimBtn?.update({ disabled: false });
+      claimBtn?.setBusy(false);
       return;
     }
 
     claiming = false;
-    claimBtn?.update({ disabled: false });
+    claimBtn?.setBusy(false);
     openReview(prepared, units);
   }
 
@@ -220,9 +234,10 @@ export function FaucetRoute({ navigate, back }) {
   async function submitReviewed(prepared, acknowledgements, units) {
     if (submitting) return;
     submitting = true;
-    claimBtnEl?.update({ disabled: true });
+    claimBtnEl?.setBusy(true);
+    setSubmittingStatus('Submitting claim — waiting for confirmation…');
     banner.clear();
-    const before = await bridge
+    const beforePromise = bridge
       .send('tx.getAccountInfo', { address: account.address })
       .then((info) => BigInt(info.balance || '0'))
       .catch(() => null);
@@ -233,9 +248,11 @@ export function FaucetRoute({ navigate, back }) {
         signal: lifecycle.signal,
         passwordTitle: 'Confirm faucet claim',
         passwordBody: 'Re-enter your wallet password to sign this faucet claim.',
-        confirmLabel: 'Claim on-chain',
+        confirmLabel: 'Claim',
       });
       if (outcome.status === 'cancelled' || destroyed) return;
+      const before = await beforePromise;
+      if (destroyed) return;
       await renderSuccess(outcome.result, before, units);
     } catch (error) {
       if (destroyed) return;
@@ -246,43 +263,28 @@ export function FaucetRoute({ navigate, back }) {
       banner.set(classified.message, classified.kind === 'uncertain' ? 'warning' : 'error');
     } finally {
       submitting = false;
-      if (!destroyed) claimBtnEl?.update({ disabled: false });
+      setSubmittingStatus('');
+      if (!destroyed && claimBtnEl?.el?.isConnected) claimBtnEl.setBusy(false);
     }
   }
 
   async function renderSuccess(result, beforeBalance, requested) {
     clearBody();
+    statusHostEl = null;
     header.setTitle('Claimed');
 
-    // Report the ACTUAL balance change, not just that the call returned. An RPC accepting a
-    // submission is not the same as funds arriving.
-    let delta = null;
-    try {
-      const after = BigInt((await bridge.send('tx.getAccountInfo', { address: account.address })).balance || '0');
-      if (beforeBalance != null) delta = after - beforeBalance;
-    } catch {
-      // leave delta null and say so rather than implying a number
-    }
-
+    const statusTitle = h('strong', { text: 'Claim submitted' });
+    const statusHint = h('p', {
+      class: 'hint',
+      text: 'Confirming updated balance…',
+    });
     body.appendChild(h('div', { class: 'notice' }, [
       h('div', { class: 'row-flex' }, [
         icon('check', 16),
-        h('strong', { text: delta != null && delta > 0n
-          ? `Received ${formatThru(delta)} THRU`
-          : 'Claim submitted' }),
+        statusTitle,
       ]),
-      h('p', { class: 'hint', text: delta != null && delta > 0n
-        ? 'Confirmed by re-reading your balance.'
-        : 'The balance has not changed yet. Faucet claims can take a moment to appear.' }),
+      statusHint,
     ]));
-
-    if (delta != null && delta !== requested && delta > 0n) {
-      banner.set(
-        `Expected ${formatThru(requested)} THRU but received ${formatThru(delta)} THRU. Please report this — it would `
-        + 'mean the faucet amount unit differs from what the wallet assumes.',
-        'warning',
-      );
-    }
 
     if (result?.signature) {
       body.appendChild(h('div', { class: 'detail-table' }, [
@@ -291,7 +293,7 @@ export function FaucetRoute({ navigate, back }) {
           h('div', { class: 'detail-val mono', style: { wordBreak: 'break-all' }, text: result.signature }),
         ]),
       ]));
-      const explorer = network?.explorerUrl ? `${network.explorerUrl}/tx/${result.signature}` : '';
+      const explorer = explorerTxUrl(network, result.signature);
       if (explorer) {
         body.appendChild(h('a', {
           class: 'btn secondary',
@@ -311,9 +313,35 @@ export function FaucetRoute({ navigate, back }) {
       track(Button({
         label: 'Claim again',
         variant: 'text',
-        onClick: () => { header.setTitle('Faucet'); banner.clear(); renderForm(); },
+        onClick: () => { header.setTitle('Faucet'); banner.clear(); statusHostEl = renderForm(); },
       })).el,
     ]));
+
+    // Report the ACTUAL balance change, not just that the call returned. An RPC accepting a
+    // submission is not the same as funds arriving.
+    let delta = null;
+    try {
+      const after = BigInt((await bridge.send('tx.getAccountInfo', { address: account.address })).balance || '0');
+      if (beforeBalance != null) delta = after - beforeBalance;
+    } catch {
+      // leave delta null and say so rather than implying a number
+    }
+    if (destroyed || !statusTitle.isConnected) return;
+
+    if (delta != null && delta > 0n) {
+      statusTitle.textContent = `Received ${formatThru(delta)} THRU`;
+      statusHint.textContent = 'Confirmed by re-reading your balance.';
+    } else {
+      statusHint.textContent = 'The balance has not changed yet. Faucet claims can take a moment to appear.';
+    }
+
+    if (delta != null && delta !== requested && delta > 0n) {
+      banner.set(
+        `Expected ${formatThru(requested)} THRU but received ${formatThru(delta)} THRU. Please report this — it would `
+        + 'mean the faucet amount unit differs from what the wallet assumes.',
+        'warning',
+      );
+    }
   }
 
   async function load() {
@@ -334,7 +362,7 @@ export function FaucetRoute({ navigate, back }) {
       }
       // faucetMaxPerClaim crosses the port as a string, since JSON cannot carry BigInt.
       capUnits = net.faucetMaxPerClaim != null ? BigInt(net.faucetMaxPerClaim) : DEFAULT_CLAIM_UNITS;
-      renderForm();
+      statusHostEl = renderForm();
     } catch (error) {
       clearBody();
       banner.set(error.message || 'Could not load the faucet.');

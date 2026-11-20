@@ -111,6 +111,6 @@ DeFi/DEX/launchpad review kinds are intentionally absent while `FLAGS.DEFI_*` ar
 
 ## 6. Automated Coverage vs Open Verification
 
-- **Automated (`IMPLEMENTED`, `TESTED`, 2026-11-16):** `test/test-tx-review.mjs` (205 checks), `test/test-tx-review-card.mjs` (67 checks), `test/test-review-lifecycle.mjs`, `test/test-review-consent.mjs`, `test/test-signing-surface.mjs`, and `test/test-route-lifecycle.mjs` (1,153 checks).
+- **Automated (`IMPLEMENTED`, `TESTED`, 2026-11-19):** `test/test-tx-review.mjs` (206 checks), `test/test-tx-review-card.mjs` (68 checks), `test/test-review-lifecycle.mjs`, `test/test-review-consent.mjs`, `test/test-signing-surface.mjs`, and `test/test-route-lifecycle.mjs` (1,174 checks).
 - **Visual Harness:** `node scripts/serve-dist.mjs --root . --port 8000` -> `scripts/preview-tx-review.html` (9 fixtures against real `dist/popup.css`, including 1 synthetic failed-simulation fixture).
 - **Open (`UNVERIFIED`):** Real-Chrome pixel inspection of `TxReviewCard` at 400px popup and narrow/wide side-panel widths (`docs/MANUAL_SMOKE_CHECKLIST.md` §7), and live Betanet confirmation of the v32 reviewed signing flows. Historical PR/audit logs live in `docs/audits/2026-10-28-sync-audit.md`, `docs/audits/2026-10-29-v31-audit.md`, and `docs/audits/2026-10-30-review-lifecycle-audit.md`.

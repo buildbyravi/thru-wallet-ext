@@ -29,13 +29,13 @@ Thru Wallet
 **Summary from package**
 
 ```text
-High-performance self-custody wallet and key manager for Thru.
+Self-custody wallet and key manager for Thru.
 ```
 
 **Description**
 
 ```text
-Thru Wallet is an experimental, open-source self-custody wallet for Thru's betanet blockchain.
+Thru Wallet is an open-source self-custody wallet for Thru's betanet blockchain.
 
 Key Features:
 
@@ -43,7 +43,7 @@ Key Features:
 
 - On-Chain Transfers: Send THRU and custom tokens with detailed transaction review, recipient lookup, and fee estimation.
 
-- Native Token Management: Inspect balances across native THRU and program-derived tokens with a clean Rabby-inspired sliding token drawer.
+- Token Balances: View native THRU and custom-token balances in one list.
 
 - Verified Custom Tokens: Import tokens by contract address with on-chain verification of ticker, decimals, and supply.
 
@@ -57,11 +57,11 @@ Key Features:
 
 - Local Encryption: Keys are encrypted at rest using PBKDF2 (600k iterations) + AES-256-GCM.
 
-- Auto-Lock Protection: Inactivity lock automatically clears decrypted keys from memory after 15 minutes. Shortcut: Ctrl+L.
+- Auto-Lock Protection: Inactivity lock clears decrypted keys from memory after 15 minutes by default. Shortcut: Ctrl+L.
 
 - Zero Telemetry: No analytics, tracking, third-party scripts, or remote code execution.
 
-Notice: This is community-built, open-source software for the Thru Betanet testnet. It is not affiliated with or endorsed by Unto Labs and has not been audited. Do not use with real financial value.
+Notice: This software is for the Thru Betanet testnet. It is not affiliated with or endorsed by Unto Labs and has not been independently audited. Do not use it with real financial value.
 ```
 
 **Category**
@@ -102,7 +102,7 @@ Used to power the 15-minute auto-lock security timer. When the timer expires aft
 **sidePanel**
 
 ```text
-This extension uses the side panel as the wallet interface so users can view balances, accounts, transaction history, and approve actions without leaving the current page. It provides a secure, quick-access self-custody wallet experience for managing Thru assets in context while browsing.
+The side panel lets users view balances, accounts, and transaction history without leaving the current page.
 ```
 
 **clipboardRead**
@@ -132,7 +132,7 @@ True in code: `script-src 'self'`, `default-src 'none'` (see `src/manifest.json`
 `PRIVACY.md` in this repository. If `PRIVACY.md` moves or changes scope, update the URL or
 content in the dashboard in the same release.
 
-## 6. Copy accuracy notes (verified against the code 2026-10-04)
+## 6. Copy accuracy notes (verified against the code 2026-11-19)
 
 Documentation summarizes the code; it does not override it. When refreshing the listing,
 re-check these claims against `src/` and fix the copy if the code moved.
@@ -141,7 +141,7 @@ re-check these claims against `src/` and fix the copy if the code moved.
 | --- | --- | --- |
 | PBKDF2 (600k iterations) | `src/lib/vault.js` — `PBKDF2_ITERATIONS = 600_000`, PBKDF2-SHA-256 | ✅ exact |
 | AES-256-GCM at rest | `src/lib/vault.js` — 256-bit non-extractable AES-GCM key | ✅ exact |
-| Auto-lock after 15 minutes | `src/shared/autolock.js` — `DEFAULT_AUTOLOCK_MINUTES = 15` | ✅ default is 15 min; user-configurable 0–240 min. The live listing still says "after 15 minutes" (verified 2026-10-04) — consider "by default after 15 minutes" at the next copy refresh |
+| Auto-lock after 15 minutes | `src/shared/autolock.js` — `DEFAULT_AUTOLOCK_MINUTES = 15` | ✅ default is 15 min; user-configurable 0–240 min. The listing says "by default after 15 minutes" |
 | Five permissions, one purpose each | `src/manifest.json` — exactly `storage`, `alarms`, `sidePanel`, `clipboardRead`, `notifications` | ✅ exact |
 | Zero telemetry / no remote code | no analytics, no remote scripts; CSP `script-src 'self'` | ✅ exact |
 | Features: HD/import, send + review, receive QR, faucet | routes in `src/ui/app/routes/` (dashboard, send, receive, add-account, settings/faucet) | ✅ shipped |

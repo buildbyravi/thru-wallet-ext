@@ -38,7 +38,7 @@ import {
   submitReviewedReview, classifyReviewError, discardReview,
 } from '../../domain/tx-review/confirm.js';
 import * as bridge from '../bridge.js';
-import { formatThru, parseThruAmount, formatTokenAmount, parseTokenAmount, truncateAddress } from '../../../shared/format.js';
+import { formatThru, parseThruAmount, formatTokenAmount, parseTokenAmount, truncateAddress, explorerTxUrl } from '../../../shared/format.js';
 import { safeAddressParam } from '../../../shared/refs.js';
 
 export function SendRoute({ params, navigate, back }) {
@@ -195,8 +195,29 @@ export function SendRoute({ params, navigate, back }) {
 
   function nativeBalanceText() {
     if (balanceUnits != null) return `${formatThru(balanceUnits)} THRU`;
-    if (cachedBalanceUnits != null) return `${formatThru(cachedBalanceUnits)} THRU (last known)`;
+    if (cachedBalanceUnits != null) return `${formatThru(cachedBalanceUnits)} THRU`;
     return balanceStatus === 'error' ? 'Balance unavailable' : 'Checking balance…';
+  }
+
+  function isNativeBalanceUpdating() {
+    return balanceUnits == null && balanceStatus === 'checking';
+  }
+
+  function isNativeBalanceStale() {
+    return balanceUnits == null && cachedBalanceUnits != null && balanceStatus === 'error';
+  }
+
+  function isAssetBalanceUpdating() {
+    if (asset.isNative) return isNativeBalanceUpdating();
+    const state = tokenBalanceState.get(asset.mintAddress);
+    return tokenBalanceStatus === 'checking' && !state;
+  }
+
+  function syncBalanceEl(node, { updating, stale }) {
+    node.classList.toggle('balance-updating', Boolean(updating));
+    node.classList.toggle('stale', Boolean(stale));
+    if (updating) node.setAttribute('aria-busy', 'true');
+    else node.removeAttribute('aria-busy');
   }
 
   function spendableText() {
@@ -211,7 +232,15 @@ export function SendRoute({ params, navigate, back }) {
   function updateFormBalances() {
     if (!liveForm) return;
     liveForm.fromBalance.textContent = nativeBalanceText();
+    syncBalanceEl(liveForm.fromBalance, {
+      updating: isNativeBalanceUpdating(),
+      stale: isNativeBalanceStale(),
+    });
     liveForm.assetBalance.textContent = assetBalanceText();
+    syncBalanceEl(liveForm.assetBalance, {
+      updating: isAssetBalanceUpdating(),
+      stale: asset.isNative ? isNativeBalanceStale() : false,
+    });
     liveForm.spendable.textContent = spendableText();
     liveForm.max.update({ disabled: spendableUnits() == null });
     const failed = balanceStatus === 'error' || feeStatus === 'error';
@@ -272,6 +301,10 @@ export function SendRoute({ params, navigate, back }) {
     //    wired to it, so there was no way to send from a different account without leaving the
     //    screen and switching the active account first.
     const fromBalance = h('span', { class: 'row-value', text: nativeBalanceText() });
+    syncBalanceEl(fromBalance, {
+      updating: isNativeBalanceUpdating(),
+      stale: isNativeBalanceStale(),
+    });
     const fromCard = h('button', { type: 'button', class: 'row clickable' }, [
       AccountAvatar({
         address: account.address,
@@ -299,6 +332,10 @@ export function SendRoute({ params, navigate, back }) {
     ];
     if (asset.isNative) assetTitleChildren.push(h('span', { class: 'tag-native', text: 'Native' }));
     const assetBalance = h('span', { class: 'row-value', text: assetBalanceText() });
+    syncBalanceEl(assetBalance, {
+      updating: isAssetBalanceUpdating(),
+      stale: asset.isNative ? isNativeBalanceStale() : false,
+    });
     const assetCard = h('button', { type: 'button', class: 'row clickable' }, [
       TokenAvatar({ symbol: asset.symbol, imageUrl: asset.imageUrl, isNative: asset.isNative }),
       h('span', { class: 'row-body' }, [
@@ -755,6 +792,8 @@ export function SendRoute({ params, navigate, back }) {
     const selector = track(AssetSelector({
       nativeBalance: balanceUnits?.toString() ?? null,
       nativeBalanceLabel: nativeBalanceText(),
+      nativeBalanceStale: isNativeBalanceStale(),
+      nativeBalanceUpdating: isNativeBalanceUpdating(),
       balancesPending: tokenBalanceStatus === 'checking',
       tokens: mergedTokens(),
       selectedMint: asset.mintAddress,
@@ -1023,8 +1062,7 @@ export function SendRoute({ params, navigate, back }) {
 
       // explorerUrl is '' on networks without an explorer, and h() drops an unsafe href, so a
       // missing or bad URL renders nothing rather than a dead link.
-      const explorer = reviewed.network.explorerUrl
-        ? `${reviewed.network.explorerUrl}/tx/${result.signature}` : '';
+      const explorer = explorerTxUrl(reviewed.network, result.signature);
       if (explorer) {
         body.appendChild(h('a', {
           class: 'btn secondary',
@@ -1213,6 +1251,7 @@ export function SendRoute({ params, navigate, back }) {
         if (cached != null && /^(0|[1-9]\d*)$/.test(String(cached))) {
           cachedBalanceUnits = BigInt(cached);
           updateFormBalances();
+          if (subView === 'asset') renderAssetPicker();
         }
         if (subView === 'from' || subView === 'recipient') refreshPickerIfOpen();
         // A user can type an unregistered own address before account.list returns. When the

@@ -31,7 +31,7 @@ import { h, disposer } from '../kit/dom.js';
 import { icon } from '../kit/icon.js';
 import { Button, CopyButton } from '../kit/button.js';
 import { focusTrap } from '../kit/focus-trap.js';
-import { formatThru, formatTokenAmount, truncateAddress } from '../../shared/format.js';
+import { formatThru, formatTokenAmount, truncateAddress, explorerTxUrl } from '../../shared/format.js';
 
 /** The one and only way this component says "we do not know". */
 const UNKNOWN = 'Not available';
@@ -235,9 +235,7 @@ export function TxDetailSheet({ entry, network, knownAccounts, loadDetail, onClo
       + 'reported by the network.',
   });
 
-  const explorerUrl = network?.explorerUrl && signature
-    ? `${network.explorerUrl}/tx/${signature}`
-    : '';
+  const explorerUrl = explorerTxUrl(network, signature);
   const explorerLink = explorerUrl
     ? h('a', {
       class: 'btn text w-100',

@@ -233,4 +233,31 @@ export function CopyButton({ getValue, title = 'Copy', className = '', onResult 
   return button;
 }
 
+/**
+ * Large tappable menu card with leading icon, title, subtitle, and chevron.
+ * Shared across onboarding (/welcome) and account creation (/add-account).
+ */
+export function OptionCard({ iconName, title, body, tone = '', onClick } = {}) {
+  const d = disposer();
+  const el = h('button', {
+    type: 'button',
+    class: ['option-card', tone].filter(Boolean),
+  }, [
+    h('span', { class: 'option-card-icon' }, icon(iconName, 18)),
+    h('span', { class: 'option-card-body' }, [
+      h('span', { class: 'option-card-title', text: title }),
+      h('span', { class: 'option-card-sub', text: body }),
+    ]),
+    icon('chevronRight', 14),
+  ]);
+  if (typeof onClick === 'function') d.on(el, 'click', onClick);
+  return {
+    el,
+    destroy() {
+      d.dispose();
+      el.remove();
+    },
+  };
+}
+
 export { on };

@@ -123,18 +123,23 @@ export function AppShell({ navigate, onNetworkChange }) {
     }
     try {
       const health = await bridge.send('tx.checkHealth');
-      const ms = Number(health?.latencyMs);
-      const online = health?.status === 'ok' || health?.healthy === true || Number.isFinite(ms);
-      if (!online) {
-        connectionFooter.update({ healthStatus: 'offline' });
+      const isOffline = health?.status === 'offline';
+      const hasMs = typeof health?.latencyMs === 'number' && Number.isFinite(health.latencyMs);
+      const ms = hasMs ? health.latencyMs : null;
+      const isHealthy = health?.status === 'healthy' || health?.status === 'ok' || health?.healthy === true;
+      const isSlow = health?.status === 'slow' || (ms != null && ms >= 500);
+
+      if (isOffline || (!isHealthy && !isSlow && ms == null)) {
+        connectionFooter.update({ healthStatus: 'offline', latencyMs: null });
       } else {
+        const healthStatus = isSlow ? 'slow' : 'healthy';
         connectionFooter.update({
-          latencyMs: Number.isFinite(ms) ? ms : null,
-          healthStatus: ms > 800 ? 'slow' : 'healthy',
+          latencyMs: ms,
+          healthStatus,
         });
       }
     } catch {
-      connectionFooter.update({ healthStatus: 'offline' });
+      connectionFooter.update({ healthStatus: 'offline', latencyMs: null });
     }
   }
 

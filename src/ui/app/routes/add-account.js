@@ -13,8 +13,7 @@
 // v3, so none of this was previously reachable at all.
 
 import { h, disposer } from '../../kit/dom.js';
-import { icon } from '../../kit/icon.js';
-import { Button } from '../../kit/button.js';
+import { Button, OptionCard } from '../../kit/button.js';
 import { Field } from '../../kit/field.js';
 import { PageHeader, Banner } from '../../kit/feedback.js';
 import { requirePassword } from '../../domain/password-prompt.js';
@@ -22,24 +21,6 @@ import { AddressText } from '../../domain/account-avatar.js';
 import * as bridge from '../bridge.js';
 import { encodeRef } from '../../../shared/refs.js';
 import { formatThru } from '../../../shared/format.js';
-
-/** A large tappable option card. */
-function OptionCard({ iconName, title, body, tone = '', onClick }) {
-  const d = disposer();
-  const el = h('button', {
-    type: 'button',
-    class: ['option-card', tone].filter(Boolean),
-  }, [
-    h('span', { class: 'option-card-icon' }, icon(iconName, 18)),
-    h('span', { class: 'option-card-body' }, [
-      h('span', { class: 'option-card-title', text: title }),
-      h('span', { class: 'option-card-sub', text: body }),
-    ]),
-    icon('chevronRight', 14),
-  ]);
-  d.on(el, 'click', onClick);
-  return { el, destroy() { d.dispose(); el.remove(); } };
-}
 
 export function AddAccountRoute({ navigate, back }) {
   const d = disposer();
@@ -234,7 +215,7 @@ export function AddAccountRoute({ navigate, back }) {
         // the backup flow, which re-verifies the password.
         const created = await requirePassword({
           title: 'Confirm your password',
-          body: 'Adding key material re-checks your password against the encrypted vault.',
+          body: 'Enter your wallet password to create this recovery phrase.',
           confirmLabel: 'Create phrase',
           verify: (password) => bridge.send('keyring.createSeed', {
             password,
@@ -266,7 +247,9 @@ export function AddAccountRoute({ navigate, back }) {
     ]);
     d.on(form, 'submit', (event) => {
       event.preventDefault();
-      void submit();
+      if (submitting) return;
+      createBtn.setBusy(true);
+      void submit().finally(() => createBtn.setBusy(false));
     });
     body.appendChild(form);
   }
@@ -281,8 +264,7 @@ export function AddAccountRoute({ navigate, back }) {
       multiline: true,
       rows: 3,
       secret: true,
-      placeholder: 'twelve words separated by spaces',
-      hint: 'Spell check and autofill are disabled for this field.',
+      placeholder: '12 or 24 words separated by spaces',
     }));
     const nameField = track(Field({
       label: 'Name (optional)',
@@ -307,7 +289,7 @@ export function AddAccountRoute({ navigate, back }) {
         }
         const added = await requirePassword({
           title: 'Confirm your password',
-          body: 'Adding key material re-checks your password against the encrypted vault.',
+          body: 'Enter your wallet password to save this recovery phrase.',
           confirmLabel: 'Import phrase',
           verify: (password) => bridge.send('keyring.addSeed', {
             mnemonic: phrase,
@@ -339,7 +321,9 @@ export function AddAccountRoute({ navigate, back }) {
     ]);
     d.on(form, 'submit', (event) => {
       event.preventDefault();
-      void submit();
+      if (submitting) return;
+      importBtn.setBusy(true);
+      void submit().finally(() => importBtn.setBusy(false));
     });
     body.appendChild(form);
   }
@@ -355,7 +339,6 @@ export function AddAccountRoute({ navigate, back }) {
       rows: 2,
       secret: true,
       placeholder: '64 hex characters',
-      hint: 'Spell check and autofill are disabled for this field.',
     }));
     const nameField = track(Field({
       label: 'Name (optional)',
@@ -379,7 +362,7 @@ export function AddAccountRoute({ navigate, back }) {
         }
         const added = await requirePassword({
           title: 'Confirm your password',
-          body: 'Adding key material re-checks your password against the encrypted vault.',
+          body: 'Enter your wallet password to save this private key.',
           confirmLabel: 'Import key',
           verify: (password) => bridge.send('keyring.addPrivateKey', {
             privateKeyHex: hex,
@@ -410,7 +393,9 @@ export function AddAccountRoute({ navigate, back }) {
     ]);
     d.on(form, 'submit', (event) => {
       event.preventDefault();
-      void submit();
+      if (submitting) return;
+      importKeyBtn.setBusy(true);
+      void submit().finally(() => importKeyBtn.setBusy(false));
     });
     body.appendChild(form);
   }

@@ -30,7 +30,7 @@ lived only in `AGENTS.md` and audit history.
 
 **Options considered.** (a) SemVer ranges for easy upgrades; (b) exact pins with a mandatory upgrade protocol; (c) vendoring the SDK.
 
-**Chosen.** Exact pins only (currently `@thru/sdk` and `@thru/programs` at `0.4.4`), `npm ci` as the install gate, and golden vectors for mnemonic→key→address derivation, public keys, amount conversion, and transaction encoding/decoding. The 0.4.2→0.4.4 upgrade removes the obsolete native-faucet rate-limit dependency: the native THRU faucet has no per-account policy, while the separate THRUSD faucet's limit does not apply to native claims. The legacy `tx.getFaucetLimit` contract method remains explicitly not applicable.
+**Chosen.** Exact pins only (currently `@thru/sdk` and `@thru/programs` at `0.5.2`), `npm ci` as the install gate, and golden vectors for mnemonic→key→address derivation, public keys, amount conversion, and transaction encoding/decoding. The 0.4.2→0.4.4 upgrade removed the obsolete native-faucet rate-limit dependency: the native THRU faucet has no per-account policy, while the separate THRUSD faucet's limit does not apply to native claims. The legacy `tx.getFaucetLimit` contract method remains explicitly not applicable.
 
 **Why.** Wallet addresses must never change silently. The goldens make any derivation or encoding drift fail the build instead of shipping.
 
@@ -382,12 +382,12 @@ unless the operator passes `--collection-proven "<note>"`, an attestation that a
 delta was observed after a real registration. `--probe-collection` records the balance for exactly
 that measurement. Switching to strict is a one-transaction `UpdateConfig` once the probe passes.
 
-**Consequences.** The checked-in `contracts/thru-custom-registrar/thru-custom-registrar.bin` (`33,714`
-bytes, `sha256 f93c112b…35dd2`) was subsequently rebuilt with the tiered layout-2 fields and the
-canonical-config-PDA check (`0xD112`), while Betanet currently runs the prior `2026-10-31` `30,000`-byte
-layout-2 build (`feePolicy: "strict"`, `collectionProbe.measured: false`). Deploying the `33,714`-byte
-artifact and recording a measured treasury balance delta on an RPC-reachable host remain required
-before claiming on-chain fee collection (`docs/guides/domains-and-registrar.md`).
+**Consequences.** The checked-in `contracts/thru-custom-registrar/thru-custom-registrar.bin` (`29,416`
+bytes, `sha256 4c5095e1…7bd515`, rebuilt with `link.x.in`, the tiered layout-2 fields, and the
+canonical-config-PDA check `0xD112`) was deployed to Betanet on `2026-11-18` (`feePolicy:
+"best-effort"`, `collectionProbe.measured: false`, `scripts/defi-evidence/registrar-deploy-betanet-thru-1795038501279.json`).
+Verifying `0xD112` rejection on-chain and recording a measured treasury balance delta on an
+RPC-reachable host remain required before claiming on-chain fee collection (`docs/guides/domains-and-registrar.md`).
 
 ## D-020 — Agent rules get checks, not more prose (2026-10-31)
 

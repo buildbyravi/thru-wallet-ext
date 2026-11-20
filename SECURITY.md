@@ -3,7 +3,7 @@
 **Repository:** [github.com/buildbyravi/thru-wallet-ext](https://github.com/buildbyravi/thru-wallet-ext)  
 **Manifest Version:** Manifest V3  
 
-Thru Wallet is an experimental, open-source, self-custody browser extension designed for Thru's betanet (a non-EVM RISC-V Layer-1 blockchain built by Unto Labs). Security and transparency are paramount to establishing user trust.
+Thru Wallet is an open-source, self-custody browser extension for Thru Betanet, a non-EVM RISC-V Layer 1.
 
 ---
 

@@ -78,15 +78,21 @@ export function HistoryRoute({ back }) {
 
   // ---- Filters ------------------------------------------------------------
   for (const f of FILTERS) {
+    const selected = f.id === activeFilter;
     const chip = h('button', {
       type: 'button',
-      class: ['chip-option', f.id === activeFilter ? 'selected' : null].filter(Boolean),
+      class: ['chip-option', selected ? 'selected' : null].filter(Boolean),
+      'aria-pressed': String(selected),
       text: f.label,
     });
     d.on(chip, 'click', () => {
       activeFilter = f.id;
-      for (const other of filterRow.children) other.classList.remove('selected');
+      for (const other of filterRow.children) {
+        other.classList.remove('selected');
+        other.setAttribute('aria-pressed', 'false');
+      }
       chip.classList.add('selected');
+      chip.setAttribute('aria-pressed', 'true');
       paintList();
     });
     filterRow.appendChild(chip);

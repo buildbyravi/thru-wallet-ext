@@ -16,7 +16,7 @@ Thru Wallet is an open-source, self-custody Chrome MV3 extension for Thru's **Be
 
 1. **Telegram Support Group:** Reach maintainers and community members at [t.me/+dA8TwsOECcIxZWZl](https://t.me/+dA8TwsOECcIxZWZl).
 2. **Search Existing Issues:** Check [GitHub Issues](https://github.com/buildbyravi/thru-wallet-ext/issues).
-3. **Open a Bug Report:** Include your extension version (`1.6.0`), Chrome version, OS, reproduction steps, and visible error text. **Never share your 12-word recovery phrase, private key, or password.**
+3. **Open a Bug Report:** Include your extension version (`1.6.0`), Chrome version, OS, reproduction steps, and visible error text. **Never share your recovery phrase, private key, or password.**
 
 ---
 
@@ -38,8 +38,8 @@ Thru Wallet is an open-source, self-custody Chrome MV3 extension for Thru's **Be
 ### Q: How do I back up my recovery phrase or private key?
 **A:**
 1. Unlock the extension and open **Accounts** -> select your account (`Account` detail view).
-2. Choose the **Export** action and verify your master password.
-3. Write down your 12-word BIP-39 recovery phrase (or 64-character private key) offline in a secure location. Navigating away or locking immediately clears the revealed secret from screen memory.
+2. Choose **Export recovery phrase (all accounts)** or **Export this account's private key** (or **Export private key** for imported keys) and verify your master password.
+3. Write down your 12- or 24-word BIP-39 recovery phrase (or 64-character private key) offline in a secure location. Navigating away or locking immediately clears the revealed secret from screen memory.
 
 ### Q: Why can't I send native THRU to a brand-new external address?
 **A:** On Thru L1, an account must exist on-chain before receiving native `THRU` transfers. Thru Wallet automatically activates accounts created inside your own wallet (on creation, Dashboard load, or when selected as one of your own accounts in Send). An external recipient's wallet must activate its own address first.

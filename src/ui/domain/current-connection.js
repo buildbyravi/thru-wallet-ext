@@ -45,7 +45,7 @@ export function CurrentConnection({
     type: 'button',
     class: 'current-connection-net clickable',
     title: `Network: ${networkLabel} — click to configure in Settings`,
-    'aria-label': `Active network ${networkLabel}`,
+    'aria-label': `Active network ${networkLabel}; open Settings to change`,
   }, [pip, netLabelEl, latencyEl]);
 
   const handleNet = onNetworkClick || onClick;
@@ -66,14 +66,10 @@ export function CurrentConnection({
      *   conn.update({ network: 'Betanet', healthStatus: 'healthy' })   — preferred
      *   conn.update(site, network, latencyMs, healthStatus)             — legacy positional
      *
-     * The positional form forced callers to pad with `undefined` for every earlier slot
-     * they did not want to touch (update(undefined, undefined, null, 'offline')), which
-     * is how an API turns into a footgun. The object form names what changes.
-     *
      * @param {Object|{origin: string}} arg1  options object, or the next dApp site
      * @param {string} [nextNet]              legacy: network label
      * @param {number|null} [latencyMs]       legacy: measured latency
-     * @param {'healthy'|'slow'|'offline'} [healthStatus] legacy: health state
+     * @param {'healthy'|'slow'|'offline'|null} [healthStatus] legacy: health state
      */
     update(arg1, nextNet, latencyMs, healthStatus) {
       let nextSite = arg1;
@@ -94,7 +90,7 @@ export function CurrentConnection({
       if (nextNet !== undefined) {
         netLabelEl.textContent = nextNet;
         netButton.title = `Network: ${nextNet} — click to configure in Settings`;
-        netButton.setAttribute('aria-label', `Active network ${nextNet}`);
+        netButton.setAttribute('aria-label', `Active network ${nextNet}; open Settings to change`);
       }
       if (healthStatus !== undefined) {
         pip.classList.remove('healthy', 'slow', 'offline');
@@ -103,11 +99,15 @@ export function CurrentConnection({
           latencyEl.textContent = 'offline';
         } else if (healthStatus === 'slow') {
           pip.classList.add('slow');
-          latencyEl.textContent = latencyMs ? `${latencyMs}ms` : '';
-        } else {
+          latencyEl.textContent = Number.isFinite(latencyMs) ? `${latencyMs}ms` : '';
+        } else if (healthStatus === 'healthy' || healthStatus === 'ok') {
           pip.classList.add('healthy');
-          latencyEl.textContent = latencyMs ? `${latencyMs}ms` : '';
+          latencyEl.textContent = Number.isFinite(latencyMs) ? `${latencyMs}ms` : '';
+        } else {
+          latencyEl.textContent = '';
         }
+      } else if (latencyMs !== undefined) {
+        latencyEl.textContent = Number.isFinite(latencyMs) ? `${latencyMs}ms` : '';
       }
     },
     destroy() {

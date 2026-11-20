@@ -3,7 +3,7 @@
 **Last Updated:** November 2026
 **Repository:** [github.com/buildbyravi/thru-wallet-ext](https://github.com/buildbyravi/thru-wallet-ext)
 
-Thru Wallet is a self-custody Chrome extension for Thru's betanet (a non-EVM RISC-V Layer-1 blockchain). It is designed from the ground up to respect user privacy and operate under strict zero-telemetry principles.
+This policy describes data stored by the extension and requests sent to the Thru Betanet RPC.
 
 ---
 
@@ -11,7 +11,7 @@ Thru Wallet is a self-custody Chrome extension for Thru's betanet (a non-EVM RIS
 
 All sensitive cryptographic material and application settings remain exclusively on your local device within the extension's isolated browser storage:
 
-*   **Encrypted Seed Phrase & Private Keys:** Your BIP-39 12-word recovery phrase, derived Ed25519 seed keys, and any individually imported private keys.
+*   **Encrypted Seed Phrase & Private Keys:** Your BIP-39 12- or 24-word recovery phrase, derived Ed25519 seed keys, and any individually imported private keys.
 *   **Public Keys & Account Metadata:** Derived public keys, account labels, and account indices.
 *   **Extension Preferences:** Local settings, UI state, and auto-lock preferences.
 *   **Key Derivation Parameters:** Cryptographic salt and PBKDF2 iteration counters required for vault decryption.
@@ -38,13 +38,13 @@ https://rpc.betanet.thru.org
 
 ## 3. What Data Is NEVER Collected
 
-Thru Wallet adheres to a strict zero-collection policy. The extension does **NOT**:
+Thru Wallet does not:
 
-*   **No Analytics or Telemetry:** No usage statistics, click tracking, performance metrics, or error reports are collected.
-*   **No User Tracking:** No IP tracking, user identification, advertising IDs, or behavioral profiling.
-*   **No Third-Party Scripts:** No Google Analytics, Mixpanel, Segment, Sentry, or external tracking libraries.
-*   **No Remote Code:** All JavaScript is bundled locally into the extension package. No remote scripts (`<script src="...">`), external code injection, or `eval()` calls are used.
-*   **No Key Transmission:** Your master password, recovery phrase, and private keys NEVER leave your browser's local memory and are never transmitted over the network.
+*   Collect analytics, click tracking, performance metrics, or error reports.
+*   Track IP addresses, user identity, advertising IDs, or behavior.
+*   Load third-party scripts or tracking libraries.
+*   Load remote code. JavaScript is bundled into the extension package; no remote scripts, code injection, or `eval()` calls are used.
+*   Transmit your master password, recovery phrase, or private keys. They remain in local memory.
 
 ---
 
@@ -55,7 +55,7 @@ To ensure your cryptographic keys remain safe while on your device, Thru Wallet 
 *   **Key Derivation Function (KDF):** PBKDF2 using HMAC-SHA-256 with **600,000 iterations** and a cryptographically secure random salt.
 *   **Symmetric Encryption:** AES-256-GCM (Galois/Counter Mode) authenticated encryption with a fresh 12-byte Initialization Vector (IV) generated for every encryption operation.
 *   **At-Rest Storage:** Encrypted vault ciphertexts are stored in local extension storage (`chrome.storage.local`).
-*   **In-Memory Lifecycle:** Unlocked session keys reside exclusively in memory-only session storage (`chrome.storage.session`). Memory contents are automatically cleared and unrecoverable upon browser shutdown, extension reload, or when the 15-minute inactivity auto-lock timer fires.
+*   **In-Memory Lifecycle:** Unlocked session keys reside exclusively in memory-only session storage (`chrome.storage.session`). Memory contents are automatically cleared and unrecoverable upon browser shutdown, extension reload, or when the inactivity auto-lock timer fires (15 minutes by default, configurable in Settings).
 
 ---
 

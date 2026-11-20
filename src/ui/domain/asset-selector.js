@@ -37,6 +37,8 @@ import { TokenAvatar } from './token-avatar.js';
 export function AssetSelector({
   nativeBalance = null,
   nativeBalanceLabel = null,
+  nativeBalanceStale = false,
+  nativeBalanceUpdating = false,
   balancesPending = false,
   tokens = [],
   selectedMint = null,
@@ -47,6 +49,17 @@ export function AssetSelector({
 
   // ---- Sendable: native THRU plus every token with a known positive balance ------------
   const sendableRows = [];
+
+  const nativeValueAttrs = {
+    class: [
+      'row-value',
+      nativeBalanceUpdating ? 'balance-updating' : null,
+      nativeBalanceStale ? 'stale' : null,
+    ].filter(Boolean),
+    text: nativeBalanceLabel
+      ?? (nativeBalance == null ? 'balance unknown' : `${formatThru(BigInt(nativeBalance))} THRU`),
+  };
+  if (nativeBalanceUpdating) nativeValueAttrs['aria-busy'] = 'true';
 
   const nativeRow = h('button', {
     type: 'button',
@@ -61,8 +74,7 @@ export function AssetSelector({
       ]),
       h('span', { class: 'row-sub', text: 'Thru Native Token' }),
     ]),
-    h('span', { class: 'row-value', text: nativeBalanceLabel
-      ?? (nativeBalance == null ? 'balance unknown' : `${formatThru(BigInt(nativeBalance))} THRU`) }),
+    h('span', nativeValueAttrs),
   ]);
   d.on(nativeRow, 'click', () => onSelect?.({ symbol: 'THRU', mintAddress: null, isNative: true }));
   sendableRows.push(nativeRow);
