@@ -8,6 +8,23 @@ migration change.
 The hard rules (1–30) live in `AGENTS.md`. The long text behind rules 10, 14, 15, 16, 17 and 30 is in
 `docs/agent/rules-detail.md`.
 
+## UX preflight for new screens and meaningful redesigns
+
+Read the current bridge contract, service, and fixtures before proposing UI. List supported,
+unsupported, and unverified capabilities. Before implementation, sketch the layout/navigation for the
+popup and applicable panel sizes; name shared components and the owner of each action and message.
+Map applicable states: checking, cached/stale, ready, empty, invalid input, insufficient funds,
+unsupported, offline, pending, and unknown outcome. Obtain owner sign-off for unresolved layout
+or scope decisions. For a small polish or repair, scope the preflight to the behavior being changed.
+For a visual bug, trace the visible element to its state owner before patching styles.
+
+Borrow interaction and layout patterns, not reference source, branding, logos, SVGs, or protocol
+assumptions. For an expressly owner-approved, non-brand asset exception (see D-032 in
+`docs/DECISIONS.md`), record the pinned upstream source and applicable license, ship the required
+notice, and review the local asset for active content and external references. No remote asset fetch
+or CSP change. For a new multi-state surface, keep a reproducible fixture gallery outside the
+extension package; fixture output is not real MV3 or live-network evidence. Verify via Rule 14.
+
 ## Modern Web Guidance for frontend work
 
 Before editing HTML, CSS, or browser-facing JavaScript (including isolated lab work):
@@ -30,6 +47,10 @@ Before editing HTML, CSS, or browser-facing JavaScript (including isolated lab w
   CSP, no remote assets, no unauthorized dependencies, no secret leakage, and the existing signing
   and architecture boundaries. Keep this workflow under review, alongside Rule 14 browser evidence
   and the unchanged repository guards.
+
+Use the disposable-profile instructions in `docs/MANUAL_SMOKE_CHECKLIST.md` for browser automation
+or DevTools tooling. Any setup must be project-scoped, use verified configuration for the actual
+agent, and must not add production dependencies, debugging permissions, or CSP exceptions.
 
 ## Mainnet-ready engineering directive
 

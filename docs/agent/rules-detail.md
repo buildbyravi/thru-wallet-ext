@@ -58,6 +58,16 @@ rule 14 (layout needs eyes), `test-launchpad-quarantine.mjs` cites rule 6 (BigIn
     (`*.getCached*`), and label stale data instead of pretending it is fresh (2026-10-26 owner
     directive).
 
+    For batch refreshes, a successful response envelope does not make every row fresh. Merge by
+    identity: replace a row only with verified data, keep its last verified value with an explicit
+    stale label on error, and show unknown only when no verified value is available. A verified
+    absence can represent zero if the backend contract says so; a transport error cannot. Do not
+    overwrite a good snapshot with failed/unknown rows or discard a clean one just because it
+    includes a proven zero. Scope by network and account when applicable, and drop late results
+    after a context change, including switching away and back. Add a regression covering a partial
+    failure after cache-first paint, a proven zero, an uncached failure, and a late old-context reply
+    when those paths are affected. The existing stalled-bridge check proves first paint only.
+
     Startup and navigation obey the same rule: paint safe local UI before bootstrap hydration,
     never an intermediate "Checking wallet" page after unlock. Do not erase typed input when
     same-context reads finish. UI session caching must never bypass background authorization;

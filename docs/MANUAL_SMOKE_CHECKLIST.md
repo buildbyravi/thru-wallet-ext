@@ -8,6 +8,13 @@
 
 ## 0. Build, Load, and Avoid the Stale-Extension Trap
 
+Use a disposable Chrome profile for unpacked extension testing and all DevTools/automation
+attachments. Use a throwaway Betanet wallet only if needed. Never attach an agent to a personal
+profile with real credentials, cookies, or wallets. Record the exact commit, browser version, and
+whether the evidence came from unpacked MV3 or an HTML fixture. If native Chrome is unavailable,
+mark that check **BLOCKED**; do not substitute fixture results. For visual changes, check light/dark,
+keyboard focus and dismissal, and scrolling at the widths in §2.
+
 1. Run `npm run build && npm test` (`build.mjs` wipes `dist/` before bundling). Stop immediately if either fails.
 2. In Chrome: `chrome://extensions` -> **Developer mode** ON -> **Load unpacked** -> select `dist/`.
 3. **The reload trap:** After *every* rebuild, click the **Reload** icon on the extension card in `chrome://extensions`, then **close and reopen the popup** (and side panel). Reopening the popup without reloading the extension runs new UI against a cached old service worker; reloading the extension without reopening an open panel leaves the old DOM bundle running.
