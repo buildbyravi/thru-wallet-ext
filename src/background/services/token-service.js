@@ -533,33 +533,16 @@ async function transferToken({ mintAddress, toAddress, amountUnits, allowDuplica
     // Mint reads are live RPCs. A different extension context may switch source or chain
     // while they are pending; checked sends must refuse that old review before signing.
     await assertSendContext(expected, await vault.getActiveAccount());
-    // Track at SUBMISSION (see tx-service.sendTransfer): the pending record must exist
-    // before executionResult so the duplicate warning covers the whole pending window.
-    let trackedSignature = null;
-    const trackSubmitted = (signature, header = null) => {
-      if (!signature || trackedSignature === signature) return null;
-      trackedSignature = signature;
-      return pending.track({
-        signature,
-        kind: 'token',
-        from: feePayer.address,
-        to: target,
-        amountUnits: rawUnits.toString(),
-        mint,
-        displayAmount: `${formatTokenAmount(rawUnits, mintInfo.decimals)} ${symbol}`,
-        networkId: network.id,
-        startSlot: header?.startSlot ?? null,
-        expiryAfter: header?.expiryAfter ?? null,
-      });
-    };
-    const result = await thruClient.sendTokenTransfer({
-      feePayer,
-      mintAddress: mint,
-      recipientAddress: target,
-      amountUnits: rawUnits,
-      onSubmitted: trackSubmitted,
+    const tracking = pending.submissionTracker({
+      kind: 'token', from: feePayer.address, to: target,
+      amountUnits: rawUnits.toString(), mint,
+      displayAmount: `${formatTokenAmount(rawUnits, mintInfo.decimals)} ${symbol}`,
+      tokenSymbol: symbol, tokenDecimals: mintInfo.decimals, networkId: network.id,
     });
-    if (!trackedSignature) await trackSubmitted(result.signature);
+    const result = await thruClient.sendTokenTransfer({
+      feePayer, mintAddress: mint, recipientAddress: target, amountUnits: rawUnits, ...tracking,
+    });
+    await tracking.onSubmitted(result.signature);
     // The THRU balance paid the fee (twice, if the recipient token account was created).
     // The signature is already known. A fresh THRU balance is an advisory UI update,
     // never a prerequisite to returning the submission result to the caller.

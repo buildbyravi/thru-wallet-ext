@@ -39,30 +39,26 @@ export function relTime(ts, slot, status = null) {
   return slot != null ? `Block ${slot}` : '';
 }
 
-/** Stable day key for sectioning: local-calendar day, not a rolling 24h window. */
+/** Local calendar day; an invalid or unavailable block time has no day. */
 export function dayKey(ts) {
   const t = Number(ts);
-  if (!Number.isFinite(t) || t <= 0) return 'recent'; // no wall-clock time on the wire
+  if (!Number.isFinite(t) || t <= 0) return null;
   const d = new Date(t);
-  return `${d.getFullYear()}-${String(d.getMonth()).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  if (!Number.isFinite(d.getTime())) return null;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-export function dayLabel(ts) {
-  return dayLabelForKey(dayKey(ts));
-}
-
-/** Human label for an already-resolved day key ('recent' → the honest catch-all). */
 export function dayLabelForKey(key) {
-  if (key === 'recent') return 'Activity';
-  const now = dayKey(Date.now()), y = dayKey(Date.now() - 86400000);
-  if (key === now) return 'Today';
-  if (key === y) return 'Yesterday';
-  const [, mm, dd] = key.split('-').map(Number);
-  return `${dd} ${MONTHS[mm]}`;
+  const today = new Date();
+  if (key === dayKey(today)) return 'Today';
+  const yesterday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1);
+  if (key === dayKey(yesterday)) return 'Yesterday';
+  const [year, month, day] = key.split('-').map(Number);
+  return `${day} ${MONTHS[month - 1]}${year === today.getFullYear() ? '' : ` ${year}`}`;
 }
 
 function glyphFor(entry) {
-  if (entry.status === 'submitted') return { name: 'spinner', cls: 'pending spinning' };
+  if (entry.status === 'submitted') return { name: 'spinner', cls: 'pending' };
   if (entry.success === false) return { name: 'x', cls: 'failed' };
   if (entry.kind === 'sent' || entry.kind === 'token-sent') return { name: 'send', cls: 'sent' };
   if (entry.kind === 'received' || entry.kind === 'token-received' || entry.kind === 'token-mint') {
@@ -177,7 +173,7 @@ export function TxCard({ entry, network, knownAccounts, onOpen } = {}) {
   const sub = contextFor(entry, knownAccounts);
 
   const body = h('div', { class: 'tx-card-body' }, [
-    h('span', { class: ['row-glyph', glyph.cls].filter(Boolean) }, icon(glyph.name, 14, glyph.cls?.includes('spinning') ? { className: 'spinning' } : {})),
+    h('span', { class: ['row-glyph', glyph.cls].filter(Boolean) }, icon(glyph.name, 14, glyph.name === 'spinner' ? { className: 'spinning' } : {})),
     h('span', { class: 'tx-card-main' }, (() => {
       const pieces = [titleRow];
       if (entry.status === 'submitted') pieces.push(h('span', { class: 'tx-card-badge pending', text: 'Pending' }));

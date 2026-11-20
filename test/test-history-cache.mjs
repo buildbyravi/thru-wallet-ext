@@ -248,6 +248,18 @@ assert.equal(settled.entries[0]?.status, 'confirmed');
 assert.equal(settled.entries[0]?.success, true);
 console.log('  ok - freshly submitted transactions persist immediately to local history cache and settle cleanly');
 
+await history.recordSubmittedTransaction({ signature: 'ts_submitted_rabby_style',
+  kind: 'transfer', from: A, to: B, amountUnits: '777000', networkId: 'betanet' });
+await history.settleTransaction('ts_submitted_rabby_style', 'unknown', null, 'betanet');
+assert.equal((await history.getCachedHistory(A)).entries[0]?.success, true,
+  'late local submission and timeout cannot downgrade a confirmed transaction');
+await history.recordSubmittedTransaction({ signature: 'ts_domain', kind: 'name-register',
+  from: A, to: A, amountUnits: '0', submittedAt: 1_700_000_000_000, networkId: 'betanet' });
+const domain = (await history.getCachedHistory(A)).entries[0];
+assert.equal(domain.kind, 'other', 'non-transfer metadata never fabricates a THRU send');
+assert.equal(domain.amount, null);
+assert.equal(domain.timestamp, 1_700_000_000_000, 'reuse the original pending submission time');
+
 localClient.blocks.getBlockHeight = originalHeight;
 
 // Hold the active-ID read AFTER the authoritative queued scope read, not the earlier RPC.

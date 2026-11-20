@@ -89,6 +89,18 @@ try {
   assert.equal(await thruClient.getBlockTimeMs(slot, 'betanet'), MS_A);
   assert.equal(await thruClient.getBlockTimeMs(slot, 'betanet'), MS_A);
   assert.equal(alphaCalls, 1, 'successful lookups are cached within a network');
+  const originalDetail = alphaClient.transactions.get;
+  try {
+    alphaClient.transactions.get = async () => fakeTransaction('ts_detail', slot);
+    const detail = await txService.getTransactionDetail('ts_detail', 'taViewer');
+    assert.equal(detail.supported, true);
+    assert.equal(detail.blockTimeMs, MS_A);
+    assert.equal(alphaCalls, 1, 'detail reuses the same header lookup as history');
+    assert.equal((await txService.getTransactionDetail('ts_wrong', 'taViewer')).supported, false,
+      'a mismatched signature cannot populate the detail sheet');
+  } finally {
+    alphaClient.transactions.get = originalDetail;
+  }
   assert.equal(relTime(MS_A, slot), format(MS_A));
   assert.equal(relTime(null, slot), `Block ${slot}`);
   assert.equal(relTime(Number.MAX_VALUE, slot), `Block ${slot}`, 'invalid dates do not render NaN');
@@ -227,6 +239,14 @@ try {
     'a local submission timestamp is marked as such, not mistaken for a block time');
   console.log('  ok - verified timestamps survive refresh; missing times retain honest fallbacks');
 
+  await history.recordSubmittedTransaction({ signature: 'ts_stream_settled', kind: 'transfer',
+    from: 'ta_stream_payer', amountUnits: '1', networkId: 'betanet' });
+  await history.settleTransaction('ts_stream_settled', 'confirmed', null, 'betanet');
+  const indexed = fakeTransaction('ts_stream_settled', 437);
+  alphaClient.transactions.listForAccount = async () => ({ transactions: [{ ...indexed, executionResult: undefined }] });
+  assert.equal((await history.getHistoryFeed('ta_stream_payer')).entries[0]?.success, true,
+    'an indexed row missing the execution result cannot downgrade known execution');
+
   // Load more uses tx.listHistory directly rather than the cache-merged first-page feed.
   // Only the requested page's slots should be enriched, not all cursor + limit entries.
   alphaClient.transactions.listForAccount = async () => ({ transactions: Array.from(
@@ -237,7 +257,10 @@ try {
     pagedSlots.push(requested);
     return { blockTimeNs: NS_B };
   };
+  const firstPage = await txService.listHistory('ta_paginated', { limit: 15, cursor: 0, skipBlockTimes: true });
+  assert.equal(firstPage.nextCursor, 15, 'a sentinel row exposes the subsequent page');
   const page = await txService.listHistory('ta_paginated', { limit: 3, cursor: 15 });
+  assert.equal(page.nextCursor, null, 'the last page does not offer a phantom next page');
   assert.deepEqual(page.entries.map((e) => e.signature), ['ts_page_15', 'ts_page_16', 'ts_page_17']);
   assert.ok(page.entries.every((e) => e.timestamp === MS_B && e.timestampSource === 'block'));
   assert.deepEqual(pagedSlots.sort((a, b) => a - b), [447, 448],

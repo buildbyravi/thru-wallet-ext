@@ -651,9 +651,9 @@ const { explorerAddressUrl, explorerTxUrl } = await import('../src/shared/format
 ok('explorerAddressUrl builds address URL with network query param',
   explorerAddressUrl({ id: 'betanet', explorerUrl: 'https://scan.thru.org' }, 'ta123')
     === 'https://scan.thru.org/address/ta123?network=betanet');
-ok('explorerTxUrl builds tx URL',
+ok('explorerTxUrl builds a network-scoped tx URL',
   explorerTxUrl({ id: 'betanet', explorerUrl: 'https://scan.thru.org' }, 'ts999')
-    === 'https://scan.thru.org/tx/ts999');
+    === 'https://scan.thru.org/tx/ts999?network=betanet');
 ok('explorer URL helpers return empty string when explorerUrl is absent',
   explorerAddressUrl({ id: 'custom', explorerUrl: '' }, 'ta123') === ''
     && explorerTxUrl({ id: 'custom', explorerUrl: '' }, 'ts999') === '');

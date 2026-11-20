@@ -189,6 +189,8 @@ export async function track(tx) {
     amountUnits: tx.amountUnits != null ? String(tx.amountUnits) : null,
     mint: tx.mint || null,
     displayAmount: tx.displayAmount || null,
+    tokenSymbol: tx.tokenSymbol || null,
+    tokenDecimals: Number.isInteger(tx.tokenDecimals) ? tx.tokenDecimals : null,
     networkId,
     status: TX_STATUS.SUBMITTED,
     submittedAt: Date.now(),
@@ -226,6 +228,29 @@ export async function track(tx) {
   }
 
   return record;
+}
+
+/** Connect SDK submit/execute events to the same durable record, in that order. */
+export function submissionTracker(metadata) {
+  let submitted;
+  let knownSignature;
+  return {
+    onSubmitted(signature, header) {
+      if (!signature || submitted) return;
+      knownSignature = signature;
+      submitted = track({
+        ...metadata,
+        signature,
+        startSlot: header?.startSlot ?? null,
+        expiryAfter: header?.expiryAfter ?? null,
+      }).catch(() => null);
+      return submitted;
+    },
+    async onExecution(signature, success) {
+      if (!submitted || knownSignature !== signature || !await submitted) return;
+      return resolveExecution(signature, success, metadata.networkId);
+    },
+  };
 }
 
 /**
@@ -339,7 +364,6 @@ async function settle(signature, status, error, networkId, ctx = null) {
   }, ctx);
   if (!result) return null;
   const next = result;
-  await publish(next, networkId, ctx);
   const settledRecord = next.find((r) => r.signature === signature) || null;
   try {
     await settleTransaction(signature, status, error, networkId,
@@ -347,6 +371,8 @@ async function settle(signature, status, error, networkId, ctx = null) {
   } catch {
     // History cache update is best-effort
   }
+  // Views re-read the feed on this event; persist the matching local status first.
+  await publish(await readAll(networkId), networkId, ctx).catch(() => {});
   if (status === TX_STATUS.CONFIRMED && settledRecord) {
     const addrs = [settledRecord.from, settledRecord.to].filter((a) => typeof a === 'string' && a);
     if (addrs.length) {

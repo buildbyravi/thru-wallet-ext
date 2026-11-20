@@ -14,7 +14,7 @@
 // still does not import networks.js or any service — it holds whatever it was given and falls
 // back to the betanet defaults, so it stays independently testable.
 
-import { createThruClient, Signature, Pubkey, PageRequest, BlockView, keys as sdkKeys, EOA_PROGRAM_ID, TOKEN_PROGRAM_ADDRESS, NOOP_PROGRAM_ADDRESS, CORE_MANAGER_PROGRAM_ADDRESS } from '@thru/sdk';
+import { createThruClient, Signature, Pubkey, PageRequest, BlockView, keys as sdkKeys, eoa, EOA_PROGRAM_ID, TOKEN_PROGRAM_ADDRESS, NOOP_PROGRAM_ADDRESS, CORE_MANAGER_PROGRAM_ADDRESS } from '@thru/sdk';
 // Official program bindings. BUILD_SPEC Part IX: prefer @thru/sdk (including its crypto
 // subpath) and @thru/programs over hand-written protocol code wherever the SDK provides it.
 // These replace a hand-rolled derivation that called a non-existent SDK method.
@@ -29,6 +29,7 @@ import {
   parseTokenAccountData as sdkParseTokenAccountData,
   parseMintAccountData as sdkParseMintAccountData,
   decodeTokenMintAccount,
+  TransferInstruction as SdkTokenTransferInstruction,
   TOKEN_MINT_ACCOUNT_SIZE,
   isAccountNotFoundError as sdkIsAccountNotFoundError,
 } from '@thru/programs/token';
@@ -424,27 +425,33 @@ export const SEND_EXPIRY_SLOTS = 1000;
  * duplicate-transfer warning — need the signature at SUBMISSION: on betanet's ~6-second
  * blocks, waiting for executionResult left the whole pending window undetectable
  * (reported 2026-10-03: "no warning until tx is confirmed"). Purely additive: fires
- * `onSubmitted(signature)` exactly once, never throws into the stream, and every send's
- * return semantics are unchanged.
+ * `onSubmitted` once and forwards an explicit SDK execution result to `onExecution` when
+ * a signature is known. Missing results are not failures, and observers cannot fail the send.
  */
-async function* withSubmittedNotice(updates, onSubmitted, builtHeader = null) {
-  let fired = false;
+async function* withSubmittedNotice(updates, onSubmitted, builtHeader, onExecution) {
+  let signature = null;
   for await (const update of updates) {
-    if (!fired && update.signature?.value) {
-      fired = true;
+    if (!signature && update.signature?.value) {
+      signature = Signature.from(update.signature.value).toThruFmt();
       if (typeof onSubmitted === 'function') {
         try {
           // The header is handed over because the pending record must outlive the send: without
           // startSlot + expiryAfter it cannot tell "may still land" from "expired", and the UI
           // cannot tell the user which of the two they are looking at.
-          const p = onSubmitted(Signature.from(update.signature.value).toThruFmt(), builtHeader);
+          const p = onSubmitted(signature, builtHeader);
           if (p && typeof p.catch === 'function') p.catch(() => {});
         } catch {
           // Tracking is best-effort; never affect the send stream.
         }
       }
     }
-    yield update;
+    if (signature && update.executionResult && typeof onExecution === 'function') {
+      try {
+        const result = onExecution(signature, update.executionResult.vmError === 0);
+        result?.catch?.(() => {});
+      } catch { /* Tracking never alters the SDK stream's result. */ }
+    }
+    yield { update, signature };
   }
 }
 
@@ -460,7 +467,7 @@ async function* withSubmittedNotice(updates, onSubmitted, builtHeader = null) {
  * fee payer exists on-chain. The account still needs no FUNDING, only registration, which is
  * what createOnChainAccount does and what the guard below now handles.
  */
-export async function claimFaucet(feePayer, amount, { onSubmitted = null } = {}) {
+export async function claimFaucet(feePayer, amount, { onSubmitted = null, onExecution = null } = {}) {
   // Read from the configured network, not the module constants, so a network switch actually
   // reaches a different faucet.
   const net = activeNetwork;
@@ -508,11 +515,11 @@ export async function claimFaucet(feePayer, amount, { onSubmitted = null } = {})
   });
   const builtHeader = { startSlot: String(built?.startSlot ?? ''), expiryAfter: built?.expiryAfter ?? SEND_EXPIRY_SLOTS };
 
-  for await (const update of withSubmittedNotice(getClient().transactions.sendAndTrack(rawTransaction), onSubmitted, builtHeader)) {
+  for await (const { update, signature } of withSubmittedNotice(getClient().transactions.sendAndTrack(rawTransaction), onSubmitted, builtHeader, onExecution)) {
     if (update.executionResult) {
       noteExecution(UNIT_CLASS.CLAIM, update.executionResult);
       if (update.executionResult.vmError === 0) {
-        return update.signature?.value ? Signature.from(update.signature.value).toThruFmt() : undefined;
+        return signature || undefined;
       }
       throw new Error(`Faucet claim reverted on-chain (vmError=${update.executionResult.vmError}).`);
     }
@@ -537,7 +544,7 @@ export async function claimFaucet(feePayer, amount, { onSubmitted = null } = {})
 export function encodeTransferInstructionData(sourceIdx, destIdx, amountUnits) {
   const data = new Uint8Array(16);
   const view = new DataView(data.buffer);
-  view.setUint32(0, 1, true); // tag 1: EOA_INSTRUCTION_TRANSFER
+  view.setUint32(0, eoa.EOA_INSTRUCTION_TRANSFER, true);
   view.setBigUint64(4, BigInt(amountUnits), true);
   view.setUint16(12, sourceIdx, true);
   view.setUint16(14, destIdx, true);
@@ -553,7 +560,7 @@ export function encodeTransferInstructionData(sourceIdx, destIdx, amountUnits) {
  * header.fee is overridden, so the sender still needs a balance covering amount + fee, which
  * a brand-new account won't have yet (auto-creating it doesn't fund it).
  */
-export async function sendTransfer(feePayer, toAddress, amount, { onSubmitted = null } = {}) {
+export async function sendTransfer(feePayer, toAddress, amount, { onSubmitted = null, onExecution = null } = {}) {
   const amountUnits = BigInt(amount);
   if (amountUnits <= 0n) {
     throw new Error('Amount must be a positive whole number of base units.');
@@ -586,34 +593,16 @@ export async function sendTransfer(feePayer, toAddress, amount, { onSubmitted = 
   });
   const builtHeader = { startSlot: String(built?.startSlot ?? ''), expiryAfter: built?.expiryAfter ?? SEND_EXPIRY_SLOTS };
 
-  for await (const update of withSubmittedNotice(getClient().transactions.sendAndTrack(rawTransaction), onSubmitted, builtHeader)) {
+  for await (const { update, signature } of withSubmittedNotice(getClient().transactions.sendAndTrack(rawTransaction), onSubmitted, builtHeader, onExecution)) {
     if (update.executionResult) {
       noteExecution(UNIT_CLASS.TRANSFER, update.executionResult);
       if (update.executionResult.vmError === 0) {
-        return update.signature?.value ? Signature.from(update.signature.value).toThruFmt() : undefined;
+        return signature || undefined;
       }
       throw new Error(`Transfer reverted on-chain (vmError=${update.executionResult.vmError}).`);
     }
   }
   throw new Error('Transfer never returned an execution result (timed out?).');
-}
-
-// ---- Explorer links ----
-//
-// scan.thru.org is confirmed real (fetched its homepage directly — "Thru Explorer - Block
-// Explorer for Thru Network", tracking thru-betanet). Its exact /tx/ and /address/ route
-// pattern is NOT independently confirmed, though — the homepage had no live example links to
-// check against (it showed "Network: betanet \u25cf offline" with empty tables when checked,
-// which is itself worth knowing separately from the URL-guessing question). /tx/{signature} and
-// /address/{address} is the near-universal convention across block explorers generally
-// (Etherscan, Solscan, Solana Explorer, Basescan all use exactly this), so that's the guess
-// here. Worst case if it's wrong is a dead link — nothing signs or submits through these.
-export const EXPLORER_BASE_URL = 'https://scan.thru.org';
-export function explorerTxUrl(signature) {
-  return `${EXPLORER_BASE_URL}/tx/${signature}`;
-}
-export function explorerAddressUrl(address) {
-  return `${EXPLORER_BASE_URL}/address/${address}`;
 }
 
 // ---- Transaction history ----
@@ -626,9 +615,8 @@ export function explorerAddressUrl(address) {
  * Reconstructs the same [feePayer, program, ...readWriteAccounts, ...readOnlyAccounts]
  * ordering used when the transaction was built (see the faucet/transfer functions above) to
  * resolve the account indices baked into known instruction data back into real addresses.
- * `canDecode` gates the Transfer-family labels; account registration is claimed by its
- * program id before that gate, and anything else stays an honest kind 'other' ("Unknown
- * transaction" in the UI).
+ * `canDecode` gates the Transfer-family labels. Registration has its own activation
+ * shape; unrecognized instructions stay 'other' ("Unknown transaction" in the UI).
  */
 export function decodeHistoryEntry(tx, viewerAddress) {
   const signature = tx.getSignature()?.toThruFmt();
@@ -655,7 +643,7 @@ export function decodeHistoryEntry(tx, viewerAddress) {
 
   // Token program entries have their own wire format: a ONE-byte instruction tag (the ABI's
   // TokenInstruction discriminant), unlike the 4-byte tags of the faucet/transfer programs.
-  // Measured from @thru/programs 0.3.16 output, not assumed symmetric with the native layout.
+  // Use the pinned program decoder where the package exports one.
   if (programAddress === tokenProgram && tx.instructionData?.length >= 1) {
     const data = tx.instructionData;
     const viewOf = (offset) => new DataView(data.buffer, data.byteOffset + offset, data.byteLength - offset);
@@ -663,13 +651,16 @@ export function decodeHistoryEntry(tx, viewerAddress) {
     const addrAt = (idx) => allAccounts[idx]?.toThruFmt() || null;
     const tag = data[0];
 
-    if (tag === 2 && data.length === 13) {
-      // transfer: [tag u8][sourceIdx u16][destIdx u16][amount u64]
-      const view = viewOf(1);
+    if (tag === 2 && data.length === 1 + SdkTokenTransferInstruction.footprint()) {
+      const transfer = SdkTokenTransferInstruction.from_array(data.subarray(1));
+      if (!transfer) return entry;
+      const source = addrAt(transfer.source_account_index);
+      const destination = addrAt(transfer.dest_account_index);
+      if (!source || !destination) return entry;
       entry.kind = 'token-transfer';
-      entry.amount = view.getBigUint64(4, true);
-      entry.tokenSource = addrAt(view.getUint16(0, true));
-      entry.tokenDest = addrAt(view.getUint16(2, true));
+      entry.amount = transfer.amount;
+      entry.tokenSource = source;
+      entry.tokenDest = destination;
     } else if (tag === 3 && data.length === 15) {
       // mint_to: [tag u8][mintIdx u16][destIdx u16][authorityIdx u16][amount u64]
       const view = viewOf(1);
@@ -690,12 +681,11 @@ export function decodeHistoryEntry(tx, viewerAddress) {
   }
 
   if (programAddress && programAddress === accountCreateProgram) {
-    // The account-registration pre-image (derive_account + create_account) is NOT the
-    // transfer shape — no 16-byte Transfer data — so it must be claimed BEFORE canDecode
-    // or it lands on kind 'other'. It is the caller's own account being registered on
-    // chain: no amount and no counterparty to show. Unknown programs stay 'other' below;
-    // only this program id gets this label.
-    entry.kind = 'registration';
+    // Match the SDK self-activation shape we build, not every use of the NOOP program.
+    if (tx.nonce === 0n && tx.feePayerStateProof?.length > 0
+      && (tx.instructionData?.length ?? tx.instructionDataSize ?? 0) === 0) {
+      entry.kind = 'registration';
+    }
     return entry;
   }
 
@@ -711,7 +701,7 @@ export function decodeHistoryEntry(tx, viewerAddress) {
     const amount = view.getBigUint64(8, true);
     entry.kind = 'faucet';
     entry.amount = amount;
-  } else if (programAddress === transferProgram && tag === 1) {
+  } else if (programAddress === transferProgram && tag === eoa.EOA_INSTRUCTION_TRANSFER) {
     const amount = view.getBigUint64(4, true);
     const idxA = view.getUint16(12, true);
     const idxB = view.getUint16(14, true);
@@ -719,6 +709,7 @@ export function decodeHistoryEntry(tx, viewerAddress) {
     const addrA = allAccounts[idxA]?.toThruFmt();
     const addrB = allAccounts[idxB]?.toThruFmt();
 
+    if (!addrA || !addrB || (viewerAddress !== addrA && viewerAddress !== addrB)) return entry;
     const isOutgoing = addrA === viewerAddress;
     entry.kind = isOutgoing ? 'sent' : 'received';
     entry.amount = amount;
@@ -767,7 +758,10 @@ export async function getTransactionDetail(signature, viewerAddress) {
   const sig = String(signature || '').trim();
   if (!sig) throw new Error('A transaction signature is required.');
 
-  const tx = await getClient().transactions.get(sig);
+  const network = activeNetwork;
+  const boundClient = getClient();
+  const tx = await boundClient.transactions.get(sig);
+  if (activeNetwork.id !== network.id || boundClient !== getClient()) throw new Error('The network changed while loading this transaction.');
   const entry = decodeHistoryEntry(tx, viewerAddress);
 
   // Transaction.fee is always present on a decoded Transaction (fromProto defaults it to 0n),
@@ -776,20 +770,8 @@ export async function getTransactionDetail(signature, viewerAddress) {
   entry.feeDeclaredUnits = typeof tx.fee === 'bigint' ? tx.fee : null;
   entry.nonce = typeof tx.nonce === 'bigint' ? tx.nonce : null;
 
-  // Wall-clock time lives on the block, not the transaction. One extra call, on demand only.
-  entry.blockTimeMs = null;
-  if (tx.slot != null) {
-    try {
-      const block = await getClient().blocks.get({ slot: tx.slot });
-      // blockTimeNs is optional: absent on a node that did not send header.blockTime, and
-      // 0n is what the SDK writes when a wire block had no time — both mean "unknown".
-      if (typeof block?.blockTimeNs === 'bigint' && block.blockTimeNs > 0n) {
-        entry.blockTimeMs = Number(block.blockTimeNs / 1_000_000n);
-      }
-    } catch {
-      // A node that answers getTransaction but not getBlock still gives a useful sheet.
-    }
-  }
+  // Share header time, cache, validation and request coalescing with the feed.
+  entry.blockTimeMs = await getBlockTimeMs(tx.slot, network.id);
 
   return entry;
 }
@@ -1147,7 +1129,7 @@ export async function initializeTokenAccount(feePayer, ownerAddress, mintAddress
  *
  * @returns {Promise<{ signature: string|null, recipientTokenAccountCreated: boolean, initSignature: string|null }>}
  */
-export async function sendTokenTransfer({ feePayer, mintAddress, recipientAddress, amountUnits, onSubmitted = null }) {
+export async function sendTokenTransfer({ feePayer, mintAddress, recipientAddress, amountUnits, onSubmitted = null, onExecution = null }) {
   const amount = BigInt(amountUnits);
   if (amount <= 0n) {
     throw new Error('Amount must be a positive whole number of base units.');
@@ -1224,12 +1206,12 @@ export async function sendTokenTransfer({ feePayer, mintAddress, recipientAddres
   });
   const builtHeader = { startSlot: String(built?.startSlot ?? ''), expiryAfter: built?.expiryAfter ?? SEND_EXPIRY_SLOTS };
 
-  for await (const update of withSubmittedNotice(getClient().transactions.sendAndTrack(rawTransaction), onSubmitted, builtHeader)) {
+  for await (const { update, signature } of withSubmittedNotice(getClient().transactions.sendAndTrack(rawTransaction), onSubmitted, builtHeader, onExecution)) {
     if (update.executionResult) {
       noteExecution(UNIT_CLASS.TOKEN_OP, update.executionResult);
       if (update.executionResult.vmError === 0) {
         return {
-          signature: update.signature?.value ? Signature.from(update.signature.value).toThruFmt() : null,
+          signature,
           recipientTokenAccountCreated,
           initSignature,
         };

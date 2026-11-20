@@ -221,19 +221,5 @@ export function hasFaucet(networkConfig) {
   return Boolean(networkConfig?.faucetProgramId && networkConfig?.faucetStateAccount);
 }
 
-/**
- * Build explorer transaction URL, or '' when the network has no explorer.
- * Callers must treat '' as "hide the link" rather than rendering a dead URL.
- */
-export function explorerTxUrl(networkConfig, signature) {
-  if (!networkConfig?.explorerUrl) return '';
-  return `${networkConfig.explorerUrl}/tx/${signature}?network=${networkConfig.id}`;
-}
-
-/** Build explorer address URL, or '' when the network has no explorer. */
-export function explorerAddressUrl(networkConfig, address) {
-  if (!networkConfig?.explorerUrl) return '';
-  // scan.thru.org routes addresses under /address/ (not /account/) and scopes pages by an
-  // explicit ?network= id — verified against the live explorer 2026-09-27.
-  return `${networkConfig.explorerUrl}/address/${address}?network=${networkConfig.id}`;
-}
+// Preserve the script-facing exports without a second URL builder.
+export { explorerTxUrl, explorerAddressUrl } from '../shared/format.js';

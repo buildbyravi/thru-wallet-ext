@@ -1,19 +1,21 @@
 # History, Block-Time Provenance, and Transaction Detail
 
 **Document Class:** Authority (Topical Guide — Shipped Behavior)
-**Baseline:** Contract **v33** (`/history` route, `tx-detail-sheet.js`, `history-service.js`, `pending-tx-service.js`) | **Status:** `IMPLEMENTED`, `TESTED`; live block-time latency, explorer `/tx/` route, and charged-fee source `UNVERIFIED`.
+**Baseline:** Contract **v33** (`/history` route, `tx-detail-sheet.js`, `history-service.js`, `pending-tx-service.js`) | **Status:** `IMPLEMENTED`, `TESTED`; live explorer route verified read-only; end-to-end wallet-to-explorer, RPC block-time latency and a charged-fee source remain unverified.
 **Related Authorities:** `AGENTS.md` (Rules 14, 15) · `docs/ARCHITECTURE.md` · `docs/BACKEND_GAPS.md` (C2b, C2c) · `docs/guides/protocol-and-rpc.md`
 
 ---
 
-## 1. Flat Stream and Cache-First Paint (`Rule 15`)
+## 1. Activity Stream and Cache-First Paint (`Rule 15`)
 
-The `/history` route (`src/ui/app/routes/history.js`) renders a **single flat newest-first card stream** using `src/ui/domain/tx-card.js` with **no `Today` / `Yesterday` day-group headers** and **no per-card fee line**.
+The `/history` route (`src/ui/app/routes/history.js`) renders cards in feed order using `src/ui/domain/tx-card.js`. Contiguous entries with valid, block-derived wall-clock times receive local-day headings. Local submission times and slot-only entries never establish a day; in a mixed feed they sit under a neutral heading. No per-card fee line.
 
 1. **First Paint (`tx.getCachedHistory`):** Storage-only read scoped by `(networkId, address)` via `src/shared/network-scope.js`. Paints cached entries immediately without touching RPC. If fresh network hydration subsequently fails, cached rows remain visible and are explicitly labelled unsynced/stale rather than wiped or replaced by a false "No transactions" state.
-2. **Fresh Feed & Pagination (`tx.getHistoryFeed` / `tx.listHistory`):** Merges live RPC history with tracked local submissions (`pending-tx-service.js`), supports cursor-based "Load more" pagination without refetching earlier pages, and auto-refreshes every 30 seconds while open.
+2. **Fresh Feed & Pagination (`tx.getHistoryFeed` / `tx.listHistory`):** Merges live RPC history with tracked local submissions (`pending-tx-service.js`), supports numeric-cursor "Load more" (currently re-reads a prefix plus a sentinel row; header times are requested only for the visible page), and auto-refreshes every five seconds while open.
 3. **Chain-Identity & Reset Hygiene:** History caches record chain-identity/height evidence. Entries from a replaced genesis or above a reset chain's live slot height are dropped so stale testnet-reset rows cannot resurface (`test/test-history-cache.mjs`). Concurrent refreshes across accounts serialize writes per network so parallel reads never clobber one another.
 4. **Pending Tracking & Deduplication (`pending-tx-service.js`):** Persists per-network records (`PENDING_SCHEMA_VERSION = 1`, `MAX_RECORDS = 50`, `{ startSlot, expiryAfter }`), renders an `#ffad42` toolbar badge with the active `SUBMITTED` count, settles unconfirmed records older than `WATCH_TIMEOUT_MS` (`5 min`) to `unknown`, schedules deferred reconciliation passes (`2s` / `10s`, unref'd), triggers `tx.reconcilePending` on Dashboard/History view, and deduplicates at render time so a confirmed signature never appears simultaneously as a settled row and a pending row.
+
+5. **Submission & Execution:** Reviewed native send, token send and faucet use the same submission tracker. The existing SDK `buildAndSign`/`sendAndTrack` paths are unchanged: the SDK signature starts the record with the built expiry header, an explicit execution result settles the same signature, and background reconciliation still covers missing results or MV3 restarts. History records the local observation before broadcasting settlement to views. Domain writes retain their existing tracker integration; owned-account activation and token-account initialization remain separately decoded on-chain transactions, not the transfer signature.
 
 ---
 
@@ -32,9 +34,9 @@ Thru `Transaction` messages carry `slot` and `blockOffset` — **no wall-clock t
 `decodeHistoryEntry` decodes only verified program layouts against the viewer's own account and token-account addresses:
 
 - **Native EOA Transfer (`EOA_PROGRAM_ID`, 4-byte tag `1`, 16 bytes):** Resolved as `sent` or `received` with exact counterparty address and BigInt amount.
-- **Account Registration (`NOOP_PROGRAM_ADDRESS`):** Decoded as `registration` (no amount, no counterparty — never "Unknown transaction").
+- **Account Registration (`NOOP_PROGRAM_ADDRESS`):** The SDK self-activation shape (zero nonce, fee-payer proof, no instruction bytes) is decoded as `registration` with no amount or counterparty. An arbitrary NOOP is not labelled as registration.
 - **Faucet Withdraw (`BOOTSTRAP_PROGRAM_ADDRESSES.faucet`, 4-byte tag `1`, 16 bytes):** Decoded as `faucet` credit.
-- **Token Program (`TOKEN_PROGRAM_ADDRESS`, 1-byte tags):**
+- **Token Program (`TOKEN_PROGRAM_ADDRESS`, 1-byte tags):** The pinned `@thru/programs/token` public `TransferInstruction` decoder handles the transfer payload emitted by the official builder. Other supported tags without a public parser in this pin retain the bounded layout adapters.
   - Tag `2` (13 bytes): `token-sent` / `token-received` (resolved against viewer's derived token accounts; if mint/direction cannot be proven, raw amount is withheld rather than misattributed).
   - Tag `3` (15 bytes): `token-mint`.
   - Tag `1`: `token-account-init` (carries mint, created token account, and owner; never rendered as a THRU transfer).
@@ -55,4 +57,4 @@ Tapping a `tx-card` opens a bottom sheet backed by lazy `tx.getDetail({ signatur
 
 - Real-Chrome overflow, keyboard Tab/Enter/Space/Escape focus return, and side-panel width checks (`docs/MANUAL_SMOKE_CHECKLIST.md` §3).
 - Live Betanet `blocks.get` block-time availability and first-page latency under real RPC conditions.
-- Live confirmation of the `https://scan.thru.org` `/tx/` deep-link URL pattern and whether any typed explorer endpoint exposes per-transaction charged fees (`docs/BACKEND_GAPS.md` C2b/C2c).
+- Explorer routing was verified read-only with a [current public Betanet transaction](https://scan.thru.org/tx/tssFxFSNJAQzk7kAYMFxe8P0WHn36HQ-jZi018a3FUBM6n_P19wMZFcNEwul8vZicXYacEeU2kGOr8-WqEx82JCB28?network=betanet) from the live feed. The UI and notification use one network-scoped URL builder. This did not compare a new wallet submission or verify a typed charged-fee endpoint (`docs/BACKEND_GAPS.md` C2b/C2c).

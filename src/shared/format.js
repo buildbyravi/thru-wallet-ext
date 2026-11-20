@@ -143,6 +143,6 @@ export function explorerAddressUrl(network, address) {
  * Build a block-explorer URL for a transaction signature, or '' if the network has no explorer.
  */
 export function explorerTxUrl(network, signature) {
-  if (!network?.explorerUrl || !signature) return '';
-  return `${network.explorerUrl}/tx/${signature}`;
+  if (!network?.explorerUrl || !network.id || !signature) return '';
+  return `${network.explorerUrl}/tx/${encodeURIComponent(signature)}?network=${encodeURIComponent(network.id)}`;
 }

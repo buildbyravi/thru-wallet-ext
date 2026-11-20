@@ -4106,22 +4106,20 @@ async function navigationTest() {
     !/cached activity/i.test(textOf(router.root)), textOf(router.root).slice(0, 160));
   FIXTURES['tx.getHistoryFeed'] = realFeed;
 
-  // ---- P1 cards: flat stream, verbs/deltas, failed badge, signature copy ----
+  // ---- P1 cards: day grouping, verbs/deltas, failed badge, signature copy ----
   const NOW = Date.now();
-  // Spread fixture timestamps across several calendar days so a regression that
-  // reintroduces Today/Yesterday section headers is caught by the flat-stream assertion.
   // Anchoring to local midnight keeps those days distinct even during early-hour test runs.
   const startOfToday = new Date(NOW).setHours(0, 0, 0, 0);
   const CARD_ENTRIES = [
     { signature: 'tsCARD_A_sent_today_aaaaaaaaaaaaaaaaaaaaaaa', slot: 30000,
       success: true, programAddress: NETWORK_BETANET.transferProgramId, kind: 'sent',
-      amount: '100000', counterparty: ADDRESS_B, timestamp: NOW },
+      amount: '100000', counterparty: ADDRESS_B, timestamp: NOW, timestampSource: 'block' },
     { signature: 'tsCARD_B_received_yesterday_aaaaaaaaaaaaaaaaa', slot: 29900,
       success: true, programAddress: NETWORK_BETANET.transferProgramId, kind: 'received',
-      amount: '250000', counterparty: ADDRESS_B, timestamp: startOfToday - 3600000 },
+      amount: '250000', counterparty: ADDRESS_B, timestamp: startOfToday - 3600000, timestampSource: 'block' },
     { signature: 'tsCARD_C_failed_older_aaaaaaaaaaaaaaaaaaaaaaa', slot: 29800,
       success: false, programAddress: NETWORK_BETANET.transferProgramId, kind: 'sent',
-      amount: '1', counterparty: ADDRESS_B, timestamp: startOfToday - 2 * 86400000 - 3600000 },
+      amount: '1', counterparty: ADDRESS_B, timestamp: startOfToday - 2 * 86400000 - 3600000, timestampSource: 'block' },
   ];
   FIXTURES['tx.getHistoryFeed'] = () => ({
     entries: CARD_ENTRIES.map((e) => ({ ...e })), nextCursor: null, synced: true,
@@ -4145,11 +4143,10 @@ async function navigationTest() {
     clipboardLog.writes.includes('tsCARD_A_sent_today_aaaaaaaaaaaaaaaaaaaaaaa'),
     JSON.stringify(clipboardLog.writes));
 
-  // Rabby-style stream: transactions render directly as cards without day section headers.
-  const dayHeaders = [...router.root.querySelectorAll('.list-group-header')];
-  ok('activity renders as a flat stream without day section headers',
-    dayHeaders.length === 0,
-    String(dayHeaders.length));
+  const dayHeaders = [...router.root.querySelectorAll('.list-group-header')].filter((el) => el.tagName === 'H2').map(textOf);
+  ok('verified block times produce local-calendar day headings',
+    dayHeaders.length === 3 && dayHeaders[0] === 'Today' && dayHeaders[1] === 'Yesterday',
+    JSON.stringify(dayHeaders));
   const txCards = [...router.root.querySelectorAll('.tx-card')];
   ok('every transaction renders as a card in the list',
     txCards.length >= 3,
@@ -4181,18 +4178,18 @@ async function navigationTest() {
   ok('timestampless cards show Block <slot> — explorer wording, never "Slot"',
     /Block 41000/.test(noTimeText) && !/Slot \d/.test(noTimeText), noTimeText.slice(0, 200));
 
-  // In a flat stream, cards render in chronological order without header splintering.
+  // An undated row does not inherit its neighbors’ block day or change order.
   FIXTURES['tx.getHistoryFeed'] = () => ({
     entries: [
       { signature: 'tsMIX1_newer_today_aaaaaaaaaaaaaaaaaaaaaaa', slot: 30500,
         success: true, programAddress: NETWORK_BETANET.transferProgramId, kind: 'sent',
-        amount: '90000', counterparty: ADDRESS_B, timestamp: NOW },
+        amount: '90000', counterparty: ADDRESS_B, timestamp: NOW, timestampSource: 'block' },
       { signature: 'tsMIX2_wire_no_time_aaaaaaaaaaaaaaaaaaaaaaaa', slot: 30400,
         success: true, programAddress: NETWORK_BETANET.transferProgramId, kind: 'received',
         amount: '40000', counterparty: ADDRESS_B, timestamp: null },
       { signature: 'tsMIX3_older_today_aaaaaaaaaaaaaaaaaaaaaaa', slot: 30300,
         success: true, programAddress: NETWORK_BETANET.transferProgramId, kind: 'sent',
-        amount: '90000', counterparty: ADDRESS_B, timestamp: startOfToday },
+        amount: '90000', counterparty: ADDRESS_B, timestamp: startOfToday, timestampSource: 'submitted' },
     ],
     nextCursor: null,
     synced: true,
@@ -4200,9 +4197,10 @@ async function navigationTest() {
   router.navigate('/history');
   await settle();
   const streamCards = [...router.root.querySelectorAll('.tx-card')];
-  ok('all transactions render in the stream without day headers',
-    streamCards.length === 3 && router.root.querySelectorAll('.list-group-header').length === 0,
-    String(streamCards.length));
+  const mixedHeaders = [...router.root.querySelectorAll('.list-group-header')].filter((el) => el.tagName === 'H2').map(textOf);
+  ok('mixed History keeps all cards but groups only verified dates',
+    streamCards.length === 3 && mixedHeaders.join('|') === 'Today|Block date unavailable',
+    JSON.stringify(mixedHeaders));
   ok('the middle timestampless card still shows its block fallback',
     /Block 30400/.test(textOf(router.root)),
     textOf(router.root).slice(0, 400));
@@ -4302,7 +4300,7 @@ async function navigationTest() {
     .find((a) => /explorer/i.test(labelOf(a)));
   ok('P2: the sheet links to the explorer using the short-sig explorer URL logic',
     Boolean(sheetExplorer)
-      && sheetExplorer.getAttribute('href') === `${NETWORK_BETANET.explorerUrl}/tx/${DETAIL_ENTRIES[1].signature}`,
+      && sheetExplorer.getAttribute('href') === `${NETWORK_BETANET.explorerUrl}/tx/${DETAIL_ENTRIES[1].signature}?network=betanet`,
     sheetExplorer?.getAttribute('href'));
   ok('P2: no secret and no full address string reaches the URL or session history',
     secretInUrls().length === 0
