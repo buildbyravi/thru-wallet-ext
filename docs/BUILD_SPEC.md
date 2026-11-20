@@ -61,7 +61,7 @@ All 15 routes are registered in `src/ui/app/boot.js`, mount immediately from loc
 7. **Faucet (`/faucet`, `v13`, `v24`):**
    - Testnet native THRU claim (`raw base units`, network-configured `10,000` per-claim cap on Betanet); there is no per-account rate-limit readout (the separate THRUSD faucet policy does not apply). Claims use `faucet-claim` review and are bound to `fromAddress` + `networkId`.
 8. **Receive (`/receive`):**
-   - Black-on-white canvas QR (`src/popup/qr.js`) with a four-module quiet zone, full selectable `ta...` address, shared Copy button with inline confirmation, account label, active-network badge, and explorer link when configured. Read-only registration status can warn after paint; opening Receive never registers an account.
+   - Branded canvas QR (`src/popup/qr.js`), full `ta...` address, inline `"Copied"` copy affordance, account label, explicit active-network badge, and explorer link.
 9. **History (`/history`, `v9`–`v12`):**
    - Flat newest-first stream without day headers, cache-first `tx.getCachedHistory`, provenance-tagged timestamps (`block` -> own `submitted` -> `Block <slot>`), and lazy `tx.getDetail` sheet reporting `Fee (declared)`. Full specification: `docs/guides/history-and-activity.md`.
 10. **Settings (`/settings`):**

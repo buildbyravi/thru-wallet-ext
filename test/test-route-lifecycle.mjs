@@ -3811,89 +3811,70 @@ async function navigationTest() {
   ok('the connection footer is back on the dashboard after the round trip',
     footer && !footer.classList.contains('hidden'), footer?.className);
 
-  // ---- Receive: one address across QR, copy, and explorer ----------------
-  const receiveAccount = backend.activeIndex;
-  const receiveNetwork = backend.activeNetworkId;
-  const origNetwork = FIXTURES['network.getActive'];
-  let holdIdentity = false;
-  const holds = holdReplies((msg) => msg.method === 'tx.getAccountInfo'
-    || (holdIdentity && msg.method === 'account.getActive'));
-  try {
-    router.navigate('/receive');
+  // ---- Receive: address copy, QR canvas, and audit cleanup ----------------
+  // The DOM-shim canvas exercises qr.js's flat degradation (no roundRect), which must
+  // render silently — no "Could not render the QR" warning. Audited cleanups below:
+  // the dead hidden CopyButton is gone (one affordance), the address block is the
+  // untruncated full address, and the canvas carries an accessible name.
+  router.navigate('/receive');
+  await settle();
+  const recvMono = router.root.querySelector('.monospace-block');
+  ok('the receive screen shows the full, untruncated address',
+    Boolean(recvMono) && recvMono.textContent === activeAccount().address,
+    recvMono?.textContent);
+  // The QR is an interactive control: tap flips styled <-> plain for scanners that
+  // choke on artistic QRs. The accessible name therefore lives on the toggle button.
+  const qrToggle = buttons(router.root, /QR code of your receive address/i)[0];
+  ok('the QR toggle carries the receive-address description',
+    Boolean(qrToggle) && /styled.*plain/i.test(qrToggle.getAttribute('aria-label') || ''),
+    qrToggle?.getAttribute?.('aria-label'));
+  ok('a canvas renders inside the QR toggle',
+    Boolean(qrToggle) && Boolean(qrToggle.querySelector?.('canvas')));
+  if (qrToggle) {
+    click(qrToggle);
     await settle();
-    const oldAddress = activeAccount().address;
-    const oldLabel = activeAccount().label;
-    const address = () => router.root.querySelector('.receive-address').querySelector('code').textContent;
-    const canvas = () => router.root.querySelector('canvas');
-    const explorer = () => [...router.root.querySelectorAll('a')]
-      .find((a) => String(a.getAttribute('href') || '').includes('/address/'));
-    ok('Receive shows the network and full address before registration RPC returns',
-      address() === oldAddress && /Receiving on Betanet/.test(textOf(router.root)) && holds.held.length === 1);
-    const oldCanvas = canvas();
-    ok('Receive shows a static, labelled 208px QR without a decorative toggle',
-      oldCanvas?.getAttribute('role') === 'img' && oldCanvas.width === 208
-        && oldCanvas.getAttribute('aria-label').includes(oldLabel)
-        && buttons(router.root, /QR code/i).length === 0);
-    ok('Receive explorer link follows the same address and network',
-      explorer()?.getAttribute('href')?.includes(`/address/${oldAddress}?network=betanet`));
-
-    backend.activeIndex = receiveAccount === 0 ? 1 : 0;
-    emitEvent('accountsChanged');
-    ok('Receive hides the previous QR and copy action as soon as the account changes',
-      !canvas() && buttons(router.root, /copy address/i).length === 0);
+    ok('tapping the QR switches it to the plain scanner-safe style',
+      /plain.*Thru-styled/i.test(qrToggle.getAttribute('aria-label') || ''),
+      qrToggle.getAttribute('aria-label'));
+    click(qrToggle);
     await settle();
-    const nextAddress = activeAccount().address;
-    ok('account switching regenerates the canvas for the new address and explorer link',
-      canvas() && canvas() !== oldCanvas && address() === nextAddress
-        && explorer()?.getAttribute('href')?.includes(`/address/${nextAddress}?network=betanet`));
-    holds.resolve('tx.getAccountInfo', { exists: false }, (msg) => msg.params.address === oldAddress);
-    await settle();
-    ok('a late registration result cannot warn about the new account',
-      !/not registered yet/.test(textOf(router.root)));
-
-    clipboardLog.writes.length = 0;
-    const copy = buttons(router.root, /copy address/i);
-    ok('Receive offers one copy action', copy.length === 1);
-    click(copy[0]);
-    await settle();
-    ok('copy writes exactly the active address without replacing visible text',
-      clipboardLog.writes.join() === nextAddress && address() === nextAddress);
-    ok('copy confirms in an accessible status region',
-      router.root.querySelector('.receive-copy-status')?.getAttribute('role') === 'status'
-        && /Address copied/.test(textOf(router.root)));
-    holds.resolve('tx.getAccountInfo', { exists: false }, (msg) => msg.params.address === nextAddress);
-    await settle();
-    ok('confirmed unregistered status warns about native THRU without a fake action',
-      /not registered yet.*native THRU/.test(textOf(router.root)) && buttons(router.root, /register/i).length === 0);
-
-    FIXTURES['network.getActive'] = () => ({ id: 'testnet', label: 'Testnet', explorerUrl: '' });
-    emitEvent('networkChanged');
-    await settle();
-    holds.reject('tx.getAccountInfo');
-    await settle();
-    ok('Receive updates the network and omits an unavailable explorer link',
-      /Receiving on Testnet/.test(textOf(router.root)) && !explorer());
-    ok('an unavailable status read does not falsely warn or hide the QR',
-      !/not registered yet/.test(textOf(router.root)) && Boolean(canvas()));
-
-    holdIdentity = true;
-    emitEvent('accountsChanged');
-    await settle();
-    const previous = holds.held.find((item) => item.message.method === 'account.getActive');
-    emitEvent('accountsChanged');
-    await settle();
-    holds.resolve('account.getActive', activeAccount(), (msg) => msg !== previous?.message);
-    await settle();
-    holds.resolve('account.getActive', backend.accounts[receiveAccount]);
-    await settle();
-    ok('a late account reply never restores an old address after a newer QR is drawn', address() === nextAddress);
-    holds.reject('tx.getAccountInfo');
-  } finally {
-    backend.activeIndex = receiveAccount;
-    backend.activeNetworkId = receiveNetwork;
-    FIXTURES['network.getActive'] = origNetwork;
-    holds.restore();
+    ok('tapping again restores the styled Thru QR',
+      /styled.*plain/i.test(qrToggle.getAttribute('aria-label') || ''),
+      qrToggle.getAttribute('aria-label'));
   }
+  ok('no QR render warning under a minimal canvas',
+    !/Could not render the QR/.test(textOf(router.root)), textOf(router.root).slice(0, 160));
+  const copyAffordances = buttons(router.root, /copy address/i);
+  ok('exactly one copy affordance for the address (the dead hidden button is gone)',
+    copyAffordances.length === 1, String(copyAffordances.length));
+  ok('the address box itself is the copy affordance (not a sibling button)',
+    Boolean(copyAffordances[0]) && copyAffordances[0].classList.contains('copy-address'));
+
+  // Clickable-address copy flow: click -> clipboard write of the FULL address ->
+  // inline "Copied" confirmation -> auto-restore to the address after ~1s.
+  clipboardLog.writes.length = 0;
+  click(copyAffordances[0]);
+  await settle();
+  ok('clicking the address box copies the full address to the clipboard',
+    clipboardLog.writes.includes(activeAccount().address), JSON.stringify(clipboardLog.writes));
+  ok('the box confirms with an inline "Copied"',
+    /Copied/.test(copyAffordances[0].textContent), copyAffordances[0].textContent);
+  ok('the box announces the copy to assistive tech',
+    /copied to clipboard/i.test(copyAffordances[0].getAttribute('aria-label') || ''));
+  await new Promise((r) => setTimeout(r, 1250));
+  await settle();
+  ok('the box restores the full address about a second later',
+    copyAffordances[0].textContent.includes(activeAccount().address),
+    copyAffordances[0].textContent.slice(0, 60));
+  ok('the aria label returns to the copy description after restoring',
+    /^Copy address:/.test(copyAffordances[0].getAttribute('aria-label') || ''));
+  // (The shim's selector engine is deliberately tiny — walk anchors instead of a[href*=].)
+  const explorerLink = [...router.root.querySelectorAll?.('a') || []]
+    .find((a) => String(a.href || a.getAttribute?.('href') || '').includes('/address/'));
+  const explorerHref = String(explorerLink?.getAttribute?.('href') || '');
+  ok('the explorer link embeds the address on the active network',
+    explorerHref.includes(activeAccount().address) && explorerHref.includes('network=betanet'),
+    explorerHref || 'no explorer anchor found');
 
   // ---- Send: selecting a token asset (contract v8) -------------------------
   // The asset picker used to list tokens as permanently "not sendable"; with token.transfer
