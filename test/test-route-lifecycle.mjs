@@ -2568,15 +2568,18 @@ async function themeTest() {
   const tree = router.root;
   const text = textOf(tree);
 
-  ok('Settings uses semantic, ordered Network, General, Security, Accounts, Session and About headings',
+  ok('Settings has semantic Features, Settings and About headings',
     [...tree.querySelectorAll('.settings-heading')].map((node) => `${node.tagName}:${textOf(node)}`).join('|')
-      === 'H2:Network|H2:General|H2:Security|H2:Accounts|H2:Session|H2:About');
-  const general = tree.querySelector('.settings-general-controls');
-  ok('Appearance, Side Panel Mode and Desktop Notifications are grouped once under General',
-    Boolean(general) && /Appearance/.test(textOf(general))
-      && allElements(general).filter((node) => node.getAttribute?.('role') === 'switch')
-        .map((node) => node.getAttribute('aria-label')).join('|') === 'Side Panel Mode|Desktop Notifications');
-  ok('settings offers a user-facing Appearance section', /appearance/i.test(text));
+      === 'H2:Features|H2:Settings|H2:About');
+  ok('Settings uses native disclosures for Network, Signing security, Theme Mode and Auto-lock time',
+    [...tree.querySelectorAll('.settings-disclosure')].map((node) => `${node.tagName}:${textOf(node.firstChild)}`).join('|')
+      === 'DETAILS:Network Betanet|DETAILS:Signing security Session-only|DETAILS:Theme Mode Dark|DETAILS:Auto-lock time 15 min');
+  const disabledRows = buttons(tree, /^(Language|Currency)Planned$/);
+  ok('Language and Currency appear once each as disabled, labelled Planned rows',
+    disabledRows.length === 2 && disabledRows.every((node) => node.hasAttribute('disabled')));
+  ok('Side Panel Mode and Desktop Notifications remain single switches',
+    allElements(tree).filter((node) => node.getAttribute?.('role') === 'switch')
+      .map((node) => node.getAttribute('aria-label')).join('|') === 'Side Panel Mode|Desktop Notifications');
   const lightChip = buttons(tree, /^light$/i)[0];
   const darkChip = buttons(tree, /^dark$/i)[0];
   const systemChip = buttons(tree, /^system$/i)[0];
@@ -2588,6 +2591,8 @@ async function themeTest() {
   await settle();
   ok('switching to Light applies immediately', DOC.documentElement.dataset.theme === 'light',
     `data-theme=${DOC.documentElement.dataset.theme}`);
+  ok('the Theme Mode row updates to the saved choice',
+    [...tree.querySelectorAll('summary')].some((node) => textOf(node) === 'Theme Mode Light'));
   ok('the choice persists through the versioned preferences service',
     backend.preferences.theme === 'light', JSON.stringify(backend.preferences));
   ok('the selection moves to the newly chosen chip',
@@ -2611,9 +2616,19 @@ async function themeTest() {
       && buttons(tree, /^dark$/i)[0]?.getAttribute('aria-pressed') === 'false'
       && buttons(tree, /^system$/i)[0]?.classList.contains('selected')
       && buttons(tree, /^system$/i)[0]?.getAttribute('aria-pressed') === 'true'
+      && [...tree.querySelectorAll('summary')].some((node) => textOf(node) === 'Theme Mode System')
       && /Storage write failed/.test(textOf(tree)),
     `dark.selected=${buttons(tree, /^dark$/i)[0]?.classList.contains('selected')} text=${textOf(tree).slice(0, 200)}`);
   FIXTURES['settings.set'] = realSetSettings;
+
+  click(buttons(tree, /^Transaction history$/i)[0]);
+  await settle();
+  ok('the Features history row opens the existing History route', router.currentPath === '/history');
+  router.navigate('/settings');
+  await settle();
+  click(buttons(router.root, /^Manage accounts and recovery phrases$/i)[0]);
+  await settle();
+  ok('the Features account row opens the existing Accounts route', router.currentPath === '/accounts');
 
   // An unrecognised stored value never reaches the DOM.
   backend.preferences.theme = 'midnight-blue';

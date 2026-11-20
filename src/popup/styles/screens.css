@@ -961,32 +961,91 @@ form > .btn.text {
 }
 .tx-amount.positive { color: var(--positive); }
 
-/* ---- Settings sections -------------------------------------------------- */
+/* ---- Settings: grouped rows -------------------------------------------- */
+.settings-screen { background: var(--bg); }
+.settings-groups {
+  display: grid;
+  gap: var(--sp-5);
+}
 .settings-heading {
   font-size: var(--fs-sm);
+  font-weight: 500;
   color: var(--text-2);
+  margin: 0 0 var(--sp-2) 2px;
 }
-.settings-subheading {
-  font-size: var(--fs-md);
-  font-weight: 600;
-}
-.settings-general-controls {
+.settings-card {
   min-inline-size: 0;
-  border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--surface-1);
+  box-shadow: inset 0 0 0 1px var(--border-hairline);
 }
-.settings-appearance {
-  padding: var(--sp-3);
-}
-.settings-general-controls > .toggle-row {
+.settings-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-block-size: 50px;
+  padding: 8px 14px;
+  margin: 0;
   border: 0;
-  border-block-start: 1px solid var(--border);
-  border-radius: 0;
+  border-radius: var(--radius-md);
   background: transparent;
+  color: var(--text-1);
+  font: inherit;
+  text-align: start;
+  text-decoration: none;
+}
+.settings-row > svg {
+  color: var(--text-2);
+  flex: none;
+}
+.settings-row-label {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.settings-row-value {
+  max-inline-size: 42%;
+  color: var(--text-2);
+  text-align: end;
+  overflow-wrap: anywhere;
+}
+:is(button:not(:disabled), a, summary).settings-row {
+  cursor: pointer;
+}
+:is(button:not(:disabled), a, summary).settings-row:hover,
+:is(button:not(:disabled), a, summary).settings-row:focus-visible,
+.settings-disclosure[open] > summary {
+  background: var(--surface-2);
+}
+.settings-row:focus-visible { outline-offset: -2px; }
+.settings-row:disabled {
+  cursor: default;
+  opacity: 1;
+  color: var(--text-2);
+}
+.settings-disclosure > summary { list-style: none; }
+.settings-disclosure > summary::-webkit-details-marker { display: none; }
+.settings-disclosure[open] > summary > svg:last-child { transform: rotate(90deg); }
+.settings-detail {
+  padding: var(--sp-3) 14px var(--sp-4);
+  border-block-start: 1px solid var(--border-hairline);
+}
+.settings-choice-title, .settings-label-with-help, .settings-footer {
+  display: flex;
+  align-items: center;
   gap: var(--sp-2);
 }
-.settings-general-controls .toggle-switch {
+.settings-choice-title, .settings-footer {
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+.settings-footer { justify-content: center; }
+.settings-footer img { border-radius: 50%; }
+
+/* ---- Toggle Switch (Side Panel Mode) ---- */
+.toggle-switch {
   flex-shrink: 0;
 }
 
