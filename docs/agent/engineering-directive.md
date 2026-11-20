@@ -29,10 +29,12 @@ extension package; fixture output is not real MV3 or live-network evidence. Veri
 
 Before editing HTML, CSS, or browser-facing JavaScript (including isolated lab work):
 
-- Check for the project-installed skill at `.agents/skills/modern-web-guidance/SKILL.md` and read it
-  explicitly; do not assume your agent loaded it. Restore the ignored install from `skills-lock.json`
-  with `DISABLE_TELEMETRY=1 npx --yes skills@1.9.0 experimental_install --agent codex --frozen-lockfile`,
-  or select the agent you actually use. This is development tooling, not a wallet dependency.
+- For Codex, read the project-installed `.agents/skills/modern-web-guidance/SKILL.md` explicitly;
+  do not assume the agent loaded it. Restore the ignored Codex install from `skills-lock.json` with
+  `DISABLE_TELEMETRY=1 npx --yes skills@1.9.0 experimental_install --agent codex --frozen-lockfile`.
+  For another supported agent, pass its agent identifier and read the skill from the project path
+  reported by the installer, not from the Codex path above. This is development tooling, not a
+  wallet dependency.
 - Run `DISABLE_TELEMETRY=1 npx --yes modern-web-guidance@1.0.1 search "<focused browser topic>"`
   before implementation, then `retrieve "<matching IDs>"` with the same CLI. Include relevant
   accessibility and performance guidance, not just the API example. If the skill or CLI is
@@ -43,10 +45,12 @@ Before editing HTML, CSS, or browser-facing JavaScript (including isolated lab w
   target is not a runtime support guarantee or a polyfill. Feature-detect or use a supported
   alternative for newer APIs; verify keyboard order, focus, status announcements, reduced motion,
   and rendering in real Chrome where applicable. Keep first paint independent of wallet reads.
-- Guidance cannot override wallet rules, including flat production CSS, the safe DOM kit, strict
-  CSP, no remote assets, no unauthorized dependencies, no secret leakage, and the existing signing
-  and architecture boundaries. Keep this workflow under review, alongside Rule 14 browser evidence
-  and the unchanged repository guards.
+- Guidance cannot override the [flat production CSS rule](../BUILD_SPEC.md),
+  the [safe DOM kit](../../src/ui/kit/dom.js), or [the hard rules in `AGENTS.md`](../../AGENTS.md)
+  on dependencies (Rule 5), CSP (Rule 8), secrets (Rule 9), and signing (Rule 10). Follow the
+  [reference asset restrictions above](#ux-preflight-for-new-screens-and-meaningful-redesigns),
+  including no remote asset fetch or CSP change. Keep the existing architecture boundaries,
+  browser evidence requirements (Rule 14), and repository guards.
 
 Use the disposable-profile instructions in `docs/MANUAL_SMOKE_CHECKLIST.md` for browser automation
 or DevTools tooling. Any setup must be project-scoped, use verified configuration for the actual
