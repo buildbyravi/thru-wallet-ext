@@ -8,6 +8,54 @@ migration change.
 The hard rules (1–30) live in `AGENTS.md`. The long text behind rules 10, 14, 15, 16, 17 and 30 is in
 `docs/agent/rules-detail.md`.
 
+## UX preflight for new screens and meaningful redesigns
+
+Read the current bridge contract, service, and fixtures before proposing UI. List supported,
+unsupported, and unverified capabilities. Before implementation, sketch the layout/navigation for the
+popup and applicable panel sizes; name shared components and the owner of each action and message.
+Map applicable states: checking, cached/stale, ready, empty, invalid input, insufficient funds,
+unsupported, offline, pending, and unknown outcome. Obtain owner sign-off for unresolved layout
+or scope decisions. For a small polish or repair, scope the preflight to the behavior being changed.
+For a visual bug, trace the visible element to its state owner before patching styles.
+
+Borrow interaction and layout patterns, not reference source, branding, logos, SVGs, or protocol
+assumptions. For an expressly owner-approved, non-brand asset exception (see D-032 in
+`docs/DECISIONS.md`), record the pinned upstream source and applicable license, ship the required
+notice, and review the local asset for active content and external references. No remote asset fetch
+or CSP change. For a new multi-state surface, keep a reproducible fixture gallery outside the
+extension package; fixture output is not real MV3 or live-network evidence. Verify via Rule 14.
+
+## Modern Web Guidance for frontend work
+
+Before editing HTML, CSS, or browser-facing JavaScript (including isolated lab work):
+
+- For Codex, read the project-installed `.agents/skills/modern-web-guidance/SKILL.md` explicitly;
+  do not assume the agent loaded it. Restore the ignored Codex install from `skills-lock.json` with
+  `DISABLE_TELEMETRY=1 npx --yes skills@1.9.0 experimental_install --agent codex --frozen-lockfile`.
+  For another supported agent, pass its agent identifier and read the skill from the project path
+  reported by the installer, not from the Codex path above. This is development tooling, not a
+  wallet dependency.
+- Run `DISABLE_TELEMETRY=1 npx --yes modern-web-guidance@1.0.1 search "<focused browser topic>"`
+  before implementation, then `retrieve "<matching IDs>"` with the same CLI. Include relevant
+  accessibility and performance guidance, not just the API example. If the skill or CLI is
+  unavailable, report what failed, consult installed guides or official platform docs where
+  accessible, and do not claim that the tool ran.
+- Apply the relevant findings and report the guides and choices in the change review. Check support
+  against the target browser versions, including extension-specific APIs: the `chrome115` esbuild
+  target is not a runtime support guarantee or a polyfill. Feature-detect or use a supported
+  alternative for newer APIs; verify keyboard order, focus, status announcements, reduced motion,
+  and rendering in real Chrome where applicable. Keep first paint independent of wallet reads.
+- Guidance cannot override the [flat production CSS rule](../BUILD_SPEC.md),
+  the [safe DOM kit](../../src/ui/kit/dom.js), or [the hard rules in `AGENTS.md`](../../AGENTS.md)
+  on dependencies (Rule 5), CSP (Rule 8), secrets (Rule 9), and signing (Rule 10). Follow the
+  [reference asset restrictions above](#ux-preflight-for-new-screens-and-meaningful-redesigns),
+  including no remote asset fetch or CSP change. Keep the existing architecture boundaries,
+  browser evidence requirements (Rule 14), and repository guards.
+
+Use the disposable-profile instructions in `docs/MANUAL_SMOKE_CHECKLIST.md` for browser automation
+or DevTools tooling. Any setup must be project-scoped, use verified configuration for the actual
+agent, and must not add production dependencies, debugging permissions, or CSP exceptions.
+
 ## Mainnet-ready engineering directive
 
 This repository is production software now. Betanet is a deployment stage, not permission for

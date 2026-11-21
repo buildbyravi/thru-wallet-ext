@@ -457,13 +457,17 @@ for (const bad of BAD_REFS) {
 
 // ---- Domain Components: BalanceHero, PanelItem, CurrentConnection --------
 
-section('BalanceHero renders USD-first, native balance, and responds to refresh');
+section('BalanceHero shows real amounts, hides unavailable fiat, and responds to refresh');
 
 const { BalanceHero } = await import('../src/ui/domain/balance-hero.js');
 
 const unknownHero = BalanceHero();
 ok('initial native fiat value is unknown, not an invented zero',
   unknownHero.el.querySelector('.dash-balance-usd')?.textContent === '\u2014');
+unknownHero.update({ usd: null, native: '0.000059968 THRU' });
+ok('unquoted fiat is hidden', unknownHero.el.querySelector('.dash-balance-usd')?.classList.contains('hidden'));
+ok('native balance is the primary amount when there is no fiat quote',
+  unknownHero.el.querySelector('.dash-balance-native')?.classList.contains('dash-balance-primary'));
 unknownHero.destroy();
 let refreshFired = false;
 const hero = BalanceHero({
@@ -567,9 +571,9 @@ ok('default dApp status displays Not connected to any Dapp',
 
 const netBtn = conn.el.querySelector('.current-connection-net');
 ok('network badge is a distinct clickable button', Boolean(netBtn) && netBtn.tagName === 'button');
-ok('network badge has descriptive title for settings', netBtn.getAttribute('title')?.includes('Settings'));
-ok('network badge has accessible aria-label with settings hint',
-  netBtn.getAttribute('aria-label') === 'Active network Betanet; open Settings to change');
+ok('network badge has a descriptive chooser title', netBtn.getAttribute('title')?.includes('choose network'));
+ok('network badge has accessible aria-label with chooser hint',
+  netBtn.getAttribute('aria-label') === 'Active network Betanet; choose network');
 
 netBtn.listeners?.[0]?.handler();
 ok('clicking network badge fires onNetworkClick handler', netClicked === true);
@@ -647,9 +651,9 @@ const { explorerAddressUrl, explorerTxUrl } = await import('../src/shared/format
 ok('explorerAddressUrl builds address URL with network query param',
   explorerAddressUrl({ id: 'betanet', explorerUrl: 'https://scan.thru.org' }, 'ta123')
     === 'https://scan.thru.org/address/ta123?network=betanet');
-ok('explorerTxUrl builds tx URL',
+ok('explorerTxUrl builds a network-scoped tx URL',
   explorerTxUrl({ id: 'betanet', explorerUrl: 'https://scan.thru.org' }, 'ts999')
-    === 'https://scan.thru.org/tx/ts999');
+    === 'https://scan.thru.org/tx/ts999?network=betanet');
 ok('explorer URL helpers return empty string when explorerUrl is absent',
   explorerAddressUrl({ id: 'custom', explorerUrl: '' }, 'ta123') === ''
     && explorerTxUrl({ id: 'custom', explorerUrl: '' }, 'ts999') === '');

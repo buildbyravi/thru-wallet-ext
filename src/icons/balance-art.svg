@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 340" fill="none">
+  <defs>
+    <linearGradient id="line" x1="50" x2="375" y1="85" y2="290" gradientUnits="userSpaceOnUse"><stop stop-color="#ffd8cd" stop-opacity=".9"/><stop offset="1" stop-color="#ffb4ad" stop-opacity=".07"/></linearGradient>
+    <pattern id="mesh" width="23" height="23" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r="1" fill="#ffc6bf" opacity=".26"/></pattern>
+    <radialGradient id="glow"><stop stop-color="#f17e7e" stop-opacity=".65"/><stop offset="1" stop-color="#c64c53" stop-opacity="0"/></radialGradient>
+  </defs>
+  <ellipse cx="320" cy="192" rx="207" ry="139" fill="url(#glow)"/>
+  <path d="M42 27h456v286H42z" fill="url(#mesh)" opacity=".56"/>
+  <g stroke="url(#line)" stroke-width="1.15" stroke-linejoin="round">
+    <path fill="#d65e5f" fill-opacity=".10" d="m260 33 127 43-67 56 94 33-169 145 30-107-91-30z"/>
+    <path d="m260 33 19 15 128 45-67 55 94 33-169 145-20-16m142-234 20 17m7 72 20 16M184 173l20 16 66 23"/>
+    <path d="m279 48 127 43-67 56 94 33-169 145 30-107-91-30zm17 16 127 43-67 56 94 33-169 145 30-107-91-30zm17 16 127 43-67 56 94 33-169 145 30-107-91-30zm17 16 127 43-67 56 94 33-169 145 30-107-91-30z" opacity=".68"/>
+    <path d="M71 201h73l40-28m143-106 48-41h98m-29 169h67M87 289h106l64-53M141 99h47l31-31h34" opacity=".65"/>
+    <path d="M66 201h10m-5-5v10m16 78v10m-5-5h10m381-268v10m-5-5h10m22 169h10m-5-5v10" stroke="#ffd1c6" opacity=".7"/>
+  </g>
+</svg>

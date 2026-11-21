@@ -516,7 +516,7 @@ try {
       status: 1,
       consensusStatus: 0,
       executionResult: { vmError: 0 },
-      signature: { value: new Uint8Array(64).fill(9) },
+      // SDK execution updates can omit the signature already sent at submission.
     };
   };
   const slowSend = sendWithConsent(handleApiRequest, 'tx.sendChecked', {
@@ -550,6 +550,11 @@ try {
   releasePendingExec();
   const slowResult = await slowSend;
   assert.equal(slowResult.ok, true, slowResult.error?.message);
+  await waitFor(() => storage.get('thru_pending_txs::betanet')?.records[0]?.status === 'confirmed',
+    'SDK execution settles the same pending signature without waiting for the indexer');
+  await waitFor(() => storage.get('thru_history_cache::betanet')?.[res2.data.address]?.entries
+    .find((entry) => entry.signature === slowResult.data.signature)?.success === true,
+    'the pending execution outcome reaches the same signature in the History cache');
 } finally {
   releasePendingExec?.();
   sdkForPending.accounts.get = beforePendingGet;

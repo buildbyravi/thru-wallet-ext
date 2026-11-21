@@ -26,10 +26,11 @@ Documentation summarizes the codebase; **it never overrides it**. Whenever two s
 | **`.thru` / `.id` domains or custom registrar** | `docs/guides/domains-and-registrar.md` -> `docs/GLOBAL_SMART_CONTRACT_POLICY.md` -> `contracts/thru-custom-registrar/README.md` | `test/test-name-*.mjs`, `test/test-custom-registrar.mjs`, `test/test-route-lifecycle.mjs` |
 | **History, activity, or detail sheet** | `docs/guides/history-and-activity.md` -> `docs/BACKEND_GAPS.md` (C2b, C2c) | `test/test-history-cache.mjs`, `test/test-history-block-time.mjs`, `scripts/preview-tx-sheet.html` |
 | **Thru SDK, RPC, units, or token wire formats** | `docs/guides/protocol-and-rpc.md` -> `docs/DECISIONS.md` (D-002, D-007, D-022) | `test/test-derivation.mjs`, `test/test-thru-client.mjs`, `test/test-tx-units.mjs`, `scripts/check-layering.mjs` |
-| **UI routes, kit, sheets, toasts, or CSS** | `docs/agent/rules-detail.md` (Rules 14, 15) + `AGENTS.md` (Rule 29) -> `docs/ARCHITECTURE.md` -> `docs/MANUAL_SMOKE_CHECKLIST.md` | `scripts/check-routes.mjs`, `scripts/check-css-nesting.mjs`, `test/test-toast.mjs`, `test/test-shared-platform.mjs`, `test/test-route-lifecycle.mjs` + real browser check |
+| **UI routes, kit, sheets, toasts, or CSS** | `docs/agent/engineering-directive.md` (UX preflight and Modern Web Guidance) -> `docs/agent/rules-detail.md` (Rules 14, 15) + `AGENTS.md` (Rule 29) -> `docs/ARCHITECTURE.md` -> `docs/MANUAL_SMOKE_CHECKLIST.md` | `scripts/check-routes.mjs`, `scripts/check-css-nesting.mjs`, `test/test-toast.mjs`, `test/test-shared-platform.mjs`, `test/test-route-lifecycle.mjs` + real browser check |
 | **Storage schemas, caching, or network scope** | `docs/agent/engineering-directive.md` (Architecture and compatibility invariants) -> `docs/ARCHITECTURE.md` (section 5, Persistent Storage and Network Scoping) -> `docs/DECISIONS.md` (D-004, D-011) | `test/test-storage-migrations.mjs`, `test/test-balance-network.mjs`, `test/test-api-router.mjs` |
 | **DeFi backend (`FLAGS.DEFI_*` all off)** | `docs/MODULE_BOUNDARIES.md` -> `docs/defi/README.md` -> `docs/defi/DOSSIER_AND_CAPABILITIES.md` -> `docs/defi/M0_CONTRACT_INVENTORY.md` | `test/test-release-flags.mjs`, `test/test-launchpad-quarantine.mjs`, `test/test-defi-*.mjs`, `test/test-dex-swap.mjs` |
 | **Unshipped features, strategy, or QA upgrades** | `docs/roadmap/FUTURE_ROADMAP.md` -> `docs/roadmap/ARCHITECTURE_AND_UX_CRITIQUE.md` -> `docs/roadmap/LIFECYCLE_SECURITY_AND_QA_PLAN.md` -> `docs/MODULE_BOUNDARIES.md` | Confirm scope with owner first (`AGENTS.md` §Stop and ask) |
+| **Release or Mainnet readiness** | `docs/STATUS_AND_ROADMAP.md` -> `docs/AUDIT_REPORT.md` -> `docs/MANUAL_SMOKE_CHECKLIST.md` -> `extension.md` | `npm run build && npm test`, `npm audit --omit=dev`, evidence gates at exact SHA, owner approval |
 | **Documentation edits** | This file (`docs/DOCS_INDEX.md`) | `node scripts/check-docs-truth.mjs && node scripts/check-agents.mjs` |
 
 ---
@@ -62,7 +63,7 @@ Each document owns **one** domain. Link to the owner instead of duplicating coun
 | `docs/PROJECT_LEDGER.md` | Canonical repository identifiers and append-only contract milestone history (`v5–v33`). |
 | `docs/ARCHITECTURE.md` | Dependency graph, authoritative module ownership, v32 signing/consent boundary, shared UI platform, and scoped storage. |
 | `docs/BUILD_SPEC.md` | Shipped product behavior, wallet/keyring container model, route requirements, security matrix, and design system. |
-| `docs/DECISIONS.md` | Durable architectural decisions (`D-001` through `D-027`) with trade-offs and consequences. |
+| `docs/DECISIONS.md` | Durable architectural decisions (`D-001` through `D-032`) with trade-offs and consequences. |
 | `docs/BACKEND_GAPS.md` | Implemented backend capabilities vs open live-chain/protocol gaps and contract compatibility policy. |
 | `docs/MODULE_BOUNDARIES.md` | Enforced core layering and target isolation rules for future `src/features/<id>/` modules. |
 | `docs/GLOBAL_SMART_CONTRACT_POLICY.md` | Smart contract inspection/reuse rules and the 6 Mainnet deployment gates. |
@@ -130,3 +131,7 @@ Match external documentation strictly to the exact package versions pinned in `p
 4. **Separate Verification Classes:** Never let a deterministic Node test (`TESTED`) close a real-browser check (`docs/MANUAL_SMOKE_CHECKLIST.md`) or a live-network requirement (`VERIFIED AGAINST LIVE NETWORK`).
 5. **Preserve Frozen Citations:** Do not repair a deleted-path citation inside `docs/audits/` by redirecting it to a current guide. Read the original at its recorded revision in Git; section 3.4 routes current work only.
 6. **Report Guard Scope Exactly:** `check-agents.mjs` checks inline paths/link targets in `AGENTS.md` and the four named agent docs. `check-docs-truth.mjs` checks its declared claims, test paths, relative Markdown link files and conflict markers in its maintained set; it does not validate guide anchors, every inline path, runtime evidence references, or historical citations. Green documentation guards are not full-suite, browser, live-network or independent-audit evidence.
+7. **External learning and website sync:** Keep public tutorials separate from wallet governance.
+   If authorized, synchronize a single canonical source into the website at a pinned revision.
+   SDK examples must be runnable and tested against the documented pins; distinguish live network
+   verification from unsupported capabilities. Do not mix website deployment into an extension release PR.

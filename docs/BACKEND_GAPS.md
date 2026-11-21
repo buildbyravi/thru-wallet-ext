@@ -40,8 +40,8 @@
 ### C2b. Charged Fee in Transaction History (`UNSUPPORTED` on Current RPC)
 - `TransactionExecutionResult` exposes consumed compute/memory/state units and `vmError`, **not** a debited per-transaction fee (`Transaction.fee` echoes `header.fee`, and `StreamSlotMetricsResult.claimedFees` is a block aggregate). `tx.getDetail` therefore returns `feeDeclaredUnits` + `feeCharged: false`, rendered as **`Fee (declared)`** (`docs/guides/history-and-activity.md`). `https://scan.thru.org/api/mcp` is an LLM-only `format=toon` endpoint and cannot be used as a typed wallet API.
 
-### C2c. Block-Time Availability & Explorer `/tx/` Deep Link (`UNVERIFIED` Live)
-- `blocks.get({ slot })` provides optional `BlockHeader.block_time` cached per `(networkId, rpcUrl, slot)` (`timestampSource: 'block'`), falling back to own-send `submitted` time or `Block <slot>`. Live Betanet block-time availability/latency and confirmation of `https://scan.thru.org` `/tx/` routing remain open manual checks.
+### C2c. Block-Time Availability & Explorer `/tx/` Deep Link
+- `blocks.get({ slot })` provides optional `BlockHeader.block_time` cached per `(networkId, rpcUrl, slot)` (`timestampSource: 'block'`), falling back to own-send `submitted` time or `Block <slot>`. The explorer detail route resolved a current public Betanet transaction read-only (see the [History guide](guides/history-and-activity.md)). Live RPC block-time availability/latency and a new wallet transaction matched across submission, History and Explorer remain open.
 
 ### C3. Transaction Simulation (`UNSUPPORTED`)
 - Thru exposes no verified dry-run simulation RPC. `tx.simulate` returns `{ supported: false, changes: null, reason }`, `assets.balanceAfter` is enforced `null` in `src/shared/tx-review/model.js`, and no post-transaction balance is ever predicted (`Rule 16`).

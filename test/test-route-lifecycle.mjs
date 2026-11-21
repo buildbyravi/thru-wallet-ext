@@ -2335,6 +2335,44 @@ async function runScenario(scenario) {
 
 // ---- Settings: custom networks withdrawn, side panel offered ---------------
 
+async function dashboardNetworkChooserTest() {
+  section('dashboard network control opens the guarded network-only chooser');
+  resetBackend(SCENARIOS[2]);
+  resetDom();
+  guards.invalidate();
+  const app = DOC.getElementById('app');
+  const router = await boot({ root: app });
+  await settle();
+
+  const netButton = buttons(app, /active network betanet; choose network/i)[0];
+  ok('dashboard has a named network control', Boolean(netButton));
+  click(netButton);
+  await settle();
+  const tree = router.root;
+  ok('network control opens only the chooser, not unrelated Settings',
+    /Choose network/.test(textOf(tree)) && !/Side Panel Mode/.test(textOf(tree)), textOf(tree));
+  const rows = allElements(tree).filter((el) => el.classList.contains('row'));
+  const custom = rows.find((el) => /My node/.test(textOf(el)));
+  const current = rows.find((el) => /Betanet/.test(textOf(el)));
+  ok('active network is marked current and does not offer a same-network switch',
+    current?.getAttribute('aria-current') === 'true' && current?.localName !== 'button');
+  ok('custom network cannot be chosen or managed in the switcher',
+    custom?.getAttribute('aria-disabled') === 'true' && custom?.localName !== 'button'
+    && buttons(tree, /remove my node/i).length === 0);
+  const switchCount = () => chromeLog.calls.filter((method) => method === 'network.setActive').length;
+  const before = switchCount();
+  click(current);
+  click(custom);
+  ok('clicking the active or quarantined network sends no switch request', switchCount() === before);
+  click(buttons(tree, /^Testnet/i)[0]);
+  await settle();
+  ok('a selectable fixture network switches through the existing API',
+    switchCount() === before + 1 && backend.activeNetworkId === 'testnet');
+  ok('switching returns to the dashboard', router.currentPath === '/dashboard', router.currentPath);
+  router.stop();
+  await settle();
+}
+
 async function settingsTest() {
   section('settings: no custom-network form; Side Panel Mode is an explicit opt-in');
 
@@ -2348,11 +2386,17 @@ async function settingsTest() {
   await settle();
 
   const tree = router.root;
-  const text = textOf(tree);
+  const open = (name) => {
+    click(buttons(tree, name)[0]);
+    return DOC.body.querySelector('.settings-picker');
+  };
+  const close = (sheet) => click(buttons(sheet, /^Close$/i)[0]);
+  const network = open(/^Network/i);
+  const text = textOf(network);
 
-  ok('settings has no "Add custom network" control', buttons(tree, /add custom/i).length === 0,
-    buttons(tree, /add custom/i).map((b) => labelOf(b)).join(', '));
-  const rpcInputs = allElements(tree).filter((el) => el.localName === 'input'
+  ok('settings has no "Add custom network" control', buttons(network, /add custom/i).length === 0,
+    buttons(network, /add custom/i).map((b) => labelOf(b)).join(', '));
+  const rpcInputs = allElements(network).filter((el) => el.localName === 'input'
     && /rpc|endpoint|explorer|chain/i.test(`${el.getAttribute('placeholder') || ''} ${el.getAttribute('aria-label') || ''}`));
   ok('settings has no custom-endpoint input fields', rpcInputs.length === 0,
     rpcInputs.map((el) => el.getAttribute('placeholder')).join(', '));
@@ -2362,7 +2406,7 @@ async function settingsTest() {
   ok('the legacy row carries a clear not-selectable warning',
     /not selectable/i.test(text) && /will not build or sign/i.test(text), text.slice(0, 500));
 
-  const customRow = allElements(tree).find((candidate) => (
+  const customRow = allElements(network).find((candidate) => (
     candidate.classList.contains('row') && /My node/.test(textOf(candidate))
   ));
   ok('the saved custom network is rendered as a row', Boolean(customRow));
@@ -2371,8 +2415,9 @@ async function settingsTest() {
   ok('the custom row is exposed as disabled to assistive technology',
     customRow?.getAttribute('aria-disabled') === 'true',
     `aria-disabled=${customRow?.getAttribute('aria-disabled')}`);
-  ok('built-in network rows remain selectable buttons',
-    buttons(tree, /^Betanet/i).length === 1, buttons(tree, /Betanet/i).map(labelOf).join(', '));
+  ok('the active Betanet row is status, not a dead button',
+    buttons(network, /^Betanet/i).length === 0
+      && allElements(network).some((row) => row.getAttribute('aria-current') === 'true' && /Betanet/.test(textOf(row))));
 
   const callsBeforeInertClick = chromeLog.calls.filter((method) => method === 'network.setActive').length;
   click(customRow);
@@ -2401,12 +2446,14 @@ async function settingsTest() {
   ok('direct rejection leaves the built-in network active',
     backend.activeNetworkId === 'betanet', backend.activeNetworkId);
 
-  const removeButtons = buttons(tree, /remove my node/i);
+  const removeButtons = buttons(network, /remove my node/i);
   ok('Remove is the custom row\'s only button action',
-    removeButtons.length === 1 && buttons(tree, /My node/i).length === 1,
-    buttons(tree, /My node/i).map(labelOf).join(', '));
+    removeButtons.length === 1 && buttons(network, /My node/i).length === 1,
+    buttons(network, /My node/i).map(labelOf).join(', '));
   ok('no UI call reached network.upsertCustom',
     !chromeLog.calls.includes('network.upsertCustom') && chromeLog.unexpected.length === 0);
+
+  close(network);
 
   // Side Panel Mode: an explicit user opt-in, so the ONLY panel-shaped control on this
   // screen is the toggle itself. The redundant "Open side panel" button stays gone — the
@@ -2448,21 +2495,95 @@ async function settingsTest() {
     modeSwitch.getAttribute('aria-checked') === 'false'
       && !modeSwitch.classList.contains('active'));
 
+  const behaviorChanges = () => chromeLog.setPanelBehavior.slice(2).map((item) => item.openPanelOnActionClick);
+  const holds = holdReplies((message) => message.method === 'settings.set' && 'sidePanelMode' in message.params.patch);
+  try {
+    click(modeSwitch);
+    await settle();
+    click(modeSwitch);
+    await settle();
+    ok('Side Panel Mode is busy and ignores a second click while the save is pending',
+      modeSwitch.getAttribute('aria-busy') === 'true' && modeSwitch.getAttribute('aria-disabled') === 'true'
+        && modeSwitch.getAttribute('aria-checked') === 'false' && holds.held.length === 1
+        && behaviorChanges().join() === 'true');
+    // Only release the first held request so the duplicate-click regression still fails safely.
+    holds.reject('settings.set', 'Storage write failed');
+    await settle();
+    ok('a rejected preference write restores the previous toolbar behavior and leaves the switch off',
+      behaviorChanges().join() === 'true,false' && backend.preferences.sidePanelMode === false
+        && modeSwitch.getAttribute('aria-checked') === 'false'
+        && !modeSwitch.hasAttribute('aria-busy') && /restored/i.test(textOf(tree)));
+  } finally {
+    holds.restore();
+  }
+  await settle();
+
+  const originalSetPanelBehavior = chrome.sidePanel.setPanelBehavior;
+  const originalSave = FIXTURES['settings.set'];
+  try {
+    chrome.sidePanel.setPanelBehavior = async () => { throw new Error('Chrome rejected the change'); };
+    const writesBeforeBrowserFailure = chromeLog.calls.filter((method) => method === 'settings.set').length;
+    click(modeSwitch);
+    await settle();
+    ok('a browser failure does not write a mode Chrome rejected',
+      chromeLog.calls.filter((method) => method === 'settings.set').length === writesBeforeBrowserFailure
+        && modeSwitch.getAttribute('aria-checked') === 'false' && /was not saved/.test(textOf(tree)));
+
+    chrome.sidePanel.setPanelBehavior = async (options) => {
+      await originalSetPanelBehavior(options);
+      if (!options.openPanelOnActionClick) throw new Error('Chrome rejected rollback');
+    };
+    FIXTURES['settings.set'] = () => { throw apiError('STORAGE_ERROR', 'Storage write failed'); };
+    click(modeSwitch);
+    await settle();
+    ok('a failed rollback warns that Chrome may differ from the saved setting',
+      /could not restore.*may not match/i.test(textOf(tree))
+        && modeSwitch.getAttribute('aria-checked') === 'false' && !modeSwitch.hasAttribute('aria-busy'));
+
+    chrome.sidePanel.setPanelBehavior = originalSetPanelBehavior;
+    FIXTURES['settings.set'] = (params) => {
+      originalSave(params); // Persist but lose the reply.
+      throw apiError('PORT_ERROR', 'Reply lost');
+    };
+    const behaviorCount = chromeLog.setPanelBehavior.length;
+    click(modeSwitch);
+    await settle();
+    ok('readback keeps the new toolbar behavior when the write succeeded but the reply was lost',
+      chromeLog.setPanelBehavior.length === behaviorCount + 1 && backend.preferences.sidePanelMode === true
+        && modeSwitch.getAttribute('aria-checked') === 'true' && !modeSwitch.hasAttribute('aria-busy'));
+  } finally {
+    chrome.sidePanel.setPanelBehavior = originalSetPanelBehavior;
+    FIXTURES['settings.set'] = originalSave;
+  }
+  click(modeSwitch); // Exercise a normal OFF save after recovery.
+  await settle();
+
   // Removing the saved network still works end to end.
-  click(buttons(tree, /remove my node/i)[0]);
+  click(buttons(open(/^Network/i), /remove my node/i)[0]);
   await settle();
   ok('removing a saved custom network calls network.removeCustom',
     chromeLog.calls.includes('network.removeCustom'));
   ok('removal deletes the legacy record from backend state', backend.customNetworks.length === 0,
     `${backend.customNetworks.length} custom records remain`);
+  const updatedNetwork = open(/^Network/i);
   ok('the removed custom row disappears while the quarantine notice remains',
-    !/My node/.test(textOf(tree)) && /temporarily unavailable/i.test(textOf(tree)),
+    !/My node/.test(textOf(updatedNetwork)) && /temporarily unavailable/i.test(textOf(updatedNetwork)),
     textOf(tree).slice(0, 300));
 
   // ---- Signing & friends: the explanations are in-wallet "?" popovers, not paragraphs
   // ---- and not the native title tooltip (the browser owns that one, and it can render
   // ---- outside the fixed 400x600 popup).
-  const helpTriggers = allElements(tree).filter((el) => el.classList?.contains?.('help-circle-icon'));
+  const hintParas = allElements(updatedNetwork).filter((el) => el.classList?.contains?.('hint'));
+  close(updatedNetwork);
+  const themeSheet = open(/^Theme Mode/i);
+  const themeContents = allElements(themeSheet);
+  close(themeSheet);
+  const autoLockSheet = open(/^Auto-lock/i);
+  const autoLockContents = allElements(autoLockSheet);
+  close(autoLockSheet);
+  const signingSheet = open(/^Signing security/i);
+  const helpContents = [...allElements(tree), ...themeContents, ...autoLockContents, ...allElements(signingSheet)];
+  const helpTriggers = helpContents.filter((el) => el.classList?.contains?.('help-circle-icon'));
   ok('settings explains signing, auto-lock, side panel mode and appearance with "?" controls',
     helpTriggers.length === 4
       && helpTriggers.map((el) => el.getAttribute('aria-label')).sort().join(', ')
@@ -2470,7 +2591,7 @@ async function settingsTest() {
     helpTriggers.map((el) => el.getAttribute('aria-label')).join(', '));
   ok('no "?" trigger carries a native title (the browser tooltip can overflow the popup)',
     helpTriggers.every((el) => !el.hasAttribute('title')));
-  const tips = allElements(tree).filter((el) => el.classList?.contains?.('inline-tooltip'));
+  const tips = helpContents.filter((el) => el.classList?.contains?.('inline-tooltip'));
   ok('each "?" owns an in-wallet popover, hidden at rest',
     tips.length === 4 && tips.every((t) => t.hasAttribute('hidden')),
     `tips=${tips.length}`);
@@ -2495,7 +2616,7 @@ async function settingsTest() {
   }
   // The descriptive hint paragraphs are gone; the ONLY surviving hint text is the
   // functional custom-network quarantine notice.
-  const hintParas = allElements(tree).filter((el) => el.classList?.contains?.('hint'));
+  close(signingSheet);
   ok('only the custom-network notice remains as hint text',
     hintParas.length === 1 && /temporarily unavailable/i.test(hintParas[0].textContent),
     hintParas.map((el) => (el.textContent || '').slice(0, 60)).join(' | '));
@@ -2528,46 +2649,91 @@ async function themeTest() {
   router.navigate('/settings');
   await settle();
   const tree = router.root;
-  const text = textOf(tree);
+  const openTheme = () => {
+    click(buttons(tree, /^Theme Mode/i)[0]);
+    return DOC.body.querySelector('.settings-picker');
+  };
+  const themeRow = () => textOf(buttons(tree, /^Theme Mode/i)[0]);
 
-  ok('settings offers a user-facing Appearance section', /appearance/i.test(text));
-  const lightChip = buttons(tree, /^light$/i)[0];
-  const darkChip = buttons(tree, /^dark$/i)[0];
-  const systemChip = buttons(tree, /^system$/i)[0];
-  ok('all three theme choices are real buttons', [lightChip, darkChip, systemChip].every(Boolean));
-  ok('the stored choice renders as the selected chip', darkChip?.classList.contains('selected'),
-    `dark.selected=${darkChip?.classList.contains('selected')}`);
+  ok('Settings has semantic Features, Settings and About headings',
+    [...tree.querySelectorAll('.settings-heading')].map((node) => `${node.tagName}:${textOf(node)}`).join('|')
+      === 'H2:Features|H2:Settings|H2:About');
+  ok('Settings declares separate dialogs for Network, Signing security, Theme Mode and Auto-lock time',
+    buttons(tree, /^(Network|Signing security|Theme Mode|Auto-lock time)/).filter((node) => node.getAttribute('aria-haspopup') === 'dialog')
+      .map(textOf).join('|') === 'Network Betanet|Signing security Session-only|Theme Mode Dark|Auto-lock time 15 min');
+  ok('picker choices are not mounted inline', buttons(tree, /^(Light|Dark|System)$/).length === 0);
+  const disabledRows = buttons(tree, /^(Language|Currency)Planned$/);
+  ok('Language and Currency appear once each as disabled, labelled Planned rows',
+    disabledRows.length === 2 && disabledRows.every((node) => node.hasAttribute('disabled')));
+  ok('Side Panel Mode and Desktop Notifications remain single switches',
+    allElements(tree).filter((node) => node.getAttribute?.('role') === 'switch')
+      .map((node) => node.getAttribute('aria-label')).join('|') === 'Side Panel Mode|Desktop Notifications');
+  let themeSheet = openTheme();
+  const chip = (pattern) => buttons(themeSheet, pattern)[0];
+  ok('all three theme choices are real buttons inside a named dialog',
+    themeSheet?.getAttribute('aria-label') === 'Theme Mode' && [/^light$/i, /^dark$/i, /^system$/i].every(chip));
+  ok('the stored choice renders as the selected chip', chip(/^dark$/i)?.classList.contains('selected'));
 
-  click(lightChip);
+  click(chip(/^light$/i));
   await settle();
-  ok('switching to Light applies immediately', DOC.documentElement.dataset.theme === 'light',
-    `data-theme=${DOC.documentElement.dataset.theme}`);
-  ok('the choice persists through the versioned preferences service',
-    backend.preferences.theme === 'light', JSON.stringify(backend.preferences));
+  ok('switching to Light applies immediately', DOC.documentElement.dataset.theme === 'light');
+  ok('the Theme Mode row updates and the picker closes after a saved choice',
+    themeRow() === 'Theme Mode Light' && !DOC.body.querySelector('.settings-picker'));
+  ok('the choice persists through the versioned preferences service', backend.preferences.theme === 'light');
+  themeSheet = openTheme();
   ok('the selection moves to the newly chosen chip',
-    buttons(tree, /^light$/i)[0]?.classList.contains('selected')
-      && !buttons(tree, /^dark$/i)[0]?.classList.contains('selected'));
+    chip(/^light$/i)?.classList.contains('selected') && !chip(/^dark$/i)?.classList.contains('selected'));
 
-  click(systemChip);
+  click(chip(/^system$/i));
   await settle();
-  ok('System resolves through the OS preference, here to Light',
-    DOC.documentElement.dataset.theme === 'light',
-    `data-theme=${DOC.documentElement.dataset.theme}`);
-  ok('the persisted value is the word “system”, not the resolved theme',
-    backend.preferences.theme === 'system');
+  ok('System resolves through the OS preference, here to Light', DOC.documentElement.dataset.theme === 'light');
+  ok('the persisted value is the word “system”, not the resolved theme', backend.preferences.theme === 'system');
 
   const realSetSettings = FIXTURES['settings.set'];
   FIXTURES['settings.set'] = () => { throw apiError('STORAGE_ERROR', 'Storage write failed'); };
-  click(darkChip);
+  themeSheet = openTheme();
+  click(chip(/^dark$/i));
   await settle();
-  ok('a failed theme save does not move the selected chip or aria-pressed state',
-    !buttons(tree, /^dark$/i)[0]?.classList.contains('selected')
-      && buttons(tree, /^dark$/i)[0]?.getAttribute('aria-pressed') === 'false'
-      && buttons(tree, /^system$/i)[0]?.classList.contains('selected')
-      && buttons(tree, /^system$/i)[0]?.getAttribute('aria-pressed') === 'true'
-      && /Storage write failed/.test(textOf(tree)),
-    `dark.selected=${buttons(tree, /^dark$/i)[0]?.classList.contains('selected')} text=${textOf(tree).slice(0, 200)}`);
+  ok('a failed theme save keeps the picker open, announces the error there, and preserves the selected state',
+    themeSheet === DOC.body.querySelector('.settings-picker')
+      && !chip(/^dark$/i)?.classList.contains('selected') && chip(/^dark$/i)?.getAttribute('aria-pressed') === 'false'
+      && chip(/^system$/i)?.classList.contains('selected') && chip(/^system$/i)?.getAttribute('aria-pressed') === 'true'
+      && themeRow() === 'Theme Mode System' && /Storage write failed/.test(textOf(themeSheet)));
   FIXTURES['settings.set'] = realSetSettings;
+
+  const themeSave = holdReplies((msg) => msg.method === 'settings.set' && 'theme' in msg.params.patch);
+  try {
+    click(chip(/^dark$/i));
+    await settle();
+    const originalSheet = themeSheet;
+    click(buttons(originalSheet, /^Close$/i)[0]);
+    themeSheet = openTheme();
+    ok('the theme picker can be dismissed and reopened during a save without claiming success',
+      themeSheet !== originalSheet && chip(/^system$/i)?.getAttribute('aria-pressed') === 'true'
+        && DOC.documentElement.dataset.theme === 'light');
+    click(chip(/^light$/i));
+    await settle();
+    ok('the reopened picker does not start a second theme write during the first', themeSave.held.length === 1);
+    themeSave.resolve('settings.set', realSetSettings({ patch: { theme: 'dark' } }));
+    await settle();
+    ok('a reopened theme picker stays open and matches the saved row and applied theme',
+      themeSheet === DOC.body.querySelector('.settings-picker') && themeRow() === 'Theme Mode Dark'
+        && DOC.documentElement.dataset.theme === 'dark' && chip(/^dark$/i)?.getAttribute('aria-pressed') === 'true'
+        && chip(/^system$/i)?.getAttribute('aria-pressed') === 'false');
+  } finally {
+    themeSave.restore();
+  }
+
+  click(buttons(tree, /^Transaction history$/i)[0]);
+  await settle();
+  ok('the Features history row opens the existing History route', router.currentPath === '/history');
+  router.navigate('/settings');
+  await settle();
+  click(buttons(router.root, /^Manage accounts and recovery phrases$/i)[0]);
+  await settle();
+  ok('the Features account row opens the existing Accounts route', router.currentPath === '/accounts');
+
+  ok('navigation closes an open Settings picker', !DOC.body.querySelector('.settings-picker'));
 
   // An unrecognised stored value never reaches the DOM.
   backend.preferences.theme = 'midnight-blue';
@@ -3089,8 +3255,22 @@ async function createFlowBackupTest() {
   const views = () => allElements(drawerCard()).filter((el) => el.classList?.contains?.('token-view'));
   const listViewHidden = () => views()[0]?.classList?.contains?.('hidden') === true;
   const addViewHidden = () => views()[1]?.classList?.contains?.('hidden') === true;
-  ok('the drawer has exactly two views and opens on the list',
-    views().length === 2 && !listViewHidden() && addViewHidden());
+  ok('the drawer has exactly three views and opens on the list only',
+    views().length === 3 && !listViewHidden() && addViewHidden()
+      && views()[2]?.classList?.contains?.('hidden'));
+
+  // Start the import from a filtered Hidden tokens list with an older balance reply held.
+  click(buttons(drawerCard(), /^Hidden tokens$/i)[0]);
+  const search = views()[0].querySelector('input');
+  type(search, 'unrelated search');
+  let holdOldBalance = true;
+  const oldBalance = FIXTURES['token.getBalances']();
+  const holds = holdReplies((message) => holdOldBalance && message.method === 'token.getBalances');
+  click(router.root.querySelector('[title="Refresh balance"]'));
+  await settle();
+  holdOldBalance = false;
+  ok('ordinary refresh preserves the Hidden tokens mode',
+    buttons(drawerCard(), /^Hidden tokens$/i)[0].getAttribute('aria-pressed') === 'true');
 
   click(buttons(drawerCard(), /add custom token/i)[0]);
   await settle();
@@ -3148,6 +3328,19 @@ async function createFlowBackupTest() {
   ok('the imported token joins the drawer list', textOf(views()[0]).includes('LAB'), textOf(views()[0]).slice(0, 200));
   ok('the new row is highlighted once',
     allElements(views()[0]).some((el) => el.classList?.contains?.('just-added')));
+
+  const importedRow = () => [...views()[0].querySelectorAll('.token-ledger-row')]
+    .find((node) => textOf(node.querySelector('.token-row-symbol')) === 'LAB');
+  const importedAmount = () => importedRow()?.querySelector('.token-row-amount');
+  ok('a successful import clears the old filter and returns to the visible Tokens list',
+    search.value === '' && buttons(drawerCard(), /^Hidden tokens$/i)[0].getAttribute('aria-pressed') === 'false'
+      && !listViewHidden() && textOf(importedAmount()) === '250');
+  holds.resolve('token.getBalances', oldBalance);
+  await settle();
+  holds.restore();
+  ok('the older reply cannot mark the newly imported balance as cached or unavailable',
+    textOf(importedAmount()) === '250' && !importedAmount().classList.contains('stale')
+      && importedRow().querySelector('.token-row-balance-note').hasAttribute('hidden'));
 
   // A mint already in the list is refused without a network call.
   click(buttons(drawerCard(), /add custom token/i)[0]);
@@ -3243,6 +3436,31 @@ async function createFlowBackupTest() {
     textOf(drawerCard()).slice(0, 160));
   ok('the drawer lists the registered token', textOf(drawerCard()).includes('SMK'));
 
+  const smkRow = buttons(drawerCard(), /SMK/)[0];
+  click(smkRow);
+  await settle();
+  const shownViews = () => allElements(drawerCard()).filter((el) =>
+    el.classList.contains('token-view') && !el.classList.contains('hidden'));
+  ok('clicking a token opens details as the only visible view',
+    shownViews().length === 1 && textOf(shownViews()[0]).includes('My balance'));
+  const detailBack = buttons(shownViews()[0], /Back to tokens/i)[0];
+  click(detailBack);
+  await settle();
+  ok('the detail Back control restores only the list',
+    shownViews().length === 1 && buttons(shownViews()[0], /^Add custom token$/i).length === 1);
+  ok('returning from details restores focus to the original asset row', DOC.activeElement === smkRow);
+  const toolbar = shownViews()[0]?.querySelector('.token-drawer-toolbar');
+  ok('hidden tokens and add are beside close in the list header',
+    Boolean(toolbar) && allElements(toolbar).filter((el) => el.localName === 'button')
+      .map(labelOf).join(',') === 'Hidden tokens,Add custom token,Close');
+  const hiddenToggle = buttons(toolbar, /^Hidden tokens$/i)[0];
+  click(hiddenToggle);
+  ok('hidden filter is announced as pressed and shows the hidden list',
+    hiddenToggle?.getAttribute('aria-pressed') === 'true' && /No hidden tokens/.test(textOf(drawerCard())));
+  click(hiddenToggle);
+  ok('turning the hidden filter off restores the normal list',
+    hiddenToggle?.getAttribute('aria-pressed') === 'false' && textOf(drawerCard()).includes('SMK'));
+
   // Search narrows the list live.
   const searchInput = allElements(drawerCard()).find((el) =>
     el.localName === 'input' && String(el.getAttribute?.('placeholder') || '').includes('Symbol'));
@@ -3255,7 +3473,8 @@ async function createFlowBackupTest() {
   type(searchInput, 'zzz');
   await settle();
   ok('an empty search result is stated, not left blank',
-    textOf(drawerCard()).includes('No tokens match'), textOf(drawerCard()).slice(0, 200));
+    drawerCard().querySelector('.token-drawer-empty')?.getAttribute('role') === 'status'
+      && textOf(drawerCard()).includes('No matching tokens'), textOf(drawerCard()).slice(0, 200));
   type(searchInput, '');
   await settle();
 
@@ -3968,6 +4187,8 @@ async function navigationTest() {
     chromeLog.calls.includes('tx.getHistoryFeed'));
   ok('the feed-served page still renders the familiar entries',
     /sig1|transfer|faucet/i.test(textOf(router.root)), textOf(router.root).slice(0, 200));
+  ok('faucet claims still appear in All as transaction cards',
+    [...router.root.querySelectorAll('.tx-card-title')].some((el) => textOf(el) === 'Claim'));
   ok('the feed path does not burn an RPC page for page one',
     chromeLog.calls.filter((m) => m === 'tx.listHistory').length === 0,
     chromeLog.calls.join(',').slice(-120));
@@ -4045,20 +4266,18 @@ async function navigationTest() {
 
   // ---- P1 cards: flat stream, verbs/deltas, failed badge, signature copy ----
   const NOW = Date.now();
-  // Spread fixture timestamps across several calendar days so a regression that
-  // reintroduces Today/Yesterday section headers is caught by the flat-stream assertion.
   // Anchoring to local midnight keeps those days distinct even during early-hour test runs.
   const startOfToday = new Date(NOW).setHours(0, 0, 0, 0);
   const CARD_ENTRIES = [
     { signature: 'tsCARD_A_sent_today_aaaaaaaaaaaaaaaaaaaaaaa', slot: 30000,
       success: true, programAddress: NETWORK_BETANET.transferProgramId, kind: 'sent',
-      amount: '100000', counterparty: ADDRESS_B, timestamp: NOW },
+      amount: '100000', counterparty: ADDRESS_B, timestamp: NOW, timestampSource: 'block' },
     { signature: 'tsCARD_B_received_yesterday_aaaaaaaaaaaaaaaaa', slot: 29900,
       success: true, programAddress: NETWORK_BETANET.transferProgramId, kind: 'received',
-      amount: '250000', counterparty: ADDRESS_B, timestamp: startOfToday - 3600000 },
+      amount: '250000', counterparty: ADDRESS_B, timestamp: startOfToday - 3600000, timestampSource: 'block' },
     { signature: 'tsCARD_C_failed_older_aaaaaaaaaaaaaaaaaaaaaaa', slot: 29800,
       success: false, programAddress: NETWORK_BETANET.transferProgramId, kind: 'sent',
-      amount: '1', counterparty: ADDRESS_B, timestamp: startOfToday - 2 * 86400000 - 3600000 },
+      amount: '1', counterparty: ADDRESS_B, timestamp: startOfToday - 2 * 86400000 - 3600000, timestampSource: 'block' },
   ];
   FIXTURES['tx.getHistoryFeed'] = () => ({
     entries: CARD_ENTRIES.map((e) => ({ ...e })), nextCursor: null, synced: true,
@@ -4066,6 +4285,8 @@ async function navigationTest() {
   router.navigate('/history');
   await settle();
   const histText = textOf(router.root);
+  ok('History has only the All, Sent, Received and Failed filter chips',
+    [...router.root.querySelectorAll('.chip-option')].map(textOf).join('|') === 'All|Sent|Received|Failed');
   ok('a send shows its signed negative delta',
     histText.includes('-0.0001 THRU'), histText.slice(0, 220));
   ok('a receipt shows its signed positive delta',
@@ -4082,11 +4303,15 @@ async function navigationTest() {
     clipboardLog.writes.includes('tsCARD_A_sent_today_aaaaaaaaaaaaaaaaaaaaaaa'),
     JSON.stringify(clipboardLog.writes));
 
-  // Rabby-style stream: transactions render directly as cards without day section headers.
-  const dayHeaders = [...router.root.querySelectorAll('.list-group-header')];
-  ok('activity renders as a flat stream without day section headers',
+  const cardExplorer = router.root.querySelectorAll('.tx-card-sig')[0];
+  ok('the shortened card signature is the network-scoped explorer link',
+    cardExplorer?.tagName === 'A' && cardExplorer.getAttribute('href')
+      === `${NETWORK_BETANET.explorerUrl}/tx/${CARD_ENTRIES[0].signature}?network=betanet`);
+
+  const dayHeaders = [...router.root.querySelectorAll('.list-group-header')].filter((el) => el.tagName === 'H2').map(textOf);
+  ok('verified times on different days never add date headings',
     dayHeaders.length === 0,
-    String(dayHeaders.length));
+    JSON.stringify(dayHeaders));
   const txCards = [...router.root.querySelectorAll('.tx-card')];
   ok('every transaction renders as a card in the list',
     txCards.length >= 3,
@@ -4118,18 +4343,18 @@ async function navigationTest() {
   ok('timestampless cards show Block <slot> — explorer wording, never "Slot"',
     /Block 41000/.test(noTimeText) && !/Slot \d/.test(noTimeText), noTimeText.slice(0, 200));
 
-  // In a flat stream, cards render in chronological order without header splintering.
+  // An undated row does not inherit its neighbors’ block day or change order.
   FIXTURES['tx.getHistoryFeed'] = () => ({
     entries: [
       { signature: 'tsMIX1_newer_today_aaaaaaaaaaaaaaaaaaaaaaa', slot: 30500,
         success: true, programAddress: NETWORK_BETANET.transferProgramId, kind: 'sent',
-        amount: '90000', counterparty: ADDRESS_B, timestamp: NOW },
+        amount: '90000', counterparty: ADDRESS_B, timestamp: NOW, timestampSource: 'block' },
       { signature: 'tsMIX2_wire_no_time_aaaaaaaaaaaaaaaaaaaaaaaa', slot: 30400,
         success: true, programAddress: NETWORK_BETANET.transferProgramId, kind: 'received',
         amount: '40000', counterparty: ADDRESS_B, timestamp: null },
       { signature: 'tsMIX3_older_today_aaaaaaaaaaaaaaaaaaaaaaa', slot: 30300,
         success: true, programAddress: NETWORK_BETANET.transferProgramId, kind: 'sent',
-        amount: '90000', counterparty: ADDRESS_B, timestamp: startOfToday },
+        amount: '90000', counterparty: ADDRESS_B, timestamp: startOfToday, timestampSource: 'submitted' },
     ],
     nextCursor: null,
     synced: true,
@@ -4137,9 +4362,10 @@ async function navigationTest() {
   router.navigate('/history');
   await settle();
   const streamCards = [...router.root.querySelectorAll('.tx-card')];
-  ok('all transactions render in the stream without day headers',
-    streamCards.length === 3 && router.root.querySelectorAll('.list-group-header').length === 0,
-    String(streamCards.length));
+  const mixedHeaders = [...router.root.querySelectorAll('.list-group-header')].filter((el) => el.tagName === 'H2').map(textOf);
+  ok('mixed History keeps all cards in one flat list without date headings',
+    streamCards.length === 3 && mixedHeaders.length === 0,
+    JSON.stringify(mixedHeaders));
   ok('the middle timestampless card still shows its block fallback',
     /Block 30400/.test(textOf(router.root)),
     textOf(router.root).slice(0, 400));
@@ -4170,15 +4396,17 @@ async function navigationTest() {
   ok('P2: every activity card is an openable control',
     detailCards.length === 3 && detailCards.every((c) => c.classList.contains('tx-card-open')),
     `${detailCards.length} cards`);
-  ok('P2: an openable card is reachable by keyboard and announces itself as a control',
-    detailCards.every((c) => c.getAttribute('tabindex') === '0'
-      && c.getAttribute('role') === 'button'
-      && (c.getAttribute('aria-label') || '').length > 0),
-    detailCards.map((c) => `${c.getAttribute('role')}/${c.getAttribute('tabindex')}`).join(','));
+  const detailsButton = (card) => card.querySelector('.tx-card-body');
+  ok('P2: the native details button is separate from explorer and copy',
+    detailCards.every((card) => {
+      const button = detailsButton(card);
+      return card.getAttribute('role') !== 'button' && button?.localName === 'button'
+        && button.getAttribute('aria-haspopup') === 'dialog' && Boolean(button.getAttribute('aria-label'))
+        && !button.querySelector('a') && !button.querySelector('button');
+    }));
 
-  // Open the SECOND card. Choosing a non-first card is the point: a positional bug that
-  // always opened entries[0] would pass against the first one.
-  const secondCard = detailCards[1];
+  // Open the SECOND card. A positional bug that always opened entries[0] must fail.
+  const secondCard = detailsButton(detailCards[1]);
   secondCard.focus();
   chromeLog.calls.length = 0;
   click(secondCard);
@@ -4239,7 +4467,7 @@ async function navigationTest() {
     .find((a) => /explorer/i.test(labelOf(a)));
   ok('P2: the sheet links to the explorer using the short-sig explorer URL logic',
     Boolean(sheetExplorer)
-      && sheetExplorer.getAttribute('href') === `${NETWORK_BETANET.explorerUrl}/tx/${DETAIL_ENTRIES[1].signature}`,
+      && sheetExplorer.getAttribute('href') === `${NETWORK_BETANET.explorerUrl}/tx/${DETAIL_ENTRIES[1].signature}?network=betanet`,
     sheetExplorer?.getAttribute('href'));
   ok('P2: no secret and no full address string reaches the URL or session history',
     secretInUrls().length === 0
@@ -4259,31 +4487,23 @@ async function navigationTest() {
     DOC.listeners.filter((l) => l.type === 'keydown').length === 0,
     String(DOC.listeners.filter((l) => l.type === 'keydown').length));
 
-  // Keyboard open: Enter on a focused card must do what a click does.
-  const firstCard = [...router.root.querySelectorAll('.tx-card')][0];
-  firstCard.focus();
-  pressKey(firstCard, 'Enter');
+  // Native Enter/Space activation is verified in Chromium. The DOM shim dispatches only
+  // the resulting click here; it does not synthesize keyboard activation of buttons.
+  const firstDetails = detailsButton(router.root.querySelectorAll('.tx-card')[0]);
+  firstDetails.focus();
+  click(firstDetails, { detail: 0 });
   await settle();
   sheetEl = DOC.body.lastChild;
-  ok('P2: Enter on a focused card opens the sheet',
+  ok('P2: activating the focused details button opens the matching sheet',
     Boolean(sheetEl) && sheetEl.classList?.contains('modal-overlay')
       && textOf(sheetEl).includes(DETAIL_ENTRIES[0].signature),
     textOf(sheetEl).slice(0, 160));
   pressKey(sheetEl.firstChild, 'Escape');
   await settle();
-  const spaceCard = [...router.root.querySelectorAll('.tx-card')][0];
-  spaceCard.focus();
-  const spacePrevented = pressKey(spaceCard, ' ') === false;
-  await settle();
-  ok('P2: Space also opens the sheet and does not scroll the list',
-    spacePrevented && DOC.body.lastChild?.classList?.contains('modal-overlay'),
-    `prevented=${spacePrevented}`);
-  pressKey(DOC.body.lastChild.firstChild, 'Escape');
-  await settle();
 
   // THE HONESTY ASSERTION. A backend that cannot answer must produce "Not available" rows,
   // not blanks and certainly not plausible numbers.
-  const absentCard = [...router.root.querySelectorAll('.tx-card')][2];
+  const absentCard = detailsButton(router.root.querySelectorAll('.tx-card')[2]);
   absentCard.focus();
   click(absentCard);
   await settle();
@@ -4325,7 +4545,7 @@ async function navigationTest() {
   });
   router.navigate('/history');
   await settle();
-  click([...router.root.querySelectorAll('.tx-card')][0]);
+  click(detailsButton(router.root.querySelectorAll('.tx-card')[0]));
   await settle();
   const strangerText = textOf(DOC.body.lastChild);
   ok('P2: an unknown counterparty renders as a truncated address, not blank or invented',
@@ -4351,7 +4571,7 @@ async function navigationTest() {
 
   // Navigating away must take the sheet with it: it lives on document.body, so a route that
   // forgot to close it would leave a modal floating over the next screen.
-  const strayCard = [...router.root.querySelectorAll('.tx-card')][0];
+  const strayCard = detailsButton(router.root.querySelectorAll('.tx-card')[0]);
   click(strayCard);
   await settle();
   const strayOverlay = DOC.body.lastChild;
@@ -4533,14 +4753,10 @@ function negativeControls() {
   //     replaces, so proving it still fails the control predicate proves the change matters.
   {
     const inert = h('div', { class: 'tx-card' });
-    const operable = h('article', {
-      class: ['tx-card', 'tx-card-open'],
-      role: 'button',
-      tabindex: '0',
-      'aria-label': 'Sent — transaction details',
+    const operable = h('button', {
+      type: 'button', 'aria-label': 'Sent — transaction details',
     });
-    const operablePredicate = (el) => el.getAttribute('tabindex') === '0'
-      && el.getAttribute('role') === 'button'
+    const operablePredicate = (el) => el.localName === 'button'
       && (el.getAttribute('aria-label') || '').length > 0;
     ok('control: the keyboard-operability assertion passes on a real control',
       operablePredicate(operable) && isFocusable(operable));
@@ -5351,10 +5567,11 @@ async function historyCacheFirstTest() {
   const originalCache = FIXTURES['tx.getCachedHistory'];
   const originalSendMessage = chrome.runtime.sendMessage;
   const held = [];
+  let cachedCursor = 15;
   FIXTURES['tx.getCachedHistory'] = ({ address } = {}) => ({
     address, networkId: activeNetwork().id,
     entries: [activeNetwork().id === 'betanet' ? alpha : testnet],
-    nextCursor: 15, updatedAt: Date.now(),
+    nextCursor: cachedCursor, updatedAt: Date.now(),
   });
   chrome.runtime.sendMessage = (message, callback) => {
     if (['tx.getHistoryFeed', 'tx.getPending', 'account.list'].includes(message?.method)) {
@@ -5405,6 +5622,25 @@ async function historyCacheFirstTest() {
       /Block 101/.test(textOf(route.el)) && /cached activity.*could not sync/i.test(textOf(route.el))
         && chromeLog.calls.filter((method) => method === 'tx.listHistory').length === rawCallsBefore);
 
+    cachedCursor = null;
+    emitEvent('pendingTxChanged', {});
+    await settle();
+    reply('tx.getHistoryFeed', { entries: [alpha], nextCursor: null, synced: false });
+    await settle();
+    ok('the offline feed keeps the last-page card without offering Load more',
+      /Block 101/.test(textOf(route.el)) && /cached activity/i.test(textOf(route.el))
+        && buttons(route.el, /load more/i).length === 0);
+
+    emitEvent('pendingTxChanged', {});
+    await settle();
+    const terminalRead = held.findIndex((item) => item.message.method === 'tx.getHistoryFeed');
+    held.splice(terminalRead, 1)[0].callback({ ok: false,
+      error: { code: 'NETWORK_ERROR', message: 'RPC offline', retryable: true } });
+    await settle();
+    ok('a terminal cache-first page has no Load more when the feed call fails outright',
+      /Block 101/.test(textOf(route.el)) && buttons(route.el, /load more/i).length === 0
+        && chromeLog.calls.filter((method) => method === 'tx.listHistory').length === rawCallsBefore);
+
     // A further refresh is still awaiting the BETANET feed when another extension page
     // switches networks. The old reply must not overwrite the NEW network's cached cards.
     emitEvent('pendingTxChanged', {});
@@ -5439,6 +5675,167 @@ async function historyCacheFirstTest() {
       error: { code: 'NETWORK_ERROR', message: 'Test finished', retryable: true } });
     chrome.runtime.sendMessage = originalSendMessage;
     FIXTURES['tx.getCachedHistory'] = originalCache;
+  }
+}
+
+async function dashboardTokenRefreshTest() {
+  section('dashboard Assets: partial refresh keeps verified rows and fences late replies');
+  resetBackend(SCENARIOS[2]);
+  resetDom();
+  const source = backend.tokens[0];
+  const tokens = ['CACHED', 'FRESH', 'EMPTY', 'UNKNOWN'].map((symbol, index) => ({
+    ...source, symbol, mintAddress: `${source.mintAddress}-${index}`, decimals: 6,
+  }));
+  backend.tokens = tokens;
+  const row = (index, amountUnits, props = {}) => ({ ...tokens[index], amountUnits,
+    tokenAccountExists: true, error: false, ...props });
+  const originalCache = FIXTURES['token.getCachedBalances'];
+  FIXTURES['token.getCachedBalances'] = () => ({ networkId: activeNetwork().id,
+    balances: [row(0, '22918766'), row(1, '1000000')], fetchedAt: Date.now(), stale: false });
+  const holds = holdReplies((message) => message.method === 'token.getBalances');
+  let dash;
+  try {
+    dash = DashboardRoute({ navigate() {} });
+    DOC.body.appendChild(dash.el);
+    await settle();
+    const openDrawer = () => click(dash.el.querySelector('.dash-balance-hero'));
+    const tokenRow = (symbol) => allElements(DOC.body).find((el) =>
+      el.classList.contains('token-ledger-row') && textOf(el.querySelector('.token-row-symbol')) === symbol);
+    const amount = (symbol) => textOf(tokenRow(symbol)?.querySelector('.token-row-amount'));
+    openDrawer();
+    ok('cached amount paints before a held live response', amount('CACHED') === '22.918766');
+    const partial = { networkId: NETWORK_BETANET.id, balances: [
+      row(0, null, { error: true }), row(1, '2000000'),
+      row(2, null, { tokenAccountExists: false }), row(3, null, { error: true }),
+    ] };
+    holds.resolve('token.getBalances', partial);
+    await settle();
+    ok('failed live row keeps verified value with a cached label',
+      amount('CACHED') === '22.918766' && /Cached/.test(textOf(tokenRow('CACHED'))));
+    ok('unrelated successful and proven-zero rows remain fresh',
+      amount('FRESH') === '2' && amount('EMPTY') === '0'
+        && !/Cached/.test(textOf(tokenRow('FRESH'))) && !/Cached/.test(textOf(tokenRow('EMPTY'))));
+    ok('failed uncached row displays unavailable and not zero',
+      amount('UNKNOWN') === '—' && /Unavailable/.test(textOf(tokenRow('UNKNOWN'))));
+    click(tokenRow('UNKNOWN'));
+    await settle();
+    ok('unknown row detail says Balance unavailable', /Balance unavailable/.test(textOf(DOC.body)));
+
+    click(dash.el.querySelector('[title="Refresh balance"]'));
+    await settle();
+    const old = holds.held[0].message;
+    backend.activeNetworkId = NETWORK_TESTNET.id;
+    emitEvent('networkChanged', NETWORK_TESTNET);
+    await settle();
+    backend.activeNetworkId = NETWORK_BETANET.id;
+    emitEvent('networkChanged', NETWORK_BETANET);
+    await settle();
+    holds.resolve('token.getBalances', partial, (message) => message === holds.held.at(-1).message);
+    await settle();
+    openDrawer();
+    holds.resolve('token.getBalances', { ...partial, balances: [row(0, '99000000')] }, (message) => message === old);
+    await settle();
+    ok('an old response for the same network ID cannot overwrite the active generation',
+      amount('CACHED') === '22.918766' && !/99/.test(amount('CACHED')));
+
+    click(dash.el.querySelector('[title="Refresh balance"]'));
+    await settle();
+    const oldAccountRead = holds.held.at(-1).message;
+    backend.activeIndex = 1;
+    emitEvent('accountsChanged');
+    await settle();
+    backend.activeIndex = 0;
+    emitEvent('accountsChanged');
+    await settle();
+    holds.resolve('token.getBalances', partial, (message) => message === holds.held.at(-1).message);
+    await settle();
+    openDrawer();
+    holds.resolve('token.getBalances', { ...partial, balances: [row(0, '88000000')] },
+      (message) => message === oldAccountRead);
+    await settle();
+    ok('switching accounts away and back discards the old account response', amount('CACHED') === '22.918766');
+  } finally {
+    dash?.destroy();
+    dash?.el.remove();
+    holds.restore();
+    FIXTURES['token.getCachedBalances'] = originalCache;
+  }
+}
+
+async function dashboardVisibilityRefreshTest() {
+  section('dashboard Assets: completed hide and restore survive stale registry reads');
+  resetBackend(SCENARIOS[2]);
+  resetDom();
+  const originalVisibility = FIXTURES['token.setVisibility'];
+  FIXTURES['token.setVisibility'] = ({ mintAddress, hidden }) => {
+    backend.tokens = backend.tokens.map((token) => token.mintAddress === mintAddress ? { ...token, hidden } : token);
+    return { mintAddress, hidden };
+  };
+  let heldMethod;
+  const holds = holdReplies((message) => message.method === heldMethod);
+  let dash;
+  try {
+    dash = DashboardRoute({ navigate() {} });
+    DOC.body.appendChild(dash.el);
+    await settle();
+    click(dash.el.querySelector('.dash-balance-hero'));
+    await settle();
+    const drawer = () => DOC.body.querySelector('.token-drawer');
+    const row = () => [...drawer().querySelectorAll('.token-ledger-row')]
+      .find((node) => textOf(node.querySelector('.token-row-symbol')) === 'SMK');
+    const toggleHidden = () => click(buttons(drawer(), /^Hidden tokens$/i)[0]);
+    const refresh = () => click(dash.el.querySelector('[title="Refresh balance"]'));
+
+    heldMethod = 'token.getCachedBalances';
+    refresh();
+    await settle(); // Cached token.list has already replied without NEW.
+    backend.tokens.push({ ...backend.tokens[0], mintAddress: 'taNewRegistryMint', symbol: 'NEW' });
+    holds.resolve(heldMethod, { networkId: NETWORK_BETANET.id, balances: [] });
+    heldMethod = 'token.getBalances';
+    await settle(); // Live token.list has returned NEW and still marks SMK visible.
+    click(row());
+    await settle();
+    click(buttons(drawer(), /^Remove from Assets$/i)[0]);
+    await settle();
+    ok('the completed hide immediately removes the token from Assets', !row());
+    holds.resolve(heldMethod, { networkId: NETWORK_BETANET.id, balances: [] });
+    await settle();
+    ok('a live refresh using the old token list cannot bring the hidden token back', !row());
+    ok('other registry entries survive reconciliation with the saved visibility',
+      /NEW/.test(textOf(drawer())));
+    toggleHidden();
+    ok('the hidden token remains available under Hidden tokens after refresh', Boolean(row()));
+    if (!row()) return;
+
+    heldMethod = 'token.getCachedBalances';
+    refresh();
+    await settle(); // the cached phase has already received the old "hidden" registry
+    click(row());
+    await settle();
+    click(buttons(drawer(), /^Show in Assets$/i)[0]);
+    await settle();
+    ok('restoring a token removes it from Hidden tokens immediately', !row());
+    toggleHidden();
+    ok('restoring makes the token visible in Assets immediately', Boolean(row()));
+    holds.resolve(heldMethod, { networkId: NETWORK_BETANET.id, balances: [] });
+    // Observe the cached repaint separately, before the new live reply can mask it.
+    heldMethod = 'token.getBalances';
+    await settle();
+    ok('an old cached registry cannot hide a restored token again', Boolean(row()));
+    holds.resolve(heldMethod, { networkId: NETWORK_BETANET.id, balances: [] });
+    await settle();
+    ok('the restored token stays visible after both refresh phases', Boolean(row()));
+    backend.tokens = backend.tokens.map((token) => token.symbol === 'SMK' ? { ...token, hidden: true } : token);
+    heldMethod = undefined;
+    refresh();
+    await settle();
+    ok('a later authoritative list still updates visibility', !row());
+  } finally {
+    dash?.destroy();
+    dash?.el.remove();
+    holds.restore();
+    if (originalVisibility) FIXTURES['token.setVisibility'] = originalVisibility;
+    else delete FIXTURES['token.setVisibility'];
   }
 }
 
@@ -6454,6 +6851,7 @@ try {
     await runScenario(scenario);
   }
   await settingsTest();
+  await dashboardNetworkChooserTest();
   await themeTest();
   focusTrapTest();
   await passwordModalTest();
@@ -6468,6 +6866,8 @@ try {
   await ownRecipientRegistrationTest();
   await historyCacheFirstTest();
   await offlineBalanceConsumersTest();
+  await dashboardTokenRefreshTest();
+  await dashboardVisibilityRefreshTest();
   await nameReviewTest();
   await nameNotificationTest();
   await trackedDomainsTest();

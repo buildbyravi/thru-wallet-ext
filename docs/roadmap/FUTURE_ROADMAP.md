@@ -55,6 +55,12 @@ Extend the existing V2 multi-keyring model (`vault.js` already ships multiple se
 
 ## 3. Phase 2: dApp Connection v1 & Verified ABI Reflection (`PLANNED`)
 
+Before enabling any provider, external listener, or manifest permission, require an owner-approved
+threat model. Compare an official Thru provider (if verified), an exact-origin allowlist for first-party
+sites, and connectionless unsigned-intent handoff without new host permissions. Test spoofing, replay,
+locked state, and context switches against the invariants below before any enablement. This is a
+planning gate, not a shipped capability.
+
 ### 3.1 Minimum `dApp Connection v1` Surface (`ThruTransactionIntent`-Aligned)
 Check Unto Labs' published `@thru/wallet` specs first to align global namespace (`window.thru` / `window.thruWallet`) before shipping `content_scripts`. Minimum v1 scope:
 - **Methods:** `connect({ silent? }) -> { accounts: [{ address, publicKey, label? }] }`, `disconnect()`, `isConnected()`, `getAccounts()`, `getSelectedAccount()`, `getSigningContext() -> { networkId, chainId }`, and `signTransaction(payload: string | ThruTransactionIntent) -> Promise<string>` (returning base64 signed wire bytes or routing through sign-and-send where requested).

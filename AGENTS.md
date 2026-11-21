@@ -54,8 +54,10 @@ factually necessary.
 | SDK, RPC, units, token wire formats | `docs/guides/protocol-and-rpc.md` (sections 1-3); stop and ask on unverified protocol semantics |
 | storage, migration, persisted state | `docs/agent/engineering-directive.md`, `test/test-storage-migrations.mjs` |
 | layout, sheets, overlays, CSS | rule 14 (`docs/agent/rules-detail.md`), `docs/MANUAL_SMOKE_CHECKLIST.md`, `docs/DEFECT_LOG.md` |
+| HTML, CSS, browser APIs, or frontend behavior | Follow the UX preflight and Modern Web Guidance in `docs/agent/engineering-directive.md` before implementation. |
 | contracts, on-chain programs | `docs/GLOBAL_SMART_CONTRACT_POLICY.md`, `contracts/thru-custom-registrar/README.md` |
 | unshipped features, roadmap | `docs/roadmap/FUTURE_ROADMAP.md` (PLANNED only — never treat as shipped) |
+| release or Mainnet | `docs/AUDIT_REPORT.md`, `docs/STATUS_AND_ROADMAP.md`, `docs/MANUAL_SMOKE_CHECKLIST.md`, `extension.md`; owner approval before version bumps, merges, publishing, or enablement |
 | docs | `docs/DOCS_INDEX.md` — it owns the read order, document classes, and anti-sprawl rules |
 
 Conflict resolution: `STATUS_AND_ROADMAP.md` wins on **current engineering state**;
@@ -128,7 +130,8 @@ non-interactive shell waiting for a GUI credential manager.
     `docs/agent/rules-detail.md`.
 15. **The frontend never waits on a chain/RPC/backend read before its first paint.** Paint from
     local state or an explicit checking/unknown placeholder, then hydrate and replace; add the
-    cached counterpart with every new read and label stale data. — *check:*
+    cached counterpart with every new read; preserve verified results on partial failure and label
+    stale data (details in `docs/agent/rules-detail.md`). — *check:*
     `test/test-route-lifecycle.mjs` (routes paint with every bridge reply stalled).
 16. **A value-moving screen goes through the ONE review pipeline; it never signs.**
     `tx.prepareReview` → `review-card.js` → `tx.confirmReview` → `confirm.js`. No feature-owned

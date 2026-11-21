@@ -618,3 +618,24 @@ silent SDK drift.
 3. **RPC Rate & Resource Compliance:** Enforced maximum 10,000 memory units floor across transfer/swap/registrar transactions to conform to Betanet RPC constraints, with rate-limiting backoff for history and token queries.
 4. **Token Operations Live Verification:** 16-rung live token transfer suite passed against Betanet.
 5. **Version Bumps:** Bumped `package.json`, `package-lock.json`, and `src/manifest.json` from `1.5.0` to `1.6.0`.
+
+## D-032 — Keep the current extension and reuse only the balance artwork (2026-11-20, owner directive)
+
+After reviewing the isolated frontend prototype, the owner declined a replacement. The prototype
+and its integration plan were removed. Keep the existing dashboard structure and Settings, and
+reuse only the prototype's local decorative SVG behind the existing balance readout. This does
+not change permissions, network policy, wallet behavior, or backend code.
+
+Project-scoped Modern Web Guidance remains development tooling under the
+[engineering directive](agent/engineering-directive.md#modern-web-guidance-for-frontend-work).
+
+Follow-up: the owner requested inset dashboard cards and a network shortcut, not a replacement
+frontend. The native balance leads when fiat is unavailable. The dashboard shortcut opens only
+the existing Settings network rows, uses the same activation path and guards, and does not make
+additional networks available.
+
+The token drawer reuses the registered-token snapshot, verified mint reader and visibility API.
+“Remove from Assets” hides a token and is reversible; it does not mutate any on-chain state.
+The generic close glyph is from Rabby, under its [MIT notice](../src/icons/rabby-close.LICENSE.txt)
+([source at 99db353](https://github.com/RabbyHub/Rabby/blob/99db3534192f6d70c23409bc2b5e13244336e470/src/ui/assets/close-16-cc.svg)).
+The transaction Multicall program is not a verified Betanet account-read batch API.
