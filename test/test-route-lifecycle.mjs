@@ -3448,6 +3448,7 @@ async function createFlowBackupTest() {
   await settle();
   ok('the detail Back control restores only the list',
     shownViews().length === 1 && buttons(shownViews()[0], /^Add custom token$/i).length === 1);
+  ok('returning from details restores focus to the original asset row', DOC.activeElement === smkRow);
   const toolbar = shownViews()[0]?.querySelector('.token-drawer-toolbar');
   ok('hidden tokens and add are beside close in the list header',
     Boolean(toolbar) && allElements(toolbar).filter((el) => el.localName === 'button')
@@ -3472,7 +3473,8 @@ async function createFlowBackupTest() {
   type(searchInput, 'zzz');
   await settle();
   ok('an empty search result is stated, not left blank',
-    textOf(drawerCard()).includes('No tokens match'), textOf(drawerCard()).slice(0, 200));
+    drawerCard().querySelector('.token-drawer-empty')?.getAttribute('role') === 'status'
+      && textOf(drawerCard()).includes('No matching tokens'), textOf(drawerCard()).slice(0, 200));
   type(searchInput, '');
   await settle();
 
@@ -4394,15 +4396,17 @@ async function navigationTest() {
   ok('P2: every activity card is an openable control',
     detailCards.length === 3 && detailCards.every((c) => c.classList.contains('tx-card-open')),
     `${detailCards.length} cards`);
-  ok('P2: an openable card is reachable by keyboard and announces itself as a control',
-    detailCards.every((c) => c.getAttribute('tabindex') === '0'
-      && c.getAttribute('role') === 'button'
-      && (c.getAttribute('aria-label') || '').length > 0),
-    detailCards.map((c) => `${c.getAttribute('role')}/${c.getAttribute('tabindex')}`).join(','));
+  const detailsButton = (card) => card.querySelector('.tx-card-body');
+  ok('P2: the native details button is separate from explorer and copy',
+    detailCards.every((card) => {
+      const button = detailsButton(card);
+      return card.getAttribute('role') !== 'button' && button?.localName === 'button'
+        && button.getAttribute('aria-haspopup') === 'dialog' && Boolean(button.getAttribute('aria-label'))
+        && !button.querySelector('a') && !button.querySelector('button');
+    }));
 
-  // Open the SECOND card. Choosing a non-first card is the point: a positional bug that
-  // always opened entries[0] would pass against the first one.
-  const secondCard = detailCards[1];
+  // Open the SECOND card. A positional bug that always opened entries[0] must fail.
+  const secondCard = detailsButton(detailCards[1]);
   secondCard.focus();
   chromeLog.calls.length = 0;
   click(secondCard);
@@ -4483,31 +4487,23 @@ async function navigationTest() {
     DOC.listeners.filter((l) => l.type === 'keydown').length === 0,
     String(DOC.listeners.filter((l) => l.type === 'keydown').length));
 
-  // Keyboard open: Enter on a focused card must do what a click does.
-  const firstCard = [...router.root.querySelectorAll('.tx-card')][0];
-  firstCard.focus();
-  pressKey(firstCard, 'Enter');
+  // Native Enter/Space activation is verified in Chromium. The DOM shim dispatches only
+  // the resulting click here; it does not synthesize keyboard activation of buttons.
+  const firstDetails = detailsButton(router.root.querySelectorAll('.tx-card')[0]);
+  firstDetails.focus();
+  click(firstDetails, { detail: 0 });
   await settle();
   sheetEl = DOC.body.lastChild;
-  ok('P2: Enter on a focused card opens the sheet',
+  ok('P2: activating the focused details button opens the matching sheet',
     Boolean(sheetEl) && sheetEl.classList?.contains('modal-overlay')
       && textOf(sheetEl).includes(DETAIL_ENTRIES[0].signature),
     textOf(sheetEl).slice(0, 160));
   pressKey(sheetEl.firstChild, 'Escape');
   await settle();
-  const spaceCard = [...router.root.querySelectorAll('.tx-card')][0];
-  spaceCard.focus();
-  const spacePrevented = pressKey(spaceCard, ' ') === false;
-  await settle();
-  ok('P2: Space also opens the sheet and does not scroll the list',
-    spacePrevented && DOC.body.lastChild?.classList?.contains('modal-overlay'),
-    `prevented=${spacePrevented}`);
-  pressKey(DOC.body.lastChild.firstChild, 'Escape');
-  await settle();
 
   // THE HONESTY ASSERTION. A backend that cannot answer must produce "Not available" rows,
   // not blanks and certainly not plausible numbers.
-  const absentCard = [...router.root.querySelectorAll('.tx-card')][2];
+  const absentCard = detailsButton(router.root.querySelectorAll('.tx-card')[2]);
   absentCard.focus();
   click(absentCard);
   await settle();
@@ -4549,7 +4545,7 @@ async function navigationTest() {
   });
   router.navigate('/history');
   await settle();
-  click([...router.root.querySelectorAll('.tx-card')][0]);
+  click(detailsButton(router.root.querySelectorAll('.tx-card')[0]));
   await settle();
   const strangerText = textOf(DOC.body.lastChild);
   ok('P2: an unknown counterparty renders as a truncated address, not blank or invented',
@@ -4575,7 +4571,7 @@ async function navigationTest() {
 
   // Navigating away must take the sheet with it: it lives on document.body, so a route that
   // forgot to close it would leave a modal floating over the next screen.
-  const strayCard = [...router.root.querySelectorAll('.tx-card')][0];
+  const strayCard = detailsButton(router.root.querySelectorAll('.tx-card')[0]);
   click(strayCard);
   await settle();
   const strayOverlay = DOC.body.lastChild;
@@ -4757,14 +4753,10 @@ function negativeControls() {
   //     replaces, so proving it still fails the control predicate proves the change matters.
   {
     const inert = h('div', { class: 'tx-card' });
-    const operable = h('article', {
-      class: ['tx-card', 'tx-card-open'],
-      role: 'button',
-      tabindex: '0',
-      'aria-label': 'Sent — transaction details',
+    const operable = h('button', {
+      type: 'button', 'aria-label': 'Sent — transaction details',
     });
-    const operablePredicate = (el) => el.getAttribute('tabindex') === '0'
-      && el.getAttribute('role') === 'button'
+    const operablePredicate = (el) => el.localName === 'button'
       && (el.getAttribute('aria-label') || '').length > 0;
     ok('control: the keyboard-operability assertion passes on a real control',
       operablePredicate(operable) && isFocusable(operable));

@@ -245,6 +245,17 @@ body:has(.current-connection:not(.hidden)) .toast-host {
 .token-view.hidden {
   display: none;
 }
+/* Keep Assets controls reachable without changing the shared scrolling detail sheets. */
+.token-drawer.is-listing { overflow: hidden; }
+.token-drawer.is-listing .token-view { min-height: 0; flex-shrink: 1; }
+.token-list-scroll {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* Reserve room for the focus outline within the scrolling viewport. */
+  padding: 3px;
+  margin: -3px;
+}
 .token-drawer.is-adding {
   min-height: 60%;
 }

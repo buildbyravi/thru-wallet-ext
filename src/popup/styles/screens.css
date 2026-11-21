@@ -528,11 +528,12 @@ form > .btn.text {
 }
 .token-drawer-empty {
   margin: 0;
-  padding: 18px 8px;
   text-align: center;
   font-size: 12px;
+  overflow-wrap: anywhere;
   color: var(--foot, #6a7580);
 }
+.token-drawer-empty:not(:empty) { padding: 18px 8px; }
 
 .token-ledger {
   background: var(--surface-1);
@@ -859,14 +860,12 @@ form > .btn.text {
   padding: var(--sp-3);
 }
 
-.tx-card-open {
-  cursor: pointer;
-  transition: border-color var(--t-fast), background var(--t-fast);
+.history-filters { gap: 6px; }
+.history-filters .chip-option {
+  min-height: 30px;
+  padding-inline: 8px;
 }
-.tx-card-open:hover {
-  border-color: var(--border-strong);
-  background: var(--surface-2);
-}
+.tx-card-open:has(.tx-card-body:hover) { border-color: var(--border-strong); }
 .tx-card-head {
   display: flex;
   flex-wrap: wrap;
@@ -909,6 +908,17 @@ form > .btn.text {
   gap: var(--sp-2);
   min-height: 34px;
 }
+button.tx-card-body {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+button.tx-card-body:hover { background: var(--surface-2); }
 .tx-card-glyph {
   display: grid;
   place-items: center;

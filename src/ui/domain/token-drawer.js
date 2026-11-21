@@ -51,6 +51,7 @@ export function TokenDrawer({
   let highlightMint = null;
   let showHidden = false;
   let selection = null;
+  let listScrollTop = 0;
   let mintDetails = null;
   let visibilityPending = false;
   let data = {
@@ -74,6 +75,7 @@ export function TokenDrawer({
     },
   });
   const { track } = sheet;
+  sheet.card.classList.add('is-listing');
   sheet.cleanup(() => {
     attempt += 1; // invalidate any in-flight lookup
     for (const { row } of rows.values()) row.destroy();
@@ -93,11 +95,15 @@ export function TokenDrawer({
   const searchField = track(Field({
     label: 'Search',
     placeholder: 'Symbol, name, or mint address',
-    onInput: () => renderList(),
+    onInput: () => {
+      listScroll.scrollTop = 0;
+      renderList();
+    },
   }));
 
   const listHost = h('div', { class: 'token-ledger' });
-  const emptyHint = h('p', { class: 'token-drawer-empty hidden', text: '' });
+  const emptyHint = h('p', { class: 'token-drawer-empty', role: 'status' });
+  const listScroll = h('div', { class: 'token-list-scroll' }, [listHost, emptyHint]);
 
   function matchesQuery(query, { symbol, name, mintAddress }) {
     if (!query) return true;
@@ -166,8 +172,7 @@ export function TokenDrawer({
     }
 
     const empty = visible.size === 0;
-    emptyHint.classList.toggle('hidden', !empty);
-    const hint = !empty ? '' : query ? `No tokens match “${searchField.value.trim()}”.`
+    const hint = !empty ? '' : query ? 'No matching tokens. Try a symbol, name, or mint address.'
       : showHidden ? 'No hidden tokens.' : 'No tokens to display.';
     if (emptyHint.textContent !== hint) emptyHint.textContent = hint;
 
@@ -199,6 +204,7 @@ export function TokenDrawer({
   }
   sheet.d.on(hiddenBtn, 'click', () => {
     setHiddenMode(!showHidden);
+    listScroll.scrollTop = 0;
     renderList();
   });
   const listTitle = h('h2', { text: 'Tokens' });
@@ -211,8 +217,7 @@ export function TokenDrawer({
   const listView = h('div', { class: 'token-view' }, [
     listHead,
     searchField.el,
-    listHost,
-    emptyHint,
+    listScroll,
   ]);
 
   // ============================================================================================
@@ -557,12 +562,15 @@ export function TokenDrawer({
   function setView(next) {
     if (sheet.closed || next === view) return;
     if (step === STEP.SAVING || visibilityPending) return; // never abandon a save mid-flight
+    const fromDetail = view === 'detail';
+    if (view === 'list') listScrollTop = listScroll.scrollTop;
     attempt += 1;
     view = next;
     listView.classList.toggle('hidden', next !== 'list');
     addView.classList.toggle('hidden', next !== 'add');
     detailView.classList.toggle('hidden', next !== 'detail');
     sheet.card.classList.toggle('is-adding', next === 'add');
+    sheet.card.classList.toggle('is-listing', next === 'list');
     if (next === 'add') {
       resetAdd();
       requestAnimationFrame(() => mintField.focus());
@@ -570,8 +578,17 @@ export function TokenDrawer({
       renderDetails();
       requestAnimationFrame(() => { if (!sheet.closed && view === 'detail') detailsBack.el.focus(); });
     } else {
+      const imported = Boolean(highlightMint);
       renderList();
-      requestAnimationFrame(() => { if (!sheet.closed && view === 'list') searchField.focus(); });
+      const origin = fromDetail ? rows.get(selection?.mintAddress ?? NATIVE_ROW)?.row.el : null;
+      if (!imported) listScroll.scrollTop = listScrollTop;
+      requestAnimationFrame(() => {
+        if (!sheet.closed && view === 'list') {
+          const row = origin?.isConnected ? origin : null;
+          (row ?? searchField.control).focus({ preventScroll: true });
+          row?.scrollIntoView?.({ block: 'nearest' });
+        }
+      });
     }
   }
 

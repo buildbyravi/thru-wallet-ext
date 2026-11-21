@@ -132,7 +132,7 @@ function DetailRow(label, initial = UNKNOWN, { mono = false, tone = '' } = {}) {
  *                  and the lazily-sourced rows simply stay "Not available"
  * @returns {{ el: HTMLElement, update(): void, destroy(): void }}
  */
-export function TxDetailSheet({ entry, network, knownAccounts, loadDetail, onClose } = {}) {
+export function TxDetailSheet({ entry, network, knownAccounts, loadDetail, onClose, opener } = {}) {
   const d = disposer();
   const owned = [];
   let trap = null;
@@ -265,7 +265,7 @@ export function TxDetailSheet({ entry, network, knownAccounts, loadDetail, onClo
     if (event.target === overlay) close();
   });
 
-  trap = focusTrap(card, { onEscape: () => close() });
+  trap = focusTrap(card, { onEscape: () => close(), restoreTo: opener });
 
   document.body.appendChild(overlay);
   requestAnimationFrame(() => {

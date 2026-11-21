@@ -93,7 +93,7 @@ try {
     assert.deepEqual(shape, { src: 'icons/thru.png', avatarBorder: '0px', imageBorder: '0px', radius: '50%' });
   }
   for (const count of [10, 100, 200]) {
-    await page.setViewportSize({ width: count === 200 ? 320 : 400, height: 600 });
+    await page.setViewportSize({ width: count === 200 ? 320 : 400, height: count === 200 ? 445 : 600 });
     await page.goto(`${origin}/popup.html?tokens=${count}`);
     const summary = page.locator('.dash-balance-summary');
     await summary.getByText(`+${count - 3}`, { exact: true }).waitFor();
@@ -114,12 +114,28 @@ try {
     await asset('LAB').click();
     await page.getByText('22.918766 LAB', { exact: true }).waitFor();
     await page.getByRole('button', { name: 'Back to tokens' }).click();
-    await page.waitForFunction(() => document.activeElement?.getAttribute('placeholder') === 'Symbol, name, or mint address');
+    await page.waitForFunction(() => document.activeElement?.querySelector('.token-row-symbol')?.textContent === 'LAB');
     const last = asset(`ASSET-${count - 1}`);
     await last.focus();
+    const listScroll = page.locator('.token-list-scroll');
+    const toolbar = page.locator('.token-drawer-toolbar');
+    const scrollBefore = await listScroll.evaluate((el) => el.scrollTop);
+    assert.ok(scrollBefore > 0);
+    const toolbarBounds = await toolbar.boundingBox();
+    assert.ok(toolbarBounds.y >= 0 && toolbarBounds.y + toolbarBounds.height <= page.viewportSize().height,
+      'drawer actions stay within the popup while scrolling');
+    for (const back of ['Escape', 'Back to tokens']) {
+      await page.keyboard.press('Enter');
+      await page.getByText('My balance', { exact: true }).waitFor();
+      if (back === 'Escape') await page.keyboard.press('Escape');
+      else await page.getByRole('button', { name: back }).click();
+      await page.waitForFunction((symbol) => document.activeElement?.querySelector('.token-row-symbol')?.textContent === symbol,
+        `ASSET-${count - 1}`);
+      assert.equal(await listScroll.evaluate((el) => el.scrollTop), scrollBefore, `${back} preserves scroll`);
+    }
     await last.evaluate((row) => {
       const list = row.parentElement;
-      const sheet = row.closest('[role="dialog"]');
+      const sheet = list.parentElement;
       sheet.scrollTop = sheet.scrollHeight;
       const visibleRows = Array.from(list.children);
       const scrollTop = sheet.scrollTop;
@@ -162,6 +178,14 @@ try {
     if (count === 10) {
       const search = page.getByRole('textbox', { name: 'Search' });
       await page.getByRole('button', { name: 'Back to tokens' }).click();
+      await search.fill('w'.repeat(180));
+      const status = page.getByRole('status').filter({ hasText: 'No matching tokens' });
+      await status.waitFor();
+      assert.ok(await status.evaluate((el) => el.scrollWidth <= el.clientWidth));
+      const stickyCopy = await status.textContent();
+      await search.fill('y'.repeat(200));
+      assert.equal(await status.textContent(), stickyCopy, 'no-results copy does not repeat each query');
+      await search.clear();
       const labRow = await asset('LAB').elementHandle();
       await search.fill('LAB');
       assert.equal(await page.locator('.token-ledger-row').count(), 1);

@@ -45,7 +45,7 @@ export function HistoryRoute({ back }) {
   const banner = Banner({ tone: 'error' });
   const listHost = h('div', { class: 'list' });
   const pendingHost = h('div', { class: ['stack', 'stack-2', 'hidden'] });
-  const filterRow = h('div', { class: 'row-flex wrap' });
+  const filterRow = h('div', { class: 'row-flex wrap history-filters', role: 'group', 'aria-label': 'History filters' });
   const refreshIcon = icon('refresh', 14);
   const refreshBtn = h('button', {
     type: 'button',
@@ -194,11 +194,12 @@ export function HistoryRoute({ back }) {
     current.destroy();
   }
 
-  function openDetail(entry) {
+  function openDetail(entry, opener) {
     if (!entry?.signature) return; // nothing to show, and nothing to fetch
     closeSheet();
     sheet = TxDetailSheet({
       entry,
+      opener,
       network,
       knownAccounts,
       // The sheet never calls the bridge itself — domain components stay bridge-free

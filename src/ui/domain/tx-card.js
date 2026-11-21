@@ -105,7 +105,7 @@ function shortSignature(signature) {
  * @param {object} opts
  * @param {object} opts.entry — decoded history entry (tx-service shape)
  * @param {object|null} opts.network — active network (label + explorerUrl when available)
- * @param {Function} [opts.onOpen] — called with the entry when the card is activated; its
+ * @param {Function} [opts.onOpen] — called with the entry and details button when activated; its
  *   presence is what turns the card into a focusable control. Omit it and the card stays
  *   the inert P1 render unit, so nothing announces an affordance that does not exist.
  * @returns {{ el: HTMLElement, destroy(): void }}
@@ -150,7 +150,15 @@ export function TxCard({ entry, network, knownAccounts, onOpen } = {}) {
   const sub = contextFor(entry, knownAccounts);
   const badge = pending ? h('span', { class: 'tx-card-badge pending', text: 'Pending' })
     : failed ? h('span', { class: 'tx-card-badge failed', text: 'Failed on-chain' }) : null;
-  const body = h('div', { class: 'tx-card-body' }, [
+  const body = h(interactive ? 'button' : 'div', {
+    class: 'tx-card-body',
+    ...(interactive ? {
+      type: 'button',
+      'aria-haspopup': 'dialog',
+      'aria-label': [verbFor(entry), badge?.textContent, sub, delta?.text, 'transaction details']
+        .filter(Boolean).join(' — '),
+    } : {}),
+  }, [
     h('span', { class: ['tx-card-glyph', glyph.cls].filter(Boolean) },
       icon(glyph.name, 18, pending ? { className: 'spinning' } : {})),
     h('span', { class: 'tx-card-main' }, [
@@ -167,45 +175,8 @@ export function TxCard({ entry, network, knownAccounts, onOpen } = {}) {
 
   const el = h(interactive ? 'article' : 'div', {
     class: ['tx-card', interactive ? 'tx-card-open' : null].filter(Boolean),
-    ...(interactive
-      ? {
-        role: 'button',
-        tabindex: '0',
-        'aria-label': `${verbFor(entry)} — transaction details`,
-      }
-      : {}),
   }, [head, body]);
-
-  if (interactive) {
-    // The head holds a copy BUTTON and an explorer ANCHOR. Without this guard, clicking
-    // either would also open the sheet — and worse, the explorer link would open a tab
-    // behind a modal. Walk up from the event target to the card and bail if a real control
-    // is in the way; `closest` is not used because the shim-tested kit stays on plain nodes.
-    const cameFromControl = (target) => {
-      for (let n = target; n && n !== el; n = n.parentNode) {
-        const tag = String(n.localName || n.tagName || '').toLowerCase();
-        if (tag === 'button' || tag === 'a') return true;
-      }
-      return false;
-    };
-
-    const open = () => { onOpen(entry); };
-
-    d.on(el, 'click', (event) => {
-      if (cameFromControl(event.target)) return;
-      open();
-    });
-
-    // role="button" is a promise that Enter and Space activate it. This is what keeps that
-    // promise; a div with only a click handler is invisible to a keyboard user.
-    d.on(el, 'keydown', (event) => {
-      if (event.key !== 'Enter' && event.key !== ' ' && event.key !== 'Spacebar') return;
-      if (cameFromControl(event.target)) return;
-      // Space scrolls the list otherwise, which is not what activating a control means.
-      event.preventDefault?.();
-      open();
-    });
-  }
+  if (interactive) d.on(body, 'click', () => onOpen(entry, body));
 
   return {
     el,
