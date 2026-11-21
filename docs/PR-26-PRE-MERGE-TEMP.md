@@ -8,8 +8,8 @@ Use this queue to collect checks while we build. **During development:** rebuild
 
 **Status: hold for native and live verification, not approved to merge.** Audited runtime commit
 `49cdc2dd3cd5ee9b86549424c58e9e820ecc62f0` against the PR base `38434abe`. The subsequent handoff
-commit is docs-only. Use the actual PR HEAD as the candidate; compare it with the audited runtime
-commit before reusing evidence, and rebuild/retest if runtime or tests have changed.
+commit was docs-only. The scoped UI follow-up below supersedes Assets/History interaction results.
+Use the actual PR HEAD as the candidate and rebuild/retest if runtime or tests have changed.
 
 | Evidence | Result at the audited runtime commit |
 | --- | --- |
@@ -27,6 +27,22 @@ notice. If native/live testing finds a regression, block merge and isolate the s
 change to fix or revert. Prioritize History submit → pending → indexed/detail consistency, Settings
 panel behavior after worker restart, and Assets cache/refresh integrity. Do not revert verified
 cache fixes merely to remove a visual change, or ship preview fixtures to make a test pass.
+
+## Assets and History UI follow-up
+
+Runtime commit `870d061708c601d17f12722413dd8ad233dd3c3b` implements the focused Vercel Web Design
+Guidelines / Uizze audit findings using the existing wallet components and layout. `npm run build`
+and `npm test` passed (1,231/1,231 route checks). Chromium 153 fixture checks passed:
+
+- Assets at 10/100/200 tokens: the toolbar stays reachable while the list scrolls; Back and Escape
+  restore the originating row and scroll position; hiding that row returns focus to Search. A long
+  no-results query does not overflow, and the status copy does not echo it. Balance-only refreshes
+  still insert/remove zero rows and preserve focus and scroll. Import/refresh overlap still passes.
+- History at 320×445 light and 400×600 dark: all four filters fit normally, with wrap available at
+  tighter sizes. Keyboard activation of the explorer, Copy, and details is independent; Enter/Space
+  open details and Escape restores focus. The explorer URL matched Betanet with navigation intercepted.
+
+These are browser fixtures, not installed Chrome, assistive-technology, or live chain evidence.
 
 ## While building — preview and deterministic tests
 
@@ -46,8 +62,8 @@ Follow the canonical [Manual Smoke Checklist](MANUAL_SMOKE_CHECKLIST.md), includ
 
 - [ ] Open the actual toolbar popup and Chrome side panel, including both panel entry points. Toggle Side Panel Mode on and off, verify toolbar/panel mutual exclusion (including a short window), persistence after worker restart, correct routes, and lock propagation. In Settings, verify separate pickers, theme persistence and focus return, password-gated signing/auto-lock, and disabled Language/Currency. A web page using `?thru_panel=1` does not count.
 - [ ] Run the route matrix in both contexts, including redirects and offline behavior. Check narrow and wide panel, short popup, live resize, zoom, light/dark, keyboard, focus trap and return, usable scrolling, and no clipping or console/CSP errors.
-- [ ] Repeat Dashboard and Assets interactions through the real extension: icon strip, network picker, first paint, token names/details, hide/restore, import and refresh where supported. Confirm opening/closing with keyboard returns focus to the opener. Keep large-list numbers in preview coverage unless a safe native fixture is available.
-- [ ] Check Receive copy and scan the QR on a second device against the same disposable address. Check History details and honest time/fee labels; verify that the transaction list stays flat, including when dates cross midnight or are unavailable. Recheck any additional UI landed during development.
+- [ ] Repeat Dashboard and Assets interactions through the real extension: icon strip, network picker, first paint, token names/details, hide/restore, import and refresh where supported. Confirm opening/closing with keyboard returns focus to the opener, and Back/Escape from a token restores the list position and row focus without covering the focused row. Keep large-list numbers in preview coverage unless a safe native fixture is available.
+- [ ] Check Receive copy and scan the QR on a second device against the same disposable address. Check History details and honest time/fee labels, and verify the hash link, Copy, and details as separate keyboard controls; verify that the transaction list stays flat, including when dates cross midnight or are unavailable. Recheck any additional UI landed during development.
 - [ ] Exercise shared review and toast across native send, token send, domains and faucet: correct context, fees and full counterparties, blocking and single-use behavior, no fake simulation, honest unknown outcome and one toast. Check worker idle/wake and restart, auto-lock, secret cleanup on lock/navigation, and custom-RPC quarantine as described in the runbook.
 
 ## Same batch — live Betanet and final sign-off
