@@ -4,12 +4,22 @@
 // be fetched serially, nor may a long registry open an unbounded number of RPC sockets.
 import assert from 'node:assert/strict';
 import { readRegisteredTokenBalances } from '../src/background/services/token-service.js';
+import { isVerifiedTokenBalance } from '../src/shared/tokens.js';
 import { formatTokenAmount } from '../src/shared/format.js';
 
 const registry = (ids) => ids.map((id) => ({
   mintAddress: id, symbol: `LOCAL-${id}`, name: `Token ${id}`,
   decimals: 9, imageUrl: '', hidden: false, source: 'imported',
 }));
+
+console.log('[token balances] strict wire predicate edge cases');
+const wire = { error: false, tokenAccountExists: true, amountUnits: '1', decimals: 6 };
+assert.equal(isVerifiedTokenBalance(wire), true);
+assert.equal(isVerifiedTokenBalance({ ...wire, amountUnits: '0', decimals: undefined }), true, 'zero needs no mint denomination');
+assert.equal(isVerifiedTokenBalance({ ...wire, decimals: 19 }), false, 'nonzero with unsupported decimals is unknown');
+assert.equal(isVerifiedTokenBalance({ ...wire, error: true }), false);
+assert.equal(isVerifiedTokenBalance({ ...wire, tokenAccountExists: false, amountUnits: '0' }), false, 'absent account uses null units on wire');
+assert.equal(isVerifiedTokenBalance({ ...wire, tokenAccountExists: false, amountUnits: null }), true);
 
 console.log('[token balances] distinguish verified value, proven zero and unknown');
 const mintReads = [];

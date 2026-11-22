@@ -45,6 +45,7 @@ export function CurrentConnection({
     type: 'button',
     class: 'current-connection-net clickable',
     title: `Network: ${networkLabel} — choose network`,
+    'aria-haspopup': 'dialog',
     'aria-label': `Active network ${networkLabel}; choose network`,
   }, [pip, netLabelEl, latencyEl, h('span', { 'aria-hidden': 'true' }, icon('chevronDown', 12))]);
 

@@ -13,6 +13,8 @@
 import { h, disposer } from '../kit/dom.js';
 import { icon } from '../kit/icon.js';
 import { CurrentConnection } from '../domain/current-connection.js';
+import { Sheet } from '../kit/sheet.js';
+import { SettingsRoute } from './routes/settings.js';
 import * as bridge from './bridge.js';
 
 /**
@@ -78,9 +80,21 @@ export function AppShell({ navigate, onNetworkChange }) {
   ]);
 
   // ---- CurrentConnection Footer -------------------------------------------
+  let networkSheet = null;
+  function openNetworkSheet() {
+    if (networkSheet) return;
+    const sheet = Sheet({ label: 'Choose network', className: 'network-chooser',
+      onClose: () => { networkSheet = null; } });
+    networkSheet = sheet;
+    const route = SettingsRoute({ navigate, back: () => sheet.close(), params: { view: 'network' },
+      onNetworkBusy: (busy) => sheet.setDismissible(!busy) });
+    sheet.cleanup(() => route.destroy());
+    sheet.card.appendChild(route.el);
+    sheet.open();
+  }
   const connectionFooter = CurrentConnection({
     networkLabel: 'Betanet',
-    onNetworkClick: () => navigate('/settings?view=network'),
+    onNetworkClick: openNetworkSheet,
   });
 
   // Where routes render.
@@ -163,11 +177,13 @@ export function AppShell({ navigate, onNetworkChange }) {
      * so it stays hidden there.
      */
     setChromeVisible(visible, path) {
+      if (!visible || !isDashboardPath(path)) networkSheet?.close();
       topbar.classList.add('hidden');
       connectionFooter.el.classList.toggle('hidden', !visible || !isDashboardPath(path));
     },
     refreshNetwork,
     destroy() {
+      networkSheet?.close();
       connectionFooter.destroy();
       d.dispose();
       el.remove();

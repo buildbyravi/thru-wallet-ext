@@ -2348,7 +2348,9 @@ async function dashboardNetworkChooserTest() {
   ok('dashboard has a named network control', Boolean(netButton));
   click(netButton);
   await settle();
-  const tree = router.root;
+  const tree = DOC.body.querySelector('.network-chooser');
+  ok('the dashboard remains underneath a modal network chooser',
+    router.currentPath === '/dashboard' && tree?.getAttribute('role') === 'dialog');
   ok('network control opens only the chooser, not unrelated Settings',
     /Choose network/.test(textOf(tree)) && !/Side Panel Mode/.test(textOf(tree)), textOf(tree));
   const rows = allElements(tree).filter((el) => el.classList.contains('row'));
@@ -2364,11 +2366,30 @@ async function dashboardNetworkChooserTest() {
   click(current);
   click(custom);
   ok('clicking the active or quarantined network sends no switch request', switchCount() === before);
-  click(buttons(tree, /^Testnet/i)[0]);
+  const selectable = buttons(tree, /^Testnet/i)[0];
+  const holds = holdReplies((message) => message.method === 'network.setActive');
+  try {
+    selectable.focus();
+    click(selectable);
+    click(selectable);
+    await settle();
+    ok('a pending switch is visible and suppresses duplicate requests without losing focus',
+      holds.held.length === 1 && selectable.getAttribute('aria-disabled') === 'true'
+        && /Switching to Testnet/.test(textOf(tree)) && DOC.activeElement === selectable);
+    holds.reject('network.setActive', 'Switch failed');
+    await settle();
+    ok('a rejected switch keeps the chooser and focused row available with an error',
+      /Switch failed/.test(textOf(tree)) && !selectable.hasAttribute('aria-disabled')
+        && !/Switching to Testnet/.test(textOf(tree)) && DOC.activeElement === selectable
+        && backend.activeNetworkId === 'betanet');
+  } finally { holds.restore(); }
+  const afterFailure = switchCount();
+  click(selectable);
   await settle();
   ok('a selectable fixture network switches through the existing API',
-    switchCount() === before + 1 && backend.activeNetworkId === 'testnet');
-  ok('switching returns to the dashboard', router.currentPath === '/dashboard', router.currentPath);
+    switchCount() === afterFailure + 1 && backend.activeNetworkId === 'testnet');
+  ok('switching closes the chooser while keeping the dashboard', router.currentPath === '/dashboard'
+    && !DOC.body.querySelector('.network-chooser'), router.currentPath);
   router.stop();
   await settle();
 }
@@ -2453,6 +2474,22 @@ async function settingsTest() {
   ok('no UI call reached network.upsertCustom',
     !chromeLog.calls.includes('network.upsertCustom') && chromeLog.unexpected.length === 0);
 
+  const networkChoice = buttons(network, /^Testnet/i)[0];
+  const networkHolds = holdReplies((message) => message.method === 'network.setActive');
+  try {
+    networkChoice.focus();
+    click(networkChoice);
+    click(networkChoice);
+    await settle();
+    ok('Settings network picker exposes pending feedback and ignores duplicate switches',
+      networkHolds.held.length === 1 && networkChoice.getAttribute('aria-disabled') === 'true'
+        && /Switching to Testnet/.test(textOf(network)) && DOC.activeElement === networkChoice);
+    networkHolds.reject('network.setActive', 'Settings switch failed');
+    await settle();
+    ok('Settings network failure stays in its picker with focused choice and retry',
+      /Settings switch failed/.test(textOf(network)) && !networkChoice.hasAttribute('aria-disabled')
+        && DOC.activeElement === networkChoice && router.currentPath === '/settings');
+  } finally { networkHolds.restore(); }
   close(network);
 
   // Side Panel Mode: an explicit user opt-in, so the ONLY panel-shaped control on this

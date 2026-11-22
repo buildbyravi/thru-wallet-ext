@@ -9,7 +9,7 @@
 // contract is append-only); the UI does not offer it.
 //
 // The full screen groups wallet shortcuts, preferences, and support. The focused network
-// picker remains a standalone view of the same network controls.
+// view is reused by the dashboard sheet and remains available as a standalone route.
 
 import { h, disposer } from '../../kit/dom.js';
 import { icon } from '../../kit/icon.js';
@@ -48,10 +48,11 @@ function autoLockLabel(minutes) {
   return minutes === 0 ? 'Never' : minutes < 60 ? `${minutes} min` : `${minutes / 60} hr`;
 }
 
-export function SettingsRoute({ navigate, back, params = {} }) {
+export function SettingsRoute({ navigate, back, params = {}, onNetworkBusy = () => {} }) {
   const networkOnly = params.view === 'network';
   let disposed = false;
   let switchingNetwork = false;
+  let refreshAfterSwitch = false;
   const d = disposer();
   const owned = [];
   const pickerRows = new Map();
@@ -68,7 +69,7 @@ export function SettingsRoute({ navigate, back, params = {} }) {
 
   const banner = Banner({ tone: 'error' });
   const body = h('div', { class: networkOnly ? 'stack stack-5' : 'settings-groups' }, Spinner({ label: 'Loading settings' }).el);
-  const header = PageHeader({ title: networkOnly ? 'Choose network' : 'Settings', onBack: () => back() });
+  const header = PageHeader({ title: networkOnly ? 'Choose network' : 'Settings', onBack: () => { if (!switchingNetwork) back(); } });
   const el = h('section', { class: networkOnly ? 'screen' : 'screen settings-screen' }, [header.el, banner.el, body]);
 
   function clearBody() {
@@ -128,19 +129,39 @@ export function SettingsRoute({ navigate, back, params = {} }) {
       events.on(row, 'click', async () => {
         if (switchingNetwork) return;
         switchingNetwork = true;
+        const owner = picker;
+        owner?.sheet.setDismissible(false);
+        const dismissControl = owner?.close?.el || (networkOnly ? header.el.querySelector('button') : null);
+        dismissControl?.setAttribute('aria-disabled', 'true');
+        onNetworkBusy(true);
+        const status = h('span', { class: 'hint', role: 'status', text: `Switching to ${network.label || network.id}…` });
+        row.appendChild(status);
+        row.setAttribute('aria-disabled', 'true');
         banner.clear();
+        owner?.notice.clear();
+        let switchError = null;
         try {
           await bridge.send('network.setActive', { networkId: network.id });
-          if (disposed) return;
+          if (disposed || (owner && owner.sheet.closed)) return;
           // Balances, tokens and pending transactions are all per-network, so the whole
           // wallet view changes. Going back to the dashboard makes that obvious rather than
           // leaving the user on a settings screen wondering whether it took effect.
           if (networkOnly) back();
           else navigate('/dashboard');
         } catch (error) {
-          if (!disposed) (picker?.notice || banner).set(error.message || 'Could not switch network.');
+          switchError = error.message || 'Could not switch network.';
+          if (!disposed && !refreshAfterSwitch && (!owner || !owner.sheet.closed)) (owner?.notice || banner).set(switchError);
         } finally {
           switchingNetwork = false;
+          owner?.sheet.setDismissible(true);
+          dismissControl?.removeAttribute('aria-disabled');
+          onNetworkBusy(false);
+          row.removeAttribute('aria-disabled');
+          status.remove();
+          if (refreshAfterSwitch && !disposed) {
+            refreshAfterSwitch = false;
+            void load().then(() => { if (!disposed && switchError) banner.set(switchError); });
+          }
         }
       });
     }
@@ -467,10 +488,10 @@ export function SettingsRoute({ navigate, back, params = {} }) {
         if (picker) return;
         const sheet = Sheet({ label, className: 'settings-picker', opener: row, onClose: () => { picker = null; } });
         const notice = sheet.track(Banner({ tone: 'error' }));
-        const close = sheet.track(Button({ label: 'Close', variant: 'text', onClick: () => sheet.close() }));
+        const close = sheet.track(Button({ label: 'Close', variant: 'text', onClick: () => { if (!switchingNetwork) sheet.close(); } }));
         sheet.card.appendChild(h('div', { class: 'modal-head settings-picker-head' }, [h('h2', { text: label }), close.el]));
         sheet.card.appendChild(notice.el);
-        picker = { sheet, notice, key };
+        picker = { sheet, notice, key, close };
         sheet.card.appendChild(renderContent(sheet));
         sheet.open();
       });
@@ -629,7 +650,10 @@ export function SettingsRoute({ navigate, back, params = {} }) {
   }
 
   load();
-  d.add(bridge.onEvent('networkChanged', () => load()));
+  d.add(bridge.onEvent('networkChanged', () => {
+    if (switchingNetwork) refreshAfterSwitch = true;
+    else void load();
+  }));
 
   return {
     el,

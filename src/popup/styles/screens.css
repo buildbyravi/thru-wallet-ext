@@ -1431,3 +1431,7 @@ button.tx-card-body:hover { background: var(--surface-2); }
     color: var(--text-3);
   }
 }
+
+/* Dashboard chooser reuses the focused Settings view inside the shared bottom sheet. */
+.network-chooser { padding: 0; }
+.network-chooser .screen { flex: none; }
