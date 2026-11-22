@@ -62,6 +62,17 @@ A selectable second network in that browser test is **synthetic**; it does not e
 product or demonstrate an actual network switch. Native extension, live network, independent review,
 and owner approval remain open below.
 
+## Address contrast follow-up
+
+Runtime commit `b3ff4db1ccb2f377ea1c6b851847c6adb8770a89` fixes shared truncated
+wallet and token addresses inheriting black text from buttons in dark mode. Dashboard's branded
+header retains its existing light-on-ink color. `npm run build` and `npm test` passed (1,236/1,236
+route checks, 15/15 QR). Chromium 153 fixture `test/browser/address-contrast.mjs` verifies at least
+4.5:1 computed foreground/background contrast for token and account rows, normal and hover in both
+themes, and full-address accessibility labels. Before the fix, dark token-row contrast was 1.30:1.
+Tracked Assets 10/100/200 and network chooser browser fixtures also passed. These are mocked checks,
+not installed-extension or assistive-technology evidence.
+
 ## While building — preview and deterministic tests
 
 - [ ] For each UI change, run `npm run build` and `npm test`, refresh the hosted fixture from the current bundles, and record the SHA, scenario, and result. The **hosted Assets fixture** serves `/scripts/preview-tx-review.html?tokens=200`; use `?tokens=10` or `?tokens=100` there to change sample size. The **checked-in** `scripts/preview-tx-review.html` is a distinct transaction-review harness with fixed cases, not a local copy of that hosted page. For repeatable local 10/100/200 sizes, run [the browser regression](../test/browser/token-cache.mjs) after building (set `PLAYWRIGHT_MODULE` and `CHROME_BIN` as shown in its header). Fixtures use no real keys, vault access, signing, or production RPC.
@@ -80,7 +91,7 @@ Follow the canonical [Manual Smoke Checklist](MANUAL_SMOKE_CHECKLIST.md), includ
 
 - [ ] Open the actual toolbar popup and Chrome side panel, including both panel entry points. Toggle Side Panel Mode on and off, verify toolbar/panel mutual exclusion (including a short window), persistence after worker restart, correct routes, and lock propagation. In Settings, verify separate pickers, theme persistence and focus return, password-gated signing/auto-lock, and disabled Language/Currency. A web page using `?thru_panel=1` does not count.
 - [ ] Run the route matrix in both contexts, including redirects and offline behavior. Check narrow and wide panel, short popup, live resize, zoom, light/dark, keyboard, focus trap and return, usable scrolling, and no clipping or console/CSP errors.
-- [ ] Repeat Dashboard and Assets interactions through the real extension: icon strip, dashboard network sheet and Settings network picker, focus/escape, first paint, token names/details, hide/restore, import and refresh where supported. Check any approved real network switch for pending, failure, and result; never enable a quarantined network for testing. Confirm opening/closing with keyboard returns focus to the opener, and Back/Escape from a token restores the list position and row focus without covering the focused row. Keep large-list numbers in preview coverage unless a safe native fixture is available.
+- [ ] Repeat Dashboard and Assets interactions through the real extension: icon strip, dashboard network sheet and Settings network picker, focus/escape, first paint, token names/details, hide/restore, import and refresh where supported. Check any approved real network switch for pending, failure, and result; never enable a quarantined network for testing. Check wallet and token address readability in light and dark themes. Confirm opening/closing with keyboard returns focus to the opener, and Back/Escape from a token restores the list position and row focus without covering the focused row. Keep large-list numbers in preview coverage unless a safe native fixture is available.
 - [ ] Check Receive copy and scan the QR on a second device against the same disposable address. Check History details and honest time/fee labels, and verify the hash link, Copy, and details as separate keyboard controls; verify that the transaction list stays flat, including when dates cross midnight or are unavailable. Recheck any additional UI landed during development.
 - [ ] Exercise shared review and toast across native send, token send, domains and faucet: correct context, fees and full counterparties, blocking and single-use behavior, no fake simulation, honest unknown outcome and one toast. Check worker idle/wake and restart, auto-lock, secret cleanup on lock/navigation, and custom-RPC quarantine as described in the runbook.
 
