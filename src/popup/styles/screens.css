@@ -1053,7 +1053,6 @@ button.tx-card-body:hover { background: var(--surface-2); }
   font-size: var(--fs-sm);
 }
 .settings-footer { justify-content: center; }
-.settings-footer img { border-radius: 50%; }
 
 /* ---- Settings switches ---- */
 .toggle-switch {

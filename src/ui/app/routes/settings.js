@@ -643,7 +643,7 @@ export function SettingsRoute({ navigate, back, params = {}, onNetworkBusy = () 
       externalLink('Website', 'globe', 'https://thruwallet.vercel.app'),
     ]));
     body.appendChild(h('div', { class: 'settings-footer' }, [
-      h('img', { src: 'icons/thru.png', alt: '', width: 20, height: 20 }),
+      h('img', { src: 'icons/icon128.png', alt: '', width: 20, height: 20 }),
       h('span', { text: 'Thru Wallet' }),
     ]));
     pickerRows.get(focusedKey)?.focus();

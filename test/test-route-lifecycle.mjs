@@ -2692,6 +2692,8 @@ async function themeTest() {
   };
   const themeRow = () => textOf(buttons(tree, /^Theme Mode/i)[0]);
 
+  ok('Settings footer uses the wallet icon, not the native token icon',
+    tree.querySelector('.settings-footer')?.querySelector('img')?.getAttribute('src') === 'icons/icon128.png');
   ok('Settings has semantic Features, Settings and About headings',
     [...tree.querySelectorAll('.settings-heading')].map((node) => `${node.tagName}:${textOf(node)}`).join('|')
       === 'H2:Features|H2:Settings|H2:About');
