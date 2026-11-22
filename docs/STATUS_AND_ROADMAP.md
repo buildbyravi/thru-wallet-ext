@@ -11,8 +11,7 @@ The baseline below describes `main`, not automatically the latest store package 
 working branch `arena/1b860a7c-thru-wallet-ext` is based on `38434abe` and PR #26 is **open,
 unmerged and not release-approved**. The prior baseline evidence below is for `98650f4`; the branch also contains `46f0acc` and the current Settings work; use
 `git status`, `git log` and the PR checks to identify later work. Product behavior belongs in
-`docs/BUILD_SPEC.md`; a concise change and verification list is in
-`docs/PR-26-PRE-MERGE-TEMP.md` (temporary, not a substitute for this status document).
+`docs/BUILD_SPEC.md`; pending manual checks are in `docs/MANUAL_SMOKE_CHECKLIST.md`.
 
 - **IMPLEMENTED / TESTED in branch:** inset dashboard and Assets drawer with verified import,
   hide/restore and cache-first rendering; dashboard network chooser reuses Settings controls;
@@ -33,7 +32,7 @@ unmerged and not release-approved**. The prior baseline evidence below is for `9
   write can return stale Side Panel mode
   (controlled stale read; full Chrome timeout divergence not reproduced). Both remain unresolved.
   Native popup/panel and worker lifecycle, physical QR scan, approved disposable-wallet Betanet
-  flows, final independent review and owner approval remain open. See the PR worklist for scope.
+  flows, final independent review and owner approval remain open. See the manual checklist for scope.
 - **PARTIAL owner feedback:** Side panel open/close worked on several attempts after one failure to load; extension version and Chrome version were not supplied. This does not reproduce or rule out the separate preference timeout race. See `docs/MANUAL_SMOKE_CHECKLIST.md` for the pending retest.
 - **UNVERIFIED (Agent C review at older `3d51e0a`):** History pending rendering parses persisted
   `amountUnits` without guarding `BigInt`; malformed stored records can plausibly break rendering,

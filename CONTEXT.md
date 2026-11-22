@@ -4,7 +4,7 @@ Last source-verified update: 2026-11-19 (Contract **v33**, `154` methods, `15` r
 
 Read `AGENTS.md` first for repository rules, `docs/DOCS_INDEX.md` for the SSoT map, and `docs/STATUS_AND_ROADMAP.md` for shipped state and open verification gates.
 
-For branch-only changes and unresolved blockers, start with the current branch handoff in `docs/STATUS_AND_ROADMAP.md`, then inspect `git status` and `git log`; PR #26 also has the temporary verification worklist `docs/PR-26-PRE-MERGE-TEMP.md`. The dated file counts below are a historical map, not proof of current line counts.
+For branch-only changes and unresolved blockers, start with the current branch handoff in `docs/STATUS_AND_ROADMAP.md`, then inspect `git status` and `git log`; pending manual checks are in `docs/MANUAL_SMOKE_CHECKLIST.md`. The dated file counts below are a historical map, not proof of current line counts.
 
 For former documentation paths, use `docs/DOCS_INDEX.md` section 3.4 to find the current guide section. Dated audit citations are historical evidence, not current behavior or fresh verification.
 

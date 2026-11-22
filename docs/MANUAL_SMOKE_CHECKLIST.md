@@ -122,6 +122,17 @@ Serve local visual harnesses first (`node scripts/serve-dist.mjs --root . --port
 
 ## 8. Smoke Run Record Template & Log
 
+### Outstanding checks for the dashboard update
+
+- [ ] Dashboard and Assets: check scrolling, search, details, hide/restore and refresh.
+- [ ] Network: check the chooser and recovery after a temporary Betanet connection failure.
+- [ ] History: check filters, flat list, details, copy, explorer links and cached status.
+- [ ] Settings: check Theme, Auto-lock and Signing choices, password prompts and disabled options.
+- [ ] Faucet and Receive: check the claim amount, address copy and QR scan.
+- [ ] With an approved disposable Betanet account, check send, faucet and History against the explorer.
+- [ ] Check keyboard, focus, worker restart, lock, secret cleanup and custom-network restrictions.
+- [ ] Run final build, tests, browser checks and independent review on the candidate commit.
+
 - [ ] When a suitable Betanet token is available, import it with a disposable wallet, refresh, close and reopen the extension, and confirm it remains visible with the correct balance.
 - [ ] Reopen the side panel several times and after a worker restart; investigate if it ever fails to load again.
 
