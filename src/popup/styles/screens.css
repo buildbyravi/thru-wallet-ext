@@ -327,6 +327,8 @@ form > .btn.text {
   white-space: nowrap;
   flex-shrink: 0;
 }
+/* The branded dashboard header has its own light-on-ink address color. */
+.dash-header .account-pill-address .address-text { color: inherit; }
 .dash-header .account-pill .byte-mark {
   width: 18px;
   height: 18px;

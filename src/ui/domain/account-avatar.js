@@ -51,7 +51,7 @@ export function AddressText({ address, chars = 6 } = {}) {
   // must not read two ways on two screens.
   const short = shortAddress(addr, { head: chars, tail: chars });
   return h('span', {
-    class: 'mono truncate',
+    class: 'address-text mono truncate',
     text: short,
     // The full value is exposed to assistive tech and on hover, so truncation is a
     // display concern only and never hides what the user is acting on.
