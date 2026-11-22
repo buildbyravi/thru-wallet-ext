@@ -1,14 +1,7 @@
 // Optional Chromium regression. PLAYWRIGHT_MODULE=/path/to/playwright-core/index.mjs
 // CHROME_BIN=/path/to/chrome node test/browser/address-contrast.mjs [dist]
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
-import { extname, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
-const { PLAYWRIGHT_MODULE, CHROME_BIN } = process.env;
-if (!PLAYWRIGHT_MODULE || !CHROME_BIN) throw new Error('Set PLAYWRIGHT_MODULE and CHROME_BIN.');
-const { chromium } = await import(pathToFileURL(resolve(PLAYWRIGHT_MODULE)).href);
-const root = resolve(process.argv[2] || 'dist'), origin = 'https://wallet-fixture.invalid';
-const mime = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png' };
+import { chromium, CHROME_BIN, origin, routeFixture } from './helpers/fixture.mjs';
 const browser = await chromium.launch({ executablePath: CHROME_BIN });
 try {
   for (const theme of ['dark', 'light']) {
@@ -16,11 +9,8 @@ try {
     page.setDefaultTimeout(4000);
     const errors = [], external = [];
     page.on('pageerror', e => errors.push(e.message));
-    await page.route('**/*', async route => {
-      const url = new URL(route.request().url()), path = resolve(root, `.${url.pathname}`);
-      if (url.origin !== origin || !path.startsWith(`${root}/`) || !mime[extname(path)]) { external.push(url.href); return route.abort(); }
-      await route.fulfill({ contentType: mime[extname(path)], body: await readFile(path) });
-    });
+
+    await routeFixture(page, external);
     await page.addInitScript((theme) => {
       const address = 'taDemoStudioFixture000000000000000000000000AA';
       const ring = { id: 'fixture', type: 'seed', label: 'Fixture seed' };

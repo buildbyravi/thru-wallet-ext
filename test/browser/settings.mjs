@@ -1,25 +1,15 @@
 // Optional Playwright regression, after npm run build:
 // PLAYWRIGHT_MODULE=/path/to/playwright-core/index.mjs CHROME_BIN=/path/to/chrome node test/browser/settings.mjs [dist]
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
-import { extname, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
-const { PLAYWRIGHT_MODULE, CHROME_BIN } = process.env;
-if (!PLAYWRIGHT_MODULE || !CHROME_BIN) throw new Error('Set PLAYWRIGHT_MODULE and CHROME_BIN.');
-const { chromium } = await import(pathToFileURL(resolve(PLAYWRIGHT_MODULE)).href);
-const root = resolve(process.argv[2] || 'dist'), origin = 'https://wallet-fixture.invalid';
-const mime = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png' };
+import { chromium, CHROME_BIN, origin, routeFixture } from './helpers/fixture.mjs';
 const browser = await chromium.launch({ executablePath: CHROME_BIN });
 try {
   for (const [width, theme, success] of [[400, 'light', true], [320, 'dark', false]]) {
     const page = await browser.newPage({ viewport: { width, height: 600 }, reducedMotion: 'reduce' });
     page.setDefaultTimeout(5000); const external = [], errors = [];
     page.on('pageerror', e => errors.push(e.message));
-    await page.route('**/*', async route => {
-      const url = new URL(route.request().url()), path = resolve(root, `.${url.pathname}`);
-      if (url.origin !== origin || !path.startsWith(`${root}/`) || !mime[extname(path)]) { external.push(url.href); return route.abort(); }
-      await route.fulfill({ contentType: mime[extname(path)], body: await readFile(path) });
-    });
+
+    await routeFixture(page, external);
     await page.addInitScript(theme => {
       const address = 'taDemoStudioFixture000000000000000000000000AA';
       const account = { address, label: 'Fixture wallet' }, network = { id: 'betanet', label: 'Betanet', isTestnet: true };

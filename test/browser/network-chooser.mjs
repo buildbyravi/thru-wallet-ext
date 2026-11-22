@@ -1,15 +1,7 @@
 // Optional browser regression: PLAYWRIGHT_MODULE=/path/to/playwright-core/index.mjs
 // CHROME_BIN=/path/to/chrome node test/browser/network-chooser.mjs [dist]
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
-import { extname, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
-const { PLAYWRIGHT_MODULE, CHROME_BIN } = process.env;
-if (!PLAYWRIGHT_MODULE || !CHROME_BIN) throw new Error('Set PLAYWRIGHT_MODULE and CHROME_BIN.');
-const { chromium } = await import(pathToFileURL(resolve(PLAYWRIGHT_MODULE)).href);
-const root = resolve(process.argv[2] || 'dist');
-const origin = 'https://wallet-fixture.invalid';
-const mime = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png' };
+import { chromium, CHROME_BIN, origin, routeFixture } from './helpers/fixture.mjs';
 const browser = await chromium.launch({ executablePath: CHROME_BIN });
 try {
   for (const [width, height, theme] of [[320, 445, 'light'], [400, 600, 'dark']]) {
@@ -17,21 +9,16 @@ try {
     page.setDefaultTimeout(5000);
     const errors = [], unexpected = [];
     page.on('pageerror', (error) => errors.push(error.message));
-    await page.route('**/*', async (route) => {
-      const url = new URL(route.request().url()), path = resolve(root, `.${url.pathname}`);
-      if (url.origin !== origin || !path.startsWith(`${root}/`) || !mime[extname(path)]) {
-        unexpected.push(url.href); return route.abort();
-      }
-      await route.fulfill({ contentType: mime[extname(path)], body: await readFile(path) });
-    });
-    await page.addInitScript(() => {
+
+    await routeFixture(page, unexpected);
+    await page.addInitScript(theme => {
       const address = 'taDemoStudioFixture000000000000000000000000AA';
       const account = { address, balance: '0', label: 'Fixture' };
       let active = { id: 'betanet', label: 'Betanet', isTestnet: true };
       const next = { id: 'testnet', label: 'Fixture testnet', isTestnet: true, selectable: true };
       const custom = { id: 'custom', label: 'Fixture custom', custom: true, selectable: false };
-      const data = { 'system.bootstrap': { contractVersion: 33, hasVault: true, unlocked: true, account, accounts: [account], keyrings: [], network: active, preferences: { theme: 'light' }, pending: [] },
-        'system.getAutoLock': 15, 'settings.get': { theme: 'light' }, 'keyring.list': [], 'wallet.hasVault': true, 'wallet.isUnlocked': true,
+      const data = { 'system.bootstrap': { contractVersion: 33, hasVault: true, unlocked: true, account, accounts: [account], keyrings: [], network: active, preferences: { theme }, pending: [] },
+        'system.getAutoLock': 15, 'settings.get': { theme }, 'keyring.list': [], 'wallet.hasVault': true, 'wallet.isUnlocked': true,
         'account.getActive': account, 'token.list': [], 'token.discover': { adopted: [] }, 'token.getCachedBalances': null,
         'tx.getPending': [], 'tx.getAccountInfo': { balance: '0', exists: true }, 'tx.checkHealth': { status: 'healthy' }, 'tx.getCachedBalances': {} };
       globalThis.switchCalls = 0;
@@ -50,8 +37,9 @@ try {
           queueMicrotask(() => callback(value !== undefined ? { ok: true, data: structuredClone(value) }
             : { ok: false, error: { code: 'UNSUPPORTED', message: 'Unavailable in fixture' } }));
         } };
-    });
+    }, theme);
     await page.goto(`${origin}/popup.html?theme=${theme}#/dashboard`);
+    await page.waitForFunction(theme => document.documentElement.dataset.theme === theme, theme);
     const opener = page.getByRole('button', { name: /Active network Betanet; choose network/ });
     await opener.waitFor(); await opener.focus(); await page.keyboard.press('Enter');
     const dialog = page.getByRole('dialog', { name: 'Choose network' });

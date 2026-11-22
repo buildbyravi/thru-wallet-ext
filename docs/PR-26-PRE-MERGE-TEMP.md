@@ -14,12 +14,12 @@ Use the actual PR HEAD as the candidate and rebuild/retest if runtime or tests h
 | Evidence | Result at the audited runtime commit |
 | --- | --- |
 | Build and tests | `npm run build` and `npm test` passed: **1,231/1,231** route checks, **15/15** QR checks, plus History, token service, contract, security and docs guards. |
-| Dependency and package scope | `npm audit --omit=dev`: **0 advisories reported**. No net changes to manifest/permissions, package manifests or lockfile, contract schema or API router, or the Receive route. The built manifest matched `src/manifest.json`; no preview or fixture pages were packaged. The approved generic close glyph's MIT notice is in `dist/icons/`. |
+| Dependency and package scope | `npm audit --omit=dev`: **0 advisories reported**. At this historical runtime commit there were no net changes to manifest/permissions, package manifests or lockfile, contract schema or API router, or the Receive route. A later commit added a test-only `test:browser` package script; the lockfile and runtime dependencies were unchanged. The built manifest matched `src/manifest.json`; no preview or fixture pages were packaged. The approved generic close glyph's MIT notice is in `dist/icons/`. |
 | Dashboard and Assets fixtures | Chromium 153 at toolbar and narrow sizes: network picker, focus/keyboard, details, hide/restore, import from a filtered Hidden list, and a delayed pre-import reply. The tracked 10/100/200-token harness measured **0 row insertions or removals** on balance-only refresh, with row identity, focus, and scroll preserved. These are not RPC performance measurements. |
 | History and Settings fixtures | Flat History, terminal and positive cursors, and the exact network-qualified explorer tab (navigation intercepted in the harness); Settings sheets and focus return at 400×600 and 320×600 in both themes; Side Panel save/restore failures with a Chrome API stub; close/reopen during Theme save on both success and failure. Receive rendered with its original styled/plain toggle; no physical scan. |
 | Installed Chrome and Betanet | **Not run on this candidate.** Browser fixtures did not exercise installed MV3, Chrome toolbar behavior, or a real wallet write. Previous read-only explorer evidence and PR #25 evidence do not close these gates. |
 
-**Review threads:** [Theme picker synchronization](https://github.com/buildbyravi/thru-wallet-ext/pull/26#discussion_r4645813318) and [preview token counts](https://github.com/buildbyravi/thru-wallet-ext/pull/26#discussion_r4643990437) are addressed in code and docs respectively. Confirm thread status and review the final head again. A skipped bot check is not independent approval.
+**Review threads:** [Theme picker synchronization](https://github.com/buildbyravi/thru-wallet-ext/pull/26#discussion_r4645813318) and [preview token counts](https://github.com/buildbyravi/thru-wallet-ext/pull/26#discussion_r4643990437) are addressed in code and docs respectively. Confirm thread status and review the final head again. Later review at `3d51e0a` raised additional token-cache, Side Panel recovery and fixture-documentation findings; see the audit below. A skipped or rate-limited bot check is not independent approval.
 
 **Revert decision:** No additional revert is recommended from the evidence above. Keep Receive as
 reverted by `04421bb`; do not restore the abandoned redesign or remove the approved close glyph's
@@ -98,9 +98,35 @@ and scope are documented in `test/browser/README.md`. These additions are test-o
 replace installed-Chrome or live Betanet checks. Side Panel browser checks remain temporary fixtures;
 tracked Node/DOM tests cover its save/restore logic but do not emulate the real Chrome API lifecycle.
 
+## Test audit and current merge blockers
+
+At `54f3677bfde371b45e50ceb0123e7e91f84eddb3`, the latest CodeRabbit review threads were
+checked rather than relying on the later rate-limited status. The following remain open:
+
+- **Confirmed token-cache race:** a controlled router/service test held the original registry's
+  preference read, imported a third mint, let a newer balance refresh complete and persist, then
+  released the older registry read. The old snapshot overwrote the new one, omitting the mint.
+  Existing overlap coverage delays the balance RPC after the old registry has already returned;
+  it does not cover this ordering. `/tmp/pr26-registry-race-audit.log` contains the failing assertion
+  in this sandbox. Fix and retain a regression before merge; do not accept a fabricated pass.
+- **Side Panel timeout recovery risk:** a controlled preferences-service test held the storage write,
+  observed that `getPreferences()` still returned the old `sidePanelMode`, then released the write and
+  observed the new value persist. The route's recovery currently treats a boolean read as confirmed.
+  This establishes the stale-read ordering; the full 30-second timeout / Chrome toolbar divergence
+  has not been reproduced in an installed extension. Test and resolve the race before merge.
+- The preview-host/refresh instruction below was incomplete; it now records this sandbox's transient
+  host and bundle-copy procedure. It is not a stable public hosting service or a substitute for the
+  checked-in fixtures.
+
+The network chooser browser fixture previously printed “dark” while its mocked preference always
+returned light. The fixture now supplies and verifies the requested theme. Shared static fixture
+routing and Playwright loading were consolidated; scenario-specific bridge mocks remain separate.
+The browser suite is still optional and is **not** run by GitHub CI. Full MV3/live/review/owner gates
+remain unchecked; no approval or merge is implied by a green Node suite.
+
 ## While building — preview and deterministic tests
 
-- [ ] For each UI change, run `npm run build` and `npm test`, refresh the hosted fixture from the current bundles, and record the SHA, scenario, and result. The **hosted Assets fixture** serves `/scripts/preview-tx-review.html?tokens=200`; use `?tokens=10` or `?tokens=100` there to change sample size. The **checked-in** `scripts/preview-tx-review.html` is a distinct transaction-review harness with fixed cases, not a local copy of that hosted page. For repeatable local 10/100/200 sizes, run [the browser regression](../test/browser/token-cache.mjs) after building (set `PLAYWRIGHT_MODULE` and `CHROME_BIN` as shown in its header). Fixtures use no real keys, vault access, signing, or production RPC.
+- [ ] For each UI change, run `npm run build` and `npm test`, refresh the hosted fixture from the current bundles, and record the SHA, scenario, and result. The **hosted Assets fixture**, while this sandbox process is running, is at `https://4173-ilmdrrhzt43zz7otnohcn.e2b.app/scripts/preview-tx-review.html?tokens=200`. After `npm run build`, copy `dist/popup.bundle.js` and `dist/popup.css` into the directory named by `/tmp/thru-balance-preview-root` without replacing its fixture HTML or bridge. This host and temporary directory can expire; recreate the preview if unavailable. The fixture serves that path; use `?tokens=10` or `?tokens=100` there to change sample size. The **checked-in** `scripts/preview-tx-review.html` is a distinct transaction-review harness with fixed cases, not a local copy of that hosted page. For repeatable local 10/100/200 sizes, run [the browser regression](../test/browser/token-cache.mjs) after building (set `PLAYWRIGHT_MODULE` and `CHROME_BIN` as shown in its header). Fixtures use no real keys, vault access, signing, or production RPC.
 - [x] Dashboard preview at popup size (~400×600) and narrow (~320px), light/dark and keyboard: balance card and icon strip (THRU, up to three token icons, then `+N`), no token names on the card, no clipped Assets opener, guarded network chooser, correct dismissal and focus return. Token names remain in Assets.
 - [x] Assets fixture coverage with 10/100/200 synthetic tokens: search, detail and back, Hidden tokens, restore, Add custom token and close controls; verify empty/error states and reachable actions. Simulate a refresh: changed balances update in place without losing row identity, focus or scroll. `test/browser/token-cache.mjs` covers cached first paint, partial refresh, verified zero and uncached failure with the isolated bridge.
 - [x] Reproduce a late registry snapshot undoing Hide during refresh. Fence both cached and live paints after a completed hide/restore, and cover the race in the route suite.

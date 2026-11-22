@@ -1,14 +1,7 @@
 // Optional Playwright regression, run after npm run build:
 // PLAYWRIGHT_MODULE=/path/to/playwright-core/index.mjs CHROME_BIN=/path/to/chrome node test/browser/history-controls.mjs [dist]
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
-import { extname, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
-const { PLAYWRIGHT_MODULE, CHROME_BIN } = process.env;
-if (!PLAYWRIGHT_MODULE || !CHROME_BIN) throw new Error('Set PLAYWRIGHT_MODULE and CHROME_BIN.');
-const { chromium } = await import(pathToFileURL(resolve(PLAYWRIGHT_MODULE)).href);
-const root = resolve(process.argv[2] || 'dist'), origin = 'https://wallet-fixture.invalid';
-const mime = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png' };
+import { chromium, CHROME_BIN, origin, routeFixture } from './helpers/fixture.mjs';
 const signature = 'tssFxFSNJAQzk7kAYMFxe8P0WHn36HQ-jZi018a3FUBM6n_P19wMZFcNEwul8vZicXYacEeU2kGOr8-WqEx82JCB28';
 const explorer = `https://scan.thru.org/tx/${signature}?network=betanet`;
 const browser = await chromium.launch({ executablePath: CHROME_BIN });
@@ -16,12 +9,8 @@ try {
   for (const [width, height, theme] of [[320, 445, 'light'], [400, 600, 'dark']]) {
     const ctx = await browser.newContext({ viewport: { width, height }, reducedMotion: 'reduce' });
     const external = [], errors = [];
-    await ctx.route('**/*', async route => {
-      const url = new URL(route.request().url()), path = resolve(root, `.${url.pathname}`);
-      if (url.origin !== origin) { external.push(url.href); return route.fulfill({ contentType: 'text/plain', body: 'Navigation intercepted by fixture' }); }
-      if (!path.startsWith(`${root}/`) || !mime[extname(path)]) throw new Error(`Unexpected fixture path: ${url.href}`);
-      await route.fulfill({ contentType: mime[extname(path)], body: await readFile(path) });
-    });
+
+    await routeFixture(ctx, external, { interceptExternal: true });
     await ctx.addInitScript(({ theme, signature }) => {
       Object.defineProperty(navigator, 'clipboard', { value: { writeText: async value => { window.copied = value; } } });
       const address = 'taDemoStudioFixture000000000000000000000000AA';
@@ -41,6 +30,7 @@ try {
     }, { theme, signature });
     const page = await ctx.newPage(); page.setDefaultTimeout(5000); page.on('pageerror', e => errors.push(e.message));
     await page.goto(`${origin}/popup.html#/history`);
+    await page.waitForFunction(theme => document.documentElement.dataset.theme === theme, theme);
     const filters = page.getByRole('group', { name: 'History filters' });
     await filters.getByRole('button', { name: 'All', exact: true }).waitFor();
     assert.deepEqual(await filters.getByRole('button').allTextContents(), ['All', 'Sent', 'Received', 'Failed']);

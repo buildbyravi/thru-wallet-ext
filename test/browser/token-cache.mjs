@@ -3,17 +3,7 @@
 //     node test/browser/token-cache.mjs [dist]
 // Set MEASURE_ONLY=1 to report baseline row churn without enforcing row identity.
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
-import { extname, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
-
-const { PLAYWRIGHT_MODULE, CHROME_BIN } = process.env;
-if (!PLAYWRIGHT_MODULE || !CHROME_BIN) throw new Error('Set PLAYWRIGHT_MODULE and CHROME_BIN.');
-const { chromium } = await import(pathToFileURL(resolve(PLAYWRIGHT_MODULE)).href);
-const root = resolve(process.argv[2] || 'dist');
-const origin = 'https://wallet-fixture.invalid';
-const mime = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css',
-  '.svg': 'image/svg+xml', '.png': 'image/png' };
+import { chromium, CHROME_BIN, origin, routeFixture } from './helpers/fixture.mjs';
 const browser = await chromium.launch({ executablePath: CHROME_BIN });
 try {
   const page = await browser.newPage({ viewport: { width: 400, height: 600 } });
@@ -21,15 +11,8 @@ try {
   const errors = [];
   const unexpected = [];
   page.on('pageerror', (error) => errors.push(error.message));
-  await page.route('**/*', async (route) => {
-    const url = new URL(route.request().url());
-    const path = resolve(root, `.${url.pathname}`);
-    if (url.origin !== origin || !path.startsWith(`${root}/`) || !mime[extname(path)]) {
-      unexpected.push(url.href);
-      return route.abort();
-    }
-    await route.fulfill({ contentType: mime[extname(path)], body: await readFile(path) });
-  });
+
+  await routeFixture(page, unexpected);
   await page.addInitScript(() => {
     const address = 'taDemoStudioFixture000000000000000000000000AA';
     const balance = '1284500000000';
