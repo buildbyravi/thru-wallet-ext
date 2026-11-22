@@ -73,6 +73,14 @@ themes, and full-address accessibility labels. Before the fix, dark token-row co
 Tracked Assets 10/100/200 and network chooser browser fixtures also passed. These are mocked checks,
 not installed-extension or assistive-technology evidence.
 
+## Settings wallet branding follow-up
+
+Runtime commit `635cfa8377c86fb3f57a76a0ff71772e4c9bcb72` uses the existing packaged wallet
+icon in the Settings footer rather than the native THRU token icon, with no circular crop and no
+manifest/icon-asset change. `npm run build` and `npm test` passed (1,237/1,237 route checks;
+15/15 QR). Chromium fixtures verified the decoded footer icon at 320×600 dark and 400×600 light,
+plus Settings picker behavior in both themes. Installed extension verification remains open.
+
 ## While building — preview and deterministic tests
 
 - [ ] For each UI change, run `npm run build` and `npm test`, refresh the hosted fixture from the current bundles, and record the SHA, scenario, and result. The **hosted Assets fixture** serves `/scripts/preview-tx-review.html?tokens=200`; use `?tokens=10` or `?tokens=100` there to change sample size. The **checked-in** `scripts/preview-tx-review.html` is a distinct transaction-review harness with fixed cases, not a local copy of that hosted page. For repeatable local 10/100/200 sizes, run [the browser regression](../test/browser/token-cache.mjs) after building (set `PLAYWRIGHT_MODULE` and `CHROME_BIN` as shown in its header). Fixtures use no real keys, vault access, signing, or production RPC.
