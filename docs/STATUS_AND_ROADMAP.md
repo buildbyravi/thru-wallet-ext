@@ -5,11 +5,20 @@ Source baseline re-verified on `main` at contract v33 (2026-11-19, v1.6.0). `src
 
 ---
 
-## Current branch handoff — PR #26
+## Current branch handoff — language foundation
+
+**PARTIALLY IMPLEMENTED / TESTED:** `src/ui/i18n/` contains isolated English and Simplified
+Chinese draft catalogs and a plain-text lookup helper. This is not connected to the extension UI;
+Settings Language remains Planned and no additional language is shipped. `test/test-i18n.mjs`
+checks catalog keys, placeholders, fallback, and value interpolation. Catalog completeness here
+covers only the draft keys, not all wallet screens. Translate and review all screens and security
+messages, integrate saved preferences, and verify in a real extension before offering a language.
+No translation service, new permission, or signing/backend behavior is introduced.
+
+## Historical branch handoff — PR #26 (merged)
 
 The baseline below describes `main`, not automatically the latest store package or this PR. The
-working branch `arena/1b860a7c-thru-wallet-ext` is based on `38434abe` and PR #26 is **open,
-unmerged and not release-approved**. The prior baseline evidence below is for `98650f4`; the branch also contains `46f0acc` and the current Settings work; use
+former branch `arena/1b860a7c-thru-wallet-ext` was based on `38434abe`; PR #26 has been merged. The prior baseline evidence below is for `98650f4`; the branch also contains `46f0acc` and the current Settings work; use
 `git status`, `git log` and the PR checks to identify later work. Product behavior belongs in
 `docs/BUILD_SPEC.md`; pending manual checks are in `docs/MANUAL_SMOKE_CHECKLIST.md`.
 
