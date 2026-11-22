@@ -21,6 +21,7 @@ argument in place of `dist`.
 
 - `address-contrast.mjs`: wallet and token address contrast and full accessible labels, light/dark.
 - `network-chooser.mjs`: dashboard sheet, quarantine, pending/failure/duplicate behavior and focus.
+- `network-health.mjs`: bounded recovery from transient probe failure and stale-network reply fencing.
 - `token-cache.mjs`: cache-first 10/100/200-token lists, stable rows/scroll and filtering.
 - `history-controls.mjs`: flat History, filters, keyboard detail/copy/link and intercepted explorer.
 - `settings.mjs`: theme save/reopen success and failure, password-dialog handoff, planned rows and logo.

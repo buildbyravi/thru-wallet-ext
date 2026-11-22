@@ -12,6 +12,7 @@ import {
   ACCOUNT_CREATE_PROGRAM_ID,
   getClient,
   getAccountInfo,
+  checkNetworkHealth,
   getAccountOwnerAddress,
   parseMintAccount,
 } from '../src/lib/thru-client.js';
@@ -30,6 +31,25 @@ function decode(data) {
     recipientIdx: view.getUint16(6, true),
     amount: view.getBigUint64(8, true),
   };
+}
+
+console.log('\n[health] measured probe status distinguishes an answering node from failures');
+{
+  const sdk = getClient();
+  const original = sdk.accounts.get;
+  try {
+    sdk.accounts.get = async () => ({ meta: { balance: 0n } });
+    const ok = await checkNetworkHealth();
+    assert(['healthy', 'slow'].includes(ok.status) && Number.isFinite(ok.latencyMs) && ok.latencyMs >= 0,
+      'a successful RPC returns actual elapsed milliseconds, including a valid rounded zero');
+    sdk.accounts.get = async () => { throw Object.assign(new Error('not found'), { code: 5 }); };
+    const missing = await checkNetworkHealth();
+    assert(['healthy', 'slow'].includes(missing.status) && Number.isFinite(missing.latencyMs),
+      'SDK account-not-found means the node answered');
+    sdk.accounts.get = async () => { throw new Error('network timeout'); };
+    const offline = await checkNetworkHealth();
+    assert(offline.status === 'offline' && offline.latencyMs === null, 'a failed probe never invents healthy status or latency');
+  } finally { sdk.accounts.get = original; }
 }
 
 console.log('\n[1] Faucet instruction encoding round-trips correctly');

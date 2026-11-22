@@ -2309,15 +2309,15 @@ async function runScenario(scenario) {
   ok(`${scenario.id}: stop() returned document listeners to baseline`,
     DOC.listeners.length === baselineDoc, `${DOC.listeners.length} vs ${baselineDoc}`);
   // stop() removes the router's hashchange listener and nothing else. boot()'s own hashchange
-  // (the tree swap for a hand-edited hash) and its unload listener live for the lifetime of the
-  // page, which for a popup or side panel is the lifetime of the document — that is intended, and
-  // the count is asserted so it cannot silently grow.
+  // (the tree swap for a hand-edited hash), unload, and the shell's online-recovery listener
+  // live for the document lifetime. Assert exactly those listeners, then verify unload removes
+  // the recovery listeners as well.
   ok(`${scenario.id}: stop() removed exactly the router's window listener`,
     WIN.listeners.length === baselineWin - 1,
     `${WIN.listeners.length} vs baseline ${baselineWin}: `
     + WIN.listeners.map((l) => l.type).join(','));
-  ok(`${scenario.id}: the surviving window listeners are boot's hashchange and unload`,
-    WIN.listeners.map((l) => l.type).sort().join(',') === 'hashchange,unload',
+  ok(`${scenario.id}: the surviving window listeners are boot's hashchange/unload and shell online recovery`,
+    WIN.listeners.map((l) => l.type).sort().join(',') === 'hashchange,online,unload',
     WIN.listeners.map((l) => l.type).join(','));
   const leaks = detachedListeners();
   ok(`${scenario.id}: no listener survives on any detached element`, leaks.length === 0,
@@ -2329,6 +2329,9 @@ async function runScenario(scenario) {
     `missing: ${[...chromeLog.missing].join(', ')}`);
   ok(`${scenario.id}: the outlet is empty after stop()`, router.root.childNodes.length === 0,
     `${router.root.childNodes.length} nodes left`);
+  WIN.dispatchEvent({ type: 'unload' });
+  ok(`${scenario.id}: unload removes network health recovery listeners`,
+    !WIN.listeners.some((l) => l.type === 'online') && !DOC.listeners.some((l) => l.type === 'visibilitychange'));
 
   return router;
 }
