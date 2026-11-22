@@ -44,6 +44,24 @@ and `npm test` passed (1,231/1,231 route checks). Chromium 153 fixture checks pa
 
 These are browser fixtures, not installed Chrome, assistive-technology, or live chain evidence.
 
+## Dashboard network sheet follow-up
+
+Runtime commit `b7d20fadeac1e10dbdf17bea1d41aab91d8b4b59` replaces the dashboard's
+standalone-route navigation with the shared bottom-sheet scaffold hosting the existing focused
+Settings network view. Settings still owns the same network rows and background calls; quarantined
+custom networks remain inert. No new network capability, endpoint, permission, or SDK was added.
+Pending feedback guards repeat requests and dismissal until the reply; failures remain visible and
+retryable. Direct balance-predicate tests cover verified zero without decimals, unsupported positive
+decimals, RPC error, and the absent-account null-units convention.
+
+`npm run build` and `npm test` passed (1,236/1,236 route checks; QR 15/15). Tracked Chromium 153
+`test/browser/network-chooser.mjs` passed 320×445 light and 400×600 dark, reduced motion: modal,
+quarantine, delayed success/failure, duplicate suppression, dismissal/focus, and no external requests.
+Settings picker, theme-reopen, side-panel failures, and 10/100/200 Assets fixtures also passed.
+A selectable second network in that browser test is **synthetic**; it does not enable Testnet in the
+product or demonstrate an actual network switch. Native extension, live network, independent review,
+and owner approval remain open below.
+
 ## While building — preview and deterministic tests
 
 - [ ] For each UI change, run `npm run build` and `npm test`, refresh the hosted fixture from the current bundles, and record the SHA, scenario, and result. The **hosted Assets fixture** serves `/scripts/preview-tx-review.html?tokens=200`; use `?tokens=10` or `?tokens=100` there to change sample size. The **checked-in** `scripts/preview-tx-review.html` is a distinct transaction-review harness with fixed cases, not a local copy of that hosted page. For repeatable local 10/100/200 sizes, run [the browser regression](../test/browser/token-cache.mjs) after building (set `PLAYWRIGHT_MODULE` and `CHROME_BIN` as shown in its header). Fixtures use no real keys, vault access, signing, or production RPC.
@@ -62,7 +80,7 @@ Follow the canonical [Manual Smoke Checklist](MANUAL_SMOKE_CHECKLIST.md), includ
 
 - [ ] Open the actual toolbar popup and Chrome side panel, including both panel entry points. Toggle Side Panel Mode on and off, verify toolbar/panel mutual exclusion (including a short window), persistence after worker restart, correct routes, and lock propagation. In Settings, verify separate pickers, theme persistence and focus return, password-gated signing/auto-lock, and disabled Language/Currency. A web page using `?thru_panel=1` does not count.
 - [ ] Run the route matrix in both contexts, including redirects and offline behavior. Check narrow and wide panel, short popup, live resize, zoom, light/dark, keyboard, focus trap and return, usable scrolling, and no clipping or console/CSP errors.
-- [ ] Repeat Dashboard and Assets interactions through the real extension: icon strip, network picker, first paint, token names/details, hide/restore, import and refresh where supported. Confirm opening/closing with keyboard returns focus to the opener, and Back/Escape from a token restores the list position and row focus without covering the focused row. Keep large-list numbers in preview coverage unless a safe native fixture is available.
+- [ ] Repeat Dashboard and Assets interactions through the real extension: icon strip, dashboard network sheet and Settings network picker, focus/escape, first paint, token names/details, hide/restore, import and refresh where supported. Check any approved real network switch for pending, failure, and result; never enable a quarantined network for testing. Confirm opening/closing with keyboard returns focus to the opener, and Back/Escape from a token restores the list position and row focus without covering the focused row. Keep large-list numbers in preview coverage unless a safe native fixture is available.
 - [ ] Check Receive copy and scan the QR on a second device against the same disposable address. Check History details and honest time/fee labels, and verify the hash link, Copy, and details as separate keyboard controls; verify that the transaction list stays flat, including when dates cross midnight or are unavailable. Recheck any additional UI landed during development.
 - [ ] Exercise shared review and toast across native send, token send, domains and faucet: correct context, fees and full counterparties, blocking and single-use behavior, no fake simulation, honest unknown outcome and one toast. Check worker idle/wake and restart, auto-lock, secret cleanup on lock/navigation, and custom-RPC quarantine as described in the runbook.
 
