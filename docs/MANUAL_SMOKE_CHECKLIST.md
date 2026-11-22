@@ -129,7 +129,7 @@ Serve local visual harnesses first (`node scripts/serve-dist.mjs --root . --port
 - [ ] History: check filters, flat list, details, copy, explorer links and cached status.
 - [ ] Settings: check Theme, Auto-lock and Signing choices, password prompts and disabled options.
 - [ ] Faucet and Receive: check the claim amount, address copy and QR scan.
-- [ ] With an approved disposable Betanet account, check send, faucet and History against the explorer.
+- [ ] With an approved disposable Betanet account, check a send appears as pending and then confirmed in History and the explorer, including after reopening; also check faucet.
 - [ ] Check keyboard, focus, worker restart, lock, secret cleanup and custom-network restrictions.
 - [ ] Run final build, tests, browser checks and independent review on the candidate commit.
 

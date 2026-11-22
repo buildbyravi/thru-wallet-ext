@@ -279,6 +279,24 @@ try {
   assert.equal((await history.getHistoryFeed('ta_stream_payer')).entries[0]?.success, true,
     'an indexed row missing the execution result cannot downgrade known execution');
 
+  // An indexed transaction without execution evidence must remain visibly pending.
+  await history.recordSubmittedTransaction({ signature: 'ts_index_without_result', kind: 'transfer',
+    from: 'ta_pending_feed', to: 'recipient', amountUnits: '1', networkId: 'betanet' });
+  const noResult = fakeTransaction('ts_index_without_result', 12_001);
+  noResult.executionResult = undefined;
+  alphaClient.transactions.listForAccount = async () => ({ transactions: [noResult] });
+  alphaClient.blocks.get = async () => ({ blockTimeNs: NS_A });
+  const indexedWithoutResult = await history.getHistoryFeed('ta_pending_feed');
+  assert.equal(indexedWithoutResult.entries[0].success, null);
+  assert.equal(indexedWithoutResult.entries[0].status, 'submitted',
+    'indexing without execution evidence must not hide the pending status');
+  noResult.executionResult = { vmError: 0 };
+  const indexedWithResult = await history.getHistoryFeed('ta_pending_feed');
+  assert.equal(indexedWithResult.entries[0].success, true);
+  assert.notEqual(indexedWithResult.entries[0].status, 'submitted',
+    'a confirmed indexed result must no longer look pending');
+  console.log('  ok - an indexed send stays pending until execution evidence arrives');
+
   // Load more uses tx.listHistory directly rather than the cache-merged first-page feed.
   // Only the requested page's slots should be enriched, not all cursor + limit entries.
   alphaClient.transactions.listForAccount = async () => ({ transactions: Array.from(

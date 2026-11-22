@@ -250,6 +250,10 @@ export async function getHistoryFeed(address) {
         // Keep explicit settled facts until the RPC supplies an actual result.
         if (e.success == null && typeof previous?.success === 'boolean') {
           e.success = previous.success;
+        } else if (e.success == null && previous?.status === 'submitted') {
+          // An indexed row without an execution result is not confirmation. Keep the
+          // single history card visibly pending until actual outcome evidence arrives.
+          e.status = 'submitted';
         }
         const blockTime = e.slot != null
           ? blockTimes.get(String(e.slot)) || cachedBlockTime(previous, e.slot) : null;
