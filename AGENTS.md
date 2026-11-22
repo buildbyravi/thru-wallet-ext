@@ -54,8 +54,10 @@ factually necessary.
 | SDK, RPC, units, token wire formats | `docs/guides/protocol-and-rpc.md` (sections 1-3); stop and ask on unverified protocol semantics |
 | storage, migration, persisted state | `docs/agent/engineering-directive.md`, `test/test-storage-migrations.mjs` |
 | layout, sheets, overlays, CSS | rule 14 (`docs/agent/rules-detail.md`), `docs/MANUAL_SMOKE_CHECKLIST.md`, `docs/DEFECT_LOG.md` |
+| HTML, CSS, browser APIs, or frontend behavior | Follow the UX preflight and Modern Web Guidance in `docs/agent/engineering-directive.md` before implementation. |
 | contracts, on-chain programs | `docs/GLOBAL_SMART_CONTRACT_POLICY.md`, `contracts/thru-custom-registrar/README.md` |
 | unshipped features, roadmap | `docs/roadmap/FUTURE_ROADMAP.md` (PLANNED only — never treat as shipped) |
+| release or Mainnet | `docs/AUDIT_REPORT.md`, `docs/STATUS_AND_ROADMAP.md`, `docs/MANUAL_SMOKE_CHECKLIST.md`, `extension.md`; owner approval before version bumps, merges, publishing, or enablement |
 | docs | `docs/DOCS_INDEX.md` — it owns the read order, document classes, and anti-sprawl rules |
 
 Conflict resolution: `STATUS_AND_ROADMAP.md` wins on **current engineering state**;
@@ -70,7 +72,7 @@ npm install
 npm run build      # node build.mjs -> dist/
 npm test           # guards (layering incl. cycles, CSP, routes, CSS, contract, docs truth, dom)
                    # then the feature suites; see package.json for the exact chain
-node scripts/git-push.mjs   # push using GITHUB_TOKEN from .env
+npm run test:browser # optional mocked Chromium fixtures; see test/browser/README.md
 ```
 
 Suites live in `test/` (`test/test-*.mjs`); `npm test` runs them by path. Load `dist/` unpacked via
@@ -79,8 +81,7 @@ Suites live in `test/` (`test/test-*.mjs`); `npm test` runs them by path. Load `
 Run `npm run build && npm test` **before and after** every change; never report success while either
 is red and never weaken or skip a test to make it pass.
 
-**Git push invariant:** push with `node scripts/git-push.mjs`; a plain `git push` can hang in a
-non-interactive shell waiting for a GUI credential manager.
+Use the authenticated Git workflow provided by the current environment; never put credentials in documentation or chat.
 
 ## Hard rules
 
@@ -128,7 +129,8 @@ non-interactive shell waiting for a GUI credential manager.
     `docs/agent/rules-detail.md`.
 15. **The frontend never waits on a chain/RPC/backend read before its first paint.** Paint from
     local state or an explicit checking/unknown placeholder, then hydrate and replace; add the
-    cached counterpart with every new read and label stale data. — *check:*
+    cached counterpart with every new read; preserve verified results on partial failure and label
+    stale data (details in `docs/agent/rules-detail.md`). — *check:*
     `test/test-route-lifecycle.mjs` (routes paint with every bridge reply stalled).
 16. **A value-moving screen goes through the ONE review pipeline; it never signs.**
     `tx.prepareReview` → `review-card.js` → `tx.confirmReview` → `confirm.js`. No feature-owned
@@ -160,8 +162,9 @@ non-interactive shell waiting for a GUI credential manager.
     it. — *check:* `scripts/check-check-controls.mjs` (legacy debt is listed and may only shrink).
 23. **Record decisions and counts when they happen.** An owner directive lands in `DECISIONS.md` in
     the same change; `DOCS_INDEX.md` owns where everything else goes. Counts in the maintained docs
-    must equal the code. — *check:* `scripts/check-docs-truth.mjs` (contract version, method count,
-    route count, every named test file). *review:* the decision entry itself.
+    must equal the code. Update affected owning docs in the same commit; distinguish branch/release
+    and evidence, and check Git/PR state. Follow `docs/DOCS_INDEX.md` §6. — *check:*
+    `scripts/check-docs-truth.mjs` (counts, named tests); *review:* decisions and semantic drift.
 24. **UI copy is plain words.** No file paths, no decision ids, no developer terms on a screen; the
     review card shows what, how much and what it costs, and only decision-changing warnings. —
     *check:* `test/test-tx-review-card.mjs` (forbidden-term scan over the rendered card).

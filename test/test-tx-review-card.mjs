@@ -9,7 +9,7 @@
 //
 // It renders the real `TxReviewCard` into a small DOM shim (test/fixtures/dom-shim.mjs) and reads
 // the text back. That proves copy, order, counts and wording. It cannot prove layout, wrapping or
-// scrolling — no browser engine exists in this sandbox, and nothing here claims a browser pass.
+// scrolling — this particular test uses no browser and does not claim a browser pass.
 
 import { installDom, textLines } from './fixtures/dom-shim.mjs';
 

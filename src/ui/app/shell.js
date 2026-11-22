@@ -13,6 +13,8 @@
 import { h, disposer } from '../kit/dom.js';
 import { icon } from '../kit/icon.js';
 import { CurrentConnection } from '../domain/current-connection.js';
+import { Sheet } from '../kit/sheet.js';
+import { SettingsRoute } from './routes/settings.js';
 import * as bridge from './bridge.js';
 
 /**
@@ -21,6 +23,28 @@ import * as bridge from './bridge.js';
 export function AppShell({ navigate, onNetworkChange }) {
   const d = disposer();
   let currentNetwork = null;
+  let destroyed = false;
+  let healthRevision = 0;
+  let healthRetryTimer = null;
+  let healthRetryCount = 0;
+  let healthNeedsRetry = false;
+  let dashboardVisible = false;
+  const HEALTH_RETRY_DELAYS_MS = [3000, 10000, 30000];
+
+  function clearHealthRetry() {
+    if (healthRetryTimer !== null) clearTimeout(healthRetryTimer);
+    healthRetryTimer = null;
+  }
+
+  function scheduleHealthRetry() {
+    if (destroyed || !dashboardVisible || document.hidden || healthRetryTimer !== null
+      || healthRetryCount >= HEALTH_RETRY_DELAYS_MS.length) return;
+    const delay = HEALTH_RETRY_DELAYS_MS[healthRetryCount++];
+    healthRetryTimer = setTimeout(() => {
+      healthRetryTimer = null;
+      if (!destroyed && dashboardVisible && !document.hidden) void refreshNetwork({ retry: true });
+    }, delay);
+  }
 
   // ---- Topbar (for non-dashboard screens) ----------------------------------
   const networkBadge = h('span', { class: 'badge', text: '…' });
@@ -78,9 +102,21 @@ export function AppShell({ navigate, onNetworkChange }) {
   ]);
 
   // ---- CurrentConnection Footer -------------------------------------------
+  let networkSheet = null;
+  function openNetworkSheet() {
+    if (networkSheet) return;
+    const sheet = Sheet({ label: 'Choose network', className: 'network-chooser',
+      onClose: () => { networkSheet = null; } });
+    networkSheet = sheet;
+    const route = SettingsRoute({ navigate, back: () => sheet.close(), params: { view: 'network' },
+      onNetworkBusy: (busy) => sheet.setDismissible(!busy) });
+    sheet.cleanup(() => route.destroy());
+    sheet.card.appendChild(route.el);
+    sheet.open();
+  }
   const connectionFooter = CurrentConnection({
     networkLabel: 'Betanet',
-    onNetworkClick: () => navigate('/settings'),
+    onNetworkClick: openNetworkSheet,
   });
 
   // Where routes render.
@@ -103,9 +139,14 @@ export function AppShell({ navigate, onNetworkChange }) {
   /**
    * Health and network info fetched after first paint.
    */
-  async function refreshNetwork() {
+  async function refreshNetwork({ retry = false } = {}) {
+    if (destroyed) return;
+    const revision = ++healthRevision;
+    clearHealthRetry();
+    if (!retry) healthRetryCount = 0;
     try {
       const network = await bridge.send('network.getActive');
+      if (destroyed || revision !== healthRevision) return;
       const label = network?.label || network?.id || 'Unknown network';
       connectionFooter.update({ network: label });
 
@@ -118,11 +159,16 @@ export function AppShell({ navigate, onNetworkChange }) {
       currentNetwork = network;
       onNetworkChange?.(network);
     } catch {
+      if (destroyed || revision !== healthRevision) return;
+      healthNeedsRetry = true;
       connectionFooter.update({ network: '—', healthStatus: 'offline' });
       networkBadge.textContent = '—';
+      scheduleHealthRetry();
+      return;
     }
     try {
       const health = await bridge.send('tx.checkHealth');
+      if (destroyed || revision !== healthRevision) return;
       const isOffline = health?.status === 'offline';
       const hasMs = typeof health?.latencyMs === 'number' && Number.isFinite(health.latencyMs);
       const ms = hasMs ? health.latencyMs : null;
@@ -130,20 +176,31 @@ export function AppShell({ navigate, onNetworkChange }) {
       const isSlow = health?.status === 'slow' || (ms != null && ms >= 500);
 
       if (isOffline || (!isHealthy && !isSlow && ms == null)) {
+        healthNeedsRetry = true;
         connectionFooter.update({ healthStatus: 'offline', latencyMs: null });
+        scheduleHealthRetry();
       } else {
-        const healthStatus = isSlow ? 'slow' : 'healthy';
-        connectionFooter.update({
-          latencyMs: ms,
-          healthStatus,
-        });
+        healthNeedsRetry = false;
+        connectionFooter.update({ latencyMs: ms, healthStatus: isSlow ? 'slow' : 'healthy' });
+        healthRetryCount = 0;
       }
     } catch {
+      if (destroyed || revision !== healthRevision) return;
+      healthNeedsRetry = true;
       connectionFooter.update({ healthStatus: 'offline', latencyMs: null });
+      scheduleHealthRetry();
     }
   }
 
-  d.add(bridge.onEvent('networkChanged', () => refreshNetwork()));
+  d.add(bridge.onEvent('networkChanged', () => {
+    // An old network's health must not appear on the newly selected one.
+    connectionFooter.update({ healthStatus: null, latencyMs: null });
+    void refreshNetwork();
+  }));
+  d.on(window, 'online', () => { if (dashboardVisible) void refreshNetwork(); });
+  d.on(document, 'visibilitychange', () => {
+    if (!document.hidden && dashboardVisible) void refreshNetwork();
+  });
 
   return {
     el,
@@ -163,11 +220,19 @@ export function AppShell({ navigate, onNetworkChange }) {
      * so it stays hidden there.
      */
     setChromeVisible(visible, path) {
+      const wasDashboardVisible = dashboardVisible;
+      dashboardVisible = Boolean(visible && isDashboardPath(path));
+      if (!dashboardVisible) { networkSheet?.close(); clearHealthRetry(); }
+      else if (!wasDashboardVisible && healthNeedsRetry && !document.hidden) void refreshNetwork();
       topbar.classList.add('hidden');
-      connectionFooter.el.classList.toggle('hidden', !visible || !isDashboardPath(path));
+      connectionFooter.el.classList.toggle('hidden', !dashboardVisible);
     },
     refreshNetwork,
     destroy() {
+      destroyed = true;
+      healthRevision += 1;
+      clearHealthRetry();
+      networkSheet?.close();
       connectionFooter.destroy();
       d.dispose();
       el.remove();

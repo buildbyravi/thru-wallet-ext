@@ -10,6 +10,7 @@ import { formatTokenAmount } from '../../shared/format.js';
 import { DEFAULT_NETWORK } from '../../lib/networks.js';
 import { assertSendContext } from './send-context.js';
 import { scopedKey } from '../../shared/network-scope.js';
+import { isVerifiedTokenBalance } from '../../shared/tokens.js';
 
 /**
  * Deploy a new native token mint on ThruVM using the active account.
@@ -159,6 +160,7 @@ export async function importVerifiedToken(params = {}) {
     return { customTokens: [record, ...current.customTokens] };
   });
   assertCurrent();
+  invalidateTokenBalanceCache();
   return record;
 }
 
@@ -255,6 +257,7 @@ export async function importToken({ mintAddress, symbol, name, decimals }) {
     customTokens: [record, ...current.customTokens.filter((token) =>
       token.mintAddress !== mint || (token.networkId || DEFAULT_NETWORK) !== networkId)],
   }));
+  invalidateTokenBalanceCache();
   return record;
 }
 
@@ -263,6 +266,7 @@ export async function importToken({ mintAddress, symbol, name, decimals }) {
  */
 export async function setVisibility(mintAddress, hidden) {
   await setTokenHidden(mintAddress, hidden);
+  invalidateTokenBalanceCache();
   return { mintAddress, hidden: Boolean(hidden) };
 }
 
@@ -310,10 +314,11 @@ async function readTokenBalanceCache(networkId = null) {
   }
 }
 
-async function writeTokenBalanceCache(owner, balances, networkId) {
+async function writeTokenBalanceCache(owner, balances, networkId, isCurrent) {
   try {
     const key = await tokenCacheKey(networkId);
     const cache = await readTokenBalanceCache(networkId);
+    if (!isCurrent()) return;
     cache[owner] = { balances, fetchedAt: Date.now() };
     await chrome.storage.local.set({ [key]: cache });
   } catch {
@@ -346,18 +351,44 @@ export async function getCachedTokenBalances({ address } = {}) {
   };
 }
 
+const inFlightTokenBalances = new Map();
+
+function invalidateTokenBalanceCache() {
+  inFlightTokenBalances.clear();
+}
+
 export async function getTokenBalances({ address } = {}) {
   const owner = address || (await vault.getActiveAccount())?.address;
   if (!owner) throw new Error('An address is required to read token balances.');
   const networkId = (await getActiveNetworkConfig()).id; // bind SDK before reading mints
+  const generation = getNetworkGeneration();
+  const key = JSON.stringify([networkId, generation, owner]);
   const registry = await listDeployedTokens();
+  if (getNetworkGeneration() !== generation) throw tokenBalanceNetworkChanged();
 
+  // Capture the registry once, both for coalescing and for the actual RPC work. A fresh
+  // registry starts new work; another caller of that same snapshot still shares it.
+  const signature = JSON.stringify(registry);
+  const existing = inFlightTokenBalances.get(key);
+  if (existing?.signature === signature) return existing.request;
+  const entry = { signature, request: null };
+  const isCurrent = () => inFlightTokenBalances.get(key) === entry && getNetworkGeneration() === generation;
+  entry.request = refreshTokenBalances(owner, networkId, generation, registry, isCurrent)
+    .finally(() => {
+      if (inFlightTokenBalances.get(key) === entry) inFlightTokenBalances.delete(key);
+    });
+  inFlightTokenBalances.set(key, entry);
+  return entry.request;
+}
+
+function tokenBalanceNetworkChanged() {
+  return tokenError('NETWORK_CHANGED', 'The network changed while token balances were loading. Retry on the active network.', true);
+}
+
+async function refreshTokenBalances(owner, networkId, generation, registry, isCurrent) {
   const { balances: results, anyError } = await readRegisteredTokenBalances(owner, registry);
-  if (await getActiveNetworkId() !== networkId) {
-    const error = new Error('The network changed while token balances were loading. Retry on the active network.');
-    error.code = 'NETWORK_CHANGED';
-    error.retryable = true;
-    throw error;
+  if (await getActiveNetworkId() !== networkId || getNetworkGeneration() !== generation) {
+    throw tokenBalanceNetworkChanged();
   }
   const response = {
     supported: true,
@@ -367,9 +398,10 @@ export async function getTokenBalances({ address } = {}) {
       ? 'One or more token balances or mint details could not be verified on the network; those are unknown, not zero.'
       : null,
   };
-  // Cache only clean reads: a partial-failure result never overwrites a good snapshot.
-  if (!anyError && results.every((r) => r && r.amountUnits != null)) {
-    writeTokenBalanceCache(owner, results, networkId); // fire-and-forget
+  // A partial result or a superseded registry cannot replace the last verified snapshot.
+  if (isCurrent() && !anyError && results.every(isVerifiedTokenBalance)) {
+    await writeTokenBalanceCache(owner, results, networkId, isCurrent);
+    if (getNetworkGeneration() !== generation) throw tokenBalanceNetworkChanged();
   }
   return response;
 }
@@ -519,33 +551,16 @@ async function transferToken({ mintAddress, toAddress, amountUnits, allowDuplica
     // Mint reads are live RPCs. A different extension context may switch source or chain
     // while they are pending; checked sends must refuse that old review before signing.
     await assertSendContext(expected, await vault.getActiveAccount());
-    // Track at SUBMISSION (see tx-service.sendTransfer): the pending record must exist
-    // before executionResult so the duplicate warning covers the whole pending window.
-    let trackedSignature = null;
-    const trackSubmitted = (signature, header = null) => {
-      if (!signature || trackedSignature === signature) return null;
-      trackedSignature = signature;
-      return pending.track({
-        signature,
-        kind: 'token',
-        from: feePayer.address,
-        to: target,
-        amountUnits: rawUnits.toString(),
-        mint,
-        displayAmount: `${formatTokenAmount(rawUnits, mintInfo.decimals)} ${symbol}`,
-        networkId: network.id,
-        startSlot: header?.startSlot ?? null,
-        expiryAfter: header?.expiryAfter ?? null,
-      });
-    };
-    const result = await thruClient.sendTokenTransfer({
-      feePayer,
-      mintAddress: mint,
-      recipientAddress: target,
-      amountUnits: rawUnits,
-      onSubmitted: trackSubmitted,
+    const tracking = pending.submissionTracker({
+      kind: 'token', from: feePayer.address, to: target,
+      amountUnits: rawUnits.toString(), mint,
+      displayAmount: `${formatTokenAmount(rawUnits, mintInfo.decimals)} ${symbol}`,
+      tokenSymbol: symbol, tokenDecimals: mintInfo.decimals, networkId: network.id,
     });
-    if (!trackedSignature) await trackSubmitted(result.signature);
+    const result = await thruClient.sendTokenTransfer({
+      feePayer, mintAddress: mint, recipientAddress: target, amountUnits: rawUnits, ...tracking,
+    });
+    await tracking.onSubmitted(result.signature);
     // The THRU balance paid the fee (twice, if the recipient token account was created).
     // The signature is already known. A fresh THRU balance is an advisory UI update,
     // never a prerequisite to returning the submission result to the caller.

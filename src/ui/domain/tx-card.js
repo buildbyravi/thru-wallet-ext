@@ -1,7 +1,7 @@
 // Transaction card — the Rabby-inspired P1 render unit for Activity.
 //
-// One transaction per card: head carries the relative time on the left and the
-// network + shortened signature + copy/explorer actions on the right; the body carries
+// One transaction per card: head carries the transaction time on the left and the
+// network + shortened signature and copy action on the right; the body carries
 // the method glyph and verb on the left and the signed, right-aligned amount delta on
 // the right. Honesty rules carried over from the row era:
 //   - a failed entry states it (badge + red glyph), never masquerades as a silent row;
@@ -21,11 +21,8 @@ import { icon } from '../kit/icon.js';
 import { CopyButton } from '../kit/button.js';
 import { formatThru, formatTokenAmount, truncateAddress, shortenMiddle, explorerTxUrl } from '../../shared/format.js';
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
 /** Formatted time for the card head: YYYY/MM/DD HH:mm like Rabby, falling back to Block <slot>. */
-export function relTime(ts, slot, status = null) {
-  if (status === 'submitted') return 'Pending · Just now';
+export function relTime(ts, slot) {
   const t = Number(ts);
   if (Number.isFinite(t) && t > 0 && Number.isFinite(new Date(t).getTime())) {
     const d = new Date(t);
@@ -39,30 +36,8 @@ export function relTime(ts, slot, status = null) {
   return slot != null ? `Block ${slot}` : '';
 }
 
-/** Stable day key for sectioning: local-calendar day, not a rolling 24h window. */
-export function dayKey(ts) {
-  const t = Number(ts);
-  if (!Number.isFinite(t) || t <= 0) return 'recent'; // no wall-clock time on the wire
-  const d = new Date(t);
-  return `${d.getFullYear()}-${String(d.getMonth()).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
-export function dayLabel(ts) {
-  return dayLabelForKey(dayKey(ts));
-}
-
-/** Human label for an already-resolved day key ('recent' → the honest catch-all). */
-export function dayLabelForKey(key) {
-  if (key === 'recent') return 'Activity';
-  const now = dayKey(Date.now()), y = dayKey(Date.now() - 86400000);
-  if (key === now) return 'Today';
-  if (key === y) return 'Yesterday';
-  const [, mm, dd] = key.split('-').map(Number);
-  return `${dd} ${MONTHS[mm]}`;
-}
-
 function glyphFor(entry) {
-  if (entry.status === 'submitted') return { name: 'spinner', cls: 'pending spinning' };
+  if (entry.status === 'submitted') return { name: 'spinner', cls: 'pending' };
   if (entry.success === false) return { name: 'x', cls: 'failed' };
   if (entry.kind === 'sent' || entry.kind === 'token-sent') return { name: 'send', cls: 'sent' };
   if (entry.kind === 'received' || entry.kind === 'token-received' || entry.kind === 'token-mint') {
@@ -130,7 +105,7 @@ function shortSignature(signature) {
  * @param {object} opts
  * @param {object} opts.entry — decoded history entry (tx-service shape)
  * @param {object|null} opts.network — active network (label + explorerUrl when available)
- * @param {Function} [opts.onOpen] — called with the entry when the card is activated; its
+ * @param {Function} [opts.onOpen] — called with the entry and details button when activated; its
  *   presence is what turns the card into a focusable control. Omit it and the card stays
  *   the inert P1 render unit, so nothing announces an affordance that does not exist.
  * @returns {{ el: HTMLElement, destroy(): void }}
@@ -139,17 +114,27 @@ export function TxCard({ entry, network, knownAccounts, onOpen } = {}) {
   const glyph = glyphFor(entry);
   const delta = deltaFor(entry);
   const failed = entry.success === false;
+  const pending = entry.status === 'submitted';
+  const explorer = explorerTxUrl(network, entry.signature);
   const owned = [];
   const d = disposer();
   const interactive = typeof onOpen === 'function';
 
   const head = h('div', { class: 'tx-card-head' }, [
-    h('span', { class: 'tx-card-time', text: relTime(entry.timestamp, entry.slot, entry.status) }),
+    h('span', { class: 'tx-card-time', text: relTime(entry.timestamp, entry.slot) }),
     h('span', { class: 'tx-card-meta' }, (() => {
       const bits = [];
       if (network?.label) bits.push(h('span', { class: 'tx-card-net', text: network.label }));
       if (entry.signature) {
-        bits.push(h('span', { class: 'tx-card-sig', text: shortSignature(entry.signature) }));
+        const signature = shortSignature(entry.signature);
+        bits.push(explorer ? h('a', {
+          class: 'tx-card-sig',
+          href: explorer,
+          target: '_blank',
+          rel: 'noopener noreferrer',
+          'aria-label': `View on explorer: ${entry.signature}`,
+          text: signature,
+        }) : h('span', { class: 'tx-card-sig', text: signature }));
         const copy = CopyButton({
           getValue: () => String(entry.signature),
           title: 'Copy transaction signature',
@@ -158,33 +143,31 @@ export function TxCard({ entry, network, knownAccounts, onOpen } = {}) {
         owned.push(copy);
         bits.push(copy.el);
       }
-      const explorer = explorerTxUrl(network, entry.signature);
-      if (explorer) {
-        bits.push(h('a', {
-          class: 'icon-btn icon-btn-ghost sm',
-          href: explorer,
-          target: '_blank',
-          rel: 'noopener noreferrer',
-          title: 'View on explorer',
-          'aria-label': 'View on explorer',
-        }, icon('external', 12)));
-      }
       return bits;
     })()),
   ]);
 
-  const titleRow = h('span', { class: 'tx-card-title' }, verbFor(entry));
   const sub = contextFor(entry, knownAccounts);
-
-  const body = h('div', { class: 'tx-card-body' }, [
-    h('span', { class: ['row-glyph', glyph.cls].filter(Boolean) }, icon(glyph.name, 14, glyph.cls?.includes('spinning') ? { className: 'spinning' } : {})),
-    h('span', { class: 'tx-card-main' }, (() => {
-      const pieces = [titleRow];
-      if (entry.status === 'submitted') pieces.push(h('span', { class: 'tx-card-badge pending', text: 'Pending' }));
-      else if (failed) pieces.push(h('span', { class: 'tx-card-badge failed', text: 'Failed on-chain' }));
-      if (sub) pieces.push(h('span', { class: 'tx-card-sub', text: sub }));
-      return pieces;
-    })()),
+  const badge = pending ? h('span', { class: 'tx-card-badge pending', text: 'Pending' })
+    : failed ? h('span', { class: 'tx-card-badge failed', text: 'Failed on-chain' }) : null;
+  const body = h(interactive ? 'button' : 'div', {
+    class: 'tx-card-body',
+    ...(interactive ? {
+      type: 'button',
+      'aria-haspopup': 'dialog',
+      'aria-label': [verbFor(entry), badge?.textContent, sub, delta?.text, 'transaction details']
+        .filter(Boolean).join(' — '),
+    } : {}),
+  }, [
+    h('span', { class: ['tx-card-glyph', glyph.cls].filter(Boolean) },
+      icon(glyph.name, 18, pending ? { className: 'spinning' } : {})),
+    h('span', { class: 'tx-card-main' }, [
+      h('span', { class: 'tx-card-method' }, [
+        h('span', { class: 'tx-card-title', text: verbFor(entry) }),
+        badge,
+      ].filter(Boolean)),
+      sub ? h('span', { class: 'tx-card-sub', text: sub }) : null,
+    ].filter(Boolean)),
     h('span', { class: 'tx-card-amounts' }, delta
       ? [h('span', { class: ['tx-amount', delta.cls].join(' '), text: delta.text })]
       : []),
@@ -192,45 +175,8 @@ export function TxCard({ entry, network, knownAccounts, onOpen } = {}) {
 
   const el = h(interactive ? 'article' : 'div', {
     class: ['tx-card', interactive ? 'tx-card-open' : null].filter(Boolean),
-    ...(interactive
-      ? {
-        role: 'button',
-        tabindex: '0',
-        'aria-label': `${verbFor(entry)} — transaction details`,
-      }
-      : {}),
   }, [head, body]);
-
-  if (interactive) {
-    // The head holds a copy BUTTON and an explorer ANCHOR. Without this guard, clicking
-    // either would also open the sheet — and worse, the explorer link would open a tab
-    // behind a modal. Walk up from the event target to the card and bail if a real control
-    // is in the way; `closest` is not used because the shim-tested kit stays on plain nodes.
-    const cameFromControl = (target) => {
-      for (let n = target; n && n !== el; n = n.parentNode) {
-        const tag = String(n.localName || n.tagName || '').toLowerCase();
-        if (tag === 'button' || tag === 'a') return true;
-      }
-      return false;
-    };
-
-    const open = () => { onOpen(entry); };
-
-    d.on(el, 'click', (event) => {
-      if (cameFromControl(event.target)) return;
-      open();
-    });
-
-    // role="button" is a promise that Enter and Space activate it. This is what keeps that
-    // promise; a div with only a click handler is invisible to a keyboard user.
-    d.on(el, 'keydown', (event) => {
-      if (event.key !== 'Enter' && event.key !== ' ' && event.key !== 'Spacebar') return;
-      if (cameFromControl(event.target)) return;
-      // Space scrolls the list otherwise, which is not what activating a control means.
-      event.preventDefault?.();
-      open();
-    });
-  }
+  if (interactive) d.on(body, 'click', () => onOpen(entry, body));
 
   return {
     el,

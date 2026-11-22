@@ -1,32 +1,5 @@
-// Dashboard route — 100% Rabby-class landing screen.
-//
-// Structure (Rabby Structure, Thru Identity):
-//   1. 196px Ink Header (#1A1214):
-//      - Frosted AccountChip (.account-pill): Identicon + Account name + truncated address + chevron.
-//      - Top-right actions: Copy button (same .dash-header-btn treatment as its siblings,
-//        not the white .icon-btn surface) + Gas/Network icon + Side-panel icon (its native
-//        hover title explains what it does — no extra chrome for a one-line explanation)
-//        + Settings gear icon + Lock wallet button.
-//      - USD-first BalanceHero: 32px bold USD amount + frameless refresh icon + native THRU
-//        caption + a quiet token-symbols summary line. The whole box is the token-drawer
-//        entry (Rabby's clickable balance card): click anywhere in it, or Enter/Space.
-//        No 24h delta line — this wallet has no market-data source, so a delta would be
-//        fabricated.
-//      - '1 pending' badge in header when pending transactions exist.
-//   2. 3-column Action Panel (.dashboard-panel-grid) — main's exact geometry
-//      (88px cells, 1px hairline gap; every tile identical, faucet included;
-//      enforced by scripts/check-panel-tiles.mjs), hover blue.
-//      - Row 1: Send (/send), Receive (/receive), Swap (disabled/roadmap).
-//      - Row 2: History (/history, with badge count), Security/Approvals, Faucet (/faucet)
-//        — faucet hidden entirely on networks that declare no faucet.
-//   3. Token drawer (Rabby balance-card → asset-list popup):
-//      - The TOKEN LIST lives in the drawer (src/ui/domain/token-drawer.js), opened from
-//        the balance box — "click anywhere in the box". There is NO separate Tokens
-//        button below the grid: the box carries its own 'Assets ›' cue instead.
-//      - The drawer owns search, the ledger rows and the two-view 'Add custom token' flow
-//        (mint verified on-chain before import; the list is hidden while adding).
-//   4. Security tile → SecuritySheet (real posture checks), never an inline banner.
-//      Transient one-line feedback uses toast(), persistent state uses Banner.
+// Dashboard: account controls above an inset balance card, equal-sized action tiles,
+// and a separate ecosystem row. The balance opens the existing Assets drawer.
 
 import { h, disposer } from '../../kit/dom.js';
 import { icon } from '../../kit/icon.js';
@@ -40,12 +13,14 @@ import { TokenDrawer } from '../../domain/token-drawer.js';
 import { SecuritySheet } from '../../domain/security-sheet.js';
 import * as bridge from '../bridge.js';
 import { formatThru } from '../../../shared/format.js';
+import { isVerifiedTokenBalance } from '../../../shared/tokens.js';
 
 export function DashboardRoute({ navigate }) {
   const d = disposer();
   const owned = [];
   let account = null;
   let currentNetwork = null;
+  let assetContext = 0;
   // No authoritative fiat price source is available.
   let currentBalanceUsd = null;
 
@@ -170,7 +145,7 @@ export function DashboardRoute({ navigate }) {
     headerActions,
   ]);
 
-  // ---- 196px Ink Header: USD-First BalanceHero ----------------------------
+  // ---- Inset balance card -------------------------------------------------
   const balanceHero = track(BalanceHero({
     onRefresh: () => load({ force: true }),
     // The whole box is the token-drawer entry — Rabby's clickable balance card.
@@ -181,7 +156,11 @@ export function DashboardRoute({ navigate }) {
 
   const dashHeader = h('header', { class: 'dash-header' }, [
     headerTop,
-    balanceHero.el,
+    h('div', { class: 'dash-balance-card' }, [
+      h('div', { class: 'dash-balance-art-clip' },
+        h('img', { class: 'dash-header-art', src: 'icons/balance-art.svg', alt: '', width: 520, height: 340 })),
+      balanceHero.el,
+    ]),
     pendingBadge,
   ]);
 
@@ -271,6 +250,27 @@ export function DashboardRoute({ navigate }) {
   // the box") or from the quiet strip below the action panel. load() keeps a snapshot so
   // the drawer opens instantly and repaints when balances or the registry change.
   let drawer = null;
+  // One recent successful mint lookup per network/mint; no prefetch for list rows.
+  const detailCache = new Map();
+  const detailReads = new Map();
+
+  function readTokenDetails(mintAddress) {
+    const key = `${currentNetwork?.id || ''}:${mintAddress}`;
+    const hit = detailCache.get(key);
+    if (hit && Date.now() - hit.fetchedAt < 60_000) return Promise.resolve(hit.result);
+    if (detailReads.has(key)) return detailReads.get(key);
+    const pending = bridge.send('token.readMint', { mintAddress }).then((result) => {
+      if (result?.exists && detailReads.get(key) === pending) {
+        detailCache.delete(key);
+        detailCache.set(key, { result, fetchedAt: Date.now() });
+        if (detailCache.size > 64) detailCache.delete(detailCache.keys().next().value);
+      }
+      return result;
+    }).finally(() => { if (detailReads.get(key) === pending) detailReads.delete(key); });
+    detailReads.set(key, pending);
+    return pending;
+  }
+
   let assetsSnapshot = {
     nativeText: '—',
     nativeUsd: null,
@@ -290,12 +290,55 @@ export function DashboardRoute({ navigate }) {
       stale,
       tokenState: tokenState === undefined ? assetsSnapshot.tokenState : tokenState,
     };
-    // The balance box summarizes what the drawer holds — real symbols only.
-    const realTokens = assetsSnapshot.tokens.filter((t) => !t.hidden);
-    balanceHero.update({
-      summary: ['THRU', ...realTokens.map((t) => t.symbol)].join(' · '),
-    });
+    balanceHero.update({ assets: assetsSnapshot.tokens.filter((token) => !token.hidden) });
     drawer?.update(assetsSnapshot);
+  }
+
+  function tokenRows(snapshot) {
+    if (!currentNetwork?.id || snapshot?.networkId !== currentNetwork.id || !Array.isArray(snapshot.balances)) {
+      return [];
+    }
+    return snapshot.balances;
+  }
+
+  function reconcileTokenBalances(tokens, snapshot) {
+    const live = new Map(tokenRows(snapshot).map((row) => [row.mintAddress, row]));
+    return new Map(tokens.map(({ mintAddress }) => {
+      const row = live.get(mintAddress);
+      const previous = assetsSnapshot.tokenState?.get(mintAddress);
+      return [mintAddress, isVerifiedTokenBalance(row) ? { ...row, stale: false }
+        : isVerifiedTokenBalance(previous) ? { ...previous, stale: true }
+          : { error: true }];
+    }));
+  }
+
+  let registryRevision = 0;
+  let registryRead = 0;
+  let appliedRegistryRead = 0;
+  let tokenBalanceRead = 0;
+  let appliedTokenBalanceRead = 0;
+  const visibilityChanges = new Map();
+
+  async function readTokenRegistry() {
+    const revision = registryRevision;
+    const read = ++registryRead;
+    const tokens = await bridge.send('token.list');
+    return { revision, read, tokens };
+  }
+
+  function acceptTokenRegistry(snapshot) {
+    // A refresh can receive token.list quickly, then wait on cached or live balances.
+    // Preserve only the changed visibility flags; registry metadata and other mints
+    // can still hydrate. A newer read supersedes the patch, and older reads cannot repaint.
+    if (!Array.isArray(snapshot?.tokens) || snapshot.read < appliedRegistryRead) return undefined;
+    appliedRegistryRead = snapshot.read;
+    for (const [mint, change] of visibilityChanges) {
+      if (change.revision <= snapshot.revision) visibilityChanges.delete(mint);
+    }
+    return snapshot.tokens.map((token) => {
+      const change = visibilityChanges.get(token.mintAddress);
+      return change ? { ...token, hidden: change.hidden } : token;
+    });
   }
 
   function openDrawer() {
@@ -304,6 +347,15 @@ export function DashboardRoute({ navigate }) {
       assets: assetsSnapshot,
       networkLabel: currentNetwork?.label || currentNetwork?.id || 'Betanet',
       onReadMint: (mintAddress) => bridge.send('token.readMint', { mintAddress }),
+      onReadDetails: readTokenDetails,
+      onSetVisibility: async (mintAddress, hidden) => {
+        const context = assetContext;
+        await bridge.send('token.setVisibility', { mintAddress, hidden });
+        if (context !== assetContext) return;
+        visibilityChanges.set(mintAddress, { revision: ++registryRevision, hidden });
+        const { nativeText, stale, tokens } = assetsSnapshot;
+        updateAssets(nativeText, tokens.map((token) => token.mintAddress === mintAddress ? { ...token, hidden } : token), stale);
+      },
       onImportToken: (params) => bridge.send('token.importVerified', params),
       // The drawer waits for this BEFORE it shows the list again and raises its own
       // "added" toast, so the user never sees a half-refreshed list.
@@ -383,18 +435,23 @@ export function DashboardRoute({ navigate }) {
 
   // ---- Load ----------------------------------------------------------------
   async function load({ force = false } = {}) {
+    const context = assetContext;
     banner.clear();
     balanceHero.setSpinning(true);
 
     try {
-      currentNetwork = await bridge.send('network.getActive');
+      const network = await bridge.send('network.getActive');
+      if (context !== assetContext) return;
+      currentNetwork = network;
       applyNetworkCapabilities(currentNetwork);
     } catch {
       // safe fallback
     }
 
     try {
-      account = await bridge.send('account.getActive');
+      const active = await bridge.send('account.getActive');
+      if (context !== assetContext) return;
+      account = active;
       if (account) {
         pillMark.replaceChildren(AccountAvatar({
           address: account.address,
@@ -405,12 +462,15 @@ export function DashboardRoute({ navigate }) {
         pillAddr.replaceChildren(AddressText({ address: account.address, chars: 6 }));
       }
     } catch (error) {
+      if (context !== assetContext) return;
       banner.set(error.message || 'Could not load the active account.');
       balanceHero.setSpinning(false);
       return;
     }
 
-    if (!account?.address) {
+    if (context !== assetContext) return;
+    const address = account?.address;
+    if (!address) {
       balanceHero.setSpinning(false);
       return;
     }
@@ -420,8 +480,9 @@ export function DashboardRoute({ navigate }) {
     let nativeText = '—';
     let hasCachedBalance = false;
     try {
-      const cached = await bridge.send('tx.getCachedBalances', { addresses: [account.address] });
-      const entry = cached?.[account.address];
+      const cached = await bridge.send('tx.getCachedBalances', { addresses: [address] });
+      if (context !== assetContext) return;
+      const entry = cached?.[address];
       if (entry?.balance != null && /^[0-9]+$/.test(String(entry.balance))
         && Number.isFinite(entry.fetchedAt) && entry.fetchedAt > 0) {
         const raw = BigInt(entry.balance);
@@ -440,40 +501,49 @@ export function DashboardRoute({ navigate }) {
       // cache miss is not an error
     }
 
+    if (context !== assetContext) return;
+
     // Auto-discovery (v26, Solana-parity ask 2026-10-26): any incoming token mint observed in
     // cached history is chain-verified and registered serverside, so the asset list below
     // shows it without the user pasting an address. Best-effort and non-blocking: a chain that
     // cannot reach some mints yields skipped-reasons, never a failed dashboard.
-    bridge.send('token.discover', { address: account.address }).catch(() => null);
+    bridge.send('token.discover', { address: address }).catch(() => null);
 
     // Hard rule 15 (2026-10-26): token list paints from the network-scoped snapshot BEFORE
     // any live read. A slow chain replaces the rows; it never blocks them.
     {
       try {
         const [cachedList, cachedBal] = await Promise.all([
-          bridge.send('token.list'),
-          bridge.send('token.getCachedBalances', { address: account.address }),
+          readTokenRegistry(),
+          bridge.send('token.getCachedBalances', { address: address }),
         ]);
-        const cachedState = new Map((cachedBal?.balances || []).map((b) => [b.mintAddress, b]));
-        if (cachedBal?.balances?.length || (Array.isArray(cachedList) && cachedList.length)) {
-          updateAssets(nativeText, Array.isArray(cachedList) ? cachedList : [],
-            cachedBal?.stale !== false, cachedState);
+        if (context !== assetContext) return;
+        const cachedState = new Map(assetsSnapshot.tokenState || []);
+        for (const row of tokenRows(cachedBal)) {
+          if (isVerifiedTokenBalance(row) && !isVerifiedTokenBalance(cachedState.get(row.mintAddress))) {
+            cachedState.set(row.mintAddress, { ...row, stale: true });
+          }
         }
+        updateAssets(assetsSnapshot.nativeText, acceptTokenRegistry(cachedList),
+          assetsSnapshot.stale, cachedState);
       } catch {
         // Cache miss is not an error; live hydration follows.
       }
     }
 
+    if (context !== assetContext) return;
+    const balanceRead = ++tokenBalanceRead;
     const [infoResult, tokensResult, pendingResult, tokenBalancesResult] = await Promise.allSettled([
       force
-        ? bridge.send('tx.getBalances', { addresses: [account.address] })
-          .then((m) => m?.[account.address])
-        : bridge.send('tx.getAccountInfo', { address: account.address }),
-      bridge.send('token.list'),
+        ? bridge.send('tx.getBalances', { addresses: [address] })
+          .then((m) => m?.[address])
+        : bridge.send('tx.getAccountInfo', { address: address }),
+      readTokenRegistry(),
       bridge.send('tx.getPending'),
-      bridge.send('token.getBalances', { address: account.address }),
+      bridge.send('token.getBalances', { address: address }),
     ]);
 
+    if (context !== assetContext) return;
     balanceHero.setSpinning(false);
 
     // A forced refresh uses tx.getBalances, which may return a stale placeholder on an
@@ -497,7 +567,7 @@ export function DashboardRoute({ navigate }) {
         // from a background refresh silently failed for exactly those users. registerAccount
         // is the sanctioned unlocked-only exception: it proves the address is owned by this
         // vault, signs with that account's own key, and re-checks the network before signing.
-        bridge.send('tx.registerAccount', { address: account.address }).catch(() => {});
+        bridge.send('tx.registerAccount', { address: address }).catch(() => {});
       }
     } else {
       // Do not leave the neutral "$0.00" default looking like a verified zero when no
@@ -508,10 +578,14 @@ export function DashboardRoute({ navigate }) {
       }
     }
 
-    const tokens = tokensResult.status === 'fulfilled' ? tokensResult.value : [];
-    const tokenState = tokenBalancesResult.status === 'fulfilled'
-      ? new Map((tokenBalancesResult.value?.balances || []).map((b) => [b.mintAddress, b]))
-      : null;
+    const tokens = acceptTokenRegistry(tokensResult.value) ?? assetsSnapshot.tokens;
+    // An older overlapping refresh can contain fewer mints. Do not let it mark
+    // the fresh balance of a newly imported mint as cached (or replace its neighbours).
+    let tokenState = assetsSnapshot.tokenState;
+    if (balanceRead > appliedTokenBalanceRead) {
+      appliedTokenBalanceRead = balanceRead;
+      tokenState = reconcileTokenBalances(tokens, tokenBalancesResult.value);
+    }
     updateAssets(nativeText, tokens,
       infoResult.status === 'rejected' || infoResult.value?.stale === true, tokenState);
 
@@ -521,7 +595,7 @@ export function DashboardRoute({ navigate }) {
         await bridge.send('tx.reconcilePending').catch(() => null);
         pendings = await bridge.send('tx.getPending').catch(() => pendings);
       }
-      renderPending(pendings);
+      if (context === assetContext) renderPending(pendings);
     }
   }
 
@@ -533,6 +607,16 @@ export function DashboardRoute({ navigate }) {
   ]);
 
   let hasKnownBalance = false;
+  function resetAssetsContext() {
+    assetContext += 1;
+    visibilityChanges.clear();
+    drawer?.destroy();
+    account = null;
+    hasKnownBalance = false;
+    currentBalanceUsd = null;
+    balanceHero.update({ usd: null, native: '—' });
+    updateAssets('—', [], false, null);
+  }
   load();
 
   d.add(
@@ -560,14 +644,20 @@ export function DashboardRoute({ navigate }) {
       });
       updateAssets(formatted, assetsSnapshot.tokens, entry.stale, assetsSnapshot.tokenState);
     }),
-    bridge.onEvent('accountsChanged', () => load()),
+    bridge.onEvent('accountsChanged', () => { resetAssetsContext(); load(); }),
     bridge.onEvent('pendingTxChanged', ({ pending } = {}) => renderPending(pending)),
-    bridge.onEvent('networkChanged', () => load({ force: true })),
+    bridge.onEvent('networkChanged', () => {
+      resetAssetsContext();
+      detailCache.clear();
+      detailReads.clear();
+      load({ force: true });
+    }),
   );
 
   return {
     el,
     destroy() {
+      assetContext += 1;
       stopPendingPoll();
       drawer?.destroy();
       drawer = null;

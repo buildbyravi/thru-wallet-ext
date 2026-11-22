@@ -61,4 +61,11 @@ Distilled from SDK protobuf inspection and Betanet probes (`scripts/defi-evidenc
 - **Explorer MCP (`https://scan.thru.org/api/mcp`) is Agent-Only:** Wraps an undocumented explorer endpoint returning `format=toon` LLM text with silent `?rpc=` fallback, missing browser CORS headers, and signature-only `list_account_transactions` (`1 + N` round-trips vs 1 direct gRPC-Web `listTransactionsForAccount` call with CEL `Filter`). Never call it from extension runtime code. Note also that official Thru docs show inconsistent transaction URL paths (`/txs/{sig}` vs `/transaction/{sig}` vs wallet `/tx/{sig}?network={id}`), so `/tx/` deep links remain open for live browser verification while `/address/{addr}?network={id}` is verified.
 - **First-Party Oracle (`@thru/programs/oracle`):** Uses standard `accounts.get` against the existing allowlisted RPC origin (zero extra CSP `connect-src` hosts). Live probe `q22` (`2026-10-06..23`) confirmed **no `thru-usd` oracle feed** is deployed on Betanet today.
 - **`@thru/indexer` & `@thru/replay`:** Node/Postgres/Drizzle server packages — never import or bundle into the browser extension.
+- **Bulk reads and throttling:** Coalesce duplicate reads in the owning background service and
+  bound concurrency. A worker cap is not a requests-per-second budget. Before claiming rate-limit
+  protection, verify the deployed provider's budget and throttling behavior, then test pacing and
+  bounded retry/backoff under mixed funded/empty rows, overlapping callers, and transport failures.
+  Do not introduce a signing path for account reads. The transaction Multicall program is not a
+  verified account-read batch RPC; use only a documented, supported read-batching API with evidence
+  for the target network. Follow Rule 15 for partial failures and stale snapshots.
 - **gRPC-Web Streaming (`@thru/sdk` `StreamingClient`):** Uses `@connectrpc/connect-web` against the existing RPC origin; available as a future alternative to polling after MV3 service-worker suspension testing.

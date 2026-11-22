@@ -1,41 +1,7 @@
-// Token drawer — the Rabby-style slide-up sheet behind the balance box.
-//
-// The dashboard's balance box is the entry point ("click anywhere in the box", exactly like
-// Rabby's BalanceView -> activePopup('AssetList')): tapping it opens THIS sheet, which owns
-// the whole token list — search, rows, and the "Add custom token" flow.
-//
-// TWO VIEWS, NEVER BOTH  (fixes "wallet tokens show up in the middle of adding a token")
-//
-//   list view : head, search, token rows, "Add custom token"
-//   add view  : back, mint field, verification, preview, "Add token"
-//
-// The previous drawer kept ONE column — head, search, add-form, token list, add button — and
-// merely toggled the form open, so the whole wallet ledger stayed on screen between the form
-// and the button while the user was mid-add. On save it also closed the form BEFORE awaiting
-// the host reload, so the list flashed stale rows. Now the views are mutually exclusive
-// (`.hidden` on the inactive one, which also removes it from the focus trap), and the drawer
-// only returns to the list AFTER the host has reloaded, with the new row highlighted.
-//
-// ADD FLOW (Rabby "Add custom token": paste address -> we look it up -> confirm)
-//
-//   idle -> checking -> verified -> saving -> (back to list, new row highlighted)
-//
-//   - Decimals are ALWAYS taken from the chain and shown read-only. Sends burn base units
-//     of the real decimals, so a free-typed value corrupts amounts; the old form offered an
-//     editable Decimals input while its own comment forbade it.
-//   - The symbol is taken from the chain too; the field only appears when the mint carries
-//     no ticker.
-//   - A mint already in the list is refused before the network call.
-//   - Every async step is guarded by an attempt counter, so editing the address mid-lookup
-//     can never apply a stale result.
-//
-// Honesty rules, unchanged: a balance that could not be read is "—", never a zero.
-//
-// Overlay, backdrop, focus trap, open animation and teardown come from kit/sheet.js (shared with
-// the security sheet). Every node comes from h(); every handler goes through the sheet's
-// disposer, so teardown leaves no listener on a detached node.
+// Token drawer: mutually exclusive asset list, mint details, and verified import views.
+// The shared Sheet owns keyboard trapping, dismissals, focus restoration and teardown.
 
-import { h, clear } from '../kit/dom.js';
+import { h } from '../kit/dom.js';
 import { icon } from '../kit/icon.js';
 import { Button, IconButton } from '../kit/button.js';
 import { Field } from '../kit/field.js';
@@ -43,7 +9,9 @@ import { Sheet } from '../kit/sheet.js';
 import { toast } from '../kit/toast.js';
 import { AssetRow } from './token-row.js';
 import { formatTokenAmount, shortAddress } from '../../shared/format.js';
+import { isVerifiedTokenBalance } from '../../shared/tokens.js';
 
+const NATIVE_ROW = Symbol('native asset row');
 const STEP = Object.freeze({ IDLE: 'idle', CHECKING: 'checking', VERIFIED: 'verified', SAVING: 'saving' });
 
 function shortMint(mint) {
@@ -57,6 +25,8 @@ function shortMint(mint) {
  *   assets        { nativeText, nativeUsd, tokens, stale, tokenState } snapshot to render
  *   networkLabel  network label for the rows (e.g. 'Betanet')
  *   onReadMint    async (mintAddress) => mint info; powers the on-chain lookup
+ *   onReadDetails async cached read used only by the detail view
+ *   onSetVisibility async (mintAddress, hidden) updates local asset visibility
  *   onImportToken async ({ mintAddress, symbol, name, decimals }) => saved record
  *   onChanged     async () => called after a successful import so the host can reload;
  *                 the drawer waits for it BEFORE showing the list again
@@ -67,16 +37,23 @@ export function TokenDrawer({
   assets = {},
   networkLabel = 'Betanet',
   onReadMint,
+  onReadDetails = onReadMint,
+  onSetVisibility,
   onImportToken,
   onChanged,
   onClose,
 } = {}) {
-  let rows = [];
+  const rows = new Map();
   let view = 'list';
   let step = STEP.IDLE;
   let lookup = null;
   let attempt = 0;
   let highlightMint = null;
+  let showHidden = false;
+  let selection = null;
+  let listScrollTop = 0;
+  let mintDetails = null;
+  let visibilityPending = false;
   let data = {
     nativeText: '—',
     nativeUsd: null,
@@ -92,42 +69,41 @@ export function TokenDrawer({
     className: 'token-drawer',
     onClose,
     onEscape: () => {
-      if (view === 'add' && step !== STEP.SAVING) setView('list');
+      if (view === 'detail' && !visibilityPending) setView('list');
+      else if (view === 'add' && step !== STEP.SAVING) setView('list');
       else if (view === 'list') sheet.close();
     },
   });
   const { track } = sheet;
+  sheet.card.classList.add('is-listing');
   sheet.cleanup(() => {
     attempt += 1; // invalidate any in-flight lookup
-    for (const row of rows) row.destroy();
-    rows = [];
+    for (const { row } of rows.values()) row.destroy();
+    rows.clear();
   });
   const close = () => sheet.close();
 
   // ============================================================================================
   // LIST VIEW
   // ============================================================================================
-  const closeBtn = track(Button({ label: 'Close', variant: 'text', onClick: () => close() }));
-  const listHead = h('div', { class: 'modal-head token-drawer-head' }, [
-    h('span', { class: 'modal-icon' }, icon('coins', 18)),
-    h('h2', { text: 'Tokens' }),
-    closeBtn.el,
-  ]);
-
+  function closeButton() {
+    const button = h('button', { type: 'button', class: 'icon-btn icon-btn-ghost token-drawer-close', 'aria-label': 'Close' },
+      h('img', { src: 'icons/close.svg', alt: '', width: 16, height: 16 }));
+    sheet.d.on(button, 'click', () => { if (!visibilityPending) close(); });
+    return button;
+  }
   const searchField = track(Field({
     label: 'Search',
     placeholder: 'Symbol, name, or mint address',
-    onInput: () => renderList(),
+    onInput: () => {
+      listScroll.scrollTop = 0;
+      renderList();
+    },
   }));
 
   const listHost = h('div', { class: 'token-ledger' });
-  const emptyHint = h('p', { class: 'token-drawer-empty hidden', text: '' });
-
-  function disposeRows() {
-    for (const row of rows) row.destroy();
-    rows = [];
-    clear(listHost);
-  }
+  const emptyHint = h('p', { class: 'token-drawer-empty', role: 'status' });
+  const listScroll = h('div', { class: 'token-list-scroll' }, [listHost, emptyHint]);
 
   function matchesQuery(query, { symbol, name, mintAddress }) {
     if (!query) return true;
@@ -136,75 +112,112 @@ export function TokenDrawer({
       .some((v) => String(v).toLowerCase().includes(query));
   }
 
+  function tokenBalance(token) {
+    const state = data.tokenState?.get(token.mintAddress);
+    if (!isVerifiedTokenBalance(state)) return null;
+    const symbol = state.symbol || token.symbol || 'TOKEN';
+    if (state.tokenAccountExists === false || state.amountUnits === '0') return `0 ${symbol}`;
+    return `${formatTokenAmount(BigInt(state.amountUnits), state.decimals)} ${symbol}`;
+  }
+
   function renderList() {
-    disposeRows();
     const query = searchField.value.trim().toLowerCase();
-
-    // Native THRU row. No changePercent: this wallet has no market-data source.
-    if (matchesQuery(query, { symbol: 'THRU', name: 'Thru Native Token' })) {
-      rows.push(AssetRow({
-        symbol: 'THRU',
-        name: 'Thru Native Token',
-        balanceText: data.nativeText,
-        usdValue: data.nativeUsd,
-        network: networkLabel,
-        isNative: true,
-        stale: data.stale,
-      }));
+    const visible = new Map();
+    const native = { symbol: 'THRU', name: 'Thru Native Token' };
+    if (!showHidden && matchesQuery(query, native)) visible.set(NATIVE_ROW, native);
+    for (const token of data.tokens || []) {
+      if (Boolean(token.hidden) === showHidden && matchesQuery(query, token)) visible.set(token.mintAddress, token);
     }
 
-    const allTokens = [...(data.tokens || [])];
-
-    for (const token of allTokens) {
-      if (token.hidden) continue;
-      if (!matchesQuery(query, token)) continue;
-      const state = data.tokenState?.get(token.mintAddress);
-      let balanceText = null;
-      if (state && state.error !== true && state.amountUnits != null) {
-        const decimals = Number.isInteger(state.decimals) ? state.decimals
-          : (Number.isInteger(token.decimals) ? token.decimals : 0);
-        balanceText = `${formatTokenAmount(BigInt(state.amountUnits), decimals)} ${token.symbol || 'TOKEN'}`;
-      } else if (state && state.error !== true && state.tokenAccountExists === false) {
-        balanceText = `0 ${token.symbol || 'TOKEN'}`;
+    // Remove only rows no longer in view. Balance-only refreshes keep the elements,
+    // listeners, focused item, and scroll anchor where the user left them.
+    for (const [key, { row }] of rows) {
+      if (visible.has(key)) continue;
+      row.destroy();
+      rows.delete(key);
+    }
+    let index = 0;
+    for (const [key, token] of visible) {
+      const isNative = key === NATIVE_ROW;
+      const balanceState = isNative ? null : data.tokenState?.get(key);
+      const balanceText = isNative ? data.nativeText : tokenBalance(token);
+      const stale = isNative ? data.stale : Boolean(balanceState?.stale);
+      const balanceNote = balanceState?.stale ? 'Cached' : balanceState?.error ? 'Unavailable' : null;
+      const usdValue = isNative ? data.nativeUsd : null;
+      let entry = rows.get(key);
+      // An identity/display change is rare. Rebuild only the affected row, not its neighbours.
+      if (!entry || entry.token.symbol !== token.symbol || entry.token.imageUrl !== token.imageUrl) {
+        entry?.row.destroy();
+        entry = { token };
+        entry.row = AssetRow({
+          symbol: token.symbol,
+          name: token.name,
+          mintAddress: token.mintAddress,
+          imageUrl: token.imageUrl,
+          network: networkLabel,
+          isNative,
+          balanceText,
+          stale,
+          balanceNote,
+          usdValue,
+          onClick: () => openDetails(entry.token),
+        });
+        rows.set(key, entry);
+      } else {
+        entry.token = token;
+        entry.row.setBalance(balanceText, stale, usdValue, balanceNote);
       }
-      const row = AssetRow({
-        symbol: token.symbol,
-        name: token.name,
-        balanceText,
-        network: networkLabel,
-        mintAddress: token.mintAddress,
-        imageUrl: token.imageUrl,
-        usdValue: null,
-      });
-      if (highlightMint && token.mintAddress === highlightMint) row.el.classList.add('just-added');
-      rows.push(row);
+      const position = listHost.childNodes[index++] || null;
+      if (entry.row.el !== position) listHost.insertBefore(entry.row.el, position);
     }
 
-    for (const row of rows) listHost.appendChild(row.el);
-    const empty = rows.length === 0;
-    emptyHint.classList.toggle('hidden', !empty);
-    emptyHint.textContent = empty ? `No tokens match “${searchField.value.trim()}”.` : '';
+    const empty = visible.size === 0;
+    const hint = !empty ? '' : query ? 'No matching tokens. Try a symbol, name, or mint address.'
+      : showHidden ? 'No hidden tokens.' : 'No tokens to display.';
+    if (emptyHint.textContent !== hint) emptyHint.textContent = hint;
 
     if (highlightMint) {
-      const target = rows.find((r) => r.el.classList.contains('just-added'));
-      target?.el.scrollIntoView?.({ block: 'nearest' });
-      highlightMint = null; // one-shot: the highlight fades, it never sticks to later repaints
+      const item = rows.get(highlightMint)?.row.el;
+      item?.classList.add('just-added');
+      item?.scrollIntoView?.({ block: 'nearest' });
+      highlightMint = null;
     }
   }
 
-  const addTokenBtn = track(Button({
-    label: 'Add custom token',
+  const addTokenBtn = track(IconButton({
+    title: 'Add custom token',
     iconName: 'plus',
+    variant: 'icon-btn-ghost',
     onClick: () => setView('add'),
   }));
-  addTokenBtn.el.classList.add('token-drawer-add');
+  const hiddenBtn = h('button', {
+    type: 'button',
+    class: 'icon-btn icon-btn-ghost',
+    title: 'Hidden tokens',
+    'aria-label': 'Hidden tokens',
+    'aria-pressed': 'false',
+  }, icon('eyeOff', 16));
+  function setHiddenMode(next) {
+    showHidden = next;
+    hiddenBtn.setAttribute('aria-pressed', String(showHidden));
+    listTitle.textContent = showHidden ? 'Hidden tokens' : 'Tokens';
+  }
+  sheet.d.on(hiddenBtn, 'click', () => {
+    setHiddenMode(!showHidden);
+    listScroll.scrollTop = 0;
+    renderList();
+  });
+  const listTitle = h('h2', { text: 'Tokens' });
+  const listHead = h('div', { class: 'modal-head token-drawer-head' }, [
+    h('span', { class: 'modal-icon' }, icon('coins', 18)),
+    listTitle,
+    h('div', { class: 'token-drawer-toolbar' }, [hiddenBtn, addTokenBtn.el, closeButton()]),
+  ]);
 
   const listView = h('div', { class: 'token-view' }, [
     listHead,
     searchField.el,
-    listHost,
-    emptyHint,
-    addTokenBtn.el,
+    listScroll,
   ]);
 
   // ============================================================================================
@@ -433,32 +446,149 @@ export function TokenDrawer({
     if (sheet.closed) return;
     sheet.setDismissible(true);
 
+    // A just-added mint belongs in the visible list, not under a previous Hidden/search filter.
+    setHiddenMode(false);
+    searchField.value = '';
     highlightMint = added.mint;
     resetAdd();
     setView('list');
     toast({
       tone: 'success',
       title: `${symbol} added`,
-      message: 'It now appears in your token list.',
+      message: rows.has(added.mint) ? 'It now appears in your token list.' : 'Token saved. Refresh Assets to update the list.',
     });
   }
 
   // ============================================================================================
+  // DETAIL VIEW — one read for the selected mint, zero RPCs for list rows.
+  const detailsBack = track(IconButton({ iconName: 'back', title: 'Back to tokens', onClick: () => setView('list') }));
+  const detailsTitle = h('h2', { text: 'Token details' });
+  const balanceValue = h('strong');
+  const detailFreshness = h('p', { class: 'hint', role: 'status' });
+  const mintFacts = h('dl', { class: 'token-detail-card token-mint-facts' });
+  const detailStatus = h('p', { class: 'hint', role: 'status' });
+  const retryBtn = track(Button({ label: 'Retry details', variant: 'secondary', onClick: () => loadDetails() }));
+  const visibilityBtn = h('button', { type: 'button', class: 'btn secondary' });
+  const visibilityNote = h('p', { class: 'hint' });
+  const detailView = h('div', { class: 'token-view hidden' }, [
+    h('header', { class: 'modal-head token-drawer-head' }, [detailsBack.el, detailsTitle, closeButton()]),
+    h('section', { class: 'token-detail-card' }, [h('h3', { text: 'My balance' }), balanceValue, detailFreshness]),
+    mintFacts, detailStatus, retryBtn.el, visibilityBtn, visibilityNote,
+  ]);
+
+  function currentSelection() {
+    return data.tokens?.find((token) => token.mintAddress === selection?.mintAddress) || selection;
+  }
+
+  function renderDetails() {
+    const token = currentSelection();
+    if (!token) return;
+    const mint = token.mintAddress;
+    detailsTitle.textContent = mintDetails?.ticker || token.symbol || token.name || 'Token details';
+    balanceValue.textContent = (mint ? tokenBalance(token) : data.nativeText) || 'Balance unavailable';
+    detailFreshness.textContent = (mint ? data.tokenState?.get(mint)?.stale : data.stale) ? 'Cached · may be out of date' : '';
+    const facts = [['Network', networkLabel]];
+    if (mint) facts.push(['Mint address', mint]);
+    if (mintDetails?.exists) {
+      const { decimals, supply, hasFreezeAuthority } = mintDetails;
+      if (Number.isInteger(decimals) && decimals >= 0 && decimals <= 18) {
+        facts.push(['Decimals', String(decimals)]);
+        if (supply != null && /^\d+$/.test(String(supply))) {
+          facts.push(['Total supply', formatTokenAmount(BigInt(supply), decimals)]);
+        }
+      }
+      if (typeof hasFreezeAuthority === 'boolean') facts.push(['Freeze authority', hasFreezeAuthority ? 'Present' : 'None']);
+    }
+    mintFacts.replaceChildren(...facts.flatMap(([term, value]) => [h('dt', { text: term }), h('dd', { text: value })]));
+    visibilityBtn.classList.toggle('hidden', !mint || !onSetVisibility);
+    visibilityBtn.textContent = token.hidden ? 'Show in Assets' : 'Remove from Assets';
+    visibilityNote.textContent = mint && onSetVisibility
+      ? 'This only changes what Assets shows. It does not move funds or delete the token.' : '';
+  }
+
+  async function loadDetails() {
+    const mint = selection?.mintAddress;
+    const id = ++attempt;
+    retryBtn.el.classList.add('hidden');
+    if (!mint || !onReadDetails) return;
+    detailStatus.textContent = 'Checking mint details…';
+    try {
+      const verified = await onReadDetails(mint);
+      if (sheet.closed || view !== 'detail' || id !== attempt) return;
+      mintDetails = verified?.exists ? verified : null;
+      detailStatus.textContent = mintDetails ? '' : 'Mint details unavailable.';
+      retryBtn.el.classList.toggle('hidden', Boolean(mintDetails));
+      renderDetails();
+    } catch {
+      if (sheet.closed || view !== 'detail' || id !== attempt) return;
+      detailStatus.textContent = 'Mint details could not be loaded.';
+      retryBtn.el.classList.remove('hidden');
+    }
+  }
+
+  function openDetails(token) {
+    selection = token;
+    mintDetails = null;
+    detailStatus.textContent = '';
+    setView('detail');
+    loadDetails();
+  }
+
+  sheet.d.on(visibilityBtn, 'click', async () => {
+    const token = currentSelection();
+    if (!token?.mintAddress || !onSetVisibility || visibilityPending) return;
+    const hidden = !token.hidden;
+    visibilityPending = true;
+    visibilityBtn.disabled = true;
+    sheet.setDismissible(false);
+    try {
+      await onSetVisibility(token.mintAddress, hidden);
+      if (sheet.closed) return;
+      data = { ...data, tokens: (data.tokens || []).map((row) => row.mintAddress === token.mintAddress
+        ? { ...row, hidden } : row) };
+      visibilityPending = false;
+      setView('list');
+    } catch {
+      if (!sheet.closed) visibilityNote.textContent = 'Could not update token visibility. Try again.';
+    } finally {
+      visibilityPending = false;
+      visibilityBtn.disabled = false;
+      if (!sheet.closed) sheet.setDismissible(true);
+    }
+  });
+
   // VIEW SWITCH
   // ============================================================================================
   function setView(next) {
     if (sheet.closed || next === view) return;
-    if (step === STEP.SAVING) return; // never abandon a save mid-flight
+    if (step === STEP.SAVING || visibilityPending) return; // never abandon a save mid-flight
+    const fromDetail = view === 'detail';
+    if (view === 'list') listScrollTop = listScroll.scrollTop;
+    attempt += 1;
     view = next;
     listView.classList.toggle('hidden', next !== 'list');
     addView.classList.toggle('hidden', next !== 'add');
+    detailView.classList.toggle('hidden', next !== 'detail');
     sheet.card.classList.toggle('is-adding', next === 'add');
+    sheet.card.classList.toggle('is-listing', next === 'list');
     if (next === 'add') {
       resetAdd();
       requestAnimationFrame(() => mintField.focus());
+    } else if (next === 'detail') {
+      renderDetails();
+      requestAnimationFrame(() => { if (!sheet.closed && view === 'detail') detailsBack.el.focus(); });
     } else {
+      const imported = Boolean(highlightMint);
       renderList();
-      requestAnimationFrame(() => searchField.focus());
+      const origin = fromDetail ? rows.get(selection?.mintAddress ?? NATIVE_ROW)?.row.el : null;
+      if (!imported) listScroll.scrollTop = listScrollTop;
+      requestAnimationFrame(() => {
+        if (!sheet.closed && view === 'list') {
+          const row = origin?.isConnected ? origin : null;
+          (row ?? searchField.control).focus({ preventScroll: true });
+          row?.scrollIntoView?.({ block: 'nearest' });
+        }
+      });
     }
   }
 
@@ -467,6 +597,7 @@ export function TokenDrawer({
   // ============================================================================================
   sheet.card.appendChild(listView);
   sheet.card.appendChild(addView);
+  sheet.card.appendChild(detailView);
 
   renderList();
   // The drawer's job is browsing tokens — put the caret in the search, not on Close.
@@ -482,6 +613,7 @@ export function TokenDrawer({
       if (sheet.closed) return;
       data = { ...data, ...next };
       if (view === 'list') renderList();
+      else if (view === 'detail') renderDetails();
     },
     destroy() {
       close();

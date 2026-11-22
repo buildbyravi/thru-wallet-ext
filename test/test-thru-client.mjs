@@ -12,6 +12,7 @@ import {
   ACCOUNT_CREATE_PROGRAM_ID,
   getClient,
   getAccountInfo,
+  checkNetworkHealth,
   getAccountOwnerAddress,
   parseMintAccount,
 } from '../src/lib/thru-client.js';
@@ -30,6 +31,25 @@ function decode(data) {
     recipientIdx: view.getUint16(6, true),
     amount: view.getBigUint64(8, true),
   };
+}
+
+console.log('\n[health] measured probe status distinguishes an answering node from failures');
+{
+  const sdk = getClient();
+  const original = sdk.accounts.get;
+  try {
+    sdk.accounts.get = async () => ({ meta: { balance: 0n } });
+    const ok = await checkNetworkHealth();
+    assert(['healthy', 'slow'].includes(ok.status) && Number.isFinite(ok.latencyMs) && ok.latencyMs >= 0,
+      'a successful RPC returns actual elapsed milliseconds, including a valid rounded zero');
+    sdk.accounts.get = async () => { throw Object.assign(new Error('not found'), { code: 5 }); };
+    const missing = await checkNetworkHealth();
+    assert(['healthy', 'slow'].includes(missing.status) && Number.isFinite(missing.latencyMs),
+      'SDK account-not-found means the node answered');
+    sdk.accounts.get = async () => { throw new Error('network timeout'); };
+    const offline = await checkNetworkHealth();
+    assert(offline.status === 'offline' && offline.latencyMs === null, 'a failed probe never invents healthy status or latency');
+  } finally { sdk.accounts.get = original; }
 }
 
 console.log('\n[1] Faucet instruction encoding round-trips correctly');
@@ -125,6 +145,7 @@ assert(decodedFromAlice.success === true, 'vmError 0 decodes as success');
 const decodedFromBob = decodeHistoryEntry(transferTx, bob.address);
 assert(decodedFromBob.kind === 'received', 'the same transaction, viewed by the recipient, decodes as "received"');
 assert(decodedFromBob.counterparty === alice.address, "recipient's view resolves the counterparty back to the sender");
+assert(decodeHistoryEntry(transferTx, '').kind === 'other', 'an unbound viewer is never credited with a native transfer');
 
 console.log('\n[7] decodeHistoryEntry marks a reverted transaction as unsuccessful, and leaves unrelated programs undecoded');
 const revertedTx = new Transaction({
@@ -148,16 +169,13 @@ assert(decodedOther.kind === 'other', "a call to a program that isn't the known 
 assert(decodedOther.amount === null, 'no amount is inferred for an unrelated program');
 
 console.log('\n[7b] account-registration transactions decode as registration, never "Unknown transaction"');
-// The reported defect: the user\'s own account-registration pre-image (derive_account +
-// create_account against the account-creation program) rendered as "Unknown transaction".
-// It is claimed by program id BEFORE the transfer-shaped canDecode gate — while every OTHER
-// unknown program must keep failing that gate honestly (pinned by [7] above).
+// Match the SDK transaction builder's self-activation shape: no instruction bytes,
+// zero nonce, and a fee-payer state proof. No secret or real proof is needed for this decode.
 const registrationTx = new Transaction({
   feePayer: alice.publicKey,
   program: ACCOUNT_CREATE_PROGRAM_ID,
-  header: { fee: 0n, nonce: 3n, startSlot: 0n },
-  accounts: { readWriteAccounts: [alice.publicKey] },
-  instructionData: new Uint8Array(24), // derive_account + create_account shape: not 16-byte Transfer data
+  header: { fee: 0n, nonce: 0n, startSlot: 0n },
+  proofs: { feePayerStateProof: new Uint8Array([1]) },
 });
 registrationTx.setSignature(Signature.from(new Uint8Array(64)));
 registrationTx.executionResult = { vmError: 0 };
@@ -168,6 +186,13 @@ assert(decodedReg.counterparty === null, 'registration has no counterparty');
 assert(decodedReg.success === true, 'a successful registration still reports success');
 const decodedRegOtherView = decodeHistoryEntry(registrationTx, bob.address);
 assert(decodedRegOtherView.kind === 'registration', 'the registration label does not depend on the viewer');
+const noop = new Transaction({
+  feePayer: alice.publicKey,
+  program: ACCOUNT_CREATE_PROGRAM_ID,
+  header: { fee: 0n, nonce: 0n, startSlot: 0n },
+  instructionData: new Uint8Array([0]),
+});
+assert(decodeHistoryEntry(noop, alice.address).kind === 'other', 'a generic NOOP is not a registration');
 
 console.log('\n[8] parseThruAmount converts human THRU amounts to exact raw units without floating-point rounding errors');
 assert(parseThruAmount('1') === UNITS_PER_THRU, '"1" parses to exactly 1e9 units');
@@ -593,12 +618,10 @@ console.log('\n[15] formatTokenAmount / parseTokenAmount convert exactly at any 
     'the fee is surfaced as feeDeclaredUnits, not feeUnits');
   assert(!/entry\.feeUnits\s*=/.test(fn),
     'no bare feeUnits field is emitted that a caller could read as an amount charged');
-  assert(/entry\.blockTimeMs = null;/.test(fn),
-    'blockTimeMs starts null, so an unavailable block time stays unavailable');
+  assert(/entry\.blockTimeMs = await getBlockTimeMs\(tx\.slot, network\.id\)/.test(fn),
+    'detail shares the feed’s block-time validation and cache, including null for zero times');
   assert(!/Date\.now\(\)/.test(fn),
     'the detail path never substitutes the local clock for a chain timestamp');
-  assert(/block\.blockTimeNs > 0n/.test(fn),
-    'a zero blockTimeNs is treated as unknown rather than as the epoch');
   assert(/decodeHistoryEntry\(tx, viewerAddress\)/.test(fn),
     'the detail reuses the existing decoder, so it cannot disagree with the list view');
 }

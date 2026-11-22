@@ -201,15 +201,49 @@ form > .btn.text {
 /* ---- 196px Ink Header -------------------------------------------------- */
 .dash-header {
   position: relative;
-  height: 196px;
-  background: var(--header-gradient, radial-gradient(135% 125% at 50% 90%, #4a1820 0%, #2e1116 55%, #1d0a0d 100%));
+  min-height: 196px;
+  background: linear-gradient(#ffffff0a, #ffffff0a),
+    var(--header-gradient, radial-gradient(135% 125% at 50% 90%, #4a1820 0%, #2e1116 55%, #1d0a0d 100%));
   color: #ffffff;
   padding: 12px 16px 14px;
   overflow: hidden;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  gap: 8px;
+}
+
+.dash-balance-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
+  flex: 1;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.dash-balance-art-clip {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+/* Local decoration stays below the balance and account controls. */
+.dash-header-art {
+  position: absolute;
+  right: -24px;
+  bottom: -10px;
+  width: 240px;
+  height: auto;
+  pointer-events: none;
+  opacity: 0.74;
+}
+
+@media (forced-colors: active) {
+  .dash-header-art { display: none; }
 }
 
 .dash-header-top {
@@ -293,6 +327,8 @@ form > .btn.text {
   white-space: nowrap;
   flex-shrink: 0;
 }
+/* The branded dashboard header has its own light-on-ink address color. */
+.dash-header .account-pill-address .address-text { color: inherit; }
 .dash-header .account-pill .byte-mark {
   width: 18px;
   height: 18px;
@@ -316,14 +352,14 @@ form > .btn.text {
   z-index: 2;
 }
 
-/* The box is the token-drawer entry (Rabby's clickable balance card): the whole hero is
-   a control when the dashboard passes onOpen. Negative margin + padding keep the visual
-   position identical while the hit area grows to the full box. */
+/* The full inset card remains the entry to the existing Assets drawer. */
 .dash-balance-hero.clickable {
   cursor: pointer;
-  padding: 8px;
-  margin: -8px;
-  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 12px;
+  border-radius: inherit;
 }
 .dash-balance-hero.clickable:hover {
   background: rgba(255, 255, 255, 0.06);
@@ -333,22 +369,17 @@ form > .btn.text {
   outline-offset: 2px;
 }
 
-/* Quiet token-symbols line inside the box — the Rabby chain-chips analog. REAL symbols
-   only; the sample preview row never appears here. */
-.dash-balance-summary {
-  margin-top: 4px;
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.55);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
 .dash-balance-row {
   display: flex;
-  align-items: baseline;
+  align-items: flex-start;
   gap: 8px;
 }
-.dash-balance-usd {
+.dash-balance-amounts {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.dash-balance-usd,
+.dash-balance-native.dash-balance-primary {
   font-size: 32px;
   font-weight: 700;
   letter-spacing: -0.03em;
@@ -384,6 +415,10 @@ form > .btn.text {
   color: rgba(255, 255, 255, 0.65);
   margin-top: 4px;
 }
+.dash-balance-native.dash-balance-primary {
+  margin: 0;
+  font-size: clamp(20px, 7vw, 30px);
+}
 .dash-balance-delta {
   font-size: 12px;
   font-weight: 500;
@@ -402,7 +437,7 @@ form > .btn.text {
 .dash-pending-badge {
   position: absolute;
   right: 16px;
-  bottom: 14px;
+  top: 54px;
   background: rgba(255, 255, 255, 0.12);
   border-radius: 999px;
   padding: 2px 8px;
@@ -418,7 +453,8 @@ form > .btn.text {
   grid-template-columns: repeat(3, 1fr);
   gap: 1px;
   background: var(--border-hairline, #e0e5ec);
-  border-radius: 0;
+  border-radius: 12px 12px 0 0;
+  margin: 12px 16px 0;
   overflow: hidden;
   box-sizing: border-box;
 }
@@ -494,14 +530,12 @@ form > .btn.text {
 }
 .token-drawer-empty {
   margin: 0;
-  padding: 18px 8px;
   text-align: center;
   font-size: 12px;
+  overflow-wrap: anywhere;
   color: var(--foot, #6a7580);
 }
-.token-drawer .token-drawer-add {
-  width: 100%;
-}
+.token-drawer-empty:not(:empty) { padding: 18px 8px; }
 
 .token-ledger {
   background: var(--surface-1);
@@ -549,6 +583,12 @@ form > .btn.text {
   flex-shrink: 0;
   overflow: hidden;
   margin-right: 10px;
+}
+/* The native artwork fills its circular crop; the shared avatar and image
+   borders would otherwise draw two rims around the THRU mark. */
+.token-row-avatar.native,
+.token-row-avatar.native > .token-row-logo {
+  border: 0;
 }
 .token-row-avatar.native {
   background: var(--accent, #c43a40);
@@ -612,7 +652,8 @@ form > .btn.text {
   align-items: center;
   gap: 6px;
 }
-.token-row-usd {
+.token-row-usd,
+.token-row-balance-note {
   font-size: 11px;
   color: var(--foot, #6a7580);
 }
@@ -642,18 +683,18 @@ form > .btn.text {
 }
 
 /* ---- Current Connection Footer ----------------------------------------- */
+.app-shell:has(.current-connection:not(.hidden)) {
+  background: var(--bg, #f2f4f7);
+}
 .current-connection {
-  height: 40px;
-  border-top: 1px solid var(--border-hairline, #e0e5ec);
+  min-height: 48px;
+  border-radius: 12px;
+  margin: 12px 16px;
   background: var(--surface-1);
-  padding: 0 16px;
+  padding: 6px 10px;
   display: flex;
   align-items: center;
   gap: 8px;
-  width: 100%;
-  border-left: 0;
-  border-right: 0;
-  border-bottom: 0;
   box-sizing: border-box;
 }
 .current-connection-dapp {
@@ -689,9 +730,10 @@ form > .btn.text {
   font-weight: 500;
   color: var(--accent, #c43a40);
   background: transparent;
-  border: 0;
-  padding: 4px 6px;
-  border-radius: 4px;
+  border: 1px solid var(--border-hairline, #e0e5ec);
+  min-height: 34px;
+  padding: 4px 8px;
+  border-radius: 8px;
   cursor: pointer;
   flex-shrink: 0;
 }
@@ -812,131 +854,227 @@ form > .btn.text {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* ---- Activity cards (P1, Rabby-inspired) --------------------------------
-   One transaction per card: calm time + net/signature meta on top, the method
-   glyph and verb on the left, the signed delta right-aligned. Failed entries
-   wear a badge. P2: .tx-card-open marks a card that opens the detail sheet. */
+/* ---- Activity cards ----------------------------------------------------- */
 .tx-card {
   background: var(--surface-1);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   padding: var(--sp-3);
-  margin-bottom: var(--sp-2);
 }
 
-/* An openable card must LOOK openable — a card that responds to Enter but gives no hover
-   or focus feedback reads as broken. The focus ring is inherited from base.css's
-   :focus-visible rule, which already targets any focusable element. */
-.tx-card-open {
-  cursor: pointer;
-  transition: border-color var(--t-fast), background var(--t-fast);
+.history-filters { gap: 6px; }
+.history-filters .chip-option {
+  min-height: 30px;
+  padding-inline: 8px;
 }
-.tx-card-open:hover {
-  border-color: var(--border-strong);
-  background: var(--surface-2);
-}
+.tx-card-open:has(.tx-card-body:hover) { border-color: var(--border-strong); }
 .tx-card-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: var(--sp-2);
+  column-gap: var(--sp-2);
   margin-bottom: var(--sp-2);
   font-size: var(--fs-xs);
 }
 .tx-card-time {
-  color: var(--text-3);
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
 }
 .tx-card-meta {
   display: flex;
   align-items: center;
   gap: var(--sp-1);
+  margin-inline-start: auto;
 }
 .tx-card-net {
-  color: var(--text-3);
-}
-.tx-card-net::after {
-  content: " ·";
+  color: var(--text-2);
+  margin-inline-end: var(--sp-1);
 }
 .tx-card-sig {
   font-family: var(--font-mono);
-  color: var(--text-3);
+  color: var(--text-2);
+}
+.tx-card-meta a.tx-card-sig {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  border-bottom: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 .tx-card-body {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) fit-content(46%);
   align-items: center;
-  gap: var(--sp-3);
-}
-.tx-card-main {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
   gap: var(--sp-2);
+  min-height: 34px;
+}
+button.tx-card-body {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+button.tx-card-body:hover { background: var(--surface-2); }
+.tx-card-glyph {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  color: var(--text-3);
+}
+.tx-card-glyph.failed { color: var(--negative); }
+.tx-card-glyph.pending { color: var(--gold); }
+.tx-card-main {
+  display: grid;
+  gap: var(--sp-1);
+  min-width: 0;
+  line-height: 1.2;
+}
+.tx-card-method {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px var(--sp-1);
   min-width: 0;
 }
-/* line-height:1 on both lines removes the inherited 1.5 half-leading, so the 11px
-   counterparty no longer hangs top-level with the 13px verb; inline-flex centres the
-   sub's cap-height against the title's own. */
 .tx-card-title {
   font-weight: 600;
   font-size: var(--fs-md);
   color: var(--text-1);
-  line-height: 1;
-  display: inline-flex;
-  align-items: center;
+  overflow-wrap: anywhere;
 }
 .tx-card-sub {
   font-size: var(--fs-xs);
-  color: var(--text-3);
-  line-height: 1;
-  display: inline-flex;
-  align-items: center;
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .tx-card-badge {
   font-size: var(--fs-xs);
-  padding: 1px var(--sp-2);
-  border-radius: var(--radius-md);
+  color: var(--text-2);
 }
-.tx-card-badge.failed {
-  color: var(--negative);
-  background: var(--negative-tint);
-  border: 1px solid var(--negative-border);
-}
+.tx-card-badge.failed { color: var(--negative); }
 .tx-card-amounts {
-  margin-left: auto;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
+  min-width: 0;
+  text-align: end;
 }
 .tx-amount {
-  font-family: var(--font-mono);
-  font-size: var(--fs-md);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
   color: var(--text-1);
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
-.tx-amount.positive {
-  color: var(--positive);
-}
+.tx-amount.positive { color: var(--positive); }
 
-/* ---- Toggle Switch (Side Panel Mode) ---- */
-.toggle-row {
+/* ---- Settings: grouped rows -------------------------------------------- */
+.settings-screen { background: var(--bg); }
+.settings-groups {
+  display: grid;
+  gap: var(--sp-5);
+}
+.settings-heading {
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--text-2);
+  margin: 0 0 var(--sp-2) 2px;
+}
+.settings-card {
+  min-inline-size: 0;
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+  box-shadow: inset 0 0 0 1px var(--border-hairline);
+}
+.settings-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-block-size: 50px;
+  padding: 8px 14px;
+  margin: 0;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-1);
+  font: inherit;
+  text-align: start;
+  text-decoration: none;
+}
+.settings-row > svg {
+  color: var(--text-2);
+  flex: none;
+}
+.settings-row-label {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.settings-row-value {
+  max-inline-size: 42%;
+  color: var(--text-2);
+  text-align: end;
+  overflow-wrap: anywhere;
+}
+:is(button:not(:disabled), a).settings-row {
+  cursor: pointer;
+}
+:is(button:not(:disabled), a).settings-row:hover,
+:is(button:not(:disabled), a).settings-row:focus-visible {
+  background: var(--surface-2);
+}
+.settings-row:focus-visible { outline-offset: -2px; }
+.settings-row:disabled {
+  cursor: default;
+  opacity: 1;
+  color: var(--text-2);
+}
+.settings-picker { max-height: 82%; }
+.settings-picker-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 14px;
-  background: var(--surface-1, #ffffff);
-  border: 1px solid var(--border-hairline, #e0e5ec);
-  border-radius: var(--radius-md, 8px);
-  gap: 12px;
 }
-.toggle-label-group {
+.settings-detail { padding-block-end: var(--sp-2); }
+.settings-options {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.settings-option {
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-weight: 600;
-  font-size: var(--fs-md, 13px);
-  color: var(--text-1, #151b1e);
+  justify-content: space-between;
+  gap: var(--sp-3);
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  text-align: start;
 }
+.settings-option-check { visibility: hidden; flex: none; }
+.settings-option[aria-pressed="true"] .settings-option-check { visibility: visible; }
+.settings-option[aria-disabled="true"] { cursor: wait; }
+.settings-choice-title, .settings-label-with-help, .settings-footer {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.settings-choice-title, .settings-footer {
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+.settings-footer { justify-content: center; }
+
+/* ---- Settings switches ---- */
 .toggle-switch {
   width: 42px;
   height: 24px;
@@ -950,6 +1088,10 @@ form > .btn.text {
   display: inline-flex;
   align-items: center;
   flex-shrink: 0;
+}
+.toggle-switch[aria-busy="true"] {
+  cursor: wait;
+  opacity: 0.72;
 }
 .toggle-switch.active {
   background: var(--positive);
@@ -1273,6 +1415,8 @@ form > .btn.text {
    continuous panel; the 1px hairline matches the grid's own `gap: 1px` seam. */
 .dashboard-services-grid {
   margin-top: 1px;
+  border-radius: 0 0 12px 12px;
+  background: var(--surface-1);
 }
 
 /* ---- Send live-updating balance shimmer wave ----------------------------- */
@@ -1308,3 +1452,7 @@ form > .btn.text {
     color: var(--text-3);
   }
 }
+
+/* Dashboard chooser reuses the focused Settings view inside the shared bottom sheet. */
+.network-chooser { padding: 0; }
+.network-chooser .screen { flex: none; }

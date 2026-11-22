@@ -23,7 +23,6 @@ const FILTERS = [
   { id: 'all', label: 'All' },
   { id: 'sent', label: 'Sent' },
   { id: 'received', label: 'Received' },
-  { id: 'faucet', label: 'Faucet' },
   { id: 'failed', label: 'Failed' },
 ];
 
@@ -46,7 +45,7 @@ export function HistoryRoute({ back }) {
   const banner = Banner({ tone: 'error' });
   const listHost = h('div', { class: 'list' });
   const pendingHost = h('div', { class: ['stack', 'stack-2', 'hidden'] });
-  const filterRow = h('div', { class: 'row-flex wrap' });
+  const filterRow = h('div', { class: 'row-flex wrap history-filters', role: 'group', 'aria-label': 'History filters' });
   const refreshIcon = icon('refresh', 14);
   const refreshBtn = h('button', {
     type: 'button',
@@ -108,7 +107,7 @@ export function HistoryRoute({ back }) {
     return entry.kind === activeFilter;
   }
 
-  // ---- Day-grouped cards (P1) ---------------------------------------------
+  // ---- Pending activity ---------------------------------------------------
   // Row-era rendering (describe/glyphFor/entryRow) is gone: tx-card.js owns the card.
   let pendingPollTimer = null;
 
@@ -126,11 +125,12 @@ export function HistoryRoute({ back }) {
         stopPendingPoll();
         return;
       }
+      const seq = loadSeq;
       try {
         const res = await bridge.send('tx.reconcilePending');
         if (res?.settled > 0) {
           const next = await bridge.send('tx.getPending').catch(() => []);
-          if (!destroyed) {
+          if (isCurrent(seq)) {
             pending = Array.isArray(next) ? next : [];
             paintPending();
             load({ pendingHint: pending });
@@ -150,6 +150,8 @@ export function HistoryRoute({ back }) {
       .map((e) => String(e?.signature || ''))
       .filter(Boolean));
     const active = pending.filter((p) => p.status === 'submitted'
+      && account?.address && p.from === account.address
+      && (!p.networkId || p.networkId === network?.id)
       && !displayed.has(String(p.signature)));
     pendingHost.classList.toggle('hidden', active.length === 0);
     if (!active.length) {
@@ -166,10 +168,11 @@ export function HistoryRoute({ back }) {
       pendingHost.appendChild(h('div', { class: 'row' }, [
         h('span', { class: 'row-glyph pending' }, icon('spinner', 13, { className: 'spinning' })),
         h('span', { class: 'row-body' }, [
-          h('span', { class: 'row-title', text: p.amountUnits
+          h('span', { class: 'row-title', text: ['transfer', 'faucet', 'token'].includes(p.kind) && p.amountUnits
             ? (p.displayAmount
                 ? `${p.kind === 'faucet' ? 'Claiming' : 'Sending'} ${p.displayAmount}`
-                : `${p.kind === 'faucet' ? 'Claiming' : 'Sending'} ${formatThru(BigInt(p.amountUnits))} THRU`)
+                : p.kind === 'token' ? 'Sending token'
+                  : `${p.kind === 'faucet' ? 'Claiming' : 'Sending'} ${formatThru(BigInt(p.amountUnits))} THRU`)
             : 'Transaction in flight' }),
           h('span', { class: 'row-sub', text: 'Waiting for confirmation' }),
         ]),
@@ -191,11 +194,12 @@ export function HistoryRoute({ back }) {
     current.destroy();
   }
 
-  function openDetail(entry) {
+  function openDetail(entry, opener) {
     if (!entry?.signature) return; // nothing to show, and nothing to fetch
     closeSheet();
     sheet = TxDetailSheet({
       entry,
+      opener,
       network,
       knownAccounts,
       // The sheet never calls the bridge itself — domain components stay bridge-free
@@ -230,7 +234,7 @@ export function HistoryRoute({ back }) {
       return;
     }
 
-    // Rabby-style stream: render transaction cards directly without synthetic day headers.
+    // One flat transaction stream. Date and slot belong on the card, never in day sections.
     for (const entry of shown) {
       // `entry` is captured by identity, not by index: the sheet must open against the
       // transaction the user actually tapped even after a filter change reorders the list.
@@ -338,6 +342,7 @@ export function HistoryRoute({ back }) {
         network = activeNet;
       }
       const viewed = { address: account.address, networkId: network.id };
+      paintPending();
 
       // This is STORAGE ONLY. Its response is scoped by both address and network; discard a
       // stale worker reply for a different chain instead of showing another chain's history.
@@ -384,14 +389,14 @@ export function HistoryRoute({ back }) {
       cursor = feed.nextCursor ?? null;
       feedSynced = feed.synced !== false;
       if (feedSynced) banner.clear();
-      else banner.set('Showing cached activity — offline or network unavailable. Reconnect to sync.', 'warning');
+      else banner.set('Cached · Sync unavailable', 'warning');
       paintPending();
       paintList();
     } catch (error) {
       if (!isCurrent(seq)) return;
       feedSynced = false;
       banner.set(entries.length
-        ? 'Showing cached activity — could not sync with the network. Reconnect to refresh.'
+        ? 'Cached · Sync unavailable'
         : error.message || 'Could not load activity.', entries.length ? 'warning' : 'error');
       paintPending();
       paintList();
@@ -432,7 +437,8 @@ export function HistoryRoute({ back }) {
   d.add(() => clearInterval(autoRefreshTimer));
 
   d.add(
-    bridge.onEvent('pendingTxChanged', ({ pending: next } = {}) => {
+    bridge.onEvent('pendingTxChanged', ({ pending: next, networkId } = {}) => {
+      if (networkId && network && networkId !== network.id) return;
       // A settled transaction should appear in the list, not just vanish from Pending.
       load({ pendingHint: next });
     }),

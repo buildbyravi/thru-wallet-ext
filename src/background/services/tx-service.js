@@ -2,7 +2,7 @@
 
 import * as vault from '../../lib/vault.js';
 import * as thruClient from '../../lib/thru-client.js';
-import { getActiveNetworkConfig, getActiveNetworkId } from './network-service.js';
+import { getActiveNetworkConfig, getActiveNetworkId, getNetworkGeneration } from './network-service.js';
 import { assertWhitelisted } from './preferences-service.js';
 import * as pending from './pending-tx-service.js';
 import * as balances from './balance-service.js';
@@ -96,28 +96,12 @@ export async function claimFaucet(amountUnits, expected = {}) {
     error.code = 'REVIEW_NETWORK_CHANGED';
     throw error;
   }
-  let trackedSignature = null;
-  const trackSubmitted = (signature, header = null) => {
-    if (!signature || trackedSignature === signature) return null;
-    trackedSignature = signature;
-    return pending.track({
-      signature,
-      kind: 'faucet',
-      from: feePayer.address,
-      to: feePayer.address,
-      amountUnits: rawUnits.toString(),
-      networkId: network.id,
-      // The built header, so an unknown outcome can later be classified as "may still land"
-      // or "expired" instead of being reported as one vague timeout.
-      startSlot: header?.startSlot ?? null,
-      expiryAfter: header?.expiryAfter ?? null,
-    });
-  };
-  let result;
-  result = normalizeTxResult(await thruClient.claimFaucet(feePayer, rawUnits, {
-    onSubmitted: trackSubmitted,
-  }));
-  if (!trackedSignature) await trackSubmitted(result.signature);
+  const tracking = pending.submissionTracker({
+    kind: 'faucet', from: feePayer.address, to: feePayer.address,
+    amountUnits: rawUnits.toString(), networkId: network.id,
+  });
+  const result = normalizeTxResult(await thruClient.claimFaucet(feePayer, rawUnits, tracking));
+  await tracking.onSubmitted(result.signature); // fallback if the stream did not report submission
   await balances.getBalances([feePayer.address]);
 
   return result;
@@ -198,30 +182,12 @@ async function sendTransfer(toAddress, amountUnits, expected, { allowDuplicate =
     // Recipient lookup can take seconds. Refuse a stale review if another extension page
     // changed the source or chain while this RPC was in flight.
     await assertSendContext(expected, await vault.getActiveAccount());
-    // Track at SUBMISSION — onSubmitted fires when the sendAndTrack stream carries the
-    // signature, before executionResult. The pending window is exactly when the duplicate
-    // warning must work (reported 2026-10-03: "send, then try resend — no warning until tx
-    // is confirmed"). The post-return call is a fallback for streams that never fired the
-    // hook; track() dedupes by signature.
-    let trackedSignature = null;
-    const trackSubmitted = (signature, header = null) => {
-      if (!signature || trackedSignature === signature) return null;
-      trackedSignature = signature;
-      return pending.track({
-        signature,
-        kind: 'transfer',
-        from: feePayer.address,
-        to: target,
-        amountUnits: rawUnits.toString(),
-        networkId: network.id,
-        startSlot: header?.startSlot ?? null,
-        expiryAfter: header?.expiryAfter ?? null,
-      });
-    };
-    const result = normalizeTxResult(await thruClient.sendTransfer(feePayer, target, rawUnits, {
-      onSubmitted: trackSubmitted,
-    }));
-    if (!trackedSignature) await trackSubmitted(result.signature);
+    const tracking = pending.submissionTracker({
+      kind: 'transfer', from: feePayer.address, to: target,
+      amountUnits: rawUnits.toString(), networkId: network.id,
+    });
+    const result = normalizeTxResult(await thruClient.sendTransfer(feePayer, target, rawUnits, tracking));
+    await tracking.onSubmitted(result.signature);
     // The chain has already returned a signature. Do not hold the signing response behind
     // another RPC just to repaint a balance: an offline balance node could otherwise make a
     // completed send hit the bridge timeout and look like an unknown submission.
@@ -270,13 +236,8 @@ export async function checkDuplicate({ toAddress, amountUnits, mintAddress = nul
 async function resolveTokenHistory(entries, viewerAddress) {
   if (!entries.some((e) => typeof e.kind === 'string' && e.kind.startsWith('token'))) return;
 
-  let registry = [];
-  try {
-    registry = await tokenService.listDeployedTokens();
-  } catch {
-    return; // registry unreadable — leave entries unresolved rather than guessing
-  }
-  if (!registry.length) return;
+  // An unreadable or empty registry also runs through the unresolved-amount branch.
+  const registry = await tokenService.listDeployedTokens().catch(() => []);
 
   // The viewer's OWN token-account addresses, one per known mint. Direction can only be
   // decided for these; anyone else's token account is not reversibly mapped to its owner.
@@ -297,7 +258,7 @@ async function resolveTokenHistory(entries, viewerAddress) {
       const fromMine = entry.tokenSource ? mine.get(entry.tokenSource) : null;
       const toMine = entry.tokenDest ? mine.get(entry.tokenDest) : null;
       const token = fromMine || toMine;
-      if (token) {
+      if (token && entry.kind === 'token-transfer') {
         entry.kind = fromMine ? 'token-sent' : 'token-received';
         entry.tokenSymbol = token.symbol || null;
         entry.tokenDecimals = Number.isInteger(token.decimals) ? token.decimals : null;
@@ -316,6 +277,26 @@ async function resolveTokenHistory(entries, viewerAddress) {
       entry.tokenSymbol = byMint.get(entry.tokenMint).symbol || null;
     }
   }
+}
+
+function serializeHistoryEntry(entry, fallbackSignature = null) {
+  return {
+    signature: entry.signature ? String(entry.signature) : fallbackSignature,
+    slot: entry.slot != null ? String(entry.slot) : null,
+    success: entry.success,
+    programAddress: entry.programAddress ? String(entry.programAddress) : '',
+    kind: entry.kind || 'other',
+    amount: entry.amount != null ? String(entry.amount) : null,
+    counterparty: entry.counterparty ? String(entry.counterparty) : null,
+    // Token-program fields (null for non-token entries). tokenMint is an address string;
+    // tokenSymbol/tokenDecimals are only attached by the resolution pass below, when the mint
+    // is one this wallet knows about.
+    tokenSource: entry.tokenSource ? String(entry.tokenSource) : null,
+    tokenDest: entry.tokenDest ? String(entry.tokenDest) : null,
+    tokenMint: entry.tokenMint ? String(entry.tokenMint) : null,
+    tokenSymbol: null,
+    tokenDecimals: null,
+  };
 }
 
 /**
@@ -339,38 +320,20 @@ export async function listHistory(address, pageSizeOrOptions = 15) {
 
   const limit = Math.min(100, Math.max(1, Math.floor(Number(options.limit) || 15)));
   const cursor = Math.max(0, Math.floor(Number(options.cursor) || 0));
+  const generation = getNetworkGeneration();
   const assertNetwork = async () => {
-    if ((await getActiveNetworkId()) === network.id) return;
+    if ((await getActiveNetworkId()) === network.id && getNetworkGeneration() === generation) return;
     const error = new Error('The network changed while fetching history. Retry on the new network.');
     error.code = 'NETWORK_CHANGED';
     throw error;
   };
 
-  // Over-fetch by the cursor so a page beyond the first still has rows to slice.
-  const entries = await thruClient.listAccountHistory(address, limit + cursor);
+  // Ask for one sentinel row when paging so the final page can report a real end.
+  const entries = await thruClient.listAccountHistory(address, limit + cursor + (paged ? 1 : 0));
   await assertNetwork();
-  const serialized = entries.map((entry) => ({
-    signature: entry.signature ? String(entry.signature) : null,
-    slot: entry.slot != null ? String(entry.slot) : null,
-    success: entry.success,
-    programAddress: entry.programAddress ? String(entry.programAddress) : '',
-    kind: entry.kind || 'other',
-    amount: entry.amount != null ? String(entry.amount) : null,
-    counterparty: entry.counterparty ? String(entry.counterparty) : null,
-    // Token-program fields (null for non-token entries). tokenMint is an address string;
-    // tokenSymbol/tokenDecimals are only attached by the resolution pass below, when the mint
-    // is one this wallet knows about.
-    tokenSource: entry.tokenSource ? String(entry.tokenSource) : null,
-    tokenDest: entry.tokenDest ? String(entry.tokenDest) : null,
-    tokenMint: entry.tokenMint ? String(entry.tokenMint) : null,
-    tokenSymbol: null,
-    tokenDecimals: null,
-  }));
-
-  await resolveTokenHistory(serialized, address);
-
-  const page = serialized.slice(cursor, cursor + limit);
-  const nextCursor = serialized.length > cursor + limit ? cursor + limit : null;
+  const page = entries.slice(cursor, cursor + limit).map((entry) => serializeHistoryEntry(entry));
+  const nextCursor = entries.length > cursor + limit ? cursor + limit : null;
+  await resolveTokenHistory(page, address);
 
   // The first-page feed does its own cache-aware timestamp merge. Direct paginated reads
   // (History's Load more and its legacy fallback) also deserve block-derived dates, but
@@ -437,6 +400,9 @@ export async function getTransactionDetail(signature, address) {
     }
   }
 
+  const network = await getActiveNetworkConfig();
+  const generation = getNetworkGeneration();
+  const isCurrent = async () => await getActiveNetworkId() === network.id && getNetworkGeneration() === generation;
   let entry;
   try {
     entry = await thruClient.getTransactionDetail(sig, viewer);
@@ -450,24 +416,15 @@ export async function getTransactionDetail(signature, address) {
     };
   }
 
-  const serialized = {
-    signature: entry.signature ? String(entry.signature) : sig,
-    slot: entry.slot != null ? String(entry.slot) : null,
-    success: entry.success,
-    programAddress: entry.programAddress ? String(entry.programAddress) : '',
-    kind: entry.kind || 'other',
-    amount: entry.amount != null ? String(entry.amount) : null,
-    counterparty: entry.counterparty ? String(entry.counterparty) : null,
-    tokenSource: entry.tokenSource ? String(entry.tokenSource) : null,
-    tokenDest: entry.tokenDest ? String(entry.tokenDest) : null,
-    tokenMint: entry.tokenMint ? String(entry.tokenMint) : null,
-    tokenSymbol: null,
-    tokenDecimals: null,
-  };
+  const unavailable = (reason) => ({ supported: false, signature: sig, reason });
+  if (!await isCurrent()) return unavailable('The network changed while loading this transaction.');
+  if (entry.signature && entry.signature !== sig) return unavailable('The network returned a different transaction.');
+  const serialized = serializeHistoryEntry(entry, sig);
 
   // Same second pass the list uses, so the sheet can never disagree with the card it
   // opened from about which mint moved or in which direction.
   await resolveTokenHistory([serialized], viewer);
+  if (!await isCurrent()) return unavailable('The network changed while loading this transaction.');
 
   return {
     supported: true,

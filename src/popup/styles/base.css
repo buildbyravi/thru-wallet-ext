@@ -89,6 +89,9 @@ h2 {
   font-variant-numeric: tabular-nums;
 }
 
+/* Addresses inside native buttons must not inherit the browser's black button text. */
+.address-text { color: var(--text-2); }
+
 .hidden { display: none !important; }
 
 svg { display: block; }

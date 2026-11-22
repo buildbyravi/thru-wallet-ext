@@ -4,12 +4,23 @@
 // be fetched serially, nor may a long registry open an unbounded number of RPC sockets.
 import assert from 'node:assert/strict';
 import { readRegisteredTokenBalances } from '../src/background/services/token-service.js';
+import { isVerifiedTokenBalance } from '../src/shared/tokens.js';
 import { formatTokenAmount } from '../src/shared/format.js';
 
 const registry = (ids) => ids.map((id) => ({
   mintAddress: id, symbol: `LOCAL-${id}`, name: `Token ${id}`,
   decimals: 9, imageUrl: '', hidden: false, source: 'imported',
 }));
+
+console.log('[token balances] strict wire predicate edge cases');
+const wire = { error: false, tokenAccountExists: true, amountUnits: '1', decimals: 6 };
+assert.equal(isVerifiedTokenBalance(wire), true);
+assert.equal(isVerifiedTokenBalance({ ...wire, amountUnits: '0', decimals: undefined }), true, 'zero needs no mint denomination');
+assert.equal(isVerifiedTokenBalance({ ...wire, amountUnits: '0', decimals: null }), true, 'verified zero also works with explicit null decimals');
+assert.equal(isVerifiedTokenBalance({ ...wire, decimals: 19 }), false, 'nonzero with unsupported decimals is unknown');
+assert.equal(isVerifiedTokenBalance({ ...wire, error: true }), false);
+assert.equal(isVerifiedTokenBalance({ ...wire, tokenAccountExists: false, amountUnits: '0' }), false, 'absent account uses null units on wire');
+assert.equal(isVerifiedTokenBalance({ ...wire, tokenAccountExists: false, amountUnits: null }), true);
 
 console.log('[token balances] distinguish verified value, proven zero and unknown');
 const mintReads = [];
@@ -59,11 +70,12 @@ assert.deepEqual(mintReads.sort(), ['funded', 'mint-invalid', 'mint-missing', 'm
 console.log('  ok - no registry decimals are used for a positive balance without a live mint');
 
 console.log('[token balances] bounded concurrent RPC, stable list order under out-of-order replies');
+const tokenCount = 100;
 let inFlight = 0;
 let peak = 0;
 const started = [];
 const gates = new Map();
-const running = readRegisteredTokenBalances('owner', registry(Array.from({ length: 11 }, (_, i) => `mint-${i}`)), {
+const running = readRegisteredTokenBalances('owner', registry(Array.from({ length: tokenCount }, (_, i) => `mint-${i}`)), {
   readBalance: async (_owner, mintAddress) => {
     started.push(mintAddress);
     inFlight += 1;
@@ -78,7 +90,7 @@ const running = readRegisteredTokenBalances('owner', registry(Array.from({ lengt
   readMint: async () => { throw new Error('Zero requires no mint read'); },
 });
 assert.equal(started.length, 4, 'four RPC reads may start before any finishes');
-for (let i = 0; i < 11; i += 1) {
+for (let i = 0; i < tokenCount; i += 1) {
   const id = started[i] || `mint-${i}`;
   assert.equal(gates.has(id), true, `mint ${id} should have started`);
   gates.get(id)();
@@ -87,14 +99,14 @@ for (let i = 0; i < 11; i += 1) {
   assert.ok(inFlight <= 4, 'concurrency must stay bounded');
 }
 const bounded = await running;
-assert.equal(started.length, 11);
+assert.equal(started.length, tokenCount);
 assert.equal(peak, 4, 'a slow first read must not serialize other mints');
 assert.deepEqual(bounded.balances.map((row) => row.mintAddress),
-  Array.from({ length: 11 }, (_, i) => `mint-${i}`));
+  Array.from({ length: tokenCount }, (_, i) => `mint-${i}`));
 assert.equal(bounded.anyError, false);
 assert.ok(bounded.balances.every((row) => row.amountUnits === '0' && row.error === false));
 assert.deepEqual(await readRegisteredTokenBalances('owner', []), { balances: [], anyError: false });
-console.log('  ok - eleven mints were checked with at most four concurrent reads');
+console.log('  ok - 100 mints were checked with at most four concurrent reads');
 
 console.log('[send intent] in-flight guard includes chain and mint, releases after failure');
 const { beginTransfer } = await import('../src/background/services/pending-tx-service.js');
@@ -194,6 +206,76 @@ try {
   assert.equal((await callImport()).error.code, 'ALREADY_EXISTS');
   assert.deepEqual(savedImports(), [imported.data], 'duplicates cannot replace verified metadata');
   console.log('  ok - unlocked import persists chain decimals; locked/extra-field/duplicate calls refuse');
+
+  const balanceOwner = Pubkey.from(new Uint8Array(32).fill(23)).toThruFmt();
+  const readBalances = (method) => handleApiRequest({ method, params: { address: balanceOwner } });
+  sdk.accounts.get = async () => { throw Object.assign(new Error('absent'), { code: 5 }); };
+  const unheld = await readBalances('token.getBalances');
+  assert.equal(unheld.ok, true);
+  assert.equal(unheld.data.balances[0]?.tokenAccountExists, false);
+  assert.equal(unheld.data.balances[0]?.amountUnits, null, 'proven zero keeps the existing wire shape');
+  await new Promise(setImmediate); // the snapshot write is intentionally asynchronous
+  const cachedUnheld = await readBalances('token.getCachedBalances');
+  assert.ok(cachedUnheld.data.fetchedAt > 0, 'a clean snapshot with a proven zero is stored');
+  assert.deepEqual(cachedUnheld.data.balances, unheld.data.balances);
+  sdk.accounts.get = async () => { throw new Error('RPC unavailable'); };
+  const offline = await readBalances('token.getBalances');
+  assert.equal(offline.data.balances[0]?.error, true, 'transport failure is not a zero');
+  await new Promise(setImmediate);
+  assert.deepEqual((await readBalances('token.getCachedBalances')).data, cachedUnheld.data,
+    'a failed refresh preserves the verified snapshot and its original timestamp');
+  console.log('  ok - verified absence persists; a transport failure does not overwrite the snapshot');
+
+  const secondMint = Pubkey.from(new Uint8Array(32).fill(36)).toThruFmt();
+  const oldGate = gate();
+  let balanceReads = 0;
+  sdk.accounts.get = async (address) => {
+    if (address === secondMint) return mintAccount({ ticker: 'NEW' });
+    if (++balanceReads === 1) { oldGate.enter(); await oldGate.wait; }
+    throw Object.assign(new Error('absent'), { code: 5 });
+  };
+  const oldRefresh = readBalances('token.getBalances');
+  await oldGate.entered;
+  const added = await callImport({ mintAddress: secondMint });
+  assert.equal(added.ok, true, JSON.stringify(added));
+  const afterImport = readBalances('token.getBalances');
+  const sameSnapshot = readBalances('token.getBalances');
+  let freshResult;
+  afterImport.then((reply) => { freshResult = reply; });
+  await new Promise(setImmediate); // all fresh fixture reads can finish without releasing the old RPC
+  const completedBeforeRelease = freshResult;
+  oldGate.release();
+  const [old, refreshed, joined] = await Promise.all([oldRefresh, afterImport, sameSnapshot]);
+  assert.ok(completedBeforeRelease?.data?.balances.some((row) => row.mintAddress === secondMint),
+    'the first refresh after import reads the new mint without waiting for the old refresh');
+  assert.equal(old.data.balances.length, 1);
+  assert.deepEqual(joined.data, refreshed.data, 'concurrent requests for the same registry still coalesce');
+  assert.equal(balanceReads, 3, 'one old read plus one read per mint in the new registry');
+  assert.deepEqual((await readBalances('token.getCachedBalances')).data.balances, refreshed.data.balances,
+    'the slower pre-import read cannot replace the fresh two-mint cache');
+  console.log('  ok - post-import refresh includes the new mint while older RPC is pending and protects its cache');
+
+  const thirdMint = Pubkey.from(new Uint8Array(32).fill(48)).toThruFmt();
+  const orphanGate = gate();
+  sdk.accounts.get = async (address) => {
+    if (address === thirdMint) return mintAccount({ ticker: 'THIRD' });
+    orphanGate.enter();
+    await orphanGate.wait;
+    throw Object.assign(new Error('absent'), { code: 5 });
+  };
+  const orphanRefresh = readBalances('token.getBalances');
+  await orphanGate.entered;
+  const initialCache = (await readBalances('token.getCachedBalances')).data;
+  const addedThird = await callImport({ mintAddress: thirdMint });
+  assert.equal(addedThird.ok, true);
+  orphanGate.release();
+  await orphanRefresh;
+  const cacheAfterOrphan = (await readBalances('token.getCachedBalances')).data;
+  assert.equal(cacheAfterOrphan.fetchedAt, initialCache.fetchedAt,
+    'fetchedAt must not be bumped by an older orphaned read');
+  assert.deepEqual(cacheAfterOrphan.balances, initialCache.balances,
+    'an older read completing after import cannot overwrite the cache snapshot');
+  console.log('  ok - an older read completing after import cannot overwrite the cache snapshot');
 
   for (const [label, response, code] of [
     ['wrong owner', () => mintAccount({ owner: mintAddress }), 'UNSUPPORTED'],

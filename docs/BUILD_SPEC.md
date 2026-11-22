@@ -47,6 +47,8 @@ All 15 routes are registered in `src/ui/app/boot.js`, mount immediately from loc
    - `/reset`: Reachable from `/unlock` for forgotten-password recovery; requires typed `RESET` confirmation (and master password if invoked while unlocked, `v6`).
 2. **Dashboard (`/dashboard`):**
    - `196px` ink header (`BalanceHero`), active account/copy/side-panel controls, single `Tokens` drawer trigger (native `THRU` + verified custom/discovered mints; proven-zero `0` vs unknown `—` kept distinct), frozen `2x3` primary action grid (`88px` cells enforced by `scripts/check-panel-tiles.mjs`), secondary services grid (`Domain`), and `CurrentConnection` network/health footer.
+   - The balance opens a searchable Assets drawer with token details, verified custom-token import, and reversible hide/restore. The dashboard network button opens the existing Settings network controls in a sheet without a redundant Network heading; custom RPC remains quarantined.
+   - Network health is a read-only RPC probe, with bounded retries after failures while the dashboard is visible and rechecks on online/visibility recovery. The displayed milliseconds are RPC latency, not block time; stale network replies are ignored.
    - Automatically invokes `tx.registerAccount` (`auth: 'unlocked'`) when a live read proves the active vault-owned account does not yet exist on-chain.
 3. **Accounts & Keyrings (`/accounts`, `/account`, `/add-account`, `/keyring`, `/export`):**
    - Account switching, background-sanitized labels (`<= 32` chars, markup stripped), preference-backed pin/hide/order, non-persisting HD preview (`account.previewHd`), batch HD derivation (`account.addHdBatch`), single HD removal (preserving at least 1 account per keyring), and password-gated phrase/private-key export (`/export` clears revealed DOM immediately on navigate-away or lock).
@@ -59,13 +61,14 @@ All 15 routes are registered in `src/ui/app/boot.js`, mount immediately from loc
 6. **Domains (`/name`, `v21`–`v31`):**
    - Two tabs (`Register` and `My Domains`), `.thru`-only registration and renewal (`via: 'custom'` tiered layout-2 registrar first, official paid registry fallback), `.id` lookup-only support, per-network tracked inventory (`thru_registered_domains`), and `tx-units.networkFeeUnits` header fees. Full specification: `docs/guides/domains-and-registrar.md`.
 7. **Faucet (`/faucet`, `v13`, `v24`):**
-   - Testnet native THRU claim (`raw base units`, network-configured `10,000` per-claim cap on Betanet); there is no per-account rate-limit readout (the separate THRUSD faucet policy does not apply). Claims use `faucet-claim` review and are bound to `fromAddress` + `networkId`.
+   - The read-only claim amount shows the network-configured cap without an explanatory hint. Testnet native THRU claim (`raw base units`, network-configured `10,000` per-claim cap on Betanet); there is no per-account rate-limit readout (the separate THRUSD faucet policy does not apply). Claims use `faucet-claim` review and are bound to `fromAddress` + `networkId`.
 8. **Receive (`/receive`):**
    - Branded canvas QR (`src/popup/qr.js`), full `ta...` address, inline `"Copied"` copy affordance, account label, explicit active-network badge, and explorer link.
 9. **History (`/history`, `v9`–`v12`):**
-   - Flat newest-first stream without day headers, cache-first `tx.getCachedHistory`, provenance-tagged timestamps (`block` -> own `submitted` -> `Block <slot>`), and lazy `tx.getDetail` sheet reporting `Fee (declared)`. Full specification: `docs/guides/history-and-activity.md`.
+   - Flat newest-first stream without day headers; an unsynced cached feed shows the concise “Cached · Sync unavailable” status. Cache-first `tx.getCachedHistory`, provenance-tagged timestamps (`block` -> own `submitted` -> `Block <slot>`), and lazy `tx.getDetail` sheet reporting `Fee (declared)`. Full specification: `docs/guides/history-and-activity.md`.
 10. **Settings (`/settings`):**
-    - Built-in network switcher (`betanet` enabled; legacy custom RPC rows inert with `Remove` only, `v7`), password-gated Signing policy (`Session-only` default vs `Require password`, `D-003`), password-gated Auto-lock (`1–240` min or `Never`, `15` min default), Side Panel Mode opt-in, Send whitelist, notifications toggle, and theme selector, with bounded in-popup `?` help cards (`help-tooltip.js`).
+    - Features groups Lock Wallet, Transaction History, and Manage Accounts. Network, signing security, theme, and auto-lock open separate in-wallet sheets; the last three use full-width choices with visible selection checks; existing switches stay in the list; Language and Currency are explicitly disabled and have no write path. About contains the manifest version and existing links. The dashboard's focused network view still uses the same network controls.
+   - Built-in network switcher (`betanet` enabled; legacy custom RPC rows inert with `Remove` only, `v7`), password-gated Signing policy (`Session-only` default vs `Require password`, `D-003`), password-gated Auto-lock (`1–240` min or `Never`, `15` min default), Side Panel Mode opt-in, Send whitelist, notifications toggle, and theme selector, with bounded in-popup `?` help cards (`help-tooltip.js`).
 
 ---
 

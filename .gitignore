@@ -14,3 +14,5 @@ target/
 # Read-only scratch directories the guard scripts ask esbuild to write metafiles for; nothing is
 # emitted, but the paths exist so a failed run cannot leave tracked noise.
 .arena-import-scan/
+# Project agent tooling is restored from skills-lock.json; do not vendor the installed corpus.
+/.agents/skills/modern-web-guidance/

@@ -6,12 +6,12 @@ import { icon } from '../kit/icon.js';
  *
  * Left: Globe icon + connected dApp origin or 'Not connected to any Dapp'.
  * Right: Clickable network status badge with live health pip. Clicking the network
- *        badge navigates to /settings where network selection is configured.
+ *        badge opens the focused network chooser.
  *
  * @param {Object} props
  *   site            connected dApp site info ({ origin } or null)
  *   networkLabel    display name for the network (default 'Betanet')
- *   onNetworkClick  handler when clicking the network badge (e.g. navigate to /settings)
+ *   onNetworkClick  handler when clicking the network badge
  *   onClick         optional fallback handler
  */
 export function CurrentConnection({
@@ -44,9 +44,10 @@ export function CurrentConnection({
   const netButton = h('button', {
     type: 'button',
     class: 'current-connection-net clickable',
-    title: `Network: ${networkLabel} — click to configure in Settings`,
-    'aria-label': `Active network ${networkLabel}; open Settings to change`,
-  }, [pip, netLabelEl, latencyEl]);
+    title: `Network: ${networkLabel} — choose network`,
+    'aria-haspopup': 'dialog',
+    'aria-label': `Active network ${networkLabel}; choose network`,
+  }, [pip, netLabelEl, latencyEl, h('span', { 'aria-hidden': 'true' }, icon('chevronDown', 12))]);
 
   const handleNet = onNetworkClick || onClick;
   if (handleNet) {
@@ -89,8 +90,8 @@ export function CurrentConnection({
       }
       if (nextNet !== undefined) {
         netLabelEl.textContent = nextNet;
-        netButton.title = `Network: ${nextNet} — click to configure in Settings`;
-        netButton.setAttribute('aria-label', `Active network ${nextNet}; open Settings to change`);
+        netButton.title = `Network: ${nextNet} — choose network`;
+        netButton.setAttribute('aria-label', `Active network ${nextNet}; choose network`);
       }
       if (healthStatus !== undefined) {
         pip.classList.remove('healthy', 'slow', 'offline');

@@ -60,8 +60,12 @@ assert.deepEqual(cached, {
 });
 assert.equal(writes, before, 'storage-only history read does not write');
 assert.equal(thruClient.getConfiguredNetwork().id, 'localnet', 'storage-only read does not bind RPC');
-assert.deepEqual((await history.getCachedHistory(B)).entries, [{ signature: 'ts_other_account' }]);
-assert.deepEqual((await history.getCachedHistory('missing')).entries, [], 'missing cache is empty, not fabricated');
+const terminal = await history.getCachedHistory(B);
+assert.deepEqual(terminal.entries, [{ signature: 'ts_other_account' }]);
+assert.equal(terminal.nextCursor, null, 'a cached last page must not lead back to offset zero');
+const missing = await history.getCachedHistory('missing');
+assert.deepEqual(missing.entries, [], 'missing cache is empty, not fabricated');
+assert.equal(missing.nextCursor, null, 'a cache miss has no continuation');
 console.log('  ok - history cache reads only the requested network/address and never touches RPC');
 
 // ---- Chain identity: the betanet-reset regression ----
@@ -139,6 +143,25 @@ const originalAlphaList = alphaClient.transactions.listForAccount;
 const originalAlphaHeight = alphaClient.blocks.getBlockHeight;
 alphaClient.blocks.getBlockHeight = async () => { throw new Error('RPC offline'); };
 try {
+  alphaClient.transactions.listForAccount = async () => ({ transactions: [] });
+  const endAddress = 'ta_history_end';
+  const endFeed = await history.getHistoryFeed(endAddress);
+  assert.equal(endFeed.synced, true);
+  assert.equal(endFeed.nextCursor, null);
+  assert.equal(data.get('thru_history_cache::betanet')[endAddress].nextCursor, null);
+  assert.equal((await history.getCachedHistory(endAddress)).nextCursor, null);
+
+  // A previous worker could persist zero when adding local submissions to a last page.
+  const legacyAddress = 'ta_history_legacy_zero';
+  const scopeWithLegacy = data.get('thru_history_cache::betanet');
+  scopeWithLegacy[legacyAddress] = { entries: [alphaEntry], nextCursor: 0, updatedAt: 123 };
+  assert.equal((await history.getCachedHistory(legacyAddress)).nextCursor, null);
+  alphaClient.transactions.listForAccount = async () => { throw new Error('RPC offline'); };
+  for (const [address, entries] of [[B, terminal.entries], [endAddress, []], [legacyAddress, [alphaEntry]], ['missing', []]]) {
+    assert.deepEqual(await history.getHistoryFeed(address), { entries, nextCursor: null, synced: false });
+  }
+  console.log('  ok - terminal, legacy zero and missing cursors never restart pagination from cache or offline');
+
   alphaClient.transactions.listForAccount = async () => ({ transactions: [] });
   const [feedX, feedY] = await Promise.all([
     history.getHistoryFeed('ta_concurrent_X'),
@@ -231,6 +254,8 @@ await history.recordSubmittedTransaction({
 const immediate = await history.getCachedHistory(A);
 assert.equal(immediate.entries[0]?.signature, 'ts_submitted_rabby_style');
 assert.equal(immediate.entries[0]?.status, 'submitted');
+assert.equal(immediate.nextCursor, null, 'a local submission on a cache miss does not invent a page');
+assert.equal(data.get('thru_history_cache::betanet')[A].nextCursor, null, 'local writes must not persist offset zero');
 assert.equal(immediate.entries[0]?.kind, 'sent');
 assert.equal(immediate.entries[0]?.counterparty, B);
 
@@ -238,6 +263,7 @@ assert.equal(immediate.entries[0]?.counterparty, B);
 const recipientCache = await history.getCachedHistory(B);
 assert.equal(recipientCache.entries[0]?.signature, 'ts_submitted_rabby_style');
 assert.equal(recipientCache.entries[0]?.kind, 'received');
+assert.equal(recipientCache.nextCursor, null, 'writing an incoming row preserves the recipient last page');
 assert.equal(recipientCache.entries[0]?.counterparty, A);
 
 // Settle transaction updates status to confirmed
@@ -247,6 +273,18 @@ assert.equal(settled.entries[0]?.signature, 'ts_submitted_rabby_style');
 assert.equal(settled.entries[0]?.status, 'confirmed');
 assert.equal(settled.entries[0]?.success, true);
 console.log('  ok - freshly submitted transactions persist immediately to local history cache and settle cleanly');
+
+await history.recordSubmittedTransaction({ signature: 'ts_submitted_rabby_style',
+  kind: 'transfer', from: A, to: B, amountUnits: '777000', networkId: 'betanet' });
+await history.settleTransaction('ts_submitted_rabby_style', 'unknown', null, 'betanet');
+assert.equal((await history.getCachedHistory(A)).entries[0]?.success, true,
+  'late local submission and timeout cannot downgrade a confirmed transaction');
+await history.recordSubmittedTransaction({ signature: 'ts_domain', kind: 'name-register',
+  from: A, to: A, amountUnits: '0', submittedAt: 1_700_000_000_000, networkId: 'betanet' });
+const domain = (await history.getCachedHistory(A)).entries[0];
+assert.equal(domain.kind, 'other', 'non-transfer metadata never fabricates a THRU send');
+assert.equal(domain.amount, null);
+assert.equal(domain.timestamp, 1_700_000_000_000, 'reuse the original pending submission time');
 
 localClient.blocks.getBlockHeight = originalHeight;
 

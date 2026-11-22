@@ -5,6 +5,47 @@ Source baseline re-verified on `main` at contract v33 (2026-11-19, v1.6.0). `src
 
 ---
 
+## Current branch handoff — PR #26
+
+The baseline below describes `main`, not automatically the latest store package or this PR. The
+working branch `arena/1b860a7c-thru-wallet-ext` is based on `38434abe` and PR #26 is **open,
+unmerged and not release-approved**. The prior baseline evidence below is for `98650f4`; the branch also contains `46f0acc` and the current Settings work; use
+`git status`, `git log` and the PR checks to identify later work. Product behavior belongs in
+`docs/BUILD_SPEC.md`; pending manual checks are in `docs/MANUAL_SMOKE_CHECKLIST.md`.
+
+- **IMPLEMENTED / TESTED in branch:** inset dashboard and Assets drawer with verified import,
+  hide/restore and cache-first rendering; dashboard network chooser reuses Settings controls;
+  flat History cards with independently clickable explorer links; Settings sheets, disabled
+  planned options, wallet branding and address contrast improvements. Receive redesign was
+  reverted; the existing Receive flow remains. No new Mainnet, custom RPC or DeFi enablement.
+- **IMPLEMENTED / TESTED in branch:** health indicator retries transient failures with bounded
+  delays and fences old network results. Its milliseconds measure RPC probe latency, **not block
+  time**. The installed-extension report and actual cause remain **UNVERIFIED** on live Betanet.
+- **TESTED at `98650f4`:** build and `npm test` passed (1,240/1,240 route lifecycle, 15/15 QR;
+  API router passed); `npm audit --omit=dev` reported zero vulnerabilities. Six checked-in
+  Playwright fixtures passed with a synthetic bridge in Chromium 153. Fixtures are neither a
+  loaded MV3 extension nor live network evidence. No new independent audit was performed.
+- **BLOCKED:** an older delayed token-registry read can overwrite a newer balance cache after
+  import (controlled reproduction). Agent A added in-flight invalidation in `46f0acc`, but its test
+  holds an RPC after registry loading; the previously reproduced delayed-registry-read ordering
+  occurs before in-flight registration and remains unverified by that test. A pending preference
+  write can return stale Side Panel mode
+  (controlled stale read; full Chrome timeout divergence not reproduced). Both remain unresolved.
+  Native popup/panel and worker lifecycle, physical QR scan, approved disposable-wallet Betanet
+  flows, final independent review and owner approval remain open. See the manual checklist for scope.
+- **PARTIAL owner feedback:** Side panel open/close worked on several attempts after one failure to load; extension version and Chrome version were not supplied. This does not reproduce or rule out the separate preference timeout race. See `docs/MANUAL_SMOKE_CHECKLIST.md` for the pending retest.
+- **UNVERIFIED (Agent C review at older `3d51e0a`):** History pending rendering parses persisted
+  `amountUnits` without guarding `BigInt`; malformed stored records can plausibly break rendering,
+  but no regression reproduction or fix has been completed. The proposed stuck-spinner scenario
+  also needs a controlled reproduction; context changes start a new load. Do not treat either as
+  resolved. `onExecution` is called without awaiting its promise by the SDK stream wrapper, so the
+  report's claim that it blocks the stream is not supported by that code. History refreshes every
+  five seconds, while one-second pending polling runs only with pending entries; performance
+  changes need measurement and owner review.
+- **IMPLEMENTED in branch:** Theme, Auto-lock and Signing settings sheets use full-width selectable rows; their existing save and password-confirmation flows are unchanged. Browser fixture evidence is not installed-extension verification.
+
+---
+
 ## 1. Shipped Baseline (Contract v33)
 
 - **Shared Contract (`v33`, `154` methods, `15` routes):** Declared in `src/shared/contract/manifest.js` (`88` wallet-core + `23` `name.*` + `43` DeFi M0 methods in `src/shared/contract/defi-schema.js` whose build-time flags in `src/shared/flags.js` are all `false`). Exact pins: `@thru/sdk@0.5.2` and `@thru/programs@0.5.2`.
@@ -14,7 +55,7 @@ Source baseline re-verified on `main` at contract v33 (2026-11-19, v1.6.0). `src
 - **Transaction Review & Background Consent Gate (`v29`–`v32`):** Every value-moving screen (`/send` native & token, `/name` register/purchase/renew/claim, `/faucet` claim — plus contract-level `domain-record`, `9` review kinds total including display-only `raw`) prepares via `tx.prepareReview`, renders `src/ui/domain/tx-review/review-card.js`, and confirms via `tx.confirmReview`. As of **v32**, `tx.confirmReview` mints a single-use 60s `consentToken` (`src/background/services/review/consent.js`) bound to `{ method, sha256(canonicalParams), accountAddress, networkId }`, and `api-router.js` rejects any non-exempt value-moving call lacking a valid token (`REVIEW_REQUIRED`). Full spec: `docs/guides/transaction-review.md`.
 - **Signing & Owned-Account Activation (`D-003`, `v12`):** Unlocked session signing is the default (`requirePasswordForSigning: false`); per-sign password re-auth is a password-gated Settings opt-in. `tx.registerAccount` (`auth: 'unlocked'`) self-signs (`NOOP_PROGRAM_ADDRESS`, fee `0n`, nonce `0n`, `stateUnits: 1`) exclusively for vault-owned addresses at creation, on `/dashboard`, and JIT on `/send` (never external addresses).
 - **Domains (`/name`, `v21`–`v31`):** Two tabs (`Register` and `My Domains`), `.thru`-only registration and renewal (`via: 'custom'` wired in `v30`), `.id` lookup-only resolution, versioned per-network tracked domain inventory (`thru_registered_domains`), opcode-2 text record append (`name.setRecord`, `v31`, contract-only), reverse lookup (`name.reverseLookup`, `v31`), and unified header network fees via `tx-units.networkFeeUnits` (`2026-11-12`). Full spec: `docs/guides/domains-and-registrar.md`.
-- **History (`/history`, `v9`–`v12`):** Flat newest-first card stream without day headers; storage-only cache-first paint (`tx.getCachedHistory`); provenance-tagged timestamps (`block` -> own `submitted` -> `Block <slot>`); lazy `tx.getDetail` sheet reporting `Fee (declared)` (`feeCharged: false`). Full spec: `docs/guides/history-and-activity.md`.
+- **History (`/history`, `v9`–`v12`):** Flat transaction stream without date sections; storage-only cache-first paint (`tx.getCachedHistory`); provenance-tagged timestamps (`block` -> own `submitted` -> `Block <slot>`); lazy `tx.getDetail` sheet reporting `Fee (declared)` (`feeCharged: false`). Full spec: `docs/guides/history-and-activity.md`.
 - **Quarantines (`v7`, `D-005`):** Legacy `src/launchpad/` is deleted and guarded (`test/test-launchpad-quarantine.mjs`). Custom RPC activation and writes are refused in the background (`CUSTOM_NETWORK_DISABLED`, `CUSTOM_RPC_SUPPORTED = false`) and stale stored IDs self-heal to `betanet` before client binding. No `window.thru` dApp provider exists.
 
 ### Recorded Automated Baseline (`IMPLEMENTED`, `TESTED`)
@@ -60,7 +101,7 @@ Version `1.6.0` released per owner directive (`docs/DECISIONS.md` D-031) on 2026
 2. **Close Release Blockers (1) & (2) on an RPC-Reachable Host:** Registrar fee measurement + `name.setRecord` probe.
 3. **Live Multi-Account `v12` Activation & `scripts/verify-live-e2e.mjs betanet`:** Exercise multi-HD creation registration, `/send` JIT activation for an owned absent recipient, and MV3 worker suspension/restart during in-flight registration/send.
 4. **Promote Measured Token Fee Config (Optional Follow-Up):** Decide whether to wire the `2026-10-23` observed `1`-base-unit Token Program fee into `src/lib/networks.js` with dated provenance, and wire `tx-units.autoUnits` to read `network.baseFeeUnits` rather than literal `1n` ahead of Mainnet.
-5. **Live History & Explorer Route Confirmation:** Measure `blocks.get` block-time availability/latency on Betanet, verify `https://scan.thru.org` `/tx/` deep links, and confirm no typed RPC/explorer field exposes charged fees.
+5. **Live History & Explorer Route Confirmation:** Measure `blocks.get` block-time availability/latency on Betanet, match a newly submitted wallet transaction to its `https://scan.thru.org` `/tx/` deep link (route verified read-only), and confirm no typed RPC/explorer field exposes charged fees.
 6. **Dependency & Security Audit Gate:** Re-run `npm audit --omit=dev`, verify `@thru/*@0.5.2` & `esbuild` advisories, and complete an **independent external security audit** (`EXTERNAL AUDIT REQUIRED` — `docs/AUDIT_REPORT.md` Gate E).
 7. **Mainnet Configuration & Live Re-Verification:** Measure Mainnet fees (`baseFeeUnits` is `null` today), verify Mainnet program deployments and explorer routes, update `src/manifest.json` `connect-src`, and re-run live verification against Mainnet.
 

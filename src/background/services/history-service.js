@@ -86,10 +86,17 @@ async function readScope(networkId) {
   return { key, scope: stored };
 }
 
+// Offset zero starts a fresh history read; a continuation always advances past it.
+// Older workers could persist zero when appending a local row to a terminal page.
+function continuationCursor(value) {
+  return Number.isSafeInteger(value) && value > 0 ? value : null;
+}
+
 function cachedPage(scope, address) {
   const cached = Object.prototype.hasOwnProperty.call(scope, address) ? scope[address] : null;
   return cached && typeof cached === 'object' && Array.isArray(cached.entries)
-    ? cached : { entries: [], nextCursor: 0, updatedAt: 0 };
+    ? { ...cached, nextCursor: continuationCursor(cached.nextCursor) }
+    : { entries: [], nextCursor: null, updatedAt: 0 };
 }
 
 // Several extension views can refresh DIFFERENT addresses on the same chain concurrently.
@@ -132,7 +139,7 @@ export async function getCachedHistory(address) {
     address,
     networkId,
     entries: cached.entries,
-    nextCursor: cached.nextCursor ?? 0,
+    nextCursor: cached.nextCursor,
     updatedAt: cached.updatedAt ?? 0,
   };
 }
@@ -169,7 +176,7 @@ export async function getHistoryFeed(address) {
     });
     assertCurrent(await getActiveNetworkId());
     const fresh = Array.isArray(page) ? page : (page?.entries || []);
-    const nextCursor = Array.isArray(page) ? fresh.length : (page?.nextCursor ?? fresh.length);
+    const nextCursor = continuationCursor(page?.nextCursor);
 
     // The history wire has slots, not wall-clock times. Resolve block headers OUTSIDE the
     // shared storage-write queue; a slow header for address A must not block address B's
@@ -182,10 +189,14 @@ export async function getHistoryFeed(address) {
         && !cachedBlockTime(initialMap.get(e.signature), e.slot))
       .map((e) => String(e.slot)))];
     const blockTimes = new Map();
-    await Promise.all(missingSlots.map(async (slot) => {
-      const timeMs = await thruClient.getBlockTimeMs(slot, network.id).catch(() => null);
-      if (timeMs !== null) blockTimes.set(slot, timeMs);
-    })); // at most PAGE_ON_OPEN unique headers; duplicate slots share one request
+    // Match paginated History's eight-request limit without serializing individual headers.
+    for (let i = 0; i < missingSlots.length; i += 8) {
+      await Promise.all(missingSlots.slice(i, i + 8).map(async (slot) => {
+        const timeMs = await thruClient.getBlockTimeMs(slot, network.id).catch(() => null);
+        if (timeMs !== null) blockTimes.set(slot, timeMs);
+      }));
+      assertCurrent(await getActiveNetworkId());
+    }
 
     assertCurrent(await getActiveNetworkId());
     // Chain-reality evidence from the live fetch: a cached row stamped above what this
@@ -235,6 +246,15 @@ export async function getHistoryFeed(address) {
         .filter(([signature]) => Boolean(signature)));
       for (const e of fresh) {
         const previous = cachedMap.get(e.signature);
+        // A history page without an execution result is not fresher outcome evidence.
+        // Keep explicit settled facts until the RPC supplies an actual result.
+        if (e.success == null && typeof previous?.success === 'boolean') {
+          e.success = previous.success;
+        } else if (e.success == null && previous?.status === 'submitted') {
+          // An indexed row without an execution result is not confirmation. Keep the
+          // single history card visibly pending until actual outcome evidence arrives.
+          e.status = 'submitted';
+        }
         const blockTime = e.slot != null
           ? blockTimes.get(String(e.slot)) || cachedBlockTime(previous, e.slot) : null;
         if (blockTime) {
@@ -264,7 +284,7 @@ export async function getHistoryFeed(address) {
   } catch (error) {
     if (error?.code === 'NETWORK_CHANGED') throw error;
     // Offline / unreachable RPC: the cached page, honestly labelled as not synced.
-    return { entries: cached.entries, nextCursor: cached.nextCursor ?? 0, synced: false };
+    return { entries: cached.entries, nextCursor: cached.nextCursor, synced: false };
   }
 }
 
@@ -279,17 +299,20 @@ export async function getHistoryFeed(address) {
 export async function recordSubmittedTransaction(tx) {
   if (!tx?.signature || !tx?.from) return;
   const networkId = tx.networkId || await getActiveNetworkId();
+  const kind = tx.kind === 'token' ? 'token-sent'
+    : tx.kind === 'faucet' ? 'faucet' : tx.kind === 'transfer' ? 'sent' : 'other';
+  const isTransfer = kind === 'sent' || kind === 'token-sent';
   const entry = {
     signature: String(tx.signature),
     slot: null,
-    timestamp: Date.now(),
+    timestamp: validTimeMs(tx.submittedAt) ?? Date.now(),
     timestampSource: 'submitted',
     status: 'submitted',
-    kind: tx.kind === 'token' ? 'token-sent' : (tx.kind === 'faucet' ? 'faucet' : 'sent'),
+    kind,
     from: tx.from,
     to: tx.to || null,
-    counterparty: tx.to || null,
-    amount: tx.amountUnits != null ? String(tx.amountUnits) : null,
+    counterparty: isTransfer ? tx.to || null : null,
+    amount: kind !== 'other' && tx.amountUnits != null ? String(tx.amountUnits) : null,
     displayAmount: tx.displayAmount || null,
     tokenSymbol: tx.tokenSymbol || null,
     tokenDecimals: tx.tokenDecimals != null ? Number(tx.tokenDecimals) : null,
@@ -300,15 +323,16 @@ export async function recordSubmittedTransaction(tx) {
   await updateScope(networkId, (scope) => {
     // 1. Update sender's history cache
     const page = cachedPage(scope, tx.from);
+    const keepChainRow = (e) => e?.signature === entry.signature && (e.slot != null || typeof e.success === 'boolean');
     const existing = page.entries.filter((e) => e?.signature !== entry.signature);
-    scope[tx.from] = {
+    if (!page.entries.some(keepChainRow)) scope[tx.from] = {
       entries: [entry, ...existing].slice(0, CACHE_LIMIT),
-      nextCursor: page.nextCursor ?? 0,
+      nextCursor: page.nextCursor,
       updatedAt: Date.now(),
     };
 
     // 2. If the recipient is also an account in this wallet's cache, record the incoming side
-    if (tx.to && tx.to !== tx.from && Object.prototype.hasOwnProperty.call(scope, tx.to)) {
+    if (isTransfer && tx.to && tx.to !== tx.from && Object.prototype.hasOwnProperty.call(scope, tx.to)) {
       const recipientPage = cachedPage(scope, tx.to);
       const recipientEntry = {
         ...entry,
@@ -316,9 +340,9 @@ export async function recordSubmittedTransaction(tx) {
         counterparty: tx.from,
       };
       const existingRecipient = recipientPage.entries.filter((e) => e?.signature !== entry.signature);
-      scope[tx.to] = {
+      if (!recipientPage.entries.some(keepChainRow)) scope[tx.to] = {
         entries: [recipientEntry, ...existingRecipient].slice(0, CACHE_LIMIT),
-        nextCursor: recipientPage.nextCursor ?? 0,
+        nextCursor: recipientPage.nextCursor,
         updatedAt: Date.now(),
       };
     }
@@ -345,7 +369,7 @@ export async function settleTransaction(signature, status, error = null, network
       if (address.startsWith('_') || !page?.entries || !Array.isArray(page.entries)) continue;
       let accountChanged = false;
       const nextEntries = page.entries.map((e) => {
-        if (e?.signature !== signature) return e;
+        if (e?.signature !== signature || (status === 'unknown' && typeof e.success === 'boolean')) return e;
         accountChanged = true;
         changed = true;
         return {
