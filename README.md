@@ -36,7 +36,7 @@ Start at [`docs/DOCS_INDEX.md`](docs/DOCS_INDEX.md) for the complete SSoT hierar
 | [`docs/PROJECT_LEDGER.md`](docs/PROJECT_LEDGER.md) | Canonical identifiers and contract changelog (`v5–v33`). |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Enforced dependency graph, v32 signing/consent boundary, shared UI platform, and storage. |
 | [`docs/BUILD_SPEC.md`](docs/BUILD_SPEC.md) | Shipped product, wallet container, route, security, and design specification. |
-| [`docs/DECISIONS.md`](docs/DECISIONS.md) | Durable architectural decisions (`D-001` through `D-031`). |
+| [`docs/DECISIONS.md`](docs/DECISIONS.md) | Durable architectural decisions (`D-001` through `D-033`). |
 | [`docs/BACKEND_GAPS.md`](docs/BACKEND_GAPS.md) | Implemented capabilities vs unsupported/unverified chain boundaries. |
 | [`docs/MODULE_BOUNDARIES.md`](docs/MODULE_BOUNDARIES.md) | Core layering and future `src/features/<id>/` module isolation rules. |
 | [`docs/GLOBAL_SMART_CONTRACT_POLICY.md`](docs/GLOBAL_SMART_CONTRACT_POLICY.md) | On-chain program engineering rules and 6 Mainnet deployment gates. |

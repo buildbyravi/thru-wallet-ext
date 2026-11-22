@@ -639,3 +639,14 @@ The token drawer reuses the registered-token snapshot, verified mint reader and 
 The generic close glyph is from Rabby, under its [MIT notice](../src/icons/rabby-close.LICENSE.txt)
 ([source at 99db353](https://github.com/RabbyHub/Rabby/blob/99db3534192f6d70c23409bc2b5e13244336e470/src/ui/assets/close-16-cc.svg)).
 The transaction Multicall program is not a verified Betanet account-read batch API.
+
+
+## D-033 — Document changes with the code (owner directive)
+
+Update the existing authoritative documentation in the same change as user-visible behavior,
+engineering status, decisions, verification evidence, and release-facing copy. A new chat or agent
+must be able to find the current branch state and its blockers from the normal read order, while
+confirming the actual Git/PR state. `docs/DOCS_INDEX.md` routes each topic to its existing owner;
+do not create competing handoff documents. Keep proposed Web Store copy distinct from a verified
+live listing and never claim publication without evidence. Documentation guards supplement, but
+do not replace, a manual code/evidence comparison.

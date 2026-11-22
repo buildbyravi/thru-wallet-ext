@@ -4,6 +4,8 @@ Last source-verified update: 2026-11-19 (Contract **v33**, `154` methods, `15` r
 
 Read `AGENTS.md` first for repository rules, `docs/DOCS_INDEX.md` for the SSoT map, and `docs/STATUS_AND_ROADMAP.md` for shipped state and open verification gates.
 
+For branch-only changes and unresolved blockers, start with the current branch handoff in `docs/STATUS_AND_ROADMAP.md`, then inspect `git status` and `git log`; PR #26 also has the temporary verification worklist `docs/PR-26-PRE-MERGE-TEMP.md`. The dated file counts below are a historical map, not proof of current line counts.
+
 For former documentation paths, use `docs/DOCS_INDEX.md` section 3.4 to find the current guide section. Dated audit citations are historical evidence, not current behavior or fresh verification.
 
 ---
@@ -159,7 +161,7 @@ Contract **v33** has **154 methods** (`72` `none`, `60` `unlocked`, `12` `passwo
 
 - **`src/ui/kit/` (`9` files):** `dom.js` (285), `toast.js` (293), `icon.js` (241), `field.js` (194), `focus-trap.js` (189), `button.js` (171), `feedback.js` (147), `sheet.js` (119), `help-tooltip.js` (68).
 - **`src/ui/domain/` (`18` files):** `token-drawer.js` (484), `tx-review/review-card.js` (448), `tx-detail-sheet.js` (311), `tx-card.js` (244), `tx-review/confirm.js` (206), `security-sheet.js` (186), `password-prompt.js` (160), `seed-phrase-grid.js` (160), `account-picker.js` (155), `account-row.js` (151), `asset-selector.js` (136), `token-row.js` (123), `current-connection.js` (118), `balance-hero.js` (111), `account-avatar.js` (61), `panel-item.js` (57), `token-avatar.js` (49), `fresh-phrase.js` (33).
-- **`src/ui/app/` (`6` core + `16` route files):** `boot.js` (264), `router.js` (175), `shell.js` (171), `bridge.js` (158), `guards.js` (138), `side-panel-exclusion.js` (62).
+- **`src/ui/app/` (`6` core + `16` route files):** `boot.js` (264), `router.js` (175), `shell.js` (dashboard chrome and network health recovery; line count varies), `bridge.js` (158), `guards.js` (138), `side-panel-exclusion.js` (62).
 
 | Route | File (`src/ui/app/routes/`) | Lines | Guard |
 | --- | --- | ---: | --- |

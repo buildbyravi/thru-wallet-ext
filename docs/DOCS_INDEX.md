@@ -49,7 +49,7 @@ Each document owns **one** domain. Link to the owner instead of duplicating coun
 | `SECURITY.md` | Public security policy, PBKDF2/AES-GCM encryption spec, permission audit, CSP, and vulnerability disclosure. |
 | `PRIVACY.md` | Public zero-telemetry privacy policy and local vs RPC data boundary. |
 | `SUPPORT.md` | Public user FAQ, current Betanet scope, and support channels. |
-| `extension.md` | Chrome Web Store listing copy, permission justifications, and store sync changelog. |
+| `extension.md` | Proposed Chrome Web Store copy, last-recorded listing snapshot, permission justifications, and store sync history; publication is separate from repository edits. |
 
 ### 3.2 Core Authority Specifications (`docs/`)
 | File | Owns |
@@ -63,7 +63,7 @@ Each document owns **one** domain. Link to the owner instead of duplicating coun
 | `docs/PROJECT_LEDGER.md` | Canonical repository identifiers and append-only contract milestone history (`v5–v33`). |
 | `docs/ARCHITECTURE.md` | Dependency graph, authoritative module ownership, v32 signing/consent boundary, shared UI platform, and scoped storage. |
 | `docs/BUILD_SPEC.md` | Shipped product behavior, wallet/keyring container model, route requirements, security matrix, and design system. |
-| `docs/DECISIONS.md` | Durable architectural decisions (`D-001` through `D-032`) with trade-offs and consequences. |
+| `docs/DECISIONS.md` | Durable architectural decisions (`D-001` through `D-033`) with trade-offs and consequences. |
 | `docs/BACKEND_GAPS.md` | Implemented backend capabilities vs open live-chain/protocol gaps and contract compatibility policy. |
 | `docs/MODULE_BOUNDARIES.md` | Enforced core layering and target isolation rules for future `src/features/<id>/` modules. |
 | `docs/GLOBAL_SMART_CONTRACT_POLICY.md` | Smart contract inspection/reuse rules and the 6 Mainnet deployment gates. |
@@ -99,6 +99,7 @@ These destinations replace active read instructions, not the original dated evid
 
 | Path | Class | Owns |
 | --- | --- | --- |
+| `docs/PR-26-PRE-MERGE-TEMP.md` | Temporary PR Worklist | PR #26 branch-only evidence, pending checks and blockers; remove at the agreed final merge-readiness handoff after recording durable outcomes and removing the references to the worklist from the owning docs. |
 | `docs/MANUAL_SMOKE_CHECKLIST.md` | Operational Runbook | Real-Chrome popup & side-panel QA checklist (`400px`, `<400px`, `>=800px`), v32 review card smoke, live-chain steps, and DevTools helpers. |
 | `docs/AUDIT_REPORT.md` | Operational Summary | Current audit conclusion, 5 separated Mainnet-readiness gate categories, and index of all 7 dated audits. |
 | `docs/DEFECT_LOG.md` | Postmortem Taxonomy | Categorized root causes, fixes, and mechanical guardrails for historical and recent wallet defects. |
@@ -127,7 +128,7 @@ Match external documentation strictly to the exact package versions pinned in `p
 
 1. **No Stray Root or Plan Files:** Never create root `.md` or `.txt` files for plans, prompts, or session handoffs. Unshipped ideas belong exclusively in `docs/roadmap/FUTURE_ROADMAP.md`.
 2. **Describe Final State, Not Draft Iterations:** Authority docs and `docs/guides/*.md` describe what `src/` **actually ships today**, never theoretical designs or superseded PR iterations.
-3. **Same-Commit Synchronization (`Rule 23`):** Any change to `CONTRACT_VERSION`, `METHODS`, registered routes, flags, or test files must update the owning docs in the same commit and pass `node scripts/check-docs-truth.mjs` and `node scripts/check-agents.mjs`.
+3. **Same-Commit Synchronization (`Rule 23`):** For every change, review the owning docs and update affected behavior, status, decisions, verification, and store copy in the same commit. This includes user-visible changes, fixes and test evidence, not just `CONTRACT_VERSION`, `METHODS`, routes, flags, or test files. Record the tested revision and distinguish branch-only work from released versions; update the existing authority rather than duplicating a session log. If no docs change, explain why in the handoff. Pass `node scripts/check-docs-truth.mjs` and `node scripts/check-agents.mjs`; manual semantic review remains necessary.
 4. **Separate Verification Classes:** Never let a deterministic Node test (`TESTED`) close a real-browser check (`docs/MANUAL_SMOKE_CHECKLIST.md`) or a live-network requirement (`VERIFIED AGAINST LIVE NETWORK`).
 5. **Preserve Frozen Citations:** Do not repair a deleted-path citation inside `docs/audits/` by redirecting it to a current guide. Read the original at its recorded revision in Git; section 3.4 routes current work only.
 6. **Report Guard Scope Exactly:** `check-agents.mjs` checks inline paths/link targets in `AGENTS.md` and the four named agent docs. `check-docs-truth.mjs` checks its declared claims, test paths, relative Markdown link files and conflict markers in its maintained set; it does not validate guide anchors, every inline path, runtime evidence references, or historical citations. Green documentation guards are not full-suite, browser, live-network or independent-audit evidence.

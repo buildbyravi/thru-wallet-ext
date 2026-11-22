@@ -5,6 +5,36 @@ Source baseline re-verified on `main` at contract v33 (2026-11-19, v1.6.0). `src
 
 ---
 
+## Current branch handoff — PR #26
+
+The baseline below describes `main`, not automatically the latest store package or this PR. The
+working branch `arena/1b860a7c-thru-wallet-ext` is based on `38434abe` and PR #26 is **open,
+unmerged and not release-approved**. This snapshot describes runtime through `98650f4`; use
+`git status`, `git log` and the PR checks to identify later work. Product behavior belongs in
+`docs/BUILD_SPEC.md`; detailed PR evidence and the deferred checklist are in
+`docs/PR-26-PRE-MERGE-TEMP.md` (temporary, not a substitute for this status document).
+
+- **IMPLEMENTED / TESTED in branch:** inset dashboard and Assets drawer with verified import,
+  hide/restore and cache-first rendering; dashboard network chooser reuses Settings controls;
+  flat History cards with independently clickable explorer links; Settings sheets, disabled
+  planned options, wallet branding and address contrast improvements. Receive redesign was
+  reverted; the existing Receive flow remains. No new Mainnet, custom RPC or DeFi enablement.
+- **IMPLEMENTED / TESTED in branch:** health indicator retries transient failures with bounded
+  delays and fences old network results. Its milliseconds measure RPC probe latency, **not block
+  time**. The installed-extension report and actual cause remain **UNVERIFIED** on live Betanet.
+- **TESTED at `98650f4`:** build and `npm test` passed (1,240/1,240 route lifecycle, 15/15 QR;
+  API router passed); `npm audit --omit=dev` reported zero vulnerabilities. Six checked-in
+  Playwright fixtures passed with a synthetic bridge in Chromium 153. Fixtures are neither a
+  loaded MV3 extension nor live network evidence. No new independent audit was performed.
+- **BLOCKED:** an older delayed token-registry read can overwrite a newer balance cache after
+  import (controlled reproduction); a pending preference write can return stale Side Panel mode
+  (controlled stale read; full Chrome timeout divergence not reproduced). Both remain unresolved.
+  Native popup/panel and worker lifecycle, physical QR scan, approved disposable-wallet Betanet
+  flows, final independent review and owner approval remain open. See the PR worklist for scope.
+- **PLANNED:** further Settings polish; do not treat proposed full-width refinements as shipped.
+
+---
+
 ## 1. Shipped Baseline (Contract v33)
 
 - **Shared Contract (`v33`, `154` methods, `15` routes):** Declared in `src/shared/contract/manifest.js` (`88` wallet-core + `23` `name.*` + `43` DeFi M0 methods in `src/shared/contract/defi-schema.js` whose build-time flags in `src/shared/flags.js` are all `false`). Exact pins: `@thru/sdk@0.5.2` and `@thru/programs@0.5.2`.

@@ -1,9 +1,11 @@
 # Chrome Web Store listing — Thru Wallet
 
-Source of truth for the public Chrome Web Store listing. When the listing needs to change,
-edit the fields here first, then mirror the text into the Chrome Web Store dashboard. Keep
-the copy in this file identical to what is live on the store (whitespace and punctuation
-included) so diffs here are real listing diffs.
+Source of truth for **proposed** Web Store copy and recorded listing history. Repository edits do
+not publish a listing. Section 1 contains a draft for the current PR candidate; it is **not verified
+live or approved for publication**. Section 1A preserves the last recorded live copy. Confirm the
+currently published version and fields in the developer dashboard before syncing; the historical
+records below do not establish the current store state. No release, upload, version bump or store
+change is authorized by this document.
 
 | | |
 | --- | --- |
@@ -13,12 +15,61 @@ included) so diffs here are real listing diffs.
 | Website (listing) | <https://thruwallet.vercel.app> (`homepage_url` in `src/manifest.json`) |
 | Support | Telegram channel <https://t.me/walletext> (store listing + `SUPPORT.md`) · Telegram group <https://t.me/+dA8TwsOECcIxZWZl> (shown in Settings → About) |
 | Privacy policy URL (as submitted) | <https://github.com/buildbyravi/thru-wallet-ext/blob/main/PRIVACY.md> |
-| Package version at last sync | `1.6.0` (`src/manifest.json`) |
-| Last synced with the live listing | 2026-10-04 |
+| Source manifest version | `1.6.0` (`src/manifest.json`); does not establish the currently published package |
+| Last recorded live listing verification | 2026-10-04; recheck before publication |
 
 ---
 
-## 1. Product details
+## 1. Proposed product details — PR #26 draft, not published
+
+**Title**
+
+```text
+Thru Wallet
+```
+
+**Short description** (manifest description remains unchanged)
+
+```text
+A self-custody wallet for managing accounts and assets on Thru Betanet.
+```
+
+**Detailed description**
+
+```text
+Thru Wallet is an open-source, self-custody browser extension for Thru Betanet. Create or import an account, view your assets, and review transactions from one compact wallet.
+
+Manage your accounts
+Create a recovery phrase or import an existing account. Organize accounts and access your wallet from the browser toolbar or the optional side panel.
+
+Explore your assets
+View THRU and custom-token balances, search your token list, and hide or restore tokens. Add a custom token by its mint address; the wallet checks its on-chain metadata before import.
+
+Send and receive
+Send THRU and supported tokens with a transaction review before confirmation. Share your address or QR code to receive assets, and use the Betanet faucet to request test funds.
+
+Follow activity and domains
+Browse transaction activity, open details and follow explorer links. Register and manage supported .thru domains, or look up supported names when sending.
+
+Make it yours
+Choose a theme and auto-lock setting, manage signing preferences, and enable optional transaction notifications. Your encrypted vault is stored locally; the wallet communicates with the configured Betanet RPC for network operations.
+
+Thru Wallet is intended for Betanet testing. It is not affiliated with or endorsed by Unto Labs and has not been independently audited. Do not use it with real financial value.
+```
+
+**Proposed single purpose**
+
+```text
+A self-custody key and transaction manager for Thru Betanet, enabling users to manage accounts and assets and review transactions.
+```
+
+**Review before submitting:** Compare every claim with the release candidate and current permissions,
+privacy policy, and actual store fields; finish the outstanding native-browser, live-network, and
+independent-review gates in `docs/STATUS_AND_ROADMAP.md`. This draft describes branch functionality,
+not proof that an installed store package contains it. Do not add Mainnet, dApp connectivity, swap,
+DEX, launchpad, real-time/finality guarantees, or unsupported token standards as shipped claims.
+
+## 1A. Last-recorded product details (historical live snapshot, 2026-10-04)
 
 **Title from package**
 
@@ -76,7 +127,7 @@ Tools
 English
 ```
 
-## 2. Single purpose description
+## 2. Last-recorded single purpose description (historical)
 
 ```text
 A dedicated cryptocurrency key and transaction manager for the Thru Betanet testnet, enabling users to store encrypted keys, review transaction details, and perform transfers on the Thru blockchain.
@@ -85,7 +136,8 @@ A dedicated cryptocurrency key and transaction manager for the Thru Betanet test
 ## 3. Permission justifications
 
 The manifest requests exactly five permissions (`src/manifest.json`: `storage`, `alarms`,
-`sidePanel`, `clipboardRead`, `notifications`) — one justification each, matching what the dashboard holds.
+`sidePanel`, `clipboardRead`, `notifications`). The text below is the last-recorded submission,
+not a current dashboard verification; check and update each justification before submission.
 
 **storage**
 
@@ -132,7 +184,7 @@ True in code: `script-src 'self'`, `default-src 'none'` (see `src/manifest.json`
 `PRIVACY.md` in this repository. If `PRIVACY.md` moves or changes scope, update the URL or
 content in the dashboard in the same release.
 
-## 6. Copy accuracy notes (verified against the code 2026-11-19)
+## 6. Historical copy accuracy notes (reviewed against code 2026-11-19; recheck before release)
 
 Documentation summarizes the code; it does not override it. When refreshing the listing,
 re-check these claims against `src/` and fix the copy if the code moved.
@@ -168,11 +220,12 @@ Update this file whenever any of the following land, then mirror to the dashboar
    contradicts.
 3. **`PRIVACY.md` changes scope or location** — refresh §5 and the dashboard privacy URL.
 4. **Security-relevant defaults change** (KDF iterations, cipher, auto-lock default) — the
-   marketing claims in §1 quote these numbers; they must track the code.
+   any specific security claims must track the code.
 
-Workflow: edit this file → run `npm run build && npm test` → update the Last-synced row and
-add a changelog row below → paste the changed fields into the dashboard → note the store's
-review status.
+Workflow: edit the draft and compare it with code/evidence → run `npm run build && npm test` →
+obtain owner approval and complete release gates → verify the current store fields → submit approved
+changes → only after verifying the live listing, update the recorded snapshot, verification date,
+and changelog with package/version and review status. Never report a draft as published.
 
 ## 9. Listing changelog
 

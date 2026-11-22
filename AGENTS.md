@@ -72,7 +72,7 @@ npm install
 npm run build      # node build.mjs -> dist/
 npm test           # guards (layering incl. cycles, CSP, routes, CSS, contract, docs truth, dom)
                    # then the feature suites; see package.json for the exact chain
-node scripts/git-push.mjs   # push using GITHUB_TOKEN from .env
+npm run test:browser # optional mocked Chromium fixtures; see test/browser/README.md
 ```
 
 Suites live in `test/` (`test/test-*.mjs`); `npm test` runs them by path. Load `dist/` unpacked via
@@ -81,8 +81,7 @@ Suites live in `test/` (`test/test-*.mjs`); `npm test` runs them by path. Load `
 Run `npm run build && npm test` **before and after** every change; never report success while either
 is red and never weaken or skip a test to make it pass.
 
-**Git push invariant:** push with `node scripts/git-push.mjs`; a plain `git push` can hang in a
-non-interactive shell waiting for a GUI credential manager.
+Use the authenticated Git workflow provided by the current environment; never put credentials in documentation or chat.
 
 ## Hard rules
 
@@ -163,8 +162,9 @@ non-interactive shell waiting for a GUI credential manager.
     it. — *check:* `scripts/check-check-controls.mjs` (legacy debt is listed and may only shrink).
 23. **Record decisions and counts when they happen.** An owner directive lands in `DECISIONS.md` in
     the same change; `DOCS_INDEX.md` owns where everything else goes. Counts in the maintained docs
-    must equal the code. — *check:* `scripts/check-docs-truth.mjs` (contract version, method count,
-    route count, every named test file). *review:* the decision entry itself.
+    must equal the code. Update affected owning docs in the same commit; distinguish branch/release
+    and evidence, and check Git/PR state. Follow `docs/DOCS_INDEX.md` §6. — *check:*
+    `scripts/check-docs-truth.mjs` (counts, named tests); *review:* decisions and semantic drift.
 24. **UI copy is plain words.** No file paths, no decision ids, no developer terms on a screen; the
     review card shows what, how much and what it costs, and only decision-changing warnings. —
     *check:* `test/test-tx-review-card.mjs` (forbidden-term scan over the rendered card).
