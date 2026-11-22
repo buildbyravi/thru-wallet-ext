@@ -88,7 +88,7 @@ export function TokenDrawer({
   // ============================================================================================
   function closeButton() {
     const button = h('button', { type: 'button', class: 'icon-btn icon-btn-ghost token-drawer-close', 'aria-label': 'Close' },
-      h('img', { src: 'icons/rabby-close.svg', alt: '', width: 16, height: 16 }));
+      h('img', { src: 'icons/close.svg', alt: '', width: 16, height: 16 }));
     sheet.d.on(button, 'click', () => { if (!visibilityPending) close(); });
     return button;
   }

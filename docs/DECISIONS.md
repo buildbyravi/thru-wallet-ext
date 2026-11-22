@@ -636,8 +636,7 @@ additional networks available.
 
 The token drawer reuses the registered-token snapshot, verified mint reader and visibility API.
 “Remove from Assets” hides a token and is reversible; it does not mutate any on-chain state.
-The generic close glyph is from Rabby, under its [MIT notice](../src/icons/rabby-close.LICENSE.txt)
-([source at 99db353](https://github.com/RabbyHub/Rabby/blob/99db3534192f6d70c23409bc2b5e13244336e470/src/ui/assets/close-16-cc.svg)).
+The close glyph is `src/icons/close.svg`.
 The transaction Multicall program is not a verified Betanet account-read batch API.
 
 
