@@ -254,6 +254,28 @@ try {
     'the slower pre-import read cannot replace the fresh two-mint cache');
   console.log('  ok - post-import refresh includes the new mint while older RPC is pending and protects its cache');
 
+  const thirdMint = Pubkey.from(new Uint8Array(32).fill(48)).toThruFmt();
+  const orphanGate = gate();
+  sdk.accounts.get = async (address) => {
+    if (address === thirdMint) return mintAccount({ ticker: 'THIRD' });
+    orphanGate.enter();
+    await orphanGate.wait;
+    throw Object.assign(new Error('absent'), { code: 5 });
+  };
+  const orphanRefresh = readBalances('token.getBalances');
+  await orphanGate.entered;
+  const initialCache = (await readBalances('token.getCachedBalances')).data;
+  const addedThird = await callImport({ mintAddress: thirdMint });
+  assert.equal(addedThird.ok, true);
+  orphanGate.release();
+  await orphanRefresh;
+  const cacheAfterOrphan = (await readBalances('token.getCachedBalances')).data;
+  assert.equal(cacheAfterOrphan.fetchedAt, initialCache.fetchedAt,
+    'fetchedAt must not be bumped by an older orphaned read');
+  assert.deepEqual(cacheAfterOrphan.balances, initialCache.balances,
+    'an older read completing after import cannot overwrite the cache snapshot');
+  console.log('  ok - an older read completing after import cannot overwrite the cache snapshot');
+
   for (const [label, response, code] of [
     ['wrong owner', () => mintAccount({ owner: mintAddress }), 'UNSUPPORTED'],
     ['unsupported decimals', () => mintAccount({ decimals: 19 }), 'UNSUPPORTED'],

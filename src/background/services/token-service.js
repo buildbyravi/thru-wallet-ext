@@ -160,6 +160,7 @@ export async function importVerifiedToken(params = {}) {
     return { customTokens: [record, ...current.customTokens] };
   });
   assertCurrent();
+  invalidateTokenBalanceCache();
   return record;
 }
 
@@ -256,6 +257,7 @@ export async function importToken({ mintAddress, symbol, name, decimals }) {
     customTokens: [record, ...current.customTokens.filter((token) =>
       token.mintAddress !== mint || (token.networkId || DEFAULT_NETWORK) !== networkId)],
   }));
+  invalidateTokenBalanceCache();
   return record;
 }
 
@@ -264,6 +266,7 @@ export async function importToken({ mintAddress, symbol, name, decimals }) {
  */
 export async function setVisibility(mintAddress, hidden) {
   await setTokenHidden(mintAddress, hidden);
+  invalidateTokenBalanceCache();
   return { mintAddress, hidden: Boolean(hidden) };
 }
 
@@ -349,6 +352,10 @@ export async function getCachedTokenBalances({ address } = {}) {
 }
 
 const inFlightTokenBalances = new Map();
+
+function invalidateTokenBalanceCache() {
+  inFlightTokenBalances.clear();
+}
 
 export async function getTokenBalances({ address } = {}) {
   const owner = address || (await vault.getActiveAccount())?.address;
