@@ -81,6 +81,23 @@ manifest/icon-asset change. `npm run build` and `npm test` passed (1,237/1,237 r
 15/15 QR). Chromium fixtures verified the decoded footer icon at 320×600 dark and 400×600 light,
 plus Settings picker behavior in both themes. Installed extension verification remains open.
 
+## Automated browser coverage audit
+
+At `66fd2863534544aa00f43f97a0d19e2e605b09e7`, `npm run build`, `npm test`
+(1,237/1,237 route checks and 15/15 QR), and `npm audit --omit=dev` passed; Chromium 153 with
+Playwright Core 1.65.1 passed the three then-checked-in browser scripts. Broader temporary preview
+fixtures passed Dashboard, Assets import/overlap, Settings, Theme, Side Panel stubs, History,
+Receive rollback, and logos. Two older temporary scripts initially failed because they targeted the
+old dialog scroll container and History card container; after adapting them to the current inner
+scroll container and native details button, they passed. These failures were stale fixture selectors,
+not deleted assertions. No real keys, extension worker, production RPC or on-chain actions were used.
+
+The committed browser suite now also covers History controls and Settings theme reopen/error /
+password-dialog handoff without the hosted fixture. Run `npm run test:browser` after building; setup
+and scope are documented in `test/browser/README.md`. These additions are test-only and do not
+replace installed-Chrome or live Betanet checks. Side Panel browser checks remain temporary fixtures;
+tracked Node/DOM tests cover its save/restore logic but do not emulate the real Chrome API lifecycle.
+
 ## While building — preview and deterministic tests
 
 - [ ] For each UI change, run `npm run build` and `npm test`, refresh the hosted fixture from the current bundles, and record the SHA, scenario, and result. The **hosted Assets fixture** serves `/scripts/preview-tx-review.html?tokens=200`; use `?tokens=10` or `?tokens=100` there to change sample size. The **checked-in** `scripts/preview-tx-review.html` is a distinct transaction-review harness with fixed cases, not a local copy of that hosted page. For repeatable local 10/100/200 sizes, run [the browser regression](../test/browser/token-cache.mjs) after building (set `PLAYWRIGHT_MODULE` and `CHROME_BIN` as shown in its header). Fixtures use no real keys, vault access, signing, or production RPC.
@@ -107,5 +124,5 @@ Follow the canonical [Manual Smoke Checklist](MANUAL_SMOKE_CHECKLIST.md), includ
 
 - [ ] On an RPC-reachable host, with owner-approved disposable Betanet accounts and test funds only: verify token import with a known mint, rejection of invalid/duplicate mints, balance and cache behavior after real reads, reviewed native/token send and recipient activation, faucet, and History/explorer reconciliation. Compare the identical network and signature from submission, pending settlement, History card/detail and the live explorer; compare decoded amounts/program and block time where available. Record exact scope and outcome, public test transaction IDs where useful, and failures; never record secrets.
 - [ ] Review the existing [release blockers and verification sequence](STATUS_AND_ROADMAP.md#3-release-blockers--ordered-next-work) and [audit gates](AUDIT_REPORT.md). Treat the changed workflows above as this PR's verification scope. Track inherited release gates separately: registrar fee/hash evidence and records, broader multi-account verification, external security audit, and Mainnet authorization. Do not mark inherited checks done without evidence or enable Mainnet, custom RPC, or quarantined features.
-- [ ] On the final candidate run `npm run build && npm test`, the browser regression, and applicable release checks, including `npm audit --omit=dev` where required. Confirm CI and independent review at the final SHA, resolve remaining findings, and confirm no preview fixtures, permissions changes or release changes were unintentionally included.
+- [ ] On the final candidate run `npm run build && npm test` and `npm run test:browser` with the documented external Playwright/Chromium setup, and applicable release checks, including `npm audit --omit=dev` where required. Confirm CI and independent review at the final SHA, resolve remaining findings, and confirm no preview fixtures, permissions changes or release changes were unintentionally included.
 - [ ] Record candidate SHA, OS/Chrome version, date, tester, contexts/sizes, and each result as pass/fail/blocked/not applicable, with links or a brief reason. Keep preview, native Chrome, live Betanet and audit evidence separate. Stop for owner review and explicit merge approval.
