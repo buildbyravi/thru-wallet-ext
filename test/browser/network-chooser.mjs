@@ -45,6 +45,7 @@ try {
     const dialog = page.getByRole('dialog', { name: 'Choose network' });
     await dialog.getByRole('heading', { name: 'Choose network' }).waitFor();
     assert.match(page.url(), /#\/dashboard$/);
+    assert.equal(await dialog.getByRole('heading', { name: 'Network', exact: true }).count(), 0);
     assert.equal(await dialog.getByText('Fixture custom').evaluate(el => el.closest('.row').getAttribute('aria-disabled')), 'true');
     const choice = dialog.getByRole('button', { name: /Fixture testnet/ });
     await choice.focus(); await page.keyboard.press('Enter');

@@ -469,9 +469,7 @@ export function SettingsRoute({ navigate, back, params = {}, onNetworkBusy = () 
 
     const networkList = (events) => h('div', { class: 'list' }, networks.map((network) => networkRow(network, events)));
     if (networkOnly) {
-      const networkSection = h('section', { class: 'stack stack-2' }, [
-        h('h2', { class: 'list-group-header', text: 'Network' }), networkList(rowEvents),
-      ]);
+      const networkSection = h('section', { class: 'stack stack-2' }, networkList(rowEvents));
       body.appendChild(networkSection);
       if (!networks.some((network) => !network.custom && network.selectable !== false && network.id !== activeNetworkId)) {
         networkSection.appendChild(h('p', { class: 'hint', text: 'No other networks are available to switch to.' }));

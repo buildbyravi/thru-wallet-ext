@@ -4,7 +4,7 @@ Use a disposable wallet for live checks. Mocked previews are not installed-exten
 
 ## Changes
 
-- Dashboard: inset balance card, token icons and network chooser.
+- Dashboard: inset balance card, token icons and network chooser without the extra Network heading.
 - Assets: search, token details, custom-token import and hide/restore.
 - History: flat list, filters, details, copy, clickable explorer links and shorter cached status.
 - Settings: network, theme, auto-lock and signing sheets; planned options are disabled.
