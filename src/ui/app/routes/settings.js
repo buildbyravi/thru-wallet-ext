@@ -223,17 +223,22 @@ export function SettingsRoute({ navigate, back, params = {}, onNetworkBusy = () 
       + 'programs can be verified. Saved custom networks cannot be selected, though you can remove them here.' }));
   }
 
+  // One full-width option style for all preference sheets; actions still use their
+  // existing save and password-confirmation paths.
+  function settingChoice(label, selected = false) {
+    return h('button', {
+      type: 'button',
+      class: ['chip-option', 'settings-option', selected ? 'selected' : null].filter(Boolean),
+      'aria-pressed': String(selected),
+    }, [h('span', { text: label }), icon('check', 16, { className: 'settings-option-check' })]);
+  }
+
   // ---- Auto-lock ----------------------------------------------------------
   function renderAutoLock(hostEl, current, events) {
     const chips = AUTO_LOCK_CHOICES.map((minutes) => {
       const label = autoLockLabel(minutes);
       const selected = minutes === current;
-      const chip = h('button', {
-        type: 'button',
-        class: ['chip-option', selected ? 'selected' : null].filter(Boolean),
-        'aria-pressed': String(selected),
-        text: label,
-      });
+      const chip = settingChoice(label, selected);
       events.on(chip, 'click', async () => {
         banner.clear();
         if (minutes === current) { picker?.sheet.close(); return; }
@@ -255,7 +260,7 @@ export function SettingsRoute({ navigate, back, params = {}, onNetworkBusy = () 
     });
 
     // The explanation is the (?) popover on the "Auto-lock" row above.
-    hostEl.appendChild(h('div', { class: 'row-flex wrap' }, chips));
+    hostEl.appendChild(h('div', { class: 'settings-options' }, chips));
   }
 
   function renderSigningReauth(hostEl, requirePasswordForSigning, events) {
@@ -265,12 +270,7 @@ export function SettingsRoute({ navigate, back, params = {}, onNetworkBusy = () 
     ];
     const chips = options.map((option) => {
       const selected = option.value === requirePasswordForSigning;
-      const chip = h('button', {
-        type: 'button',
-        class: ['chip-option', selected ? 'selected' : null].filter(Boolean),
-        'aria-pressed': String(selected),
-        text: option.label,
-      });
+      const chip = settingChoice(option.label, selected);
       events.on(chip, 'click', async () => {
         banner.clear();
         picker?.sheet.close();
@@ -292,7 +292,7 @@ export function SettingsRoute({ navigate, back, params = {}, onNetworkBusy = () 
       });
       return chip;
     });
-    hostEl.appendChild(h('div', { class: 'row-flex wrap' }, chips));
+    hostEl.appendChild(h('div', { class: 'settings-options' }, chips));
   }
 
 
@@ -310,9 +310,7 @@ export function SettingsRoute({ navigate, back, params = {}, onNetworkBusy = () 
   function themeChips(activePicker) {
     const options = ['light', 'dark', 'system'];
     const chips = options.map((option) => {
-      const chip = h('button', {
-        type: 'button', class: 'chip-option', text: option[0].toUpperCase() + option.slice(1),
-      });
+      const chip = settingChoice(option[0].toUpperCase() + option.slice(1));
       activePicker.sheet.d.on(chip, 'click', async () => {
         if (savingTheme) return;
         activePicker.notice.clear();
@@ -537,7 +535,7 @@ export function SettingsRoute({ navigate, back, params = {}, onNetworkBusy = () 
     themeValue = RowValue(themeLabel());
     const appearance = (sheet) => {
       const panel = choices(sheet, 'Choose a theme', 'About appearance', 'Choose Light, Dark, or System to follow your device theme.');
-      panel.appendChild(h('div', { class: 'row-flex wrap' }, themeChips(picker)));
+      panel.appendChild(h('div', { class: 'settings-options' }, themeChips(picker)));
       return panel;
     };
     const requirePasswordForSigning = preferences?.requirePasswordForSigning === true;

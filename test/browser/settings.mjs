@@ -4,8 +4,8 @@ import assert from 'node:assert/strict';
 import { chromium, CHROME_BIN, origin, routeFixture } from './helpers/fixture.mjs';
 const browser = await chromium.launch({ executablePath: CHROME_BIN });
 try {
-  for (const [width, theme, success] of [[400, 'light', true], [320, 'dark', false]]) {
-    const page = await browser.newPage({ viewport: { width, height: 600 }, reducedMotion: 'reduce' });
+  for (const [width, height, theme, success] of [[400, 600, 'light', true], [320, 445, 'dark', false]]) {
+    const page = await browser.newPage({ viewport: { width, height }, reducedMotion: 'reduce' });
     page.setDefaultTimeout(5000); const external = [], errors = [];
     page.on('pageerror', e => errors.push(e.message));
 
@@ -37,6 +37,16 @@ try {
     assert.equal(await page.locator('.settings-footer img').getAttribute('src'), 'icons/icon128.png');
     await row.focus(); await page.keyboard.press('Enter');
     let dialog = page.getByRole('dialog', { name: 'Theme Mode' });
+    const themeOptions = dialog.locator('.settings-option');
+    assert.equal(await themeOptions.count(), 3);
+    const geometry = await themeOptions.evaluateAll(els => els.map(el => {
+      const r = el.getBoundingClientRect(); const parent = el.parentElement.getBoundingClientRect();
+      return { x: r.x, y: r.y, width: r.width, height: r.height, parentWidth: parent.width };
+    }));
+    assert.ok(geometry.every(r => r.height >= 44 && Math.abs(r.width - r.parentWidth) < 1));
+    assert.ok(geometry.every((r, i) => i === 0 || r.y >= geometry[i - 1].y + geometry[i - 1].height));
+    assert.equal(await dialog.getByRole('button', { name: theme === 'dark' ? 'Dark' : 'Light', exact: true }).getAttribute('aria-pressed'), 'true');
+    if (width === 400) await page.screenshot({ path: 'dist/settings-preview.png' });
     const option = success ? 'Dark' : 'Light';
     await dialog.getByRole('button', { name: option, exact: true }).click();
     assert.equal(await page.evaluate(() => window.themeWrites), 1);
@@ -60,13 +70,27 @@ try {
     await dialog.waitFor({ state: 'detached' });
     for (const [pattern, name, choice, prompt] of [[/^Auto-lock time/, 'Auto-lock time', 'Never', 'Disable auto-lock?'], [/^Signing security/, 'Signing security', 'Require password', 'Require password for signing']]) {
       const control = page.getByRole('button', { name: pattern }); await control.click();
-      const picker = page.getByRole('dialog', { name, exact: true }); await picker.getByRole('button', { name: choice, exact: true }).click();
+      const picker = page.getByRole('dialog', { name, exact: true });
+      await picker.getByRole('button', { name: choice, exact: true }).waitFor();
+      const options = picker.locator('.settings-option');
+      assert.equal(await options.count(), name === 'Auto-lock time' ? 7 : 2);
+      assert.equal(await options.filter({ has: page.locator('[aria-hidden="true"]') }).count(), await options.count());
+      const rows = await options.evaluateAll(els => els.map(el => ({ width: el.getBoundingClientRect().width, parent: el.parentElement.getBoundingClientRect().width, height: el.getBoundingClientRect().height })));
+      assert.ok(rows.every(r => r.height >= 44 && Math.abs(r.width - r.parent) < 1));
+      assert.equal(await picker.locator('.settings-option[aria-pressed="true"]').count(), 1);
+      await options.last().scrollIntoViewIfNeeded();
+      const lastVisible = await options.last().evaluate(el => {
+        const r = el.getBoundingClientRect(), viewport = el.closest('[role="dialog"]').getBoundingClientRect();
+        return r.top >= viewport.top && r.bottom <= viewport.bottom && r.bottom <= innerHeight;
+      });
+      assert.ok(lastVisible, 'last choice can be scrolled into the visible sheet');
+      await picker.getByRole('button', { name: choice, exact: true }).click();
       await picker.waitFor({ state: 'detached' }); const confirmation = page.getByRole('dialog', { name: prompt }); await confirmation.waitFor();
       assert.equal(await page.getByRole('dialog').count(), 1); await page.keyboard.press('Escape'); await confirmation.waitFor({ state: 'detached' });
       assert.ok(await control.evaluate(el => el === document.activeElement));
     }
     assert.deepEqual(errors, []); assert.deepEqual(external, []);
-    console.log(`PASS ${width}x600 ${theme}: theme ${success ? 'success' : 'failure'} across reopen, password dialogs, focus, planned rows, wallet logo`);
+    console.log(`PASS ${width}x${height} ${theme}: full-width choices, theme ${success ? 'success' : 'failure'} across reopen, password dialogs, focus, planned rows`);
     await page.close();
   }
 } finally { await browser.close(); }

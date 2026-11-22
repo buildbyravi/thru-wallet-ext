@@ -1043,6 +1043,26 @@ button.tx-card-body:hover { background: var(--surface-2); }
   justify-content: space-between;
 }
 .settings-detail { padding-block-end: var(--sp-2); }
+.settings-options {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.settings-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  text-align: start;
+}
+.settings-option-check { visibility: hidden; flex: none; }
+.settings-option[aria-pressed="true"] .settings-option-check { visibility: visible; }
+.settings-option[aria-disabled="true"] { cursor: wait; }
 .settings-choice-title, .settings-label-with-help, .settings-footer {
   display: flex;
   align-items: center;

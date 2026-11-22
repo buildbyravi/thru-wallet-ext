@@ -24,7 +24,7 @@ argument in place of `dist`.
 - `network-health.mjs`: bounded recovery from transient probe failure and stale-network reply fencing.
 - `token-cache.mjs`: cache-first 10/100/200-token lists, stable rows/scroll and filtering.
 - `history-controls.mjs`: flat History, cached status, keyboard detail/copy/link, intercepted explorer and Faucet amount copy.
-- `settings.mjs`: theme save/reopen success and failure, password-dialog handoff, planned rows and logo.
+- `settings.mjs`: full-width preference choices, theme save/reopen success and failure, password-dialog handoff, planned rows and logo.
 
 The browser fixtures cover selected scenarios, not every route, OS, extension lifecycle or wallet
 operation. Do not use their synthetic network or balance values as live-chain evidence.

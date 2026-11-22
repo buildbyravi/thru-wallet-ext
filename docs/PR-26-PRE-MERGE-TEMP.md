@@ -7,7 +7,7 @@ Use a disposable wallet for live checks. Mocked previews are not installed-exten
 - Dashboard: inset balance card, token icons and network chooser without the extra Network heading.
 - Assets: search, token details, custom-token import and hide/restore.
 - History: flat list, filters, details, copy, clickable explorer links and shorter cached status.
-- Settings: network, theme, auto-lock and signing sheets; planned options are disabled.
+- Settings: full-width theme, auto-lock and signing choices; planned options remain disabled.
 - Appearance: readable addresses in both themes and wallet logo in Settings.
 - Network: retry a failed health check and ignore old-network results; ms is RPC latency, not block time.
 - Faucet: removed the explanatory sentence under the fixed claim amount.
@@ -18,7 +18,7 @@ Use a disposable wallet for live checks. Mocked previews are not installed-exten
 - [ ] Dashboard and Assets: layout, scrolling, search, details, import, hide/restore and refresh.
 - [ ] Network: open the chooser and check that Betanet status recovers after a temporary connection failure.
 - [ ] History: check filters, flat list, details, copy, explorer links and the short cached status.
-- [ ] Settings: check themes, auto-lock, signing, disabled options, logo and readable addresses in both themes.
+- [ ] Settings: check full-width theme, auto-lock and signing choices, password prompts and disabled options in both themes.
 - [ ] Faucet: check the claim amount remains visible without the extra sentence.
 - [ ] Receive: copy the address and scan its QR code with another device.
 - [ ] Chrome: test toolbar popup and side panel, switching, resizing, keyboard focus and worker restart.

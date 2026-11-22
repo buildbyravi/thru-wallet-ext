@@ -9,7 +9,7 @@ Source baseline re-verified on `main` at contract v33 (2026-11-19, v1.6.0). `src
 
 The baseline below describes `main`, not automatically the latest store package or this PR. The
 working branch `arena/1b860a7c-thru-wallet-ext` is based on `38434abe` and PR #26 is **open,
-unmerged and not release-approved**. This snapshot describes runtime through `98650f4`; use
+unmerged and not release-approved**. The prior baseline evidence below is for `98650f4`; the branch also contains `46f0acc` and the current Settings work; use
 `git status`, `git log` and the PR checks to identify later work. Product behavior belongs in
 `docs/BUILD_SPEC.md`; a concise change and verification list is in
 `docs/PR-26-PRE-MERGE-TEMP.md` (temporary, not a substitute for this status document).
@@ -27,7 +27,10 @@ unmerged and not release-approved**. This snapshot describes runtime through `98
   Playwright fixtures passed with a synthetic bridge in Chromium 153. Fixtures are neither a
   loaded MV3 extension nor live network evidence. No new independent audit was performed.
 - **BLOCKED:** an older delayed token-registry read can overwrite a newer balance cache after
-  import (controlled reproduction); a pending preference write can return stale Side Panel mode
+  import (controlled reproduction). Agent A added in-flight invalidation in `46f0acc`, but its test
+  holds an RPC after registry loading; the previously reproduced delayed-registry-read ordering
+  occurs before in-flight registration and remains unverified by that test. A pending preference
+  write can return stale Side Panel mode
   (controlled stale read; full Chrome timeout divergence not reproduced). Both remain unresolved.
   Native popup/panel and worker lifecycle, physical QR scan, approved disposable-wallet Betanet
   flows, final independent review and owner approval remain open. See the PR worklist for scope.
@@ -39,7 +42,7 @@ unmerged and not release-approved**. This snapshot describes runtime through `98
   report's claim that it blocks the stream is not supported by that code. History refreshes every
   five seconds, while one-second pending polling runs only with pending entries; performance
   changes need measurement and owner review.
-- **PLANNED:** further Settings polish; do not treat proposed full-width refinements as shipped.
+- **IMPLEMENTED in branch:** Theme, Auto-lock and Signing settings sheets use full-width selectable rows; their existing save and password-confirmation flows are unchanged. Browser fixture evidence is not installed-extension verification.
 
 ---
 
