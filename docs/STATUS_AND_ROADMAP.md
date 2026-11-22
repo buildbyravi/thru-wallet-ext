@@ -11,7 +11,7 @@ The baseline below describes `main`, not automatically the latest store package 
 working branch `arena/1b860a7c-thru-wallet-ext` is based on `38434abe` and PR #26 is **open,
 unmerged and not release-approved**. This snapshot describes runtime through `98650f4`; use
 `git status`, `git log` and the PR checks to identify later work. Product behavior belongs in
-`docs/BUILD_SPEC.md`; detailed PR evidence and the deferred checklist are in
+`docs/BUILD_SPEC.md`; a concise change and verification list is in
 `docs/PR-26-PRE-MERGE-TEMP.md` (temporary, not a substitute for this status document).
 
 - **IMPLEMENTED / TESTED in branch:** inset dashboard and Assets drawer with verified import,

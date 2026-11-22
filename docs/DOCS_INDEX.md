@@ -49,7 +49,7 @@ Each document owns **one** domain. Link to the owner instead of duplicating coun
 | `SECURITY.md` | Public security policy, PBKDF2/AES-GCM encryption spec, permission audit, CSP, and vulnerability disclosure. |
 | `PRIVACY.md` | Public zero-telemetry privacy policy and local vs RPC data boundary. |
 | `SUPPORT.md` | Public user FAQ, current Betanet scope, and support channels. |
-| `extension.md` | Proposed Chrome Web Store copy, last-recorded listing snapshot, permission justifications, and store sync history; publication is separate from repository edits. |
+| `extension.md` | Chrome Web Store copy and permission justifications; publication is separate from repository edits. |
 
 ### 3.2 Core Authority Specifications (`docs/`)
 | File | Owns |
@@ -99,7 +99,7 @@ These destinations replace active read instructions, not the original dated evid
 
 | Path | Class | Owns |
 | --- | --- | --- |
-| `docs/PR-26-PRE-MERGE-TEMP.md` | Temporary PR Worklist | PR #26 branch-only evidence, pending checks and blockers; remove at the agreed final merge-readiness handoff after recording durable outcomes and removing the references to the worklist from the owning docs. |
+| `docs/PR-26-PRE-MERGE-TEMP.md` | Temporary PR Worklist | PR #26 plain-language changes and pending verification; remove at the agreed final merge-readiness handoff after recording durable outcomes and removing the references to the worklist from the owning docs. |
 | `docs/MANUAL_SMOKE_CHECKLIST.md` | Operational Runbook | Real-Chrome popup & side-panel QA checklist (`400px`, `<400px`, `>=800px`), v32 review card smoke, live-chain steps, and DevTools helpers. |
 | `docs/AUDIT_REPORT.md` | Operational Summary | Current audit conclusion, 5 separated Mainnet-readiness gate categories, and index of all 7 dated audits. |
 | `docs/DEFECT_LOG.md` | Postmortem Taxonomy | Categorized root causes, fixes, and mechanical guardrails for historical and recent wallet defects. |
