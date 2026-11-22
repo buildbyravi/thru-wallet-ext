@@ -389,14 +389,14 @@ export function HistoryRoute({ back }) {
       cursor = feed.nextCursor ?? null;
       feedSynced = feed.synced !== false;
       if (feedSynced) banner.clear();
-      else banner.set('Showing cached activity — offline or network unavailable. Reconnect to sync.', 'warning');
+      else banner.set('Cached · Sync unavailable', 'warning');
       paintPending();
       paintList();
     } catch (error) {
       if (!isCurrent(seq)) return;
       feedSynced = false;
       banner.set(entries.length
-        ? 'Showing cached activity — could not sync with the network. Reconnect to refresh.'
+        ? 'Cached · Sync unavailable'
         : error.message || 'Could not load activity.', entries.length ? 'warning' : 'error');
       paintPending();
       paintList();

@@ -15,13 +15,13 @@ try {
       Object.defineProperty(navigator, 'clipboard', { value: { writeText: async value => { window.copied = value; } } });
       const address = 'taDemoStudioFixture000000000000000000000000AA';
       const account = { address, label: 'Fixture wallet', balance: '0' };
-      const network = { id: 'betanet', label: 'Betanet', isTestnet: true, explorerUrl: 'https://scan.thru.org' };
+      const network = { id: 'betanet', label: 'Betanet', isTestnet: true, explorerUrl: 'https://scan.thru.org', faucetProgramId: 'fixture-program', faucetStateAccount: 'fixture-state', faucetMaxPerClaim: '10000' };
       const entry = { signature, slot: '249967', success: true, kind: 'other', timestamp: null };
       const replies = { 'system.bootstrap': { contractVersion: 33, hasVault: true, unlocked: true, account, accounts: [account], keyrings: [], network, preferences: { theme }, pending: [] },
         'settings.get': { theme }, 'wallet.hasVault': true, 'wallet.isUnlocked': true, 'keyring.list': [], 'account.list': [account], 'account.getActive': account,
         'network.getActive': network, 'tx.checkHealth': { status: 'healthy' }, 'tx.getPending': [],
         'tx.getCachedHistory': { networkId: network.id, address, entries: [entry], nextCursor: null },
-        'tx.getHistoryFeed': { entries: [entry], nextCursor: null, synced: true },
+        'tx.getHistoryFeed': { entries: [entry], nextCursor: null, synced: false },
         'tx.getDetail': { ...entry, supported: true, feeDeclaredUnits: null, feeCharged: false, blockTimeMs: null } };
       globalThis.chrome ??= {};
       chrome.runtime = { onMessage: { addListener() {}, removeListener() {} }, getURL: path => `/${path}`,
@@ -31,6 +31,8 @@ try {
     const page = await ctx.newPage(); page.setDefaultTimeout(5000); page.on('pageerror', e => errors.push(e.message));
     await page.goto(`${origin}/popup.html#/history`);
     await page.waitForFunction(theme => document.documentElement.dataset.theme === theme, theme);
+    await page.getByText('Cached · Sync unavailable', { exact: true }).waitFor();
+    assert.equal(await page.getByText(/Showing cached activity/).count(), 0);
     const filters = page.getByRole('group', { name: 'History filters' });
     await filters.getByRole('button', { name: 'All', exact: true }).waitFor();
     assert.deepEqual(await filters.getByRole('button').allTextContents(), ['All', 'Sent', 'Received', 'Failed']);
@@ -57,6 +59,13 @@ try {
     await link.focus(); const opened = ctx.waitForEvent('page'); await page.keyboard.press('Enter');
     const tab = await opened; await tab.waitForURL(explorer);
     assert.equal(await dialog.count(), 0); assert.deepEqual(external, [explorer]); assert.deepEqual(errors, []);
-    await ctx.close(); console.log(`PASS ${width}x${height} ${theme}: flat History, filters, independent link/copy/details, focus, intercepted explorer`);
+    await page.goto(`${origin}/popup.html#/faucet`);
+    const amount = page.getByLabel('Claim amount'); await amount.waitFor();
+    assert.equal(await amount.inputValue(), '0.00001 THRU');
+    assert.equal(await amount.getAttribute('readonly'), '');
+    assert.equal(await page.getByText(/Fixed claim of|paid to your active account|no gas required to claim/i).count(), 0);
+    await page.getByRole('button', { name: 'Claim', exact: true }).waitFor();
+    assert.deepEqual(errors, []); assert.deepEqual(external, [explorer]);
+    await ctx.close(); console.log(`PASS ${width}x${height} ${theme}: History controls and cached status; Faucet amount without extra copy`);
   }
 } finally { await browser.close(); }

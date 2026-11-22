@@ -4294,7 +4294,7 @@ async function navigationTest() {
   router.navigate('/history');
   await settle();
   ok('an unsynced feed is labelled as cached/offline in the UI',
-    /cached activity|offline/i.test(textOf(router.root)), textOf(router.root).slice(0, 200));
+    /Cached · Sync unavailable/.test(textOf(router.root)), textOf(router.root).slice(0, 200));
   FIXTURES['tx.getHistoryFeed'] = () => ({
     entries: DUP_ENTRIES.slice(0, 15).map((e) => ({ ...e })),
     nextCursor: 15,
@@ -4303,7 +4303,7 @@ async function navigationTest() {
   router.navigate('/history');
   await settle();
   ok('the offline label clears once a synced page lands',
-    !/cached activity/i.test(textOf(router.root)), textOf(router.root).slice(0, 160));
+    !/Cached · Sync unavailable/.test(textOf(router.root)), textOf(router.root).slice(0, 160));
   FIXTURES['tx.getHistoryFeed'] = realFeed;
 
   // ---- P1 cards: flat stream, verbs/deltas, failed badge, signature copy ----
@@ -5241,10 +5241,8 @@ async function faucetReviewTest() {
     amountInput?.getAttribute('readonly') !== null
       && amountInput?.value === '0.00001 THRU',
     JSON.stringify({ readonly: amountInput?.getAttribute('readonly'), value: amountInput?.value }));
-  ok('the claim field carries no base-units jargon next to a THRU-denominated amount',
-    /Fixed claim of 0\.00001 THRU per request/.test(textOf(route.el))
-      && /no gas required to claim/i.test(textOf(route.el))
-      && !/raw units/i.test(textOf(route.el)),
+  ok('the claim field has no redundant claim explanation or base-units jargon',
+    !/Fixed claim of|paid to your active account|no gas required to claim|raw units/i.test(textOf(route.el)),
     textOf(route.el).slice(0, 200));
 
   click(claimBtn);
@@ -5647,7 +5645,7 @@ async function historyCacheFirstTest() {
     await settle();
     ok('fresh cards replace cached ones before pending reconciliation has responded',
       /Block 501/.test(textOf(route.el)) && !/Block 101/.test(textOf(route.el))
-        && !/cached activity/i.test(textOf(route.el))
+        && !/Cached · Sync unavailable/.test(textOf(route.el))
         && held.some((item) => item.message.method === 'tx.getPending'));
     reply('tx.getPending', []);
     reply('account.list', backend.accounts.map((a) => ({ ...a })));
@@ -5661,7 +5659,7 @@ async function historyCacheFirstTest() {
       error: { code: 'NETWORK_ERROR', message: 'RPC offline', retryable: true } });
     await settle();
     ok('a failed feed keeps cached cards and does not make a second raw RPC request',
-      /Block 101/.test(textOf(route.el)) && /cached activity.*could not sync/i.test(textOf(route.el))
+      /Block 101/.test(textOf(route.el)) && /Cached · Sync unavailable/.test(textOf(route.el))
         && chromeLog.calls.filter((method) => method === 'tx.listHistory').length === rawCallsBefore);
 
     cachedCursor = null;
@@ -5670,7 +5668,7 @@ async function historyCacheFirstTest() {
     reply('tx.getHistoryFeed', { entries: [alpha], nextCursor: null, synced: false });
     await settle();
     ok('the offline feed keeps the last-page card without offering Load more',
-      /Block 101/.test(textOf(route.el)) && /cached activity/i.test(textOf(route.el))
+      /Block 101/.test(textOf(route.el)) && /Cached · Sync unavailable/.test(textOf(route.el))
         && buttons(route.el, /load more/i).length === 0);
 
     emitEvent('pendingTxChanged', {});

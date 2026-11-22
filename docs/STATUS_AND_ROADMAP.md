@@ -31,6 +31,14 @@ unmerged and not release-approved**. This snapshot describes runtime through `98
   (controlled stale read; full Chrome timeout divergence not reproduced). Both remain unresolved.
   Native popup/panel and worker lifecycle, physical QR scan, approved disposable-wallet Betanet
   flows, final independent review and owner approval remain open. See the PR worklist for scope.
+- **UNVERIFIED (Agent C review at older `3d51e0a`):** History pending rendering parses persisted
+  `amountUnits` without guarding `BigInt`; malformed stored records can plausibly break rendering,
+  but no regression reproduction or fix has been completed. The proposed stuck-spinner scenario
+  also needs a controlled reproduction; context changes start a new load. Do not treat either as
+  resolved. `onExecution` is called without awaiting its promise by the SDK stream wrapper, so the
+  report's claim that it blocks the stream is not supported by that code. History refreshes every
+  five seconds, while one-second pending polling runs only with pending entries; performance
+  changes need measurement and owner review.
 - **PLANNED:** further Settings polish; do not treat proposed full-width refinements as shipped.
 
 ---
