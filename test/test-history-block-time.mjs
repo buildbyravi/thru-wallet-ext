@@ -207,6 +207,38 @@ try {
     'timestamps cross the API seam as numbers, not BigInts or invented strings');
   console.log('  ok - chain time wins over local submission time and is cached per block');
 
+  // Fifteen distinct slots should run in parallel, but never more than eight at once.
+  const batchGates = new Map();
+  let activeHeaders = 0;
+  let maxHeaders = 0;
+  alphaClient.transactions.listForAccount = async () => ({ transactions: Array.from(
+    { length: 15 }, (_, i) => fakeTransaction(`ts_bounded_${i}`, 10_001 + i),
+  ) });
+  alphaClient.blocks.get = async ({ slot: requested }) => {
+    const gate = deferred(); batchGates.set(requested, gate);
+    activeHeaders += 1; maxHeaders = Math.max(maxHeaders, activeHeaders);
+    try {
+      await gate.promise;
+      if (requested === 10_004) throw new Error('header unavailable');
+      return { blockTimeNs: NS_A };
+    } finally { activeHeaders -= 1; }
+  };
+  const batchedFeed = history.getHistoryFeed('ta_bounded_feed');
+  await waitFor(() => batchGates.size >= 8);
+  assert.equal(batchGates.size, 8, 'the second batch waits for the first eight headers');
+  for (const gate of batchGates.values()) gate.resolve();
+  await waitFor(() => batchGates.size === 15);
+  for (const gate of batchGates.values()) gate.resolve();
+  const batched = await batchedFeed;
+  assert.equal(maxHeaders, 8, 'history limits concurrent header RPCs to eight');
+  assert.equal(batched.synced, true, 'one failed header must not fail the history feed');
+  assert.equal(batched.entries.length, 15);
+  assert.equal(batched.entries.find((entry) => entry.slot === '10004').timestamp, null,
+    'an unavailable header stays unknown instead of inventing a time');
+  assert.equal(batched.entries.filter((entry) => entry.timestamp === MS_A).length, 14);
+  console.log('  ok - first-page block times are parallel, capped at eight, and tolerate a failed header');
+
+
   // A block-sourced timestamp persists across service-worker restarts; do not re-fetch it
   // just because the list response itself does not contain wall-clock time.
   data.set(alphaScope, {

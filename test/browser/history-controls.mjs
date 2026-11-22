@@ -36,6 +36,14 @@ try {
     const filters = page.getByRole('group', { name: 'History filters' });
     await filters.getByRole('button', { name: 'All', exact: true }).waitFor();
     assert.deepEqual(await filters.getByRole('button').allTextContents(), ['All', 'Sent', 'Received', 'Failed']);
+    const allFilter = filters.getByRole('button', { name: 'All', exact: true });
+    const sentFilter = filters.getByRole('button', { name: 'Sent', exact: true });
+    assert.equal(await allFilter.getAttribute('aria-pressed'), 'true');
+    assert.equal(await sentFilter.getAttribute('aria-pressed'), 'false');
+    await sentFilter.click();
+    assert.equal(await sentFilter.getAttribute('aria-pressed'), 'true');
+    assert.equal(await allFilter.getAttribute('aria-pressed'), 'false');
+    await allFilter.click();
     const layout = await filters.getByRole('button').evaluateAll(els => els.map(e => { const r = e.getBoundingClientRect(); return [r.y, r.height, r.right]; }));
     assert.equal(new Set(layout.map(x => x[0])).size, 1);
     assert.ok(layout.every(([, h, right]) => h >= 30 && right <= width));

@@ -189,10 +189,14 @@ export async function getHistoryFeed(address) {
         && !cachedBlockTime(initialMap.get(e.signature), e.slot))
       .map((e) => String(e.slot)))];
     const blockTimes = new Map();
-    await Promise.all(missingSlots.map(async (slot) => {
-      const timeMs = await thruClient.getBlockTimeMs(slot, network.id).catch(() => null);
-      if (timeMs !== null) blockTimes.set(slot, timeMs);
-    })); // at most PAGE_ON_OPEN unique headers; duplicate slots share one request
+    // Match paginated History's eight-request limit without serializing individual headers.
+    for (let i = 0; i < missingSlots.length; i += 8) {
+      await Promise.all(missingSlots.slice(i, i + 8).map(async (slot) => {
+        const timeMs = await thruClient.getBlockTimeMs(slot, network.id).catch(() => null);
+        if (timeMs !== null) blockTimes.set(slot, timeMs);
+      }));
+      assertCurrent(await getActiveNetworkId());
+    }
 
     assertCurrent(await getActiveNetworkId());
     // Chain-reality evidence from the live fetch: a cached row stamped above what this

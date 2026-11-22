@@ -16,6 +16,7 @@ console.log('[token balances] strict wire predicate edge cases');
 const wire = { error: false, tokenAccountExists: true, amountUnits: '1', decimals: 6 };
 assert.equal(isVerifiedTokenBalance(wire), true);
 assert.equal(isVerifiedTokenBalance({ ...wire, amountUnits: '0', decimals: undefined }), true, 'zero needs no mint denomination');
+assert.equal(isVerifiedTokenBalance({ ...wire, amountUnits: '0', decimals: null }), true, 'verified zero also works with explicit null decimals');
 assert.equal(isVerifiedTokenBalance({ ...wire, decimals: 19 }), false, 'nonzero with unsupported decimals is unknown');
 assert.equal(isVerifiedTokenBalance({ ...wire, error: true }), false);
 assert.equal(isVerifiedTokenBalance({ ...wire, tokenAccountExists: false, amountUnits: '0' }), false, 'absent account uses null units on wire');

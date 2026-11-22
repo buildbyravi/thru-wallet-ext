@@ -58,3 +58,5 @@ Tapping a `tx-card` opens a bottom sheet backed by lazy `tx.getDetail({ signatur
 - Real-Chrome overflow, keyboard Tab/Enter/Space/Escape focus return, and side-panel width checks (`docs/MANUAL_SMOKE_CHECKLIST.md` §3).
 - Live Betanet `blocks.get` block-time availability and first-page latency under real RPC conditions.
 - Explorer routing was verified read-only with a [current public Betanet transaction](https://scan.thru.org/tx/tssFxFSNJAQzk7kAYMFxe8P0WHn36HQ-jZi018a3FUBM6n_P19wMZFcNEwul8vZicXYacEeU2kGOr8-WqEx82JCB28?network=betanet) from the live feed. The UI and notification use one network-scoped URL builder. This did not compare a new wallet submission or verify a typed charged-fee endpoint (`docs/BACKEND_GAPS.md` C2b/C2c).
+
+Block-time lookups for the first History page run in parallel, with at most eight header requests per batch; missing headers remain unknown.
