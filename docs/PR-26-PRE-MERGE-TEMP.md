@@ -21,9 +21,11 @@ Use a disposable wallet for live checks. Mocked previews are not installed-exten
 - [ ] Settings: check full-width theme, auto-lock and signing choices, password prompts and disabled options in both themes.
 - [ ] Faucet: check the claim amount remains visible without the extra sentence.
 - [ ] Receive: copy the address and scan its QR code with another device.
+- [ ] Side panel: repeat opening and closing and check the one-time loading failure does not return.
 - [ ] Chrome: test toolbar popup and side panel, switching, resizing, keyboard focus and worker restart.
 - [ ] Security: check lock, secret cleanup, transaction review and custom-network restrictions.
-- [ ] Betanet: with approved disposable test accounts, check token import, balances, send, faucet and History against the explorer.
+- [ ] When a Betanet token is available: import it, refresh and reopen; check it stays visible with the correct balance.
+- [ ] Betanet: with approved disposable accounts, check send, faucet and History against the explorer.
 - [ ] Check malformed pending History amounts and the reported refresh-spinner issue.
 - [ ] Fix and retest the token-cache race where an older read can overwrite a newer refresh.
 - [ ] Investigate and fix the stale Side Panel preference read; verify recovery in real Chrome.

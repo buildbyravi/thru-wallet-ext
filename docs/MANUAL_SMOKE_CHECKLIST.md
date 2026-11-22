@@ -122,6 +122,10 @@ Serve local visual harnesses first (`node scripts/serve-dist.mjs --root . --port
 
 ## 8. Smoke Run Record Template & Log
 
+- [ ] When a suitable Betanet token is available, import it with a disposable wallet, refresh, close and reopen the extension, and confirm it remains visible with the correct balance.
+- [ ] Reopen the side panel several times and after a worker restart; investigate if it ever fails to load again.
+
+
 ```text
 Manual smoke: <YYYY-MM-DD>, Chrome <version>, commit <short-sha>
   contexts: popup [ ] side panel [ ]    widths: narrow (<400px) [ ] wide (>=800px) [ ]
@@ -133,6 +137,7 @@ Manual smoke: <YYYY-MM-DD>, Chrome <version>, commit <short-sha>
 ```
 
 ### Recorded Runs
+- **Owner report (version and Chrome not recorded):** Side panel opening and closing worked as expected on several attempts; one earlier attempt failed to load. This is partial feedback, not a completed worker-restart or Side Panel Mode recovery test.
 - **2026-11-16 (Chrome 157 visual harness, mocked bridge):** Tested source-module boot and real rebuilt `dist/popup.css` at `400x600` and `300x600`, light/dark. Confirmed no intermediate Checking-wallet page, deep-link input preservation, reset/late-bootstrap behavior, readable toast text, wrapping long addresses, and a 14px gap above the actual dashboard network footer with working hit-testing. Evidence: local temporary directory `ui-recheck-20261116-1021-evidence` contains `report.json` and 43 screenshots with asset hashes. This does not verify unpacked-extension hosting, real MV3 suspension, live signing, or later source changes.
 - **2026-10-04 (Partial, popup only):** Local build post-`14e16b1` in real Chrome; native Betanet self-send on `/send` verified recipient validation, amount parsing, Review fee, confirmation, and `/history` entry (`/send` popup cell ticked; charged fee not captured; JIT activation, side panel, widths, and `1.4.1` store package remain open).
 - **2026-10-27 (Visual harness only):** Chrome inspection of `NameRoute`/`Sheet` with `dist/popup.css` and mocked bridge at `400x600` (light/dark) and `320x700` / `320x400` with a 64-char name confirmed scroll-reachable confirmation actions without document height expansion.

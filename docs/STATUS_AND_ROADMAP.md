@@ -34,6 +34,7 @@ unmerged and not release-approved**. The prior baseline evidence below is for `9
   (controlled stale read; full Chrome timeout divergence not reproduced). Both remain unresolved.
   Native popup/panel and worker lifecycle, physical QR scan, approved disposable-wallet Betanet
   flows, final independent review and owner approval remain open. See the PR worklist for scope.
+- **PARTIAL owner feedback:** Side panel open/close worked on several attempts after one failure to load; extension version and Chrome version were not supplied. This does not reproduce or rule out the separate preference timeout race. See `docs/MANUAL_SMOKE_CHECKLIST.md` for the pending retest.
 - **UNVERIFIED (Agent C review at older `3d51e0a`):** History pending rendering parses persisted
   `amountUnits` without guarding `BigInt`; malformed stored records can plausibly break rendering,
   but no regression reproduction or fix has been completed. The proposed stuck-spinner scenario
