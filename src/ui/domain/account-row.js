@@ -44,11 +44,6 @@ export function AccountRow({ account, active = false, balance = null, stale = fa
       AddressText({ address: account.address }),
     ]),
     balanceEl,
-    active ? h('span', {
-      class: 'account-row-current',
-      title: 'Current account',
-      'aria-hidden': 'true',
-    }, icon('check', 13)) : null,
   ]);
 
   if (typeof onSelect === 'function') {

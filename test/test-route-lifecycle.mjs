@@ -5924,10 +5924,6 @@ async function offlineBalanceConsumersTest() {
     ok('Accounts cannot paint offline, never-fetched addresses as 0 THRU',
       chromeLog.calls.includes('tx.getBalances')
         && !/\b0 THRU\b/.test(textOf(accountsRoute.el)), textOf(accountsRoute.el).slice(0, 240));
-    const activeAccountRow = accountsRoute.el.querySelector('.row.active');
-    ok('Accounts identifies the active row with a visible current-account marker',
-      accountsRoute.el.classList.contains('accounts-screen')
-        && Boolean(activeAccountRow?.querySelector('.account-row-current')));
     accountsRoute.destroy();
     accountsRoute.el.remove();
 

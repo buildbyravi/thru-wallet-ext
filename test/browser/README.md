@@ -26,7 +26,6 @@ argument in place of `dist`.
 - `history-controls.mjs`: flat History, cached status, keyboard detail/copy/link, intercepted explorer and Faucet amount copy.
 - `settings.mjs`: full-width preference choices, theme save/reopen success and failure, password-dialog handoff, planned rows and logo.
 - `wallet-security.mjs`: MV3 extension load and current absence-of-provider smoke checks; it does not test planned DApp authorization or signing.
-- `dashboard-accounts.mjs`: real built dashboard/account switcher layouts at 400px and 320px using synthetic account data and the mocked bridge.
 
 The browser fixtures cover selected scenarios, not every route, OS, extension lifecycle or wallet
 operation. Do not use their synthetic network or balance values as live-chain evidence.

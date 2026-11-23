@@ -199,7 +199,7 @@ export function AccountsRoute({ navigate, back }) {
 
   const header = PageHeader({ title: 'Accounts', onBack: () => back() });
 
-  const el = h('section', { class: 'screen accounts-screen' }, [
+  const el = h('section', { class: 'screen' }, [
     header.el,
     searchBox,
     banner.el,
