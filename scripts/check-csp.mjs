@@ -104,16 +104,24 @@ function scanHtml(dir) {
       const html = readFileSync(path, "utf8");
       if (/\son[a-z]+\s*=/i.test(html))
         errors.push(`${path}: inline event handler attribute is forbidden`);
-      const scriptTags = [
-        ...html.matchAll(/<script\b[^>]*\bsrc\s*=\s*(["'])(.*?)\1[^>]*>/gi),
-      ];
+      const scriptTags = [...html.matchAll(/<script\b[^>]*>/gi)];
       for (const match of scriptTags) {
-        const src = match[2];
-        const tag = match[0];
+        const attributes = new Map();
+        const attributePattern =
+          /([^\s"'<>/=]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g;
+        for (const attr of match[0].slice(7).matchAll(attributePattern)) {
+          attributes.set(
+            attr[1].toLowerCase(),
+            attr[2] ?? attr[3] ?? attr[4] ?? "",
+          );
+        }
+        const src = attributes.get("src");
+        if (!src || !/^(?:https?:)?\/\//i.test(src)) continue;
         if (
-          /^(?:https?:)?\/\//i.test(src) &&
-          (!/\bintegrity\s*=\s*["']sha384-[A-Za-z0-9+/=]+["']/i.test(tag) ||
-            !/\bcrossorigin(?:\s|=|>)/i.test(tag))
+          !/^sha384-[A-Za-z0-9+/]+={0,2}$/.test(
+            attributes.get("integrity") || "",
+          ) ||
+          !attributes.has("crossorigin")
         ) {
           errors.push(
             `${path}: external script must have sha384 integrity and crossorigin attributes`,
