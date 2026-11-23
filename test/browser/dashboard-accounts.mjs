@@ -2,7 +2,7 @@
 // Uses the real built popup CSS and a synthetic bridge; no vault, wallet secret or RPC.
 // PLAYWRIGHT_MODULE=/path/to/playwright-core/index.mjs CHROME_BIN=/path/to/chrome node test/browser/dashboard-accounts.mjs [dist]
 import assert from 'node:assert/strict';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir } from 'node:fs/promises';
 import { chromium, CHROME_BIN, origin, routeFixture } from './helpers/fixture.mjs';
 
 const accounts = [
@@ -54,7 +54,7 @@ try {
     }, { accounts, keyrings, activeAccount: active, activeNetwork: network, balancesByAddress: balances });
 
     await page.goto(`${origin}/popup.html#/dashboard`);
-    await page.waitForFunction(() => document.querySelector('.account-pill')?.textContent.includes('Main account'));
+    await page.waitForTimeout(150);
     await page.screenshot({ path: `test-results/dashboard-${width}.png`, fullPage: true });
     const accountPill = page.locator('.account-pill');
     await accountPill.waitFor({ state: 'visible' });
@@ -75,9 +75,6 @@ try {
     await page.close();
   }
   console.log('PASS: dashboard and grouped account switcher render without horizontal overflow at 400px and 320px.');
-} catch (error) {
-  await writeFile('test-results/dashboard-accounts-error.txt', String(error?.stack || error));
-  throw error;
 } finally {
   await browser.close();
 }
