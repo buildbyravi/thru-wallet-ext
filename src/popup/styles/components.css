@@ -687,8 +687,6 @@ button.row { cursor: pointer; }
 
 .accounts-screen .row.active {
   border-width: 2px;
-  background: var(--accent-tint);
-  box-shadow: inset 3px 0 0 var(--accent);
 }
 
 .accounts-screen .search-box input {
