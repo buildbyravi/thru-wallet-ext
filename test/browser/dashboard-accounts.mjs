@@ -21,7 +21,6 @@ const browser = await chromium.launch({ executablePath: CHROME_BIN });
 await mkdir('test-results', { recursive: true });
 try {
   for (const width of [400, 320]) {
-    console.log(`Checking dashboard/account UI at ${width}px.`);
     const page = await browser.newPage({ viewport: { width, height: 600 }, reducedMotion: 'reduce' });
     page.setDefaultTimeout(7000);
     const errors = [], unexpected = [];
@@ -54,14 +53,13 @@ try {
     }, { accounts, keyrings, activeAccount: active, activeNetwork: network, balancesByAddress: balances });
 
     await page.goto(`${origin}/popup.html#/dashboard`);
-    await page.waitForTimeout(150);
-    await page.screenshot({ path: `test-results/dashboard-${width}.png`, fullPage: true });
     const accountPill = page.locator('.account-pill');
     await accountPill.waitFor({ state: 'visible' });
     assert.match(await accountPill.innerText(), /Main account/);
     await page.locator('.dash-balance-card').waitFor({ state: 'visible' });
     await page.getByRole('button', { name: 'Send', exact: true }).waitFor({ state: 'visible' });
     assert.equal(await page.locator('body').evaluate(el => el.scrollWidth <= el.clientWidth), true, `dashboard overflows at ${width}px`);
+    await page.screenshot({ path: `test-results/dashboard-${width}.png`, fullPage: true });
 
     await accountPill.click();
     await page.getByRole('heading', { name: 'Accounts', exact: true }).waitFor();
