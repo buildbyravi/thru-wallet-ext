@@ -1,6 +1,6 @@
 // Shared static fixture routing. The bridge fixtures stay in each test because their behavior differs.
 import { readFile } from 'node:fs/promises';
-import { extname, resolve } from 'node:path';
+import { extname, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const { PLAYWRIGHT_MODULE, CHROME_BIN } = process.env;
@@ -23,7 +23,7 @@ export async function routeFixture(target, unexpected, { interceptExternal = fal
       if (interceptExternal) return route.fulfill({ contentType: 'text/plain', body: 'Navigation intercepted by fixture' });
       return route.abort();
     }
-    if (!path.startsWith(`${root}/`) || !mime[extname(path)]) {
+    if (!path.startsWith(`${root}${sep}`) || !mime[extname(path)]) {
       unexpected.push(url.href);
       return route.abort();
     }

@@ -29,3 +29,46 @@ argument in place of `dist`.
 
 The browser fixtures cover selected scenarios, not every route, OS, extension lifecycle or wallet
 operation. Do not use their synthetic network or balance values as live-chain evidence.
+
+## Visual Record Capture
+
+`capture-ui.mjs` rebuilds the standard `dist/` and captures the actual bundled popup with an isolated
+public bridge fixture. It uses the same external Playwright/Chromium setup as the regressions above;
+no production dependency, server, real vault or RPC is required. All requests are intercepted.
+Routing covers the entire browser context; service workers are blocked, WebSockets are refused,
+and unexpected popups fail capture. Build hashes include icons and artwork, not just bundles.
+
+```sh
+node test/browser/capture-ui.mjs dist docs/screenshots/current
+node test/browser/capture-ui.mjs dist docs/screenshots/current --check
+```
+
+For PowerShell, set the environment variables before capture (adjust local paths):
+
+```powershell
+$env:PLAYWRIGHT_MODULE = 'C:\browser-tools\node_modules\playwright-core\index.mjs'
+$env:CHROME_BIN = 'C:\Program Files\Google\Chrome\Application\chrome.exe'
+node test/browser/capture-ui.mjs dist docs/screenshots/current
+```
+
+Use `test-results/ui-before` and `test-results/ui-after` instead of the current output directory
+for active-change comparisons. The capture waits for route state, fonts and images; uses reduced
+motion; records viewport PNGs rather than hiding scroll constraints with full-page images; and
+opens Settings pickers with the keyboard, checking Escape/focus restoration. The manifest and
+Markdown gallery are generated only after the entire capture succeeds. Capture failures preserve
+the previous record, which must not be represented as fresh evidence.
+
+The former one-off Settings screenshot in `dist/` is removed; the maintained gallery owns that
+capture now, outside the extension package.
+
+The matrix is all registered routes plus selected onboarding, account cache/error/search, Assets,
+and Settings scenarios, each in light/dark at `400x600`, `320x600` and `820x720`. Fields remain blank;
+export is password-gated. Every successful fixture response is enumerated. Unmodelled methods,
+browser errors, unexpected requests or filled editable inputs fail capture. Negative controls
+prove external/non-asset requests and WebSockets are refused. `--check` needs no browser tooling and rejects
+changed source/build/image hashes or incomplete scenario/theme/viewport coverage.
+
+This is not an automatic pixel comparison or design approval. It does not cover every scroll
+position, transient state, transaction review, native popup/panel, real wallet or live-chain flow.
+Extend the scenario matrix when a change needs those states. Follow the
+[visual record protocol](../../docs/MANUAL_SMOKE_CHECKLIST.md#visual-record-protocol).

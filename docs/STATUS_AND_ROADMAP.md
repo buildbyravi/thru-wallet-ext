@@ -5,6 +5,37 @@ Source baseline re-verified on `main` at contract v33 (2026-11-19, v1.6.0). `src
 
 ---
 
+## Visual Record - PR #31 Working Tree (2026-11-23)
+
+**IMPLEMENTED / TESTED locally:** the actual-built-UI record is indexed in
+[docs/screenshots/README.md](screenshots/README.md). The first capture uses source baseline
+`274df9b` on local `pr-31`, plus uncommitted capture-tooling changes recorded in its manifest:
+150 Chromium captures of all 15 routes in selected safe states and additional onboarding,
+account-cache/error/search, Assets and Settings scenarios, light/dark at `400x600`, `320x600`
+and `820x720`. The existing store screenshots remain synthetic marketing compositions.
+
+The [visual record protocol](MANUAL_SMOKE_CHECKLIST.md#visual-record-protocol) owns active-change
+feedback and confirmed/merged refresh requirements. Capture/check tooling rebuilds the popup,
+records source/build/image hashes and checks coverage; the Windows fixture path separator was
+corrected after reproducing a failed page load. CI artifact capture is **IMPLEMENTED** but its
+remote execution is **UNVERIFIED** until the workflow runs. No images are automatically committed.
+
+**UNVERIFIED by this record:** native popup/side-panel hosting, real vaults/signing, live-chain
+values, exhaustive interaction/scroll/review states and design approval. GitHub PR/merge status
+was not checked because `gh` is unavailable locally; this is not evidence of a merge or release.
+The earlier branch handoff below is historical context and does not describe the latest PR head.
+
+**Browser regression failure:** after the Windows fixture-serving repair,
+`npm run test:browser` stops at `address-contrast.mjs:60`: the dark account-address check reports
+`1.407:1` against a `4.5:1` threshold. Independent source/calculation inspection reproduced that
+number when alpha is ignored; compositing the active-row tint over its opaque group gives about
+`6.75:1`. The checker requires a separately tested correction, not a stylesheet change based on
+the false ratio. An individually run `network-chooser.mjs` also timed out at its pending-status
+locator (`:52`); its cause remains **UNVERIFIED**. Settings (two cases), History (two cases),
+network-health and token-cache (10/100/200 tokens) passed individually in Chrome `157.0.8103.79`.
+No assertions or production stylesheets were changed to make either failure pass. Screenshot
+capture success does not clear these failures or the remaining browser gates.
+
 ## Current branch handoff — PR #26
 
 The baseline below describes `main`, not automatically the latest store package or this PR. The

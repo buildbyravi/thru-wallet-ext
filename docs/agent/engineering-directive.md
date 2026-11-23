@@ -25,6 +25,10 @@ notice, and review the local asset for active content and external references. N
 or CSP change. For a new multi-state surface, keep a reproducible fixture gallery outside the
 extension package; fixture output is not real MV3 or live-network evidence. Verify via Rule 14.
 
+For frontend changes, follow the [visual record protocol](../MANUAL_SMOKE_CHECKLIST.md#visual-record-protocol):
+provide active-change screenshots, refresh the checked-in actual-UI gallery with confirmed changes,
+and recapture the merged build. Preserve revision/build provenance and never capture real secrets.
+
 ## Modern Web Guidance for frontend work
 
 Before editing HTML, CSS, or browser-facing JavaScript (including isolated lab work):

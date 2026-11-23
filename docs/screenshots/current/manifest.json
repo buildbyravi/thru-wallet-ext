@@ -1,0 +1,2743 @@
+{
+  "version": 1,
+  "capturedAt": "2026-11-23T14:49:28.072Z",
+  "revision": "274df9bbd3deef4997216837a3218b738430b130",
+  "branch": "pr-31",
+  "sourceChanges": "M test/browser/README.md\n M test/browser/helpers/fixture.mjs\n M test/browser/settings.mjs\n?? test/browser/capture-ui.mjs",
+  "evidence": "TESTED: real built UI, mocked bridge; not MV3 or live-network verification",
+  "browser": "157.0.8103.79",
+  "platform": "win32",
+  "sourceSha256": "a62852624f54ccbf2db1d67043b10176fed5f36c2dbb8ecfb0cfb71305d15de3",
+  "buildSha256": {
+    "background.bundle.js": "a7b92183d52a2f95a410ed6f4d781c872dd200a5c996888021b57caa34248f04",
+    "icons/balance-art.svg": "d51886c5f0d05ddd7db7cb46870a809913395228562c98ef45ccc4177b767064",
+    "icons/close.svg": "9870d3d13a13e514f0de1b78379aa373818bf3a84c0808a6204568341b41412e",
+    "icons/icon128.png": "e0746513bd153e74fa8f2bb630c953b839c791be263e4ed5a1b07a9534e633a4",
+    "icons/icon16.png": "4f77bb3ace41581f335b84ebaf56ac41c571d459d65be1dd2556c37fab377f07",
+    "icons/icon48.png": "f4075ed00f263808ea8ece553e108b838451c7c8ca1fc8efb86282b8edb82ad4",
+    "icons/key.svg": "96814efe3ce777fe127b4b490468735b919a9e104f716e1f41f9cf99e678b1aa",
+    "icons/pending-cc.svg": "5899ca555bfcc16435d48f5c57f9b65f2cc598e4d1f6599854bc33c3e39f6472",
+    "icons/pending-spin.svg": "f16e9a5d5b9655403db0205464e056f523dc20ae908c747a9492b97c1ac115af",
+    "icons/pending.svg": "890aa2b5f4c013148247e8aea0ead80290fe92101a9734f4863a411ff6f7aab5",
+    "icons/refresh.svg": "928e8388a04999dd20014cff5ea0d4e2e6516d8ba376b6e83f1591f9750d9618",
+    "icons/seed.svg": "358d1a23f1cee3ae0eb30474715062a875e3bcc451abebfe2d5f9199f4e9544f",
+    "icons/thru.png": "bb8f2e7819540e88e4259f45b564d2d883ef7dbf0e9c6bed8f024a77bb57df3c",
+    "manifest.json": "691007eb5532cc4d2154c8e334e500e8c48d3214c09f6d7c747123e5c660b37a",
+    "popup.bundle.js": "668684d56ab63f9c43e66355eb0b69da2ab0af8f2961116b70066f33c0cc14e9",
+    "popup.css": "7284a8729a0c500f7e882f6e031e640476db1c49530a7693e869752c21e0c3d7",
+    "popup.html": "1128a2c1c98f9d814f79500c79798ccc299a74fea16957172e54b833797b04f0"
+  },
+  "negativeControls": [
+    "external origin rejected",
+    "non-asset path rejected",
+    "WebSocket rejected"
+  ],
+  "limitations": [
+    "No real vault, secrets, signing, RPC or native popup/panel host.",
+    "Selected route states only; review, pending/outcome, zoom, forced colors and live resize need separate checks.",
+    "Viewport captures at initial scroll, plus Settings bottom; scrolling is not exhaustively verified.",
+    "Screenshots are observations, not design approval or a pixel-diff test."
+  ],
+  "screenshots": [
+    {
+      "scenario": "welcome",
+      "route": "/welcome",
+      "theme": "light",
+      "viewport": {
+        "width": 400,
+        "height": 600,
+        "context": "popup-fixture"
+      },
+      "file": "welcome-light-400x600.png",
+      "sha256": "7f438f7dca8e38fca0a2db3fc5faaa18dee3b0ca1b6d3bcff6be73c9f43a4912",
+      "geometry": {
+        "documentWidth": 400,
+        "viewportWidth": 400,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "unlock",
+      "route": "/unlock",
+      "theme": "light",
+      "viewport": {
+        "width": 400,
+        "height": 600,
+        "context": "popup-fixture"
+      },
+      "file": "unlock-light-400x600.png",
+      "sha256": "13a21dfeb05b38fccd0f421fa2f559ff0b6907c93c594b2f8c6bdd9378363129",
+      "geometry": {
+        "documentWidth": 400,
+        "viewportWidth": 400,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "dashboard",
+      "route": "/dashboard",
+      "theme": "light",
+      "viewport": {
+        "width": 400,
+        "height": 600,
+        "context": "popup-fixture"
+      },
+      "file": "dashboard-light-400x600.png",
+      "sha256": "f1689fa9bdf9d0270c08b6157ad03aaf9f2fda65b939f41453abf53cda7691a9",
+      "geometry": {
+        "documentWidth": 400,
+        "viewportWidth": 400,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "accounts",
+      "route": "/accounts",
+      "theme": "light",
+      "viewport": {
+        "width": 400,
+        "height": 600,
+        "context": "popup-fixture"
+      },
+      "file": "accounts-light-400x600.png",
+      "sha256": "7a9fefc8d7ccd85127e20969fccd02296a7b768d1abaf93fb5e597a75c824fd8",
+      "geometry": {
+        "documentWidth": 400,
+        "viewportWidth": 400,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "account",
+      "route": "/account",
+      "theme": "light",
+      "viewport": {
+        "width": 400,
+        "height": 600,
+        "context": "popup-fixture"
+      },
+      "file": "account-light-400x600.png",
+      "sha256": "0daef37b6afeed7b4002854d4891216307f4e03924003450a6366015ab5789fa",
+      "geometry": {
+        "documentWidth": 400,
+        "viewportWidth": 400,
+        "appScrollHeight": 768,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "add-account",
+      "route": "/add-account",
+      "theme": "light",
+      "viewport": {
+        "width": 400,
+        "height": 600,
+        "context": "popup-fixture"
+      },
+      "file": "add-account-light-400x600.png",
+      "sha256": "84da8c2ac5a47b2ea4c2f3d573cbb0a6ceeaff7dd7246243d7fd664c913842d8",
+      "geometry": {
+        "documentWidth": 400,
+        "viewportWidth": 400,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "keyring",
+      "route": "/keyring",
+      "theme": "light",
+      "viewport": {
+        "width": 400,
+        "height": 600,
+        "context": "popup-fixture"
+      },
+      "file": "keyring-light-400x600.png",
+      "sha256": "0f06e67a29796fdca157d8b2a3bc8c7c8659111673a9232bae98113c869deec0",
+      "geometry": {
+        "documentWidth": 400,
+        "viewportWidth": 400,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "export",
+      "route": "/export",
+      "theme": "light",
+      "viewport": {
+        "width": 400,
+        "height": 600,
+        "context": "popup-fixture"
+      },
+      "file": "export-light-400x600.png",
+      "sha256": "910c58861c78857d6da39618728c2f29d4fd024251b9c5914cc7a7c3a9db0ef1",
+      "geometry": {
+        "documentWidth": 400,
+        "viewportWidth": 400,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "send",
+      "route": "/send",
+      "theme": "light",
+      "viewport": {
+        "width": 400,
+        "height": 600,
+        "context": "popup-fixture"
+      },
+      "file": "send-light-400x600.png",
+      "sha256": "4d66972cfad5fb0beefe7750d14e3d214a5e801c9c9a16ceb3253bb85aec4e3b",
+      "geometry": {
+        "documentWidth": 400,
+        "viewportWidth": 400,
+        "appScrollHeight": 618,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "receive",
+      "route": "/receive",
+      "theme": "light",
+      "viewport": {
+        "width": 400,
+        "height": 600,
+        "context": "popup-fixture"
+      },
+      "file": "receive-light-400x600.png",
+      "sha256": "159e350578a20d5349e7b4e64d1af13d25115412858e7f337c7f30b68c978f55",
+      "geometry": {
+        "documentWidth": 400,
+        "viewportWidth": 400,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "faucet",
+      "route": "/faucet",
+      "theme": "light",
+      "viewport": {
+        "width": 400,
+        "height": 600,
+        "context": "popup-fixture"
+      },
+      "file": "faucet-light-400x600.png",
+      "sha256": "6bc856ea67ba2f0785f08c301a6aca242fa67423431251ea47657c00818d8628",
+      "geometry": {
+        "documentWidth": 400,
+        "viewportWidth": 400,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "name",
+      "route": "/name",
+      "theme": "light",
+      "viewport": {
+        "width": 400,
+        "height": 600,
+        "context": "popup-fixture"
+      },
+      "file": "name-light-400x600.png",
+      "sha256": "e2661598bce9f7656c25469a4d75084774a21f49c198a8ee65bad967a58b4157",
+      "geometry": {
+        "documentWidth": 400,
+        "viewportWidth": 400,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "history",
+      "route": "/history",
+      "theme": "light",
+      "viewport": {
+        "width": 400,
+        "height": 600,
+        "context": "popup-fixture"
+      },
+      "file": "history-light-400x600.png",
+      "sha256": "317897be7a646c853eeafc5aa8d9eacbf1426aeff457a4b849e507571306cf3e",
+      "geometry": {
+        "documentWidth": 400,
+        "viewportWidth": 400,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "settings",
+      "route": "/settings",
+      "theme": "light",
+      "viewport": {
+        "width": 400,
+        "height": 600,
+        "context": "popup-fixture"
+      },
+      "file": "settings-light-400x600.png",
+      "sha256": "ab5a5dbdd7ed85e994b3539eca167cb09e7ea428be365e72fc316181b7ed2d50",
+      "geometry": {
+        "documentWidth": 400,
+        "viewportWidth": 400,
+        "appScrollHeight": 939,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "reset",
+      "route": "/reset",
+      "theme": "light",
+      "viewport": {
+        "width": 400,
+        "height": 600,
+        "context": "popup-fixture"
+      },
+      "file": "reset-light-400x600.png",
+      "sha256": "7ec8dc48fe114864cfa3571691e2feeca1b82794b17edbee6ac081b50b8656dc",
+      "geometry": {
+        "documentWidth": 400,
+        "viewportWidth": 400,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "welcome-create",
+      "route": "/welcome",
+      "theme": "light",
+      "viewport": {
+        "width": 400,
+        "height": 600,
+        "context": "popup-fixture"
+      },
+      "file": "welcome-create-light-400x600.png",
+      "sha256": "9ea21202d920b6b5633ea324d25a3ab4a348b5ab9be243f06fe090fcc9f989b6",
+      "geometry": {
+        "documentWidth": 400,
+        "viewportWidth": 400,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "welcome-import",
+      "route": "/welcome",
+      "theme": "light",
+      "viewport": {
+        "width": 400,
+        "height": 600,
+        "context": "popup-fixture"
+      },
+      "file": "welcome-import-light-400x600.png",
+      "sha256": "0b4e186d5fb1b5bac7a1142b8ac6541e616ba2f6e310a28041debd5e29ed5c4b",
+      "geometry": {
+        "documentWidth": 400,
+        "viewportWidth": 400,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "accounts-cached",
+      "route": "/accounts",
+      "theme": "light",
+      "viewport": {
+        "width": 400,
+        "height": 600,
+        "context": "popup-fixture"
+      },
+      "file": "accounts-cached-light-400x600.png",
+      "sha256": "c0cf2b57a03ab0d1c3a65009e7116afac1f9e3a4bf64a13bc71e0463777dda74",
+      "geometry": {
+        "documentWidth": 400,
+        "viewportWidth": 400,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "accounts-refresh-error",
+      "route": "/accounts",
+      "theme": "light",
+      "viewport": {
+        "width": 400,
+        "height": 600,
+        "context": "popup-fixture"
+      },
+      "file": "accounts-refresh-error-light-400x600.png",
+      "sha256": "12ee54a6cfdc8ecc4509cfcd426928a094d89156a906d861c71399e6fddb514b",
+      "geometry": {
+        "documentWidth": 400,
+        "viewportWidth": 400,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "accounts-empty-search",
+      "route": "/accounts",
+      "theme": "light",
+      "viewport": {
+        "width": 400,
+        "height": 600,
+        "context": "popup-fixture"
+      },
+      "file": "accounts-empty-search-light-400x600.png",
+      "sha256": "345381f7f8722606c515318ccbbe9d4d3d2d2c7ae273e31c84c16dfbf2559175",
+      "geometry": {
+        "documentWidth": 400,
+        "viewportWidth": 400,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "dashboard-assets",
+      "route": "/dashboard",
+      "theme": "light",
+      "viewport": {
+        "width": 400,
+        "height": 600,
+        "context": "popup-fixture"
+      },
+      "file": "dashboard-assets-light-400x600.png",
+      "sha256": "815502357a03a37966bbfad7c17166216ccdfe2b9f150528361ab85faf430cea",
+      "geometry": {
+        "documentWidth": 400,
+        "viewportWidth": 400,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "settings-theme",
+      "route": "/settings",
+      "theme": "light",
+      "viewport": {
+        "width": 400,
+        "height": 600,
+        "context": "popup-fixture"
+      },
+      "file": "settings-theme-light-400x600.png",
+      "sha256": "093c7111adf17379d4bff90cbe586bab5619e2b24526196ede92faad23676e90",
+      "geometry": {
+        "documentWidth": 400,
+        "viewportWidth": 400,
+        "appScrollHeight": 939,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "settings-auto-lock",
+      "route": "/settings",
+      "theme": "light",
+      "viewport": {
+        "width": 400,
+        "height": 600,
+        "context": "popup-fixture"
+      },
+      "file": "settings-auto-lock-light-400x600.png",
+      "sha256": "c91f954805f51be78532f6567135092b62d469f4e05548a2ce7b83dd6ad58aea",
+      "geometry": {
+        "documentWidth": 400,
+        "viewportWidth": 400,
+        "appScrollHeight": 939,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "settings-signing",
+      "route": "/settings",
+      "theme": "light",
+      "viewport": {
+        "width": 400,
+        "height": 600,
+        "context": "popup-fixture"
+      },
+      "file": "settings-signing-light-400x600.png",
+      "sha256": "d335ce32bed040733f3ba219896a8633c4dc8be531b9a19e70f0fdba73940a12",
+      "geometry": {
+        "documentWidth": 400,
+        "viewportWidth": 400,
+        "appScrollHeight": 939,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "settings-bottom",
+      "route": "/settings",
+      "theme": "light",
+      "viewport": {
+        "width": 400,
+        "height": 600,
+        "context": "popup-fixture"
+      },
+      "file": "settings-bottom-light-400x600.png",
+      "sha256": "ae4494c79a8442f35f8ec6d1672dd1943c0ad06cebceac5609ed65c21f1f5dfa",
+      "geometry": {
+        "documentWidth": 400,
+        "viewportWidth": 400,
+        "appScrollHeight": 939,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "welcome",
+      "route": "/welcome",
+      "theme": "dark",
+      "viewport": {
+        "width": 400,
+        "height": 600,
+        "context": "popup-fixture"
+      },
+      "file": "welcome-dark-400x600.png",
+      "sha256": "c8a30f589b848871771ead7a8253063bda206a8ca449ff3a3191a6bffe7b7e74",
+      "geometry": {
+        "documentWidth": 400,
+        "viewportWidth": 400,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "unlock",
+      "route": "/unlock",
+      "theme": "dark",
+      "viewport": {
+        "width": 400,
+        "height": 600,
+        "context": "popup-fixture"
+      },
+      "file": "unlock-dark-400x600.png",
+      "sha256": "a9fdde623f95d292eedf17ce6f745f81ac070ba2fb6a63c2ba91d806f24aef7f",
+      "geometry": {
+        "documentWidth": 400,
+        "viewportWidth": 400,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "dashboard",
+      "route": "/dashboard",
+      "theme": "dark",
+      "viewport": {
+        "width": 400,
+        "height": 600,
+        "context": "popup-fixture"
+      },
+      "file": "dashboard-dark-400x600.png",
+      "sha256": "b9685f278676ced8aab696854cd3044b8b3eef09c7648de39bfccbc0e52fffb6",
+      "geometry": {
+        "documentWidth": 400,
+        "viewportWidth": 400,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "accounts",
+      "route": "/accounts",
+      "theme": "dark",
+      "viewport": {
+        "width": 400,
+        "height": 600,
+        "context": "popup-fixture"
+      },
+      "file": "accounts-dark-400x600.png",
+      "sha256": "04cf473eaa6d7d6d003bbb3937aae7db024d658ab4c628c6cb4a6237371c7bb1",
+      "geometry": {
+        "documentWidth": 400,
+        "viewportWidth": 400,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "account",
+      "route": "/account",
+      "theme": "dark",
+      "viewport": {
+        "width": 400,
+        "height": 600,
+        "context": "popup-fixture"
+      },
+      "file": "account-dark-400x600.png",
+      "sha256": "829f576ffbf3b5ae097f1e57a9432927fa63913611afdd0bddc57ccd9c7bf8d4",
+      "geometry": {
+        "documentWidth": 400,
+        "viewportWidth": 400,
+        "appScrollHeight": 768,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "add-account",
+      "route": "/add-account",
+      "theme": "dark",
+      "viewport": {
+        "width": 400,
+        "height": 600,
+        "context": "popup-fixture"
+      },
+      "file": "add-account-dark-400x600.png",
+      "sha256": "8ec96f49ad3bd07b2ac080754bd7e4a67cee3f0249d6e372e4faa6f20c48591c",
+      "geometry": {
+        "documentWidth": 400,
+        "viewportWidth": 400,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "keyring",
+      "route": "/keyring",
+      "theme": "dark",
+      "viewport": {
+        "width": 400,
+        "height": 600,
+        "context": "popup-fixture"
+      },
+      "file": "keyring-dark-400x600.png",
+      "sha256": "46786fb4ddd5a7f8bd1ed9256a30d26ba4084e99928be4ea531075f242f69a7f",
+      "geometry": {
+        "documentWidth": 400,
+        "viewportWidth": 400,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "export",
+      "route": "/export",
+      "theme": "dark",
+      "viewport": {
+        "width": 400,
+        "height": 600,
+        "context": "popup-fixture"
+      },
+      "file": "export-dark-400x600.png",
+      "sha256": "92dd4933df430d86efe6052dbf0eb69823013662d7b6c939f58c2e00405a920c",
+      "geometry": {
+        "documentWidth": 400,
+        "viewportWidth": 400,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "send",
+      "route": "/send",
+      "theme": "dark",
+      "viewport": {
+        "width": 400,
+        "height": 600,
+        "context": "popup-fixture"
+      },
+      "file": "send-dark-400x600.png",
+      "sha256": "520fa517b27fc7f518b4b41926d4d9c1c9e1ee421684eb2f9f44dc8772974c30",
+      "geometry": {
+        "documentWidth": 400,
+        "viewportWidth": 400,
+        "appScrollHeight": 618,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "receive",
+      "route": "/receive",
+      "theme": "dark",
+      "viewport": {
+        "width": 400,
+        "height": 600,
+        "context": "popup-fixture"
+      },
+      "file": "receive-dark-400x600.png",
+      "sha256": "63104c2bef8aaf648f72ba80563d3f26e4dcc5bd5c02febd905fe84597cf1c6e",
+      "geometry": {
+        "documentWidth": 400,
+        "viewportWidth": 400,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "faucet",
+      "route": "/faucet",
+      "theme": "dark",
+      "viewport": {
+        "width": 400,
+        "height": 600,
+        "context": "popup-fixture"
+      },
+      "file": "faucet-dark-400x600.png",
+      "sha256": "0aca98335c8cd8b83cd0488aea9a7525c0f2f540f0f05a4aa788f895875dbb69",
+      "geometry": {
+        "documentWidth": 400,
+        "viewportWidth": 400,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "name",
+      "route": "/name",
+      "theme": "dark",
+      "viewport": {
+        "width": 400,
+        "height": 600,
+        "context": "popup-fixture"
+      },
+      "file": "name-dark-400x600.png",
+      "sha256": "bf691cb48ce7972976fd60e1a21f661eda2ad28e071ba1c5225e9c3526e7e193",
+      "geometry": {
+        "documentWidth": 400,
+        "viewportWidth": 400,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "history",
+      "route": "/history",
+      "theme": "dark",
+      "viewport": {
+        "width": 400,
+        "height": 600,
+        "context": "popup-fixture"
+      },
+      "file": "history-dark-400x600.png",
+      "sha256": "cc48e402f5b88760f9e5642885dd53642bb1377eafb3e52669d2e6aedc93367d",
+      "geometry": {
+        "documentWidth": 400,
+        "viewportWidth": 400,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "settings",
+      "route": "/settings",
+      "theme": "dark",
+      "viewport": {
+        "width": 400,
+        "height": 600,
+        "context": "popup-fixture"
+      },
+      "file": "settings-dark-400x600.png",
+      "sha256": "048cac551bf643a1701bd269d8d67a2ea5abb2588ee37042522ef5404d0c8ac1",
+      "geometry": {
+        "documentWidth": 400,
+        "viewportWidth": 400,
+        "appScrollHeight": 939,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "reset",
+      "route": "/reset",
+      "theme": "dark",
+      "viewport": {
+        "width": 400,
+        "height": 600,
+        "context": "popup-fixture"
+      },
+      "file": "reset-dark-400x600.png",
+      "sha256": "0328571e0738cdc52aa28d7c9a6859a30e4a492869e512c2f09036b5dcd83198",
+      "geometry": {
+        "documentWidth": 400,
+        "viewportWidth": 400,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "welcome-create",
+      "route": "/welcome",
+      "theme": "dark",
+      "viewport": {
+        "width": 400,
+        "height": 600,
+        "context": "popup-fixture"
+      },
+      "file": "welcome-create-dark-400x600.png",
+      "sha256": "f16cc4e55b99ac4247c7aab9a13df8f392d913257d8cc8cfcece8ab0dfbf2115",
+      "geometry": {
+        "documentWidth": 400,
+        "viewportWidth": 400,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "welcome-import",
+      "route": "/welcome",
+      "theme": "dark",
+      "viewport": {
+        "width": 400,
+        "height": 600,
+        "context": "popup-fixture"
+      },
+      "file": "welcome-import-dark-400x600.png",
+      "sha256": "5191fe460b49c8fcee89b34fdf8a38cb60dac968ae6027ae677950281b7b53c0",
+      "geometry": {
+        "documentWidth": 400,
+        "viewportWidth": 400,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "accounts-cached",
+      "route": "/accounts",
+      "theme": "dark",
+      "viewport": {
+        "width": 400,
+        "height": 600,
+        "context": "popup-fixture"
+      },
+      "file": "accounts-cached-dark-400x600.png",
+      "sha256": "956370f4b1c084795708d9269dfe8ae139156cdd49b831e275c682e62669f978",
+      "geometry": {
+        "documentWidth": 400,
+        "viewportWidth": 400,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "accounts-refresh-error",
+      "route": "/accounts",
+      "theme": "dark",
+      "viewport": {
+        "width": 400,
+        "height": 600,
+        "context": "popup-fixture"
+      },
+      "file": "accounts-refresh-error-dark-400x600.png",
+      "sha256": "1c5709487cb2a5d3be6d24fabed64967382e3aebd98c696bb8b3ec150c6fdfb6",
+      "geometry": {
+        "documentWidth": 400,
+        "viewportWidth": 400,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "accounts-empty-search",
+      "route": "/accounts",
+      "theme": "dark",
+      "viewport": {
+        "width": 400,
+        "height": 600,
+        "context": "popup-fixture"
+      },
+      "file": "accounts-empty-search-dark-400x600.png",
+      "sha256": "cec139952c4a95d0a394f120481edd23337d8fa4790dd368b195594607a11268",
+      "geometry": {
+        "documentWidth": 400,
+        "viewportWidth": 400,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "dashboard-assets",
+      "route": "/dashboard",
+      "theme": "dark",
+      "viewport": {
+        "width": 400,
+        "height": 600,
+        "context": "popup-fixture"
+      },
+      "file": "dashboard-assets-dark-400x600.png",
+      "sha256": "6725a50e99d246b5fe67f2ad9c301f06bdbfcf253e582aed22a105c2cc13d7c5",
+      "geometry": {
+        "documentWidth": 400,
+        "viewportWidth": 400,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "settings-theme",
+      "route": "/settings",
+      "theme": "dark",
+      "viewport": {
+        "width": 400,
+        "height": 600,
+        "context": "popup-fixture"
+      },
+      "file": "settings-theme-dark-400x600.png",
+      "sha256": "34a0bd195cf06dc0186e5f8fedea7e2943a2bf5b16eaf06825b4cc558c20378b",
+      "geometry": {
+        "documentWidth": 400,
+        "viewportWidth": 400,
+        "appScrollHeight": 939,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "settings-auto-lock",
+      "route": "/settings",
+      "theme": "dark",
+      "viewport": {
+        "width": 400,
+        "height": 600,
+        "context": "popup-fixture"
+      },
+      "file": "settings-auto-lock-dark-400x600.png",
+      "sha256": "daa00695c6fdc40a8c801db91dd47c91d1fcc9c4aace480dd5f29a93ee45ba38",
+      "geometry": {
+        "documentWidth": 400,
+        "viewportWidth": 400,
+        "appScrollHeight": 939,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "settings-signing",
+      "route": "/settings",
+      "theme": "dark",
+      "viewport": {
+        "width": 400,
+        "height": 600,
+        "context": "popup-fixture"
+      },
+      "file": "settings-signing-dark-400x600.png",
+      "sha256": "4f3a6adf1839e918401d52c92e72d1ba66b948ace33a17b4ffeb49afd023f09f",
+      "geometry": {
+        "documentWidth": 400,
+        "viewportWidth": 400,
+        "appScrollHeight": 939,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "settings-bottom",
+      "route": "/settings",
+      "theme": "dark",
+      "viewport": {
+        "width": 400,
+        "height": 600,
+        "context": "popup-fixture"
+      },
+      "file": "settings-bottom-dark-400x600.png",
+      "sha256": "5a117ec5c4b475381a43db7c07c0e40c59eb98c4b42fafa58094c5e5fa7aa4ff",
+      "geometry": {
+        "documentWidth": 400,
+        "viewportWidth": 400,
+        "appScrollHeight": 939,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "welcome",
+      "route": "/welcome",
+      "theme": "light",
+      "viewport": {
+        "width": 320,
+        "height": 600,
+        "context": "panel-fixture"
+      },
+      "file": "welcome-light-320x600.png",
+      "sha256": "a72ddb0e89155117142e85e1f5247948cd36016e7cbd111dcc955e6484c722b6",
+      "geometry": {
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "unlock",
+      "route": "/unlock",
+      "theme": "light",
+      "viewport": {
+        "width": 320,
+        "height": 600,
+        "context": "panel-fixture"
+      },
+      "file": "unlock-light-320x600.png",
+      "sha256": "9a99d350fa0924b901a58ab4124b70ab470cccd52dff2e5534ff47fd901ac50e",
+      "geometry": {
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "dashboard",
+      "route": "/dashboard",
+      "theme": "light",
+      "viewport": {
+        "width": 320,
+        "height": 600,
+        "context": "panel-fixture"
+      },
+      "file": "dashboard-light-320x600.png",
+      "sha256": "f9dc356b8b803f63f84626af71188a51c5d9164aceec25376b4d891754fa7c52",
+      "geometry": {
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "accounts",
+      "route": "/accounts",
+      "theme": "light",
+      "viewport": {
+        "width": 320,
+        "height": 600,
+        "context": "panel-fixture"
+      },
+      "file": "accounts-light-320x600.png",
+      "sha256": "3925cc4eeec55abd4956c97da12e0cb04245a80179ac698f54b5e3f925d22a61",
+      "geometry": {
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "account",
+      "route": "/account",
+      "theme": "light",
+      "viewport": {
+        "width": 320,
+        "height": 600,
+        "context": "panel-fixture"
+      },
+      "file": "account-light-320x600.png",
+      "sha256": "bfb90790d26dac1cd8243d9bf55c34a2786a811ac7c722e65641ffd6824504ab",
+      "geometry": {
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "appScrollHeight": 768,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "add-account",
+      "route": "/add-account",
+      "theme": "light",
+      "viewport": {
+        "width": 320,
+        "height": 600,
+        "context": "panel-fixture"
+      },
+      "file": "add-account-light-320x600.png",
+      "sha256": "9f3db7700152d65067e63b12615a87466694fa7e6280f1a4cfd56affdbf64162",
+      "geometry": {
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "keyring",
+      "route": "/keyring",
+      "theme": "light",
+      "viewport": {
+        "width": 320,
+        "height": 600,
+        "context": "panel-fixture"
+      },
+      "file": "keyring-light-320x600.png",
+      "sha256": "9a6e6961caaac674c02b3cef778825b4d1f0cd71b1b41c2732ccc6ddce5cece1",
+      "geometry": {
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "export",
+      "route": "/export",
+      "theme": "light",
+      "viewport": {
+        "width": 320,
+        "height": 600,
+        "context": "panel-fixture"
+      },
+      "file": "export-light-320x600.png",
+      "sha256": "1c970abafe4ca145788c7d0e7bba49d743aa74c0021262faa1d5406076932069",
+      "geometry": {
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "send",
+      "route": "/send",
+      "theme": "light",
+      "viewport": {
+        "width": 320,
+        "height": 600,
+        "context": "panel-fixture"
+      },
+      "file": "send-light-320x600.png",
+      "sha256": "c2a1e2b57f4315c72d6ca2d793ef8d53e6a0c700e2a5546ab5324241d9a4ba4f",
+      "geometry": {
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "appScrollHeight": 618,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "receive",
+      "route": "/receive",
+      "theme": "light",
+      "viewport": {
+        "width": 320,
+        "height": 600,
+        "context": "panel-fixture"
+      },
+      "file": "receive-light-320x600.png",
+      "sha256": "a31cef4ae1b1797138c533fc23e85c5baae80d465faa4e7d68995f62fb0c3471",
+      "geometry": {
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "faucet",
+      "route": "/faucet",
+      "theme": "light",
+      "viewport": {
+        "width": 320,
+        "height": 600,
+        "context": "panel-fixture"
+      },
+      "file": "faucet-light-320x600.png",
+      "sha256": "a342e5d9c8add5d59c1039ddf19770ba6bd8c9e747e61faacca4e1f4327052b6",
+      "geometry": {
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "name",
+      "route": "/name",
+      "theme": "light",
+      "viewport": {
+        "width": 320,
+        "height": 600,
+        "context": "panel-fixture"
+      },
+      "file": "name-light-320x600.png",
+      "sha256": "b7dda3d5344be0036818553b924068ffdbdd278326d0863eea8ed13afb407e92",
+      "geometry": {
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "history",
+      "route": "/history",
+      "theme": "light",
+      "viewport": {
+        "width": 320,
+        "height": 600,
+        "context": "panel-fixture"
+      },
+      "file": "history-light-320x600.png",
+      "sha256": "8802323f331bb881ffe22f4a425a94805328e9e9630e5218a8c098e1aaf02587",
+      "geometry": {
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "settings",
+      "route": "/settings",
+      "theme": "light",
+      "viewport": {
+        "width": 320,
+        "height": 600,
+        "context": "panel-fixture"
+      },
+      "file": "settings-light-320x600.png",
+      "sha256": "1156c9e52263deafc1db448ae76a7b679dbfefe84a37a312ce81eca0f4aad00f",
+      "geometry": {
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "appScrollHeight": 942,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "reset",
+      "route": "/reset",
+      "theme": "light",
+      "viewport": {
+        "width": 320,
+        "height": 600,
+        "context": "panel-fixture"
+      },
+      "file": "reset-light-320x600.png",
+      "sha256": "c821994b712e6881f1c715943422912735b9377a28178473a0fc4ce568c6a354",
+      "geometry": {
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "welcome-create",
+      "route": "/welcome",
+      "theme": "light",
+      "viewport": {
+        "width": 320,
+        "height": 600,
+        "context": "panel-fixture"
+      },
+      "file": "welcome-create-light-320x600.png",
+      "sha256": "059a9acd56317e6702e5be210b925d13c179cf39180ab2efac1988452f5611d2",
+      "geometry": {
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "welcome-import",
+      "route": "/welcome",
+      "theme": "light",
+      "viewport": {
+        "width": 320,
+        "height": 600,
+        "context": "panel-fixture"
+      },
+      "file": "welcome-import-light-320x600.png",
+      "sha256": "aa5c9be7b634f233094e02608f5e7d1e9a5b84b7916ca61de150212f690edfc3",
+      "geometry": {
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "accounts-cached",
+      "route": "/accounts",
+      "theme": "light",
+      "viewport": {
+        "width": 320,
+        "height": 600,
+        "context": "panel-fixture"
+      },
+      "file": "accounts-cached-light-320x600.png",
+      "sha256": "09acf85bc1f8d7a2f41a80417fb3944039737a00c6c40c9eea2c7c24595b1a3f",
+      "geometry": {
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "accounts-refresh-error",
+      "route": "/accounts",
+      "theme": "light",
+      "viewport": {
+        "width": 320,
+        "height": 600,
+        "context": "panel-fixture"
+      },
+      "file": "accounts-refresh-error-light-320x600.png",
+      "sha256": "4f47fab198e7acdfa3dfecb84583739885c5d7aad4ee11e0e474704b3795e685",
+      "geometry": {
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "accounts-empty-search",
+      "route": "/accounts",
+      "theme": "light",
+      "viewport": {
+        "width": 320,
+        "height": 600,
+        "context": "panel-fixture"
+      },
+      "file": "accounts-empty-search-light-320x600.png",
+      "sha256": "274956bb0a97d7235a90a15ca1535b594bc0d028667b07dab758f09fd010a449",
+      "geometry": {
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "dashboard-assets",
+      "route": "/dashboard",
+      "theme": "light",
+      "viewport": {
+        "width": 320,
+        "height": 600,
+        "context": "panel-fixture"
+      },
+      "file": "dashboard-assets-light-320x600.png",
+      "sha256": "4f5fc6dab899d8ee5c6bd9c8a8220e18bda6d0fd32727f4d0a61b6634e5ff0b6",
+      "geometry": {
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "settings-theme",
+      "route": "/settings",
+      "theme": "light",
+      "viewport": {
+        "width": 320,
+        "height": 600,
+        "context": "panel-fixture"
+      },
+      "file": "settings-theme-light-320x600.png",
+      "sha256": "ff3a5524dd1b4bcbc13fd280db95fd942e7ef2622db406748eb148aff71d3d84",
+      "geometry": {
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "appScrollHeight": 942,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "settings-auto-lock",
+      "route": "/settings",
+      "theme": "light",
+      "viewport": {
+        "width": 320,
+        "height": 600,
+        "context": "panel-fixture"
+      },
+      "file": "settings-auto-lock-light-320x600.png",
+      "sha256": "cb5e34293622cbaf5fe281e5263def38cafe2cc5e1fd522387a8a2a74adfc57c",
+      "geometry": {
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "appScrollHeight": 942,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "settings-signing",
+      "route": "/settings",
+      "theme": "light",
+      "viewport": {
+        "width": 320,
+        "height": 600,
+        "context": "panel-fixture"
+      },
+      "file": "settings-signing-light-320x600.png",
+      "sha256": "f8907d377aeff2c10078717cbb414ab1ecdf05f5ec119d375f991dee6a3499df",
+      "geometry": {
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "appScrollHeight": 942,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "settings-bottom",
+      "route": "/settings",
+      "theme": "light",
+      "viewport": {
+        "width": 320,
+        "height": 600,
+        "context": "panel-fixture"
+      },
+      "file": "settings-bottom-light-320x600.png",
+      "sha256": "fc088ed48f9484be106a6af0acf20c1c216cba224efdcd53a911305dd7ac4523",
+      "geometry": {
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "appScrollHeight": 942,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "welcome",
+      "route": "/welcome",
+      "theme": "dark",
+      "viewport": {
+        "width": 320,
+        "height": 600,
+        "context": "panel-fixture"
+      },
+      "file": "welcome-dark-320x600.png",
+      "sha256": "3350257caa73334bdae3c621b0954fd85660eadb56c042a7d96e68306e099464",
+      "geometry": {
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "unlock",
+      "route": "/unlock",
+      "theme": "dark",
+      "viewport": {
+        "width": 320,
+        "height": 600,
+        "context": "panel-fixture"
+      },
+      "file": "unlock-dark-320x600.png",
+      "sha256": "8442d0e8e269d3f1c40d0323c08ec99cdc86a7f163667b57f8ae9b4799acca88",
+      "geometry": {
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "dashboard",
+      "route": "/dashboard",
+      "theme": "dark",
+      "viewport": {
+        "width": 320,
+        "height": 600,
+        "context": "panel-fixture"
+      },
+      "file": "dashboard-dark-320x600.png",
+      "sha256": "e78761da93ddd309912f24f80e4a7dbe6a28540adaefb6c795d9813330e1191c",
+      "geometry": {
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "accounts",
+      "route": "/accounts",
+      "theme": "dark",
+      "viewport": {
+        "width": 320,
+        "height": 600,
+        "context": "panel-fixture"
+      },
+      "file": "accounts-dark-320x600.png",
+      "sha256": "09d2caba9c297fdf137544b69229a2d75650576b73f4a8d02b74d3b93eb4b4b3",
+      "geometry": {
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "account",
+      "route": "/account",
+      "theme": "dark",
+      "viewport": {
+        "width": 320,
+        "height": 600,
+        "context": "panel-fixture"
+      },
+      "file": "account-dark-320x600.png",
+      "sha256": "504f8d61ace1ce49e8992420d2bade14501820d56935664eb0113900f341c12e",
+      "geometry": {
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "appScrollHeight": 768,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "add-account",
+      "route": "/add-account",
+      "theme": "dark",
+      "viewport": {
+        "width": 320,
+        "height": 600,
+        "context": "panel-fixture"
+      },
+      "file": "add-account-dark-320x600.png",
+      "sha256": "a7f54f338c97145b4f9bdc101da9217fa85844fc41af28cb4df23f409e568fcd",
+      "geometry": {
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "keyring",
+      "route": "/keyring",
+      "theme": "dark",
+      "viewport": {
+        "width": 320,
+        "height": 600,
+        "context": "panel-fixture"
+      },
+      "file": "keyring-dark-320x600.png",
+      "sha256": "c6c45a4f385a3f5911f29158d49d26ef2f534b144aadb017aad127f283df7735",
+      "geometry": {
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "export",
+      "route": "/export",
+      "theme": "dark",
+      "viewport": {
+        "width": 320,
+        "height": 600,
+        "context": "panel-fixture"
+      },
+      "file": "export-dark-320x600.png",
+      "sha256": "1709433dc59e27e748c08b97bfc668b536489f4056e32a36e73f5a14f6f2d5cd",
+      "geometry": {
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "send",
+      "route": "/send",
+      "theme": "dark",
+      "viewport": {
+        "width": 320,
+        "height": 600,
+        "context": "panel-fixture"
+      },
+      "file": "send-dark-320x600.png",
+      "sha256": "7d525830316c7393207d7c70cfa651bedf98101440ec9be425ba398f56a41043",
+      "geometry": {
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "appScrollHeight": 618,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "receive",
+      "route": "/receive",
+      "theme": "dark",
+      "viewport": {
+        "width": 320,
+        "height": 600,
+        "context": "panel-fixture"
+      },
+      "file": "receive-dark-320x600.png",
+      "sha256": "7fd74b89c373435f2d6b59452cb251eb8c019a9bfa279ce41f3f21ddaf509d5e",
+      "geometry": {
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "faucet",
+      "route": "/faucet",
+      "theme": "dark",
+      "viewport": {
+        "width": 320,
+        "height": 600,
+        "context": "panel-fixture"
+      },
+      "file": "faucet-dark-320x600.png",
+      "sha256": "be6854f2e9515d9491e286c6715e272ff6e7bf430963e409c235f1ac1d41ddfc",
+      "geometry": {
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "name",
+      "route": "/name",
+      "theme": "dark",
+      "viewport": {
+        "width": 320,
+        "height": 600,
+        "context": "panel-fixture"
+      },
+      "file": "name-dark-320x600.png",
+      "sha256": "08a2a7f764de67b0e2d0a3e5b7c353eec7ef9395e40791cc213446f34c3c1b2c",
+      "geometry": {
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "history",
+      "route": "/history",
+      "theme": "dark",
+      "viewport": {
+        "width": 320,
+        "height": 600,
+        "context": "panel-fixture"
+      },
+      "file": "history-dark-320x600.png",
+      "sha256": "d6189649844e44058cd593efedfae3a7518e933a5a18b7ac4aae6e2010102290",
+      "geometry": {
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "settings",
+      "route": "/settings",
+      "theme": "dark",
+      "viewport": {
+        "width": 320,
+        "height": 600,
+        "context": "panel-fixture"
+      },
+      "file": "settings-dark-320x600.png",
+      "sha256": "5ee1af02a8cafc5b1dcc886db4ee1011ac1bf9b762f9db56b7c9c347d7c99880",
+      "geometry": {
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "appScrollHeight": 942,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "reset",
+      "route": "/reset",
+      "theme": "dark",
+      "viewport": {
+        "width": 320,
+        "height": 600,
+        "context": "panel-fixture"
+      },
+      "file": "reset-dark-320x600.png",
+      "sha256": "d2a8b75a687b51d42636bfbcc916392ed17bdcea84c15a817cfb17af80cc15a7",
+      "geometry": {
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "welcome-create",
+      "route": "/welcome",
+      "theme": "dark",
+      "viewport": {
+        "width": 320,
+        "height": 600,
+        "context": "panel-fixture"
+      },
+      "file": "welcome-create-dark-320x600.png",
+      "sha256": "a200e692f1c104fd1793bb39f05df3e369f0c293150f9302baf08d762c8b2622",
+      "geometry": {
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "welcome-import",
+      "route": "/welcome",
+      "theme": "dark",
+      "viewport": {
+        "width": 320,
+        "height": 600,
+        "context": "panel-fixture"
+      },
+      "file": "welcome-import-dark-320x600.png",
+      "sha256": "8cd8aceb2cd80d233763f969b9f1147a5cd1ab1aca5b1ea038a468b5977323f6",
+      "geometry": {
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "accounts-cached",
+      "route": "/accounts",
+      "theme": "dark",
+      "viewport": {
+        "width": 320,
+        "height": 600,
+        "context": "panel-fixture"
+      },
+      "file": "accounts-cached-dark-320x600.png",
+      "sha256": "38d2cefe064248aa772cf39f3954c0d9f51d2523920304e3accc10276560520b",
+      "geometry": {
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "accounts-refresh-error",
+      "route": "/accounts",
+      "theme": "dark",
+      "viewport": {
+        "width": 320,
+        "height": 600,
+        "context": "panel-fixture"
+      },
+      "file": "accounts-refresh-error-dark-320x600.png",
+      "sha256": "670bcae0fce76c3799368f683c47f2055e99dba139ad423aaf9cc67721ab9d47",
+      "geometry": {
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "accounts-empty-search",
+      "route": "/accounts",
+      "theme": "dark",
+      "viewport": {
+        "width": 320,
+        "height": 600,
+        "context": "panel-fixture"
+      },
+      "file": "accounts-empty-search-dark-320x600.png",
+      "sha256": "cade615ee738f6224c4384ab4d0774ffc13b7cd1c5f4b0c7864c07f825eb1483",
+      "geometry": {
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "dashboard-assets",
+      "route": "/dashboard",
+      "theme": "dark",
+      "viewport": {
+        "width": 320,
+        "height": 600,
+        "context": "panel-fixture"
+      },
+      "file": "dashboard-assets-dark-320x600.png",
+      "sha256": "fd622354c5527c1956abbb8cf417c356c00bdcae6bae25f15adc4f75ec081f99",
+      "geometry": {
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "settings-theme",
+      "route": "/settings",
+      "theme": "dark",
+      "viewport": {
+        "width": 320,
+        "height": 600,
+        "context": "panel-fixture"
+      },
+      "file": "settings-theme-dark-320x600.png",
+      "sha256": "48a76e8b2aa01d5bc9237667585427be285685447e50bd4fb37a742307e26217",
+      "geometry": {
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "appScrollHeight": 942,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "settings-auto-lock",
+      "route": "/settings",
+      "theme": "dark",
+      "viewport": {
+        "width": 320,
+        "height": 600,
+        "context": "panel-fixture"
+      },
+      "file": "settings-auto-lock-dark-320x600.png",
+      "sha256": "8ed233169814241f12b540a08dbf9be198857436535fde75e3a19723fbd84379",
+      "geometry": {
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "appScrollHeight": 942,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "settings-signing",
+      "route": "/settings",
+      "theme": "dark",
+      "viewport": {
+        "width": 320,
+        "height": 600,
+        "context": "panel-fixture"
+      },
+      "file": "settings-signing-dark-320x600.png",
+      "sha256": "b05a2df6cf28dba2d9083b50fbc4258cbec5fd6248c4433c5ce3491ca52910d8",
+      "geometry": {
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "appScrollHeight": 942,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "settings-bottom",
+      "route": "/settings",
+      "theme": "dark",
+      "viewport": {
+        "width": 320,
+        "height": 600,
+        "context": "panel-fixture"
+      },
+      "file": "settings-bottom-dark-320x600.png",
+      "sha256": "6e6936a47bd9a05ab54d9fd3668ab33f06affd02b3596d3278fc30b3f7519ae6",
+      "geometry": {
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "appScrollHeight": 942,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "welcome",
+      "route": "/welcome",
+      "theme": "light",
+      "viewport": {
+        "width": 820,
+        "height": 720,
+        "context": "wide-panel-fixture"
+      },
+      "file": "welcome-light-820x720.png",
+      "sha256": "596b0e2d8261846f969307b4067e329ee493e104407892a2a063c6894467327c",
+      "geometry": {
+        "documentWidth": 820,
+        "viewportWidth": 820,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "unlock",
+      "route": "/unlock",
+      "theme": "light",
+      "viewport": {
+        "width": 820,
+        "height": 720,
+        "context": "wide-panel-fixture"
+      },
+      "file": "unlock-light-820x720.png",
+      "sha256": "38b5432df5a9e400c29869b9af3139e916c02155af94839806c85778b6e092c4",
+      "geometry": {
+        "documentWidth": 820,
+        "viewportWidth": 820,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "dashboard",
+      "route": "/dashboard",
+      "theme": "light",
+      "viewport": {
+        "width": 820,
+        "height": 720,
+        "context": "wide-panel-fixture"
+      },
+      "file": "dashboard-light-820x720.png",
+      "sha256": "9c5f79570367a53f5581309788e0ff6e2ee19e94d6350e4f9e956a51ce02a3f8",
+      "geometry": {
+        "documentWidth": 820,
+        "viewportWidth": 820,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "accounts",
+      "route": "/accounts",
+      "theme": "light",
+      "viewport": {
+        "width": 820,
+        "height": 720,
+        "context": "wide-panel-fixture"
+      },
+      "file": "accounts-light-820x720.png",
+      "sha256": "ddfea68b61e9f53abc04573ccda91b9b03bbe25475ba972afeb36444b575a054",
+      "geometry": {
+        "documentWidth": 820,
+        "viewportWidth": 820,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "account",
+      "route": "/account",
+      "theme": "light",
+      "viewport": {
+        "width": 820,
+        "height": 720,
+        "context": "wide-panel-fixture"
+      },
+      "file": "account-light-820x720.png",
+      "sha256": "4c3fc522f14e5bebc73e8e4935557fb486c0629d50acfe8fd93fcf35e0fec726",
+      "geometry": {
+        "documentWidth": 820,
+        "viewportWidth": 820,
+        "appScrollHeight": 768,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "add-account",
+      "route": "/add-account",
+      "theme": "light",
+      "viewport": {
+        "width": 820,
+        "height": 720,
+        "context": "wide-panel-fixture"
+      },
+      "file": "add-account-light-820x720.png",
+      "sha256": "8d4b4cfe3a95a652f9aaccbd13e07bfdb3533868edc92b7325c997bcb0d1e1cc",
+      "geometry": {
+        "documentWidth": 820,
+        "viewportWidth": 820,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "keyring",
+      "route": "/keyring",
+      "theme": "light",
+      "viewport": {
+        "width": 820,
+        "height": 720,
+        "context": "wide-panel-fixture"
+      },
+      "file": "keyring-light-820x720.png",
+      "sha256": "e234f88926f9cfdc36be5b42b10a85ade1017415acb20220cc4d298763e57c7d",
+      "geometry": {
+        "documentWidth": 820,
+        "viewportWidth": 820,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "export",
+      "route": "/export",
+      "theme": "light",
+      "viewport": {
+        "width": 820,
+        "height": 720,
+        "context": "wide-panel-fixture"
+      },
+      "file": "export-light-820x720.png",
+      "sha256": "34f9f6a585c846642095a65138ee3d87be184ed212e4efc889fb813e4df79a56",
+      "geometry": {
+        "documentWidth": 820,
+        "viewportWidth": 820,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "send",
+      "route": "/send",
+      "theme": "light",
+      "viewport": {
+        "width": 820,
+        "height": 720,
+        "context": "wide-panel-fixture"
+      },
+      "file": "send-light-820x720.png",
+      "sha256": "2b320e62cadf100ae98da79019a62de292c44c616aef6862de294b6611ca9f74",
+      "geometry": {
+        "documentWidth": 820,
+        "viewportWidth": 820,
+        "appScrollHeight": 618,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "receive",
+      "route": "/receive",
+      "theme": "light",
+      "viewport": {
+        "width": 820,
+        "height": 720,
+        "context": "wide-panel-fixture"
+      },
+      "file": "receive-light-820x720.png",
+      "sha256": "3a5327cc01d46eed03dcf0b2ac09af8cd554f89f8bfde8fc59ec9260c59440f3",
+      "geometry": {
+        "documentWidth": 820,
+        "viewportWidth": 820,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "faucet",
+      "route": "/faucet",
+      "theme": "light",
+      "viewport": {
+        "width": 820,
+        "height": 720,
+        "context": "wide-panel-fixture"
+      },
+      "file": "faucet-light-820x720.png",
+      "sha256": "d900e30b8d4772f61ef0f081005aab88d93467f857501be2579c448d8a2ed06b",
+      "geometry": {
+        "documentWidth": 820,
+        "viewportWidth": 820,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "name",
+      "route": "/name",
+      "theme": "light",
+      "viewport": {
+        "width": 820,
+        "height": 720,
+        "context": "wide-panel-fixture"
+      },
+      "file": "name-light-820x720.png",
+      "sha256": "30b5e0d95763ae311369c423a31c6ecc9bcd151d6df60f1b7be9b02ec0060ffe",
+      "geometry": {
+        "documentWidth": 820,
+        "viewportWidth": 820,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "history",
+      "route": "/history",
+      "theme": "light",
+      "viewport": {
+        "width": 820,
+        "height": 720,
+        "context": "wide-panel-fixture"
+      },
+      "file": "history-light-820x720.png",
+      "sha256": "9e02f1f708d04b132e111bc1088719efa29798f32c3c69bc0fafa2ee3d7f5300",
+      "geometry": {
+        "documentWidth": 820,
+        "viewportWidth": 820,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "settings",
+      "route": "/settings",
+      "theme": "light",
+      "viewport": {
+        "width": 820,
+        "height": 720,
+        "context": "wide-panel-fixture"
+      },
+      "file": "settings-light-820x720.png",
+      "sha256": "76ea3d32e7f9e857197e8dbbba80260f88c18d25d7e03d6dc640bdcfb850deb1",
+      "geometry": {
+        "documentWidth": 820,
+        "viewportWidth": 820,
+        "appScrollHeight": 939,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "reset",
+      "route": "/reset",
+      "theme": "light",
+      "viewport": {
+        "width": 820,
+        "height": 720,
+        "context": "wide-panel-fixture"
+      },
+      "file": "reset-light-820x720.png",
+      "sha256": "f36d35cf70829306801c5bf7b2892f1a9416c89fb91e39f8d7d4b5c682829027",
+      "geometry": {
+        "documentWidth": 820,
+        "viewportWidth": 820,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "welcome-create",
+      "route": "/welcome",
+      "theme": "light",
+      "viewport": {
+        "width": 820,
+        "height": 720,
+        "context": "wide-panel-fixture"
+      },
+      "file": "welcome-create-light-820x720.png",
+      "sha256": "32bb502b9a935f84651b911e6a6a48f8d93ac735fc54271a2a9379f834c6fb9b",
+      "geometry": {
+        "documentWidth": 820,
+        "viewportWidth": 820,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "welcome-import",
+      "route": "/welcome",
+      "theme": "light",
+      "viewport": {
+        "width": 820,
+        "height": 720,
+        "context": "wide-panel-fixture"
+      },
+      "file": "welcome-import-light-820x720.png",
+      "sha256": "7ab82a9eb39c04898c0436bd9c4b57105ae3c6414d80e1f0b91dfd653c7d5c24",
+      "geometry": {
+        "documentWidth": 820,
+        "viewportWidth": 820,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "accounts-cached",
+      "route": "/accounts",
+      "theme": "light",
+      "viewport": {
+        "width": 820,
+        "height": 720,
+        "context": "wide-panel-fixture"
+      },
+      "file": "accounts-cached-light-820x720.png",
+      "sha256": "6b07b081ce94f009c6e0311676ce6b43842303f0bfc5341490c6d9d4342ecde0",
+      "geometry": {
+        "documentWidth": 820,
+        "viewportWidth": 820,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "accounts-refresh-error",
+      "route": "/accounts",
+      "theme": "light",
+      "viewport": {
+        "width": 820,
+        "height": 720,
+        "context": "wide-panel-fixture"
+      },
+      "file": "accounts-refresh-error-light-820x720.png",
+      "sha256": "7d2780519607dca73279c9ef0b91b58244ee9f6c83ec38096371d5331d8705e8",
+      "geometry": {
+        "documentWidth": 820,
+        "viewportWidth": 820,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "accounts-empty-search",
+      "route": "/accounts",
+      "theme": "light",
+      "viewport": {
+        "width": 820,
+        "height": 720,
+        "context": "wide-panel-fixture"
+      },
+      "file": "accounts-empty-search-light-820x720.png",
+      "sha256": "8a65dd2881aec753f0f3ae34e29a668f58eb7ed7bf830ce5487ace5c82f4287c",
+      "geometry": {
+        "documentWidth": 820,
+        "viewportWidth": 820,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "dashboard-assets",
+      "route": "/dashboard",
+      "theme": "light",
+      "viewport": {
+        "width": 820,
+        "height": 720,
+        "context": "wide-panel-fixture"
+      },
+      "file": "dashboard-assets-light-820x720.png",
+      "sha256": "9cfd65a47d23d2746a0cd844ea138eb498ff20f2eb973a0d8a9c9a7613f5ec1c",
+      "geometry": {
+        "documentWidth": 820,
+        "viewportWidth": 820,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "settings-theme",
+      "route": "/settings",
+      "theme": "light",
+      "viewport": {
+        "width": 820,
+        "height": 720,
+        "context": "wide-panel-fixture"
+      },
+      "file": "settings-theme-light-820x720.png",
+      "sha256": "0a4885f522b4be3cf638b8d1b68689c74cdc4d928f0b9fc7bb46e7e8fddc0e4d",
+      "geometry": {
+        "documentWidth": 820,
+        "viewportWidth": 820,
+        "appScrollHeight": 939,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "settings-auto-lock",
+      "route": "/settings",
+      "theme": "light",
+      "viewport": {
+        "width": 820,
+        "height": 720,
+        "context": "wide-panel-fixture"
+      },
+      "file": "settings-auto-lock-light-820x720.png",
+      "sha256": "bfdb2ade798058921ec18e4804810176e385ed01359d9afd8f61b82b734f60b5",
+      "geometry": {
+        "documentWidth": 820,
+        "viewportWidth": 820,
+        "appScrollHeight": 939,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "settings-signing",
+      "route": "/settings",
+      "theme": "light",
+      "viewport": {
+        "width": 820,
+        "height": 720,
+        "context": "wide-panel-fixture"
+      },
+      "file": "settings-signing-light-820x720.png",
+      "sha256": "f089d45986b2a811a0cf01d886ec7d9f1077d5420e21f2a6e2960507bd51ae99",
+      "geometry": {
+        "documentWidth": 820,
+        "viewportWidth": 820,
+        "appScrollHeight": 939,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "settings-bottom",
+      "route": "/settings",
+      "theme": "light",
+      "viewport": {
+        "width": 820,
+        "height": 720,
+        "context": "wide-panel-fixture"
+      },
+      "file": "settings-bottom-light-820x720.png",
+      "sha256": "ef2365fcbb15a22cb65a0f3d6a16ae20ac74adc0da160d45af381fcc0f7d9a0b",
+      "geometry": {
+        "documentWidth": 820,
+        "viewportWidth": 820,
+        "appScrollHeight": 939,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "welcome",
+      "route": "/welcome",
+      "theme": "dark",
+      "viewport": {
+        "width": 820,
+        "height": 720,
+        "context": "wide-panel-fixture"
+      },
+      "file": "welcome-dark-820x720.png",
+      "sha256": "5ab98e9a4adb406e13ebe5d7f6a54ea65fc3c16adecfb1a3a931d8d6980c5a15",
+      "geometry": {
+        "documentWidth": 820,
+        "viewportWidth": 820,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "unlock",
+      "route": "/unlock",
+      "theme": "dark",
+      "viewport": {
+        "width": 820,
+        "height": 720,
+        "context": "wide-panel-fixture"
+      },
+      "file": "unlock-dark-820x720.png",
+      "sha256": "8999f8bad822a24cd76c97259019a365967b059e6fc8a2c7e642b9a84a009ce8",
+      "geometry": {
+        "documentWidth": 820,
+        "viewportWidth": 820,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "dashboard",
+      "route": "/dashboard",
+      "theme": "dark",
+      "viewport": {
+        "width": 820,
+        "height": 720,
+        "context": "wide-panel-fixture"
+      },
+      "file": "dashboard-dark-820x720.png",
+      "sha256": "b7d3904056461ec999b5c981000ede03085f3fa72ee090bb9270a7c846fc8a14",
+      "geometry": {
+        "documentWidth": 820,
+        "viewportWidth": 820,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "accounts",
+      "route": "/accounts",
+      "theme": "dark",
+      "viewport": {
+        "width": 820,
+        "height": 720,
+        "context": "wide-panel-fixture"
+      },
+      "file": "accounts-dark-820x720.png",
+      "sha256": "ed4c556d3520ca165699462ec1756e8741769aec1434539ec0522f43cc5ef42e",
+      "geometry": {
+        "documentWidth": 820,
+        "viewportWidth": 820,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "account",
+      "route": "/account",
+      "theme": "dark",
+      "viewport": {
+        "width": 820,
+        "height": 720,
+        "context": "wide-panel-fixture"
+      },
+      "file": "account-dark-820x720.png",
+      "sha256": "eca53cc021c6a0a32ed2b4e44a5b6ea78340eed850049591fda4740b129ad4aa",
+      "geometry": {
+        "documentWidth": 820,
+        "viewportWidth": 820,
+        "appScrollHeight": 768,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "add-account",
+      "route": "/add-account",
+      "theme": "dark",
+      "viewport": {
+        "width": 820,
+        "height": 720,
+        "context": "wide-panel-fixture"
+      },
+      "file": "add-account-dark-820x720.png",
+      "sha256": "e9c302878c8d615337b7723c58d1cfcaaba7d26249ae88709c1dc22519a5f20d",
+      "geometry": {
+        "documentWidth": 820,
+        "viewportWidth": 820,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "keyring",
+      "route": "/keyring",
+      "theme": "dark",
+      "viewport": {
+        "width": 820,
+        "height": 720,
+        "context": "wide-panel-fixture"
+      },
+      "file": "keyring-dark-820x720.png",
+      "sha256": "64e1a546d3a9ba96bbdb19d5b490d3a45fb6cf1f3a5658f89221ea532b470b41",
+      "geometry": {
+        "documentWidth": 820,
+        "viewportWidth": 820,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "export",
+      "route": "/export",
+      "theme": "dark",
+      "viewport": {
+        "width": 820,
+        "height": 720,
+        "context": "wide-panel-fixture"
+      },
+      "file": "export-dark-820x720.png",
+      "sha256": "66bad630d10d61850cc914642a40ae12f18d29c9dd6cb6c8d5429a6d2714fa78",
+      "geometry": {
+        "documentWidth": 820,
+        "viewportWidth": 820,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "send",
+      "route": "/send",
+      "theme": "dark",
+      "viewport": {
+        "width": 820,
+        "height": 720,
+        "context": "wide-panel-fixture"
+      },
+      "file": "send-dark-820x720.png",
+      "sha256": "b7ccc1e1f743a7e5e19bb2513712910b983fc6f670f8277edc98330f1818b364",
+      "geometry": {
+        "documentWidth": 820,
+        "viewportWidth": 820,
+        "appScrollHeight": 618,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "receive",
+      "route": "/receive",
+      "theme": "dark",
+      "viewport": {
+        "width": 820,
+        "height": 720,
+        "context": "wide-panel-fixture"
+      },
+      "file": "receive-dark-820x720.png",
+      "sha256": "b31f2b5c4ccabada412859b4e32e9852f8dd8fb2387226058f9dbebc41b4c8e4",
+      "geometry": {
+        "documentWidth": 820,
+        "viewportWidth": 820,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "faucet",
+      "route": "/faucet",
+      "theme": "dark",
+      "viewport": {
+        "width": 820,
+        "height": 720,
+        "context": "wide-panel-fixture"
+      },
+      "file": "faucet-dark-820x720.png",
+      "sha256": "75af6aa0a2223e3bf58116a1864747c4b0351eb3d82540c15b25b3a0294b03d5",
+      "geometry": {
+        "documentWidth": 820,
+        "viewportWidth": 820,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "name",
+      "route": "/name",
+      "theme": "dark",
+      "viewport": {
+        "width": 820,
+        "height": 720,
+        "context": "wide-panel-fixture"
+      },
+      "file": "name-dark-820x720.png",
+      "sha256": "9581e34266161a48b1152e92e152ba73f9aae50aeff4cd2a4df691974a8c33bd",
+      "geometry": {
+        "documentWidth": 820,
+        "viewportWidth": 820,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "history",
+      "route": "/history",
+      "theme": "dark",
+      "viewport": {
+        "width": 820,
+        "height": 720,
+        "context": "wide-panel-fixture"
+      },
+      "file": "history-dark-820x720.png",
+      "sha256": "50c5ab2765f2518c6463fc7bbef9f3bd1f9a62a185f56b98309b6100355254cc",
+      "geometry": {
+        "documentWidth": 820,
+        "viewportWidth": 820,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "settings",
+      "route": "/settings",
+      "theme": "dark",
+      "viewport": {
+        "width": 820,
+        "height": 720,
+        "context": "wide-panel-fixture"
+      },
+      "file": "settings-dark-820x720.png",
+      "sha256": "613e6ec38fd303b8a3f2dd001a4b327c0e4cb76e8eeea325628168eaa0f6fe2a",
+      "geometry": {
+        "documentWidth": 820,
+        "viewportWidth": 820,
+        "appScrollHeight": 939,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "reset",
+      "route": "/reset",
+      "theme": "dark",
+      "viewport": {
+        "width": 820,
+        "height": 720,
+        "context": "wide-panel-fixture"
+      },
+      "file": "reset-dark-820x720.png",
+      "sha256": "538a32e49d345af4eb271ed2ef6e95a0c7a28450bf2fad966744ae0d45b4111b",
+      "geometry": {
+        "documentWidth": 820,
+        "viewportWidth": 820,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "welcome-create",
+      "route": "/welcome",
+      "theme": "dark",
+      "viewport": {
+        "width": 820,
+        "height": 720,
+        "context": "wide-panel-fixture"
+      },
+      "file": "welcome-create-dark-820x720.png",
+      "sha256": "93f017681a1e3ea2aa347facfa8dcef6dc9feb54839f712aaeb12ce54fe258bd",
+      "geometry": {
+        "documentWidth": 820,
+        "viewportWidth": 820,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "welcome-import",
+      "route": "/welcome",
+      "theme": "dark",
+      "viewport": {
+        "width": 820,
+        "height": 720,
+        "context": "wide-panel-fixture"
+      },
+      "file": "welcome-import-dark-820x720.png",
+      "sha256": "5c7624f9d0edd52b904a7e7c0c945841098e3915f2150a7a932cac2f8ccea6f3",
+      "geometry": {
+        "documentWidth": 820,
+        "viewportWidth": 820,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "accounts-cached",
+      "route": "/accounts",
+      "theme": "dark",
+      "viewport": {
+        "width": 820,
+        "height": 720,
+        "context": "wide-panel-fixture"
+      },
+      "file": "accounts-cached-dark-820x720.png",
+      "sha256": "34608edd554653c2745623220745f54ae2bd6f8c785eb7da562306d4019eb7a1",
+      "geometry": {
+        "documentWidth": 820,
+        "viewportWidth": 820,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "accounts-refresh-error",
+      "route": "/accounts",
+      "theme": "dark",
+      "viewport": {
+        "width": 820,
+        "height": 720,
+        "context": "wide-panel-fixture"
+      },
+      "file": "accounts-refresh-error-dark-820x720.png",
+      "sha256": "b416e0e0e4d0be389ebd186672b8f4687b068aa530259fc153c6e891344e61b9",
+      "geometry": {
+        "documentWidth": 820,
+        "viewportWidth": 820,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "accounts-empty-search",
+      "route": "/accounts",
+      "theme": "dark",
+      "viewport": {
+        "width": 820,
+        "height": 720,
+        "context": "wide-panel-fixture"
+      },
+      "file": "accounts-empty-search-dark-820x720.png",
+      "sha256": "507efece9982d7778f3c3cb1ebebf368b112da9d0736c37516eb5592645dc197",
+      "geometry": {
+        "documentWidth": 820,
+        "viewportWidth": 820,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "dashboard-assets",
+      "route": "/dashboard",
+      "theme": "dark",
+      "viewport": {
+        "width": 820,
+        "height": 720,
+        "context": "wide-panel-fixture"
+      },
+      "file": "dashboard-assets-dark-820x720.png",
+      "sha256": "805d46b1c554393420b81bd2653d4c851152098ccdc650663046f3c5939abf06",
+      "geometry": {
+        "documentWidth": 820,
+        "viewportWidth": 820,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "settings-theme",
+      "route": "/settings",
+      "theme": "dark",
+      "viewport": {
+        "width": 820,
+        "height": 720,
+        "context": "wide-panel-fixture"
+      },
+      "file": "settings-theme-dark-820x720.png",
+      "sha256": "efa3b83823350b2f1a561bb759e5f0e72839206f29ff7b80e9ba6af8164cfc85",
+      "geometry": {
+        "documentWidth": 820,
+        "viewportWidth": 820,
+        "appScrollHeight": 939,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "settings-auto-lock",
+      "route": "/settings",
+      "theme": "dark",
+      "viewport": {
+        "width": 820,
+        "height": 720,
+        "context": "wide-panel-fixture"
+      },
+      "file": "settings-auto-lock-dark-820x720.png",
+      "sha256": "37605cdfeb37deb65da7598163c803747cae588fb84e0e6c2bea593eb13a88e1",
+      "geometry": {
+        "documentWidth": 820,
+        "viewportWidth": 820,
+        "appScrollHeight": 939,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "settings-signing",
+      "route": "/settings",
+      "theme": "dark",
+      "viewport": {
+        "width": 820,
+        "height": 720,
+        "context": "wide-panel-fixture"
+      },
+      "file": "settings-signing-dark-820x720.png",
+      "sha256": "8d82c020a565f43d1a0a07f1934c6f3714796a47f55b13d790346f78de6c3d10",
+      "geometry": {
+        "documentWidth": 820,
+        "viewportWidth": 820,
+        "appScrollHeight": 939,
+        "appClientHeight": 600
+      }
+    },
+    {
+      "scenario": "settings-bottom",
+      "route": "/settings",
+      "theme": "dark",
+      "viewport": {
+        "width": 820,
+        "height": 720,
+        "context": "wide-panel-fixture"
+      },
+      "file": "settings-bottom-dark-820x720.png",
+      "sha256": "4546cf0ff385b15dece5f0270d1ac9cf7f28ae7766c3e450da6378baaa596ed3",
+      "geometry": {
+        "documentWidth": 820,
+        "viewportWidth": 820,
+        "appScrollHeight": 939,
+        "appClientHeight": 600
+      }
+    }
+  ]
+}

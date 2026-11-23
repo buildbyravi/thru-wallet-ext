@@ -649,3 +649,19 @@ confirming the actual Git/PR state. `docs/DOCS_INDEX.md` routes each topic to it
 do not create competing handoff documents. Keep proposed Web Store copy distinct from a verified
 live listing and never claim publication without evidence. Documentation guards supplement, but
 do not replace, a manual code/evidence comparison.
+
+## D-034 - Maintain an actual-UI visual record (2026-11-23, owner directive)
+
+**Owner directive.** Audit existing screenshot documentation, initialize a dedicated collection when
+needed, provide screenshots during implementation, and update the record for confirmed and merged
+frontend changes.
+
+**Chosen.** Preserve the existing synthetic store compositions. Actual built-UI captures belong in
+`docs/screenshots/current/`, with a generated gallery and revision/source/build/image-hash manifest.
+Extend the existing manual smoke runbook and browser tooling rather than creating a second UI or
+verification authority. CI retains per-run capture artifacts; it does not commit or approve them.
+
+**Scope.** Public mocked fixtures provide repeatable route/theme/viewport evidence without a real
+vault, secret disclosure, signing or chain calls. Record unsupported/uncaptured states and distinguish
+fixtures from native MV3 and live-network verification. Maintainers inspect images, refresh them
+with confirmed changes, and recapture actual merged builds; automation alone is not design approval.

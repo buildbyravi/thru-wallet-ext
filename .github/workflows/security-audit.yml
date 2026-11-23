@@ -68,3 +68,35 @@ jobs:
         run: |
           export CHROME_BIN="$(node --input-type=module -e 'import { chromium } from "/tmp/thru-browser-tools/node_modules/playwright-core/index.mjs"; console.log(chromium.executablePath())')"
           npm run test:browser
+
+  visual-record:
+    name: Capture Built UI Visual Record
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install project dependencies
+        run: npm ci
+      - name: Install isolated browser tooling
+        run: npm install --prefix /tmp/thru-browser-tools --no-save playwright-core@1.65.1
+      - name: Install Chromium
+        run: /tmp/thru-browser-tools/node_modules/.bin/playwright-core install --with-deps chromium
+      - name: Capture current build
+        env:
+          PLAYWRIGHT_MODULE: /tmp/thru-browser-tools/node_modules/playwright-core/index.mjs
+        run: |
+          export CHROME_BIN="$(node --input-type=module -e 'import { chromium } from "/tmp/thru-browser-tools/node_modules/playwright-core/index.mjs"; console.log(chromium.executablePath())')"
+          node test/browser/capture-ui.mjs dist test-results/ui
+          node test/browser/capture-ui.mjs dist test-results/ui --check
+      - name: Retain visual evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-visual-record-${{ github.sha }}-${{ github.run_attempt }}
+          path: test-results/ui/
+          if-no-files-found: error
+          retention-days: 30
