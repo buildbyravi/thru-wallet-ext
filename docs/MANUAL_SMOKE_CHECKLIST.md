@@ -66,7 +66,7 @@ The toolbar popup loads `popup.html`; the side panel loads `popup.html?thru_pane
 | `/welcome` | Create/import flows advance; phrase blurred until revealed; zero secrets in URL/hash | [ ] | [ ] |
 | `/unlock` | Wrong password keeps focus in input and shows backoff; `Reset` reachable | [ ] | [ ] |
 | `/dashboard` | `196px` ink header, account pill, copy & side-panel icons, `Tokens` drawer trigger (real balances, proven `0`, or `—`), frozen `2x3` `88px` action grid, secondary services grid (`Domain`), `CurrentConnection` footer; shell topbar hidden | [ ] | [ ] |
-| `/accounts` | Account list, balances, pin/hide/switch, `Add account` | [ ] | [ ] |
+| `/accounts` | Account list and balances; keyring count and `Manage` are labeled; current account uses restrained tint + check; search keyboard focus is distinct without reading as an error; switch and `Add account` work | [ ] | [ ] |
 | `/account` | Detail for `#/account?ref=...`; rename, provenance, export/remove actions; invalid ref shows clean error | [ ] | [ ] |
 | `/add-account` | Non-persisting HD preview renders; batch/single add returns to `/accounts` | [ ] | [ ] |
 | `/keyring` | Source details (`#/keyring?id=...`), password-gated rename/remove, backup status | [ ] | [ ] |

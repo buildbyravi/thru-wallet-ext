@@ -98,4 +98,5 @@ All 15 routes are registered in `src/ui/app/boot.js`, mount immediately from loc
 
 - **Palette & Typography (`src/popup/styles/tokens.css`):** Industrial Thru aesthetic (Steel, Teal, Brick `#c43a40` / `#d33c40`, Gold `#ffad42`, self-hosted `Inter Tight` + `JetBrains Mono`, tabular numerals for financial figures). Flat CSS only (`scripts/check-css-nesting.mjs`); all used classes defined (`scripts/check-routes.mjs`).
 - **Dimensions:** Toolbar popup is `400px x 600px`; side panel caps cleanly to narrow (`~300px`) and wide (`>=800px`) viewports. Every modal/sheet change requires real-browser inspection (`Rule 14`, `docs/MANUAL_SMOKE_CHECKLIST.md`).
-- **Accessibility:** Modals/sheets trap Tab/Shift+Tab and Escape via `src/ui/kit/focus-trap.js` and restore focus on close.
+- **Accessibility:** Modals/sheets trap Tab/Shift+Tab and Escape via `src/ui/kit/focus-trap.js` and restore focus on close. Keyboard focus uses the shared ink `:focus-visible` outline; red is not used as a focus/error lookalike.
+- **Account switcher (`/accounts`):** Keep the current account identifiable through the check badge and restrained accent tint, not a stack of competing red borders/stripes. Label keyring account counts and the `Manage` action in visible text; use accessible names on icon-only controls where they remain.
