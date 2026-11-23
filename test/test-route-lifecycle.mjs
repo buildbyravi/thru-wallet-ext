@@ -5897,6 +5897,10 @@ async function accountsBootstrapPaintTest() {
     expectedNames.every((name) => visibleNames.includes(name))
       && holds.held.length >= 3,
     `rows=${visibleNames.join(', ')} held=${holds.held.map((x) => x.message.method).join(',')}`);
+  ok('keyring account count has an explicit label',
+    /\baccounts?\b/i.test(textOf(route.el)));
+  ok('keyring management action has a visible label',
+    [...route.el.querySelectorAll('.keyring-manage-btn')].some((button) => /manage/i.test(textOf(button))));
   holds.resolve('account.list', backend.accounts.map((account) => ({ ...account, balance: null, balanceStale: true })));
   holds.resolve('keyring.list', backend.keyrings.map((keyring) => ({ ...keyring })));
   holds.resolve('account.getActiveRef', activeAccount().ref);
