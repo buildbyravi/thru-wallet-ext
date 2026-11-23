@@ -134,7 +134,50 @@ trade-offs. In particular:
   any opt-in broadcast requires a disposable wallet and an explicit operator-run procedure, not a
   repository secret used on every pull request.
 
-## 6. Verification gates for future implementation PRs
+## 6. Candidate delivery sequence (PLANNED — not authorization to implement)
+
+The current recommendation is to keep the work in separate, reviewable stages. This sequencing is a
+planning aid only; it does not establish that every candidate is needed or approved.
+
+### Stage 1 — Standalone anti-scam review (candidate Workstream B)
+
+First audit the existing Send, History, naming, and transaction-review data paths. Propose only
+narrow changes that the current decoded/local data can support honestly: possible-spam labels without
+removing chain records, non-blocking unfamiliar-recipient context using local account/contact/history
+data, protocol-aligned name canonicalization, and clearer program provenance. Unknown, missing, or
+network-mismatched evidence must remain unknown; do not infer that dust is malicious, prior use means
+an address is safe, a name's age is known, or a package-listed program is deployed/audited. Tests must
+cover false positives and account/network isolation. No remote history lookup or added website
+permission is implied.
+
+### Stage 2 — Thru protocol and product-spec gate (before any Workstream C code)
+
+Audit pinned `@thru/sdk` / `@thru/programs` 0.5.2 and maintained Thru protocol definitions for exact
+message-signing bytes/verifier behavior, transaction serialization, and any proposed simulation
+service/schema. Record source locations and test vectors. Separately confirm ecosystem expectations
+for provider methods/events and product permission requirements. Until that evidence and API review
+exist, do not add `window.thru`, MAIN/ISOLATED scripts, external message handlers, host permissions,
+loopback manifest patterns, or a signing prefix. Do not assume example gRPC method names or response
+fields are real.
+
+### Stage 3 — DApp connection (candidate Workstream C; separate approved feature)
+
+Only after the protocol/spec gate and a separate implementation decision, design the background-owned
+origin grants, approval lifecycle, provider bridge, Connected Sites revocation, and unified review UI.
+Keep grants session-scoped so worker suspension does not itself disconnect an approved site, but
+revoke at the background boundary on lock/reset/disconnect and define browser-session expiry. Pending
+approval payloads remain short-lived and memory-only; worker restart must fail closed. Restrict
+requests to the top frame and bind every approval to canonical request, exact browser-derived origin,
+account, network, and method. Any loopback injection belongs only in an explicit development build;
+prove the packaged production manifest excludes it. Build a bounded browser test matrix for origin,
+iframe, replay, request-spam, lock/revoke, and review failure cases. Never broadcast live transactions
+in default CI.
+
+Workstream A (vault `family`/`curve` metadata) remains deferred unless a concrete current consumer
+requires it. This sequence does not introduce EVM or other chain code, alter Thru coin type 8478, or
+approve a multi-chain abstraction.
+
+## 7. Verification gates for future implementation PRs
 
 - Before/after read `docs/ARCHITECTURE.md`, `docs/AUDIT_REPORT.md`, `docs/PROJECT_LEDGER.md`, and
   `docs/STATUS_AND_ROADMAP.md`; update only documents whose current claims change. Keep this plan
