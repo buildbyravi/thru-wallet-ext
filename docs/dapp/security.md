@@ -245,6 +245,71 @@ consumer requirements before freezing method/event names.
   locked-state refusal, replay, popup spam, and disconnect. Do not broadcast live transactions in
   ordinary CI.
 
+## Planned approval UI: shared decoded review shell
+
+The following is a design candidate for a future provider, not a request to refactor the current
+internal transaction review card before DApp approvals exist. Reuse the existing review/consent
+pipeline and adapt its presentation only after the DApp request model is approved. A roughly 400×600
+popup is a layout target, not a security boundary or a fixed-size assumption.
+
+Use a consistent, responsive four-part hierarchy across connection, message-signing, and transaction
+approval screens:
+
+1. **Origin and wallet context.** Show the exact browser-derived origin (scheme, ASCII/Punycode host,
+and non-default port), selected Thru account/address, and actual selected network. Do not rely on a
+favicon, a dApp name, or a hostname with scheme/port omitted. For internal wallet actions, clearly
+label the context as internal rather than fabricating a site origin.
+2. **Request/action summary.** For connect, state plainly that approval shares only the selected
+public address and does not grant spending authority. For messages, show decoded UTF-8 when valid or
+an explicit binary/hex warning. For transactions, show only the decoded action and effects supported
+by verified instruction fields. Incoming/expected changes must not be phrased as guaranteed post-state.
+3. **Risk and target details.** Show recipient/program identity and distinguish known package metadata
+from a network-verified deployment or audited program. Show the existing fee units only when the
+value is available and its meaning is clear. “Decoded” is not equivalent to “safe”; simulation, if
+later verified, is advisory. Do not claim HTTPS/domain checks or domain separation unless those exact
+checks actually ran.
+4. **Technical details and decision controls.** Put decoded parameters and raw bytes in a collapsed
+technical-details section, with copy/expand behavior tested. Keep Reject and Confirm reachable without
+horizontal scrolling; any acknowledgement/delay is supplemental friction, never a substitute for
+fresh approval, revalidation, or the single-use consent token. Unknown/undecodable operations remain
+blocked rather than gaining a warning-and-continue path.
+
+All origin, message, decoded field, program label, and error content is untrusted text. Render through
+safe DOM/text APIs, never `innerHTML`. Test narrow viewports, long origins, large amounts, unusual
+Unicode, keyboard focus, zoom, and screen-reader labels. A unified visual shell must not merge the
+authorization policies: connection and each signing request remain separate approvals, with the
+transaction path continuing through canonical review and one-time consent.
+
+### Candidate per-method presentation
+
+| Request | Summary and checks | Decision |
+| --- | --- | --- |
+| `connect` | Exact origin, selected account, address-sharing scope, origin warning | Reject / Connect |
+| `signMessage` | Exact origin, message text or binary warning, verified domain-tag state only if protocol-backed | Reject / Sign |
+| `signTransaction` / `signAndSendTransaction` | Decoded action/effects, recipient/program status, available fee, transaction details | Reject / Review and confirm; broadcast only through the existing authorized flow |
+
+Do not label a program “Verified Thru Program” based on `@thru/programs` membership alone. A verified
+label requires a documented source and network-specific deployment evidence. Do not show a
+“simulation valid” or “HTTPS verified” row when no corresponding verifier ran.
+
+## Future local dApp smoke-test fixture
+
+A `scripts/test-dapp.html` harness is a future integration-test fixture, to be added only alongside a
+working provider or as an explicitly nonfunctional mock. The pasted sample has inline CSS and
+JavaScript; do not add it unchanged because the repository's CSP/inline-script guard rejects inline
+script, and a page that reports unsupported methods against today's extension can be mistaken for a
+working integration test. Prefer an external local stylesheet/module or a test-bundled fixture that
+keeps production CSP unchanged. Serve it on an exact loopback origin (`http://localhost` or
+`http://127.0.0.1`), never `file://`, and keep local HTTP injection limited to development builds.
+
+Once the API/protocol is stable, the fixture may cover provider detection, connect/denial, trusted
+reconnect, disconnect, events, UTF-8 and binary message requests, valid/invalid transaction review,
+account changes, lock/revoke synchronization, and request-spam refusal. It must not claim to verify
+`tn_msg_sign_v1__` until the prefix is protocol-verified; use synthetic data and mock RPC by default.
+Do not include a real account secret, live transaction, or automatic broadcast. CI should test refusal
+of malformed payloads and origin/session boundaries; manual approval UX checks are supplementary,
+not a substitute for browser security tests.
+
 ## Required automated coverage before release
 
 1. Top-level approved-origin connection succeeds only after user approval; denial reveals no
