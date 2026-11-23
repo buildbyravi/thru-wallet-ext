@@ -114,7 +114,8 @@ warning.
 
 Do not implement these controls until a provider protocol, content-script/host-permission strategy,
 approval lifecycle, and browser-sender contract are approved. `docs/dapp/security.md` is the detailed
-DApp design guide. In particular:
+DApp design guide, including the candidate `window.thru` method/event surface and MV3 injection
+trade-offs. In particular:
 
 - Do not implement the proposed `tn_msg_sign_v1__` domain-separation prefix until the exact Thru
   message-signing format and verifier behavior are verified against maintained protocol/SDK sources

@@ -167,6 +167,84 @@ method names or inferred response fields.
   extension's `chrome.runtime` API unless an explicit bridge exposes it, so test that boundary via
   unit/integration messaging fixtures rather than assuming page access.
 
+## Proposed `window.thru` API and MV3 injection design (PLANNED)
+
+This is a candidate interface for a future DApp-connection PR, not a currently shipped provider or a
+promise of compatibility with existing Thru dApps. Confirm the Thru ecosystem convention and collect
+consumer requirements before freezing method/event names.
+
+### Candidate API contract
+
+- Expose a minimal frozen `window.thru` object with a read-only `isThru === true`, read-only
+  `isConnected` boolean, and `publicKey` (`ta...` only for the approved active account, otherwise
+  `null`). A getter/property and a method named `isConnected()` conflict; prefer the property and omit
+  the method. Keep `getAccount()` only if consumers need a stable object response.
+- Promise methods may include `connect({ onlyIfTrusted = false })`, `disconnect()`,
+  `signMessage(Uint8Array)`, `signTransaction(serializedTx)`, and
+  `signAndSendTransaction(serializedTx)`. Define exact byte/string encoding and return types before
+  implementation; do not silently coerce arbitrary objects or expose secrets/tokens.
+- A consistent event surface may provide `on(event, listener)`, `off(event, listener)`, and
+  `removeListener(event, listener)` for `connect({ publicKey })`, `disconnect()`, and
+  `accountChanged(publicKeyOrNull)`. Specify duplicate listener behavior, event order, page reload,
+  account switch, lock, and disconnect semantics. `thru#initialized` may be a discovery signal only;
+  page-controlled events are spoofable and must never grant permission.
+- `connect({ onlyIfTrusted: true })` may return an existing session without UI only when the exact
+  browser-derived origin already has a valid background-owned grant. It must not create/revive a
+  grant or expose accounts on failure.
+
+### Page/isolated bridge boundary
+
+- If implemented, use a minimal MAIN-world provider and a separate ISOLATED-world content bridge.
+  MAIN-world code has no privileged extension APIs and must hold no keys or authorization state.
+  The isolated bridge validates source, top-frame status, message shape, allowed method, size, and
+  request ID, then forwards only normalized fields.
+- `event.source === window` / `event.origin === location.origin` are useful transport checks, not
+  authentication: the page can post its own messages and can inspect or replace page-visible
+  objects. The bridge treats all page input as attacker-controlled; the background authenticates
+  the browser-supplied sender metadata and permission state.
+- Only top-level frames may make provider requests. Set `all_frames` false (or omit it) and reject
+  `sender.frameId !== 0` in the background even if a future manifest accidentally injects into a
+  subframe. Never accept origin values from message payloads.
+- Do not relay generic internal contract method names. Use a separate narrow DApp message type and
+  explicit method allowlist; DApp requests must never reach `vault.*`, `keyring.*`, internal export,
+  or `tx.confirmReview` handlers directly.
+
+### Manifest and permissions review before implementation
+
+- A declarative `world: "MAIN"` content script can expose the page provider without making its file
+  web-accessible, but every `matches` pattern is a host-access scope and provider-presence signal.
+  Review the broad-site privacy/fingerprinting impact and Chrome Web Store permission disclosure
+  before choosing all-HTTPS injection versus a narrower/optional-host strategy.
+- For local development, use exact loopback patterns (`http://localhost/*` and
+  `http://127.0.0.1/*`) only in a development/test configuration. The proposed
+  `http://127.0.0*` pattern is not a safe/valid wildcard substitute. Production origins must be
+  HTTPS; local HTTP must never become a production exception.
+- Manifest-declared content scripts do not need to be listed in `web_accessible_resources`. Do not
+  expose internal background, approval, or signing assets to web pages. Add WAR entries only for a
+  narrowly justified resource that a page truly must fetch.
+- Keep the current restrictive extension-page CSP. `frame-ancestors` support/acceptance in Chrome's
+  MV3 extension CSP must be tested with the target Chrome versions and manifest validator before
+  adding it; do not replace a working policy with the abbreviated proposed string or weaken
+  `object-src 'none'` to `'self'`.
+
+### Signing and session protocol gates
+
+- Do not implement `tn_msg_sign_v1__` based only on the supplied example. Verify the exact domain tag,
+  byte encoding, verifier rules, and test vectors against maintained Thru SDK/protocol sources first.
+  The tag is protective only if all relevant verifiers enforce it and transaction authorization
+  cannot accept a message signature. Background code—not the page—must prepend any verified tag.
+- DApp signing goes through the existing decoded review and consent boundary. `signTransaction` and
+  `signAndSendTransaction` must not create a parallel raw-sign path; undecodable data remains refused.
+  Any blocklist is advisory/deny policy with provenance, refresh/staleness, privacy, and false-positive
+  handling designed before network fetches are added.
+- On lock, reset, disconnect, and account/network change, revoke or invalidate DApp sessions and
+  pending requests as specified by the session model. Connected Sites management must revoke in the
+  background, not by directly editing storage from the UI.
+- Build a local test DApp as a fixture only after the protocol surface is stable. Use mock RPC and
+  synthetic keys by default; exercise connect/denial, events, iframe rejection, origin binding,
+  locked-state refusal, replay, popup spam, and disconnect. Do not broadcast live transactions in
+  ordinary CI.
+
 ## Required automated coverage before release
 
 1. Top-level approved-origin connection succeeds only after user approval; denial reveals no
