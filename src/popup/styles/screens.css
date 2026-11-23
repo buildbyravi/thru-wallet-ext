@@ -156,6 +156,21 @@ form > .btn.text {
   margin-top: calc(var(--sp-1) * -1);
 }
 
+/* Account management is a long, repeated list: keep the controls substantial but
+   tighten the vertical rhythm so more of the account set remains in view. */
+.accounts-screen {
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4) var(--sp-4);
+}
+
+.accounts-screen > .stack {
+  gap: var(--sp-2);
+}
+
+.accounts-screen .subheader {
+  padding-bottom: var(--sp-1);
+}
+
 /* ---- Footer ------------------------------------------------
    Status strip on the recessed surface, mirroring the topbar so the
    white working area is framed top and bottom. */

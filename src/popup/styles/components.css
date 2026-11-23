@@ -653,11 +653,11 @@ button.row { cursor: pointer; }
   font-variant-numeric: tabular-nums;
 }
 
-/* Account switcher cards: add separation and breathing room without changing
-   the shared list/group geometry used by Send's account picker. */
+/* Account group cards are denser than generic lists while retaining a clear
+   boundary; these selectors stay scoped away from Send's account picker. */
 .accounts-screen .list-group {
-  gap: var(--sp-3);
-  padding: var(--sp-3);
+  gap: var(--sp-2);
+  padding: var(--sp-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--surface-1);
@@ -671,12 +671,24 @@ button.row { cursor: pointer; }
 }
 
 .accounts-screen .list-group .row {
-  min-height: 60px;
+  min-height: 64px;
   border-radius: var(--radius-md);
 }
 
+.accounts-screen .list-group .row-glyph {
+  width: 34px;
+  height: 34px;
+}
+
+.accounts-screen .row-title {
+  font-size: var(--fs-md);
+  font-weight: 700;
+}
+
 .accounts-screen .row.active {
+  border-width: 2px;
   background: var(--accent-tint);
+  box-shadow: inset 3px 0 0 var(--accent);
 }
 
 .accounts-screen .search-box input {
