@@ -20,45 +20,50 @@ rules:
 
   - id: thru-wallet-extractable-webcrypto-key
     languages: [javascript]
-    severity: WARNING
+    severity: ERROR
     message: >-
-      Web Crypto key generated as extractable. Prefer extractable=false unless a reviewed
-      encrypted-backup flow explicitly requires export.
-    pattern: crypto.subtle.generateKey($ALGORITHM, true, $USAGES)
+      Web Crypto key imported or generated as extractable. Use extractable=false unless a separately
+      reviewed export flow is required; never make wallet signing/encryption keys extractable.
+    pattern-either:
+      - pattern: crypto.subtle.generateKey($ALGORITHM, true, $USAGES)
+      - pattern: crypto.subtle.importKey($FORMAT, $KEY_DATA, $ALGORITHM, true, $USAGES)
+      - pattern: crypto.subtle.unwrapKey($FORMAT, $WRAPPED, $UNWRAPPING_KEY, $UNWRAP_ALGORITHM, $KEY_ALGORITHM, true, $USAGES)
 
-  # Thru Wallet has no dApp page bridge. If one is added later, require an origin/source
-  # trust check before accepting window message events.
+  # Thru Wallet currently has no dApp page bridge. Future listeners must reject both
+  # unexpected origins and non-top-level/source-window messages before doing any work.
   - id: wallet-unvalidated-window-message
     languages: [javascript, typescript]
     severity: ERROR
-    message: >-
-      Do not trust window message events without validating event.origin or event.source.
-      Thru Wallet currently has no injected dApp bridge; use the extension runtime boundary.
+    message: Reject window messages unless origin is exact and the event comes from the top-level page itself.
     patterns:
       - pattern: window.addEventListener("message", ($EVENT) => { ... })
       - pattern-not-inside: |
           window.addEventListener("message", ($EVENT) => {
-            ...
-            if ($EVENT.origin !== ...) { ... }
+            if ($EVENT.origin !== $ORIGIN) return;
+            if ($EVENT.source !== window) return;
             ...
           })
       - pattern-not-inside: |
           window.addEventListener("message", ($EVENT) => {
-            ...
-            if ($EVENT.source !== ...) { ... }
+            if ($EVENT.origin !== $ORIGIN) { return; }
+            if ($EVENT.source !== window) { return; }
             ...
           })
 
   - id: wallet-unvalidated-external-extension-message
     languages: [javascript]
     severity: ERROR
-    message: Validate sender origin and restrict allowed senders before handling external extension messages.
+    message: Reject external extension messages unless sender.origin is checked against an explicit trusted origin before handling.
     patterns:
       - pattern: chrome.runtime.onMessageExternal.addListener(($MESSAGE, $SENDER, $RESPONSE) => { ... })
       - pattern-not-inside: |
           chrome.runtime.onMessageExternal.addListener(($MESSAGE, $SENDER, $RESPONSE) => {
+            if ($SENDER.origin !== $TRUSTED_ORIGIN) return false;
             ...
-            if ($SENDER.origin !== ...) { ... }
+          })
+      - pattern-not-inside: |
+          chrome.runtime.onMessageExternal.addListener(($MESSAGE, $SENDER, $RESPONSE) => {
+            if ($SENDER.origin !== $TRUSTED_ORIGIN) { return false; }
             ...
           })
 
@@ -69,8 +74,10 @@ rules:
     severity: ERROR
     message: Use HTTPS for non-local RPC or transport endpoints; HTTP is permitted only for loopback development.
     patterns:
-      - pattern: 'rpcUrl: "http://$HOST"'
-      - pattern-not: 'rpcUrl: "http://127.0.0.1:8899"'
+      - pattern: 'rpcUrl: "$URL"'
+      - metavariable-regex:
+          metavariable: $URL
+          regex: (?i)^http://(?!(?:localhost|127\.0\.0\.1|\[::1\])(?::|/|$))
 
   # Retain the established zero-innerHTML and MV3 no-dynamic-code-execution invariants.
   - id: wallet-dangerous-dom-or-dynamic-code
@@ -99,7 +106,7 @@ rules:
           - pattern: console.info(..., $VAR, ...)
       - metavariable-regex:
           metavariable: $VAR
-          regex: (?i)^(?:[a-z_$][a-z0-9_$]*\\.)*(private.?key|secret.?key|mnemonic|seed.?phrase|raw.?key|decrypted[a-z0-9_$]*)$
+          regex: (?i)^(?:[a-z_$][a-z0-9_$]*\.)*(private.?key|secret.?key|mnemonic|seed.?phrase|raw.?key|decrypted[a-z0-9_$]*)$
 
   # The extension's runtime message seam must authenticate the sender. Avoid blanket
   # matching listeners because UI listeners intentionally receive extension broadcasts.
@@ -111,7 +118,11 @@ rules:
       - pattern: chrome.runtime.onMessage.addListener(($REQUEST, $SENDER, $RESPONSE) => { ... })
       - pattern-not-inside: |
           chrome.runtime.onMessage.addListener(($REQUEST, $SENDER, $RESPONSE) => {
+            if ($SENDER.id !== chrome.runtime.id) return false;
             ...
-            if ($SENDER.id !== chrome.runtime.id) { ... }
+          })
+      - pattern-not-inside: |
+          chrome.runtime.onMessage.addListener(($REQUEST, $SENDER, $RESPONSE) => {
+            if ($SENDER.id !== chrome.runtime.id) { return false; }
             ...
           })

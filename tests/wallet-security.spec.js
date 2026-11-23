@@ -73,7 +73,7 @@ test("untrusted cross-origin iframe cannot invoke a wallet provider or open an e
     route.fulfill({
       status: 200,
       contentType: "text/html",
-      body: `<!doctype html><script>
+      body: `<!doctype html><body><p id="ready">Untrusted frame loaded</p><script>
         window.parent.postMessage({ type: 'THRU_CONNECT_REQUEST' }, '*');
         window.parent.postMessage({ type: 'THRU_SIGN_REQUEST', payload: { amount: '5000' } }, '*');
         window.postMessage({ type: 'THRU_CONNECT_REQUEST' }, '*');
@@ -92,7 +92,7 @@ test("untrusted cross-origin iframe cannot invoke a wallet provider or open an e
   try {
     await page.goto(legit);
     const iframe = page.frameLocator("#evil");
-    await expect(iframe.locator("body")).toBeVisible();
+    await expect(iframe.locator("#ready")).toHaveText("Untrusted frame loaded");
     expect(
       await page
         .frame({ url: evil })

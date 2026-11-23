@@ -25,7 +25,9 @@ make those states explicit to the user.
   page-provided origin string as authenticated identity.
 - The background service worker is the authorization boundary. It must derive the requesting
   origin from browser-provided sender metadata, require a top-level frame (`sender.frameId === 0`),
-  and reject absent, opaque, non-HTTPS, or mismatched origins. Where both sender origin and tab URL
+  and reject absent, opaque, non-HTTPS, or mismatched origins. The only HTTP exceptions are explicit
+  loopback development fixtures (`http://localhost` and `http://127.0.0.1`); do not permit them in
+  production builds or broaden the exception to arbitrary hosts. Where both sender origin and tab URL
   are available, compare normalized URL origins; do not infer trust from a parent frame or request
   payload.
 - Connection and signing are separate permissions. A connection reveals only the explicitly
@@ -178,8 +180,9 @@ method names or inferred response fields.
    with browser tab/frame metadata are rejected before any approval or signing path runs.
 6. Locked-state signing requests refuse without exposing a signature; no request can auto-unlock the
    vault or bypass the review/consent flow.
-7. Approval shows the exact browser-derived HTTPS origin, including IDN/lookalike-host, subdomain,
-   and non-default port cases; the approval action remains bound to that same origin.
+7. Approval shows the exact browser-derived origin, including scheme, IDN/lookalike-host, subdomain,
+   and non-default port cases; use HTTPS in production and permit loopback HTTP only in controlled
+   development fixtures. The approval action remains bound to that same origin.
 8. The Connected Sites manager revokes one/all origins at the background boundary and invalidates
    outstanding requests; the site bar updates to the revoked state.
 9. Known phishing-list matches show a warning, while unlisted domains are not described as safe.
