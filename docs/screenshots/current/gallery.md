@@ -2,8 +2,8 @@
 
 TESTED: real built UI, mocked bridge; not MV3 or live-network verification
 
-Captured: 2026-11-23T20:01:17.880Z. Source revision: `197c8336cce504472850631b82e98657c714ac1b` (branch `pr-31`).
-Browser: 157.0.8103.79, win32. See [manifest](manifest.json) for hashes, source changes and limitations.
+Captured: 2026-11-23T20:37:21.442Z. Source revision: `46f07c6a2b602bcfb923bdf5a7340500c3a56a90` (branch `pr-31`).
+Browser: 159.0.8154.6, win32. See [manifest](manifest.json) for hashes, source changes and limitations.
 
 ## welcome / light / 400x600
 
