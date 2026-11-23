@@ -1040,7 +1040,7 @@ button.row { cursor: pointer; }
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all var(--t-fast);
+  transition: background var(--t-fast), color var(--t-fast);
 }
 
 .drawer-close-btn:hover {
@@ -1089,7 +1089,7 @@ button.row { cursor: pointer; }
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   cursor: pointer;
-  transition: all var(--t-fast);
+  transition: background var(--t-fast), border-color var(--t-fast);
 }
 
 .account-drawer-item:hover {
@@ -1166,7 +1166,7 @@ button.row { cursor: pointer; }
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   cursor: pointer;
-  transition: all var(--t-fast);
+  transition: background var(--t-fast), border-color var(--t-fast);
 }
 
 .network-drawer-item:hover {
@@ -1275,7 +1275,7 @@ button.row { cursor: pointer; }
   background: var(--surface-1);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  transition: all var(--t-fast);
+  transition: background var(--t-fast), border-color var(--t-fast);
 }
 
 .token-row:hover {
@@ -1648,7 +1648,7 @@ button.row { cursor: pointer; }
   font-weight: 600;
   padding: 8px 12px;
   cursor: pointer;
-  transition: all var(--t-fast);
+  transition: color var(--t-fast);
 }
 
 .dash-tab-btn:hover {
@@ -1687,7 +1687,7 @@ button.row { cursor: pointer; }
   display: flex;
   flex-direction: column;
   gap: var(--sp-2);
-  transition: all var(--t-fast);
+  transition: background var(--t-fast), border-color var(--t-fast);
 }
 
 .send-from-box:hover {
@@ -1744,7 +1744,7 @@ button.row { cursor: pointer; }
   display: flex;
   align-items: center;
   justify-content: space-between;
-  transition: all var(--t-fast);
+  transition: background var(--t-fast), border-color var(--t-fast);
 }
 
 .send-token-card:hover {
@@ -1898,7 +1898,7 @@ button.row { cursor: pointer; }
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   cursor: pointer;
-  transition: all var(--t-fast);
+  transition: background var(--t-fast), border-color var(--t-fast);
 }
 
 .token-selector-item:hover {
