@@ -3,9 +3,11 @@ import { readFile } from 'node:fs/promises';
 import { extname, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-const { PLAYWRIGHT_MODULE, CHROME_BIN } = process.env;
-if (!PLAYWRIGHT_MODULE || !CHROME_BIN) throw new Error('Set PLAYWRIGHT_MODULE and CHROME_BIN.');
+const PLAYWRIGHT_MODULE = process.env.PLAYWRIGHT_MODULE || (process.env.LOCALAPPDATA
+  && resolve(process.env.LOCALAPPDATA, 'thru-wallet-browser-tools/node_modules/playwright-core/index.mjs'));
+if (!PLAYWRIGHT_MODULE) throw new Error('Set PLAYWRIGHT_MODULE or use the permanent Windows setup in test/browser/README.md.');
 export const { chromium } = await import(pathToFileURL(resolve(PLAYWRIGHT_MODULE)).href);
+const CHROME_BIN = process.env.CHROME_BIN || chromium.executablePath();
 export { CHROME_BIN };
 export const origin = 'https://wallet-fixture.invalid';
 const root = resolve(process.argv[2] || 'dist');

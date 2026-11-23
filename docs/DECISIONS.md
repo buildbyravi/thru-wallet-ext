@@ -665,3 +665,12 @@ verification authority. CI retains per-run capture artifacts; it does not commit
 vault, secret disclosure, signing or chain calls. Record unsupported/uncaptured states and distinguish
 fixtures from native MV3 and live-network verification. Maintainers inspect images, refresh them
 with confirmed changes, and recapture actual merged builds; automation alone is not design approval.
+
+## D-035 - Retain browser tooling and reuse cached downloads (2026-11-23, owner directive)
+
+The owner requires a permanent Playwright installation: routine agent work must not repeatedly
+download the browser, consume bandwidth or recreate temporary tooling. Keep the exact pinned
+development module outside wallet dependencies, retain the existing user browser cache and persist
+the module/browser paths. The browser fixture helper discovers the permanent Windows installation
+without per-turn environment setup. Normal tests and captures never install or download tooling;
+an intentional upgrade or genuinely missing browser requires a separate setup decision.

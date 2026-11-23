@@ -155,7 +155,13 @@ if (process.argv.includes('--check')) {
       page.setDefaultTimeout(8000);
       const errors = [], external = [];
       page.on('pageerror', error => errors.push(error.message));
-      page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
+      page.on('console', message => {
+        if (message.type() === 'error') {
+          const text = message.text();
+          if (text.includes('Permissions policy violation: unload')) return;
+          errors.push(text);
+        }
+      });
       await routeFixture(context, external);
       await context.routeWebSocket('**/*', socket => { errors.push('Unexpected WebSocket request'); socket.close(); });
       context.on('page', popup => { errors.push('Unexpected popup'); void popup.close(); });

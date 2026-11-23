@@ -8,6 +8,28 @@ for those gates. `npm test` is the separate Node/DOM-shim suite and does not run
 Build first. Supply a locally installed `playwright-core` module and a compatible Chromium executable;
 they are intentionally not wallet runtime dependencies. Example (adjust paths for your machine):
 
+On this Windows machine, Playwright is installed permanently at
+`%LOCALAPPDATA%\thru-wallet-browser-tools\node_modules\playwright-core` (exact pin `1.65.1`).
+Browsers are retained in `%LOCALAPPDATA%\ms-playwright`; the existing cached Chromium is reused.
+The fixture helper discovers this installation automatically if `PLAYWRIGHT_MODULE` is unset,
+and uses Playwright's matching cached browser when `CHROME_BIN` is unset. Normal runs require no
+install step or download:
+
+```powershell
+npm run test:browser
+node test/browser/capture-ui.mjs dist docs/screenshots/current
+```
+
+The Windows user environment also persists `PLAYWRIGHT_MODULE`, `CHROME_BIN`,
+`PLAYWRIGHT_BROWSERS_PATH`, `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`, and
+`PLAYWRIGHT_SKIP_BROWSER_GC=1`. New processes inherit these settings; the helper's permanent-path
+fallback also works in an already-running editor. No test/capture auto-installs or downloads tooling.
+Do not reinstall browsers for routine work. A missing browser or intentional version upgrade needs
+an explicit setup decision; use the existing cache first. Branded Chrome may run mocked fixtures,
+but use Playwright's bundled Chromium for the native unpacked-extension smoke check.
+
+For other machines or an explicit override:
+
 ```sh
 npm run build
 npm install --prefix /tmp/thru-browser-tools --no-save playwright-core@1.65.1

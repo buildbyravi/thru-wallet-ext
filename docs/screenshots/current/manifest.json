@@ -1,13 +1,13 @@
 {
   "version": 1,
-  "capturedAt": "2026-11-23T14:49:28.072Z",
-  "revision": "274df9bbd3deef4997216837a3218b738430b130",
+  "capturedAt": "2026-11-23T20:01:17.880Z",
+  "revision": "197c8336cce504472850631b82e98657c714ac1b",
   "branch": "pr-31",
-  "sourceChanges": "M test/browser/README.md\n M test/browser/helpers/fixture.mjs\n M test/browser/settings.mjs\n?? test/browser/capture-ui.mjs",
+  "sourceChanges": "M test/browser/README.md\n M test/browser/address-contrast.mjs\n M test/browser/capture-ui.mjs\n M test/browser/helpers/fixture.mjs\n M test/browser/network-chooser.mjs\n M test/browser/wallet-security.mjs",
   "evidence": "TESTED: real built UI, mocked bridge; not MV3 or live-network verification",
   "browser": "157.0.8103.79",
   "platform": "win32",
-  "sourceSha256": "a62852624f54ccbf2db1d67043b10176fed5f36c2dbb8ecfb0cfb71305d15de3",
+  "sourceSha256": "989435ae9382f182e22c3e59ea170a197aa895647ea5c708d890f3a9a08006b8",
   "buildSha256": {
     "background.bundle.js": "a7b92183d52a2f95a410ed6f4d781c872dd200a5c996888021b57caa34248f04",
     "icons/balance-art.svg": "d51886c5f0d05ddd7db7cb46870a809913395228562c98ef45ccc4177b767064",
@@ -23,8 +23,8 @@
     "icons/seed.svg": "358d1a23f1cee3ae0eb30474715062a875e3bcc451abebfe2d5f9199f4e9544f",
     "icons/thru.png": "bb8f2e7819540e88e4259f45b564d2d883ef7dbf0e9c6bed8f024a77bb57df3c",
     "manifest.json": "691007eb5532cc4d2154c8e334e500e8c48d3214c09f6d7c747123e5c660b37a",
-    "popup.bundle.js": "668684d56ab63f9c43e66355eb0b69da2ab0af8f2961116b70066f33c0cc14e9",
-    "popup.css": "7284a8729a0c500f7e882f6e031e640476db1c49530a7693e869752c21e0c3d7",
+    "popup.bundle.js": "aa8a29578cb7311b8caeac006da2b66094c435a68238427d584b6cc8c165236a",
+    "popup.css": "edd2bc5fb6cca1bb9791236aa2fdec70245f9e61980d7bfc2696810930b15810",
     "popup.html": "1128a2c1c98f9d814f79500c79798ccc299a74fea16957172e54b833797b04f0"
   },
   "negativeControls": [
@@ -103,7 +103,7 @@
         "context": "popup-fixture"
       },
       "file": "accounts-light-400x600.png",
-      "sha256": "7a9fefc8d7ccd85127e20969fccd02296a7b768d1abaf93fb5e597a75c824fd8",
+      "sha256": "7ab49f87aa58da75b7173a810800abea7cf67a35658b70dd7f86b106348ae411",
       "geometry": {
         "documentWidth": 400,
         "viewportWidth": 400,
@@ -355,7 +355,7 @@
         "context": "popup-fixture"
       },
       "file": "accounts-cached-light-400x600.png",
-      "sha256": "c0cf2b57a03ab0d1c3a65009e7116afac1f9e3a4bf64a13bc71e0463777dda74",
+      "sha256": "88ef99268585e9b0c38ace5979575a00fe059cbc18e371d0771969fde7bd31c2",
       "geometry": {
         "documentWidth": 400,
         "viewportWidth": 400,
@@ -373,7 +373,7 @@
         "context": "popup-fixture"
       },
       "file": "accounts-refresh-error-light-400x600.png",
-      "sha256": "12ee54a6cfdc8ecc4509cfcd426928a094d89156a906d861c71399e6fddb514b",
+      "sha256": "002faaf3f33432d8ebb7917fed02db6545d8e41ec15b3257dc2c29293f6f17b5",
       "geometry": {
         "documentWidth": 400,
         "viewportWidth": 400,
@@ -391,7 +391,7 @@
         "context": "popup-fixture"
       },
       "file": "accounts-empty-search-light-400x600.png",
-      "sha256": "345381f7f8722606c515318ccbbe9d4d3d2d2c7ae273e31c84c16dfbf2559175",
+      "sha256": "8f6caf6c6c8dbc72fd6ab4517f7a798aac37eb1ddc378c51b42bb857fda36ff6",
       "geometry": {
         "documentWidth": 400,
         "viewportWidth": 400,
@@ -553,7 +553,7 @@
         "context": "popup-fixture"
       },
       "file": "accounts-dark-400x600.png",
-      "sha256": "04cf473eaa6d7d6d003bbb3937aae7db024d658ab4c628c6cb4a6237371c7bb1",
+      "sha256": "301c2cc0bc6618551f3de61767f6321dbc45e3e074579d68fad206a13ac02914",
       "geometry": {
         "documentWidth": 400,
         "viewportWidth": 400,
@@ -805,7 +805,7 @@
         "context": "popup-fixture"
       },
       "file": "accounts-cached-dark-400x600.png",
-      "sha256": "956370f4b1c084795708d9269dfe8ae139156cdd49b831e275c682e62669f978",
+      "sha256": "064a17fbb178a3af4e92a168f6b15ff27b9a75b7d5e756d8a6458597ab65f113",
       "geometry": {
         "documentWidth": 400,
         "viewportWidth": 400,
@@ -823,7 +823,7 @@
         "context": "popup-fixture"
       },
       "file": "accounts-refresh-error-dark-400x600.png",
-      "sha256": "1c5709487cb2a5d3be6d24fabed64967382e3aebd98c696bb8b3ec150c6fdfb6",
+      "sha256": "b786607117071876bde086d6651213ce334aab3e0c991ef699adf7b0eab54289",
       "geometry": {
         "documentWidth": 400,
         "viewportWidth": 400,
@@ -841,7 +841,7 @@
         "context": "popup-fixture"
       },
       "file": "accounts-empty-search-dark-400x600.png",
-      "sha256": "cec139952c4a95d0a394f120481edd23337d8fa4790dd368b195594607a11268",
+      "sha256": "a979ef13114c7d62436be80f3344e67174d9228dd5f51b3eea42e7ef4aacfda2",
       "geometry": {
         "documentWidth": 400,
         "viewportWidth": 400,
@@ -1003,7 +1003,7 @@
         "context": "panel-fixture"
       },
       "file": "accounts-light-320x600.png",
-      "sha256": "3925cc4eeec55abd4956c97da12e0cb04245a80179ac698f54b5e3f925d22a61",
+      "sha256": "fb16b4a9992b800d187b62796f59b5c179bb9e00fb56425a13249d823b7c56c9",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
@@ -1255,7 +1255,7 @@
         "context": "panel-fixture"
       },
       "file": "accounts-cached-light-320x600.png",
-      "sha256": "09acf85bc1f8d7a2f41a80417fb3944039737a00c6c40c9eea2c7c24595b1a3f",
+      "sha256": "8e8b16814177ff2d727fb1deef6d738b37200e71ceb3a7a730d8c78ff9767869",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
@@ -1273,7 +1273,7 @@
         "context": "panel-fixture"
       },
       "file": "accounts-refresh-error-light-320x600.png",
-      "sha256": "4f47fab198e7acdfa3dfecb84583739885c5d7aad4ee11e0e474704b3795e685",
+      "sha256": "f86af4b566a53d99d0e400ca45a75544c14a2e3829e50719e97079bcd0fd1b12",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
@@ -1291,7 +1291,7 @@
         "context": "panel-fixture"
       },
       "file": "accounts-empty-search-light-320x600.png",
-      "sha256": "274956bb0a97d7235a90a15ca1535b594bc0d028667b07dab758f09fd010a449",
+      "sha256": "8991be89ca05d28cb380b53ba462e04c61dda12d46167313006bd27e1d72da55",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
@@ -1453,7 +1453,7 @@
         "context": "panel-fixture"
       },
       "file": "accounts-dark-320x600.png",
-      "sha256": "09d2caba9c297fdf137544b69229a2d75650576b73f4a8d02b74d3b93eb4b4b3",
+      "sha256": "0fc4dd62054f0a774f70dde743e395918a0def2359194022591fc4f539e84683",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
@@ -1705,7 +1705,7 @@
         "context": "panel-fixture"
       },
       "file": "accounts-cached-dark-320x600.png",
-      "sha256": "38d2cefe064248aa772cf39f3954c0d9f51d2523920304e3accc10276560520b",
+      "sha256": "4ff0b4b1d0331de831c79bd72daa18ec2ca1a6a2cbb733298cc4dd1fae536955",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
@@ -1723,7 +1723,7 @@
         "context": "panel-fixture"
       },
       "file": "accounts-refresh-error-dark-320x600.png",
-      "sha256": "670bcae0fce76c3799368f683c47f2055e99dba139ad423aaf9cc67721ab9d47",
+      "sha256": "6dcae887676fc2c8ab3a8ab11bf4cce3fe5d02a203880f5d71fb1a31b40317bf",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
@@ -1741,7 +1741,7 @@
         "context": "panel-fixture"
       },
       "file": "accounts-empty-search-dark-320x600.png",
-      "sha256": "cade615ee738f6224c4384ab4d0774ffc13b7cd1c5f4b0c7864c07f825eb1483",
+      "sha256": "9954ea06dfd784f461a298c0ddaf8819d6f9d9ddbf0ea088928eff15ea56eddd",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
@@ -1903,7 +1903,7 @@
         "context": "wide-panel-fixture"
       },
       "file": "accounts-light-820x720.png",
-      "sha256": "ddfea68b61e9f53abc04573ccda91b9b03bbe25475ba972afeb36444b575a054",
+      "sha256": "428753ab753ff9282362ca3faf5b67ab454d9d6b648311ac57c8c620e7faa124",
       "geometry": {
         "documentWidth": 820,
         "viewportWidth": 820,
@@ -2155,7 +2155,7 @@
         "context": "wide-panel-fixture"
       },
       "file": "accounts-cached-light-820x720.png",
-      "sha256": "6b07b081ce94f009c6e0311676ce6b43842303f0bfc5341490c6d9d4342ecde0",
+      "sha256": "a0423dac733cfb514fd8bccf9ddfb2ec0a41b3762f4059eca1dac500162df92f",
       "geometry": {
         "documentWidth": 820,
         "viewportWidth": 820,
@@ -2173,7 +2173,7 @@
         "context": "wide-panel-fixture"
       },
       "file": "accounts-refresh-error-light-820x720.png",
-      "sha256": "7d2780519607dca73279c9ef0b91b58244ee9f6c83ec38096371d5331d8705e8",
+      "sha256": "483adeeeb51467078ad92ffac4ad5d36986cafad074dc08e6f394d9546d80fa4",
       "geometry": {
         "documentWidth": 820,
         "viewportWidth": 820,
@@ -2191,7 +2191,7 @@
         "context": "wide-panel-fixture"
       },
       "file": "accounts-empty-search-light-820x720.png",
-      "sha256": "8a65dd2881aec753f0f3ae34e29a668f58eb7ed7bf830ce5487ace5c82f4287c",
+      "sha256": "aa5e5fb795e11f74997b47b553571260d49672027c96027080a579f7e309bc37",
       "geometry": {
         "documentWidth": 820,
         "viewportWidth": 820,
@@ -2353,7 +2353,7 @@
         "context": "wide-panel-fixture"
       },
       "file": "accounts-dark-820x720.png",
-      "sha256": "ed4c556d3520ca165699462ec1756e8741769aec1434539ec0522f43cc5ef42e",
+      "sha256": "4d6358ba262fad3ec0019d833d2d6979966aeebfd683cfb195eb527666229875",
       "geometry": {
         "documentWidth": 820,
         "viewportWidth": 820,
@@ -2605,7 +2605,7 @@
         "context": "wide-panel-fixture"
       },
       "file": "accounts-cached-dark-820x720.png",
-      "sha256": "34608edd554653c2745623220745f54ae2bd6f8c785eb7da562306d4019eb7a1",
+      "sha256": "d09b0724fb4c96da0e6fc17a2fda764c9190fa201c73881fe5948823b5e93bba",
       "geometry": {
         "documentWidth": 820,
         "viewportWidth": 820,
@@ -2623,7 +2623,7 @@
         "context": "wide-panel-fixture"
       },
       "file": "accounts-refresh-error-dark-820x720.png",
-      "sha256": "b416e0e0e4d0be389ebd186672b8f4687b068aa530259fc153c6e891344e61b9",
+      "sha256": "5f167280d16ca5fb8da3176e7372ced5a928c118fde3ae5743d829c5cd85eccb",
       "geometry": {
         "documentWidth": 820,
         "viewportWidth": 820,
@@ -2641,7 +2641,7 @@
         "context": "wide-panel-fixture"
       },
       "file": "accounts-empty-search-dark-820x720.png",
-      "sha256": "507efece9982d7778f3c3cb1ebebf368b112da9d0736c37516eb5592645dc197",
+      "sha256": "ae51b11aeb5ea46ed8514babde3e7aa04bffa8d15593c9d401e2f2b5203202e4",
       "geometry": {
         "documentWidth": 820,
         "viewportWidth": 820,

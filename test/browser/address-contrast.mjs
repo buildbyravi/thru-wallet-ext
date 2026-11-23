@@ -28,12 +28,29 @@ try {
           ? { ok: true, data: structuredClone(replies[method]) } : { ok: false, error: { code: 'UNSUPPORTED', message: 'Fixture' } })); } };
     }, theme);
     const contrast = async (text, background) => text.evaluate((el, bgSelector) => {
-      const values = value => value.match(/[\d.]+/g).slice(0, 3).map(Number);
+      const parseRgba = str => {
+        const parts = str.match(/[\d.]+/g)?.map(Number) || [0, 0, 0, 1];
+        return [parts[0] ?? 0, parts[1] ?? 0, parts[2] ?? 0, parts[3] ?? 1];
+      };
       const luminance = rgb => rgb.map(v => { v /= 255; return v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; })
         .reduce((sum, v, i) => sum + v * [.2126, .7152, .0722][i], 0);
-      const color = values(getComputedStyle(el).color);
-      const bg = values(getComputedStyle(el.closest(bgSelector)).backgroundColor);
-      const a = luminance(color), b = luminance(bg);
+      const color = parseRgba(getComputedStyle(el).color).slice(0, 3);
+      const target = el.closest(bgSelector);
+      const fgRgba = parseRgba(getComputedStyle(target).backgroundColor);
+      let bgRgb = [255, 255, 255];
+      let current = target.parentElement;
+      while (current) {
+        const bgVal = parseRgba(getComputedStyle(current).backgroundColor);
+        if (bgVal[3] === 1) { bgRgb = bgVal.slice(0, 3); break; }
+        current = current.parentElement;
+      }
+      const alpha = fgRgba[3];
+      const blendedBg = alpha === 1 ? fgRgba.slice(0, 3) : [
+        Math.round(fgRgba[0] * alpha + bgRgb[0] * (1 - alpha)),
+        Math.round(fgRgba[1] * alpha + bgRgb[1] * (1 - alpha)),
+        Math.round(fgRgba[2] * alpha + bgRgb[2] * (1 - alpha)),
+      ];
+      const a = luminance(color), b = luminance(blendedBg);
       return (Math.max(a, b) + .05) / (Math.min(a, b) + .05);
     }, background);
     await page.goto(`${origin}/popup.html#/dashboard`);

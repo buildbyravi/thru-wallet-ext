@@ -22,12 +22,14 @@ try {
         'account.getActive': account, 'token.list': [], 'token.discover': { adopted: [] }, 'token.getCachedBalances': null,
         'tx.getPending': [], 'tx.getAccountInfo': { balance: '0', exists: true }, 'tx.checkHealth': { status: 'healthy' }, 'tx.getCachedBalances': {} };
       globalThis.switchCalls = 0;
+      globalThis.switchRequests = [];
       globalThis.chrome ??= {};
       chrome.runtime = { onMessage: { addListener() {}, removeListener() {} }, getURL: (path) => `/${path}`,
-        getManifest: () => ({ version: 'fixture' }), sendMessage({ method }, callback) {
+        getManifest: () => ({ version: 'fixture' }), sendMessage({ method, params }, callback) {
           if (!callback) return Promise.resolve();
           if (method === 'network.setActive') {
             globalThis.switchCalls++;
+            globalThis.switchRequests.push(params.networkId);
             globalThis.finishSwitch = (success) => {
               if (success) { active = next; callback({ ok: true, data: next }); }
               else callback({ ok: false, error: { code: 'FAIL', message: 'Fixture switch failed' } });
@@ -44,12 +46,33 @@ try {
     await opener.waitFor(); await opener.focus(); await page.keyboard.press('Enter');
     const dialog = page.getByRole('dialog', { name: 'Choose network' });
     await dialog.getByRole('heading', { name: 'Choose network' }).waitFor();
+    // Visibility alone does not await Sheet.open()'s scheduled initial-focus step.
+    await page.locator('.modal-overlay.open').filter({ has: dialog }).waitFor();
+    assert.equal(await dialog.getByRole('button', { name: 'Back', exact: true }).evaluate(el => document.activeElement === el), true);
+    const assertSingleMessage = async message => assert.equal(await page.getByText(message).count(), 1, `one surface for ${message}`);
+    const checkMessageControl = async message => {
+      await assertSingleMessage(message);
+      const duplicate = await page.evaluateHandle(message => {
+        const copy = document.createElement('p');
+        copy.textContent = message;
+        document.body.appendChild(copy);
+        return copy;
+      }, message);
+      try {
+        await assert.rejects(() => assertSingleMessage(message), assert.AssertionError, 'duplicate notification negative control');
+      } finally {
+        await duplicate.evaluate(el => el.remove());
+        await duplicate.dispose();
+      }
+      await assertSingleMessage(message);
+    };
     assert.match(page.url(), /#\/dashboard$/);
     assert.equal(await dialog.getByRole('heading', { name: 'Network', exact: true }).count(), 0);
     assert.equal(await dialog.getByText('Fixture custom').evaluate(el => el.closest('.row').getAttribute('aria-disabled')), 'true');
     const choice = dialog.getByRole('button', { name: /Fixture testnet/ });
     await choice.focus(); await page.keyboard.press('Enter');
     await dialog.getByRole('status').filter({ hasText: 'Switching to Fixture testnet' }).waitFor();
+    await checkMessageControl('Switching to Fixture testnet');
     await page.keyboard.press('Enter');
     assert.equal(await page.evaluate(() => window.switchCalls), 1);
     await page.keyboard.press('Escape');
@@ -58,14 +81,23 @@ try {
     assert.equal(await choice.evaluate(el => document.activeElement === el), true);
     await page.evaluate(() => window.finishSwitch(false));
     await dialog.getByRole('alert').filter({ hasText: 'Fixture switch failed' }).waitFor();
+    await checkMessageControl('Fixture switch failed');
+    assert.equal(await page.getByText('Switching to Fixture testnet').count(), 0, 'failure retires pending feedback');
+    assert.equal(await choice.getAttribute('aria-disabled'), null, 'failure restores retry');
     assert.equal(await choice.evaluate(el => document.activeElement === el), true);
     await page.keyboard.press('Escape'); await dialog.waitFor({ state: 'detached' });
     assert.equal(await opener.evaluate(el => document.activeElement === el), true);
-    await opener.click(); await choice.waitFor(); await choice.click();
+    await opener.click(); await page.locator('.modal-overlay.open').filter({ has: dialog }).waitFor();
+    await choice.waitFor(); await choice.click();
+    await dialog.getByRole('status').filter({ hasText: 'Switching to Fixture testnet' }).waitFor();
+    await assertSingleMessage('Switching to Fixture testnet');
+    assert.deepEqual(await page.evaluate(() => window.switchRequests), ['testnet', 'testnet']);
     await page.evaluate(() => window.finishSwitch(true)); await dialog.waitFor({ state: 'detached' });
+    assert.equal(await page.getByText('Switching to Fixture testnet').count(), 0, 'success retires pending feedback');
+    assert.equal(await page.getByText('Fixture switch failed').count(), 0, 'dismissal retires the prior error');
     assert.match(page.url(), /#\/dashboard$/);
     assert.deepEqual(errors, []); assert.deepEqual(unexpected, []);
-    console.log(`PASS ${width}x${height} ${theme}: dialog, quarantine, pending, duplicate suppression, failure, focus, success`);
+    console.log(`PASS ${width}x${height} ${theme}: dialog readiness, quarantine, pending, duplicate suppression, failure, focus, success; 2 duplicate-message negative controls`);
     await page.close();
   }
 } finally { await browser.close(); }

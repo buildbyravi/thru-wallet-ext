@@ -63,7 +63,7 @@ Each document owns **one** domain. Link to the owner instead of duplicating coun
 | `docs/PROJECT_LEDGER.md` | Canonical repository identifiers and append-only contract milestone history (`v5–v33`). |
 | `docs/ARCHITECTURE.md` | Dependency graph, authoritative module ownership, v32 signing/consent boundary, shared UI platform, and scoped storage. |
 | `docs/BUILD_SPEC.md` | Shipped product behavior, wallet/keyring container model, route requirements, security matrix, and design system. |
-| `docs/DECISIONS.md` | Durable architectural decisions (`D-001` through `D-034`) with trade-offs and consequences. |
+| `docs/DECISIONS.md` | Durable architectural decisions (`D-001` through `D-035`) with trade-offs and consequences. |
 | `docs/BACKEND_GAPS.md` | Implemented backend capabilities vs open live-chain/protocol gaps and contract compatibility policy. |
 | `docs/MODULE_BOUNDARIES.md` | Enforced core layering and target isolation rules for future `src/features/<id>/` modules. |
 | `docs/GLOBAL_SMART_CONTRACT_POLICY.md` | Smart contract inspection/reuse rules and the 6 Mainnet deployment gates. |
