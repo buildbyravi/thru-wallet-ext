@@ -1,0 +1,64 @@
+name: Wallet Automated Security Check
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  semgrep-scan:
+    name: Semgrep Static Analysis
+    runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep:latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Run Semgrep Community and custom wallet rules
+        run: >-
+          semgrep scan
+          --config "p/javascript"
+          --config "p/security-audit"
+          --config "p/secrets"
+          --config ".semgrep/wallet-rules.yml"
+          --error
+
+  dependency-audit:
+    name: Dependency Vulnerability Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        if: ${{ hashFiles('package-lock.json') != '' }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Run npm audit (High/Critical)
+        if: ${{ hashFiles('package-lock.json') != '' }}
+        run: |
+          npm ci --ignore-scripts
+          npm audit --audit-level=high
+
+  playwright-security-e2e:
+    name: Extension Runtime Security Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Build extension
+        run: npm run build
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Run wallet security E2E tests
+        run: npx playwright test tests/wallet-security.spec.js

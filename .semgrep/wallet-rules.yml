@@ -1,0 +1,117 @@
+rules:
+  # Storage APIs are allowed for encrypted vault envelopes and ordinary wallet metadata.
+  # Flag only writes whose storage key itself identifies secret material; do not match the
+  # encrypted `vault` envelope or arbitrary values merely named keyring/vaultData in memory.
+  - id: wallet-secret-named-browser-storage
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >-
+      Potential secret material is being written under a secret-like browser-storage key.
+      Store only the encrypted vault envelope in persistent storage; keep decrypted material
+      in the restricted session store.
+    patterns:
+      - pattern-either:
+          - pattern: "chrome.storage.$AREA.set({ $KEY: $VALUE, ... })"
+          - pattern: "chrome.storage.$AREA.set({ [$KEY]: $VALUE, ... })"
+          - pattern: "localStorage.setItem($KEY, $VALUE)"
+      - metavariable-regex:
+          metavariable: $KEY
+          regex: (?i).*(private.?key|secret|mnemonic|seed.?phrase|entropy|pass).*
+
+  - id: thru-wallet-extractable-webcrypto-key
+    languages: [javascript]
+    severity: WARNING
+    message: >-
+      Web Crypto key generated as extractable. Prefer extractable=false unless a reviewed
+      encrypted-backup flow explicitly requires export.
+    pattern: crypto.subtle.generateKey($ALGORITHM, true, $USAGES)
+
+  # Thru Wallet has no dApp page bridge. If one is added later, require an origin/source
+  # trust check before accepting window message events.
+  - id: wallet-unvalidated-window-message
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >-
+      Do not trust window message events without validating event.origin or event.source.
+      Thru Wallet currently has no injected dApp bridge; use the extension runtime boundary.
+    patterns:
+      - pattern: window.addEventListener("message", ($EVENT) => { ... })
+      - pattern-not-inside: |
+          window.addEventListener("message", ($EVENT) => {
+            ...
+            if ($EVENT.origin !== ...) { ... }
+            ...
+          })
+      - pattern-not-inside: |
+          window.addEventListener("message", ($EVENT) => {
+            ...
+            if ($EVENT.source !== ...) { ... }
+            ...
+          })
+
+  - id: wallet-unvalidated-external-extension-message
+    languages: [javascript]
+    severity: ERROR
+    message: Validate sender origin and restrict allowed senders before handling external extension messages.
+    patterns:
+      - pattern: chrome.runtime.onMessageExternal.addListener(($MESSAGE, $SENDER, $RESPONSE) => { ... })
+      - pattern-not-inside: |
+          chrome.runtime.onMessageExternal.addListener(($MESSAGE, $SENDER, $RESPONSE) => {
+            ...
+            if ($SENDER.origin !== ...) { ... }
+            ...
+          })
+
+  # Thru Wallet's only HTTP URL is the explicitly local development RPC endpoint.
+  # The production network allowlist is checked separately by check-csp.mjs.
+  - id: wallet-nonlocal-insecure-http-endpoint
+    languages: [javascript]
+    severity: ERROR
+    message: Use HTTPS for non-local RPC or transport endpoints; HTTP is permitted only for loopback development.
+    patterns:
+      - pattern: 'rpcUrl: "http://$HOST"'
+      - pattern-not: 'rpcUrl: "http://127.0.0.1:8899"'
+
+  # Retain the established zero-innerHTML and MV3 no-dynamic-code-execution invariants.
+  - id: wallet-dangerous-dom-or-dynamic-code
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >-
+      Dangerous DOM injection or dynamic code execution is forbidden by the wallet CSP.
+      Build DOM nodes with src/ui/kit/dom.js h() instead.
+    pattern-either:
+      - pattern: $EL.innerHTML = $VALUE
+      - pattern: $EL.outerHTML = $VALUE
+      - pattern: $EL.insertAdjacentHTML($POSITION, $VALUE)
+      - pattern: document.write(...)
+      - pattern: eval($VALUE)
+      - pattern: new Function($VALUE)
+
+  - id: wallet-console-log-secret-variable
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: Do not log private keys, secrets, mnemonics, or seed phrases.
+    patterns:
+      - pattern-either:
+          - pattern: console.log(..., $VAR, ...)
+          - pattern: console.warn(..., $VAR, ...)
+          - pattern: console.error(..., $VAR, ...)
+          - pattern: console.info(..., $VAR, ...)
+      - metavariable-regex:
+          metavariable: $VAR
+          regex: (?i)^(?:[a-z_$][a-z0-9_$]*\\.)*(private.?key|secret.?key|mnemonic|seed.?phrase|raw.?key|decrypted[a-z0-9_$]*)$
+
+  # The extension's runtime message seam must authenticate the sender. Avoid blanket
+  # matching listeners because UI listeners intentionally receive extension broadcasts.
+  - id: wallet-background-message-without-sender-check
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: Validate sender.id against chrome.runtime.id before handling background messages.
+    patterns:
+      - pattern: chrome.runtime.onMessage.addListener(($REQUEST, $SENDER, $RESPONSE) => { ... })
+      - pattern-not-inside: |
+          chrome.runtime.onMessage.addListener(($REQUEST, $SENDER, $RESPONSE) => {
+            ...
+            if ($SENDER.id !== chrome.runtime.id) { ... }
+            ...
+          })
