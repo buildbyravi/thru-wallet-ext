@@ -16,7 +16,7 @@ const mime = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css
 
 // All network traffic is intercepted. The History test intentionally opens one explorer URL;
 // fulfill that request with fixture text instead of contacting the network, and record it.
-export async function routeFixture(target, unexpected, { interceptExternal = false } = {}) {
+export async function routeFixture(target, unexpected, { interceptExternal = false, assets } = {}) {
   await target.route('**/*', async route => {
     const url = new URL(route.request().url());
     const path = resolve(root, `.${url.pathname}`);
@@ -25,10 +25,10 @@ export async function routeFixture(target, unexpected, { interceptExternal = fal
       if (interceptExternal) return route.fulfill({ contentType: 'text/plain', body: 'Navigation intercepted by fixture' });
       return route.abort();
     }
-    if (!path.startsWith(`${root}${sep}`) || !mime[extname(path)]) {
+    if (!path.startsWith(`${root}${sep}`) || !mime[extname(path)] || (assets && !assets.has(path))) {
       unexpected.push(url.href);
       return route.abort();
     }
-    await route.fulfill({ contentType: mime[extname(path)], body: await readFile(path) });
+    await route.fulfill({ contentType: mime[extname(path)], body: assets ? assets.get(path) : await readFile(path) });
   });
 }

@@ -41,7 +41,9 @@ Some Linux environments require their own shared-library setup. `test:browser` r
 scripts sequentially and exits on the first failure. Individual scripts accept an optional directory
 argument in place of `dist`.
 
-- `address-contrast.mjs`: wallet and token address contrast and full accessible labels, light/dark.
+- `address-contrast.mjs`: wallet/token address contrast and full labels, light/dark; foreground and
+  ancestor alpha/group opacity are composited before luminance, with five independently specified
+  ratio/threshold controls per theme. The drawer is measured after its opening fade settles.
 - `network-chooser.mjs`: dashboard sheet, quarantine, pending/failure/duplicate behavior and focus.
 - `network-health.mjs`: bounded recovery from transient probe failure and stale-network reply fencing.
 - `token-cache.mjs`: cache-first 10/100/200-token lists, stable rows/scroll and filtering.
@@ -59,6 +61,15 @@ public bridge fixture. It uses the same external Playwright/Chromium setup as th
 no production dependency, server, real vault or RPC is required. All requests are intercepted.
 Routing covers the entire browser context; service workers are blocked, WebSockets are refused,
 and unexpected popups fail capture. Build hashes include icons and artwork, not just bundles.
+Capture serves a frozen in-memory snapshot of those hashed bytes, not mutable `dist/` reads on
+each request. Concurrent rebuilds cannot remove/change an asset halfway through rendering; final
+source/build hash checks still reject a changed candidate. A missing-snapshot-asset negative
+control proves the router refuses it rather than falling back to disk.
+Only the exact native `Permissions policy violation: unload is not allowed in this document.`
+diagnostic is exempt from fatal console errors; each occurrence is retained in the image's
+`browserDiagnostics`. Unrelated application errors and near-match text remain fatal, proven by
+negative controls. Source/build/image byte hashes are intentionally exact: capture and check the
+same checkout/build, rather than treating a different OS's line endings as unchanged evidence.
 
 ```sh
 node test/browser/capture-ui.mjs dist docs/screenshots/current

@@ -29,38 +29,89 @@ try {
     }, theme);
     const contrast = async (text, background) => text.evaluate((el, bgSelector) => {
       const parseRgba = str => {
-        const parts = str.match(/[\d.]+/g)?.map(Number) || [0, 0, 0, 1];
-        return [parts[0] ?? 0, parts[1] ?? 0, parts[2] ?? 0, parts[3] ?? 1];
+        const parts = str.match(/^rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?\)$/);
+        if (!parts) throw new Error('Unsupported computed color requires pixel verification.');
+        return [Number(parts[1]), Number(parts[2]), Number(parts[3]), parts[4] === undefined ? 1 : Number(parts[4])];
       };
       const luminance = rgb => rgb.map(v => { v /= 255; return v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; })
         .reduce((sum, v, i) => sum + v * [.2126, .7152, .0722][i], 0);
-      const color = parseRgba(getComputedStyle(el).color).slice(0, 3);
-      const target = el.closest(bgSelector);
-      const fgRgba = parseRgba(getComputedStyle(target).backgroundColor);
-      let bgRgb = [255, 255, 255];
-      let current = target.parentElement;
-      while (current) {
-        const bgVal = parseRgba(getComputedStyle(current).backgroundColor);
-        if (bgVal[3] === 1) { bgRgb = bgVal.slice(0, 3); break; }
-        current = current.parentElement;
-      }
-      const alpha = fgRgba[3];
-      const blendedBg = alpha === 1 ? fgRgba.slice(0, 3) : [
-        Math.round(fgRgba[0] * alpha + bgRgb[0] * (1 - alpha)),
-        Math.round(fgRgba[1] * alpha + bgRgb[1] * (1 - alpha)),
-        Math.round(fgRgba[2] * alpha + bgRgb[2] * (1 - alpha)),
-      ];
-      const a = luminance(color), b = luminance(blendedBg);
+       if (!el.closest(bgSelector)) throw new Error('Contrast surface is missing.');
+       const over = (top, bottom) => {
+         const alpha = top[3] + bottom[3] * (1 - top[3]);
+         return alpha === 0 ? [0, 0, 0, 0] : [
+           ...top.slice(0, 3).map((channel, i) =>
+             (channel * top[3] + bottom[i] * bottom[3] * (1 - top[3])) / alpha), alpha,
+         ];
+       };
+       let foreground = parseRgba(getComputedStyle(el).color), backdrop = [0, 0, 0, 0];
+       for (let current = el; current; current = current.parentElement) {
+         const style = getComputedStyle(current);
+         if (style.backgroundImage !== 'none' && (foreground[3] < 1 || backdrop[3] < 1)) {
+           throw new Error('Contrast over a background image requires pixel verification.');
+         }
+         const paint = parseRgba(style.backgroundColor);
+         foreground = over(foreground, paint);
+         backdrop = over(backdrop, paint);
+         foreground[3] *= Number(style.opacity);
+         backdrop[3] *= Number(style.opacity);
+       }
+       const canvas = [255, 255, 255, 1];
+       const a = luminance(over(foreground, canvas).slice(0, 3));
+       const b = luminance(over(backdrop, canvas).slice(0, 3));
       return (Math.max(a, b) + .05) / (Math.min(a, b) + .05);
     }, background);
     await page.goto(`${origin}/popup.html#/dashboard`);
     await page.waitForFunction(theme => document.documentElement.dataset.theme === theme, theme);
+    await page.evaluate(() => {
+      const outer = document.createElement('div');
+      outer.id = 'contrast-controls';
+      outer.style.position = 'fixed'; outer.style.left = '-1000px';
+      outer.style.backgroundColor = 'rgb(0, 0, 0)';
+      const samples = [
+        ['opaque-pass', 'rgb(255, 255, 255)', 'transparent', '1'],
+        ['opaque-fail', 'rgb(100, 100, 100)', 'transparent', '1'],
+        ['text-alpha-fail', 'rgba(255, 255, 255, 0.1)', 'transparent', '1'],
+        ['ancestor-alpha-fail', 'rgb(255, 255, 255)', 'rgba(255, 255, 255, 0.8)', '1'],
+        ['group-opacity', 'rgb(255, 255, 255)', 'rgb(0, 0, 0)', '0.5'],
+      ];
+      for (const [id, color, background, opacity] of samples) {
+        const layer = document.createElement('div');
+        layer.style.backgroundColor = background; layer.style.opacity = opacity;
+        const text = document.createElement('span'); text.id = id; text.textContent = 'Contrast control';
+        text.style.color = color; layer.append(text); outer.append(layer);
+      }
+      document.body.append(outer);
+    });
+    const controls = [
+      ['opaque-pass', 21, true], ['opaque-fail', 3.5487536087, false],
+      ['text-alpha-fail', 1.2004565115, false], ['ancestor-alpha-fail', 1.6059285649, false],
+      ['group-opacity', 5.2808228096, true],
+    ];
+    for (const [id, expected, passes] of controls) {
+      const ratio = await contrast(page.locator(`#${id}`), '#contrast-controls');
+      assert.ok(Math.abs(ratio - expected) < 1e-6, `${id}: independently specified ratio ${ratio}`);
+      assert.equal(ratio >= 4.5, passes, `${id}: contrast threshold negative control`);
+    }
+    const unsupported = page.locator('#opaque-pass');
+    await unsupported.evaluate(el => { el.style.backgroundImage = 'linear-gradient(black, white)'; });
+    await assert.rejects(() => contrast(unsupported, '#contrast-controls'), /background image requires pixel verification/);
+    await unsupported.evaluate(el => {
+      el.style.backgroundImage = 'none'; el.style.color = 'color(srgb 1 1 1)';
+    });
+    await assert.rejects(() => contrast(unsupported, '#contrast-controls'), /Unsupported computed color/);
+    await page.locator('#contrast-controls').evaluate(el => el.remove());
     const head = page.locator('.account-pill-address .mono'); await head.waitFor();
     assert.equal(await head.evaluate(el => getComputedStyle(el).color),
       await head.evaluate(el => getComputedStyle(el.parentElement).color), 'dashboard header preserves its contrast-specific inherited color');
     await page.getByRole('button', { name: 'Open token list' }).click();
     const token = page.locator('.token-ledger-row').filter({ has: page.locator('.token-row-symbol', { hasText: 'LAB' }) });
     const tokenAddress = token.locator('.mono'); await tokenAddress.waitFor();
+    await page.waitForFunction(() => {
+      for (let el = document.querySelector('.token-ledger-row .mono'); el; el = el.parentElement) {
+        if (Number(getComputedStyle(el).opacity) !== 1) return false;
+      }
+      return true;
+    });
     for (const hover of [false, true]) {
       if (hover) await token.hover();
       const ratio = await contrast(tokenAddress, '.token-ledger-row');
@@ -78,7 +129,7 @@ try {
     }
     assert.equal(await address.getAttribute('aria-label'), 'taDemoStudioFixture000000000000000000000000AA');
     assert.deepEqual(errors, []); assert.deepEqual(external, []);
-    console.log(`PASS ${theme}: token and account address contrast, hover, accessible full address, dashboard header inheritance`);
+    console.log(`PASS ${theme}: token/account contrast, hover, full address, header inheritance; 5 ratio and 2 unsupported-surface controls`);
     await page.close();
   }
 } finally { await browser.close(); }

@@ -12,6 +12,10 @@ const output = resolve(process.argv[3] || 'docs/screenshots/current');
 assert.notEqual(output, dist, 'Screenshots must not be written into dist.');
 assert.ok(!output.startsWith(`${dist}${sep}`), 'Screenshots must stay outside the extension package.');
 const hash = data => createHash('sha256').update(data).digest('hex');
+function collectConsoleError(text, errors, diagnostics) {
+  if (text === 'Permissions policy violation: unload is not allowed in this document.') diagnostics.push(text);
+  else errors.push(text);
+}
 const git = (...args) => execFileSync('git', args, { encoding: 'utf8' }).trim();
 const sourcePaths = () => [...new Set(git('ls-files', '-c', '-o', '--exclude-standard', '--',
   'src', 'build.mjs', 'package.json', 'package-lock.json', 'test/browser').split('\n'))].filter(Boolean).sort();
@@ -20,13 +24,15 @@ async function sources() {
   for (const path of sourcePaths()) digest.update(path).update('\0').update(await readFile(path)).update('\0');
   return digest.digest('hex');
 }
-async function builds() {
+async function builds(assets) {
   const hashes = {};
   const entries = await readdir(dist, { recursive: true, withFileTypes: true });
   const paths = entries.filter(entry => entry.isFile())
     .map(entry => relative(dist, resolve(entry.parentPath, entry.name)).split(sep).join('/')).sort();
   for (const path of paths) {
-    hashes[path] = hash(await readFile(resolve(dist, path)));
+    const absolute = resolve(dist, path), bytes = await readFile(absolute);
+    hashes[path] = hash(bytes);
+    assets?.set(absolute, bytes);
   }
   return hashes;
 }
@@ -35,7 +41,7 @@ const ref = { keyringId: 'seed_fixture', accountIndex: 0 };
 const cases = [
   ['welcome', '/welcome', '.welcome-screen .option-card'],
   ['unlock', '/unlock', '.unlock-screen input'],
-  ['dashboard', '/dashboard', '.account-pill-name'],
+  ['dashboard', '/dashboard', '.account-pill'],
   ['accounts', '/accounts', '.account-row-current'],
   ['account', `/account?ref=${encodeRef(ref)}`, '.detail-hero'],
   ['add-account', '/add-account', '.option-card'],
@@ -110,26 +116,40 @@ if (process.argv.includes('--check')) {
   const sourceSha256 = await sources();
   execFileSync(process.execPath, ['build.mjs'], { stdio: 'inherit' });
   assert.equal(await sources(), sourceSha256, 'Source changed during build; discard this run.');
-  const buildSha256 = await builds();
+  const fixtureAssets = new Map();
+  const buildSha256 = await builds(fixtureAssets);
   console.log('Build provenance recorded; launching isolated browser.');
   const { chromium, CHROME_BIN, origin, routeFixture } = await import('./helpers/fixture.mjs');
   const browser = await chromium.launch({ executablePath: CHROME_BIN });
   console.log(`Browser ${browser.version()}; exercising network controls.`);
   const screenshots = [], buffers = [];
   try {
+    const errorControls = [], diagnosticControls = [];
+    collectConsoleError('Permissions policy violation: unload is not allowed in this document.', errorControls, diagnosticControls);
+    collectConsoleError('Critical render failure; Permissions policy violation: unload diagnostic attached', errorControls, diagnosticControls);
+    collectConsoleError('Application render failed.', errorControls, diagnosticControls);
+    assert.deepEqual(errorControls, [
+      'Critical render failure; Permissions policy violation: unload diagnostic attached', 'Application render failed.',
+    ]);
+    assert.deepEqual(diagnosticControls, ['Permissions policy violation: unload is not allowed in this document.']);
     // Negative controls: interception must reject both an external origin and non-asset paths.
     const control = await browser.newContext({ serviceWorkers: 'block' });
     const rejected = [];
-    await routeFixture(control, rejected);
+    await routeFixture(control, rejected, { assets: fixtureAssets });
     const probe = await control.newPage();
     for (const url of ['https://blocked.invalid/probe', `${origin}/../package.json`]) {
       await assert.rejects(() => probe.goto(url));
     }
     assert.equal(rejected.length, 2);
+    const missingAsset = new Map(fixtureAssets);
+    missingAsset.delete(resolve(dist, 'popup.css'));
+    await routeFixture(control, rejected, { assets: missingAsset });
+    await assert.rejects(() => probe.goto(`${origin}/popup.css`));
+    assert.equal(rejected.length, 3, 'Missing snapshot asset must not fall back to disk.');
     console.log('HTTP negative controls rejected.');
     await control.close();
     const socketControl = await browser.newContext({ serviceWorkers: 'block' });
-    await routeFixture(socketControl, rejected);
+    await routeFixture(socketControl, rejected, { assets: fixtureAssets });
     const sockets = [];
     let socketMatched;
     const socketRequest = new Promise(resolve => { socketMatched = resolve; });
@@ -153,16 +173,12 @@ if (process.argv.includes('--check')) {
         reducedMotion: 'reduce', colorScheme: theme, deviceScaleFactor: 1, serviceWorkers: 'block' });
       const page = await context.newPage();
       page.setDefaultTimeout(8000);
-      const errors = [], external = [];
+      const errors = [], external = [], browserDiagnostics = [];
       page.on('pageerror', error => errors.push(error.message));
       page.on('console', message => {
-        if (message.type() === 'error') {
-          const text = message.text();
-          if (text.includes('Permissions policy violation: unload')) return;
-          errors.push(text);
-        }
+        if (message.type() === 'error') collectConsoleError(message.text(), errors, browserDiagnostics);
       });
-      await routeFixture(context, external);
+      await routeFixture(context, external, { assets: fixtureAssets });
       await context.routeWebSocket('**/*', socket => { errors.push('Unexpected WebSocket request'); socket.close(); });
       context.on('page', popup => { errors.push('Unexpected popup'); void popup.close(); });
       await page.addInitScript(({ theme, scenario, routePath, ref }) => {
@@ -247,7 +263,7 @@ if (process.argv.includes('--check')) {
       assert.deepEqual(errors, [], `${scenario}: browser errors`);
       assert.deepEqual(external, [], `${scenario}: external or invalid asset requests`);
       assert.deepEqual(await page.evaluate(() => globalThis.captureUnexpectedMethods), [], `${scenario}: unmodelled bridge calls`);
-      screenshots.push({ scenario, route: routePath.split('?')[0], theme, viewport, file, sha256: hash(buffer), geometry });
+      screenshots.push({ scenario, route: routePath.split('?')[0], theme, viewport, file, sha256: hash(buffer), geometry, browserDiagnostics });
       buffers.push(buffer);
       if (picker) {
         await page.keyboard.press('Escape');
@@ -266,7 +282,8 @@ if (process.argv.includes('--check')) {
         'src', 'build.mjs', 'package.json', 'package-lock.json', 'test/browser'),
       evidence: 'TESTED: real built UI, mocked bridge; not MV3 or live-network verification',
       browser: browser.version(), platform: process.platform, sourceSha256, buildSha256,
-      negativeControls: ['external origin rejected', 'non-asset path rejected', 'WebSocket rejected'],
+      negativeControls: ['external origin rejected', 'non-asset path rejected', 'WebSocket rejected',
+        'missing snapshot asset rejected', 'application console error retained', 'unload-warning near-match error retained'],
       limitations: ['No real vault, secrets, signing, RPC or native popup/panel host.',
         'Selected route states only; review, pending/outcome, zoom, forced colors and live resize need separate checks.',
         'Viewport captures at initial scroll, plus Settings bottom; scrolling is not exhaustively verified.',

@@ -5,11 +5,11 @@ Source baseline re-verified on `main` at contract v33 (2026-11-19, v1.6.0). `src
 
 ---
 
-## Visual Record - PR #31 Working Tree (2026-11-23)
+## PR #31 Local Validation (2026-11-23)
 
 **IMPLEMENTED / TESTED locally:** the actual-built-UI record is indexed in
-[docs/screenshots/README.md](screenshots/README.md). The first capture uses source baseline
-`274df9b` on local `pr-31`, plus uncommitted capture-tooling changes recorded in its manifest:
+[docs/screenshots/README.md](screenshots/README.md). The gallery's manifest records its exact
+source baseline on local `pr-31` plus any uncommitted capture/tooling changes:
 150 Chromium captures of all 15 routes in selected safe states and additional onboarding,
 account-cache/error/search, Assets and Settings scenarios, light/dark at `400x600`, `320x600`
 and `820x720`. The existing store screenshots remain synthetic marketing compositions.
@@ -18,23 +18,34 @@ The [visual record protocol](MANUAL_SMOKE_CHECKLIST.md#visual-record-protocol) o
 feedback and confirmed/merged refresh requirements. Capture/check tooling rebuilds the popup,
 records source/build/image hashes and checks coverage; the Windows fixture path separator was
 corrected after reproducing a failed page load. CI artifact capture is **IMPLEMENTED** but its
-remote execution is **UNVERIFIED** until the workflow runs. No images are automatically committed.
+remote execution on the current fixes is **UNVERIFIED**. No images are automatically committed.
 
 **UNVERIFIED by this record:** native popup/side-panel hosting, real vaults/signing, live-chain
-values, exhaustive interaction/scroll/review states and design approval. GitHub PR/merge status
-was not checked because `gh` is unavailable locally; this is not evidence of a merge or release.
+values, exhaustive interaction/scroll/review states and design approval. A separate native MV3
+load/absence-of-provider smoke test passed locally in Chromium `159.0.8154.6`; that narrow check
+does not verify toolbar/side-panel hosting, wallet lifecycle or planned dApp authorization/signing.
+Git remote PR head was observed as `197c833`; local `3611e18` and later uncommitted oracle fixes
+are not proof of green remote checks or a merge. `gh` is unavailable locally, so the latest remote
+check conclusions were not independently retrieved.
 The earlier branch handoff below is historical context and does not describe the latest PR head.
 
-**Browser regression failure:** after the Windows fixture-serving repair,
-`npm run test:browser` stops at `address-contrast.mjs:60`: the dark account-address check reports
-`1.407:1` against a `4.5:1` threshold. Independent source/calculation inspection reproduced that
-number when alpha is ignored; compositing the active-row tint over its opaque group gives about
-`6.75:1`. The checker requires a separately tested correction, not a stylesheet change based on
-the false ratio. An individually run `network-chooser.mjs` also timed out at its pending-status
-locator (`:52`); its cause remains **UNVERIFIED**. Settings (two cases), History (two cases),
-network-health and token-cache (10/100/200 tokens) passed individually in Chrome `157.0.8103.79`.
-No assertions or production stylesheets were changed to make either failure pass. Screenshot
-capture success does not clear these failures or the remaining browser gates.
+**IMPLEMENTED / TESTED locally:** build, full Node suite and all seven browser scripts passed with
+the permanent pinned Playwright module and cached Chromium `159.0.8154.6`, without another browser
+download. The original contrast failure (`1.407:1`) dropped the active-row background alpha; an
+independent calculation gave about `6.75:1`. The revised oracle also composites translucent text,
+all ancestor layers and group opacity without intermediate rounding, checks five independently
+specified ratios per theme, and retains the `4.5:1` threshold. It fails closed on relevant image
+backgrounds/unsupported computed colors; it is not a general pixel-based accessibility audit.
+
+The chooser timeout was independently reproduced as a test readiness race: its opening frame
+reassigned focus to Back after the test had focused a network choice. The test now waits for the
+open state and initial focus, retaining pending/error, duplicate suppression and dismissal checks
+with injected duplicate-message controls. No production stylesheet or network policy was changed.
+Capture's native unload-warning exception is exact, recorded per image, and cannot swallow an
+application-error near-match. Captures now render frozen hashed asset bytes after a concurrent
+rebuild was observed deleting `dist/popup.html` mid-run; missing snapshot assets are refused rather
+than read from a replacement build. The final gallery must pass `capture-ui --check` after every source
+or build change; local results do not clear remote checks on an older commit.
 
 ## Current branch handoff — PR #26
 
