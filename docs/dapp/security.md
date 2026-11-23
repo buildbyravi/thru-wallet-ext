@@ -357,8 +357,7 @@ may incur fees, and is still a broadcast. Prefer mocked RPC or a transaction-bui
 any opt-in testnet broadcast needs a separately funded disposable key, explicit operator action,
 and a documented spending/fee ceiling. Never require repository secrets for ordinary PR checks.
 
-The current `tests/wallet-security.spec.js` includes only an absence-of-provider iframe smoke test.
-It verifies that today's extension opens no extension page in response to forged page messages; it
-does not test an approved-origin connection, origin allowlisting, background frame rejection, or a
-signing approval flow. Implement those assertions with the DApp feature, not as placeholders that
+The current `test/browser/wallet-security.mjs` includes only basic extension-load and
+absence-of-provider smoke checks. It does not test an approved-origin connection, origin allowlisting,
+background frame rejection, or a signing approval flow. Implement those assertions with the DApp feature, not as placeholders that
 could be mistaken for enforcement.

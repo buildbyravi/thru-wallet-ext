@@ -44,7 +44,7 @@ scoped implementation and security review.
   this boundary rather than adding a second signing channel.
 - MV3 CSP is deliberately restrictive (`default-src 'none'`, packaged scripts only, no frames,
   `object-src 'none'`); `scripts/check-csp.mjs` checks network/CSP consistency, inline event
-  handlers, and external-script SRI. The DOM factory and source guard enforce the zero-HTML-sink
+  handlers, and rejects remote script sources in MV3 extension pages. The DOM factory and source guard enforce the zero-HTML-sink
   policy. Do not weaken `object-src 'none'` or add unsupported manifest directives to imitate a
   web-page CSP.
 - The Semgrep/npm-audit workflow and Playwright smoke coverage are separate from feature-level DApp

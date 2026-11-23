@@ -116,16 +116,8 @@ function scanHtml(dir) {
           );
         }
         const src = attributes.get("src");
-        if (!src || !/^(?:https?:)?\/\//i.test(src)) continue;
-        if (
-          !/^sha384-[A-Za-z0-9+/]+={0,2}$/.test(
-            attributes.get("integrity") || "",
-          ) ||
-          !attributes.has("crossorigin")
-        ) {
-          errors.push(
-            `${path}: external script must have sha384 integrity and crossorigin attributes`,
-          );
+        if (src && /^(?:https?:)?\/\//i.test(src)) {
+          errors.push(`${path}: remote script sources are forbidden in MV3 extension pages`);
         }
       }
     }
