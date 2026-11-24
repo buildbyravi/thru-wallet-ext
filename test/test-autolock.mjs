@@ -81,7 +81,17 @@ console.log('  ok - a missing stamp is stamped, not treated as idle since epoch'
 // ---- Never-lock option ----------------------------------------------------
 await system.setAutoLockMinutes(0);
 assert.ok(!alarms.has('thru-auto-lock'), 'minutes=0 clears the alarm');
-assert.equal(await system.shouldAutoLock(), false, '0 means never lock');
+sessionData.set('thru_last_activity_at', Date.now() - 10 * 60_000);
+assert.equal(await system.shouldAutoLock(), false, '0 means never lock even with a very old activity stamp');
+const localSet = chrome.storage.local.set;
+chrome.storage.local.set = async () => { throw new Error('storage unavailable'); };
+let persistenceError = null;
+try { await system.setAutoLockMinutes(1); } catch (error) { persistenceError = error; }
+chrome.storage.local.set = localSet;
+assert.match(persistenceError?.message || '', /storage unavailable/i,
+  'a failed setting write is returned as an error, not a false success');
+assert.equal(await system.getAutoLockMinutes(), 0, 'a failed replacement keeps the persisted Never setting');
+assert.equal(await system.shouldAutoLock(), false, 'an old alarm tick still cannot lock while Never is persisted');
 await system.setAutoLockMinutes(1);
 console.log('  ok - the never-lock option disables auto-lock cleanly');
 
