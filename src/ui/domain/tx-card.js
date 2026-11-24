@@ -19,12 +19,12 @@
 import { h, disposer } from '../kit/dom.js';
 import { icon } from '../kit/icon.js';
 import { CopyButton } from '../kit/button.js';
-import { formatThru, formatTokenAmount, truncateAddress, shortenMiddle, explorerTxUrl } from '../../shared/format.js';
+import { formatThru, formatTokenAmount, truncateAddress, shortenMiddle, explorerTxUrl, parseNonNegativeUnits, parseValidTimestampMs } from '../../shared/format.js';
 
 /** Formatted time for the card head: YYYY/MM/DD HH:mm like Rabby, falling back to Block <slot>. */
 export function relTime(ts, slot) {
-  const t = Number(ts);
-  if (Number.isFinite(t) && t > 0 && Number.isFinite(new Date(t).getTime())) {
+  const t = parseValidTimestampMs(ts);
+  if (t !== null) {
     const d = new Date(t);
     const YYYY = d.getFullYear();
     const MM = String(d.getMonth() + 1).padStart(2, '0');
@@ -33,7 +33,8 @@ export function relTime(ts, slot) {
     const mm = String(d.getMinutes()).padStart(2, '0');
     return `${YYYY}/${MM}/${DD} ${HH}:${mm}`;
   }
-  return slot != null ? `Block ${slot}` : '';
+  const validSlot = parseNonNegativeUnits(slot);
+  return validSlot !== null ? `Block ${validSlot}` : '';
 }
 
 function glyphFor(entry) {
@@ -51,9 +52,10 @@ function glyphFor(entry) {
 
 /** Token amounts carry their own decimals; throwing them through formatThru would mislabel. */
 function tokenAmountText(entry) {
-  if (entry.amount == null) return null;
-  const decimals = Number.isInteger(entry.tokenDecimals) ? entry.tokenDecimals : 0;
-  const formatted = formatTokenAmount(BigInt(entry.amount), decimals);
+  const units = parseNonNegativeUnits(entry?.amount);
+  if (units === null) return null;
+  const decimals = Number.isInteger(entry.tokenDecimals) && entry.tokenDecimals >= 0 ? entry.tokenDecimals : 0;
+  const formatted = formatTokenAmount(units, decimals);
   return entry.tokenSymbol ? `${formatted} ${entry.tokenSymbol}` : `${formatted} base units`;
 }
 
@@ -86,7 +88,8 @@ function contextFor(entry, knownAccounts) {
 /** Signed, right-aligned delta. Sends leave, receipts arrive; null for init/unknown. */
 function deltaFor(entry) {
   const isTokenish = String(entry.kind || '').startsWith('token-') && entry.kind !== 'token-account-init';
-  const amount = isTokenish ? tokenAmountText(entry) : (entry.amount != null ? `${formatThru(BigInt(entry.amount))} THRU` : null);
+  const nativeUnits = isTokenish ? null : parseNonNegativeUnits(entry.amount);
+  const amount = isTokenish ? tokenAmountText(entry) : (nativeUnits !== null ? `${formatThru(nativeUnits)} THRU` : null);
   if (entry.kind === 'sent' || entry.kind === 'token-sent') return amount ? { text: `-${amount}`, cls: 'sent' } : null;
   if (entry.kind === 'received' || entry.kind === 'token-received' || entry.kind === 'faucet'
       || entry.kind === 'token-mint' || entry.kind === 'token-transfer') {

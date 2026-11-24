@@ -31,7 +31,7 @@ import { h, disposer } from '../kit/dom.js';
 import { icon } from '../kit/icon.js';
 import { Button, CopyButton } from '../kit/button.js';
 import { focusTrap } from '../kit/focus-trap.js';
-import { formatThru, formatTokenAmount, truncateAddress, explorerTxUrl } from '../../shared/format.js';
+import { formatThru, formatTokenAmount, truncateAddress, explorerTxUrl, parseNonNegativeUnits, parseValidTimestampMs } from '../../shared/format.js';
 
 /** The one and only way this component says "we do not know". */
 const UNKNOWN = 'Not available';
@@ -40,8 +40,8 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
 
 /** Absolute wall-clock rendering. Only ever called with a real timestamp from the chain. */
 function absoluteTime(ms) {
-  const t = Number(ms);
-  if (!Number.isFinite(t) || t <= 0) return null;
+  const t = parseValidTimestampMs(ms);
+  if (t === null) return null;
   const d = new Date(t);
   const hh = String(d.getHours()).padStart(2, '0');
   const mm = String(d.getMinutes()).padStart(2, '0');
@@ -51,15 +51,16 @@ function absoluteTime(ms) {
 
 /** Token amounts keep their own decimals; native amounts are THRU. Mirrors tx-card.js. */
 function amountText(entry) {
-  if (entry?.amount == null) return null;
+  const units = parseNonNegativeUnits(entry?.amount);
+  if (units === null) return null;
   const kind = String(entry.kind || '');
   const isTokenish = kind.startsWith('token-') && kind !== 'token-account-init';
   if (isTokenish) {
-    const decimals = Number.isInteger(entry.tokenDecimals) ? entry.tokenDecimals : 0;
-    const formatted = formatTokenAmount(BigInt(entry.amount), decimals);
+    const decimals = Number.isInteger(entry.tokenDecimals) && entry.tokenDecimals >= 0 ? entry.tokenDecimals : 0;
+    const formatted = formatTokenAmount(units, decimals);
     return entry.tokenSymbol ? `${formatted} ${entry.tokenSymbol}` : `${formatted} base units`;
   }
-  return `${formatThru(BigInt(entry.amount))} THRU`;
+  return `${formatThru(units)} THRU`;
 }
 
 /** Signed delta text + tone, same semantics as the card so the two cannot disagree. */
@@ -238,16 +239,18 @@ export function TxDetailSheet({ entry, network, knownAccounts, loadDetail, onClo
     push(DetailRow(counterpartyLabel(entry), counterparty, { mono: !localName }));
   }
   push(DetailRow('Network', network?.label || UNKNOWN, { tone: 'accent' }));
-  push(DetailRow('Block', entry?.slot != null ? String(entry.slot) : UNKNOWN, { mono: true }));
+  const cachedSlot = parseNonNegativeUnits(entry?.slot);
+  push(DetailRow('Block', cachedSlot !== null ? String(cachedSlot) : UNKNOWN, { mono: true }));
 
   // Lazily filled. They start at "Not available" and only ever move to a real value — so a
   // failed fetch leaves the honest state rather than degrading to one.
   const cachedBlockTime = entry?.timestampSource === 'block'
-    && Number.isFinite(Number(entry.timestamp)) && Number(entry.timestamp) > 0
-    ? absoluteTime(Number(entry.timestamp)) : UNKNOWN;
+    ? (absoluteTime(entry?.timestamp) || UNKNOWN)
+    : UNKNOWN;
   const timeRow = push(DetailRow('Block time', cachedBlockTime));
-  const cachedFee = entry?.feeDeclaredUnits != null
-    ? `${formatThru(BigInt(entry.feeDeclaredUnits))} THRU` : UNKNOWN;
+  const cachedFeeUnits = parseNonNegativeUnits(entry?.feeDeclaredUnits);
+  const cachedFee = cachedFeeUnits !== null
+    ? `${formatThru(cachedFeeUnits)} THRU` : UNKNOWN;
   const feeRow = push(DetailRow('Fee', cachedFee, {
     mono: true,
     labelNote: 'Header declaration · charged amount unavailable',
@@ -309,11 +312,13 @@ export function TxDetailSheet({ entry, network, knownAccounts, loadDetail, onClo
       // could have filled stay at "Not available", which is already what they say.
       if (detail.supported === false) return;
 
-      if (Number.isFinite(detail.blockTimeMs) && detail.blockTimeMs > 0) {
-        timeRow.set(absoluteTime(detail.blockTimeMs));
+      const resolvedBlockTime = absoluteTime(detail.blockTimeMs);
+      if (resolvedBlockTime) {
+        timeRow.set(resolvedBlockTime);
       }
-      if (detail.feeDeclaredUnits != null) {
-        feeRow.set(`${formatThru(BigInt(detail.feeDeclaredUnits))} THRU`);
+      const resolvedFeeUnits = parseNonNegativeUnits(detail.feeDeclaredUnits);
+      if (resolvedFeeUnits !== null) {
+        feeRow.set(`${formatThru(resolvedFeeUnits)} THRU`);
       }
       if (detail.programAddress) programRow.set(truncateAddress(detail.programAddress));
       // The detail fetch is authoritative about status: a list entry decoded before the

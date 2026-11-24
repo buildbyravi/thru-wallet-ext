@@ -18,6 +18,7 @@ import * as thruClient from '../../lib/thru-client.js';
 import { getActiveNetworkConfig, getActiveNetworkId, getNetworkGeneration } from './network-service.js';
 import { getNetworkConfig, explorerTxUrl } from '../../lib/networks.js';
 import { scopedKey } from '../../shared/network-scope.js';
+import { parseValidTimestampMs } from '../../shared/format.js';
 import { getPreferences } from './preferences-service.js';
 
 // Per-network, per-address — the same scoped-key isolation as thru_balance_cache and
@@ -60,9 +61,8 @@ const CACHE_LIMIT = 200;
 const PAGE_ON_OPEN = 15;
 
 function validTimeMs(value) {
-  const ms = Number(value);
-  return Number.isSafeInteger(ms) && ms > 0 && Number.isFinite(new Date(ms).getTime())
-    ? ms : null;
+  const ms = parseValidTimestampMs(value);
+  return ms !== null && Number.isSafeInteger(ms) ? ms : null;
 }
 
 function cachedBlockTime(entry, slot) {

@@ -409,3 +409,41 @@ try {
   recoveryClient.transactions.listForAccount = recoveryList;
   recoveryClient.blocks.getBlockHeight = recoveryHeight;
 }
+
+const { parseNonNegativeUnits, parseValidTimestampMs } = await import('../src/shared/format.js');
+assert.equal(parseNonNegativeUnits(0), 0n);
+assert.equal(parseNonNegativeUnits('0'), 0n);
+assert.equal(parseNonNegativeUnits(' 42 '), 42n);
+assert.equal(parseNonNegativeUnits(123n), 123n);
+for (const badUnit of ['', '   ', null, undefined, true, false, {}, [], -1, '-5', '1.5', 1.5, 'abc', Number.NaN, Number.POSITIVE_INFINITY, 1e25]) {
+  assert.equal(parseNonNegativeUnits(badUnit), null, `expected null for unit ${String(badUnit)}`);
+}
+assert.equal(parseValidTimestampMs(1700000000000), 1700000000000);
+assert.equal(parseValidTimestampMs('1700000000000'), 1700000000000);
+for (const badTs of [true, false, {}, [], '', '   ', 0, -10, 0.5, 1e20, Number.NaN, Number.POSITIVE_INFINITY, null, undefined]) {
+  assert.equal(parseValidTimestampMs(badTs), null, `expected null for timestamp ${String(badTs)}`);
+}
+
+try {
+  await history.recordSubmittedTransaction({
+    signature: 'sig_malformed_submitted_ts',
+    from: A,
+    networkId: 'betanet',
+    createdAt: true,
+  });
+  const afterBool = (await history.getCachedHistory(A)).entries.find(e => e.signature === 'sig_malformed_submitted_ts');
+  assert.notEqual(afterBool?.timestamp, 1, 'boolean timestamp must not coerce to epoch ms 1 (1970)');
+  assert.ok(afterBool?.timestamp > 1_000_000_000_000, 'malformed createdAt falls back to valid current time');
+
+  await history.recordSubmittedTransaction({
+    signature: 'sig_oob_submitted_ts',
+    from: A,
+    networkId: 'betanet',
+    createdAt: 1e20,
+  });
+  const afterOob = (await history.getCachedHistory(A)).entries.find(e => e.signature === 'sig_oob_submitted_ts');
+  assert.ok(Number.isSafeInteger(afterOob?.timestamp) && afterOob.timestamp < 1e16, 'out-of-range createdAt must be rejected');
+  console.log('  ok - malformed timestamps and unit values are rejected instead of coerced');
+} finally {
+  await history.clearAllHistory();
+}

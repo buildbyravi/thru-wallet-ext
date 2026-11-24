@@ -4706,6 +4706,104 @@ async function navigationTest() {
     detachedListeners().filter((l) => /modal-overlay|modal-card|tx-sheet/.test(l.where)).length === 0,
     JSON.stringify(detachedListeners().slice(0, 3)));
 
+  // Malformed cached units/timestamps must never coerce blanks to "0 THRU", render
+  // "1970"/"NaN", or crash History or TxDetailSheet.
+  const realCached = FIXTURES['tx.getCachedHistory'];
+  const realDetailFixture = FIXTURES['tx.getDetail'];
+  const realPending = FIXTURES['tx.getPending'];
+  try {
+    FIXTURES['tx.getPending'] = () => [{
+      signature: 'sigPENDmal_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      from: backend.accounts[0]?.address,
+      status: 'submitted',
+      kind: 'transfer',
+      amountUnits: 'bad-units',
+      createdAt: Date.now(),
+    }];
+    FIXTURES['tx.getCachedHistory'] = () => ({ entries: [], syncedAt: Date.now() });
+    FIXTURES['tx.getHistoryFeed'] = () => ({
+      entries: [
+        {
+          signature: 'sigMAL_blank_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+          slot: '',
+          success: true,
+          programAddress: NETWORK_BETANET.transferProgramId,
+          kind: 'sent',
+          amount: '',
+          feeDeclaredUnits: '',
+          counterparty: ADDRESS_B,
+          timestamp: true,
+          timestampSource: 'block',
+        },
+        {
+          signature: 'sigZERO_valid_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+          slot: 0,
+          success: true,
+          programAddress: NETWORK_BETANET.transferProgramId,
+          kind: 'sent',
+          amount: '0',
+          feeDeclaredUnits: '0',
+          counterparty: ADDRESS_B,
+          timestamp: 1e20,
+          timestampSource: 'block',
+        },
+      ],
+      nextCursor: null,
+      synced: true,
+    });
+    FIXTURES['tx.getDetail'] = (params) => (
+      params?.signature === 'sigMAL_blank_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+        ? { status: 'finalized', blockTimeMs: 1e20, feeDeclaredUnits: '   ' }
+        : { status: 'finalized', blockTimeMs: true, feeDeclaredUnits: '-5' }
+    );
+    router.navigate('/history');
+    await settle();
+
+    const malCards = [...router.root.querySelectorAll('.tx-card')];
+    const malHistoryText = textOf(router.root);
+    ok('malformed cached history entries and pending records render without crashing',
+      malCards.length === 2 && malHistoryText.includes('Transaction in flight'),
+      `cards=${malCards.length}`);
+    ok('malformed cached timestamps never render 1970 or NaN',
+      !/\b1970\b/.test(malHistoryText) && !/\bNaN\b/.test(malHistoryText),
+      malHistoryText.slice(0, 300));
+    ok('zero slot still renders Block 0',
+      malHistoryText.includes('Block 0'), malHistoryText.slice(0, 300));
+
+    click(detailsButton(malCards[0]));
+    await settle();
+    const blankSheetText = textOf(DOC.body.lastChild);
+    ok('blank cached fee and out-of-range block time show Not available rather than 0 THRU or NaN',
+      !/\bNaN\b/.test(blankSheetText)
+        && !/\b1970\b/.test(blankSheetText)
+        && !/0\s*THRU/.test(blankSheetText)
+        && /Amount\s+Not available\b/.test(blankSheetText)
+        && /Block\s+Not available\b/.test(blankSheetText)
+        && /Block time\s+Not available\b/.test(blankSheetText)
+        && /Fee\b[\s\S]*\bNot available\s+Program\b/.test(blankSheetText),
+      blankSheetText.slice(0, 400));
+
+    router.navigate('/dashboard');
+    await settle();
+    router.navigate('/history');
+    await settle();
+    click(detailsButton(router.root.querySelectorAll('.tx-card')[1]));
+    await settle();
+    const zeroSheetText = textOf(DOC.body.lastChild);
+    ok('explicit zero fee renders 0 THRU while malformed lazy fee/time never overwrite or show NaN',
+      !/\bNaN\b/.test(zeroSheetText)
+        && !/\b1970\b/.test(zeroSheetText)
+        && /Block\s+0\b/.test(zeroSheetText)
+        && /Block time\s+Not available\b/.test(zeroSheetText)
+        && /Fee\b[\s\S]*\b0 THRU\s+Program\b/.test(zeroSheetText),
+      zeroSheetText.slice(0, 400));
+  } finally {
+    FIXTURES['tx.getCachedHistory'] = realCached;
+    FIXTURES['tx.getDetail'] = realDetailFixture;
+    FIXTURES['tx.getPending'] = realPending;
+    FIXTURES['tx.getHistoryFeed'] = realFeed;
+  }
+
   FIXTURES['tx.getHistoryFeed'] = realFeed;
 
   // The account pill is the dashboard's route into account management.

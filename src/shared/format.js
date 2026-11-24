@@ -146,3 +146,40 @@ export function explorerTxUrl(network, signature) {
   if (!network?.explorerUrl || !network.id || !signature) return '';
   return `${network.explorerUrl}/tx/${encodeURIComponent(signature)}?network=${encodeURIComponent(network.id)}`;
 }
+
+/**
+ * Parse a persisted or wire base-unit integer without coercing blanks, floats,
+ * booleans, objects, or negative values. Returns a non-negative BigInt or null.
+ */
+export function parseNonNegativeUnits(value) {
+  if (typeof value === 'bigint') return value >= 0n ? value : null;
+  if (typeof value === 'number') {
+    return Number.isSafeInteger(value) && value >= 0 ? BigInt(value) : null;
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!/^\d+$/.test(trimmed)) return null;
+    return BigInt(trimmed);
+  }
+  return null;
+}
+
+/**
+ * Validate a positive epoch-millisecond timestamp without coercing booleans,
+ * objects, blank strings, or out-of-range Date values (e.g. 1e20 -> NaN).
+ */
+export function parseValidTimestampMs(value) {
+  let num;
+  if (typeof value === 'number') {
+    num = value;
+  } else if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    num = Number(trimmed);
+  } else {
+    return null;
+  }
+  if (!Number.isFinite(num) || num <= 0) return null;
+  const ms = new Date(num).getTime();
+  return Number.isFinite(ms) && ms > 0 ? ms : null;
+}

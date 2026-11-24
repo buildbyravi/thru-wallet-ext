@@ -15,7 +15,7 @@ import { icon } from '../../kit/icon.js';
 import { Button } from '../../kit/button.js';
 import { PageHeader, Banner, Empty } from '../../kit/feedback.js';
 import * as bridge from '../bridge.js';
-import { formatThru } from '../../../shared/format.js';
+import { formatThru, parseNonNegativeUnits } from '../../../shared/format.js';
 import { refsEqual } from '../../../shared/refs.js';
 import { TxCard } from '../../domain/tx-card.js';
 import { TxDetailSheet } from '../../domain/tx-detail-sheet.js';
@@ -166,15 +166,22 @@ export function HistoryRoute({ back }) {
       h('span', { class: 'list-group-count', text: String(active.length) }),
     ]));
     for (const p of active) {
+      const amountUnits = parseNonNegativeUnits(p.amountUnits);
+      const verb = p.kind === 'faucet' ? 'Claiming' : 'Sending';
+      let pendingTitle = 'Transaction in flight';
+      if (['transfer', 'faucet', 'token'].includes(p.kind)) {
+        if (typeof p.displayAmount === 'string' && p.displayAmount.trim()) {
+          pendingTitle = `${verb} ${p.displayAmount.trim()}`;
+        } else if (p.kind === 'token' && amountUnits !== null) {
+          pendingTitle = 'Sending token';
+        } else if (amountUnits !== null) {
+          pendingTitle = `${verb} ${formatThru(amountUnits)} THRU`;
+        }
+      }
       pendingHost.appendChild(h('div', { class: 'row' }, [
         h('span', { class: 'row-glyph pending' }, icon('spinner', 13, { className: 'spinning' })),
         h('span', { class: 'row-body' }, [
-          h('span', { class: 'row-title', text: ['transfer', 'faucet', 'token'].includes(p.kind) && p.amountUnits
-            ? (p.displayAmount
-                ? `${p.kind === 'faucet' ? 'Claiming' : 'Sending'} ${p.displayAmount}`
-                : p.kind === 'token' ? 'Sending token'
-                  : `${p.kind === 'faucet' ? 'Claiming' : 'Sending'} ${formatThru(BigInt(p.amountUnits))} THRU`)
-            : 'Transaction in flight' }),
+          h('span', { class: 'row-title', text: pendingTitle }),
           h('span', { class: 'row-sub', text: 'Waiting for confirmation' }),
         ]),
       ]));
