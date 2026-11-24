@@ -209,6 +209,7 @@
    covered by tokens.css's [data-theme="dark"] block without a second declaration here. */
 .detail-val.positive { color: var(--positive); }
 .detail-val.negative { color: var(--negative); }
+.detail-val.accent { color: var(--accent); }
 
 /* ---- Transaction detail sheet (P2) -------------------------
    A bottom-anchored variant of the existing modal, reusing .modal-overlay/.modal-card
@@ -287,14 +288,6 @@
   font-size: var(--fs-xs);
   color: var(--text-1);
   word-break: break-all;
-  line-height: 1.5;
-}
-
-/* Provenance note under the fee row. Deliberately not .muted-small or a tooltip: the
-   distinction between a declared fee and a charged one is load-bearing, not a footnote. */
-.tx-sheet-note {
-  font-size: var(--fs-xs);
-  color: var(--text-3);
   line-height: 1.5;
 }
 

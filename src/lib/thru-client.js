@@ -627,6 +627,9 @@ export function decodeHistoryEntry(tx, viewerAddress) {
     signature,
     success,
     slot: tx.slot ?? null,
+    // The indexed transaction already carries the header-declared fee. Preserve it in
+    // history rather than throwing it away and refetching the whole transaction in details.
+    feeDeclaredUnits: typeof tx.fee === 'bigint' ? tx.fee : null,
     kind: 'other',
     amount: null, // bigint | null
     counterparty: null, // address string | null

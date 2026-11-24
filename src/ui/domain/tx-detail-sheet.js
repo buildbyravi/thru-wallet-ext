@@ -104,18 +104,27 @@ function counterpartyLabel(entry) {
  * rather than by index — a positional update is how the P1 day-header badge ended up inside
  * a transaction card, and that lesson applies here too.
  */
-function DetailRow(label, initial = UNKNOWN, { mono = false, tone = '' } = {}) {
+function DetailRow(label, initial = UNKNOWN, { mono = false, tone = '', labelTitle = null } = {}) {
   const value = h('span', {
     class: ['detail-val', mono ? 'detail-sheet-mono' : null, tone || null].filter(Boolean),
     text: initial == null ? UNKNOWN : String(initial),
   });
   return {
     el: h('div', { class: 'detail-row' }, [
-      h('span', { class: 'detail-label', text: label }),
+      h('span', {
+        class: 'detail-label',
+        text: label,
+        title: labelTitle || undefined,
+        'aria-label': labelTitle || undefined,
+      }),
       value,
     ]),
-    set(next) {
+    set(next, nextTone = null) {
       value.textContent = next == null || next === '' ? UNKNOWN : String(next);
+      if (nextTone !== null) {
+        value.classList.remove('positive', 'negative', 'pending', 'accent');
+        if (nextTone) value.classList.add(nextTone);
+      }
     },
   };
 }
@@ -206,7 +215,9 @@ export function TxDetailSheet({ entry, network, knownAccounts, loadDetail, onClo
   const rows = [];
   const push = (row) => { rows.push(row); return row; };
 
-  const statusRow = push(DetailRow('Status', statusText, { tone: isPending ? 'pending' : (failed ? 'negative' : '') }));
+  const statusRow = push(DetailRow('Status', statusText, {
+    tone: isPending ? 'pending' : (failed ? 'negative' : (entry.success === true ? 'positive' : '')),
+  }));
   push(DetailRow('Amount', delta?.text ?? UNKNOWN, { mono: true, tone: delta?.cls || '' }));
   // A faucet claim or a token-account init has no counterparty to speak of. Printing
   // "To: Not available" for those would imply a missing fact rather than an absent concept,
@@ -214,26 +225,25 @@ export function TxDetailSheet({ entry, network, knownAccounts, loadDetail, onClo
   if (counterparty) {
     push(DetailRow(counterpartyLabel(entry), counterparty, { mono: !localName }));
   }
-  push(DetailRow('Network', network?.label || UNKNOWN));
+  push(DetailRow('Network', network?.label || UNKNOWN, { tone: 'accent' }));
   push(DetailRow('Block', entry?.slot != null ? String(entry.slot) : UNKNOWN, { mono: true }));
 
   // Lazily filled. They start at "Not available" and only ever move to a real value — so a
   // failed fetch leaves the honest state rather than degrading to one.
-  const timeRow = push(DetailRow('Block time', UNKNOWN));
-  const feeRow = push(DetailRow('Fee (declared)', UNKNOWN, { mono: true }));
+  const cachedBlockTime = entry?.timestampSource === 'block'
+    && Number.isFinite(Number(entry.timestamp)) && Number(entry.timestamp) > 0
+    ? absoluteTime(Number(entry.timestamp)) : UNKNOWN;
+  const timeRow = push(DetailRow('Block time', cachedBlockTime));
+  const cachedFee = entry?.feeDeclaredUnits != null
+    ? `${formatThru(BigInt(entry.feeDeclaredUnits))} THRU` : UNKNOWN;
+  const feeRow = push(DetailRow('Fee', cachedFee, {
+    mono: true,
+    labelTitle: 'Declared transaction fee; actual charged amount is not reported.',
+  }));
   const programRow = push(DetailRow('Program', entry?.programAddress
     ? truncateAddress(entry.programAddress) : UNKNOWN, { mono: true }));
 
   const table = h('div', { class: 'detail-table' }, rows.map((r) => r.el));
-
-  // Provenance, stated in the sheet rather than assumed known. This is the sentence that
-  // stops "Fee (declared)" from being read as "what you paid".
-  const feeNote = h('p', {
-    class: 'tx-sheet-note',
-    text: 'Fee shown is the amount declared in the transaction header. Thru\'s execution '
-      + 'result carries no charged-fee field, so the amount actually debited is not '
-      + 'reported by the network.',
-  });
 
   const explorerUrl = explorerTxUrl(network, signature);
   const explorerLink = explorerUrl
@@ -254,7 +264,6 @@ export function TxDetailSheet({ entry, network, knownAccounts, loadDetail, onClo
     head,
     signatureBlock,
     table,
-    feeNote,
     h('div', { class: 'stack stack-2' }, [explorerLink, closeBtn.el].filter(Boolean)),
   ]);
 
@@ -291,8 +300,8 @@ export function TxDetailSheet({ entry, network, knownAccounts, loadDetail, onClo
       if (detail.programAddress) programRow.set(truncateAddress(detail.programAddress));
       // The detail fetch is authoritative about status: a list entry decoded before the
       // execution result landed can carry success: null where the detail knows better.
-      if (detail.success === true) statusRow.set('Succeeded');
-      else if (detail.success === false) statusRow.set('Failed on-chain');
+      if (detail.success === true) statusRow.set('Succeeded', 'positive');
+      else if (detail.success === false) statusRow.set('Failed on-chain', 'negative');
     }).catch(() => {
       // Unreachable node: the rows keep saying "Not available", which remains true.
     });

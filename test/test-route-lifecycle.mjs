@@ -1062,6 +1062,8 @@ const DETAIL_ENTRIES = [
     programAddress: NETWORK_BETANET.transferProgramId,
     kind: 'sent',
     amount: '750000',
+    feeDeclaredUnits: '123',
+    timestampSource: 'block',
     counterparty: ADDRESS_B,
     timestamp: 1750000020000,
   },
@@ -1072,6 +1074,7 @@ const DETAIL_ENTRIES = [
     programAddress: NETWORK_BETANET.transferProgramId,
     kind: 'received',
     amount: '1250000',
+    feeDeclaredUnits: '250',
     counterparty: ADDRESS_B,
     timestamp: 1750000015000,
   },
@@ -4497,9 +4500,12 @@ async function navigationTest() {
   secondCard.focus();
   chromeLog.calls.length = 0;
   click(secondCard);
+  let sheetEl = DOC.body.lastChild;
+  ok('P2: the cached fee renders before the lazy detail response resolves',
+    textOf(sheetEl).includes('0.00000025 THRU'), textOf(sheetEl).slice(0, 500));
   await settle();
 
-  let sheetEl = DOC.body.lastChild;
+  sheetEl = DOC.body.lastChild;
   ok('P2: activating a card opens a modal sheet',
     Boolean(sheetEl) && sheetEl.classList.contains('modal-overlay') && isConnected(sheetEl),
     `${sheetEl?.className}`);
@@ -4529,6 +4535,9 @@ async function navigationTest() {
     sheetText.slice(0, 320));
   ok('P2: the sheet shows the block number of the tapped entry',
     sheetText.includes(String(DETAIL_ENTRIES[1].slot)), sheetText.slice(0, 300));
+  ok('P2: the network value uses the brand accent',
+    Boolean([...sheetEl.querySelectorAll('.detail-row')].find((row) =>
+      textOf(row.querySelector('.detail-label')) === 'Network')?.querySelector('.detail-val.accent')));
   ok('P2: the sheet offers a copy action for the full signature',
     buttons(sheetEl, /copy transaction signature/i).length === 1,
     String(buttons(sheetEl, /copy transaction signature/i).length));
@@ -4544,11 +4553,12 @@ async function navigationTest() {
   ok('P2: a resolved block time renders as an absolute wall-clock time',
     /Block time/.test(sheetText) && !/Block time\s+Not available/.test(sheetText),
     sheetText.slice(0, 400));
-  ok('P2: the fee row is labelled as DECLARED, never presented as an amount charged',
-    /Fee \(declared\)/.test(sheetText) && /declared in the transaction header/i.test(sheetText),
-    sheetText.slice(0, 500));
-  ok('P2: the sheet states that Thru reports no charged fee, rather than implying one',
-    /no charged-fee field/i.test(sheetText), sheetText.slice(-320));
+  const feeRow = [...sheetEl.querySelectorAll('.detail-row')]
+    .find((row) => textOf(row.querySelector('.detail-label')) === 'Fee');
+  ok('P2: the fee row is concise while retaining declared-fee context for assistive/hover text',
+    Boolean(feeRow) && feeRow.querySelector('.detail-label')
+      ?.getAttribute('aria-label')?.includes('Declared transaction fee')
+      && !sheetEl.querySelector('.tx-sheet-note'), sheetText.slice(0, 500));
 
   const sheetExplorer = [...(sheetEl.querySelectorAll?.('a') || [])]
     .find((a) => /explorer/i.test(labelOf(a)));
@@ -4585,6 +4595,9 @@ async function navigationTest() {
     Boolean(sheetEl) && sheetEl.classList?.contains('modal-overlay')
       && textOf(sheetEl).includes(DETAIL_ENTRIES[0].signature),
     textOf(sheetEl).slice(0, 160));
+  ok('P2: a succeeded transaction status is rendered with the positive tone',
+    Boolean([...sheetEl.querySelectorAll('.detail-row')].find((row) =>
+      textOf(row.querySelector('.detail-label')) === 'Status')?.querySelector('.detail-val.positive')));
   pressKey(sheetEl.firstChild, 'Escape');
   await settle();
 
@@ -4602,7 +4615,7 @@ async function navigationTest() {
     /Block time\s+Not available/.test(sheetText.replace(/\s+/g, ' ')),
     sheetText.replace(/\s+/g, ' ').slice(0, 400));
   ok('P2: an unsupported fetch leaves the fee absent rather than quoting the network default',
-    /Fee \(declared\)\s+Not available/.test(sheetText.replace(/\s+/g, ' ')),
+    /Fee\s+Not available/.test(sheetText.replace(/\s+/g, ' ')),
     sheetText.replace(/\s+/g, ' ').slice(0, 400));
   ok('P2: the facts the list already knew survive a failed detail fetch',
     sheetText.includes(DETAIL_ENTRIES[2].signature)
