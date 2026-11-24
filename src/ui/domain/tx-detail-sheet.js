@@ -197,6 +197,20 @@ export function TxDetailSheet({ entry, network, knownAccounts, loadDetail, onClo
   }));
   sigCopy.el.classList.add('sm', 'icon-btn-ghost');
 
+  const heroDelta = signedAmount(entry);
+  const heroStatus = h('span', {
+    class: ['tx-sheet-status', isPending ? 'pending' : (failed ? 'failed' : (entry?.success === true ? 'succeeded' : ''))]
+      .filter(Boolean),
+    text: statusText,
+  });
+  const hero = h('div', { class: 'tx-sheet-hero' }, [
+    h('strong', {
+      class: ['tx-sheet-hero-amount', heroDelta?.cls || null].filter(Boolean),
+      text: heroDelta?.text || UNKNOWN,
+    }),
+    heroStatus,
+  ]);
+
   const signatureBlock = h('div', { class: 'tx-sheet-sig' }, [
     h('span', { class: 'detail-label', text: 'Signature' }),
     h('div', { class: 'tx-sheet-sig-value' }, [
@@ -262,6 +276,7 @@ export function TxDetailSheet({ entry, network, knownAccounts, loadDetail, onClo
     'aria-label': `Transaction detail: ${verbFor(entry)}`,
   }, [
     head,
+    hero,
     signatureBlock,
     table,
     h('div', { class: 'stack stack-2' }, [explorerLink, closeBtn.el].filter(Boolean)),
@@ -283,6 +298,11 @@ export function TxDetailSheet({ entry, network, knownAccounts, loadDetail, onClo
   });
 
   // ---- Lazy fill -------------------------------------------------------------
+  const updateHeroStatus = (text, tone) => {
+    heroStatus.textContent = text;
+    heroStatus.classList.remove('succeeded', 'failed', 'pending');
+    if (tone) heroStatus.classList.add(tone);
+  };
   if (typeof loadDetail === 'function' && signature) {
     Promise.resolve(loadDetail(signature)).then((detail) => {
       // The sheet may already be gone: a late answer must not resurrect a closed dialog.
@@ -300,8 +320,13 @@ export function TxDetailSheet({ entry, network, knownAccounts, loadDetail, onClo
       if (detail.programAddress) programRow.set(truncateAddress(detail.programAddress));
       // The detail fetch is authoritative about status: a list entry decoded before the
       // execution result landed can carry success: null where the detail knows better.
-      if (detail.success === true) statusRow.set('Succeeded', 'positive');
-      else if (detail.success === false) statusRow.set('Failed on-chain', 'negative');
+      if (detail.success === true) {
+        statusRow.set('Succeeded', 'positive');
+        updateHeroStatus('Succeeded', 'succeeded');
+      } else if (detail.success === false) {
+        statusRow.set('Failed on-chain', 'negative');
+        updateHeroStatus('Failed on-chain', 'failed');
+      }
     }).catch(() => {
       // Unreachable node: the rows keep saying "Not available", which remains true.
     });

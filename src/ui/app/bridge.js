@@ -84,7 +84,16 @@ export function send(method, params = {}) {
           err.retryable = true;
           return reject(err);
         }
-        if (response.ok) return resolve(response.data);
+        if (response.ok) {
+          // These mutations change public startup metadata without necessarily emitting an
+          // accountsChanged event (keyring labels are the important case). Do not let a later
+          // Accounts mount paint an obsolete bootstrap snapshot if its refresh fails.
+          if (method === 'keyring.rename') {
+            bootstrapRevision += 1;
+            bootstrapSnapshot = null;
+          }
+          return resolve(response.data);
+        }
 
         const err = new Error(response.error?.message || 'Wallet operation failed.');
         err.code = response.error?.code || 'UNKNOWN';
@@ -118,7 +127,8 @@ export function onEvent(eventName, callback) {
     // the background side had it, so the trust boundary was asymmetric.
     if (sender?.id && sender.id !== chrome.runtime.id) return;
     if (message?.type !== 'EVENT' || message.event !== eventName) return;
-    if (eventName === 'accountsChanged' || eventName === 'networkChanged' || eventName === 'lockStateChanged') {
+    if (eventName === 'accountsChanged' || eventName === 'networkChanged'
+      || eventName === 'balanceChanged' || eventName === 'lockStateChanged') {
       bootstrapRevision += 1;
       bootstrapSnapshot = null;
     }

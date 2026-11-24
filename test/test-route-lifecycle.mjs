@@ -4492,8 +4492,13 @@ async function navigationTest() {
       const button = detailsButton(card);
       return card.getAttribute('role') !== 'button' && button?.localName === 'button'
         && button.getAttribute('aria-haspopup') === 'dialog' && Boolean(button.getAttribute('aria-label'))
-        && !button.querySelector('a') && !button.querySelector('button');
+        && !button.querySelector('a') && !button.querySelector('button')
+        && Boolean(button.querySelector('.tx-card-chevron'));
     }));
+  ok('P2: history filters are grouped in a single segmented control tray',
+    Boolean(router.root.querySelector('.history-filters'))
+      && router.root.querySelectorAll('.chip-option').length === 4,
+    `tray=${Boolean(router.root.querySelector('.history-filters'))} chips=${router.root.querySelectorAll('.chip-option').length}`);
 
   // Open the SECOND card. A positional bug that always opened entries[0] must fail.
   const secondCard = detailsButton(detailCards[1]);
@@ -4512,6 +4517,10 @@ async function navigationTest() {
   ok('P2: the sheet declares itself a modal dialog',
     sheetEl.firstChild.getAttribute('role') === 'dialog'
       && sheetEl.firstChild.getAttribute('aria-modal') === 'true');
+  ok('P2: the detail sheet leads with a clear amount and status hero',
+    Boolean(sheetEl.querySelector('.tx-sheet-hero-amount'))
+      && Boolean(sheetEl.querySelector('.tx-sheet-status'))
+      && /Failed on-chain/.test(textOf(sheetEl.querySelector('.tx-sheet-status'))));
 
   let sheetText = textOf(sheetEl);
   ok('P2: the sheet opens against the tapped entry BY IDENTITY, not by position',
@@ -5977,6 +5986,29 @@ async function accountsBootstrapPaintTest() {
   offAccountsChanged();
   ok('an account-change event invalidates the startup rows before the next visit',
     bridge.getBootstrapSnapshot() === null);
+
+  await bridge.bootstrap();
+  await bridge.send('keyring.rename', { keyringId: 'seed_fixture', label: 'Renamed' });
+  ok('a successful keyring rename invalidates the startup label snapshot',
+    bridge.getBootstrapSnapshot() === null);
+
+  await bridge.bootstrap();
+  const offBalanceChanged = bridge.onEvent('balanceChanged', () => {});
+  emitEvent('balanceChanged', {});
+  offBalanceChanged();
+  ok('a balance-change event invalidates the startup balance snapshot',
+    bridge.getBootstrapSnapshot() === null);
+
+  await bridge.bootstrap();
+  const refreshedRoute = AccountsRoute({ navigate() {}, back() {} });
+  DOC.body.appendChild(refreshedRoute.el);
+  await settle();
+  const accountReadsBeforeSwitch = chromeLog.calls.filter((method) => method === 'account.list').length;
+  emitEvent('networkChanged', { id: 'localnet' });
+  await settle();
+  ok('Accounts reloads its account and balance snapshot after a network change',
+    chromeLog.calls.filter((method) => method === 'account.list').length > accountReadsBeforeSwitch);
+  refreshedRoute.destroy(); refreshedRoute.el.remove();
 }
 
 // ---- Audit: other consumers of tx.getBalances must not display its stale zero ---------

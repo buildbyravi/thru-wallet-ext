@@ -46,7 +46,7 @@ export function HistoryRoute({ back }) {
   const banner = Banner({ tone: 'error' });
   const listHost = h('div', { class: 'list' });
   const pendingHost = h('div', { class: ['stack', 'stack-2', 'hidden'] });
-  const filterRow = h('div', { class: 'row-flex wrap history-filters', role: 'group', 'aria-label': 'History filters' });
+  const filterRow = h('div', { class: 'history-filters', role: 'group', 'aria-label': 'History filters' });
   const refreshIcon = icon('refresh', 14);
   const refreshBtn = h('button', {
     type: 'button',

@@ -264,6 +264,38 @@
 
 .modal-overlay.open .tx-sheet { transform: translateY(0); }
 
+.tx-sheet-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  min-height: 42px;
+  padding: 0 var(--sp-1);
+}
+.tx-sheet-hero-amount {
+  min-width: 0;
+  color: var(--text-1);
+  font-family: var(--font-mono);
+  font-size: 22px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+.tx-sheet-hero-amount.positive { color: var(--positive); }
+.tx-sheet-status {
+  flex: 0 0 auto;
+  padding: 5px 9px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-inset);
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+  font-weight: 650;
+}
+.tx-sheet-status.succeeded { background: color-mix(in srgb, var(--positive) 12%, var(--surface-1)); color: var(--positive); }
+.tx-sheet-status.failed { background: color-mix(in srgb, var(--negative) 10%, var(--surface-1)); color: var(--negative); }
+.tx-sheet-status.pending { background: color-mix(in srgb, var(--gold) 12%, var(--surface-1)); color: var(--gold); }
+
 /* The full signature is the reason this sheet exists, so it gets its own block rather than
    a table row: 64+ characters need to wrap, and a right-aligned table cell cannot. */
 .tx-sheet-sig {
