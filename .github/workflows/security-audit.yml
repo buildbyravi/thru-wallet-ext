@@ -34,7 +34,7 @@ jobs:
         uses: actions/checkout@v5
       - name: Setup Node.js
         if: ${{ hashFiles('package-lock.json') != '' }}
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version: "22"
       - name: Run npm audit (High/Critical)
@@ -50,7 +50,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
       - name: Setup Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: npm
@@ -76,7 +76,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
       - name: Setup Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: npm
