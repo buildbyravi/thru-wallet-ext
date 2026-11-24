@@ -5714,8 +5714,9 @@ async function historyCacheFirstTest() {
     DOC.body.appendChild(route.el);
     ok('opening History does not flash a full-screen Loading activity spinner',
       !/Loading activity/.test(textOf(route.el)) && !route.el.querySelector('.spinner'));
-    ok('an empty first visit shows an explicit checking placeholder while the feed is pending',
-      /Checking for activity|Checking activity/.test(textOf(route.el)));
+    ok('an empty first visit shows no loading or checking message while the feed is pending',
+      !/Checking for activity|Checking activity|Loading recent transactions|Loading activity/.test(textOf(route.el))
+        && route.el.querySelectorAll('.tx-card').length === 0);
     await settle();
     ok('cached History draws a card while the live feed, labels and pending replies are held',
       route.el.querySelectorAll('.tx-card').length === 1
@@ -5724,9 +5725,9 @@ async function historyCacheFirstTest() {
         && held.some((item) => item.message.method === 'tx.getPending')
         && held.some((item) => item.message.method === 'account.list'),
       textOf(route.el).slice(0, 280));
-    ok('cached rows stay visible without a checking message or loading spinner while feed revalidation is pending',
+    ok('cached rows stay visible without any refresh-status message or loading spinner while feed revalidation is pending',
       route.el.querySelectorAll('.tx-card').length === 1
-        && !/Cached activity · checking for updates/i.test(textOf(route.el))
+        && !/Cached activity|checking for updates|Checking activity|Loading recent transactions/i.test(textOf(route.el))
         && !route.el.querySelector('.spinning')
         && buttons(route.el, /load more/i).length === 0);
     reply('tx.getHistoryFeed', { entries: [fresh], nextCursor: 15, synced: true });
@@ -5746,9 +5747,9 @@ async function historyCacheFirstTest() {
     held.splice(failedIndex, 1)[0].callback({ ok: false,
       error: { code: 'NETWORK_ERROR', message: 'RPC offline', retryable: true } });
     await settle();
-    ok('a failed feed keeps cached cards with a quiet freshness indicator, not an error banner',
+    ok('a failed feed keeps cached cards without a refresh-status message or error banner',
       /Block 101/.test(textOf(route.el))
-        && /Cached activity · may be out of date/.test(textOf(route.el))
+        && !/Cached activity|checking for updates|may be out of date/i.test(textOf(route.el))
         && !/Cached · Sync unavailable/.test(textOf(route.el))
         && chromeLog.calls.filter((method) => method === 'tx.listHistory').length === rawCallsBefore);
 
