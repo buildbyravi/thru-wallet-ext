@@ -218,8 +218,8 @@ export function HistoryRoute({ back }) {
 
   const cards = [];
   function updateFreshness() {
-    const message = entries.length && !feedSynced
-      ? (feedLoading ? 'Cached activity · checking for updates' : 'Cached activity · may be out of date')
+    const message = entries.length && !feedSynced && !feedLoading
+      ? 'Cached activity · may be out of date'
       : !entries.length && feedLoading ? 'Checking for activity…' : '';
     freshness.textContent = message;
     freshness.classList.toggle('hidden', !message);
