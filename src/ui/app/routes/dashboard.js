@@ -419,7 +419,7 @@ export function DashboardRoute({ navigate }) {
   }
 
   function renderPending(list) {
-    const active = (list || []).filter((r) => r.status === 'submitted');
+    const active = (Array.isArray(list) ? list : []).filter((r) => r?.status === 'submitted');
     const count = active.length;
     if (count > 0) {
       pendingBadge.textContent = `${count} pending`;
@@ -590,10 +590,11 @@ export function DashboardRoute({ navigate }) {
       infoResult.status === 'rejected' || infoResult.value?.stale === true, tokenState);
 
     if (pendingResult.status === 'fulfilled') {
-      let pendings = pendingResult.value;
-      if ((pendings || []).some((r) => r?.status === 'submitted')) {
+      let pendings = Array.isArray(pendingResult.value) ? pendingResult.value : [];
+      if (pendings.some((r) => r?.status === 'submitted')) {
         await bridge.send('tx.reconcilePending').catch(() => null);
-        pendings = await bridge.send('tx.getPending').catch(() => pendings);
+        const refreshed = await bridge.send('tx.getPending').catch(() => pendings);
+        if (Array.isArray(refreshed)) pendings = refreshed;
       }
       if (context === assetContext) renderPending(pendings);
     }
