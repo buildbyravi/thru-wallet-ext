@@ -875,8 +875,19 @@ form > .btn.text {
 .tx-card {
   background: var(--surface-1);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: var(--sp-3);
+  border-radius: var(--radius-lg);
+  padding: 12px 14px;
+  box-shadow: 0 1px 2px rgb(22 29 38 / 4%);
+  transition: border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
+}
+.tx-card-open:hover {
+  border-color: var(--border-strong);
+  box-shadow: 0 3px 10px rgb(22 29 38 / 7%);
+  transform: translateY(-1px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .tx-card { transition: none; }
+  .tx-card-open:hover { transform: none; }
 }
 
 .history-filters { gap: 6px; }
@@ -887,28 +898,37 @@ form > .btn.text {
 .tx-card-open:has(.tx-card-body:hover) { border-color: var(--border-strong); }
 .tx-card-head {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   justify-content: space-between;
-  column-gap: var(--sp-2);
-  margin-bottom: var(--sp-2);
+  gap: 8px;
+  margin-bottom: 10px;
   font-size: var(--fs-xs);
+  line-height: 1.3;
 }
 .tx-card-time {
+  flex: 0 1 auto;
+  min-width: 0;
   color: var(--text-2);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 .tx-card-meta {
   display: flex;
   align-items: center;
-  gap: var(--sp-1);
+  gap: 5px;
   margin-inline-start: auto;
+  min-width: 0;
 }
 .tx-card-net {
   color: var(--text-2);
-  margin-inline-end: var(--sp-1);
+  white-space: nowrap;
 }
 .tx-card-sig {
+  max-width: 92px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-family: var(--font-mono);
   color: var(--text-2);
 }
@@ -922,10 +942,10 @@ form > .btn.text {
 }
 .tx-card-body {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) fit-content(46%);
+  grid-template-columns: 32px minmax(0, 1fr) minmax(0, auto);
   align-items: center;
-  gap: var(--sp-2);
-  min-height: 34px;
+  gap: 10px;
+  min-height: 38px;
 }
 button.tx-card-body {
   width: 100%;
@@ -942,11 +962,17 @@ button.tx-card-body:focus-visible { outline: 2px solid var(--ink); outline-offse
 .tx-card-glyph {
   display: grid;
   place-items: center;
-  width: 24px;
-  color: var(--text-3);
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  color: var(--text-2);
+  background: var(--surface-inset);
 }
-.tx-card-glyph.failed { color: var(--negative); }
-.tx-card-glyph.pending { color: var(--gold); }
+.tx-card-glyph.sent { color: var(--negative); background: color-mix(in srgb, var(--negative) 9%, var(--surface-1)); }
+.tx-card-glyph.received { color: var(--positive); background: color-mix(in srgb, var(--positive) 10%, var(--surface-1)); }
+.tx-card-glyph.faucet { color: var(--accent); background: color-mix(in srgb, var(--accent) 9%, var(--surface-1)); }
+.tx-card-glyph.failed { color: var(--negative); background: color-mix(in srgb, var(--negative) 9%, var(--surface-1)); }
+.tx-card-glyph.pending { color: var(--gold); background: color-mix(in srgb, var(--gold) 12%, var(--surface-1)); }
 .tx-card-main {
   display: grid;
   gap: var(--sp-1);
@@ -962,7 +988,7 @@ button.tx-card-body:focus-visible { outline: 2px solid var(--ink); outline-offse
 }
 .tx-card-title {
   font-weight: 600;
-  font-size: var(--fs-md);
+  font-size: var(--fs-sm);
   color: var(--text-1);
   overflow-wrap: anywhere;
 }
@@ -974,13 +1000,22 @@ button.tx-card-body:focus-visible { outline: 2px solid var(--ink); outline-offse
   white-space: nowrap;
 }
 .tx-card-badge {
-  font-size: var(--fs-xs);
+  display: inline-flex;
+  align-items: center;
+  min-height: 18px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
   color: var(--text-2);
+  background: var(--surface-inset);
 }
-.tx-card-badge.failed { color: var(--negative); }
+.tx-card-badge.failed { color: var(--negative); background: color-mix(in srgb, var(--negative) 9%, var(--surface-1)); }
+.tx-card-badge.pending { color: var(--gold); background: color-mix(in srgb, var(--gold) 12%, var(--surface-1)); }
 .tx-card-amounts {
   min-width: 0;
   text-align: end;
+  white-space: nowrap;
 }
 .tx-amount {
   font-size: var(--fs-sm);
@@ -990,6 +1025,7 @@ button.tx-card-body:focus-visible { outline: 2px solid var(--ink); outline-offse
   overflow-wrap: anywhere;
 }
 .tx-amount.positive { color: var(--positive); }
+.tx-amount.sent { color: var(--text-1); }
 
 /* ---- Settings: grouped rows -------------------------------------------- */
 .settings-screen { background: var(--bg); }
