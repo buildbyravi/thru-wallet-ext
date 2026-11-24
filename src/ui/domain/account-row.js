@@ -123,10 +123,10 @@ export function KeyringGroup({ keyring, rows = [], onManage } = {}) {
 
   if (needsBackup) {
     headerChildren.push(h('span', {
-      class: 'tag-warning',
-      text: 'Not backed up',
+      class: 'tag-warning keyring-backup-warning',
       title: 'You have not confirmed writing this recovery phrase down.',
-    }));
+      'aria-label': 'Not backed up',
+    }, [icon('warning', 13), h('span', { text: 'Not backed up' })]));
   }
 
   if (typeof onManage === 'function') {
@@ -135,7 +135,7 @@ export function KeyringGroup({ keyring, rows = [], onManage } = {}) {
       class: 'icon-btn icon-btn-ghost sm keyring-manage-btn',
       title: `Manage ${keyring.label || 'this source'}`,
       'aria-label': `Manage ${keyring.label || 'this source'}`,
-    }, [icon('settings', 13), h('span', { text: 'Manage' })]);
+    }, icon('settings', 18));
     d.on(manageBtn, 'click', () => onManage(keyring));
     headerChildren.push(manageBtn);
   }

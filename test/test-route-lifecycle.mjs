@@ -5944,8 +5944,11 @@ async function accountsBootstrapPaintTest() {
     `rows=${visibleNames.join(', ')} held=${holds.held.map((x) => x.message.method).join(',')}`);
   ok('keyring account count has an explicit label',
     /\baccounts?\b/i.test(textOf(route.el)));
-  ok('keyring management action has a visible label',
-    [...route.el.querySelectorAll('.keyring-manage-btn')].some((button) => /manage/i.test(textOf(button))));
+  ok('keyring management action is icon-only with an accessible name',
+    [...route.el.querySelectorAll('.keyring-manage-btn')].some((button) =>
+      /^Manage\b/.test(button.getAttribute('aria-label') || '') && !/manage/i.test(textOf(button))));
+  ok('the backup warning includes an inline SVG icon',
+    [...route.el.querySelectorAll('.keyring-backup-warning')].some((badge) => badge.querySelector('svg')));
   holds.resolve('account.list', backend.accounts.map((account) => ({ ...account, balance: null, balanceStale: true })));
   holds.resolve('keyring.list', backend.keyrings.map((keyring) => ({ ...keyring })));
   holds.resolve('account.getActiveRef', activeAccount().ref);
