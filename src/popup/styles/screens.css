@@ -937,7 +937,8 @@ button.tx-card-body {
   text-align: start;
   cursor: pointer;
 }
-button.tx-card-body:hover { background: var(--surface-2); }
+button.tx-card-body:hover { background: transparent; }
+button.tx-card-body:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 .tx-card-glyph {
   display: grid;
   place-items: center;

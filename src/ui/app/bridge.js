@@ -172,6 +172,7 @@ export function bootstrap() {
         accounts: Array.isArray(state?.accounts) ? state.accounts : [],
         keyrings: Array.isArray(state?.keyrings) ? state.keyrings : [],
         account: state?.account?.ref ? { ref: state.account.ref } : null,
+        network: state?.network?.id ? state.network : null,
       };
     }
     return state;

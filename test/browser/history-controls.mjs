@@ -31,7 +31,8 @@ try {
     const page = await ctx.newPage(); page.setDefaultTimeout(5000); page.on('pageerror', e => errors.push(e.message));
     await page.goto(`${origin}/popup.html#/history`);
     await page.waitForFunction(theme => document.documentElement.dataset.theme === theme, theme);
-    await page.getByText('Cached · Sync unavailable', { exact: true }).waitFor();
+    await page.locator('.tx-card').first().waitFor();
+    assert.equal(await page.getByText('Cached · Sync unavailable', { exact: true }).count(), 0);
     assert.equal(await page.getByText(/Showing cached activity/).count(), 0);
     const filters = page.getByRole('group', { name: 'History filters' });
     await filters.getByRole('button', { name: 'All', exact: true }).waitFor();

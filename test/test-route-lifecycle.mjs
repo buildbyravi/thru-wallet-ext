@@ -4328,7 +4328,7 @@ async function navigationTest() {
       String(router.root.querySelectorAll('.tx-card').length));
   }
 
-  // P0 audit finding 2: an unsynced (offline) feed must be labelled, not masquerade.
+  // Offline cached entries remain useful without a persistent sync warning banner.
   FIXTURES['tx.getHistoryFeed'] = () => ({
     entries: DUP_ENTRIES.slice(0, 3).map((e) => ({ ...e })),
     nextCursor: 3,
@@ -4336,8 +4336,10 @@ async function navigationTest() {
   });
   router.navigate('/history');
   await settle();
-  ok('an unsynced feed is labelled as cached/offline in the UI',
-    /Cached · Sync unavailable/.test(textOf(router.root)), textOf(router.root).slice(0, 200));
+  ok('an unsynced feed keeps its entries without a Cached · Sync unavailable banner',
+    !/Cached · Sync unavailable/.test(textOf(router.root))
+      && router.root.querySelectorAll('.tx-card').length === 3,
+    textOf(router.root).slice(0, 200));
   FIXTURES['tx.getHistoryFeed'] = () => ({
     entries: DUP_ENTRIES.slice(0, 15).map((e) => ({ ...e })),
     nextCursor: 15,
@@ -5675,6 +5677,8 @@ async function historyCacheFirstTest() {
   try {
     route = HistoryRoute({ back() {} });
     DOC.body.appendChild(route.el);
+    ok('opening History does not flash a full-screen Loading activity spinner',
+      !/Loading activity/.test(textOf(route.el)) && !route.el.querySelector('.spinner'));
     await settle();
     ok('cached History draws a card while the live feed, labels and pending replies are held',
       route.el.querySelectorAll('.tx-card').length === 1
@@ -5683,8 +5687,9 @@ async function historyCacheFirstTest() {
         && held.some((item) => item.message.method === 'tx.getPending')
         && held.some((item) => item.message.method === 'account.list'),
       textOf(route.el).slice(0, 280));
-    ok('cached rows are shown while revalidating and cannot offer load-more until the feed revalidates',
-      Boolean(route.el.querySelector('.spinning'))
+    ok('cached rows stay visible without a loading spinner while feed revalidation is pending',
+      route.el.querySelectorAll('.tx-card').length === 1
+        && !route.el.querySelector('.spinning')
         && buttons(route.el, /load more/i).length === 0);
     reply('tx.getHistoryFeed', { entries: [fresh], nextCursor: 15, synced: true });
     await settle();
@@ -5703,8 +5708,8 @@ async function historyCacheFirstTest() {
     held.splice(failedIndex, 1)[0].callback({ ok: false,
       error: { code: 'NETWORK_ERROR', message: 'RPC offline', retryable: true } });
     await settle();
-    ok('a failed feed keeps cached cards and does not make a second raw RPC request',
-      /Block 101/.test(textOf(route.el)) && /Cached · Sync unavailable/.test(textOf(route.el))
+    ok('a failed feed keeps cached cards silently and does not make a second raw RPC request',
+      /Block 101/.test(textOf(route.el)) && !/Cached · Sync unavailable/.test(textOf(route.el))
         && chromeLog.calls.filter((method) => method === 'tx.listHistory').length === rawCallsBefore);
 
     cachedCursor = null;
@@ -5712,8 +5717,8 @@ async function historyCacheFirstTest() {
     await settle();
     reply('tx.getHistoryFeed', { entries: [alpha], nextCursor: null, synced: false });
     await settle();
-    ok('the offline feed keeps the last-page card without offering Load more',
-      /Block 101/.test(textOf(route.el)) && /Cached · Sync unavailable/.test(textOf(route.el))
+    ok('the offline feed keeps the last-page card silently without offering Load more',
+      /Block 101/.test(textOf(route.el)) && !/Cached · Sync unavailable/.test(textOf(route.el))
         && buttons(route.el, /load more/i).length === 0);
 
     emitEvent('pendingTxChanged', {});
