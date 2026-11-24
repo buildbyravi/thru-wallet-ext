@@ -130,11 +130,9 @@ export async function unlock(password) {
  */
 export async function changePassword(currentPassword, newPassword) {
   await auth.assertUnlockAllowed();
+  let result;
   try {
-    const result = await vault.changeMasterPassword(currentPassword, newPassword);
-    await auth.recordSuccess();
-    if (result?.relocked) await lock();
-    return result;
+    result = await vault.changeMasterPassword(currentPassword, newPassword);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (/incorrect password/i.test(message)) {
@@ -146,9 +144,25 @@ export async function changePassword(currentPassword, newPassword) {
         throw locked;
       }
     }
-    if (!(await vault.isUnlocked())) await lock();
+    try {
+      if (!(await vault.isUnlocked())) await lock();
+    } catch {
+      await discardPreparedReviews().catch(() => {});
+      emitLockStateChanged(false);
+    }
     throw error;
   }
+
+  await auth.recordSuccess().catch(() => {});
+  if (result?.relocked) {
+    try {
+      await lock();
+    } catch {
+      await discardPreparedReviews().catch(() => {});
+      emitLockStateChanged(false);
+    }
+  }
+  return result;
 }
 
 export async function verifyPassword(password) {
@@ -261,10 +275,10 @@ export async function resetWallet({ confirmation, password } = {}) {
   clearConsents();
   await reviewStore.clearAll().catch(() => {});
   await vault.resetWallet();
-  await auth.clearLockout();
-  await balances.clearAllCaches();
-  await pending.clearAll();
-  await clearAllHistory();
+  await auth.clearLockout().catch(() => {});
+  await balances.clearAllCaches().catch(() => {});
+  await pending.clearAll().catch(() => {});
+  await clearAllHistory().catch(() => {});
 
   // Clear all wallet-associated persistent storage so no contacts, labels, caches,
   // reviews, intents, or tracked domains survive into a new wallet.

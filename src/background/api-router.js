@@ -189,7 +189,7 @@ const handlers = Object.assign(Object.create(null), {
   'wallet.lock': () => walletService.lock(),
   'wallet.reset': async ({ confirmation, password }) => {
     const result = await walletService.resetWallet({ confirmation, password });
-    await primaryNameService.clearAllDomains();
+    await primaryNameService.clearAllDomains().catch(() => {});
     return result;
   },
   'wallet.hasSeed': () => walletService.hasSeed(),

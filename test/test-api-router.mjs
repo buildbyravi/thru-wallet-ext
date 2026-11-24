@@ -1126,5 +1126,86 @@ const restoreSwitch = await handleApiRequest({ method: 'network.setActive', para
 assert.equal(restoreSwitch.ok, true);
 console.log('  ok - shipped network state restored (betanet active, others disabled)');
 
+console.log('[14] Post-commit cleanup failures do not fail committed password change or reset');
+{
+  const created = await handleApiRequest({ method: 'wallet.create', params: { password: 'Password123!' } });
+  assert.equal(created.ok, true);
+
+  const origLocalSet = globalThis.chrome.storage.local.set;
+  const origSessionSet = globalThis.chrome.storage.session.set;
+  const origSessionRemove = globalThis.chrome.storage.session.remove;
+  let vaultCommitted = false;
+  let sessionSetFailures = 0;
+  let postCommitRemoveFailures = 0;
+  try {
+    globalThis.chrome.storage.local.set = async (obj) => {
+      await origLocalSet(obj);
+      if (Object.hasOwn(obj, 'vault')) vaultCommitted = true;
+    };
+    globalThis.chrome.storage.session.set = async () => {
+      sessionSetFailures++;
+      throw new Error('Injected session set failure');
+    };
+    globalThis.chrome.storage.session.remove = async (key) => {
+      if (vaultCommitted) {
+        postCommitRemoveFailures++;
+        throw new Error('Injected post-commit session remove failure');
+      }
+      return origSessionRemove(key);
+    };
+    const changed = await handleApiRequest({
+      method: 'wallet.changePassword',
+      params: { currentPassword: 'Password123!', newPassword: 'NewPassword456!' },
+    });
+    assert.equal(changed.ok, true, `committed password change succeeds despite post-commit session failure: ${JSON.stringify(changed)}`);
+    assert.equal(changed.data.changed, true);
+    assert.equal(changed.data.relocked, true);
+    assert.ok(sessionSetFailures >= 1, 'negative control: session.set failed after vault commit');
+    assert.ok(postCommitRemoveFailures >= 1, 'negative control: post-commit lock() session.remove failed after vault commit');
+  } finally {
+    globalThis.chrome.storage.local.set = origLocalSet;
+    globalThis.chrome.storage.session.set = origSessionSet;
+    globalThis.chrome.storage.session.remove = origSessionRemove;
+  }
+
+  await handleApiRequest({ method: 'wallet.lock' });
+  const oldUnlock = await handleApiRequest({ method: 'wallet.unlock', params: { password: 'Password123!' } });
+  assert.equal(oldUnlock.ok, false, 'old password no longer unlocks after committed change');
+  const newUnlock = await handleApiRequest({ method: 'wallet.unlock', params: { password: 'NewPassword456!' } });
+  assert.equal(newUnlock.ok, true, 'new password unlocks after committed change');
+
+  const origLocalGet = globalThis.chrome.storage.local.get;
+  let vaultDeleted = false;
+  let postCommitGetFailures = 0;
+  const origLocalRemove = globalThis.chrome.storage.local.remove;
+  try {
+    globalThis.chrome.storage.local.remove = async (key) => {
+      await origLocalRemove(key);
+      if (key === 'vault' || (Array.isArray(key) && key.includes('vault'))) {
+        vaultDeleted = true;
+      }
+    };
+    globalThis.chrome.storage.local.get = async (keys) => {
+      if (vaultDeleted) {
+        postCommitGetFailures++;
+        throw new Error('Injected post-commit local storage cleanup failure');
+      }
+      return origLocalGet(keys);
+    };
+    const resetRes = await handleApiRequest({
+      method: 'wallet.reset',
+      params: { confirmation: 'RESET', password: 'NewPassword456!' },
+    });
+    assert.equal(resetRes.ok, true, 'committed vault reset succeeds even if secondary cleanup throws');
+    assert.ok(postCommitGetFailures >= 1, 'negative control: post-commit secondary cleanup threw');
+  } finally {
+    globalThis.chrome.storage.local.get = origLocalGet;
+    globalThis.chrome.storage.local.remove = origLocalRemove;
+  }
+
+  assert.equal((await handleApiRequest({ method: 'wallet.hasVault' })).data, false);
+  console.log('  ok - post-commit cleanup failures never false-fail password change or vault reset');
+}
+
 console.log('\nAll background API router integration tests passed.');
 

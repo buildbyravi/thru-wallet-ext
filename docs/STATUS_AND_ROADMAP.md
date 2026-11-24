@@ -91,10 +91,14 @@ unmerged and not release-approved**. The prior baseline evidence below is for `9
   Native popup/panel and worker lifecycle, physical QR scan, approved disposable-wallet Betanet
   flows, final independent review and owner approval remain open. See the manual checklist for scope.
 - **PARTIAL owner feedback:** Side panel open/close worked on several attempts after one failure to load; extension version and Chrome version were not supplied. This does not reproduce or rule out the separate preference timeout race. See `docs/MANUAL_SMOKE_CHECKLIST.md` for the pending retest.
-- **UNVERIFIED (Agent C review at older `3d51e0a`):** History pending rendering parses persisted
-  `amountUnits` without guarding `BigInt`; malformed stored records can plausibly break rendering,
-  but no regression reproduction or fix has been completed. The proposed stuck-spinner scenario
-  also needs a controlled reproduction; context changes start a new load. Do not treat either as
+- **TESTED (cache unit/timestamp & post-commit cleanup hardening):** History pending rendering
+  (`amountUnits`), cards, detail sheets, and cached history timestamps validate non-negative
+  base-unit integers and timestamps (`parseNonNegativeUnits`, `parseValidTimestampMs` in
+  `src/shared/format.js`, tested in `test/test-route-lifecycle.mjs` and `test/test-history-cache.mjs`),
+  and post-commit cleanup in password change / wallet reset no longer false-fails committed writes
+  (`test/test-api-router.mjs` [14]).
+- **UNVERIFIED (Agent C review at older `3d51e0a`):** The proposed stuck-spinner scenario
+  needs a controlled reproduction; context changes start a new load. Do not treat it as
   resolved. `onExecution` is called without awaiting its promise by the SDK stream wrapper, so the
   report's claim that it blocks the stream is not supported by that code. History refreshes every
   five seconds, while one-second pending polling runs only with pending entries; performance
