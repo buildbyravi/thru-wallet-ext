@@ -1,7 +1,7 @@
 # Status and Roadmap
 
 **Document Class:** Authority (Single Source of Truth for Current Shipped State & Active Verification Work)
-Source baseline re-verified on `main` at contract v33 (2026-11-19, v1.6.0). `src/`, `test/`, and `scripts/` remain authoritative.
+Source baseline re-verified on `main` at contract v34 (2026-11-22, v1.6.0). `src/`, `test/`, and `scripts/` remain authoritative.
 
 ---
 
@@ -88,16 +88,16 @@ unmerged and not release-approved**. The prior baseline evidence below is for `9
 
 ---
 
-## 1. Shipped Baseline (Contract v33)
+## 1. Shipped Baseline (Contract v34)
 
-- **Shared Contract (`v33`, `154` methods, `15` routes):** Declared in `src/shared/contract/manifest.js` (`88` wallet-core + `23` `name.*` + `43` DeFi M0 methods in `src/shared/contract/defi-schema.js` whose build-time flags in `src/shared/flags.js` are all `false`). Exact pins: `@thru/sdk@0.5.2` and `@thru/programs@0.5.2`.
+- **Shared Contract (`v34`, `155` methods, `15` routes):** Declared in `src/shared/contract/manifest.js` (`89` wallet-core + `23` `name.*` + `43` DeFi M0 methods in `src/shared/contract/defi-schema.js` whose build-time flags in `src/shared/flags.js` are all `false`). Exact pins: `@thru/sdk@0.5.2` and `@thru/programs@0.5.2`.
 - **SDK 0.5.2 upgrade (`VERIFIED AGAINST LIVE NETWORK`, 2026-11-19):** `@thru/sdk`/`@thru/programs` pinned at 0.5.2 per D-030. HD coin type moved 9999 → 8478 (`m/44'/8478'/index'/0'`), `ROOT_MANAGER_PROGRAM_ADDRESS` → `CORE_MANAGER_PROGRAM_ADDRESS`, 1-byte token account discriminator, and Ledger path compatibility helpers. Existing 0.4.x seed keyrings derive new addresses after this upgrade (goldens regenerated, no legacy path). Verified live against Betanet: host HD index 0 account derived/activated/funded, custom registrar program deployed & initialized (`vmError: 0`), live domain `probe4pwpy.thru` registered (`vmError: 0`), and 16-rung token transfer suite passed.
 - **Verified Token Import (`v33`):** Dashboard uses `token.importVerified` (`auth: 'unlocked'`, mint address and optional fallback symbol only). The background verifies mint ownership, SDK layout and denomination from a captured account snapshot before network-scoped persistence, rejects caller-supplied name/decimals and duplicate imports, and fences network-generation changes. Legacy `token.import` retains its metadata-only contract. Deterministic router coverage is in `test/test-token-balances.mjs`; browser and live-network import verification remain `UNVERIFIED`.
 - **One UI Stack (`15` Routes):** `/welcome`, `/unlock`, `/dashboard`, `/accounts`, `/account`, `/add-account`, `/keyring`, `/export`, `/send`, `/receive`, `/faucet`, `/name`, `/history`, `/settings`, `/reset`. Toolbar popup (`400x600`) and resizable side panel (`popup.html?thru_panel=1`) share one HTML shell with synchronous close-listener registration and mutual exclusion; Side Panel Mode is an explicit Settings opt-in.
 - **Transaction Review & Background Consent Gate (`v29`–`v32`):** Every value-moving screen (`/send` native & token, `/name` register/purchase/renew/claim, `/faucet` claim — plus contract-level `domain-record`, `9` review kinds total including display-only `raw`) prepares via `tx.prepareReview`, renders `src/ui/domain/tx-review/review-card.js`, and confirms via `tx.confirmReview`. As of **v32**, `tx.confirmReview` mints a single-use 60s `consentToken` (`src/background/services/review/consent.js`) bound to `{ method, sha256(canonicalParams), accountAddress, networkId }`, and `api-router.js` rejects any non-exempt value-moving call lacking a valid token (`REVIEW_REQUIRED`). Full spec: `docs/guides/transaction-review.md`.
 - **Signing & Owned-Account Activation (`D-003`, `v12`):** Unlocked session signing is the default (`requirePasswordForSigning: false`); per-sign password re-auth is a password-gated Settings opt-in. `tx.registerAccount` (`auth: 'unlocked'`) self-signs (`NOOP_PROGRAM_ADDRESS`, fee `0n`, nonce `0n`, `stateUnits: 1`) exclusively for vault-owned addresses at creation, on `/dashboard`, and JIT on `/send` (never external addresses).
 - **Domains (`/name`, `v21`–`v31`):** Two tabs (`Register` and `My Domains`), `.thru`-only registration and renewal (`via: 'custom'` wired in `v30`), `.id` lookup-only resolution, versioned per-network tracked domain inventory (`thru_registered_domains`), opcode-2 text record append (`name.setRecord`, `v31`, contract-only), reverse lookup (`name.reverseLookup`, `v31`), and unified header network fees via `tx-units.networkFeeUnits` (`2026-11-12`). Full spec: `docs/guides/domains-and-registrar.md`.
-- **History (`/history`, `v9`–`v12`):** Flat transaction stream without date sections; storage-only cache-first paint (`tx.getCachedHistory`); provenance-tagged timestamps (`block` -> own `submitted` -> `Block <slot>`); lazy `tx.getDetail` sheet reporting `Fee (declared)` (`feeCharged: false`). Full spec: `docs/guides/history-and-activity.md`.
+- **History (`/history`, `v9`–`v12`):** Flat transaction stream without date sections; storage-only cache-first paint (`tx.getCachedHistory`); provenance-tagged timestamps (`block` -> own `submitted` -> `Block <slot>`); lazy `tx.getDetail` sheet with a concise `Fee` label and declared-fee provenance (`feeCharged: false`). Full spec: `docs/guides/history-and-activity.md`.
 - **Quarantines (`v7`, `D-005`):** Legacy `src/launchpad/` is deleted and guarded (`test/test-launchpad-quarantine.mjs`). Custom RPC activation and writes are refused in the background (`CUSTOM_NETWORK_DISABLED`, `CUSTOM_RPC_SUPPORTED = false`) and stale stored IDs self-heal to `betanet` before client binding. No `window.thru` dApp provider exists.
 
 ### Recorded Automated Baseline (`IMPLEMENTED`, `TESTED`)
@@ -107,7 +107,7 @@ mocked-runtime visual checks and partial unpacked-extension checks in real Chrom
 and live-chain verification gates are listed below.
 
 - `npm run build` -> **PASS** (`dist/` regenerated cleanly from `src/`, zero warnings).
-- `npm test` -> **PASS** across all **9 guard scripts** and **41 test suites**: contract v33 (`154` methods), `1,174/1,174` route-lifecycle checks, `206/206` review pipeline checks, and `68/68` review-card checks. Structural guards retain zero DOM-injection sinks and the existing import-cycle ratchet.
+- `npm test` -> **PASS** across all **9 guard scripts** and **41 test suites**: contract v34 (`155` methods), `1,174/1,174` route-lifecycle checks, `206/206` review pipeline checks, and `68/68` review-card checks. Structural guards retain zero DOM-injection sinks and the existing import-cycle ratchet.
 - Deterministic Node tests use a hand-rolled DOM shim and stubbed RPCs; **they never close real-browser or live-chain verification gates**.
 
 ---

@@ -171,7 +171,8 @@ export function TxCard({ entry, network, knownAccounts, onOpen } = {}) {
     h('span', { class: 'tx-card-amounts' }, delta
       ? [h('span', { class: ['tx-amount', delta.cls].join(' '), text: delta.text })]
       : []),
-  ]);
+    interactive ? h('span', { class: 'tx-card-chevron', 'aria-hidden': 'true' }, icon('chevronRight', 15)) : null,
+  ].filter(Boolean));
 
   const el = h(interactive ? 'article' : 'div', {
     class: ['tx-card', interactive ? 'tx-card-open' : null].filter(Boolean),

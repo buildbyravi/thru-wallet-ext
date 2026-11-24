@@ -12,10 +12,10 @@ This document records the shipped wallet-core boundaries and separately labels a
 Current code structure for the wallet core is:
 
 ```txt
-src/ui/app/routes → bridge.send() → v33 contract/router → background services → vault / thru-client
+src/ui/app/routes → bridge.send() → v34 contract/router → background services → vault / thru-client
 ```
 
-The current contract has 154 methods (88 wallet-core + 23 `name.*` + 43 flag-off DeFi M0). Value-moving routes reach signing only through the shared review and consent pipeline
+The current contract has 155 methods (89 wallet-core + 23 `name.*` + 43 flag-off DeFi M0). Value-moving routes reach signing only through the shared review and consent pipeline
 (`tx.prepareReview` → `TxReviewCard` → `tx.confirmReview` one-time `consentToken` → the operation's existing signing
 method; `confirmReview` itself re-validates, mints the v32 consent token, and returns the submit instructions — it never signs; `docs/guides/transaction-review.md`). Signing requires an unlocked wallet; password re-authentication
 is opt-in and defaults off. v12 account registration is the narrow unlocked-only exception for an
@@ -288,7 +288,7 @@ Add guardrails incrementally:
 - All 15 routes mount through the real Router/guards/bridge under the deterministic DOM shim (`test/test-route-lifecycle.mjs`).
 - Signing methods use the background `auth: 'signing'` policy (v5); its password re-auth preference defaults off and can be enabled only through the password-gated security-settings API.
 - Custom-network activation is rejected and stale active IDs are healed before RPC binding (v7).
-- v8–v15 additions include token balances/transfers, History feed/detail, checked Send context, owned-account registration, storage-only cached History, chain mint reads, and duplicate checks. Contract v16 retires unbound legacy send methods after zero shipped callers. v17–v28 append the flag-off DeFi surface, the primary name, the official and custom registrars, the legacy faucet-policy status method, token discovery and cached balances, and reviewed name facts. **Contract v29 appends the shared transaction review** (`tx.prepareReview` / `tx.confirmReview` / `tx.discardReview`); v30 adds the tracked-domain registry; v31 adds the name-service record write (`name.setRecord`) plus `name.reverseLookup`; **v32 enforces the background `consentToken` gate** across value-moving handlers; and v33 appends `token.importVerified` while preserving legacy metadata import. Current source authority is `src/shared/contract/manifest.js` (v33, 154 methods).
+- v8–v15 additions include token balances/transfers, History feed/detail, checked Send context, owned-account registration, storage-only cached History, chain mint reads, and duplicate checks. Contract v16 retires unbound legacy send methods after zero shipped callers. v17–v28 append the flag-off DeFi surface, the primary name, the official and custom registrars, the legacy faucet-policy status method, token discovery and cached balances, and reviewed name facts. **Contract v29 appends the shared transaction review** (`tx.prepareReview` / `tx.confirmReview` / `tx.discardReview`); v30 adds the tracked-domain registry; v31 adds the name-service record write (`name.setRecord`) plus `name.reverseLookup`; **v32 enforces the background `consentToken` gate** across value-moving handlers; and v33 appends `token.importVerified` while preserving legacy metadata import. Current source authority is `src/shared/contract/manifest.js` (v34, 155 methods).
 
 ### Phase B — quarantine legacy launchpad — DONE
 

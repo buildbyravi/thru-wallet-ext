@@ -34,6 +34,8 @@ await esbuild.build({
   bundle: true,
   minify: true,
   logLevel: 'info',
+  loader: { '.woff2': 'file' },
+  assetNames: 'fonts/[name]-[hash]',
   entryPoints: ['src/popup/popup.css'],
   outfile: 'dist/popup.css',
 });

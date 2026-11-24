@@ -1,7 +1,7 @@
 # DeFi Contract Inventory (43 Methods)
 
 **Document Class:** Operational Verification (Dark-Launched Contract Reference)
-**Source Authority:** `src/shared/contract/manifest.js` (`CONTRACT_VERSION = 33`, `154` total methods) + `src/shared/contract/defi-schema.js` (`43` `DEFI_METHODS`, `24` `UNSUPPORTED_REASONS`)
+**Source Authority:** `src/shared/contract/manifest.js` (`CONTRACT_VERSION = 34`, `155` total methods) + `src/shared/contract/defi-schema.js` (`43` `DEFI_METHODS`, `24` `UNSUPPORTED_REASONS`)
 **Verification Gate:** `test/test-defi-m0.mjs` · Fixtures: `test/fixtures/defi/`
 
 ---

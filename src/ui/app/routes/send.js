@@ -108,7 +108,6 @@ export function SendRoute({ params, navigate, back }) {
       && (asset.isNative
         ? recipientState?.checking !== true && recipientState?.exists !== false : true);
     liveReviewBtn?.update({ disabled: !ready });
-    if (liveForm) liveForm.feeText.textContent = feeText();
   }
 
   // The asset / From / recipient views are INTERNAL states of this one route, not separate
@@ -462,7 +461,6 @@ export function SendRoute({ params, navigate, back }) {
     maxBtn.el.classList.add('w-auto');
 
     const spendable = h('span', { class: 'hint', text: spendableText() });
-    const feeNote = h('p', { class: 'hint', text: feeText() });
     const retryBtn = track(Button({
       label: 'Retry checks',
       variant: 'secondary',
@@ -477,7 +475,6 @@ export function SendRoute({ params, navigate, back }) {
     body.appendChild(h('div', { class: 'stack stack-2' }, [
       amount.el,
       h('div', { class: 'row-flex between' }, [spendable, maxBtn.el]),
-      feeNote,
       retryBtn.el,
     ]));
 
@@ -493,40 +490,13 @@ export function SendRoute({ params, navigate, back }) {
       },
     }));
     body.appendChild(h('div', { class: 'screen-actions' }, reviewBtn.el));
-    liveForm = { fromBalance, assetBalance, spendable, feeText: feeNote,
+    liveForm = { fromBalance, assetBalance, spendable,
       max: maxBtn, retry: retryBtn, amount, recipientStatus };
 
     // Re-validate a prefilled recipient (e.g. arriving from a contact link).
     if (prefill.to) validateRecipient(prefill.to, recipientStatus);
     if (prefill.amount) parseAmount(amount);
     refreshReviewEnabled();
-  }
-
-  function feeText() {
-    if (!asset.isNative) {
-      // The fee is paid in THRU, and only the NATIVE transfer fee has been measured. Token
-      // program fees are a distinct, unmeasured quantity — stating a number here would be
-      // fabrication (docs/BACKEND_GAPS.md C2), so the text says what is known and no more.
-      let text = 'Network fee is paid in THRU and has not been measured for token transfers yet.';
-      if (recipientState?.tokenAccountExists === false) {
-        text += ` This send also creates the recipient's ${asset.symbol || 'token'} account,`
-          + ' which costs one additional THRU fee.';
-      }
-      if (balanceUnits === 0n) text += ' This account holds no THRU to pay it.';
-      if (balanceUnits == null) text += ' THRU balance is not verified yet.';
-      return text;
-    }
-    if (!feeInfo) return feeStatus === 'error'
-      ? 'Network fee unavailable. Retry checks to send safely.'
-      : 'Checking the network fee…';
-    if (!feeInfo.supported) {
-      // No reserve is known on this network: claiming to hold back "a small amount" when Max
-      // would in fact reserve zero is unsafe. Pause native sends until a fee is configured.
-      return `Network fee is unknown on ${network?.label || 'this network'}. Native sends need a `
-        + 'verified fee reserve.';
-    }
-    return `Network fee: ${formatThru(BigInt(feeInfo.feeUnits))} THRU`
-      + (feeInfo.source === 'assumed' ? ' (assumed, not measured on this network)' : '');
   }
 
   /** Parse the amount field into BigInt base units of the CURRENT asset, surfacing its own errors. */

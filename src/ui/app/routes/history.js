@@ -13,9 +13,10 @@
 import { h, disposer } from '../../kit/dom.js';
 import { icon } from '../../kit/icon.js';
 import { Button } from '../../kit/button.js';
-import { PageHeader, Banner, Spinner, Empty } from '../../kit/feedback.js';
+import { PageHeader, Banner, Empty } from '../../kit/feedback.js';
 import * as bridge from '../bridge.js';
 import { formatThru } from '../../../shared/format.js';
+import { refsEqual } from '../../../shared/refs.js';
 import { TxCard } from '../../domain/tx-card.js';
 import { TxDetailSheet } from '../../domain/tx-detail-sheet.js';
 
@@ -45,7 +46,7 @@ export function HistoryRoute({ back }) {
   const banner = Banner({ tone: 'error' });
   const listHost = h('div', { class: 'list' });
   const pendingHost = h('div', { class: ['stack', 'stack-2', 'hidden'] });
-  const filterRow = h('div', { class: 'row-flex wrap history-filters', role: 'group', 'aria-label': 'History filters' });
+  const filterRow = h('div', { class: 'history-filters', role: 'group', 'aria-label': 'History filters' });
   const refreshIcon = icon('refresh', 14);
   const refreshBtn = h('button', {
     type: 'button',
@@ -214,6 +215,7 @@ export function HistoryRoute({ back }) {
   }
 
   const cards = [];
+
   function paintList() {
     // Cards own kit components (signature CopyButton), so they must be destroyed with the
     // same rigor as every other owned component — per repaint, not only at teardown.
@@ -223,6 +225,9 @@ export function HistoryRoute({ back }) {
     const shown = entries.filter(matches);
 
     if (!shown.length) {
+      // Keep the History area blank while the first feed read is pending. Do not replace
+      // the removed cached-refresh status with another loading/checking message.
+      if (feedLoading && activeFilter === 'all') return;
       listHost.appendChild(Empty({
         iconName: 'history',
         title: activeFilter !== 'all' ? 'Nothing matches this filter'
@@ -313,21 +318,17 @@ export function HistoryRoute({ back }) {
     const seq = ++loadSeq;
     feedLoading = true;
     paging = false;
-    feedSynced = true;
+    if (!entries.length) feedSynced = true;
     cursor = null;
-    entries = [];
-    // A push event already knows about a new submitted send. Keep it visible while the
-    // independent cache/feed and pending reconciliation reads run, rather than hiding it.
-    pending = Array.isArray(pendingHint)
-      ? pendingHint.filter((p) => !network?.id || !p.networkId || p.networkId === network.id)
-      : [];
+    // A refresh keeps the last visible stream mounted while cache/feed revalidation runs.
+    // First visit stays quiet until cache/feed data arrives instead of flashing a spinner.
+    if (Array.isArray(pendingHint)) {
+      pending = pendingHint.filter((p) => !network?.id || !p.networkId || p.networkId === network.id);
+    }
     banner.clear();
+    if (!entries.length) paintList();
     paintPending();
     paintMore();
-    for (const c of cards) c.destroy?.();
-    cards.length = 0;
-    while (listHost.firstChild) listHost.removeChild(listHost.firstChild);
-    listHost.appendChild(Spinner({ label: 'Loading activity' }).el);
 
     try {
       // First paint depends on the active identity, not a wallet-wide account-list fetch.
@@ -354,7 +355,6 @@ export function HistoryRoute({ back }) {
         entries = cached.entries;
         cursor = cached.nextCursor ?? null;
         feedSynced = false;
-        refreshIcon.classList.add('spinning');
         paintList();
         paintPending();
       }
@@ -388,16 +388,16 @@ export function HistoryRoute({ back }) {
       entries = feed.entries;
       cursor = feed.nextCursor ?? null;
       feedSynced = feed.synced !== false;
-      if (feedSynced) banner.clear();
-      else banner.set('Cached · Sync unavailable', 'warning');
+      // Keep cached activity visible without adding a refresh-status message.
+      banner.clear();
       paintPending();
       paintList();
     } catch (error) {
       if (!isCurrent(seq)) return;
       feedSynced = false;
-      banner.set(entries.length
-        ? 'Cached · Sync unavailable'
-        : error.message || 'Could not load activity.', entries.length ? 'warning' : 'error');
+      feedLoading = false;
+      if (entries.length) banner.clear();
+      else banner.set(error.message || 'Could not load activity.', 'error');
       paintPending();
       paintList();
     } finally {
@@ -421,10 +421,23 @@ export function HistoryRoute({ back }) {
     entries = [];
     pending = [];
     cursor = null;
+    for (const card of cards) card.destroy?.();
+    cards.length = 0;
+    while (listHost.firstChild) listHost.removeChild(listHost.firstChild);
     paintPending();
     load();
   }
 
+  // Boot already fetched public active-account/network metadata. Seed these identity values so
+  // the storage-only history read can start immediately, without an account/network round trip.
+  const startup = bridge.getBootstrapSnapshot();
+  if (startup?.unlocked && startup?.network?.id && startup?.account?.ref) {
+    const active = startup.accounts.find((candidate) => refsEqual(candidate?.ref, startup.account.ref));
+    if (active?.address) {
+      account = active;
+      network = startup.network;
+    }
+  }
   load();
 
   // Blocks land in a few ms (owner, 2026-10-26): refresh the visible stream several times a

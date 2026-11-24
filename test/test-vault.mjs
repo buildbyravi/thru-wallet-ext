@@ -442,3 +442,126 @@ assert(
 );
 
 console.log('\nAll vault.js integration checks passed.');
+
+console.log('\n[16] Master password changes re-encrypt safely and recover from storage interruption');
+await vault.resetWallet();
+const changeMnemonic = await vault.createVault('old master password');
+const beforePasswordChange = await vault.listAccounts();
+let wrongCurrentRejected = false;
+try {
+  await vault.changeMasterPassword('wrong current password', 'new master password');
+} catch (error) {
+  wrongCurrentRejected = /incorrect password/i.test(error.message);
+}
+assert(wrongCurrentRejected, 'password change requires the correct current password');
+assert(await vault.isUnlocked(), 'wrong current password does not lock an intact wallet');
+let samePasswordRejected = false;
+try {
+  await vault.changeMasterPassword('old master password', 'old master password');
+} catch (error) {
+  samePasswordRejected = /different from your current password/i.test(error.message);
+}
+assert(samePasswordRejected, 'new master password must differ from the current password');
+assert(await vault.isUnlocked(), 'rejecting the same password leaves the wallet unlocked');
+
+const localSet = chrome.storage.local.set;
+chrome.storage.local.set = async (record) => {
+  if (Object.hasOwn(record, 'vault')) throw new Error('simulated storage write failure');
+  return localSet(record);
+};
+let writeFailed = false;
+try {
+  await vault.changeMasterPassword('old master password', 'new master password');
+} catch (error) {
+  writeFailed = /storage write failure/.test(error.message);
+}
+chrome.storage.local.set = localSet;
+assert(writeFailed, 'storage write failure is surfaced to the caller');
+assert(!(await vault.isUnlocked()), 'failed password write removes the old active session key');
+await vault.unlock('old master password');
+assert((await vault.listAccounts())[0].address === beforePasswordChange[0].address,
+  'old encrypted vault remains usable with the old password after failed write');
+
+await vault.changeMasterPassword('old master password', 'new master password');
+assert(await vault.isUnlocked(), 'successful password change restores the unlocked session');
+assert((await vault.listAccounts())[0].address === beforePasswordChange[0].address,
+  'password change preserves wallet accounts');
+await vault.lock();
+let oldPasswordRejected = false;
+try { await vault.unlock('old master password'); } catch { oldPasswordRejected = true; }
+assert(oldPasswordRejected, 'old password cannot unlock after successful change');
+await vault.unlock('new master password');
+assert((await vault.exportAccountSecret(beforePasswordChange[0].ref, 'new master password')).mnemonic === changeMnemonic,
+  'new password unlocks and decrypts the same recovery phrase');
+const sessionSet = chrome.storage.session.set;
+chrome.storage.session.set = async () => { throw new Error('simulated session write failure'); };
+const sessionFailureResult = await vault.changeMasterPassword('new master password', 'another master password');
+chrome.storage.session.set = sessionSet;
+assert(sessionFailureResult.changed && sessionFailureResult.relocked,
+  'post-commit session failure reports changed-and-relocked rather than false failure');
+assert(!(await vault.isUnlocked()), 'post-commit session failure leaves the wallet locked');
+let previousPasswordRejected = false;
+try { await vault.unlock('new master password'); } catch { previousPasswordRejected = true; }
+assert(previousPasswordRejected, 'the prior password cannot open the committed new envelope');
+await vault.unlock('another master password');
+assert((await vault.exportAccountSecret(beforePasswordChange[0].ref, 'another master password')).mnemonic === changeMnemonic,
+  'the new password still opens the committed envelope after session storage failure');
+
+console.log('  -- lock racing a password change --');
+const localSetBeforeRace = chrome.storage.local.set;
+let unlockLocalWrite;
+let signalLocalWrite;
+const localWriteReached = new Promise((resolve) => { signalLocalWrite = resolve; });
+const localWriteGate = new Promise((resolve) => { unlockLocalWrite = resolve; });
+chrome.storage.local.set = async (record) => {
+  if (Object.hasOwn(record, 'vault')) {
+    signalLocalWrite();
+    await localWriteGate;
+  }
+  return localSetBeforeRace(record);
+};
+const racingChange = vault.changeMasterPassword('another master password', 'lock-race password');
+await localWriteReached;
+const racingLock = vault.lock();
+unlockLocalWrite();
+await racingChange;
+await racingLock;
+chrome.storage.local.set = localSetBeforeRace;
+assert(!(await vault.isUnlocked()), 'a lock requested during password change remains in effect after both operations finish');
+await vault.unlock('lock-race password');
+
+console.log('  -- migrated V1 rollback backup is retired on password change --');
+await vault.resetWallet();
+const legacyPassword = 'legacy password 123';
+const legacySalt = crypto.getRandomValues(new Uint8Array(16));
+const legacyIv = crypto.getRandomValues(new Uint8Array(12));
+const legacyBaseKey = await crypto.subtle.importKey('raw', new TextEncoder().encode(legacyPassword), 'PBKDF2', false, ['deriveBits']);
+const legacyRawKey = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt: legacySalt, iterations: 600000, hash: 'SHA-256' }, legacyBaseKey, 256);
+const legacyAesKey = await crypto.subtle.importKey('raw', legacyRawKey, 'AES-GCM', false, ['encrypt']);
+const legacyCiphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv: legacyIv }, legacyAesKey,
+  new TextEncoder().encode(JSON.stringify({ mnemonic: changeMnemonic, hdAccountIndices: [0], importedKeys: [] })));
+const b64 = (bytes) => Buffer.from(bytes).toString('base64');
+await chrome.storage.local.set({ vault: {
+  salt: b64(legacySalt), iv: b64(legacyIv), ciphertext: b64(new Uint8Array(legacyCiphertext)),
+} });
+await vault.unlock(legacyPassword);
+assert(Boolean((await chrome.storage.local.get('vault_legacy_backup_v1')).vault_legacy_backup_v1),
+  'legacy migration creates the expected old-password rollback backup');
+await vault.changeMasterPassword(legacyPassword, 'migrated new password');
+assert(!(await chrome.storage.local.get('vault_legacy_backup_v1')).vault_legacy_backup_v1,
+  'password change removes the V1 backup encrypted under the retired password');
+await vault.lock();
+let legacyPasswordRejected = false;
+try { await vault.unlock(legacyPassword); } catch { legacyPasswordRejected = true; }
+assert(legacyPasswordRejected, 'the retired V1 password cannot recover the migrated wallet after password change');
+await vault.unlock('migrated new password');
+
+console.log('  -- concurrent vault mutations serialize from their snapshot read --');
+await vault.resetWallet();
+await vault.createVault('serialized mutation password');
+const parallelAdds = await Promise.all([vault.addHdAccount(), vault.addHdAccount()]);
+const afterParallelAdds = await vault.listAccounts();
+assert(afterParallelAdds.length === 3
+  && new Set(afterParallelAdds.map((account) => account.hdIndex)).size === 3
+  && new Set(parallelAdds.map((ref) => ref.index)).size === 2,
+'concurrent HD-account mutations retain both distinct additions instead of overwriting a stale snapshot');

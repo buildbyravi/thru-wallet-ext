@@ -128,6 +128,29 @@ export async function unlock(password) {
  * Throttled using the same exponential backoff lockout as unlock, preventing brute-force guesses.
  * @param {string} password
  */
+export async function changePassword(currentPassword, newPassword) {
+  await auth.assertUnlockAllowed();
+  try {
+    const result = await vault.changeMasterPassword(currentPassword, newPassword);
+    await auth.recordSuccess();
+    if (result?.relocked) await lock();
+    return result;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/incorrect password/i.test(message)) {
+      const { retryInMs } = await auth.recordFailure();
+      if (retryInMs > 0) {
+        const seconds = Math.ceil(retryInMs / 1000);
+        const locked = new Error(`Incorrect password. Too many attempts — try again in ${seconds} second${seconds === 1 ? '' : 's'}.`);
+        locked.code = 'AUTH_LOCKED_OUT';
+        throw locked;
+      }
+    }
+    if (!(await vault.isUnlocked())) await lock();
+    throw error;
+  }
+}
+
 export async function verifyPassword(password) {
   await auth.assertUnlockAllowed();
   try {

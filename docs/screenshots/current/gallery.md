@@ -2,7 +2,7 @@
 
 TESTED: real built UI, mocked bridge; not MV3 or live-network verification
 
-Captured: 2026-11-23T20:37:21.442Z. Source revision: `46f07c6a2b602bcfb923bdf5a7340500c3a56a90` (branch `pr-31`).
+Captured: 2026-11-24T16:55:34.977Z. Source revision: `d32901e73e849046c5a699b4535cbef4394c0ffd` (branch `arena/pr32-ci-fix`).
 Browser: 159.0.8154.6, win32. See [manifest](manifest.json) for hashes, source changes and limitations.
 
 ## welcome / light / 400x600

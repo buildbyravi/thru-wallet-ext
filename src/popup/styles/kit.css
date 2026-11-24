@@ -209,6 +209,7 @@
    covered by tokens.css's [data-theme="dark"] block without a second declaration here. */
 .detail-val.positive { color: var(--positive); }
 .detail-val.negative { color: var(--negative); }
+.detail-val.accent { color: var(--accent); }
 
 /* ---- Transaction detail sheet (P2) -------------------------
    A bottom-anchored variant of the existing modal, reusing .modal-overlay/.modal-card
@@ -263,6 +264,38 @@
 
 .modal-overlay.open .tx-sheet { transform: translateY(0); }
 
+.tx-sheet-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  min-height: 42px;
+  padding: 0 var(--sp-1);
+}
+.tx-sheet-hero-amount {
+  min-width: 0;
+  color: var(--text-1);
+  font-family: var(--font-mono);
+  font-size: 22px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+.tx-sheet-hero-amount.positive { color: var(--positive); }
+.tx-sheet-status {
+  flex: 0 0 auto;
+  padding: 5px 9px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-inset);
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+  font-weight: 650;
+}
+.tx-sheet-status.succeeded { background: color-mix(in srgb, var(--positive) 12%, var(--surface-1)); color: var(--positive); }
+.tx-sheet-status.failed { background: color-mix(in srgb, var(--negative) 10%, var(--surface-1)); color: var(--negative); }
+.tx-sheet-status.pending { background: color-mix(in srgb, var(--gold) 12%, var(--surface-1)); color: var(--gold); }
+
 /* The full signature is the reason this sheet exists, so it gets its own block rather than
    a table row: 64+ characters need to wrap, and a right-aligned table cell cannot. */
 .tx-sheet-sig {
@@ -282,19 +315,26 @@
   gap: var(--sp-2);
 }
 
+.tx-sheet .detail-label {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+.tx-sheet .detail-label-note {
+  color: var(--text-3);
+  font-size: 9px;
+  font-weight: 400;
+  letter-spacing: 0;
+  line-height: 1.3;
+  text-transform: none;
+}
+
 .detail-sheet-mono {
   font-family: var(--font-mono);
   font-size: var(--fs-xs);
   color: var(--text-1);
   word-break: break-all;
-  line-height: 1.5;
-}
-
-/* Provenance note under the fee row. Deliberately not .muted-small or a tooltip: the
-   distinction between a declared fee and a charged one is load-bearing, not a footnote. */
-.tx-sheet-note {
-  font-size: var(--fs-xs);
-  color: var(--text-3);
   line-height: 1.5;
 }
 

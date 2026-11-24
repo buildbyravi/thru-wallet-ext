@@ -1062,6 +1062,8 @@ const DETAIL_ENTRIES = [
     programAddress: NETWORK_BETANET.transferProgramId,
     kind: 'sent',
     amount: '750000',
+    feeDeclaredUnits: '123',
+    timestampSource: 'block',
     counterparty: ADDRESS_B,
     timestamp: 1750000020000,
   },
@@ -1072,6 +1074,7 @@ const DETAIL_ENTRIES = [
     programAddress: NETWORK_BETANET.transferProgramId,
     kind: 'received',
     amount: '1250000',
+    feeDeclaredUnits: '250',
     counterparty: ADDRESS_B,
     timestamp: 1750000015000,
   },
@@ -1353,6 +1356,12 @@ const FIXTURES = {
   'wallet.verifyPassword': ({ password } = {}) => {
     if (password !== SECRET_PASSWORD) throw apiError('BAD_PASSWORD', 'Incorrect password.');
     return { verified: true };
+  },
+  'wallet.changePassword': ({ currentPassword, newPassword } = {}) => {
+    if (currentPassword !== SECRET_PASSWORD) throw apiError('BAD_PASSWORD', 'Incorrect password.');
+    if (typeof newPassword !== 'string' || newPassword.length < 8) throw apiError('BAD_PASSWORD', 'Use at least 8 characters.');
+    if (newPassword === currentPassword) throw apiError('BAD_PASSWORD', 'Choose a different new password.');
+    return { changed: true };
   },
   'wallet.lock': () => {
     backend.unlocked = false;
@@ -2703,6 +2712,54 @@ async function themeTest() {
   ok('Settings declares separate dialogs for Network, Signing security, Theme Mode and Auto-lock time',
     buttons(tree, /^(Network|Signing security|Theme Mode|Auto-lock time)/).filter((node) => node.getAttribute('aria-haspopup') === 'dialog')
       .map(textOf).join('|') === 'Network Betanet|Signing security Session-only|Theme Mode Dark|Auto-lock time 15 min');
+  const changePasswordRow = buttons(tree, /^Change password/)[0];
+  click(changePasswordRow);
+  const passwordSheet = DOC.body.querySelector('.settings-picker');
+  const passwordForm = passwordSheet?.querySelector('form');
+  const changeFields = passwordForm?.querySelectorAll('input[type="password"]') || [];
+  ok('Settings exposes an accessible Change password form with three secret fields',
+    passwordSheet?.getAttribute('aria-label') === 'Change password' && changeFields.length === 3
+      && [...changeFields].every((input) => input.getAttribute('spellcheck') === 'false'
+        && input.getAttribute('autocorrect') === 'off' && input.getAttribute('autocapitalize') === 'off'));
+  if (changeFields.length === 3) {
+    const changeCallsBeforeSamePassword = chromeLog.calls.filter((method) => method === 'wallet.changePassword').length;
+    type(changeFields[0], 'same password 123');
+    type(changeFields[1], 'same password 123');
+    type(changeFields[2], 'same password 123');
+    passwordForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await settle();
+    ok('Change password rejects reusing the current password before calling the backend',
+      chromeLog.calls.filter((method) => method === 'wallet.changePassword').length === changeCallsBeforeSamePassword
+        && /different from your current password/i.test(textOf(passwordSheet)));
+    type(changeFields[0], 'wrong current');
+    type(changeFields[1], 'new password 123');
+    type(changeFields[2], 'new password 123');
+    passwordForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await settle();
+    ok('failed password change clears all secret fields and preserves the retry form',
+      [...changeFields].every((input) => input.value === '')
+        && /Incorrect password/.test(textOf(passwordSheet)));
+
+    const originalChangePassword = FIXTURES['wallet.changePassword'];
+    let successfulParams = null;
+    FIXTURES['wallet.changePassword'] = (params) => {
+      successfulParams = params;
+      return { changed: true };
+    };
+    type(changeFields[0], SECRET_PASSWORD);
+    type(changeFields[1], 'fresh password 456');
+    type(changeFields[2], 'fresh password 456');
+    passwordForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await settle();
+    ok('successful password change forwards both credentials and closes with all fields cleared',
+      successfulParams?.currentPassword === SECRET_PASSWORD
+        && successfulParams?.newPassword === 'fresh password 456'
+        && !isConnected(passwordSheet)
+        && [...changeFields].every((input) => input.value === ''));
+    FIXTURES['wallet.changePassword'] = originalChangePassword;
+  }
+  ok('successful Change password close leaves every detached password input empty',
+    [...changeFields].every((input) => input.value === ''));
   ok('picker choices are not mounted inline', buttons(tree, /^(Light|Dark|System)$/).length === 0);
   const disabledRows = buttons(tree, /^(Language|Currency)Planned$/);
   ok('Language and Currency appear once each as disabled, labelled Planned rows',
@@ -4285,7 +4342,7 @@ async function navigationTest() {
       String(router.root.querySelectorAll('.tx-card').length));
   }
 
-  // P0 audit finding 2: an unsynced (offline) feed must be labelled, not masquerade.
+  // Offline cached entries remain useful without a persistent sync warning banner.
   FIXTURES['tx.getHistoryFeed'] = () => ({
     entries: DUP_ENTRIES.slice(0, 3).map((e) => ({ ...e })),
     nextCursor: 3,
@@ -4293,8 +4350,10 @@ async function navigationTest() {
   });
   router.navigate('/history');
   await settle();
-  ok('an unsynced feed is labelled as cached/offline in the UI',
-    /Cached · Sync unavailable/.test(textOf(router.root)), textOf(router.root).slice(0, 200));
+  ok('an unsynced feed keeps its entries without a Cached · Sync unavailable banner',
+    !/Cached · Sync unavailable/.test(textOf(router.root))
+      && router.root.querySelectorAll('.tx-card').length === 3,
+    textOf(router.root).slice(0, 200));
   FIXTURES['tx.getHistoryFeed'] = () => ({
     entries: DUP_ENTRIES.slice(0, 15).map((e) => ({ ...e })),
     nextCursor: 15,
@@ -4444,23 +4503,35 @@ async function navigationTest() {
       const button = detailsButton(card);
       return card.getAttribute('role') !== 'button' && button?.localName === 'button'
         && button.getAttribute('aria-haspopup') === 'dialog' && Boolean(button.getAttribute('aria-label'))
-        && !button.querySelector('a') && !button.querySelector('button');
+        && !button.querySelector('a') && !button.querySelector('button')
+        && Boolean(button.querySelector('.tx-card-chevron'));
     }));
+  ok('P2: history filters are grouped in a single segmented control tray',
+    Boolean(router.root.querySelector('.history-filters'))
+      && router.root.querySelectorAll('.chip-option').length === 4,
+    `tray=${Boolean(router.root.querySelector('.history-filters'))} chips=${router.root.querySelectorAll('.chip-option').length}`);
 
   // Open the SECOND card. A positional bug that always opened entries[0] must fail.
   const secondCard = detailsButton(detailCards[1]);
   secondCard.focus();
   chromeLog.calls.length = 0;
   click(secondCard);
+  let sheetEl = DOC.body.lastChild;
+  ok('P2: the cached fee renders before the lazy detail response resolves',
+    textOf(sheetEl).includes('0.00000025 THRU'), textOf(sheetEl).slice(0, 500));
   await settle();
 
-  let sheetEl = DOC.body.lastChild;
+  sheetEl = DOC.body.lastChild;
   ok('P2: activating a card opens a modal sheet',
     Boolean(sheetEl) && sheetEl.classList.contains('modal-overlay') && isConnected(sheetEl),
     `${sheetEl?.className}`);
   ok('P2: the sheet declares itself a modal dialog',
     sheetEl.firstChild.getAttribute('role') === 'dialog'
       && sheetEl.firstChild.getAttribute('aria-modal') === 'true');
+  ok('P2: the detail sheet leads with a clear amount and status hero',
+    Boolean(sheetEl.querySelector('.tx-sheet-hero-amount'))
+      && Boolean(sheetEl.querySelector('.tx-sheet-status'))
+      && /Failed on-chain/.test(textOf(sheetEl.querySelector('.tx-sheet-status'))));
 
   let sheetText = textOf(sheetEl);
   ok('P2: the sheet opens against the tapped entry BY IDENTITY, not by position',
@@ -4484,6 +4555,9 @@ async function navigationTest() {
     sheetText.slice(0, 320));
   ok('P2: the sheet shows the block number of the tapped entry',
     sheetText.includes(String(DETAIL_ENTRIES[1].slot)), sheetText.slice(0, 300));
+  ok('P2: the network value uses the brand accent',
+    Boolean([...sheetEl.querySelectorAll('.detail-row')].find((row) =>
+      textOf(row.querySelector('.detail-label')) === 'Network')?.querySelector('.detail-val.accent')));
   ok('P2: the sheet offers a copy action for the full signature',
     buttons(sheetEl, /copy transaction signature/i).length === 1,
     String(buttons(sheetEl, /copy transaction signature/i).length));
@@ -4499,11 +4573,12 @@ async function navigationTest() {
   ok('P2: a resolved block time renders as an absolute wall-clock time',
     /Block time/.test(sheetText) && !/Block time\s+Not available/.test(sheetText),
     sheetText.slice(0, 400));
-  ok('P2: the fee row is labelled as DECLARED, never presented as an amount charged',
-    /Fee \(declared\)/.test(sheetText) && /declared in the transaction header/i.test(sheetText),
-    sheetText.slice(0, 500));
-  ok('P2: the sheet states that Thru reports no charged fee, rather than implying one',
-    /no charged-fee field/i.test(sheetText), sheetText.slice(-320));
+  const feeRow = [...sheetEl.querySelectorAll('.detail-row')]
+    .find((row) => textOf(row.querySelector('.detail-label')).startsWith('Fee'));
+  ok('P2: the concise fee label has visible declared-versus-charged provenance',
+    Boolean(feeRow) && /Header declaration/.test(textOf(feeRow.querySelector('.detail-label-note')))
+      && /charged amount unavailable/i.test(sheetText)
+      && !sheetEl.querySelector('.tx-sheet-note'), sheetText.slice(0, 500));
 
   const sheetExplorer = [...(sheetEl.querySelectorAll?.('a') || [])]
     .find((a) => /explorer/i.test(labelOf(a)));
@@ -4540,6 +4615,9 @@ async function navigationTest() {
     Boolean(sheetEl) && sheetEl.classList?.contains('modal-overlay')
       && textOf(sheetEl).includes(DETAIL_ENTRIES[0].signature),
     textOf(sheetEl).slice(0, 160));
+  ok('P2: a succeeded transaction status is rendered with the positive tone',
+    Boolean([...sheetEl.querySelectorAll('.detail-row')].find((row) =>
+      textOf(row.querySelector('.detail-label')) === 'Status')?.querySelector('.detail-val.positive')));
   pressKey(sheetEl.firstChild, 'Escape');
   await settle();
 
@@ -4557,7 +4635,9 @@ async function navigationTest() {
     /Block time\s+Not available/.test(sheetText.replace(/\s+/g, ' ')),
     sheetText.replace(/\s+/g, ' ').slice(0, 400));
   ok('P2: an unsupported fetch leaves the fee absent rather than quoting the network default',
-    /Fee \(declared\)\s+Not available/.test(sheetText.replace(/\s+/g, ' ')),
+    [...sheetEl.querySelectorAll('.detail-row')].some((row) =>
+      textOf(row.querySelector('.detail-label')).startsWith('Fee')
+        && textOf(row.querySelector('.detail-val')) === 'Not available'),
     sheetText.replace(/\s+/g, ' ').slice(0, 400));
   ok('P2: the facts the list already knew survive a failed detail fetch',
     sheetText.includes(DETAIL_ENTRIES[2].signature)
@@ -4909,6 +4989,8 @@ async function progressiveSendTest() {
     buttons(route.el, /^review$/i)[0]?.disabled === true);
   holds.resolve('tx.estimateFee', FIXTURES['tx.estimateFee']({}));
   await settle();
+  ok('the Send form omits the quoted network-fee line because fee details are in Review',
+    !/Network fee:\s*0\.000000001 THRU/.test(textOf(route.el)));
   ok('a fee quote alone cannot spend an unknown live balance',
     buttons(route.el, /^review$/i)[0]?.disabled === true);
 
@@ -5630,6 +5712,11 @@ async function historyCacheFirstTest() {
   try {
     route = HistoryRoute({ back() {} });
     DOC.body.appendChild(route.el);
+    ok('opening History does not flash a full-screen Loading activity spinner',
+      !/Loading activity/.test(textOf(route.el)) && !route.el.querySelector('.spinner'));
+    ok('an empty first visit shows no loading or checking message while the feed is pending',
+      !/Checking for activity|Checking activity|Loading recent transactions|Loading activity/.test(textOf(route.el))
+        && route.el.querySelectorAll('.tx-card').length === 0);
     await settle();
     ok('cached History draws a card while the live feed, labels and pending replies are held',
       route.el.querySelectorAll('.tx-card').length === 1
@@ -5638,8 +5725,10 @@ async function historyCacheFirstTest() {
         && held.some((item) => item.message.method === 'tx.getPending')
         && held.some((item) => item.message.method === 'account.list'),
       textOf(route.el).slice(0, 280));
-    ok('cached rows are shown while revalidating and cannot offer load-more until the feed revalidates',
-      Boolean(route.el.querySelector('.spinning'))
+    ok('cached rows stay visible without any refresh-status message or loading spinner while feed revalidation is pending',
+      route.el.querySelectorAll('.tx-card').length === 1
+        && !/Cached activity|checking for updates|Checking activity|Loading recent transactions/i.test(textOf(route.el))
+        && !route.el.querySelector('.spinning')
         && buttons(route.el, /load more/i).length === 0);
     reply('tx.getHistoryFeed', { entries: [fresh], nextCursor: 15, synced: true });
     await settle();
@@ -5658,8 +5747,10 @@ async function historyCacheFirstTest() {
     held.splice(failedIndex, 1)[0].callback({ ok: false,
       error: { code: 'NETWORK_ERROR', message: 'RPC offline', retryable: true } });
     await settle();
-    ok('a failed feed keeps cached cards and does not make a second raw RPC request',
-      /Block 101/.test(textOf(route.el)) && /Cached · Sync unavailable/.test(textOf(route.el))
+    ok('a failed feed keeps cached cards without a refresh-status message or error banner',
+      /Block 101/.test(textOf(route.el))
+        && !/Cached activity|checking for updates|may be out of date/i.test(textOf(route.el))
+        && !/Cached · Sync unavailable/.test(textOf(route.el))
         && chromeLog.calls.filter((method) => method === 'tx.listHistory').length === rawCallsBefore);
 
     cachedCursor = null;
@@ -5667,8 +5758,8 @@ async function historyCacheFirstTest() {
     await settle();
     reply('tx.getHistoryFeed', { entries: [alpha], nextCursor: null, synced: false });
     await settle();
-    ok('the offline feed keeps the last-page card without offering Load more',
-      /Block 101/.test(textOf(route.el)) && /Cached · Sync unavailable/.test(textOf(route.el))
+    ok('the offline feed keeps the last-page card silently without offering Load more',
+      /Block 101/.test(textOf(route.el)) && !/Cached · Sync unavailable/.test(textOf(route.el))
         && buttons(route.el, /load more/i).length === 0);
 
     emitEvent('pendingTxChanged', {});
@@ -5899,8 +5990,11 @@ async function accountsBootstrapPaintTest() {
     `rows=${visibleNames.join(', ')} held=${holds.held.map((x) => x.message.method).join(',')}`);
   ok('keyring account count has an explicit label',
     /\baccounts?\b/i.test(textOf(route.el)));
-  ok('keyring management action has a visible label',
-    [...route.el.querySelectorAll('.keyring-manage-btn')].some((button) => /manage/i.test(textOf(button))));
+  ok('keyring management action has visible text and an accessible name',
+    [...route.el.querySelectorAll('.keyring-manage-btn')].some((button) =>
+      /^Manage\b/.test(button.getAttribute('aria-label') || '') && /Manage/.test(textOf(button))));
+  ok('the backup warning includes an inline SVG icon',
+    [...route.el.querySelectorAll('.keyring-backup-warning')].some((badge) => badge.querySelector('svg')));
   holds.resolve('account.list', backend.accounts.map((account) => ({ ...account, balance: null, balanceStale: true })));
   holds.resolve('keyring.list', backend.keyrings.map((keyring) => ({ ...keyring })));
   holds.resolve('account.getActiveRef', activeAccount().ref);
@@ -5911,6 +6005,37 @@ async function accountsBootstrapPaintTest() {
   offAccountsChanged();
   ok('an account-change event invalidates the startup rows before the next visit',
     bridge.getBootstrapSnapshot() === null);
+
+  await bridge.bootstrap();
+  await bridge.send('keyring.rename', { keyringId: 'seed_fixture', label: 'Renamed' });
+  ok('a successful keyring rename invalidates the startup label snapshot',
+    bridge.getBootstrapSnapshot() === null);
+
+  await bridge.bootstrap();
+  const offBalanceChanged = bridge.onEvent('balanceChanged', () => {});
+  emitEvent('balanceChanged', {});
+  offBalanceChanged();
+  ok('a balance-change event invalidates the startup balance snapshot',
+    bridge.getBootstrapSnapshot() === null);
+
+  await bridge.bootstrap();
+  const refreshedRoute = AccountsRoute({ navigate() {}, back() {} });
+  DOC.body.appendChild(refreshedRoute.el);
+  await settle();
+  const accountReadsBeforeBalance = chromeLog.calls.filter((method) => method === 'account.list').length;
+  emitEvent('balanceChanged', {
+    [ADDRESS_A]: { balance: '100000000', stale: false, fetchedAt: Date.now() },
+  });
+  await settle();
+  ok('Accounts applies balance events to visible rows without starting another balance-read loop',
+    chromeLog.calls.filter((method) => method === 'account.list').length === accountReadsBeforeBalance
+      && /1 THRU/.test(textOf(refreshedRoute.el.querySelector('.row-value'))));
+  const accountReadsBeforeSwitch = chromeLog.calls.filter((method) => method === 'account.list').length;
+  emitEvent('networkChanged', { id: 'localnet' });
+  await settle();
+  ok('Accounts reloads its account and balance snapshot after a network change',
+    chromeLog.calls.filter((method) => method === 'account.list').length > accountReadsBeforeSwitch);
+  refreshedRoute.destroy(); refreshedRoute.el.remove();
 }
 
 // ---- Audit: other consumers of tx.getBalances must not display its stale zero ---------

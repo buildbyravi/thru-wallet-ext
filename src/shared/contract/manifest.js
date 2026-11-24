@@ -144,7 +144,8 @@
 //   v31 adds bidirectional reverse domain resolution.
 //   v32 enforces the background review consent token gate across value-moving handlers.
 //   v33 appends strict chain-verified token import; legacy metadata import remains compatible.
-export const CONTRACT_VERSION = 33;
+//   v34 appends password change, requiring an unlocked session and current-password reauth.
+export const CONTRACT_VERSION = 34;
 
 export const METHODS = {
   // ---- System ------------------------------------------------------------
@@ -1224,6 +1225,12 @@ export const METHODS = {
       + 'refuses with BINDING_MISMATCH; USER_REJECTED never resets state by mistake',
     auth: 'signing',
     since: 18,
+  },
+  'wallet.changePassword': {
+    params: ['currentPassword', 'newPassword'],
+    returns: '{ changed:true, relocked?:true } after re-encryption; relocked means the new password is saved but session storage failed and the wallet was locked',
+    auth: 'unlocked',
+    since: 34,
   },
 };
 

@@ -21,6 +21,8 @@ export function AccountsRoute({ navigate, back }) {
   const d = disposer();
   let groups = [];
   let searchTerm = '';
+  let loadRevision = 0;
+  let destroyed = false;
   let data = { accounts: [], keyrings: [], activeRef: null };
 
   const banner = Banner({ tone: 'error' });
@@ -168,7 +170,18 @@ export function AccountsRoute({ navigate, back }) {
     }
   }
 
+  function applyBalances(fresh) {
+    for (const group of groups) {
+      for (const row of group.rows) {
+        const entry = fresh?.[row.account.address];
+        // A stale entry with no successful fetch timestamp has no last-known balance.
+        if (entry) row.setBalance(entry.stale && !entry.fetchedAt ? null : entry.balance, entry.stale);
+      }
+    }
+  }
+
   async function load({ preserveExisting = false } = {}) {
+    const revision = ++loadRevision;
     banner.clear();
     try {
       const [accounts, keyrings, activeRef] = await Promise.all([
@@ -176,22 +189,19 @@ export function AccountsRoute({ navigate, back }) {
         bridge.send('keyring.list'),
         bridge.send('account.getActiveRef'),
       ]);
+      if (destroyed || revision !== loadRevision) return;
       data = { accounts: accounts || [], keyrings: keyrings || [], activeRef };
       paint();
 
       // Refresh balances in the background; the list already rendered from cache.
       bridge.send('tx.getBalances', { addresses: data.accounts.map((a) => a.address) })
         .then((fresh) => {
-          for (const group of groups) {
-            for (const row of group.rows) {
-              const entry = fresh?.[row.account.address];
-              // A stale entry with no successful fetch timestamp has no last-known balance.
-              if (entry) row.setBalance(entry.stale && !entry.fetchedAt ? null : entry.balance, entry.stale);
-            }
-          }
+          if (destroyed || revision !== loadRevision) return;
+          applyBalances(fresh);
         })
         .catch(() => {});
     } catch (error) {
+      if (destroyed || revision !== loadRevision) return;
       if (!preserveExisting) {
         while (listHost.firstChild) listHost.removeChild(listHost.firstChild);
         banner.set(error.message || 'Could not load accounts.');
@@ -231,12 +241,19 @@ export function AccountsRoute({ navigate, back }) {
   void load({ preserveExisting: hasStartupSnapshot });
 
   // Re-load when the background reports a change, instead of going stale until the user
-  // navigates away and back.
+  // navigates away and back. Network changes must never leave balances from the prior chain
+  // visible; balance events refresh the displayed rows as well as invalidating bootstrap.
   d.add(bridge.onEvent('accountsChanged', () => load()));
+  d.add(bridge.onEvent('networkChanged', () => load()));
+  d.add(bridge.onEvent('balanceChanged', (fresh) => {
+    if (!destroyed) applyBalances(fresh);
+  }));
 
   return {
     el,
     destroy() {
+      destroyed = true;
+      loadRevision += 1;
       disposeGroups();
       header.destroy();
       addBtn.destroy();

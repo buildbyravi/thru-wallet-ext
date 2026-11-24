@@ -656,8 +656,8 @@ button.row { cursor: pointer; }
 /* Account group cards are denser than generic lists while retaining a clear
    boundary; these selectors stay scoped away from Send's account picker. */
 .accounts-screen .list-group {
-  gap: var(--sp-2);
-  padding: var(--sp-2);
+  gap: 6px;
+  padding: 6px;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--surface-1);
@@ -665,18 +665,47 @@ button.row { cursor: pointer; }
 }
 
 .accounts-screen .list-group-header {
-  padding: var(--sp-1) var(--sp-2);
+  padding: 3px 6px;
   background: transparent;
   border: 0;
+  flex-wrap: nowrap;
+  gap: 6px;
+  font-size: calc(var(--fs-xs) + 1px);
+  font-weight: 700;
+}
+
+.accounts-screen .list-group-header > .truncate {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.accounts-screen .list-group-count {
+  flex: 0 0 auto;
+  color: var(--text-2);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.accounts-screen .keyring-backup-warning {
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.accounts-screen .keyring-backup-warning svg {
+  flex: 0 0 auto;
 }
 
 .accounts-screen .keyring-manage-btn {
-  width: auto;
-  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   gap: 5px;
-  padding: 0 7px;
+  width: auto;
+  min-width: 0;
+  height: 30px;
+  flex: 0 0 auto;
+  padding: 0 8px;
   font-size: var(--fs-xs);
-  white-space: nowrap;
 }
 
 .accounts-screen .list-group .row {
@@ -694,8 +723,14 @@ button.row { cursor: pointer; }
   font-weight: 700;
 }
 
+.accounts-screen .search-box {
+  margin-bottom: 0;
+}
+
 .accounts-screen .search-box input {
-  min-height: 44px;
+  min-height: 33px;
+  padding-top: 7px;
+  padding-bottom: 7px;
   border-radius: var(--radius-lg);
 }
 

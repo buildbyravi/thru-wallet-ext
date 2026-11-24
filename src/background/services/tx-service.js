@@ -283,6 +283,7 @@ function serializeHistoryEntry(entry, fallbackSignature = null) {
   return {
     signature: entry.signature ? String(entry.signature) : fallbackSignature,
     slot: entry.slot != null ? String(entry.slot) : null,
+    feeDeclaredUnits: entry.feeDeclaredUnits != null ? String(entry.feeDeclaredUnits) : null,
     success: entry.success,
     programAddress: entry.programAddress ? String(entry.programAddress) : '',
     kind: entry.kind || 'other',

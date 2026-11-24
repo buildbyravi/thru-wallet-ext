@@ -513,7 +513,76 @@ export function SettingsRoute({ navigate, back, params = {}, onNetworkBusy = () 
       return row;
     }
 
+    function openChangePassword(opener) {
+      if (picker) return;
+      const sheet = Sheet({ label: 'Change password', className: 'settings-picker', opener,
+        onClose: () => { if (picker?.sheet === sheet) picker = null; } });
+      const notice = sheet.track(Banner({ tone: 'error' }));
+      const secretAttrs = { type: 'password', required: true, spellcheck: 'false',
+        autocorrect: 'off', autocapitalize: 'off', 'data-lpignore': 'true' };
+      const current = h('input', { ...secretAttrs, autocomplete: 'current-password',
+        placeholder: 'Current password', 'aria-label': 'Current password' });
+      const next = h('input', { ...secretAttrs, autocomplete: 'new-password', minlength: 8,
+        placeholder: 'New password', 'aria-label': 'New password' });
+      const confirm = h('input', { ...secretAttrs, autocomplete: 'new-password', minlength: 8,
+        placeholder: 'Confirm new password', 'aria-label': 'Confirm new password' });
+      const cancel = h('button', { type: 'button', class: 'btn secondary', text: 'Cancel', on: { click: () => sheet.close() } });
+      const submit = h('button', { type: 'submit', class: 'btn primary', text: 'Update password' });
+      const close = h('button', { type: 'button', class: 'icon-btn icon-btn-ghost', 'aria-label': 'Close',
+        on: { click: () => sheet.close() }, text: '×' });
+      const form = h('form', { class: 'stack stack-3' }, [
+        h('p', { class: 'hint', text: 'Your wallet will remain unlocked. Enter your current password and choose a new one with at least 8 characters.' }),
+        current, next, confirm,
+        h('div', { class: 'row-flex end', style: { gap: 'var(--sp-2)' } }, [cancel, submit]),
+      ]);
+      sheet.card.appendChild(h('div', { class: 'modal-head settings-picker-head' }, [
+        h('h2', { text: 'Change password' }), close,
+      ]));
+      sheet.card.appendChild(notice.el);
+      sheet.card.appendChild(form);
+      sheet.cleanup(() => { current.value = ''; next.value = ''; confirm.value = ''; });
+      picker = { sheet, notice, key: 'password' };
+      sheet.d.on(form, 'submit', async (event) => {
+        event.preventDefault();
+        notice.clear();
+        if (!current.value) { notice.set('Enter your current password.'); current.focus(); return; }
+        if (next.value.length < 8) { notice.set('Use at least 8 characters for the new password.'); next.focus(); return; }
+        if (next.value === current.value) {
+          notice.set('Choose a new password that is different from your current password.');
+          next.focus();
+          return;
+        }
+        if (next.value !== confirm.value) { notice.set('The new passwords do not match.'); confirm.focus(); return; }
+        const currentValue = current.value;
+        const nextValue = next.value;
+        sheet.setDismissible(false);
+        cancel.disabled = true;
+        close.disabled = true;
+        submit.disabled = true;
+        submit.textContent = 'Updating…';
+        try {
+          await bridge.send('wallet.changePassword', { currentPassword: currentValue, newPassword: nextValue });
+          if (sheet.closed) return;
+          current.value = ''; next.value = ''; confirm.value = '';
+          sheet.close();
+        } catch (error) {
+          if (sheet.closed) return;
+          current.value = ''; next.value = ''; confirm.value = '';
+          notice.set(error?.message || 'Could not change password.');
+          current.focus();
+          sheet.setDismissible(true);
+          cancel.disabled = false;
+          close.disabled = false;
+          submit.disabled = false;
+          submit.textContent = 'Update password';
+        }
+      });
+      owned.push(sheet);
+      sheet.open({ onOpen: () => current.focus() });
+    }
+
     body.appendChild(SettingsGroup('Features', [
+
       action('Lock wallet', 'lock', async () => {
         try {
           await bridge.send('wallet.lock');
@@ -524,6 +593,7 @@ export function SettingsRoute({ navigate, back, params = {}, onNetworkBusy = () 
       }),
       action('Transaction history', 'history', () => navigate('/history')),
       action('Manage accounts and recovery phrases', 'wallet', () => navigate('/accounts')),
+      action('Change password', 'lock', (event) => openChangePassword(event.currentTarget)),
     ]));
 
     const networkPanel = (sheet) => {

@@ -183,6 +183,7 @@ const handlers = Object.assign(Object.create(null), {
   'wallet.importMnemonic': ({ mnemonic, password }) => walletService.importMnemonicVault(mnemonic, password),
   'wallet.importPrivateKey': ({ privateKeyHex, password }) => walletService.importPrivateKeyVault(privateKeyHex, password),
   'wallet.unlock': ({ password }) => walletService.unlock(password),
+  'wallet.changePassword': ({ currentPassword, newPassword }) => walletService.changePassword(currentPassword, newPassword),
   // `walletService.lock()` discards prepared reviews itself, so every lock path (this one, the
   // auto-lock alarm, a future caller) gets it from the single place that locks (Hard rule 21).
   'wallet.lock': () => walletService.lock(),

@@ -1,6 +1,6 @@
 # Documentation Index — Single Source of Truth (SSoT)
 
-**Last Synchronized:** 2026-11-19 | **Codebase Baseline:** Contract **v33** (`154` methods, `15` routes, `9` review kinds, `41` test suites + `9` guard scripts)
+**Last Synchronized:** 2026-11-19 | **Codebase Baseline:** Contract **v34** (`155` methods, `15` routes, `9` review kinds, `41` test suites + `9` guard scripts)
 
 ---
 
