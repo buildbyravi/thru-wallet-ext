@@ -5724,8 +5724,9 @@ async function historyCacheFirstTest() {
         && held.some((item) => item.message.method === 'tx.getPending')
         && held.some((item) => item.message.method === 'account.list'),
       textOf(route.el).slice(0, 280));
-    ok('cached rows stay visible without a loading spinner while feed revalidation is pending',
+    ok('cached rows stay visible without a checking message or loading spinner while feed revalidation is pending',
       route.el.querySelectorAll('.tx-card').length === 1
+        && !/Cached activity · checking for updates/i.test(textOf(route.el))
         && !route.el.querySelector('.spinning')
         && buttons(route.el, /load more/i).length === 0);
     reply('tx.getHistoryFeed', { entries: [fresh], nextCursor: 15, synced: true });
