@@ -1,11 +1,26 @@
 # Status and Roadmap
 
 **Document Class:** Authority (Single Source of Truth for Current Shipped State & Active Verification Work)
-Source baseline re-verified on `main` at contract v34 (2026-11-22, v1.6.0). `src/`, `test/`, and `scripts/` remain authoritative.
+Source baseline re-verified on `main` at contract v34 (2026-11-24, commit `e454a0b`, v1.6.0). `src/`, `test/`, and `scripts/` remain authoritative.
 
 ---
 
-## PR #31 Local Validation (2026-11-23)
+## PR #32 Merged Visual Record (2026-11-24)
+
+PR #32 is merged into `main` at `e454a0b`. **IMPLEMENTED:** the post-merge capture matrix contains
+162 safe-state images covering all 15 routes, including transaction detail and the blank
+password-change dialog, in light/dark at `400x600`, `320x600` and `820x720`. Capture fixtures use the
+current shared contract version. The actual capture date, source/tooling changes, browser and
+source/build/image hashes belong to [the current manifest](screenshots/current/manifest.json);
+the matrix description alone is not proof that a capture completed or is fresh.
+
+Use `capture-ui --check` to validate the record against the merged tree. The preceding gallery was
+captured before the final History commits and failed its source-hash check after merge. Refreshes
+use permanent pinned Playwright and cached Chromium; no browser reinstall is needed. Generated
+evidence is not automatically committed or pushed. These captures are mocked UI evidence, not
+native popup/panel, signing, live-chain or release approval.
+
+## Historical PR #31 Local Validation (2026-11-23)
 
 **IMPLEMENTED / TESTED locally:** the actual-built-UI record is indexed in
 [docs/screenshots/README.md](screenshots/README.md). The gallery's manifest records its exact

@@ -6,6 +6,7 @@ import { createHash } from 'node:crypto';
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { resolve, relative, sep } from 'node:path';
 import { encodeRef } from '../../src/shared/refs.js';
+import { CONTRACT_VERSION } from '../../src/shared/contract/manifest.js';
 
 const dist = resolve(process.argv[2] && !process.argv[2].startsWith('--') ? process.argv[2] : 'dist');
 const output = resolve(process.argv[3] || 'docs/screenshots/current');
@@ -52,6 +53,7 @@ const cases = [
   ['faucet', '/faucet', 'input[readonly]'],
   ['name', '/name', '.name-owner-actions'],
   ['history', '/history', 'article'],
+  ['history-detail', '/history', '[role="dialog"]'],
   ['settings', '/settings', '.settings-footer'],
   ['reset', '/reset', 'input[placeholder="RESET"]'],
   ['welcome-create', '/welcome', '.welcome-screen form'],
@@ -63,6 +65,7 @@ const cases = [
   ['settings-theme', '/settings', '[role="dialog"]'],
   ['settings-auto-lock', '/settings', '[role="dialog"]'],
   ['settings-signing', '/settings', '[role="dialog"]'],
+  ['settings-password', '/settings', '[role="dialog"]'],
   ['settings-bottom', '/settings', '.settings-footer'],
 ];
 const viewports = [{ width: 400, height: 600, context: 'popup-fixture' },
@@ -181,7 +184,7 @@ if (process.argv.includes('--check')) {
       await routeFixture(context, external, { assets: fixtureAssets });
       await context.routeWebSocket('**/*', socket => { errors.push('Unexpected WebSocket request'); socket.close(); });
       context.on('page', popup => { errors.push('Unexpected popup'); void popup.close(); });
-      await page.addInitScript(({ theme, scenario, routePath, ref }) => {
+      await page.addInitScript(({ theme, scenario, routePath, ref, contractVersion }) => {
         const ring = { id: ref.keyringId, type: 'seed', origin: 'imported', label: 'Fixture recovery phrase',
           accountCount: 2, backedUpAt: 1795435200000 };
         const account = { address: 'taDemoStudioFixture000000000000000000000000AA', label: 'Fixture wallet',
@@ -199,10 +202,10 @@ if (process.argv.includes('--check')) {
           slot: '249967', success: true, kind: 'other', timestamp: null };
         const domains = { networkId: network.id, accountAddress: account.address, items: [] };
         const replies = {
-          'system.bootstrap': { contractVersion: 33, hasVault: !noVault, unlocked, account,
+          'system.bootstrap': { contractVersion, hasVault: !noVault, unlocked, account,
             accounts, keyrings: [ring], network, preferences: prefs, pending: [] },
           'settings.get': prefs, 'system.getAutoLock': 15, 'network.list': [network], 'network.getActive': network,
-          'system.ping': { ok: true, contractVersion: 33 },
+          'system.ping': { ok: true, contractVersion },
           'wallet.hasVault': !noVault, 'wallet.isUnlocked': unlocked, 'wallet.getLockoutState': { retryInMs: 0 },
           'account.getActive': account, 'account.getActiveRef': ref, 'account.list': accounts, 'keyring.list': [ring],
           'contacts.list': [], 'tx.checkHealth': { status: 'healthy', latencyMs: 25 },
@@ -213,6 +216,8 @@ if (process.argv.includes('--check')) {
           'token.getBalances': { networkId: network.id, balances: [] },
           'tx.getCachedHistory': { networkId: network.id, address: account.address, entries: [entry], nextCursor: null },
           'tx.getHistoryFeed': { entries: [entry], nextCursor: null, synced: false },
+          'tx.getDetail': { ...entry, supported: true, feeDeclaredUnits: '1', feeCharged: false,
+            blockTimeMs: null, programAddress: null },
           'name.getCachedDomains': domains, 'name.listDomains': domains, 'name.getRegistry': { supported: false },
           'name.getCustomRegistrar': { supported: true, rootMatchesNameService: true, rootName: 'thru', root: 'fixture-root' },
         };
@@ -231,7 +236,7 @@ if (process.argv.includes('--check')) {
               ? { ok: true, data: structuredClone(replies[method]) }
               : { ok: false, error: { code: 'UNSUPPORTED', message: 'Not allowed in visual fixture' } }));
           } } };
-      }, { theme, scenario, routePath, ref });
+      }, { theme, scenario, routePath, ref, contractVersion: CONTRACT_VERSION });
       const panel = viewport.context !== 'popup-fixture' ? '?thru_panel=1' : '';
       await page.goto(`${origin}/popup.html${panel}#${routePath}`, { waitUntil: 'networkidle' });
       await page.waitForFunction(theme => document.documentElement.dataset.theme === theme, theme);
@@ -240,7 +245,10 @@ if (process.argv.includes('--check')) {
       if (scenario === 'welcome-import') await page.getByRole('button', { name: /^I already have a recovery phrase/ }).click();
       if (scenario === 'accounts-empty-search') await page.getByRole('searchbox', { name: 'Search accounts' }).fill('no-match-fixture');
       if (scenario === 'dashboard-assets') await page.getByRole('button', { name: 'Open token list' }).click();
-      const picker = { 'settings-theme': 'Theme Mode', 'settings-auto-lock': 'Auto-lock time', 'settings-signing': 'Signing security' }[scenario];
+      if (scenario === 'history-detail') await page.getByRole('article').first()
+        .getByRole('button', { name: /transaction details/ }).click();
+      const picker = { 'settings-theme': 'Theme Mode', 'settings-auto-lock': 'Auto-lock time',
+        'settings-signing': 'Signing security', 'settings-password': 'Change password' }[scenario];
       if (picker) {
         const opener = page.getByRole('button', { name: new RegExp(`^${picker}`) });
         await opener.focus(); await page.keyboard.press('Enter');
@@ -269,6 +277,10 @@ if (process.argv.includes('--check')) {
         await page.keyboard.press('Escape');
         await page.getByRole('dialog').waitFor({ state: 'detached' });
         assert.ok(await page.getByRole('button', { name: new RegExp(`^${picker}`) }).evaluate(el => el === document.activeElement));
+      }
+      if (scenario === 'history-detail') {
+        await page.keyboard.press('Escape');
+        await page.getByRole('dialog').waitFor({ state: 'detached' });
       }
       await context.close();
       console.log(`Captured ${file}`);

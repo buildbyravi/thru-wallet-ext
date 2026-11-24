@@ -42,6 +42,14 @@ approval. The manifest, not its directory name, determines which revision was ca
 
 ![Theme picker, dark, mocked narrow panel at 320x600](current/settings-theme-dark-320x600.png)
 
+### History Detail
+
+![Transaction detail, light, mocked popup at 400x600](current/history-detail-light-400x600.png)
+
+### Change Password
+
+![Blank password-change dialog, light, mocked popup at 400x600](current/settings-password-light-400x600.png)
+
 Earlier checked-in captures remain available in Git history. CI provides per-run PR/push artifacts
 with a 30-day retention window; it does not write changes back into the repository. Refresh the
 checked-in collection with each confirmed frontend change and after a merge that changes the build.

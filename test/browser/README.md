@@ -95,7 +95,9 @@ The former one-off Settings screenshot in `dist/` is removed; the maintained gal
 capture now, outside the extension package.
 
 The matrix is all registered routes plus selected onboarding, account cache/error/search, Assets,
-and Settings scenarios, each in light/dark at `400x600`, `320x600` and `820x720`. Fields remain blank;
+transaction-detail and Settings scenarios, including the blank password-change dialog, each in
+light/dark at `400x600`, `320x600` and `820x720`. The public bootstrap fixture uses the current
+shared contract version. Fields remain blank;
 export is password-gated. Every successful fixture response is enumerated. Unmodelled methods,
 browser errors, unexpected requests or filled editable inputs fail capture. Negative controls
 prove external/non-asset requests and WebSockets are refused. `--check` needs no browser tooling and rejects
