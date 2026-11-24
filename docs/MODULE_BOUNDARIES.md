@@ -15,7 +15,7 @@ Current code structure for the wallet core is:
 src/ui/app/routes → bridge.send() → v34 contract/router → background services → vault / thru-client
 ```
 
-The current contract has 155 methods (88 wallet-core + 23 `name.*` + 43 flag-off DeFi M0). Value-moving routes reach signing only through the shared review and consent pipeline
+The current contract has 155 methods (89 wallet-core + 23 `name.*` + 43 flag-off DeFi M0). Value-moving routes reach signing only through the shared review and consent pipeline
 (`tx.prepareReview` → `TxReviewCard` → `tx.confirmReview` one-time `consentToken` → the operation's existing signing
 method; `confirmReview` itself re-validates, mints the v32 consent token, and returns the submit instructions — it never signs; `docs/guides/transaction-review.md`). Signing requires an unlocked wallet; password re-authentication
 is opt-in and defaults off. v12 account registration is the narrow unlocked-only exception for an

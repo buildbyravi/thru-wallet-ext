@@ -20,6 +20,17 @@ const LABELS_KEY = 'thru_account_labels';
 const LABELS_SCHEMA_VERSION = 1;
 const VAULT_VERSION = 2;
 
+// Serialize storage read-modify-write transactions through their final session/envelope
+// write. In particular, a password change and a lock must have a deterministic order: if a
+// lock is requested while re-encryption is underway, it runs after the change and removes
+// the replacement session rather than being undone by a late session.set().
+let vaultMutationTail = Promise.resolve();
+function serializeVaultMutation(operation) {
+  const current = vaultMutationTail.then(operation, operation);
+  vaultMutationTail = current.catch(() => {});
+  return current;
+}
+
 function toB64(bytes) {
   const CHUNK_SIZE = 8192;
   const len = bytes.length;
@@ -205,20 +216,25 @@ async function decryptVaultData(stored, rawKeyBytes) {
 }
 
 async function saveNewVault(vaultData, password) {
-  const salt = crypto.getRandomValues(new Uint8Array(16));
-  const rawKeyBytes = await deriveKeyBits(password, salt);
-  const stored = await encryptVaultData(vaultData, rawKeyBytes, salt);
-  await chrome.storage.local.set({ [VAULT_KEY]: stored });
-  await chrome.storage.session.set({ [SESSION_KEY]: { vaultData, rawKeyB64: toB64(rawKeyBytes) } });
+  return serializeVaultMutation(async () => {
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    const rawKeyBytes = await deriveKeyBits(password, salt);
+    const stored = await encryptVaultData(vaultData, rawKeyBytes, salt);
+    await chrome.storage.local.set({ [VAULT_KEY]: stored });
+    await chrome.storage.session.set({ [SESSION_KEY]: { vaultData, rawKeyB64: toB64(rawKeyBytes) } });
+  });
 }
 
-async function persistVaultUpdate(vaultData) {
-  const { [SESSION_KEY]: session } = await chrome.storage.session.get(SESSION_KEY);
-  if (!session) throw new Error('Wallet is locked.');
-  const { [VAULT_KEY]: existing } = await chrome.storage.local.get(VAULT_KEY);
-  const stored = await encryptVaultData(vaultData, fromB64(session.rawKeyB64), fromB64(existing.salt), existing);
-  await chrome.storage.local.set({ [VAULT_KEY]: stored });
-  await chrome.storage.session.set({ [SESSION_KEY]: { vaultData, rawKeyB64: session.rawKeyB64 } });
+async function persistVaultUpdate(vaultData, alreadySerialized = false) {
+  const write = async () => {
+    const { [SESSION_KEY]: session } = await chrome.storage.session.get(SESSION_KEY);
+    if (!session) throw new Error('Wallet is locked.');
+    const { [VAULT_KEY]: existing } = await chrome.storage.local.get(VAULT_KEY);
+    const stored = await encryptVaultData(vaultData, fromB64(session.rawKeyB64), fromB64(existing.salt), existing);
+    await chrome.storage.local.set({ [VAULT_KEY]: stored });
+    await chrome.storage.session.set({ [SESSION_KEY]: { vaultData, rawKeyB64: session.rawKeyB64 } });
+  };
+  return alreadySerialized ? write() : serializeVaultMutation(write);
 }
 
 async function getVaultData() {
@@ -369,6 +385,7 @@ export async function isUnlocked() {
 }
 
 export async function unlock(password) {
+  return serializeVaultMutation(async () => {
   const { [VAULT_KEY]: stored } = await chrome.storage.local.get(VAULT_KEY);
   if (!stored) throw new Error('No wallet found on this device yet.');
   checkEnvelopeVersion(stored);
@@ -405,9 +422,11 @@ export async function unlock(password) {
 
   await chrome.storage.session.set({ [SESSION_KEY]: { vaultData, rawKeyB64: toB64(rawKeyBytes) } });
   return vaultData;
+  });
 }
 
 export async function changeMasterPassword(currentPassword, newPassword) {
+  return serializeVaultMutation(async () => {
   if (typeof currentPassword !== 'string' || !currentPassword
     || typeof newPassword !== 'string' || newPassword.length < 8) {
     throw new Error('Use a new password with at least 8 characters.');
@@ -435,6 +454,11 @@ export async function changeMasterPassword(currentPassword, newPassword) {
   // Never leave an old session key active against a possibly replaced envelope if the
   // storage write is interrupted. On write failure the old envelope remains unlockable.
   await chrome.storage.session.remove(SESSION_KEY);
+  // V1 migration retains a rollback envelope encrypted with the old password. Remove it
+  // before committing the new envelope, so a successful password change cannot leave a
+  // second path that still decrypts the wallet with the retired credential. If the main
+  // envelope write fails, its original V2 value remains usable with the old password.
+  await chrome.storage.local.remove(LEGACY_BACKUP_KEY);
   await chrome.storage.local.set({ [VAULT_KEY]: replacement });
   try {
     await chrome.storage.session.set({ [SESSION_KEY]: { vaultData: verifiedData, rawKeyB64: toB64(nextKey) } });
@@ -444,23 +468,28 @@ export async function changeMasterPassword(currentPassword, newPassword) {
     return { changed: true, relocked: true };
   }
   return { changed: true };
+  });
 }
 
 export async function lock() {
-  await chrome.storage.session.remove(SESSION_KEY);
+  return serializeVaultMutation(() => chrome.storage.session.remove(SESSION_KEY));
 }
 
 export async function resetWallet() {
-  await chrome.storage.session.remove(SESSION_KEY);
-  await chrome.storage.local.remove([VAULT_KEY, LEGACY_BACKUP_KEY, ACTIVE_REF_KEY, LABELS_KEY]);
+  return serializeVaultMutation(async () => {
+    await chrome.storage.session.remove(SESSION_KEY);
+    await chrome.storage.local.remove([VAULT_KEY, LEGACY_BACKUP_KEY, ACTIVE_REF_KEY, LABELS_KEY]);
+  });
 }
 
 export async function removeLegacyBackup(password) {
-  const data = await verifyPassword(password);
-  if (!isV2(data) || data.migration?.successfulUnlocks < 2) {
-    throw new Error('Unlock the migrated wallet successfully twice before removing its rollback backup.');
-  }
-  await chrome.storage.local.remove(LEGACY_BACKUP_KEY);
+  return serializeVaultMutation(async () => {
+    const data = await verifyPassword(password);
+    if (!isV2(data) || data.migration?.successfulUnlocks < 2) {
+      throw new Error('Unlock the migrated wallet successfully twice before removing its rollback backup.');
+    }
+    await chrome.storage.local.remove(LEGACY_BACKUP_KEY);
+  });
 }
 
 // ---- Keyring management ---------------------------------------------------
@@ -486,7 +515,7 @@ export async function verifyMasterPassword(password) {
   return true;
 }
 
-export async function addSeedKeyring(mnemonic, password, label = '') {
+async function addSeedKeyringImpl(mnemonic, password, label = '') {
   await verifyPassword(password);
   const vaultData = await getVaultData();
   const normalized = normalizeMnemonic(mnemonic);
@@ -499,9 +528,13 @@ export async function addSeedKeyring(mnemonic, password, label = '') {
     'imported',
   );
   vaultData.keyrings.push(ring);
-  await persistVaultUpdate(vaultData);
+  await persistVaultUpdate(vaultData, true);
   await setActiveRef(accountRef(ring.id));
   return { id: ring.id, type: ring.type, label: ring.label, origin: ring.origin };
+}
+
+export function addSeedKeyring(...args) {
+  return serializeVaultMutation(() => addSeedKeyringImpl(...args));
 }
 
 /**
@@ -517,7 +550,7 @@ export async function addSeedKeyring(mnemonic, password, label = '') {
  * @param {string} password
  * @param {string} [label]
  */
-export async function createSeedKeyring(password, label = '') {
+async function createSeedKeyringImpl(password, label = '') {
   await verifyPassword(password);
   const vaultData = await getVaultData();
 
@@ -538,12 +571,16 @@ export async function createSeedKeyring(password, label = '') {
     'generated',
   );
   vaultData.keyrings.push(ring);
-  await persistVaultUpdate(vaultData);
+  await persistVaultUpdate(vaultData, true);
   await setActiveRef(accountRef(ring.id));
   return { id: ring.id, type: ring.type, label: ring.label, origin: ring.origin };
 }
 
-export async function addPrivateKeyKeyring(privateKeyHex, password, label = '') {
+export function createSeedKeyring(...args) {
+  return serializeVaultMutation(() => createSeedKeyringImpl(...args));
+}
+
+async function addPrivateKeyKeyringImpl(privateKeyHex, password, label = '') {
   await verifyPassword(password);
   const vaultData = await getVaultData();
   const ring = privateKeyKeyring(privateKeyHex, label || `Imported key ${vaultData.keyrings.filter((item) => item.type === 'privateKey').length + 1}`);
@@ -553,7 +590,7 @@ export async function addPrivateKeyKeyring(privateKeyHex, password, label = '') 
     throw new Error('That private key is already in this wallet.');
   }
   vaultData.keyrings.push(ring);
-  await persistVaultUpdate(vaultData);
+  await persistVaultUpdate(vaultData, true);
   if (label && label.trim()) {
     await setAccountLabel(address, label.trim());
   }
@@ -561,28 +598,40 @@ export async function addPrivateKeyKeyring(privateKeyHex, password, label = '') 
   return { id: ring.id, type: ring.type, label: ring.label, origin: ring.origin };
 }
 
-export async function renameKeyring(keyringId, label, password) {
+export function addPrivateKeyKeyring(...args) {
+  return serializeVaultMutation(() => addPrivateKeyKeyringImpl(...args));
+}
+
+async function renameKeyringImpl(keyringId, label, password) {
   await verifyPassword(password);
   const vaultData = await getVaultData();
   const ring = getKeyring(vaultData, keyringId);
   ring.label = sanitizeLabel(label) || (ring.type === 'seed' ? 'Seed wallet' : 'Imported private key');
-  await persistVaultUpdate(vaultData);
+  await persistVaultUpdate(vaultData, true);
   return { id: ring.id, label: ring.label };
 }
 
-export async function removeKeyring(keyringId, password) {
+export function renameKeyring(...args) {
+  return serializeVaultMutation(() => renameKeyringImpl(...args));
+}
+
+async function removeKeyringImpl(keyringId, password) {
   await verifyPassword(password);
   const vaultData = await getVaultData();
   if (vaultData.keyrings.length <= 1) throw new Error('Use Reset wallet to remove the last account source.');
   const index = vaultData.keyrings.findIndex((ring) => ring.id === keyringId);
   if (index < 0) throw new Error('Account source was not found in this wallet.');
   vaultData.keyrings.splice(index, 1);
-  await persistVaultUpdate(vaultData);
+  await persistVaultUpdate(vaultData, true);
   const activeRef = await getActiveRef();
   if (activeRef?.keyringId === keyringId) {
     const first = vaultData.keyrings[0];
     await setActiveRef(accountRef(first.id, first.type === 'seed' ? first.hdAccountIndices[0] : 0));
   }
+}
+
+export function removeKeyring(...args) {
+  return serializeVaultMutation(() => removeKeyringImpl(...args));
 }
 
 export async function hasSeed() {
@@ -596,13 +645,17 @@ export async function hasSeed() {
  * @param {string} keyringId
  * @param {boolean} [backedUp=true]
  */
-export async function setKeyringBackedUp(keyringId, backedUp = true) {
+async function setKeyringBackedUpImpl(keyringId, backedUp = true) {
   const vaultData = await getVaultData();
   const ring = getKeyring(vaultData, keyringId);
   if (ring.type !== 'seed') throw new Error('Only recovery-phrase keyrings can be backed up.');
   ring.backedUpAt = backedUp ? Date.now() : null;
-  await persistVaultUpdate(vaultData);
+  await persistVaultUpdate(vaultData, true);
   return { id: ring.id, backedUpAt: ring.backedUpAt };
+}
+
+export function setKeyringBackedUp(...args) {
+  return serializeVaultMutation(() => setKeyringBackedUpImpl(...args));
 }
 
 /**
@@ -641,7 +694,7 @@ export async function previewHdAccounts(keyringId, start = 0, count = 5) {
  * @param {string} keyringId
  * @param {number[]} indices
  */
-export async function addHdAccounts(keyringId, indices) {
+async function addHdAccountsImpl(keyringId, indices) {
   const vaultData = await getVaultData();
   const ring = getKeyring(vaultData, keyringId);
   if (ring.type !== 'seed') throw new Error('Only recovery-phrase keyrings can derive more accounts.');
@@ -656,9 +709,13 @@ export async function addHdAccounts(keyringId, indices) {
 
   ring.hdAccountIndices.push(...added);
   ring.hdAccountIndices.sort((a, b) => a - b);
-  await persistVaultUpdate(vaultData);
+  await persistVaultUpdate(vaultData, true);
   await setActiveRef(accountRef(ring.id, added[0]));
   return { keyringId: ring.id, added };
+}
+
+export function addHdAccounts(...args) {
+  return serializeVaultMutation(() => addHdAccountsImpl(...args));
 }
 
 /**
@@ -670,7 +727,7 @@ export async function addHdAccounts(keyringId, indices) {
  *
  * @param {Object} ref
  */
-export async function removeHdAccount(ref) {
+async function removeHdAccountImpl(ref) {
   const vaultData = await getVaultData();
   const normalized = normalizeRef(ref, vaultData);
   const ring = getKeyring(vaultData, normalized.keyringId);
@@ -684,7 +741,7 @@ export async function removeHdAccount(ref) {
   if (position < 0) throw new Error('Derived account was not found.');
 
   ring.hdAccountIndices.splice(position, 1);
-  await persistVaultUpdate(vaultData);
+  await persistVaultUpdate(vaultData, true);
 
   const activeRef = await getActiveRef();
   const removedWasActive = activeRef?.keyringId === ring.id
@@ -693,6 +750,10 @@ export async function removeHdAccount(ref) {
     await setActiveRef(accountRef(ring.id, ring.hdAccountIndices[0]));
   }
   return { keyringId: ring.id, removedIndex: normalized.accountIndex };
+}
+
+export function removeHdAccount(...args) {
+  return serializeVaultMutation(() => removeHdAccountImpl(...args));
 }
 
 // ---- Account selection and resolution ------------------------------------
@@ -768,7 +829,7 @@ export async function listAccounts() {
   return Promise.all(refs.map((ref) => resolveAccount(ref)));
 }
 
-export async function addHdAccount(keyringId = null) {
+async function addHdAccountImpl(keyringId = null) {
   const vaultData = await getVaultData();
   const active = await getActiveRef();
   const targetId = keyringId || (active?.keyringId && getKeyring(vaultData, active.keyringId).type === 'seed'
@@ -779,10 +840,14 @@ export async function addHdAccount(keyringId = null) {
   if (ring.type !== 'seed') throw new Error('Only recovery-phrase keyrings can derive more accounts.');
   const nextIndex = ring.hdAccountIndices.length ? Math.max(...ring.hdAccountIndices) + 1 : 0;
   ring.hdAccountIndices.push(nextIndex);
-  await persistVaultUpdate(vaultData);
+  await persistVaultUpdate(vaultData, true);
   const ref = accountRef(ring.id, nextIndex);
   await setActiveRef(ref);
   return externalRef(vaultData, ref);
+}
+
+export function addHdAccount(...args) {
+  return serializeVaultMutation(() => addHdAccountImpl(...args));
 }
 
 // SEALED legacy trap (security review): this popup-era import path added a private-key

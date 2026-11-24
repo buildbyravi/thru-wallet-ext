@@ -135,7 +135,7 @@ export function KeyringGroup({ keyring, rows = [], onManage } = {}) {
       class: 'icon-btn icon-btn-ghost sm keyring-manage-btn',
       title: `Manage ${keyring.label || 'this source'}`,
       'aria-label': `Manage ${keyring.label || 'this source'}`,
-    }, icon('settings', 18));
+    }, [icon('settings', 14), h('span', { text: 'Manage' })]);
     d.on(manageBtn, 'click', () => onManage(keyring));
     headerChildren.push(manageBtn);
   }

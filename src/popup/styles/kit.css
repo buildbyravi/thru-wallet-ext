@@ -315,6 +315,21 @@
   gap: var(--sp-2);
 }
 
+.tx-sheet .detail-label {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+.tx-sheet .detail-label-note {
+  color: var(--text-3);
+  font-size: 9px;
+  font-weight: 400;
+  letter-spacing: 0;
+  line-height: 1.3;
+  text-transform: none;
+}
+
 .detail-sheet-mono {
   font-family: var(--font-mono);
   font-size: var(--fs-xs);

@@ -11,7 +11,7 @@ Purpose: canonical record of shipped repository identifiers and the append-only 
 | --- | --- | --- |
 | Repository | `buildbyravi/thru-wallet-ext` | `package.json` |
 | Contract version | **v34** | `CONTRACT_VERSION` in `src/shared/contract/manifest.js` (`scripts/check-docs-truth.mjs`) |
-| Contract methods | **155** (`88` wallet-core + `23` `name.*` + `43` flag-off `DEFI_METHODS`) | `Object.keys(METHODS)` in `manifest.js` (`test/test-contract.mjs`, `test/test-defi-m0.mjs`) |
+| Contract methods | **155** (`89` wallet-core + `23` `name.*` + `43` flag-off `DEFI_METHODS`) | `Object.keys(METHODS)` in `manifest.js` (`test/test-contract.mjs`, `test/test-defi-m0.mjs`) |
 | Push events / Error codes | **8** `EVENTS` / **65** `ERROR_CODES` | `src/shared/contract/manifest.js` |
 | Registered UI routes | **15** popup/side-panel routes | `src/ui/app/boot.js` (`scripts/check-routes.mjs`, `test/test-route-lifecycle.mjs`) |
 | Transaction review kinds | **9** (`8` executable + `1` display-only `raw`) | `src/shared/tx-review/registry.js` <-> `src/background/services/review/kinds.js` (`test/test-tx-review.mjs`) |

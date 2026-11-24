@@ -44,6 +44,7 @@ export function HistoryRoute({ back }) {
   let moreButton = null;
 
   const banner = Banner({ tone: 'error' });
+  const freshness = h('p', { class: 'history-freshness', role: 'status' });
   const listHost = h('div', { class: 'list' });
   const pendingHost = h('div', { class: ['stack', 'stack-2', 'hidden'] });
   const filterRow = h('div', { class: 'history-filters', role: 'group', 'aria-label': 'History filters' });
@@ -71,6 +72,7 @@ export function HistoryRoute({ back }) {
     header.el,
     banner.el,
     filterRow,
+    freshness,
     pendingHost,
     listHost,
     moreHost,
@@ -215,6 +217,14 @@ export function HistoryRoute({ back }) {
   }
 
   const cards = [];
+  function updateFreshness() {
+    const message = entries.length && !feedSynced
+      ? (feedLoading ? 'Cached activity · checking for updates' : 'Cached activity · may be out of date')
+      : !entries.length && feedLoading ? 'Checking for activity…' : '';
+    freshness.textContent = message;
+    freshness.classList.toggle('hidden', !message);
+  }
+
   function paintList() {
     // Cards own kit components (signature CopyButton), so they must be destroyed with the
     // same rigor as every other owned component — per repaint, not only at teardown.
@@ -226,10 +236,12 @@ export function HistoryRoute({ back }) {
     if (!shown.length) {
       listHost.appendChild(Empty({
         iconName: 'history',
-        title: activeFilter !== 'all' ? 'Nothing matches this filter'
+        title: feedLoading && activeFilter === 'all' ? 'Checking activity…'
+          : activeFilter !== 'all' ? 'Nothing matches this filter'
           : feedSynced ? 'No transactions yet' : 'Activity unavailable',
-        body: activeFilter !== 'all' ? 'Try a different filter.'
-          : feedSynced ? 'Claim from the faucet or receive THRU to get started.'
+        body: feedLoading && activeFilter === 'all' ? 'Loading recent transactions.'
+          : activeFilter !== 'all' ? 'Try a different filter.'
+            : feedSynced ? 'Claim from the faucet or receive THRU to get started.'
             : 'No cached activity on this network. Reconnect to sync.',
       }).el);
       return;
@@ -322,6 +334,8 @@ export function HistoryRoute({ back }) {
       pending = pendingHint.filter((p) => !network?.id || !p.networkId || p.networkId === network.id);
     }
     banner.clear();
+    updateFreshness();
+    if (!entries.length) paintList();
     paintPending();
     paintMore();
 
@@ -350,6 +364,7 @@ export function HistoryRoute({ back }) {
         entries = cached.entries;
         cursor = cached.nextCursor ?? null;
         feedSynced = false;
+        updateFreshness();
         paintList();
         paintPending();
       }
@@ -383,15 +398,19 @@ export function HistoryRoute({ back }) {
       entries = feed.entries;
       cursor = feed.nextCursor ?? null;
       feedSynced = feed.synced !== false;
-      // Cached activity is still useful offline; keep it visible without a persistent warning.
+      // Cached activity is still useful offline; use a quiet freshness line rather than an
+      // error banner so users can distinguish cached content without losing the feed.
       banner.clear();
+      updateFreshness();
       paintPending();
       paintList();
     } catch (error) {
       if (!isCurrent(seq)) return;
       feedSynced = false;
+      feedLoading = false;
       if (entries.length) banner.clear();
       else banner.set(error.message || 'Could not load activity.', 'error');
+      updateFreshness();
       paintPending();
       paintList();
     } finally {

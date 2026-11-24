@@ -2739,15 +2739,26 @@ async function themeTest() {
     ok('failed password change clears all secret fields and preserves the retry form',
       [...changeFields].every((input) => input.value === '')
         && /Incorrect password/.test(textOf(passwordSheet)));
+
+    const originalChangePassword = FIXTURES['wallet.changePassword'];
+    let successfulParams = null;
+    FIXTURES['wallet.changePassword'] = (params) => {
+      successfulParams = params;
+      return { changed: true };
+    };
+    type(changeFields[0], SECRET_PASSWORD);
+    type(changeFields[1], 'fresh password 456');
+    type(changeFields[2], 'fresh password 456');
+    passwordForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await settle();
+    ok('successful password change forwards both credentials and closes with all fields cleared',
+      successfulParams?.currentPassword === SECRET_PASSWORD
+        && successfulParams?.newPassword === 'fresh password 456'
+        && !isConnected(passwordSheet)
+        && [...changeFields].every((input) => input.value === ''));
+    FIXTURES['wallet.changePassword'] = originalChangePassword;
   }
-  if (changeFields.length === 3) {
-    type(changeFields[0], 'secret current');
-    type(changeFields[1], 'secret new value');
-    type(changeFields[2], 'secret new value');
-  }
-  click(buttons(passwordSheet, /^Cancel$/)[0]);
-  await settle();
-  ok('closing Change password clears every detached password input',
+  ok('successful Change password close leaves every detached password input empty',
     [...changeFields].every((input) => input.value === ''));
   ok('picker choices are not mounted inline', buttons(tree, /^(Light|Dark|System)$/).length === 0);
   const disabledRows = buttons(tree, /^(Language|Currency)Planned$/);
@@ -4563,10 +4574,10 @@ async function navigationTest() {
     /Block time/.test(sheetText) && !/Block time\s+Not available/.test(sheetText),
     sheetText.slice(0, 400));
   const feeRow = [...sheetEl.querySelectorAll('.detail-row')]
-    .find((row) => textOf(row.querySelector('.detail-label')) === 'Fee');
-  ok('P2: the fee row is concise while retaining declared-fee context for assistive/hover text',
-    Boolean(feeRow) && feeRow.querySelector('.detail-label')
-      ?.getAttribute('aria-label')?.includes('Declared transaction fee')
+    .find((row) => textOf(row.querySelector('.detail-label')).startsWith('Fee'));
+  ok('P2: the concise fee label has visible declared-versus-charged provenance',
+    Boolean(feeRow) && /Header declaration/.test(textOf(feeRow.querySelector('.detail-label-note')))
+      && /charged amount unavailable/i.test(sheetText)
       && !sheetEl.querySelector('.tx-sheet-note'), sheetText.slice(0, 500));
 
   const sheetExplorer = [...(sheetEl.querySelectorAll?.('a') || [])]
@@ -4624,7 +4635,9 @@ async function navigationTest() {
     /Block time\s+Not available/.test(sheetText.replace(/\s+/g, ' ')),
     sheetText.replace(/\s+/g, ' ').slice(0, 400));
   ok('P2: an unsupported fetch leaves the fee absent rather than quoting the network default',
-    /Fee\s+Not available/.test(sheetText.replace(/\s+/g, ' ')),
+    [...sheetEl.querySelectorAll('.detail-row')].some((row) =>
+      textOf(row.querySelector('.detail-label')).startsWith('Fee')
+        && textOf(row.querySelector('.detail-val')) === 'Not available'),
     sheetText.replace(/\s+/g, ' ').slice(0, 400));
   ok('P2: the facts the list already knew survive a failed detail fetch',
     sheetText.includes(DETAIL_ENTRIES[2].signature)
@@ -5701,6 +5714,8 @@ async function historyCacheFirstTest() {
     DOC.body.appendChild(route.el);
     ok('opening History does not flash a full-screen Loading activity spinner',
       !/Loading activity/.test(textOf(route.el)) && !route.el.querySelector('.spinner'));
+    ok('an empty first visit shows an explicit checking placeholder while the feed is pending',
+      /Checking for activity|Checking activity/.test(textOf(route.el)));
     await settle();
     ok('cached History draws a card while the live feed, labels and pending replies are held',
       route.el.querySelectorAll('.tx-card').length === 1
@@ -5730,8 +5745,10 @@ async function historyCacheFirstTest() {
     held.splice(failedIndex, 1)[0].callback({ ok: false,
       error: { code: 'NETWORK_ERROR', message: 'RPC offline', retryable: true } });
     await settle();
-    ok('a failed feed keeps cached cards silently and does not make a second raw RPC request',
-      /Block 101/.test(textOf(route.el)) && !/Cached · Sync unavailable/.test(textOf(route.el))
+    ok('a failed feed keeps cached cards with a quiet freshness indicator, not an error banner',
+      /Block 101/.test(textOf(route.el))
+        && /Cached activity · may be out of date/.test(textOf(route.el))
+        && !/Cached · Sync unavailable/.test(textOf(route.el))
         && chromeLog.calls.filter((method) => method === 'tx.listHistory').length === rawCallsBefore);
 
     cachedCursor = null;
@@ -5971,9 +5988,9 @@ async function accountsBootstrapPaintTest() {
     `rows=${visibleNames.join(', ')} held=${holds.held.map((x) => x.message.method).join(',')}`);
   ok('keyring account count has an explicit label',
     /\baccounts?\b/i.test(textOf(route.el)));
-  ok('keyring management action is icon-only with an accessible name',
+  ok('keyring management action has visible text and an accessible name',
     [...route.el.querySelectorAll('.keyring-manage-btn')].some((button) =>
-      /^Manage\b/.test(button.getAttribute('aria-label') || '') && !/manage/i.test(textOf(button))));
+      /^Manage\b/.test(button.getAttribute('aria-label') || '') && /Manage/.test(textOf(button))));
   ok('the backup warning includes an inline SVG icon',
     [...route.el.querySelectorAll('.keyring-backup-warning')].some((badge) => badge.querySelector('svg')));
   holds.resolve('account.list', backend.accounts.map((account) => ({ ...account, balance: null, balanceStale: true })));
@@ -6003,6 +6020,14 @@ async function accountsBootstrapPaintTest() {
   const refreshedRoute = AccountsRoute({ navigate() {}, back() {} });
   DOC.body.appendChild(refreshedRoute.el);
   await settle();
+  const accountReadsBeforeBalance = chromeLog.calls.filter((method) => method === 'account.list').length;
+  emitEvent('balanceChanged', {
+    [ADDRESS_A]: { balance: '100000000', stale: false, fetchedAt: Date.now() },
+  });
+  await settle();
+  ok('Accounts applies balance events to visible rows without starting another balance-read loop',
+    chromeLog.calls.filter((method) => method === 'account.list').length === accountReadsBeforeBalance
+      && /1 THRU/.test(textOf(refreshedRoute.el.querySelector('.row-value'))));
   const accountReadsBeforeSwitch = chromeLog.calls.filter((method) => method === 'account.list').length;
   emitEvent('networkChanged', { id: 'localnet' });
   await settle();

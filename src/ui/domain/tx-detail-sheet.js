@@ -104,19 +104,17 @@ function counterpartyLabel(entry) {
  * rather than by index — a positional update is how the P1 day-header badge ended up inside
  * a transaction card, and that lesson applies here too.
  */
-function DetailRow(label, initial = UNKNOWN, { mono = false, tone = '', labelTitle = null } = {}) {
+function DetailRow(label, initial = UNKNOWN, { mono = false, tone = '', labelNote = null } = {}) {
   const value = h('span', {
     class: ['detail-val', mono ? 'detail-sheet-mono' : null, tone || null].filter(Boolean),
     text: initial == null ? UNKNOWN : String(initial),
   });
   return {
     el: h('div', { class: 'detail-row' }, [
-      h('span', {
-        class: 'detail-label',
-        text: label,
-        title: labelTitle || undefined,
-        'aria-label': labelTitle || undefined,
-      }),
+      h('span', { class: 'detail-label' }, [
+        h('span', { text: label }),
+        labelNote ? h('span', { class: 'detail-label-note', text: labelNote }) : null,
+      ].filter(Boolean)),
       value,
     ]),
     set(next, nextTone = null) {
@@ -252,7 +250,7 @@ export function TxDetailSheet({ entry, network, knownAccounts, loadDetail, onClo
     ? `${formatThru(BigInt(entry.feeDeclaredUnits))} THRU` : UNKNOWN;
   const feeRow = push(DetailRow('Fee', cachedFee, {
     mono: true,
-    labelTitle: 'Declared transaction fee; actual charged amount is not reported.',
+    labelNote: 'Header declaration · charged amount unavailable',
   }));
   const programRow = push(DetailRow('Program', entry?.programAddress
     ? truncateAddress(entry.programAddress) : UNKNOWN, { mono: true }));
