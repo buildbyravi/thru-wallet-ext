@@ -4942,6 +4942,8 @@ async function progressiveSendTest() {
     buttons(route.el, /^review$/i)[0]?.disabled === true);
   holds.resolve('tx.estimateFee', FIXTURES['tx.estimateFee']({}));
   await settle();
+  ok('the Send form omits the quoted network-fee line because fee details are in Review',
+    !/Network fee:\s*0\.000000001 THRU/.test(textOf(route.el)));
   ok('a fee quote alone cannot spend an unknown live balance',
     buttons(route.el, /^review$/i)[0]?.disabled === true);
 
