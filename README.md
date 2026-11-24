@@ -6,16 +6,16 @@ Chrome MV3 self-custody wallet extension for the **Thru native Layer 1**. Built 
 
 > [!IMPORTANT]
 > **Betanet deployment. Mainnet engineering standard.** Internal security remediations through
-> Contract **v33** are implemented and tested locally; real-browser smoke checks, remaining live
+> Contract **v34** are implemented and tested locally; real-browser smoke checks, remaining live
 > Betanet probes, and an independent external security audit remain required before Mainnet. See
 > [`docs/STATUS_AND_ROADMAP.md`](docs/STATUS_AND_ROADMAP.md) and [`docs/AUDIT_REPORT.md`](docs/AUDIT_REPORT.md).
 
 ---
 
-## Current Shipped State (Contract v33)
+## Current Shipped State (Contract v34)
 
 - **One UI Stack (`15` Routes):** `welcome`, `unlock`, `dashboard`, `accounts`, `account`, `add-account`, `keyring`, `export`, `send`, `receive`, `faucet`, `name` (Domains), `history`, `settings`, `reset`. Toolbar popup (`400x600`) and resizable side panel (`popup.html?thru_panel=1`) share one page with mutual exclusion; Side Panel Mode is an explicit Settings opt-in.
-- **Contract v33 (`154` Methods):** `src/shared/contract/manifest.js` declares `88` wallet-core methods, `23` `name.*` domain/registrar methods, and `43` dark-launched DeFi M0 methods (`src/shared/contract/defi-schema.js`, all `FLAGS.DEFI_* === false` in `src/shared/flags.js`).
+- **Contract v34 (`155` Methods):** `src/shared/contract/manifest.js` declares `88` wallet-core methods, `23` `name.*` domain/registrar methods, and `43` dark-launched DeFi M0 methods (`src/shared/contract/defi-schema.js`, all `FLAGS.DEFI_* === false` in `src/shared/flags.js`).
 - **One Transaction Review & Background Consent Pipeline (`v29`–`v32`):** Every value-moving screen (`/send` native & token, `/name` register/purchase/renew/claim, `/faucet` claim — plus contract-level `domain-record`, `9` review kinds total) prepares via `tx.prepareReview`, renders `src/ui/domain/tx-review/review-card.js`, and confirms via `tx.confirmReview`. `tx.confirmReview` mints a single-use 60s `consentToken` enforced in `src/background/api-router.js` (`REVIEW_REQUIRED`) before any value-moving handler executes. Undecodable transactions (`raw`) cannot be signed; post-tx balances are never fabricated (`tx.simulate` returns `supported: false`). Details: [`docs/guides/transaction-review.md`](docs/guides/transaction-review.md).
 - **Session-Only Signing Default (`D-003`):** Unlocked sessions authorize `auth: 'signing'` operations by default (`requirePasswordForSigning: false`); per-signature password re-auth is a password-gated Settings opt-in. Vault secret exports, keyring mutations, security preferences, and unlocked resets always require the master password.
 - **Domains (`.thru` & `.id`):** `/name` provides `Register` and `My Domains` tabs with `.thru` registration and renewal (`thru-custom-registrar` tiered layout-2 pricing on Betanet, official paid registry fallback), `.id` resolution-only lookup, per-network tracked domain inventory, and `tx-units.networkFeeUnits` header fees. Details: [`docs/guides/domains-and-registrar.md`](docs/guides/domains-and-registrar.md).
@@ -55,7 +55,7 @@ Start at [`docs/DOCS_INDEX.md`](docs/DOCS_INDEX.md) for the complete SSoT hierar
 ```txt
 src/ui/app/routes/*
   -> src/ui/app/bridge.js
-  -> src/shared/contract/manifest.js (v33, 154 methods)
+  -> src/shared/contract/manifest.js (v34, 155 methods)
   -> src/background/api-router.js (auth + v32 consentToken gate + signing-guard)
   -> src/background/services/*
   -> src/lib/{vault,thru-client,networks,tx-units,...}.js

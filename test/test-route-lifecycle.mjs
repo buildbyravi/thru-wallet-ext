@@ -1354,6 +1354,11 @@ const FIXTURES = {
     if (password !== SECRET_PASSWORD) throw apiError('BAD_PASSWORD', 'Incorrect password.');
     return { verified: true };
   },
+  'wallet.changePassword': ({ currentPassword, newPassword } = {}) => {
+    if (currentPassword !== SECRET_PASSWORD) throw apiError('BAD_PASSWORD', 'Incorrect password.');
+    if (typeof newPassword !== 'string' || newPassword.length < 8) throw apiError('BAD_PASSWORD', 'Use at least 8 characters.');
+    return { changed: true };
+  },
   'wallet.lock': () => {
     backend.unlocked = false;
     return { locked: true };
@@ -2703,6 +2708,34 @@ async function themeTest() {
   ok('Settings declares separate dialogs for Network, Signing security, Theme Mode and Auto-lock time',
     buttons(tree, /^(Network|Signing security|Theme Mode|Auto-lock time)/).filter((node) => node.getAttribute('aria-haspopup') === 'dialog')
       .map(textOf).join('|') === 'Network Betanet|Signing security Session-only|Theme Mode Dark|Auto-lock time 15 min');
+  const changePasswordRow = buttons(tree, /^Change password/)[0];
+  click(changePasswordRow);
+  const passwordSheet = DOC.body.querySelector('.settings-picker');
+  const passwordForm = passwordSheet?.querySelector('form');
+  const changeFields = passwordForm?.querySelectorAll('input[type="password"]') || [];
+  ok('Settings exposes an accessible Change password form with three secret fields',
+    passwordSheet?.getAttribute('aria-label') === 'Change password' && changeFields.length === 3
+      && [...changeFields].every((input) => input.getAttribute('spellcheck') === 'false'
+        && input.getAttribute('autocorrect') === 'off' && input.getAttribute('autocapitalize') === 'off'));
+  if (changeFields.length === 3) {
+    type(changeFields[0], 'wrong current');
+    type(changeFields[1], 'new password 123');
+    type(changeFields[2], 'new password 123');
+    passwordForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await settle();
+    ok('failed password change clears all secret fields and preserves the retry form',
+      [...changeFields].every((input) => input.value === '')
+        && /Incorrect password/.test(textOf(passwordSheet)));
+  }
+  if (changeFields.length === 3) {
+    type(changeFields[0], 'secret current');
+    type(changeFields[1], 'secret new value');
+    type(changeFields[2], 'secret new value');
+  }
+  click(buttons(passwordSheet, /^Cancel$/)[0]);
+  await settle();
+  ok('closing Change password clears every detached password input',
+    [...changeFields].every((input) => input.value === ''));
   ok('picker choices are not mounted inline', buttons(tree, /^(Light|Dark|System)$/).length === 0);
   const disabledRows = buttons(tree, /^(Language|Currency)Planned$/);
   ok('Language and Currency appear once each as disabled, labelled Planned rows',

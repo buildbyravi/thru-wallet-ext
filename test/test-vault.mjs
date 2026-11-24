@@ -442,3 +442,46 @@ assert(
 );
 
 console.log('\nAll vault.js integration checks passed.');
+
+console.log('\n[16] Master password changes re-encrypt safely and recover from storage interruption');
+await vault.resetWallet();
+const changeMnemonic = await vault.createVault('old master password');
+const beforePasswordChange = await vault.listAccounts();
+let wrongCurrentRejected = false;
+try {
+  await vault.changeMasterPassword('wrong current password', 'new master password');
+} catch (error) {
+  wrongCurrentRejected = /incorrect password/i.test(error.message);
+}
+assert(wrongCurrentRejected, 'password change requires the correct current password');
+assert(await vault.isUnlocked(), 'wrong current password does not lock an intact wallet');
+
+const localSet = chrome.storage.local.set;
+chrome.storage.local.set = async (record) => {
+  if (Object.hasOwn(record, 'vault')) throw new Error('simulated storage write failure');
+  return localSet(record);
+};
+let writeFailed = false;
+try {
+  await vault.changeMasterPassword('old master password', 'new master password');
+} catch (error) {
+  writeFailed = /storage write failure/.test(error.message);
+}
+chrome.storage.local.set = localSet;
+assert(writeFailed, 'storage write failure is surfaced to the caller');
+assert(!(await vault.isUnlocked()), 'failed password write removes the old active session key');
+await vault.unlock('old master password');
+assert((await vault.listAccounts())[0].address === beforePasswordChange[0].address,
+  'old encrypted vault remains usable with the old password after failed write');
+
+await vault.changeMasterPassword('old master password', 'new master password');
+assert(await vault.isUnlocked(), 'successful password change restores the unlocked session');
+assert((await vault.listAccounts())[0].address === beforePasswordChange[0].address,
+  'password change preserves wallet accounts');
+await vault.lock();
+let oldPasswordRejected = false;
+try { await vault.unlock('old master password'); } catch { oldPasswordRejected = true; }
+assert(oldPasswordRejected, 'old password cannot unlock after successful change');
+await vault.unlock('new master password');
+assert((await vault.exportAccountSecret(beforePasswordChange[0].ref, 'new master password')).mnemonic === changeMnemonic,
+  'new password unlocks and decrypts the same recovery phrase');

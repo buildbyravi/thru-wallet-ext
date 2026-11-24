@@ -1,7 +1,7 @@
 # Architecture
 
 **Document Class:** Authority (Implemented System Architecture)
-**Baseline:** Contract **v33** (`154` methods, `15` routes) | **Status:** `IMPLEMENTED`, `TESTED` unless explicitly marked otherwise.
+**Baseline:** Contract **v34** (`155` methods, `15` routes) | **Status:** `IMPLEMENTED`, `TESTED` unless explicitly marked otherwise.
 
 ---
 
@@ -10,7 +10,7 @@
 ```text
 Popup / Side-Panel Routes (src/ui/app/routes/*)
   -> src/ui/app/bridge.js               [sole outbound chrome.runtime.sendMessage caller]
-  -> src/shared/contract/manifest.js    [v33 allowlist: 154 methods, 8 events, 65 error codes]
+  -> src/shared/contract/manifest.js    [v34 allowlist: 155 methods, 8 events, 65 error codes]
   -> src/background/api-router.js       [auth check -> v32 consentToken gate -> signing-guard -> dispatch]
   -> src/background/services/*          [wallet, tx, token, name, registrar, review, history, defi...]
   -> src/lib/*                          [sole leaf allowed to import @thru/sdk & @thru/programs]

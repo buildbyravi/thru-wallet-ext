@@ -407,6 +407,36 @@ export async function unlock(password) {
   return vaultData;
 }
 
+export async function changeMasterPassword(currentPassword, newPassword) {
+  if (typeof currentPassword !== 'string' || !currentPassword
+    || typeof newPassword !== 'string' || newPassword.length < 8) {
+    throw new Error('Use a new password with at least 8 characters.');
+  }
+  const { [VAULT_KEY]: stored } = await chrome.storage.local.get(VAULT_KEY);
+  if (!stored) throw new Error('No wallet found on this device yet.');
+  checkEnvelopeVersion(stored);
+  const currentKey = await deriveKeyBits(currentPassword, fromB64(stored.salt), kdfParams(stored));
+  let verifiedData;
+  try {
+    verifiedData = await decryptVaultData(stored, currentKey);
+  } catch {
+    throw new Error('Incorrect password.');
+  }
+  const { [SESSION_KEY]: session } = await chrome.storage.session.get(SESSION_KEY);
+  if (!session) throw new Error('Wallet is locked.');
+  // Re-encrypt the authoritative current data with a fresh salt and IV. Preserve the
+  // envelope's KDF policy so changing passwords cannot silently alter its work factor.
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const nextKey = await deriveKeyBits(newPassword, salt, kdfParams(stored));
+  const replacement = await encryptVaultData(verifiedData, nextKey, salt, stored);
+  // Never leave an old session key active against a possibly replaced envelope if the
+  // storage write is interrupted. On write failure the old envelope remains unlockable.
+  await chrome.storage.session.remove(SESSION_KEY);
+  await chrome.storage.local.set({ [VAULT_KEY]: replacement });
+  await chrome.storage.session.set({ [SESSION_KEY]: { vaultData: verifiedData, rawKeyB64: toB64(nextKey) } });
+  return { changed: true };
+}
+
 export async function lock() {
   await chrome.storage.session.remove(SESSION_KEY);
 }

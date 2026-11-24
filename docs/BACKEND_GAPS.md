@@ -1,7 +1,7 @@
 # Backend Capability Inventory and Open Gaps
 
 **Document Class:** Authority (Implemented Backend Capabilities vs Unsupported / Unverified Boundaries)
-**Baseline:** Contract **v33** (`154` methods in `src/shared/contract/manifest.js`: `88` wallet-core + `23` `name.*` + `43` dark-launched DeFi M0 methods in `src/shared/contract/defi-schema.js`)
+**Baseline:** Contract **v34** (`155` methods in `src/shared/contract/manifest.js`: `88` wallet-core + `23` `name.*` + `43` dark-launched DeFi M0 methods in `src/shared/contract/defi-schema.js`)
 
 | Tier | Scope | Status |
 | --- | --- | --- |

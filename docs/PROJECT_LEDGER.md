@@ -1,6 +1,6 @@
 # Project Ledger — Identifiers and Contract History
 
-Date: 2026-10-04; refreshed 2026-11-19 (contract v33, SDK 0.5.2 and registrar verification).
+Date: 2026-10-04; refreshed 2026-11-22 (contract v34, SDK 0.5.2 and registrar verification).
 Purpose: canonical record of shipped repository identifiers and the append-only contract version history (`v5–v33`). `src/`, `test/`, and `scripts/` are authoritative; current verification status and next tasks live in `docs/STATUS_AND_ROADMAP.md`.
 
 ---
@@ -10,8 +10,8 @@ Purpose: canonical record of shipped repository identifiers and the append-only 
 | Identifier | Shipped Value | Authority / Enforcing Gate |
 | --- | --- | --- |
 | Repository | `buildbyravi/thru-wallet-ext` | `package.json` |
-| Contract version | **v33** | `CONTRACT_VERSION` in `src/shared/contract/manifest.js` (`scripts/check-docs-truth.mjs`) |
-| Contract methods | **154** (`88` wallet-core + `23` `name.*` + `43` flag-off `DEFI_METHODS`) | `Object.keys(METHODS)` in `manifest.js` (`test/test-contract.mjs`, `test/test-defi-m0.mjs`) |
+| Contract version | **v34** | `CONTRACT_VERSION` in `src/shared/contract/manifest.js` (`scripts/check-docs-truth.mjs`) |
+| Contract methods | **155** (`88` wallet-core + `23` `name.*` + `43` flag-off `DEFI_METHODS`) | `Object.keys(METHODS)` in `manifest.js` (`test/test-contract.mjs`, `test/test-defi-m0.mjs`) |
 | Push events / Error codes | **8** `EVENTS` / **65** `ERROR_CODES` | `src/shared/contract/manifest.js` |
 | Registered UI routes | **15** popup/side-panel routes | `src/ui/app/boot.js` (`scripts/check-routes.mjs`, `test/test-route-lifecycle.mjs`) |
 | Transaction review kinds | **9** (`8` executable + `1` display-only `raw`) | `src/shared/tx-review/registry.js` <-> `src/background/services/review/kinds.js` (`test/test-tx-review.mjs`) |
@@ -68,6 +68,7 @@ Ordinary contract evolution is strictly append-only (`Rule 4`), with documented 
 | **v31** | *Security upgrade + append:* `name.setRecord` promoted in place to live `auth: 'signing'` write (`APPEND_RECORD` opcode 2, reviewed as kind `domain-record`, `153` methods total with new `name.reverseLookup`). |
 | **v32** | **Background review consent gate (`2026-11-02`):** `tx.confirmReview` mints a single-use 60s in-memory `consentToken` (`src/background/services/review/consent.js`) bound to `{ method, sha256(canonicalParams), accountAddress, networkId }`. `api-router.js` requires and burns `consentToken` before any non-exempt `TRANSACTION_METHODS` handler runs (`REVIEW_REQUIRED`). Subsequent `2026-11-02..13` hardening on v32 added `SEND_EXPIRY_SLOTS` (`1,000` slots), `CUSTOM_RPC_SUPPORTED = false` write refusal, unified `tx-units.networkFeeUnits` on registrar/record writes, and one-surface-per-event submission feedback (`Rule 29`). |
 | **v33** | **Additive verified token import (`2026-11-16`, D-026):** `token.importVerified` accepts only `mintAddress` and optional fallback `symbol` with `auth: 'unlocked'`. Dashboard routes to the existing strict mint verifier, which persists chain decimals under the captured network and rejects context changes. Legacy `token.import` remains compatible; total methods: `154`. |
+| **v34** | Adds `wallet.changePassword` (`auth: 'unlocked'`) with current-password re-authentication, fresh-salt vault re-encryption, and session-key invalidation before storage replacement; total methods: `155`. |
 
 ---
 

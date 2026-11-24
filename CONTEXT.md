@@ -1,6 +1,6 @@
 # CONTEXT.md — File Map for `thru-wallet-ext`
 
-Last source-verified update: 2026-11-19 (Contract **v33**, `154` methods, `15` routes, `9` review kinds, `128` runtime JS files, `41` test suites + `9` guard scripts). Always verify `src/` directly before editing.
+Last source-verified update: 2026-11-19 (Contract **v34**, `155` methods, `15` routes, `9` review kinds, `128` runtime JS files, `41` test suites + `9` guard scripts). Always verify `src/` directly before editing.
 
 Read `AGENTS.md` first for repository rules, `docs/DOCS_INDEX.md` for the SSoT map, and `docs/STATUS_AND_ROADMAP.md` for shipped state and open verification gates.
 
@@ -12,7 +12,7 @@ For former documentation paths, use `docs/DOCS_INDEX.md` section 3.4 to find the
 
 ## Shipped Baseline at a Glance
 
-- Contract **v33**: **154 methods** in `src/shared/contract/manifest.js` (`88` wallet-core methods + `23` `name.*` domain/registrar methods + `43` DeFi M0 methods in `src/shared/contract/defi-schema.js` whose build-time flags in `src/shared/flags.js` are all `false`); **15** registered routes in `src/ui/app/boot.js`.
+- Contract **v34**: **155 methods** in `src/shared/contract/manifest.js` (`89` wallet-core methods + `23` `name.*` domain/registrar methods + `43` DeFi M0 methods in `src/shared/contract/defi-schema.js` whose build-time flags in `src/shared/flags.js` are all `false`); **15** registered routes in `src/ui/app/boot.js`.
 - **One transaction-review and background-consent pipeline (`v29`–`v32`).** Every value-moving screen (native send, token transfer, domain register/purchase/renew/claim, faucet claim — plus contract-level `domain-record`) prepares through `tx.prepareReview`, renders `src/ui/domain/tx-review/review-card.js`, and submits through `src/ui/domain/tx-review/confirm.js` -> `tx.confirmReview` -> the operation's existing handler. `tx.confirmReview` re-validates facts/context and mints a single-use 60s `consentToken` (`src/background/services/review/consent.js`) that `api-router.js` requires before any value-moving handler executes (`REVIEW_REQUIRED`). Undecodable transactions (`raw`) have `submit: null` and cannot be signed. Details: `docs/guides/transaction-review.md`.
 - **Signing & Activation.** Signing requires an unlocked wallet (`requirePasswordForSigning: false` by default; password-per-sign is a password-gated Settings opt-in, `D-003`). `tx.registerAccount` (`auth: 'unlocked'`) self-signs (`NOOP_PROGRAM_ADDRESS`, fee `0n`, nonce `0n`, `stateUnits: 1`) only for an exact vault-owned address at creation, on `/dashboard`, or JIT on `/send` (never external addresses).
 - **Domains (`/name`).** Two tabs (`Register` and `My Domains`), `.thru`-only registration/renewal preferring the deployed `thru-custom-registrar` (tiered layout-2 config on Betanet) with official paid-registry fallback, `.id` resolution-only lookup, tracked per-network domain inventory (`thru_registered_domains`), and header fees derived via `tx-units.networkFeeUnits`. Details: `docs/guides/domains-and-registrar.md`.
@@ -57,7 +57,7 @@ For former documentation paths, use `docs/DOCS_INDEX.md` section 3.4 to find the
 ```text
 src/ui/app/routes/*
   -> src/ui/app/bridge.js (sole UI outbound sendMessage owner)
-  -> src/shared/contract/manifest.js (v33, 154 methods, 8 push events, 65 error codes)
+  -> src/shared/contract/manifest.js (v34, 155 methods, 8 push events, 65 error codes)
   -> src/background/api-router.js (auth, v32 consentToken gate, signing-guard, JSON check)
   -> src/background/services/* (+ services/review/*, services/defi/*, features/{dex,launchpad}/*)
   -> src/lib/* (sole @thru/sdk & @thru/programs leaf layer)
@@ -139,11 +139,11 @@ Visual harnesses (served via `node scripts/serve-dist.mjs --root . --port 8000`)
 
 ## 6. `src/shared/` — Isomorphic Contract & Models (`20` files)
 
-Contract **v33** has **154 methods** (`72` `none`, `60` `unlocked`, `12` `password`, `10` `signing`), `8` push events, and `65` error codes. No DOM or `chrome.*` APIs allowed.
+Contract **v34** has **155 methods** (`72` `none`, `61` `unlocked`, `12` `password`, `10` `signing`), `8` push events, and `65` error codes. No DOM or `chrome.*` APIs allowed.
 
 | File | Lines | Purpose |
 | --- | ---: | --- |
-| `contract/manifest.js` | 1,339 | `CONTRACT_VERSION = 33`, `METHODS` (`154`), `EVENTS` (`8`), `ERROR_CODES` (`65`) |
+| `contract/manifest.js` | 1,339 | `CONTRACT_VERSION = 34`, `METHODS` (`155`), `EVENTS` (`8`), `ERROR_CODES` (`65`) |
 | `contract/defi-schema.js` | 459 | Machine schema for the `43` `DEFI_METHODS` and `24` `UNSUPPORTED_REASONS` |
 | `format.js` | 130 | BigInt-exact `THRU` (`9` decimals) & token amount formatting/parsing; `shortenMiddle` / `shortAddress` |
 | `refs.js` | 104 | Opaque `{ keyringId, accountIndex }` codec for URLs |

@@ -1,7 +1,7 @@
 # Status and Roadmap
 
 **Document Class:** Authority (Single Source of Truth for Current Shipped State & Active Verification Work)
-Source baseline re-verified on `main` at contract v33 (2026-11-19, v1.6.0). `src/`, `test/`, and `scripts/` remain authoritative.
+Source baseline re-verified on `main` at contract v34 (2026-11-22, v1.6.0). `src/`, `test/`, and `scripts/` remain authoritative.
 
 ---
 
@@ -88,9 +88,9 @@ unmerged and not release-approved**. The prior baseline evidence below is for `9
 
 ---
 
-## 1. Shipped Baseline (Contract v33)
+## 1. Shipped Baseline (Contract v34)
 
-- **Shared Contract (`v33`, `154` methods, `15` routes):** Declared in `src/shared/contract/manifest.js` (`88` wallet-core + `23` `name.*` + `43` DeFi M0 methods in `src/shared/contract/defi-schema.js` whose build-time flags in `src/shared/flags.js` are all `false`). Exact pins: `@thru/sdk@0.5.2` and `@thru/programs@0.5.2`.
+- **Shared Contract (`v34`, `155` methods, `15` routes):** Declared in `src/shared/contract/manifest.js` (`88` wallet-core + `23` `name.*` + `43` DeFi M0 methods in `src/shared/contract/defi-schema.js` whose build-time flags in `src/shared/flags.js` are all `false`). Exact pins: `@thru/sdk@0.5.2` and `@thru/programs@0.5.2`.
 - **SDK 0.5.2 upgrade (`VERIFIED AGAINST LIVE NETWORK`, 2026-11-19):** `@thru/sdk`/`@thru/programs` pinned at 0.5.2 per D-030. HD coin type moved 9999 → 8478 (`m/44'/8478'/index'/0'`), `ROOT_MANAGER_PROGRAM_ADDRESS` → `CORE_MANAGER_PROGRAM_ADDRESS`, 1-byte token account discriminator, and Ledger path compatibility helpers. Existing 0.4.x seed keyrings derive new addresses after this upgrade (goldens regenerated, no legacy path). Verified live against Betanet: host HD index 0 account derived/activated/funded, custom registrar program deployed & initialized (`vmError: 0`), live domain `probe4pwpy.thru` registered (`vmError: 0`), and 16-rung token transfer suite passed.
 - **Verified Token Import (`v33`):** Dashboard uses `token.importVerified` (`auth: 'unlocked'`, mint address and optional fallback symbol only). The background verifies mint ownership, SDK layout and denomination from a captured account snapshot before network-scoped persistence, rejects caller-supplied name/decimals and duplicate imports, and fences network-generation changes. Legacy `token.import` retains its metadata-only contract. Deterministic router coverage is in `test/test-token-balances.mjs`; browser and live-network import verification remain `UNVERIFIED`.
 - **One UI Stack (`15` Routes):** `/welcome`, `/unlock`, `/dashboard`, `/accounts`, `/account`, `/add-account`, `/keyring`, `/export`, `/send`, `/receive`, `/faucet`, `/name`, `/history`, `/settings`, `/reset`. Toolbar popup (`400x600`) and resizable side panel (`popup.html?thru_panel=1`) share one HTML shell with synchronous close-listener registration and mutual exclusion; Side Panel Mode is an explicit Settings opt-in.
@@ -107,7 +107,7 @@ mocked-runtime visual checks and partial unpacked-extension checks in real Chrom
 and live-chain verification gates are listed below.
 
 - `npm run build` -> **PASS** (`dist/` regenerated cleanly from `src/`, zero warnings).
-- `npm test` -> **PASS** across all **9 guard scripts** and **41 test suites**: contract v33 (`154` methods), `1,174/1,174` route-lifecycle checks, `206/206` review pipeline checks, and `68/68` review-card checks. Structural guards retain zero DOM-injection sinks and the existing import-cycle ratchet.
+- `npm test` -> **PASS** across all **9 guard scripts** and **41 test suites**: contract v34 (`155` methods), `1,174/1,174` route-lifecycle checks, `206/206` review pipeline checks, and `68/68` review-card checks. Structural guards retain zero DOM-injection sinks and the existing import-cycle ratchet.
 - Deterministic Node tests use a hand-rolled DOM shim and stubbed RPCs; **they never close real-browser or live-chain verification gates**.
 
 ---

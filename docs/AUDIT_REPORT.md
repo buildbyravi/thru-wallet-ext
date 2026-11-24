@@ -1,7 +1,7 @@
 # Audit Report — Thru Wallet Extension
 
 **Document Class:** Operational Verification (Current Audit Summary, Mainnet-Readiness Gates & Historical Audit Index)
-**Baseline:** The tree is at contract **v33** with **154 methods** and **15 routes** (synchronized 2026-11-19).
+**Baseline:** The tree is at contract **v34** with **155 methods** and **15 routes** (synchronized 2026-11-19).
 
 ---
 
@@ -24,7 +24,7 @@ Verification classes are never merged: a green Node test never closes a browser 
 - `npm test` — **PASS** across **41 test suites** (`test/test-*.mjs`) and **9 guard scripts** (`scripts/check-*.mjs`):
   - Exact pins `@thru/sdk@0.5.2` & `@thru/programs@0.5.2` with 16/16 derivation golden vectors (`test/test-derivation.mjs`); native faucet tests verify no THRUSD-only rate-limit policy is applied (`test/test-native-faucet.mjs`).
   - Layering across `128` runtime JS files (`0` boundary violations, `0` HTML-injection sinks), cycle ratchet (`1` legacy 5-service cycle), CSP <-> enabled-network parity, `30/30` ordered `AGENTS.md` rules, docs-truth parity, guard negative controls, `15/15` routes reachable with all used CSS classes defined, flat CSS, Dashboard 6-tile geometry, launchpad quarantine, and all `11` build-time `FLAGS === false`.
-  - Contract **v33** (`154` methods) parity and verified-token import; signing consent and session cleanup; nine review kinds (`206` decoder/service checks and `68` card checks); `1,174` route-lifecycle checks; strict mint parsing, registrar rechecks, pending unknown-outcome retention, storage migrations, and passive-polling auto-lock regression coverage.
+  - Contract **v34** (`155` methods) parity and verified-token import; signing consent and session cleanup; nine review kinds (`206` decoder/service checks and `68` card checks); `1,174` route-lifecycle checks; strict mint parsing, registrar rechecks, pending unknown-outcome retention, storage migrations, and passive-polling auto-lock regression coverage.
 
 ### Gate B — Real-Browser Verification (Chrome MV3): `PARTIAL — OPEN` (`UNVERIFIED`)
 - **Recorded:** One partial real-Chrome toolbar-popup run (`2026-10-04`, `docs/MANUAL_SMOKE_CHECKLIST.md` §8: native Betanet self-send verified recipient, amount, Review fee, confirmation, and History entry) plus an isolated Chrome visual-harness check of `NameRoute`/`Sheet` at `400x600` and `320px` (`2026-10-27`, mocked bridge).

@@ -160,12 +160,16 @@ section('Contract v17/v18 DeFi contract-first drop (M0)');
 // existing name writes. These additions bind the existing handlers to what the user saw at Review.
 // v32 (2026-11-02): the background consent gate. No method is added; `tx.confirmReview` gains a
 // `consentToken` in its return, and every value-moving method refuses without one.
-ok('the contract advances to v33 without reusing earlier numbers', CONTRACT_VERSION === 33);
+ok('the contract advances to v34 without reusing earlier numbers', CONTRACT_VERSION === 34);
 const verifiedImport = METHODS['token.importVerified'];
 ok('v33 adds exactly one strict unlocked token import',
   Object.entries(METHODS).filter(([, spec]) => spec.since === 33).map(([name]) => name).join(',')
     === 'token.importVerified' && verifiedImport?.auth === 'unlocked'
     && JSON.stringify(verifiedImport.params) === JSON.stringify(['mintAddress', 'symbol']));
+const changePassword = METHODS['wallet.changePassword'];
+ok('v34 adds an unlocked, current-password-authenticated password change',
+  changePassword?.since === 34 && changePassword.auth === 'unlocked'
+    && JSON.stringify(changePassword.params) === JSON.stringify(['currentPassword', 'newPassword']));
 ok('review errors use the established model registry', knownError('REVIEW_FEE_CHANGED'));
 ok('an undeclared error is rejected by the same scan predicate', !knownError('UNDECLARED_NEGATIVE_CONTROL'));
 
@@ -286,8 +290,8 @@ ok('token.getCachedBalances is open auth:none like every snapshot read',
   METHODS['token.getCachedBalances']?.auth === 'none');
 ok('token.getCachedBalances declares the address param',
   METHODS['token.getCachedBalances']?.params.includes('address'));
-ok('the contract declares 154 methods in total (153 baseline + 1 verified token import)',
-  Object.keys(METHODS).length === 154, `got ${Object.keys(METHODS).length}`);
+ok('the contract declares 155 methods in total (154 prior methods + 1 password change)',
+  Object.keys(METHODS).length === 155, `got ${Object.keys(METHODS).length}`);
 
 // Auth discipline (DEFI-03): reads are call-time honest, prepares are unlocked-only, and
 // exactly ONE DeFi method signs.

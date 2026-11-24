@@ -1,7 +1,7 @@
 # Thru Wallet — Product and Security Build Specification
 
 **Document Class:** Authority (Shipped Product, UX, Security & QA Specification)
-**Baseline:** Contract **v33** (`154` methods, `15` routes, `@thru/sdk@0.5.2`, `@thru/programs@0.5.2`)
+**Baseline:** Contract **v34** (`155` methods, `15` routes, `@thru/sdk@0.5.2`, `@thru/programs@0.5.2`)
 **Companion SSoT Docs:** `docs/DOCS_INDEX.md` · `docs/STATUS_AND_ROADMAP.md` · `docs/PROJECT_LEDGER.md` · `docs/ARCHITECTURE.md` · `CONTEXT.md` · `docs/MODULE_BOUNDARIES.md`
 
 Where another document disagrees with `src/`, `src/` wins. Where documents disagree on **product or security behavior**, this specification wins (`AGENTS.md`). Unshipped features belong exclusively in `docs/roadmap/FUTURE_ROADMAP.md`.
@@ -68,7 +68,7 @@ All 15 routes are registered in `src/ui/app/boot.js`, mount immediately from loc
    - Flat newest-first stream without day headers; an unsynced cached feed shows the concise “Cached · Sync unavailable” status. Cache-first `tx.getCachedHistory`, provenance-tagged timestamps (`block` -> own `submitted` -> `Block <slot>`), and lazy `tx.getDetail` sheet reporting `Fee (declared)`. Full specification: `docs/guides/history-and-activity.md`.
 10. **Settings (`/settings`):**
     - Features groups Lock Wallet, Transaction History, and Manage Accounts. Network, signing security, theme, and auto-lock open separate in-wallet sheets; the last three use full-width choices with visible selection checks; existing switches stay in the list; Language and Currency are explicitly disabled and have no write path. About contains the manifest version and existing links. The dashboard's focused network view still uses the same network controls.
-   - Built-in network switcher (`betanet` enabled; legacy custom RPC rows inert with `Remove` only, `v7`), password-gated Signing policy (`Session-only` default vs `Require password`, `D-003`), password-gated Auto-lock (`1–240` min or `Never`, `15` min default), Side Panel Mode opt-in, Send whitelist, notifications toggle, and theme selector, with bounded in-popup `?` help cards (`help-tooltip.js`).
+   - Built-in network switcher (`betanet` enabled; legacy custom RPC rows inert with `Remove` only, `v7`), password-gated Signing policy (`Session-only` default vs `Require password`, `D-003`), password-gated Auto-lock (`1–240` min or `Never`, `15` min default), Change password (current-password re-authentication and vault re-encryption), Side Panel Mode opt-in, Send whitelist, notifications toggle, and theme selector, with bounded in-popup `?` help cards (`help-tooltip.js`).
 
 ---
 
