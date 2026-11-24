@@ -46,7 +46,6 @@ try {
     assert.ok(geometry.every(r => r.height >= 44 && Math.abs(r.width - r.parentWidth) < 1));
     assert.ok(geometry.every((r, i) => i === 0 || r.y >= geometry[i - 1].y + geometry[i - 1].height));
     assert.equal(await dialog.getByRole('button', { name: theme === 'dark' ? 'Dark' : 'Light', exact: true }).getAttribute('aria-pressed'), 'true');
-    if (width === 400) await page.screenshot({ path: 'dist/settings-preview.png' });
     const option = success ? 'Dark' : 'Light';
     await dialog.getByRole('button', { name: option, exact: true }).click();
     assert.equal(await page.evaluate(() => window.themeWrites), 1);

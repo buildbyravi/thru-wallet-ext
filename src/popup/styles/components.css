@@ -542,6 +542,24 @@ button.row { cursor: pointer; }
   box-shadow: inset 2px 0 0 var(--accent);
 }
 
+.accounts-screen .row.active {
+  border-color: var(--border-strong);
+  background: var(--accent-tint);
+  box-shadow: none;
+}
+
+.account-row-current {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
 .row-body {
   display: flex;
   flex-direction: column;
@@ -633,6 +651,57 @@ button.row { cursor: pointer; }
 .list-group-count {
   color: var(--text-3);
   font-variant-numeric: tabular-nums;
+}
+
+/* Account group cards are denser than generic lists while retaining a clear
+   boundary; these selectors stay scoped away from Send's account picker. */
+.accounts-screen .list-group {
+  gap: var(--sp-2);
+  padding: var(--sp-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-1);
+  box-shadow: 0 3px 12px rgba(21, 27, 30, 0.045);
+}
+
+.accounts-screen .list-group-header {
+  padding: var(--sp-1) var(--sp-2);
+  background: transparent;
+  border: 0;
+}
+
+.accounts-screen .keyring-manage-btn {
+  width: auto;
+  height: 28px;
+  gap: 5px;
+  padding: 0 7px;
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+}
+
+.accounts-screen .list-group .row {
+  min-height: 64px;
+  border-radius: var(--radius-md);
+}
+
+.accounts-screen .list-group .row-glyph {
+  width: 34px;
+  height: 34px;
+}
+
+.accounts-screen .row-title {
+  font-size: var(--fs-md);
+  font-weight: 700;
+}
+
+.accounts-screen .search-box input {
+  min-height: 44px;
+  border-radius: var(--radius-lg);
+}
+
+.accounts-screen .search-box input:focus-visible {
+  /* The dark outer focus ring is distinct from the field border; red is reserved for errors. */
+  border-color: var(--border);
 }
 
 /* ---- Accounts search & rename (v1.2) ----------------------- */
@@ -976,7 +1045,7 @@ button.row { cursor: pointer; }
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all var(--t-fast);
+  transition: background var(--t-fast), color var(--t-fast);
 }
 
 .drawer-close-btn:hover {
@@ -1025,7 +1094,7 @@ button.row { cursor: pointer; }
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   cursor: pointer;
-  transition: all var(--t-fast);
+  transition: background var(--t-fast), border-color var(--t-fast);
 }
 
 .account-drawer-item:hover {
@@ -1102,7 +1171,7 @@ button.row { cursor: pointer; }
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   cursor: pointer;
-  transition: all var(--t-fast);
+  transition: background var(--t-fast), border-color var(--t-fast);
 }
 
 .network-drawer-item:hover {
@@ -1211,7 +1280,7 @@ button.row { cursor: pointer; }
   background: var(--surface-1);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  transition: all var(--t-fast);
+  transition: background var(--t-fast), border-color var(--t-fast);
 }
 
 .token-row:hover {
@@ -1584,7 +1653,7 @@ button.row { cursor: pointer; }
   font-weight: 600;
   padding: 8px 12px;
   cursor: pointer;
-  transition: all var(--t-fast);
+  transition: color var(--t-fast);
 }
 
 .dash-tab-btn:hover {
@@ -1623,7 +1692,7 @@ button.row { cursor: pointer; }
   display: flex;
   flex-direction: column;
   gap: var(--sp-2);
-  transition: all var(--t-fast);
+  transition: background var(--t-fast), border-color var(--t-fast);
 }
 
 .send-from-box:hover {
@@ -1680,7 +1749,7 @@ button.row { cursor: pointer; }
   display: flex;
   align-items: center;
   justify-content: space-between;
-  transition: all var(--t-fast);
+  transition: background var(--t-fast), border-color var(--t-fast);
 }
 
 .send-token-card:hover {
@@ -1834,7 +1903,7 @@ button.row { cursor: pointer; }
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   cursor: pointer;
-  transition: all var(--t-fast);
+  transition: background var(--t-fast), border-color var(--t-fast);
 }
 
 .token-selector-item:hover {

@@ -5879,6 +5879,40 @@ async function dashboardVisibilityRefreshTest() {
   }
 }
 
+// ---- Accounts: cached bootstrap paints immediately while a fresh list refreshes ----------
+
+async function accountsBootstrapPaintTest() {
+  section('accounts: startup snapshot paints rows before the fresh account list returns');
+  resetBackend(SCENARIOS[2]);
+  resetDom();
+  await bridge.bootstrap();
+  await settle();
+  const holds = holdReplies((msg) => ['account.list', 'keyring.list', 'account.getActiveRef'].includes(msg.method));
+  const route = AccountsRoute({ navigate() {}, back() {} });
+  DOC.body.appendChild(route.el);
+  await settle();
+  const visibleNames = [...route.el.querySelectorAll('.row-title')].map((node) => node.textContent);
+  const expectedNames = backend.accounts.map((account) => account.label);
+  ok('cached account rows appear while refresh replies are still held',
+    expectedNames.every((name) => visibleNames.includes(name))
+      && holds.held.length >= 3,
+    `rows=${visibleNames.join(', ')} held=${holds.held.map((x) => x.message.method).join(',')}`);
+  ok('keyring account count has an explicit label',
+    /\baccounts?\b/i.test(textOf(route.el)));
+  ok('keyring management action has a visible label',
+    [...route.el.querySelectorAll('.keyring-manage-btn')].some((button) => /manage/i.test(textOf(button))));
+  holds.resolve('account.list', backend.accounts.map((account) => ({ ...account, balance: null, balanceStale: true })));
+  holds.resolve('keyring.list', backend.keyrings.map((keyring) => ({ ...keyring })));
+  holds.resolve('account.getActiveRef', activeAccount().ref);
+  await settle();
+  route.destroy(); route.el.remove(); holds.restore();
+  const offAccountsChanged = bridge.onEvent('accountsChanged', () => {});
+  emitEvent('accountsChanged', { active: activeAccount() });
+  offAccountsChanged();
+  ok('an account-change event invalidates the startup rows before the next visit',
+    bridge.getBootstrapSnapshot() === null);
+}
+
 // ---- Audit: other consumers of tx.getBalances must not display its stale zero ---------
 
 async function offlineBalanceConsumersTest() {
@@ -6905,6 +6939,7 @@ try {
   await faucetReviewTest();
   await ownRecipientRegistrationTest();
   await historyCacheFirstTest();
+  await accountsBootstrapPaintTest();
   await offlineBalanceConsumersTest();
   await dashboardTokenRefreshTest();
   await dashboardVisibilityRefreshTest();

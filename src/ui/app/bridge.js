@@ -18,6 +18,13 @@ import { isKnownMethod, EVENTS, listMethodNames } from '../../shared/contract/ma
 import { CLOSE_SIDE_PANEL_ACTION } from '../../shared/side-panel.js';
 
 let nextId = 1;
+let bootstrapSnapshot = null;
+let bootstrapRevision = 0;
+
+/** Public account metadata from the current unlocked startup only; never a signing authority. */
+export function getBootstrapSnapshot() {
+  return bootstrapSnapshot;
+}
 
 /** Thrown when the UI asks for something the contract does not define. */
 export class ContractError extends Error {
@@ -111,6 +118,10 @@ export function onEvent(eventName, callback) {
     // the background side had it, so the trust boundary was asymmetric.
     if (sender?.id && sender.id !== chrome.runtime.id) return;
     if (message?.type !== 'EVENT' || message.event !== eventName) return;
+    if (eventName === 'accountsChanged' || eventName === 'networkChanged' || eventName === 'lockStateChanged') {
+      bootstrapRevision += 1;
+      bootstrapSnapshot = null;
+    }
     try {
       callback(message.data);
     } catch (error) {
@@ -147,9 +158,24 @@ export function broadcastCloseSidePanel() {
   }
 }
 
-/** Full initial state in one round-trip. */
+/** Fetch initial state once and retain only public account metadata for instant screen paint. */
 export function bootstrap() {
-  return send('system.bootstrap');
+  // A new startup supersedes any older UI snapshot (for example after a wallet reset).
+  bootstrapSnapshot = null;
+  const revision = ++bootstrapRevision;
+  return send('system.bootstrap').then((state) => {
+    // A lock, account switch, or network change while the request was in flight makes this
+    // response obsolete. It may still seed boot's auth guard, but never the account-list cache.
+    if (revision === bootstrapRevision) {
+      bootstrapSnapshot = {
+        unlocked: state?.unlocked === true,
+        accounts: Array.isArray(state?.accounts) ? state.accounts : [],
+        keyrings: Array.isArray(state?.keyrings) ? state.keyrings : [],
+        account: state?.account?.ref ? { ref: state.account.ref } : null,
+      };
+    }
+    return state;
+  });
 }
 
 /** Every method the contract defines — useful for diagnostics. */

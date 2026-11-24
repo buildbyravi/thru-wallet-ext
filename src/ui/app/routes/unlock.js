@@ -166,7 +166,7 @@ export function UnlockRoute({ params, navigate, knownPaths }) {
     submit();
   });
 
-  const el = h('section', { class: 'screen' }, [
+  const el = h('section', { class: 'screen unlock-screen' }, [
     h('div', { class: 'unlock-container' }, [
       h('div', { class: 'unlock-brand' }, [
         h('img', { src: APP_ICON_URL, width: 64, height: 64, class: 'unlock-logo', alt: 'Thru' }),

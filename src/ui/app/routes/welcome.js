@@ -31,7 +31,7 @@ export function WelcomeRoute({ navigate }) {
   const banner = Banner({ tone: 'error' });
   const body = h('div', { class: 'stack stack-3' });
   const header = PageHeader({ title: 'Set up your wallet' });
-  const el = h('section', { class: 'screen' }, [header.el, banner.el, body]);
+  const el = h('section', { class: 'screen welcome-screen' }, [header.el, banner.el, body]);
 
   function clearBody() {
     for (const c of owned) c.destroy?.();

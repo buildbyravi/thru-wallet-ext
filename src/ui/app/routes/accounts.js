@@ -168,7 +168,7 @@ export function AccountsRoute({ navigate, back }) {
     }
   }
 
-  async function load() {
+  async function load({ preserveExisting = false } = {}) {
     banner.clear();
     try {
       const [accounts, keyrings, activeRef] = await Promise.all([
@@ -192,14 +192,20 @@ export function AccountsRoute({ navigate, back }) {
         })
         .catch(() => {});
     } catch (error) {
-      while (listHost.firstChild) listHost.removeChild(listHost.firstChild);
-      banner.set(error.message || 'Could not load accounts.');
+      if (!preserveExisting) {
+        while (listHost.firstChild) listHost.removeChild(listHost.firstChild);
+        banner.set(error.message || 'Could not load accounts.');
+      } else {
+        // A failed refresh must not blank a valid startup snapshot; keep it visible and
+        // explain that this screen could not confirm newer account metadata.
+        banner.set('Could not refresh accounts. Showing the latest wallet snapshot.', 'warning');
+      }
     }
   }
 
   const header = PageHeader({ title: 'Accounts', onBack: () => back() });
 
-  const el = h('section', { class: 'screen' }, [
+  const el = h('section', { class: 'screen accounts-screen' }, [
     header.el,
     searchBox,
     banner.el,
@@ -207,7 +213,22 @@ export function AccountsRoute({ navigate, back }) {
     h('div', { class: 'screen-actions' }, addBtn.el),
   ]);
 
-  load();
+  const startup = bridge.getBootstrapSnapshot();
+  const hasStartupSnapshot = Boolean(
+    startup?.unlocked
+      && Array.isArray(startup.accounts)
+      && startup.accounts.length
+      && Array.isArray(startup.keyrings),
+  );
+  if (hasStartupSnapshot) {
+    data = {
+      accounts: startup.accounts,
+      keyrings: startup.keyrings,
+      activeRef: startup.account?.ref ?? null,
+    };
+    paint();
+  }
+  void load({ preserveExisting: hasStartupSnapshot });
 
   // Re-load when the background reports a change, instead of going stale until the user
   // navigates away and back.

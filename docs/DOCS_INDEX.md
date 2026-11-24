@@ -63,7 +63,7 @@ Each document owns **one** domain. Link to the owner instead of duplicating coun
 | `docs/PROJECT_LEDGER.md` | Canonical repository identifiers and append-only contract milestone history (`v5–v33`). |
 | `docs/ARCHITECTURE.md` | Dependency graph, authoritative module ownership, v32 signing/consent boundary, shared UI platform, and scoped storage. |
 | `docs/BUILD_SPEC.md` | Shipped product behavior, wallet/keyring container model, route requirements, security matrix, and design system. |
-| `docs/DECISIONS.md` | Durable architectural decisions (`D-001` through `D-033`) with trade-offs and consequences. |
+| `docs/DECISIONS.md` | Durable architectural decisions (`D-001` through `D-035`) with trade-offs and consequences. |
 | `docs/BACKEND_GAPS.md` | Implemented backend capabilities vs open live-chain/protocol gaps and contract compatibility policy. |
 | `docs/MODULE_BOUNDARIES.md` | Enforced core layering and target isolation rules for future `src/features/<id>/` modules. |
 | `docs/GLOBAL_SMART_CONTRACT_POLICY.md` | Smart contract inspection/reuse rules and the 6 Mainnet deployment gates. |
@@ -100,6 +100,7 @@ These destinations replace active read instructions, not the original dated evid
 | Path | Class | Owns |
 | --- | --- | --- |
 | `docs/MANUAL_SMOKE_CHECKLIST.md` | Operational Runbook | Real-Chrome popup & side-panel QA checklist (`400px`, `<400px`, `>=800px`), v32 review card smoke, live-chain steps, and DevTools helpers. |
+| `docs/screenshots/README.md` | Visual Evidence Index | Current actual-built-UI gallery and provenance manifest; capture/refresh protocol belongs to the manual smoke runbook. Mocked captures do not prove native MV3 or live-chain behavior. |
 | `docs/AUDIT_REPORT.md` | Operational Summary | Current audit conclusion, 5 separated Mainnet-readiness gate categories, and index of all 7 dated audits. |
 | `docs/DEFECT_LOG.md` | Postmortem Taxonomy | Categorized root causes, fixes, and mechanical guardrails for historical and recent wallet defects. |
 | `docs/defi/README.md` | Dark-Launched Spec | DeFi backend architecture, gate status (`G0–G3`), and mandatory pre-enablement guards (all `FLAGS.DEFI_* === false`). |

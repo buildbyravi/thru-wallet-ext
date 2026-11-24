@@ -156,6 +156,21 @@ form > .btn.text {
   margin-top: calc(var(--sp-1) * -1);
 }
 
+/* Account management is a long, repeated list: keep the controls substantial but
+   tighten the vertical rhythm so more of the account set remains in view. */
+.accounts-screen {
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4) var(--sp-4);
+}
+
+.accounts-screen > .stack {
+  gap: var(--sp-2);
+}
+
+.accounts-screen .subheader {
+  padding-bottom: var(--sp-1);
+}
+
 /* ---- Footer ------------------------------------------------
    Status strip on the recessed surface, mirroring the topbar so the
    white working area is framed top and bottom. */
@@ -219,8 +234,10 @@ form > .btn.text {
   grid-template-columns: minmax(0, 1fr);
   align-items: stretch;
   flex: 1;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.07);
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.045));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .dash-balance-art-clip {
@@ -264,7 +281,7 @@ form > .btn.text {
 .dash-header-btn {
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 7px;
+  border-radius: 10px;
   color: #ffffff;
   width: 30px;
   height: 30px;
@@ -294,7 +311,7 @@ form > .btn.text {
 .dash-header .account-pill {
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 7px;
+  border-radius: 10px;
   padding: 5px 8px;
   display: inline-flex;
   align-items: center;
@@ -1456,3 +1473,88 @@ button.tx-card-body:hover { background: var(--surface-2); }
 /* Dashboard chooser reuses the focused Settings view inside the shared bottom sheet. */
 .network-chooser { padding: 0; }
 .network-chooser .screen { flex: none; }
+
+/* ---- Welcome / Unlock / Settings refinement -----------------------------
+   Keep the sensitive onboarding and recovery flows visually related, while
+   preserving their existing state machine and password/backup gates. */
+.welcome-screen {
+  gap: var(--sp-3);
+}
+.welcome-screen > .stack {
+  gap: var(--sp-3);
+}
+.welcome-screen .option-card {
+  min-height: 72px;
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--radius-lg);
+}
+.welcome-screen .option-card-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  color: var(--accent);
+  background: var(--accent-tint);
+  border-color: var(--accent-border);
+}
+.welcome-screen .option-card-title {
+  font-weight: 700;
+}
+.welcome-screen .option-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.unlock-screen {
+  padding: var(--sp-3) var(--sp-4) var(--sp-4);
+}
+.unlock-screen .unlock-container {
+  gap: var(--sp-4);
+  padding: var(--sp-4);
+}
+.unlock-screen .unlock-logo {
+  width: 72px;
+  height: 72px;
+  border-radius: var(--radius-lg);
+}
+.unlock-screen .unlock-brand h1 {
+  font-size: var(--fs-xl);
+  font-weight: 750;
+  letter-spacing: -0.025em;
+}
+.unlock-screen .unlock-brand p {
+  max-width: 280px;
+  line-height: 1.5;
+}
+
+.settings-screen {
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4) var(--sp-4);
+}
+.settings-screen .settings-groups {
+  gap: var(--sp-4);
+}
+.settings-screen .settings-heading {
+  margin-bottom: var(--sp-1);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: var(--eyebrow-tracking);
+  text-transform: uppercase;
+}
+.settings-screen .settings-card {
+  border-radius: var(--radius-lg);
+}
+.settings-screen .settings-row {
+  min-block-size: 52px;
+}
+
+@media (max-height: 480px) {
+  .unlock-screen .unlock-container {
+    justify-content: flex-start;
+    gap: var(--sp-3);
+    padding-block: var(--sp-2);
+  }
+  .unlock-screen .unlock-logo {
+    width: 52px;
+    height: 52px;
+  }
+}

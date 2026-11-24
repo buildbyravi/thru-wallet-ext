@@ -6,7 +6,7 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { chromium, CHROME_BIN } from './helpers/fixture.mjs';
 
-const extensionPath = resolve(process.argv[2] || 'dist');
+const extensionPath = resolve(process.argv[2] || 'dist').split('\\').join('/');
 const manifest = JSON.parse(await readFile(`${extensionPath}/manifest.json`, 'utf8'));
 assert.equal(manifest.manifest_version, 3);
 const directives = manifest.content_security_policy.extension_pages.split(';').map(x => x.trim());

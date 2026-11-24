@@ -28,6 +28,45 @@ isolated bridge and no chain access. It checks Assets cache/row/focus/scroll sta
 Run `npm run test:browser` with the separately installed Playwright and Chromium described in that
 directory. These fixtures are not unpacked-MV3 or real-chain evidence.
 
+### Visual Record Protocol
+
+The actual-UI inventory is [docs/screenshots/README.md](screenshots/README.md), separate from
+the synthetic marketing images in `store-assets/`. The capture command and provenance format
+are documented in [the browser runbook](../test/browser/README.md#visual-record-capture).
+
+1. **During implementation:** capture before changing a visible surface, then rebuild and capture
+   the active change. Use separate output directories under `test-results/` for comparison. Provide
+   the affected screenshots in the progress update, with route/state, theme, viewport, revision and
+   fixture-versus-MV3 scope. Never describe an old image as evidence for a newer change.
+2. **Before confirmation or merge:** run build, full tests and relevant browser regressions;
+   regenerate `docs/screenshots/current/`, inspect affected routes and shared-component consumers,
+   and include screenshots plus the manifest in the same change. Add a scenario for any new visible
+   state rather than assuming the default route image covers it. Capture checking, stale, empty,
+   invalid, offline, pending, rejection and unknown outcome when the change affects those states.
+3. **After merge:** recapture from the actual merged revision, not only the PR head. CI retains
+   per-run screenshot/manifest artifacts on PRs and pushes; it does not commit images or approve
+   a design. The maintainer refreshes the checked-in current record when the merged build differs.
+   PR/merge status must be confirmed separately; no image or passing test proves a merge.
+4. **Coverage:** use light/dark at popup `400x600`, narrow `320x600`, and wide `820x720`. Capture
+   overlays open, their last scrollable controls, and keyboard focus/dismissal where applicable.
+   Add real host, resize, zoom, motion and accessibility checks from this runbook. A fixture with
+   `thru_panel=1` tests a layout mode, not Chrome's native side-panel hosting.
+5. **Integrity and retention:** manifests record exact source revision, uncommitted source/tooling
+   changes, source/build/image SHA-256 hashes, browser/platform, viewport, theme, route/state and
+   evidence scope. Run `--check` after capture and before treating the record as current. A mismatch
+   is stale evidence, never grounds for editing expected hashes. Git preserves prior checked-in
+   versions; CI artifacts are supplemental and expire after 30 days. Do not accumulate duplicate
+   dated galleries in the maintained docs.
+6. **Safety:** use isolated public fixtures and disposable profiles. Never capture real recovery
+   phrases, private keys, passwords, credentials or personal account data. Capture `/export` only
+   at its password gate; never use fresh-backup mode. Leave import, password, recipient and reset
+   inputs blank. No capture may sign, create a real vault, or call the chain. Mocked amounts and
+   network status must be labelled as fixtures in the record, not promoted into live-chain claims.
+
+The default gallery covers all registered routes in selected safe states, onboarding forms,
+account-cache/error/search states, Assets, and Settings pickers/bottom scrolling. It is not
+exhaustive UX, review-flow, native-extension, accessibility or live-network verification.
+
 ## 1. Both Contexts: Toolbar Popup and Side Panel
 
 The toolbar popup loads `popup.html`; the side panel loads `popup.html?thru_panel=1` (`side_panel.default_path` in `src/manifest.json`).
@@ -66,7 +105,7 @@ The toolbar popup loads `popup.html`; the side panel loads `popup.html?thru_pane
 | `/welcome` | Create/import flows advance; phrase blurred until revealed; zero secrets in URL/hash | [ ] | [ ] |
 | `/unlock` | Wrong password keeps focus in input and shows backoff; `Reset` reachable | [ ] | [ ] |
 | `/dashboard` | `196px` ink header, account pill, copy & side-panel icons, `Tokens` drawer trigger (real balances, proven `0`, or `—`), frozen `2x3` `88px` action grid, secondary services grid (`Domain`), `CurrentConnection` footer; shell topbar hidden | [ ] | [ ] |
-| `/accounts` | Account list, balances, pin/hide/switch, `Add account` | [ ] | [ ] |
+| `/accounts` | Account list and balances; keyring count and `Manage` are labeled; current account uses restrained tint + check; search keyboard focus is distinct without reading as an error; switch and `Add account` work | [ ] | [ ] |
 | `/account` | Detail for `#/account?ref=...`; rename, provenance, export/remove actions; invalid ref shows clean error | [ ] | [ ] |
 | `/add-account` | Non-persisting HD preview renders; batch/single add returns to `/accounts` | [ ] | [ ] |
 | `/keyring` | Source details (`#/keyring?id=...`), password-gated rename/remove, backup status | [ ] | [ ] |

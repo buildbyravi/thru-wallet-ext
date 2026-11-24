@@ -44,6 +44,11 @@ export function AccountRow({ account, active = false, balance = null, stale = fa
       AddressText({ address: account.address }),
     ]),
     balanceEl,
+    active ? h('span', {
+      class: 'account-row-current',
+      title: 'Current account',
+      'aria-hidden': 'true',
+    }, icon('check', 13)) : null,
   ]);
 
   if (typeof onSelect === 'function') {
@@ -102,9 +107,11 @@ export function keyringTypeLabel(keyring) {
 export function KeyringGroup({ keyring, rows = [], onManage } = {}) {
   const d = disposer();
 
+  const accountCount = keyring.accountCount ?? rows.length;
+  const countLabel = Number(accountCount) === 1 ? 'account' : 'accounts';
   const headerChildren = [
     h('span', { class: 'truncate', text: keyring.label || keyringTypeLabel(keyring) }),
-    h('span', { class: 'list-group-count', text: String(keyring.accountCount ?? rows.length) }),
+    h('span', { class: 'list-group-count', text: `${accountCount} ${countLabel}` }),
   ];
 
   // Only a generated phrase that has never been acknowledged needs a backup nudge. An
@@ -125,10 +132,10 @@ export function KeyringGroup({ keyring, rows = [], onManage } = {}) {
   if (typeof onManage === 'function') {
     const manageBtn = h('button', {
       type: 'button',
-      class: 'icon-btn icon-btn-ghost sm',
+      class: 'icon-btn icon-btn-ghost sm keyring-manage-btn',
       title: `Manage ${keyring.label || 'this source'}`,
       'aria-label': `Manage ${keyring.label || 'this source'}`,
-    }, icon('settings', 13));
+    }, [icon('settings', 13), h('span', { text: 'Manage' })]);
     d.on(manageBtn, 'click', () => onManage(keyring));
     headerChildren.push(manageBtn);
   }
