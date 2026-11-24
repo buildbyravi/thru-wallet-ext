@@ -1,15 +1,15 @@
 {
   "version": 1,
-  "capturedAt": "2026-11-24T16:55:34.977Z",
-  "revision": "d32901e73e849046c5a699b4535cbef4394c0ffd",
-  "branch": "arena/pr32-ci-fix",
-  "sourceChanges": "M test/browser/helpers/fixture.mjs",
+  "capturedAt": "2026-11-24T21:01:41.020Z",
+  "revision": "4d5112227c836de11af3df771cb83e07f566f0bc",
+  "branch": "arena/history-record-final",
+  "sourceChanges": "",
   "evidence": "TESTED: real built UI, mocked bridge; not MV3 or live-network verification",
   "browser": "159.0.8154.6",
   "platform": "win32",
-  "sourceSha256": "d83ad8a4886eb29418f13ae80d87ecd53384c2f761b26c8b685921e669624c29",
+  "sourceSha256": "7e0258d063c755816140465b9c8aed4a99a99c142c9fa6cc87c74b1151fa78cd",
   "buildSha256": {
-    "background.bundle.js": "0621914cf01b2a1f49106dda4006a330e6c3d7cfbce1ae75c97d37925c05e475",
+    "background.bundle.js": "f47c51d8a54edc3a310009f2d38bdaa212cf66fbf28cd530c3631fca06824bf6",
     "fonts/inter-tight-latin-variable-U5LAIBVI.woff2": "77fefe8ca19b9f69b5284832c519e0493127c1f091f0a8936884be7721c4e618",
     "fonts/jetbrains-mono-latin-variable-VBS632QH.woff2": "18be452724bfdc236c074ca94a249a7f41a86752c7d04ab258ce9ed5651f6a7e",
     "icons/balance-art.svg": "d51886c5f0d05ddd7db7cb46870a809913395228562c98ef45ccc4177b767064",
@@ -25,8 +25,8 @@
     "icons/seed.svg": "358d1a23f1cee3ae0eb30474715062a875e3bcc451abebfe2d5f9199f4e9544f",
     "icons/thru.png": "bb8f2e7819540e88e4259f45b564d2d883ef7dbf0e9c6bed8f024a77bb57df3c",
     "manifest.json": "691007eb5532cc4d2154c8e334e500e8c48d3214c09f6d7c747123e5c660b37a",
-    "popup.bundle.js": "03b785d227dd7eec8bef28044943bff5b19844eba2f7454c05e3ba008db7c8d9",
-    "popup.css": "c3517fc015f162d35a3676575277b3da0a8d69e36015f1262a4eeadd1411d628",
+    "popup.bundle.js": "381706cff65ff411e98a7e402b69dac2e2aa166557295471136c8f3b72520271",
+    "popup.css": "ada2802b416188a3eaac652a4b218d9b51c7bd877c026d0e5a708a8e8acc29bb",
     "popup.html": "1128a2c1c98f9d814f79500c79798ccc299a74fea16957172e54b833797b04f0"
   },
   "negativeControls": [
@@ -306,7 +306,28 @@
         "context": "popup-fixture"
       },
       "file": "history-light-400x600.png",
-      "sha256": "f872aa24e4a38e98c3c6acbe816b79e4b0af3186331905902b5a04bc31b5a8bb",
+      "sha256": "d90f87a9a339b1d974ab8fd3ff9f76f9ac624dac2e21964c75f041bd75800fa7",
+      "geometry": {
+        "documentWidth": 400,
+        "viewportWidth": 400,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      },
+      "browserDiagnostics": [
+        "Permissions policy violation: unload is not allowed in this document."
+      ]
+    },
+    {
+      "scenario": "history-detail",
+      "route": "/history",
+      "theme": "light",
+      "viewport": {
+        "width": 400,
+        "height": 600,
+        "context": "popup-fixture"
+      },
+      "file": "history-detail-light-400x600.png",
+      "sha256": "727c83e0f0b90a846274e73f7d8b94a4be230229473a5fd3ecbf918aecdbba9a",
       "geometry": {
         "documentWidth": 400,
         "viewportWidth": 400,
@@ -453,7 +474,7 @@
         "context": "popup-fixture"
       },
       "file": "accounts-empty-search-light-400x600.png",
-      "sha256": "65edb8ae4889610259bf38b02e008448bfd5f0a9c17d5675b0a423e6d701ef04",
+      "sha256": "7b3ae0848217bf74e14c9c620f4cf5f145926d02981d1cd1cd8cf031f386221c",
       "geometry": {
         "documentWidth": 400,
         "viewportWidth": 400,
@@ -549,6 +570,27 @@
       ]
     },
     {
+      "scenario": "settings-password",
+      "route": "/settings",
+      "theme": "light",
+      "viewport": {
+        "width": 400,
+        "height": 600,
+        "context": "popup-fixture"
+      },
+      "file": "settings-password-light-400x600.png",
+      "sha256": "26c42ea9149628782906f17d38dd7fd18c7546170398539b8a18c2092be28844",
+      "geometry": {
+        "documentWidth": 400,
+        "viewportWidth": 400,
+        "appScrollHeight": 991,
+        "appClientHeight": 600
+      },
+      "browserDiagnostics": [
+        "Permissions policy violation: unload is not allowed in this document."
+      ]
+    },
+    {
       "scenario": "settings-bottom",
       "route": "/settings",
       "theme": "light",
@@ -558,7 +600,7 @@
         "context": "popup-fixture"
       },
       "file": "settings-bottom-light-400x600.png",
-      "sha256": "65990025994b4a455addfdc3fcec3d565383bd6f4bd884b04ecfbeb9412b07a5",
+      "sha256": "caf4b92f848b58313c72bd149fed86c18ddc0fcf36a654f28e8bc3f3e374b962",
       "geometry": {
         "documentWidth": 400,
         "viewportWidth": 400,
@@ -831,7 +873,28 @@
         "context": "popup-fixture"
       },
       "file": "history-dark-400x600.png",
-      "sha256": "aa8a27b6222abfa425eeee9ae3169f7b977c058c27c13dc781be5f9a99a025b0",
+      "sha256": "386d98cde115d642408434c1a2b17fd2eb65d6c3b32d977d310192514112449a",
+      "geometry": {
+        "documentWidth": 400,
+        "viewportWidth": 400,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      },
+      "browserDiagnostics": [
+        "Permissions policy violation: unload is not allowed in this document."
+      ]
+    },
+    {
+      "scenario": "history-detail",
+      "route": "/history",
+      "theme": "dark",
+      "viewport": {
+        "width": 400,
+        "height": 600,
+        "context": "popup-fixture"
+      },
+      "file": "history-detail-dark-400x600.png",
+      "sha256": "e6d6dbf936211d29e5fde36fa8535e82bde885a49bb9b35c7981417edb102c2b",
       "geometry": {
         "documentWidth": 400,
         "viewportWidth": 400,
@@ -978,7 +1041,7 @@
         "context": "popup-fixture"
       },
       "file": "accounts-empty-search-dark-400x600.png",
-      "sha256": "20995a5acfe50618be0466def0877acaf48843f2f2e8d54521af6ce823d508f1",
+      "sha256": "a53c0d5b9194b256ea84604b88ebbf15d37710ce2fe2337fe8cc9f7e8250f325",
       "geometry": {
         "documentWidth": 400,
         "viewportWidth": 400,
@@ -1074,6 +1137,27 @@
       ]
     },
     {
+      "scenario": "settings-password",
+      "route": "/settings",
+      "theme": "dark",
+      "viewport": {
+        "width": 400,
+        "height": 600,
+        "context": "popup-fixture"
+      },
+      "file": "settings-password-dark-400x600.png",
+      "sha256": "d1071d483d27ba78cc0548625bb64fdac8c5b7bbd0e2ad4c5c11eb9346619bcc",
+      "geometry": {
+        "documentWidth": 400,
+        "viewportWidth": 400,
+        "appScrollHeight": 991,
+        "appClientHeight": 600
+      },
+      "browserDiagnostics": [
+        "Permissions policy violation: unload is not allowed in this document."
+      ]
+    },
+    {
       "scenario": "settings-bottom",
       "route": "/settings",
       "theme": "dark",
@@ -1083,7 +1167,7 @@
         "context": "popup-fixture"
       },
       "file": "settings-bottom-dark-400x600.png",
-      "sha256": "2da8e0a90d85f87e7b383b3b26bff77e0d9ac3d66ac4c265ed3b8b29ad68d883",
+      "sha256": "b0defefa2f173d127401ba3c07e74df201fee17bb634a015f75d7941925765ce",
       "geometry": {
         "documentWidth": 400,
         "viewportWidth": 400,
@@ -1356,7 +1440,28 @@
         "context": "panel-fixture"
       },
       "file": "history-light-320x600.png",
-      "sha256": "aec0e0ab9f2ee4d50de9b09877372678f9b3108369d6d6c7c18da9cc735202f8",
+      "sha256": "2a0f80a2071c47297ab81c9e1c7f9556bc565555165d003c44f6cf4199486a35",
+      "geometry": {
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      },
+      "browserDiagnostics": [
+        "Permissions policy violation: unload is not allowed in this document."
+      ]
+    },
+    {
+      "scenario": "history-detail",
+      "route": "/history",
+      "theme": "light",
+      "viewport": {
+        "width": 320,
+        "height": 600,
+        "context": "panel-fixture"
+      },
+      "file": "history-detail-light-320x600.png",
+      "sha256": "11f788ee6f125e7069e2081fbf98296f218ddcc1a7510f934af25959c6c39449",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
@@ -1503,7 +1608,7 @@
         "context": "panel-fixture"
       },
       "file": "accounts-empty-search-light-320x600.png",
-      "sha256": "ec804dc4d06f9312c81744129651406fd537ce065d7520be6796af57a22cde45",
+      "sha256": "94836c99f2fa8d25e4424c99f9ccb5ff52c51a9f28eb3f2b9c5e69cd4af9e3e6",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
@@ -1588,6 +1693,27 @@
       },
       "file": "settings-signing-light-320x600.png",
       "sha256": "6be4c3a7af0f20bb90bf3cfb9c7c67d3eb572dfd749cf98224ac846568b0db68",
+      "geometry": {
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "appScrollHeight": 994,
+        "appClientHeight": 600
+      },
+      "browserDiagnostics": [
+        "Permissions policy violation: unload is not allowed in this document."
+      ]
+    },
+    {
+      "scenario": "settings-password",
+      "route": "/settings",
+      "theme": "light",
+      "viewport": {
+        "width": 320,
+        "height": 600,
+        "context": "panel-fixture"
+      },
+      "file": "settings-password-light-320x600.png",
+      "sha256": "b5f02ad32e7d7a0991a5e780164cb99511bba7e1f45134703e3fb08c738f786b",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
@@ -1818,7 +1944,7 @@
         "context": "panel-fixture"
       },
       "file": "receive-dark-320x600.png",
-      "sha256": "b98baa1baf7923be9ae6c0b571d5b8af616fb5cce195505990323f476b885851",
+      "sha256": "db4278d3d4396f869913d3ec226e08ef0ecfa0e3d69a31f9133d19198cdfc7ca",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
@@ -1881,7 +2007,28 @@
         "context": "panel-fixture"
       },
       "file": "history-dark-320x600.png",
-      "sha256": "dbfa535e7f15d2e51d092e0dec62c4c3aa43e09cfdbc97c1035d8b2d62875867",
+      "sha256": "d13c01ce0e0840342bcc8f8763084e5e863a55e76360474da8772304071f9c9b",
+      "geometry": {
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      },
+      "browserDiagnostics": [
+        "Permissions policy violation: unload is not allowed in this document."
+      ]
+    },
+    {
+      "scenario": "history-detail",
+      "route": "/history",
+      "theme": "dark",
+      "viewport": {
+        "width": 320,
+        "height": 600,
+        "context": "panel-fixture"
+      },
+      "file": "history-detail-dark-320x600.png",
+      "sha256": "e78ea4372c3115076ed29b4ae16816dcda8d6641d9f3e9721c8c838b9cc02577",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
@@ -2007,7 +2154,7 @@
         "context": "panel-fixture"
       },
       "file": "accounts-refresh-error-dark-320x600.png",
-      "sha256": "6f02b0598689df4e923380d3cf28f5a37010a8dff824d37d89794cec0c46f74d",
+      "sha256": "decd6739afe8302a74ff9e155fb3786e8d979e4e806858fc5093bec143708de0",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
@@ -2124,6 +2271,27 @@
       ]
     },
     {
+      "scenario": "settings-password",
+      "route": "/settings",
+      "theme": "dark",
+      "viewport": {
+        "width": 320,
+        "height": 600,
+        "context": "panel-fixture"
+      },
+      "file": "settings-password-dark-320x600.png",
+      "sha256": "5df8f1dbc625197c3ca014f24bedc334b0334fb1db823f0f2ff13423c8b55cd3",
+      "geometry": {
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "appScrollHeight": 994,
+        "appClientHeight": 600
+      },
+      "browserDiagnostics": [
+        "Permissions policy violation: unload is not allowed in this document."
+      ]
+    },
+    {
       "scenario": "settings-bottom",
       "route": "/settings",
       "theme": "dark",
@@ -2133,7 +2301,7 @@
         "context": "panel-fixture"
       },
       "file": "settings-bottom-dark-320x600.png",
-      "sha256": "8bfbff6e4d99d152b3ada87a67588343c56737f46fda931fbe3a8ee3ed65bbac",
+      "sha256": "29a183d68c4a5a13991440359a64b2204d52782c38364311458cca412031d138",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
@@ -2406,7 +2574,28 @@
         "context": "wide-panel-fixture"
       },
       "file": "history-light-820x720.png",
-      "sha256": "ebddc673639abdd12084e9b30285d6a8716d762f47df65ca6c6704c939f6b691",
+      "sha256": "a70d0a2aeb806e31c190ea3560af2a10b14f2ca2f6caf06fb9921323cca92212",
+      "geometry": {
+        "documentWidth": 820,
+        "viewportWidth": 820,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      },
+      "browserDiagnostics": [
+        "Permissions policy violation: unload is not allowed in this document."
+      ]
+    },
+    {
+      "scenario": "history-detail",
+      "route": "/history",
+      "theme": "light",
+      "viewport": {
+        "width": 820,
+        "height": 720,
+        "context": "wide-panel-fixture"
+      },
+      "file": "history-detail-light-820x720.png",
+      "sha256": "0d9bc68bb2a1852c90f3043a040984f381759e9950c01bdbf56b1f45d1163f68",
       "geometry": {
         "documentWidth": 820,
         "viewportWidth": 820,
@@ -2649,6 +2838,27 @@
       ]
     },
     {
+      "scenario": "settings-password",
+      "route": "/settings",
+      "theme": "light",
+      "viewport": {
+        "width": 820,
+        "height": 720,
+        "context": "wide-panel-fixture"
+      },
+      "file": "settings-password-light-820x720.png",
+      "sha256": "9700a2bc04507377efd3b73362ec387cec3e167fb2a14eec5f15f204e1350068",
+      "geometry": {
+        "documentWidth": 820,
+        "viewportWidth": 820,
+        "appScrollHeight": 991,
+        "appClientHeight": 600
+      },
+      "browserDiagnostics": [
+        "Permissions policy violation: unload is not allowed in this document."
+      ]
+    },
+    {
       "scenario": "settings-bottom",
       "route": "/settings",
       "theme": "light",
@@ -2658,7 +2868,7 @@
         "context": "wide-panel-fixture"
       },
       "file": "settings-bottom-light-820x720.png",
-      "sha256": "cb05863254404b9be4a785a9c208f797159802fe97913719decf125c5e07841e",
+      "sha256": "ec067d2b1dc926b1f8b4690c16124ffb88ba8beb72aca9aaa7ef0e590e543ed6",
       "geometry": {
         "documentWidth": 820,
         "viewportWidth": 820,
@@ -2931,7 +3141,28 @@
         "context": "wide-panel-fixture"
       },
       "file": "history-dark-820x720.png",
-      "sha256": "1f51b8eb5758c0b66b900f7b7ff4ba512cd8002c46cbd2762921f1b8f102f9e6",
+      "sha256": "c578f234fc8d98663961aba84c9069e6b4e2e7b33dfc740241bf80823331dc8d",
+      "geometry": {
+        "documentWidth": 820,
+        "viewportWidth": 820,
+        "appScrollHeight": 600,
+        "appClientHeight": 600
+      },
+      "browserDiagnostics": [
+        "Permissions policy violation: unload is not allowed in this document."
+      ]
+    },
+    {
+      "scenario": "history-detail",
+      "route": "/history",
+      "theme": "dark",
+      "viewport": {
+        "width": 820,
+        "height": 720,
+        "context": "wide-panel-fixture"
+      },
+      "file": "history-detail-dark-820x720.png",
+      "sha256": "433b03a98b2264b120a81e0f24df8c3883c40e3ed94e4cde80d718fa88c25bfe",
       "geometry": {
         "documentWidth": 820,
         "viewportWidth": 820,
@@ -3163,6 +3394,27 @@
       },
       "file": "settings-signing-dark-820x720.png",
       "sha256": "b2b5d027773e3fd7c594b36792208044ca7c3115040531db9267b50898f87f08",
+      "geometry": {
+        "documentWidth": 820,
+        "viewportWidth": 820,
+        "appScrollHeight": 991,
+        "appClientHeight": 600
+      },
+      "browserDiagnostics": [
+        "Permissions policy violation: unload is not allowed in this document."
+      ]
+    },
+    {
+      "scenario": "settings-password",
+      "route": "/settings",
+      "theme": "dark",
+      "viewport": {
+        "width": 820,
+        "height": 720,
+        "context": "wide-panel-fixture"
+      },
+      "file": "settings-password-dark-820x720.png",
+      "sha256": "a2af500e32971aec49d9faa4eb240feece2f9470096b79eb6af5694169aec2f6",
       "geometry": {
         "documentWidth": 820,
         "viewportWidth": 820,

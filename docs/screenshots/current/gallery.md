@@ -2,7 +2,7 @@
 
 TESTED: real built UI, mocked bridge; not MV3 or live-network verification
 
-Captured: 2026-11-24T16:55:34.977Z. Source revision: `d32901e73e849046c5a699b4535cbef4394c0ffd` (branch `arena/pr32-ci-fix`).
+Captured: 2026-11-24T21:01:41.020Z. Source revision: `4d5112227c836de11af3df771cb83e07f566f0bc` (branch `arena/history-record-final`).
 Browser: 159.0.8154.6, win32. See [manifest](manifest.json) for hashes, source changes and limitations.
 
 ## welcome / light / 400x600
@@ -57,6 +57,10 @@ Browser: 159.0.8154.6, win32. See [manifest](manifest.json) for hashes, source c
 
 ![history, light, popup-fixture](<history-light-400x600.png>)
 
+## history-detail / light / 400x600
+
+![history-detail, light, popup-fixture](<history-detail-light-400x600.png>)
+
 ## settings / light / 400x600
 
 ![settings, light, popup-fixture](<settings-light-400x600.png>)
@@ -100,6 +104,10 @@ Browser: 159.0.8154.6, win32. See [manifest](manifest.json) for hashes, source c
 ## settings-signing / light / 400x600
 
 ![settings-signing, light, popup-fixture](<settings-signing-light-400x600.png>)
+
+## settings-password / light / 400x600
+
+![settings-password, light, popup-fixture](<settings-password-light-400x600.png>)
 
 ## settings-bottom / light / 400x600
 
@@ -157,6 +165,10 @@ Browser: 159.0.8154.6, win32. See [manifest](manifest.json) for hashes, source c
 
 ![history, dark, popup-fixture](<history-dark-400x600.png>)
 
+## history-detail / dark / 400x600
+
+![history-detail, dark, popup-fixture](<history-detail-dark-400x600.png>)
+
 ## settings / dark / 400x600
 
 ![settings, dark, popup-fixture](<settings-dark-400x600.png>)
@@ -200,6 +212,10 @@ Browser: 159.0.8154.6, win32. See [manifest](manifest.json) for hashes, source c
 ## settings-signing / dark / 400x600
 
 ![settings-signing, dark, popup-fixture](<settings-signing-dark-400x600.png>)
+
+## settings-password / dark / 400x600
+
+![settings-password, dark, popup-fixture](<settings-password-dark-400x600.png>)
 
 ## settings-bottom / dark / 400x600
 
@@ -257,6 +273,10 @@ Browser: 159.0.8154.6, win32. See [manifest](manifest.json) for hashes, source c
 
 ![history, light, panel-fixture](<history-light-320x600.png>)
 
+## history-detail / light / 320x600
+
+![history-detail, light, panel-fixture](<history-detail-light-320x600.png>)
+
 ## settings / light / 320x600
 
 ![settings, light, panel-fixture](<settings-light-320x600.png>)
@@ -300,6 +320,10 @@ Browser: 159.0.8154.6, win32. See [manifest](manifest.json) for hashes, source c
 ## settings-signing / light / 320x600
 
 ![settings-signing, light, panel-fixture](<settings-signing-light-320x600.png>)
+
+## settings-password / light / 320x600
+
+![settings-password, light, panel-fixture](<settings-password-light-320x600.png>)
 
 ## settings-bottom / light / 320x600
 
@@ -357,6 +381,10 @@ Browser: 159.0.8154.6, win32. See [manifest](manifest.json) for hashes, source c
 
 ![history, dark, panel-fixture](<history-dark-320x600.png>)
 
+## history-detail / dark / 320x600
+
+![history-detail, dark, panel-fixture](<history-detail-dark-320x600.png>)
+
 ## settings / dark / 320x600
 
 ![settings, dark, panel-fixture](<settings-dark-320x600.png>)
@@ -400,6 +428,10 @@ Browser: 159.0.8154.6, win32. See [manifest](manifest.json) for hashes, source c
 ## settings-signing / dark / 320x600
 
 ![settings-signing, dark, panel-fixture](<settings-signing-dark-320x600.png>)
+
+## settings-password / dark / 320x600
+
+![settings-password, dark, panel-fixture](<settings-password-dark-320x600.png>)
 
 ## settings-bottom / dark / 320x600
 
@@ -457,6 +489,10 @@ Browser: 159.0.8154.6, win32. See [manifest](manifest.json) for hashes, source c
 
 ![history, light, wide-panel-fixture](<history-light-820x720.png>)
 
+## history-detail / light / 820x720
+
+![history-detail, light, wide-panel-fixture](<history-detail-light-820x720.png>)
+
 ## settings / light / 820x720
 
 ![settings, light, wide-panel-fixture](<settings-light-820x720.png>)
@@ -500,6 +536,10 @@ Browser: 159.0.8154.6, win32. See [manifest](manifest.json) for hashes, source c
 ## settings-signing / light / 820x720
 
 ![settings-signing, light, wide-panel-fixture](<settings-signing-light-820x720.png>)
+
+## settings-password / light / 820x720
+
+![settings-password, light, wide-panel-fixture](<settings-password-light-820x720.png>)
 
 ## settings-bottom / light / 820x720
 
@@ -557,6 +597,10 @@ Browser: 159.0.8154.6, win32. See [manifest](manifest.json) for hashes, source c
 
 ![history, dark, wide-panel-fixture](<history-dark-820x720.png>)
 
+## history-detail / dark / 820x720
+
+![history-detail, dark, wide-panel-fixture](<history-detail-dark-820x720.png>)
+
 ## settings / dark / 820x720
 
 ![settings, dark, wide-panel-fixture](<settings-dark-820x720.png>)
@@ -600,6 +644,10 @@ Browser: 159.0.8154.6, win32. See [manifest](manifest.json) for hashes, source c
 ## settings-signing / dark / 820x720
 
 ![settings-signing, dark, wide-panel-fixture](<settings-signing-dark-820x720.png>)
+
+## settings-password / dark / 820x720
+
+![settings-password, dark, wide-panel-fixture](<settings-password-dark-820x720.png>)
 
 ## settings-bottom / dark / 820x720
 
