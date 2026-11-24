@@ -1,15 +1,17 @@
 {
   "version": 1,
-  "capturedAt": "2026-11-23T20:37:21.442Z",
-  "revision": "46f07c6a2b602bcfb923bdf5a7340500c3a56a90",
-  "branch": "pr-31",
-  "sourceChanges": "",
+  "capturedAt": "2026-11-24T16:55:34.977Z",
+  "revision": "d32901e73e849046c5a699b4535cbef4394c0ffd",
+  "branch": "arena/pr32-ci-fix",
+  "sourceChanges": "M test/browser/helpers/fixture.mjs",
   "evidence": "TESTED: real built UI, mocked bridge; not MV3 or live-network verification",
   "browser": "159.0.8154.6",
   "platform": "win32",
-  "sourceSha256": "eaf10b3b9f29af9c8d3a7fca4b17e52b3b1db2d35d8a6d71c7055b81c4235320",
+  "sourceSha256": "d83ad8a4886eb29418f13ae80d87ecd53384c2f761b26c8b685921e669624c29",
   "buildSha256": {
-    "background.bundle.js": "a7b92183d52a2f95a410ed6f4d781c872dd200a5c996888021b57caa34248f04",
+    "background.bundle.js": "0621914cf01b2a1f49106dda4006a330e6c3d7cfbce1ae75c97d37925c05e475",
+    "fonts/inter-tight-latin-variable-U5LAIBVI.woff2": "77fefe8ca19b9f69b5284832c519e0493127c1f091f0a8936884be7721c4e618",
+    "fonts/jetbrains-mono-latin-variable-VBS632QH.woff2": "18be452724bfdc236c074ca94a249a7f41a86752c7d04ab258ce9ed5651f6a7e",
     "icons/balance-art.svg": "d51886c5f0d05ddd7db7cb46870a809913395228562c98ef45ccc4177b767064",
     "icons/close.svg": "9870d3d13a13e514f0de1b78379aa373818bf3a84c0808a6204568341b41412e",
     "icons/icon128.png": "e0746513bd153e74fa8f2bb630c953b839c791be263e4ed5a1b07a9534e633a4",
@@ -23,8 +25,8 @@
     "icons/seed.svg": "358d1a23f1cee3ae0eb30474715062a875e3bcc451abebfe2d5f9199f4e9544f",
     "icons/thru.png": "bb8f2e7819540e88e4259f45b564d2d883ef7dbf0e9c6bed8f024a77bb57df3c",
     "manifest.json": "691007eb5532cc4d2154c8e334e500e8c48d3214c09f6d7c747123e5c660b37a",
-    "popup.bundle.js": "aa8a29578cb7311b8caeac006da2b66094c435a68238427d584b6cc8c165236a",
-    "popup.css": "edd2bc5fb6cca1bb9791236aa2fdec70245f9e61980d7bfc2696810930b15810",
+    "popup.bundle.js": "03b785d227dd7eec8bef28044943bff5b19844eba2f7454c05e3ba008db7c8d9",
+    "popup.css": "c3517fc015f162d35a3676575277b3da0a8d69e36015f1262a4eeadd1411d628",
     "popup.html": "1128a2c1c98f9d814f79500c79798ccc299a74fea16957172e54b833797b04f0"
   },
   "negativeControls": [
@@ -52,7 +54,7 @@
         "context": "popup-fixture"
       },
       "file": "welcome-light-400x600.png",
-      "sha256": "9561165d021a7b64173c8af6b70569234e0cbfcdb5792ad7df4be540b63720d1",
+      "sha256": "34d6caf78ba1c15914e5f30602cd3475d787af7f9a043cf6a8c9d2dced4a203a",
       "geometry": {
         "documentWidth": 400,
         "viewportWidth": 400,
@@ -73,7 +75,7 @@
         "context": "popup-fixture"
       },
       "file": "unlock-light-400x600.png",
-      "sha256": "899aa016c70ca646a29d84a1d7b6ae26add1119b1c801a6c5a562477fc77ba09",
+      "sha256": "a6595d8109d56c9cccc3c4cc55266b0120f1fe83f640ff09016c69e358e0db39",
       "geometry": {
         "documentWidth": 400,
         "viewportWidth": 400,
@@ -94,7 +96,7 @@
         "context": "popup-fixture"
       },
       "file": "dashboard-light-400x600.png",
-      "sha256": "6b8e7dcf48372e226dec6c51a7c3401bbba00e3eb4096431f3be4103994b2914",
+      "sha256": "d52c39141cf72d390f2b405defef608d18c2db71b79f97256091eeaf77cec845",
       "geometry": {
         "documentWidth": 400,
         "viewportWidth": 400,
@@ -115,7 +117,7 @@
         "context": "popup-fixture"
       },
       "file": "accounts-light-400x600.png",
-      "sha256": "dc8fc0cbf6ecdca5fbd2e211d13522a784162224cbd3a18a7ad0817e71a5c5ee",
+      "sha256": "6a41348d11300c3e9f25671d631ebb89e6894cbef1ec0ee26306d5f5356d3067",
       "geometry": {
         "documentWidth": 400,
         "viewportWidth": 400,
@@ -136,11 +138,11 @@
         "context": "popup-fixture"
       },
       "file": "account-light-400x600.png",
-      "sha256": "ad3532355c06a44f9a75a149891c91be3597546bb8263e0f1520b72235e3b88e",
+      "sha256": "7233e342fe78debdc645519df13e73f2cdcf66ba17acc47968d5b7f2bce19f34",
       "geometry": {
         "documentWidth": 400,
         "viewportWidth": 400,
-        "appScrollHeight": 768,
+        "appScrollHeight": 758,
         "appClientHeight": 600
       },
       "browserDiagnostics": [
@@ -157,7 +159,7 @@
         "context": "popup-fixture"
       },
       "file": "add-account-light-400x600.png",
-      "sha256": "f9c52bce2e60d254fd168526e736e25dd037a739405be9bbb348d33b8a9de928",
+      "sha256": "acf93459f14b77e3fd3e903e37d925b45280ec4d0637eb3738f7103b234f7a80",
       "geometry": {
         "documentWidth": 400,
         "viewportWidth": 400,
@@ -178,7 +180,7 @@
         "context": "popup-fixture"
       },
       "file": "keyring-light-400x600.png",
-      "sha256": "86d48d06aedade30afaa0ec06b169e2bdfd377d020045ceca752ba72de338932",
+      "sha256": "d5cfcd6a12fce52656ffd6d747734bd34bc681caaec2cb3d30e38c4ff856dae6",
       "geometry": {
         "documentWidth": 400,
         "viewportWidth": 400,
@@ -199,7 +201,7 @@
         "context": "popup-fixture"
       },
       "file": "export-light-400x600.png",
-      "sha256": "9340d80e8e453cfd6792cc448aa53b2525130c105ff23a9bbd9401a4ac78e385",
+      "sha256": "9c2bd45ca0ac8ac2abcbd0e987998670e6368bc68154bdf2540deb0a9413e27a",
       "geometry": {
         "documentWidth": 400,
         "viewportWidth": 400,
@@ -220,11 +222,11 @@
         "context": "popup-fixture"
       },
       "file": "send-light-400x600.png",
-      "sha256": "d71363b5833e52f962f49ef523ff9452344da0a01642d68d7d551f8badf3cebe",
+      "sha256": "3a7f98743a2f295950f5696f9c6f83f0e7ae160859df24ada3a81f41c41f52d1",
       "geometry": {
         "documentWidth": 400,
         "viewportWidth": 400,
-        "appScrollHeight": 618,
+        "appScrollHeight": 600,
         "appClientHeight": 600
       },
       "browserDiagnostics": [
@@ -241,7 +243,7 @@
         "context": "popup-fixture"
       },
       "file": "receive-light-400x600.png",
-      "sha256": "bd01f82ae45d57b312b78ff05f03891a6a7b698f0a74105f8fb4f7812dd60d68",
+      "sha256": "158d0b13e4ec9d7bede55cbcaedd7bf766b16395d196535786b0a1b4767848ce",
       "geometry": {
         "documentWidth": 400,
         "viewportWidth": 400,
@@ -262,7 +264,7 @@
         "context": "popup-fixture"
       },
       "file": "faucet-light-400x600.png",
-      "sha256": "cf81cb483ed0385a4ab2002c64fa0713362f9042485e5af01452e3bd8fdd0193",
+      "sha256": "b6560bf85a750e08c0d7bc6b2972645d4f7daf88d89372731dbc115b877afd86",
       "geometry": {
         "documentWidth": 400,
         "viewportWidth": 400,
@@ -283,7 +285,7 @@
         "context": "popup-fixture"
       },
       "file": "name-light-400x600.png",
-      "sha256": "46f920cf6aebb559af2069a90470bfeb39cd0399eeff19939cfa00aebe947a24",
+      "sha256": "4b89c8134508af908bbeaabd6e2584a6f9f845c79ad9d1676c47f0e464518f49",
       "geometry": {
         "documentWidth": 400,
         "viewportWidth": 400,
@@ -304,7 +306,7 @@
         "context": "popup-fixture"
       },
       "file": "history-light-400x600.png",
-      "sha256": "e288614ee51c67ed3844481ed131c2b5df214012561f69898c51f45d482a9fa1",
+      "sha256": "f872aa24e4a38e98c3c6acbe816b79e4b0af3186331905902b5a04bc31b5a8bb",
       "geometry": {
         "documentWidth": 400,
         "viewportWidth": 400,
@@ -325,11 +327,11 @@
         "context": "popup-fixture"
       },
       "file": "settings-light-400x600.png",
-      "sha256": "07a1ae797c753402edcf6c016fc91d73037141e8b5d958ea1d159d8c52dcebdc",
+      "sha256": "3ab792a3a6009991c88f3f49f0b6a9aa05aba7b91b2bec29a5f0f06e4ec952a4",
       "geometry": {
         "documentWidth": 400,
         "viewportWidth": 400,
-        "appScrollHeight": 939,
+        "appScrollHeight": 991,
         "appClientHeight": 600
       },
       "browserDiagnostics": [
@@ -346,7 +348,7 @@
         "context": "popup-fixture"
       },
       "file": "reset-light-400x600.png",
-      "sha256": "1d42498039ec8b83e91c5e1722b573433eb3c94d25c83666178c56538ef5ea40",
+      "sha256": "ffb97cb6ab1fb1f0d1af2a2cccff025a3eff90e53477b6fdc1ba59e3607dadfa",
       "geometry": {
         "documentWidth": 400,
         "viewportWidth": 400,
@@ -367,7 +369,7 @@
         "context": "popup-fixture"
       },
       "file": "welcome-create-light-400x600.png",
-      "sha256": "6f364b1faea781879cdf9ac04ad7f2354a6b9f1150990bf54ac3228594fb9d68",
+      "sha256": "d8db02fde612a6aac4b2443a169bf329d182cf272282cc0e525b6c27247f0f46",
       "geometry": {
         "documentWidth": 400,
         "viewportWidth": 400,
@@ -388,7 +390,7 @@
         "context": "popup-fixture"
       },
       "file": "welcome-import-light-400x600.png",
-      "sha256": "0737f91dea7d5d683ae5cf5e11cb3f2cf8e721f296abb28eeb06adaf2e6631a9",
+      "sha256": "c651d9cfd7bceccaee4448baad81413e31e816f9e793af2876659a4412234631",
       "geometry": {
         "documentWidth": 400,
         "viewportWidth": 400,
@@ -409,7 +411,7 @@
         "context": "popup-fixture"
       },
       "file": "accounts-cached-light-400x600.png",
-      "sha256": "ce74f204250685f4cb0de538f23411c68b416cae69c612feddbd0546ff8e2a53",
+      "sha256": "b57ec1d1430299596f29cbff7e977237698d90ec4d51a60f79de86b2cee3e21a",
       "geometry": {
         "documentWidth": 400,
         "viewportWidth": 400,
@@ -430,7 +432,7 @@
         "context": "popup-fixture"
       },
       "file": "accounts-refresh-error-light-400x600.png",
-      "sha256": "48009d3952cab110268d71f344813e0da60d20cbcc1c5cf3d3084a87a6d05728",
+      "sha256": "47ff3f0cc7aaeae674257fe50a541208c2cf66d8c704a15fad5690de230a4869",
       "geometry": {
         "documentWidth": 400,
         "viewportWidth": 400,
@@ -451,7 +453,7 @@
         "context": "popup-fixture"
       },
       "file": "accounts-empty-search-light-400x600.png",
-      "sha256": "e86773ef9732513446df24ad937ebc38e3330b67baba9c9f2dc1ce3876513830",
+      "sha256": "65edb8ae4889610259bf38b02e008448bfd5f0a9c17d5675b0a423e6d701ef04",
       "geometry": {
         "documentWidth": 400,
         "viewportWidth": 400,
@@ -472,7 +474,7 @@
         "context": "popup-fixture"
       },
       "file": "dashboard-assets-light-400x600.png",
-      "sha256": "5ea084bfa93912654ca8d11d381e073ce7abfd642bd95ff1ccbf2a14b7cf518f",
+      "sha256": "1976825a1f7af2380d34445ccdfb70e67540898b0698e9c0a49aa28d79db075a",
       "geometry": {
         "documentWidth": 400,
         "viewportWidth": 400,
@@ -493,11 +495,11 @@
         "context": "popup-fixture"
       },
       "file": "settings-theme-light-400x600.png",
-      "sha256": "1582110130f66bd6c6661e26c3259c8e0f91f28d97d17e0c873b64a7aa308197",
+      "sha256": "3330600533d40ebce6753763b2aa4b19672950eda0f5ebf6c5ba1ffb5b66edbc",
       "geometry": {
         "documentWidth": 400,
         "viewportWidth": 400,
-        "appScrollHeight": 939,
+        "appScrollHeight": 991,
         "appClientHeight": 600
       },
       "browserDiagnostics": [
@@ -514,11 +516,11 @@
         "context": "popup-fixture"
       },
       "file": "settings-auto-lock-light-400x600.png",
-      "sha256": "0bb9b35fa3b45ea337f784693f729b7e6fb68387476794c0272e42444e8187a8",
+      "sha256": "fd1769cb6d96b648bd64b8fffa29b1cb6d09ead260163edddac526aebc81a017",
       "geometry": {
         "documentWidth": 400,
         "viewportWidth": 400,
-        "appScrollHeight": 939,
+        "appScrollHeight": 991,
         "appClientHeight": 600
       },
       "browserDiagnostics": [
@@ -535,11 +537,11 @@
         "context": "popup-fixture"
       },
       "file": "settings-signing-light-400x600.png",
-      "sha256": "14d3f4420d83b8a3e090b155bb1ca4aed16bf110d9bfddfd5d4978015c0fe47a",
+      "sha256": "88144001da41ac0ab0ce48ab01142d4db881ec77a62cb3e17e284b1c1bbb3ad2",
       "geometry": {
         "documentWidth": 400,
         "viewportWidth": 400,
-        "appScrollHeight": 939,
+        "appScrollHeight": 991,
         "appClientHeight": 600
       },
       "browserDiagnostics": [
@@ -556,11 +558,11 @@
         "context": "popup-fixture"
       },
       "file": "settings-bottom-light-400x600.png",
-      "sha256": "508d4abe6cb45f277edbe2f963c5a3821f092c61ff341fb708b9a0218e238d96",
+      "sha256": "65990025994b4a455addfdc3fcec3d565383bd6f4bd884b04ecfbeb9412b07a5",
       "geometry": {
         "documentWidth": 400,
         "viewportWidth": 400,
-        "appScrollHeight": 939,
+        "appScrollHeight": 991,
         "appClientHeight": 600
       },
       "browserDiagnostics": [
@@ -577,7 +579,7 @@
         "context": "popup-fixture"
       },
       "file": "welcome-dark-400x600.png",
-      "sha256": "2efb65b00cf14029423cabb3d121bc7259f47facdedf4cd35cc094286089d7e3",
+      "sha256": "62e2a9e36655b093867826032bf1d068d78d7eb5f62b2def18b9070574cbf608",
       "geometry": {
         "documentWidth": 400,
         "viewportWidth": 400,
@@ -598,7 +600,7 @@
         "context": "popup-fixture"
       },
       "file": "unlock-dark-400x600.png",
-      "sha256": "1a77a41b959935bb375b0febf2142f26d7742888efec62488cd9b7408c1ad392",
+      "sha256": "c709b665a9455b5b0c911997d86ebfcdbd92fe519adf98e55175927e67e59242",
       "geometry": {
         "documentWidth": 400,
         "viewportWidth": 400,
@@ -619,7 +621,7 @@
         "context": "popup-fixture"
       },
       "file": "dashboard-dark-400x600.png",
-      "sha256": "fcac5f8036ecf7fb3d61da8da30254bdfd97729131fdbd214a3ea050ae325fc8",
+      "sha256": "b9f2818cb3f2073068cd46c7d5fddad10b9358440d1ebd7f6aff7a67a7ca2117",
       "geometry": {
         "documentWidth": 400,
         "viewportWidth": 400,
@@ -640,7 +642,7 @@
         "context": "popup-fixture"
       },
       "file": "accounts-dark-400x600.png",
-      "sha256": "dc1d9611c15702beea96f09bca56d5b704135a9589b4304549ce5086d809a325",
+      "sha256": "ba873620225ab0bcc9239d97c6fbdb4972983cd4a2be703370f932a27110b42a",
       "geometry": {
         "documentWidth": 400,
         "viewportWidth": 400,
@@ -661,11 +663,11 @@
         "context": "popup-fixture"
       },
       "file": "account-dark-400x600.png",
-      "sha256": "2dc7f82a3229a0ec00cc8d36720f172b567631619adf66fe75b5ed30e3b1df00",
+      "sha256": "7745c2ba9cbabc1803cb215b4dc7e3ebcda86b692a01d0d0f44830b66bc8be6d",
       "geometry": {
         "documentWidth": 400,
         "viewportWidth": 400,
-        "appScrollHeight": 768,
+        "appScrollHeight": 758,
         "appClientHeight": 600
       },
       "browserDiagnostics": [
@@ -682,7 +684,7 @@
         "context": "popup-fixture"
       },
       "file": "add-account-dark-400x600.png",
-      "sha256": "598169a8cd7e4c4d88f97f81b9c1c0f1a85f8a20b4ef1c4c47df17e76103cc87",
+      "sha256": "e1006b4c434e6b237d64cc959493d22fb950c5f0b560ce87b33da93e475eeffd",
       "geometry": {
         "documentWidth": 400,
         "viewportWidth": 400,
@@ -703,7 +705,7 @@
         "context": "popup-fixture"
       },
       "file": "keyring-dark-400x600.png",
-      "sha256": "89a0d7eb6fd660798c92811edc3dcaa22ba15910e78445ef6e2fb727782eb306",
+      "sha256": "1afbff3617d6b9dab67677848c499602a51450ef7e4554c024e4aacea2bf89c1",
       "geometry": {
         "documentWidth": 400,
         "viewportWidth": 400,
@@ -724,7 +726,7 @@
         "context": "popup-fixture"
       },
       "file": "export-dark-400x600.png",
-      "sha256": "50aafa21a23aaad0a89292dfec6196c72a6a6be7caf9605f1795a463703a70d1",
+      "sha256": "2c978a1ee57567e9d925d8e4071e9fe512e05fc9a329183ef784bfa53dfa111f",
       "geometry": {
         "documentWidth": 400,
         "viewportWidth": 400,
@@ -745,11 +747,11 @@
         "context": "popup-fixture"
       },
       "file": "send-dark-400x600.png",
-      "sha256": "a85724797d8bfd9a0c397e7816e9ceaa4a02f656f3b8064f1204fc92e3e4cf8e",
+      "sha256": "c399e0642dd5f23584c27aa78ada05b84b29fd63ded5a84bea370f9fa9fcb940",
       "geometry": {
         "documentWidth": 400,
         "viewportWidth": 400,
-        "appScrollHeight": 618,
+        "appScrollHeight": 600,
         "appClientHeight": 600
       },
       "browserDiagnostics": [
@@ -766,7 +768,7 @@
         "context": "popup-fixture"
       },
       "file": "receive-dark-400x600.png",
-      "sha256": "eda6a62e83fdb2b2ae84c3bfffef7211349dfda7763b0266ad2bb2baa050b0c5",
+      "sha256": "c54fbbf5f75078b720baa0c9d84d37f256d28a231f1f5146e168dc51ac697319",
       "geometry": {
         "documentWidth": 400,
         "viewportWidth": 400,
@@ -787,7 +789,7 @@
         "context": "popup-fixture"
       },
       "file": "faucet-dark-400x600.png",
-      "sha256": "4daa98ba027f458f4ac26a799d7f8a906e7e32ffdba6e1ad0421559713a6676b",
+      "sha256": "4d99be3011882c351b0a0d1777fc86688966bf0fbfb2dfed261defd7ac11ba9c",
       "geometry": {
         "documentWidth": 400,
         "viewportWidth": 400,
@@ -808,7 +810,7 @@
         "context": "popup-fixture"
       },
       "file": "name-dark-400x600.png",
-      "sha256": "4d05b3496efaa190ba48a34710e8efe5d07d3a9072cf54da04af92cdcb159b97",
+      "sha256": "ab0d5811f39f6ff3e6961356606bba5d5676e51a55a24ab7dbe7cd1416ec6cbd",
       "geometry": {
         "documentWidth": 400,
         "viewportWidth": 400,
@@ -829,7 +831,7 @@
         "context": "popup-fixture"
       },
       "file": "history-dark-400x600.png",
-      "sha256": "b9f56711cd5371ac7fcabaff80eae5927109c660c8fbce4824fe5eac1130c7fb",
+      "sha256": "aa8a27b6222abfa425eeee9ae3169f7b977c058c27c13dc781be5f9a99a025b0",
       "geometry": {
         "documentWidth": 400,
         "viewportWidth": 400,
@@ -850,11 +852,11 @@
         "context": "popup-fixture"
       },
       "file": "settings-dark-400x600.png",
-      "sha256": "84090d934cd7af51e82d7da62434758a69a53c76ca1a8abf130f5f3aa8eee1f4",
+      "sha256": "5c9647b198beb812466561c6dfd3cb9963611a42edac0bdc35da182c902de8b3",
       "geometry": {
         "documentWidth": 400,
         "viewportWidth": 400,
-        "appScrollHeight": 939,
+        "appScrollHeight": 991,
         "appClientHeight": 600
       },
       "browserDiagnostics": [
@@ -871,7 +873,7 @@
         "context": "popup-fixture"
       },
       "file": "reset-dark-400x600.png",
-      "sha256": "8d14f8bb122e5b4a4054db1a36c123e40d43f1cd274f411d852e3f525b25b58b",
+      "sha256": "62ef2f972194b9821d7ae30e1fb8c97506ada2775567ab3fbd7802f22a2a6eb3",
       "geometry": {
         "documentWidth": 400,
         "viewportWidth": 400,
@@ -892,7 +894,7 @@
         "context": "popup-fixture"
       },
       "file": "welcome-create-dark-400x600.png",
-      "sha256": "632225968da1e65df57e2a30c0bb88eee2d32eb410e02ee9ade2fab683d387a5",
+      "sha256": "95ed117d2f8c13161afd55ed79571f3b839cbe166816bfab7dc70e436bcb4063",
       "geometry": {
         "documentWidth": 400,
         "viewportWidth": 400,
@@ -913,7 +915,7 @@
         "context": "popup-fixture"
       },
       "file": "welcome-import-dark-400x600.png",
-      "sha256": "f1a59eb5594addea50c9d94a18f3e82bddab8d417c0b3bdbf7ffe24e2b15e96b",
+      "sha256": "03bccd71d75414f6a2e9db65721af27b3678222e8006c47b1bc92d3528f3d244",
       "geometry": {
         "documentWidth": 400,
         "viewportWidth": 400,
@@ -934,7 +936,7 @@
         "context": "popup-fixture"
       },
       "file": "accounts-cached-dark-400x600.png",
-      "sha256": "d7f2ea244a89d833c6776e913a6b03c3b5858a66db078dcd76b75c95820a62fe",
+      "sha256": "58201454de0bff6f40f97c79ddefed95011593a53a08256e6ae25b45a10ed47b",
       "geometry": {
         "documentWidth": 400,
         "viewportWidth": 400,
@@ -955,7 +957,7 @@
         "context": "popup-fixture"
       },
       "file": "accounts-refresh-error-dark-400x600.png",
-      "sha256": "c63e38fd11d4fef601419e16ebbe050dfd048826c1d6113924f6314afaa5f66d",
+      "sha256": "54b4fbed8f47831dbb8ccc2637061b0c83528bf8e7412cc6263509aed81d081c",
       "geometry": {
         "documentWidth": 400,
         "viewportWidth": 400,
@@ -976,7 +978,7 @@
         "context": "popup-fixture"
       },
       "file": "accounts-empty-search-dark-400x600.png",
-      "sha256": "f3266f2aeea2da753f7f960a020f4bd79376905a00e871219059c2600318ae01",
+      "sha256": "20995a5acfe50618be0466def0877acaf48843f2f2e8d54521af6ce823d508f1",
       "geometry": {
         "documentWidth": 400,
         "viewportWidth": 400,
@@ -997,7 +999,7 @@
         "context": "popup-fixture"
       },
       "file": "dashboard-assets-dark-400x600.png",
-      "sha256": "af441a0638354a6cae6dd03752ef1e89637374db285c15fe68d55d8ad87e9436",
+      "sha256": "64e8c6b64e52c1e74c40f22fd1f7e2415c8bbf615127a977059b11397282b55a",
       "geometry": {
         "documentWidth": 400,
         "viewportWidth": 400,
@@ -1018,11 +1020,11 @@
         "context": "popup-fixture"
       },
       "file": "settings-theme-dark-400x600.png",
-      "sha256": "59ff741526c18b8f466b4f3b02c6c5fc23f0892117858558ed29d3d8128b6cee",
+      "sha256": "88e7c08bc1142c4e6b7c67e16a4721b33cfa0a1ab437a6a286577987c9eec0dc",
       "geometry": {
         "documentWidth": 400,
         "viewportWidth": 400,
-        "appScrollHeight": 939,
+        "appScrollHeight": 991,
         "appClientHeight": 600
       },
       "browserDiagnostics": [
@@ -1039,11 +1041,11 @@
         "context": "popup-fixture"
       },
       "file": "settings-auto-lock-dark-400x600.png",
-      "sha256": "f9ad0517c42015796bcf23756fe05e5d400f5f6a56de191c134b692ec1d3c7be",
+      "sha256": "8416e460aa9b7ee2960e84215b873d155f47cdfc317d4dc50c0454763f31adf5",
       "geometry": {
         "documentWidth": 400,
         "viewportWidth": 400,
-        "appScrollHeight": 939,
+        "appScrollHeight": 991,
         "appClientHeight": 600
       },
       "browserDiagnostics": [
@@ -1060,11 +1062,11 @@
         "context": "popup-fixture"
       },
       "file": "settings-signing-dark-400x600.png",
-      "sha256": "02ca155f4f03cfd62b22481f558a978a083907a40a860e660a469bd71e0ddffd",
+      "sha256": "fa505d56373e7cbb6dbd0477643904a0dd7200b42eb2364cf42fd1a018555a30",
       "geometry": {
         "documentWidth": 400,
         "viewportWidth": 400,
-        "appScrollHeight": 939,
+        "appScrollHeight": 991,
         "appClientHeight": 600
       },
       "browserDiagnostics": [
@@ -1081,11 +1083,11 @@
         "context": "popup-fixture"
       },
       "file": "settings-bottom-dark-400x600.png",
-      "sha256": "e9a9917fef5c9fec20a2b40b41155ace919a6b45e8ae5fd8303e5fdb9e0a5279",
+      "sha256": "2da8e0a90d85f87e7b383b3b26bff77e0d9ac3d66ac4c265ed3b8b29ad68d883",
       "geometry": {
         "documentWidth": 400,
         "viewportWidth": 400,
-        "appScrollHeight": 939,
+        "appScrollHeight": 991,
         "appClientHeight": 600
       },
       "browserDiagnostics": [
@@ -1102,7 +1104,7 @@
         "context": "panel-fixture"
       },
       "file": "welcome-light-320x600.png",
-      "sha256": "b771ab229ea1f2265b82e709f2e317f09367e3f8134d443b7306d71e93f15e4a",
+      "sha256": "0d91df12ec56641bab914a76703fbcc67aa092f2a8e41c94c06128ca1e9abd45",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
@@ -1123,7 +1125,7 @@
         "context": "panel-fixture"
       },
       "file": "unlock-light-320x600.png",
-      "sha256": "41fe4fc6621cbe2628339cf6cdeac01f088993fe6f55c02abe37864cddb9a9b4",
+      "sha256": "3583bce464d81bbc95d15def15795ea9e2e6c9b563afb339c94523ca6454370e",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
@@ -1144,7 +1146,7 @@
         "context": "panel-fixture"
       },
       "file": "dashboard-light-320x600.png",
-      "sha256": "6608402eedbe17484fe5783cbeb0c124c8d999728f27598f36a3fa4c409f1680",
+      "sha256": "783d01a8287a20c84a026f021a03f8dc08b1e5cc06de003b8d8fc00afd887456",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
@@ -1165,7 +1167,7 @@
         "context": "panel-fixture"
       },
       "file": "accounts-light-320x600.png",
-      "sha256": "6aef79d807181badbcc6fca0f1d8d6a7920a1a7640c8aa6796c9a723c456a737",
+      "sha256": "ed805b9f6e9db6ebcdaafa0e7afb3c8d3b735463a192e48d9d5b7209730f9590",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
@@ -1186,11 +1188,11 @@
         "context": "panel-fixture"
       },
       "file": "account-light-320x600.png",
-      "sha256": "11b7966af80870078bba7e90c07c3585f0a1e973bea132a9e3a82db609a9bbce",
+      "sha256": "84efbf35c2748aa24648cb79b0b82ba4f157bdadc79f9484ea1316fadddcf03d",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
-        "appScrollHeight": 768,
+        "appScrollHeight": 758,
         "appClientHeight": 600
       },
       "browserDiagnostics": [
@@ -1207,7 +1209,7 @@
         "context": "panel-fixture"
       },
       "file": "add-account-light-320x600.png",
-      "sha256": "5df43cb23c6a595c8171cbaeaf6d2cfda2f806c925ac008b57e04608a48b8b66",
+      "sha256": "38cac491f21b230e58e0b483c5c19c22f79abfe28b73542f686454db25d96f20",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
@@ -1228,7 +1230,7 @@
         "context": "panel-fixture"
       },
       "file": "keyring-light-320x600.png",
-      "sha256": "116914dfe9b4e8b311bd7c991a3e4c7b2e666fd7d52a6440279a2ead5d0295d4",
+      "sha256": "7a28e69cd5ff2918d4fa8076fb13e38296b1fe822902735636491c6ab4fd2195",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
@@ -1249,7 +1251,7 @@
         "context": "panel-fixture"
       },
       "file": "export-light-320x600.png",
-      "sha256": "db608d1585d01b5b31b5dcf00814b764de0356eaa068263d1baa9230cde78ce3",
+      "sha256": "eb15b491a9184cefc310aab35204ebe2cc254e3f7234be656d126b39f530eb4f",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
@@ -1270,11 +1272,11 @@
         "context": "panel-fixture"
       },
       "file": "send-light-320x600.png",
-      "sha256": "553114ed7a67017f50a557246bbcb5a1e5ab5a70ff7cd8ae93cb45554e5e2422",
+      "sha256": "3204e28ad3fb4a4ebc7ebbd1c0c2c2b89013523b0e51e04ccf2839037c3fb5fe",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
-        "appScrollHeight": 618,
+        "appScrollHeight": 600,
         "appClientHeight": 600
       },
       "browserDiagnostics": [
@@ -1291,7 +1293,7 @@
         "context": "panel-fixture"
       },
       "file": "receive-light-320x600.png",
-      "sha256": "92c786ea28acaa9b948601a2d1cf15425a7bdf1fe3b9cbc9d45281183fbeb1a7",
+      "sha256": "21de37c86cead00cbcebfa9f14076b1dcbd7b4d0c58a2349b05f056d38f8dc4f",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
@@ -1312,7 +1314,7 @@
         "context": "panel-fixture"
       },
       "file": "faucet-light-320x600.png",
-      "sha256": "a888c92504fd2c7a476db8a92deead93c011d5b9e23b2d306802dac0e16e2acd",
+      "sha256": "3e0e95bb6d5fd0a14919c94dc9be6a9f2ff95c2a3b07ec121edf78e7bcd14ef9",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
@@ -1333,7 +1335,7 @@
         "context": "panel-fixture"
       },
       "file": "name-light-320x600.png",
-      "sha256": "304e610e7a9486d7aa436b40a27d1e43722bfaa5ac7d315fe7df5abc4a7942a2",
+      "sha256": "56ee88ccb26b78e71d5a3fa8ce5d7164b4439c40cfc29b8635c786e7ce2391e7",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
@@ -1354,7 +1356,7 @@
         "context": "panel-fixture"
       },
       "file": "history-light-320x600.png",
-      "sha256": "f7c6356c57ed9c8af045343dd89aeacc95b93d725bfb6754f26807ae20b794cf",
+      "sha256": "aec0e0ab9f2ee4d50de9b09877372678f9b3108369d6d6c7c18da9cc735202f8",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
@@ -1375,11 +1377,11 @@
         "context": "panel-fixture"
       },
       "file": "settings-light-320x600.png",
-      "sha256": "32cb95bbf10a9efb8ae37b2dfe65946288e43ced87e5aac1e72a9808c8351bf3",
+      "sha256": "4e39e6254e443f52de20a887c451593a3695a6f42415faf88c1c7f91f05897f7",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
-        "appScrollHeight": 942,
+        "appScrollHeight": 994,
         "appClientHeight": 600
       },
       "browserDiagnostics": [
@@ -1396,7 +1398,7 @@
         "context": "panel-fixture"
       },
       "file": "reset-light-320x600.png",
-      "sha256": "2f9e1d2b29ab5984e0c0adcd366ec3a977e1327b63aed3c1d2a02aba2dbdee6e",
+      "sha256": "b3c104647534fd372ea20aaa527f830892385ce26fdb08d329fd7f4d06c0273c",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
@@ -1417,7 +1419,7 @@
         "context": "panel-fixture"
       },
       "file": "welcome-create-light-320x600.png",
-      "sha256": "132c71b07ea42e00d0fc2845f30cfb1b4d39ac16f4d5aabaae00c7f5ab1fd3e5",
+      "sha256": "a74be2a63ae479916adda9857467d7bb28e3bcb81801735fdd161ff743ff79ce",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
@@ -1438,7 +1440,7 @@
         "context": "panel-fixture"
       },
       "file": "welcome-import-light-320x600.png",
-      "sha256": "76d09758f0eb36a5afd5dc0173abf5a54cfe72399084e51e6a40592d37b21d55",
+      "sha256": "6ddcae04822b98c127264383b44c824316b925a5d41d0c5649b4f110d5364098",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
@@ -1459,7 +1461,7 @@
         "context": "panel-fixture"
       },
       "file": "accounts-cached-light-320x600.png",
-      "sha256": "25ce04a4263b6590a52cd2d2f53f73df8cd4d89a55f664a982efedabe5237245",
+      "sha256": "9b0af00f3c2b518c69795fae00a20ada599a7883f08dccc64804b3be447d8ce1",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
@@ -1480,7 +1482,7 @@
         "context": "panel-fixture"
       },
       "file": "accounts-refresh-error-light-320x600.png",
-      "sha256": "e29966b08b0a3c75a4a92eb517c8b68f4b8c14e34c76a8f2e494a71008b9feda",
+      "sha256": "31edc736c3490ab81d1145a204435bbce1edecac4a6e8f13fdae08315d0a7c56",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
@@ -1501,7 +1503,7 @@
         "context": "panel-fixture"
       },
       "file": "accounts-empty-search-light-320x600.png",
-      "sha256": "6176077c7f02b2bfc319a85fd07eee80300c2e4bc9872e4fdac856e81e9d93db",
+      "sha256": "ec804dc4d06f9312c81744129651406fd537ce065d7520be6796af57a22cde45",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
@@ -1522,7 +1524,7 @@
         "context": "panel-fixture"
       },
       "file": "dashboard-assets-light-320x600.png",
-      "sha256": "a75c78ac73bae82d8b05a896bd705c456a404db1a07b30bca139b414b5d11854",
+      "sha256": "be2809266dbc01efdaa931b765a779980514c8249cb210e3ae0ab5af54ddfa75",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
@@ -1543,11 +1545,11 @@
         "context": "panel-fixture"
       },
       "file": "settings-theme-light-320x600.png",
-      "sha256": "e6c745029a875716ddc5279523752c10dec42599b8d841408331f0faa4df1e57",
+      "sha256": "bbe933c8ab1d816f18359786edf31155c70ed9c8d3643d7a52d90f8272584195",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
-        "appScrollHeight": 942,
+        "appScrollHeight": 994,
         "appClientHeight": 600
       },
       "browserDiagnostics": [
@@ -1564,11 +1566,11 @@
         "context": "panel-fixture"
       },
       "file": "settings-auto-lock-light-320x600.png",
-      "sha256": "dbfe37dbe54108d503beef838a5d2cd540a68bfa34597843d18be4f03a0b01f5",
+      "sha256": "112e69282173e8a556b6f77778e9b90236a6ac122a1c71444143a84ffb80abc4",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
-        "appScrollHeight": 942,
+        "appScrollHeight": 994,
         "appClientHeight": 600
       },
       "browserDiagnostics": [
@@ -1585,11 +1587,11 @@
         "context": "panel-fixture"
       },
       "file": "settings-signing-light-320x600.png",
-      "sha256": "647168f35f89264e7b784d98120c9dfe3a2c6538137c7bcf113961183d12b263",
+      "sha256": "6be4c3a7af0f20bb90bf3cfb9c7c67d3eb572dfd749cf98224ac846568b0db68",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
-        "appScrollHeight": 942,
+        "appScrollHeight": 994,
         "appClientHeight": 600
       },
       "browserDiagnostics": [
@@ -1606,11 +1608,11 @@
         "context": "panel-fixture"
       },
       "file": "settings-bottom-light-320x600.png",
-      "sha256": "0af430dccd8082ecaa053c4cd253345262851e9482afa064d9b9f833324629a2",
+      "sha256": "dd8a537dfb57c10faf63b6c1fac0fa682f7ad14ce06ec3f08823df02405a85ab",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
-        "appScrollHeight": 942,
+        "appScrollHeight": 994,
         "appClientHeight": 600
       },
       "browserDiagnostics": [
@@ -1627,7 +1629,7 @@
         "context": "panel-fixture"
       },
       "file": "welcome-dark-320x600.png",
-      "sha256": "7f9263f53e2c3c886bb08014e81a8820f9f87810ee146faec7b464a555e21b7b",
+      "sha256": "3104d7135372ddf9faa90041dc3f599526155ab99ac54a5cc64858afc15645b8",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
@@ -1648,7 +1650,7 @@
         "context": "panel-fixture"
       },
       "file": "unlock-dark-320x600.png",
-      "sha256": "d1a442f2b3130468710302364bb896dfe6f26e47055b792c899db30c89f9d577",
+      "sha256": "4b8020a3ca44b4e613b6a0b407853fcf5fa539c74287a1f5e9077166b668d040",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
@@ -1669,7 +1671,7 @@
         "context": "panel-fixture"
       },
       "file": "dashboard-dark-320x600.png",
-      "sha256": "7b2264209ba500fed31403ee77d40c37e4abce06fdb9086394bf308864fe0d50",
+      "sha256": "3dc3569a72351e170f625c77b2302d715df521e51a888b43b65e333f206ac569",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
@@ -1690,7 +1692,7 @@
         "context": "panel-fixture"
       },
       "file": "accounts-dark-320x600.png",
-      "sha256": "2eff036491ae4d3fde898ff766bc532746bda082434115eab44aaf7d80d2a925",
+      "sha256": "8959a1589b6c2a745666242d25272215eeba4e2692cf739fde5010d2c8f0d2db",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
@@ -1711,11 +1713,11 @@
         "context": "panel-fixture"
       },
       "file": "account-dark-320x600.png",
-      "sha256": "1c7557a52a94e6b08763e24cdd4e73458768872597955a59065fdc58909df5bb",
+      "sha256": "7c1c4f9bb0b837fe92a4743dfe0459899cf4a483c161cad403c4856a2eefa6dc",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
-        "appScrollHeight": 768,
+        "appScrollHeight": 758,
         "appClientHeight": 600
       },
       "browserDiagnostics": [
@@ -1732,7 +1734,7 @@
         "context": "panel-fixture"
       },
       "file": "add-account-dark-320x600.png",
-      "sha256": "f06e74122feecd7678ae0b123cf79467d1b5234f8e1f13ce3776ee5736762045",
+      "sha256": "0074815c186d1577c0b0b7df2982f3a83db0fb6caa2e70c79ddb33ce2e1eeba2",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
@@ -1753,7 +1755,7 @@
         "context": "panel-fixture"
       },
       "file": "keyring-dark-320x600.png",
-      "sha256": "ee4340f2c6d193a1456a606cc9996a2e104731d8fd8df5c49d04825567e3dab2",
+      "sha256": "55dad922435c40e6e510a94de53573d93dada8655a8bcc2bf86211a351ea8fcb",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
@@ -1774,7 +1776,7 @@
         "context": "panel-fixture"
       },
       "file": "export-dark-320x600.png",
-      "sha256": "7f67e6c8505d667f3fc914859f77fe9fdcf75f1772c175a31bd64ee67c1f16cf",
+      "sha256": "93512ba6a9d4aecfe0dc51bec62b7b005f3284e8e0e8f91d6cbbe8fcaec36d74",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
@@ -1795,11 +1797,11 @@
         "context": "panel-fixture"
       },
       "file": "send-dark-320x600.png",
-      "sha256": "50819ee08b2f8eee38e5df8be2cf1dca6299e70146dcc0d62eb3ced28ea87909",
+      "sha256": "6fff3088cea868ce8a7ef8f9311e077fb8655f06e3fa04a3ac8622fd6c4d23d0",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
-        "appScrollHeight": 618,
+        "appScrollHeight": 600,
         "appClientHeight": 600
       },
       "browserDiagnostics": [
@@ -1816,7 +1818,7 @@
         "context": "panel-fixture"
       },
       "file": "receive-dark-320x600.png",
-      "sha256": "b323b087417c589c1fcbdb859a4beacb7cc353753ed578e30ea15a902a3d64b8",
+      "sha256": "b98baa1baf7923be9ae6c0b571d5b8af616fb5cce195505990323f476b885851",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
@@ -1837,7 +1839,7 @@
         "context": "panel-fixture"
       },
       "file": "faucet-dark-320x600.png",
-      "sha256": "c49f97a72419c42a8c7d8ee00c687768c3e7f552d0bdf1993beafa565628a25c",
+      "sha256": "140b633cc088f0b04e9f4825dc2d1ac3a0616b1739d8e4160d95e7cc5d5da7c8",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
@@ -1858,7 +1860,7 @@
         "context": "panel-fixture"
       },
       "file": "name-dark-320x600.png",
-      "sha256": "f57c4bfaff015bf7baaccfefb28c1fb9301308cfe6f8b890d17e3e40aacd9cb7",
+      "sha256": "75f26fb9bf0357aaff7165d992a9f8724ecb63feafa3c0db4d937425bdd06df1",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
@@ -1879,7 +1881,7 @@
         "context": "panel-fixture"
       },
       "file": "history-dark-320x600.png",
-      "sha256": "40e81a0616d7854531314cf61848f27ab2049fe025426ed930321e5d35aa4aef",
+      "sha256": "dbfa535e7f15d2e51d092e0dec62c4c3aa43e09cfdbc97c1035d8b2d62875867",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
@@ -1900,11 +1902,11 @@
         "context": "panel-fixture"
       },
       "file": "settings-dark-320x600.png",
-      "sha256": "e528e3362fd61a99bae3885c99ccbd7aa7d2f79e1aca026d24b9d1257aade096",
+      "sha256": "fd4a648d619da8ab13be6b1337364bd023cb06bdcdc098bc115a7fe67832759f",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
-        "appScrollHeight": 942,
+        "appScrollHeight": 994,
         "appClientHeight": 600
       },
       "browserDiagnostics": [
@@ -1921,7 +1923,7 @@
         "context": "panel-fixture"
       },
       "file": "reset-dark-320x600.png",
-      "sha256": "23fccf06a6fd3843162604e9daa75e4031c1f0ff9e52d30e1c56462f8a6ad75e",
+      "sha256": "659707587c125e7d490104aebea42e7a22eba222322298fed699403200ae8494",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
@@ -1942,7 +1944,7 @@
         "context": "panel-fixture"
       },
       "file": "welcome-create-dark-320x600.png",
-      "sha256": "54bb6ed532fc07a5bce35a2b2ea86023cf441a9783e5eb038944c76e297804eb",
+      "sha256": "53a53492f9ae063eddd231cfa9440cff3d9059d80845fc06b33ecdbd07a596b5",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
@@ -1963,7 +1965,7 @@
         "context": "panel-fixture"
       },
       "file": "welcome-import-dark-320x600.png",
-      "sha256": "ac26ee5e46617893cbd0cbf90602b0542385ab9064a3e9b64b332544b9981b62",
+      "sha256": "598a312de416db79e43f88df09e28c43d28d7521cf9192e3aa1b61814ec5e9c6",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
@@ -1984,7 +1986,7 @@
         "context": "panel-fixture"
       },
       "file": "accounts-cached-dark-320x600.png",
-      "sha256": "bc7fe69c32d9ce8220157671fb31f45aeeaa23b538db0ede6ff7a227b47dee11",
+      "sha256": "dd9712ca6d89b82ed67a4b075e0e5e4568c828b4b71965e8205fb58463dae2c1",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
@@ -2005,7 +2007,7 @@
         "context": "panel-fixture"
       },
       "file": "accounts-refresh-error-dark-320x600.png",
-      "sha256": "cb76ba9283a94844e9804ab0604b49db80e71926a3e286307491eba218330352",
+      "sha256": "6f02b0598689df4e923380d3cf28f5a37010a8dff824d37d89794cec0c46f74d",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
@@ -2026,7 +2028,7 @@
         "context": "panel-fixture"
       },
       "file": "accounts-empty-search-dark-320x600.png",
-      "sha256": "d3e669eb5a6f8e69a7fdf89607e69f2fe3a2400073558b38a4ae44994976842e",
+      "sha256": "628c712eb20a29ec44bb12728676026a23f801ef99039ec6562f0156d2fc845e",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
@@ -2047,7 +2049,7 @@
         "context": "panel-fixture"
       },
       "file": "dashboard-assets-dark-320x600.png",
-      "sha256": "3d4a46ab346702ba9867ef4d5429b787c44f442c4604c70f35ca0397f47d4e7f",
+      "sha256": "5b0e2554b8167980c8c4412b5f9bf3df637e7af08389f6c140b859c13d4361c9",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
@@ -2068,11 +2070,11 @@
         "context": "panel-fixture"
       },
       "file": "settings-theme-dark-320x600.png",
-      "sha256": "7e31e34aa948cd0199a4294788ac68cbed4cdceff5d76b3c5cadaa2ae3a35bad",
+      "sha256": "fae02e1e1310645b20f7ea5a9bb149dfdfcbdc874eef09ce676282277621a7ee",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
-        "appScrollHeight": 942,
+        "appScrollHeight": 994,
         "appClientHeight": 600
       },
       "browserDiagnostics": [
@@ -2089,11 +2091,11 @@
         "context": "panel-fixture"
       },
       "file": "settings-auto-lock-dark-320x600.png",
-      "sha256": "099a87075405237dd93e21dee8f17a6f71f878b148274da09dbbeaafebeabd42",
+      "sha256": "69d573e4594ad3df2b9a481a89148dae07c94b0b135eec2bf56d04c3eebde344",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
-        "appScrollHeight": 942,
+        "appScrollHeight": 994,
         "appClientHeight": 600
       },
       "browserDiagnostics": [
@@ -2110,11 +2112,11 @@
         "context": "panel-fixture"
       },
       "file": "settings-signing-dark-320x600.png",
-      "sha256": "d3c7bb589499e8c041c3f4e0c0423de6839aa45202416f1d7729d2011b36878b",
+      "sha256": "4902e8f0f301c9d44956aa447954cfa9711d3935c4ae37d580a0defbed8d726d",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
-        "appScrollHeight": 942,
+        "appScrollHeight": 994,
         "appClientHeight": 600
       },
       "browserDiagnostics": [
@@ -2131,11 +2133,11 @@
         "context": "panel-fixture"
       },
       "file": "settings-bottom-dark-320x600.png",
-      "sha256": "66e9624874dad1d37edcae8eee652a77f49081636c2455525bfb898a788c5f7e",
+      "sha256": "8bfbff6e4d99d152b3ada87a67588343c56737f46fda931fbe3a8ee3ed65bbac",
       "geometry": {
         "documentWidth": 320,
         "viewportWidth": 320,
-        "appScrollHeight": 942,
+        "appScrollHeight": 994,
         "appClientHeight": 600
       },
       "browserDiagnostics": [
@@ -2152,7 +2154,7 @@
         "context": "wide-panel-fixture"
       },
       "file": "welcome-light-820x720.png",
-      "sha256": "1d22c81de79ae3049b7cf416fafef24589fd49f4ae6f6016e1ce72184c52cffd",
+      "sha256": "00a68cd760cf8cec2bdb20f9e37647164bf4239d94143f2b8de66ff00b01c802",
       "geometry": {
         "documentWidth": 820,
         "viewportWidth": 820,
@@ -2173,7 +2175,7 @@
         "context": "wide-panel-fixture"
       },
       "file": "unlock-light-820x720.png",
-      "sha256": "a41b6c1ef1774d9c6d5cdb048ebc5f0feec6279651d5f311b63b5a4e5a8619b3",
+      "sha256": "407bbc7423a615b264b70efcdcb8ba47ba182b9d12b090a0c2130f27183417b0",
       "geometry": {
         "documentWidth": 820,
         "viewportWidth": 820,
@@ -2194,7 +2196,7 @@
         "context": "wide-panel-fixture"
       },
       "file": "dashboard-light-820x720.png",
-      "sha256": "accb3cc2f93d8db1df248e5b1860242d944b76f511e73f43596159976a71a41b",
+      "sha256": "646102b2a8ddc1c2398f517a850d1ee8a0cb5a96c42d0e4d306f4ed62748d60c",
       "geometry": {
         "documentWidth": 820,
         "viewportWidth": 820,
@@ -2215,7 +2217,7 @@
         "context": "wide-panel-fixture"
       },
       "file": "accounts-light-820x720.png",
-      "sha256": "bc3d6ec969234ad9c59ea83b3ffa73434792a409036cd2a0faed57998da44b26",
+      "sha256": "57014aed6110388bbfe6c471e90421cd8a3ef2e62f438fb1669955bf33c5fda5",
       "geometry": {
         "documentWidth": 820,
         "viewportWidth": 820,
@@ -2236,11 +2238,11 @@
         "context": "wide-panel-fixture"
       },
       "file": "account-light-820x720.png",
-      "sha256": "e4fb712282f1b9aea04a53f08991a6100bfcec554ab33254e6ac9f31ff9d2066",
+      "sha256": "6c23b61ed2aea837a046808324937ea0b0d619eb6e7ef6b461a1e7c3bf4c5658",
       "geometry": {
         "documentWidth": 820,
         "viewportWidth": 820,
-        "appScrollHeight": 768,
+        "appScrollHeight": 758,
         "appClientHeight": 600
       },
       "browserDiagnostics": [
@@ -2257,7 +2259,7 @@
         "context": "wide-panel-fixture"
       },
       "file": "add-account-light-820x720.png",
-      "sha256": "c594cb029ef50b44b285df91da8ed180d00ec0c6f41d532ef9f7efd634cc3ea7",
+      "sha256": "36cfa0564b2c89b9b99946e12c031deccad93ae2ef888e4920d7bf2b1395695d",
       "geometry": {
         "documentWidth": 820,
         "viewportWidth": 820,
@@ -2278,7 +2280,7 @@
         "context": "wide-panel-fixture"
       },
       "file": "keyring-light-820x720.png",
-      "sha256": "d90c9e485e07c5a53f5bebdbe17d8030f41fb3a783cc64c0e813549ad0f938f7",
+      "sha256": "7d9ff396a8ba05403db880c5948d365bee26272159b6b1d825a72b74d67ff060",
       "geometry": {
         "documentWidth": 820,
         "viewportWidth": 820,
@@ -2299,7 +2301,7 @@
         "context": "wide-panel-fixture"
       },
       "file": "export-light-820x720.png",
-      "sha256": "fcaf066d6686bc3f723903369b4c6bf4a7a27b2deca6ddc0fd77a40ceba7c9cf",
+      "sha256": "2298cf70545133f4e4e85f6abde680189bcdec3518ec08ede14112a37b3798c2",
       "geometry": {
         "documentWidth": 820,
         "viewportWidth": 820,
@@ -2320,11 +2322,11 @@
         "context": "wide-panel-fixture"
       },
       "file": "send-light-820x720.png",
-      "sha256": "9ad60ae00b4084455707ac62104671f6a5980c63e79ff3ac3eb4826384c2b840",
+      "sha256": "5227a48d4afc9a80da1b6a7f447fd5ff334bd4c7b01c542b1ef795c951ce2c55",
       "geometry": {
         "documentWidth": 820,
         "viewportWidth": 820,
-        "appScrollHeight": 618,
+        "appScrollHeight": 600,
         "appClientHeight": 600
       },
       "browserDiagnostics": [
@@ -2341,7 +2343,7 @@
         "context": "wide-panel-fixture"
       },
       "file": "receive-light-820x720.png",
-      "sha256": "fbed577d3d774bcd93e98e0002a19bbb833039c300bf25d6fac7be54ce780d68",
+      "sha256": "906484c53559cd9fa9e3a1c2aa7399f38c0f7db41bd40aeab30ac2c6a3296ba2",
       "geometry": {
         "documentWidth": 820,
         "viewportWidth": 820,
@@ -2362,7 +2364,7 @@
         "context": "wide-panel-fixture"
       },
       "file": "faucet-light-820x720.png",
-      "sha256": "8bed10dc167ff2f848d571db44dbefb60fe1439a571258f7d9bbd5647d0b20f2",
+      "sha256": "dabfba7b6b8d9917eef8edf884f24cae6da152e891cfa6f75eb4924b2c646a48",
       "geometry": {
         "documentWidth": 820,
         "viewportWidth": 820,
@@ -2383,7 +2385,7 @@
         "context": "wide-panel-fixture"
       },
       "file": "name-light-820x720.png",
-      "sha256": "54ddba045cca15d9d5adf47b8f8afd38a60c8a2db7eb05169ac4cc574f0e8b0e",
+      "sha256": "805ec0c6ca00a24e431a936841f28f831bff70d26d80ab97630e626370c21301",
       "geometry": {
         "documentWidth": 820,
         "viewportWidth": 820,
@@ -2404,7 +2406,7 @@
         "context": "wide-panel-fixture"
       },
       "file": "history-light-820x720.png",
-      "sha256": "2640b529be388269ae36a1bdd9be4f9aeae32913bc815aad7e6dc01abe3c7df2",
+      "sha256": "ebddc673639abdd12084e9b30285d6a8716d762f47df65ca6c6704c939f6b691",
       "geometry": {
         "documentWidth": 820,
         "viewportWidth": 820,
@@ -2425,11 +2427,11 @@
         "context": "wide-panel-fixture"
       },
       "file": "settings-light-820x720.png",
-      "sha256": "00006ca8817045b4a37ae38c762f435af500fc0487e7f0b822a68c3578878eec",
+      "sha256": "ec97c3f7f3983e38249a8671ecd2061a00e2f090a72e16ba3a2c52566a8f07f1",
       "geometry": {
         "documentWidth": 820,
         "viewportWidth": 820,
-        "appScrollHeight": 939,
+        "appScrollHeight": 991,
         "appClientHeight": 600
       },
       "browserDiagnostics": [
@@ -2446,7 +2448,7 @@
         "context": "wide-panel-fixture"
       },
       "file": "reset-light-820x720.png",
-      "sha256": "c4d443a422c42a303cfe3feaba4868eec8c45d4136a914615d9557cdd92c81a9",
+      "sha256": "489bacd351765d876025de6e0a3461e32dff470518e06f0c9f1ea3a2f06b4a04",
       "geometry": {
         "documentWidth": 820,
         "viewportWidth": 820,
@@ -2467,7 +2469,7 @@
         "context": "wide-panel-fixture"
       },
       "file": "welcome-create-light-820x720.png",
-      "sha256": "76f3966de74134c5b8c4889bb24f24a9c9bdccc2dd3b9c2a9ee6519563950a3c",
+      "sha256": "eb72c7e234742f1b4d3141874a0c23a6941514b0d299516ca4c15dfd7290da17",
       "geometry": {
         "documentWidth": 820,
         "viewportWidth": 820,
@@ -2488,7 +2490,7 @@
         "context": "wide-panel-fixture"
       },
       "file": "welcome-import-light-820x720.png",
-      "sha256": "9f749a33b933bf13225bb7e862769d736eece095204d55d744330c344e08cfed",
+      "sha256": "461c0f0ac950150bcba08f158f72346568cc34456a9a3cf5d0b1aff8faf670e8",
       "geometry": {
         "documentWidth": 820,
         "viewportWidth": 820,
@@ -2509,7 +2511,7 @@
         "context": "wide-panel-fixture"
       },
       "file": "accounts-cached-light-820x720.png",
-      "sha256": "70f36104368bfbd7afd4e58797e5713a722a649611de1e86f09f09b5d876b47b",
+      "sha256": "313477aa8e954c852bef3a019c754e0b498af2084d1b47f95a2b3f56a0410714",
       "geometry": {
         "documentWidth": 820,
         "viewportWidth": 820,
@@ -2530,7 +2532,7 @@
         "context": "wide-panel-fixture"
       },
       "file": "accounts-refresh-error-light-820x720.png",
-      "sha256": "f1e4c1deca8ef68c09aca58ce14895cfd8d5c6c2f583780224b12d6ff8ff337f",
+      "sha256": "63585e8fe924395daea54c5fe35f12dae5bfacf9fefc7563c71fdb4924f418dd",
       "geometry": {
         "documentWidth": 820,
         "viewportWidth": 820,
@@ -2551,7 +2553,7 @@
         "context": "wide-panel-fixture"
       },
       "file": "accounts-empty-search-light-820x720.png",
-      "sha256": "80f018e809bcd861898b20a38ea1234d3aefa5b5d02ed1922d2e7308856cda76",
+      "sha256": "f1f778aebdb9d53dd6ab25b5513872b54d1c716d55a3f0c32208def7df1c222d",
       "geometry": {
         "documentWidth": 820,
         "viewportWidth": 820,
@@ -2572,7 +2574,7 @@
         "context": "wide-panel-fixture"
       },
       "file": "dashboard-assets-light-820x720.png",
-      "sha256": "889d932bb99c907ec64ce4393c639fd069d951c273d25f32dd95a0223ed95387",
+      "sha256": "14bb328e521d193761a9a999b94585fc6647373e7d8bb1a5ce55418c9a8c5bba",
       "geometry": {
         "documentWidth": 820,
         "viewportWidth": 820,
@@ -2593,11 +2595,11 @@
         "context": "wide-panel-fixture"
       },
       "file": "settings-theme-light-820x720.png",
-      "sha256": "a4b575ce647bfdf5a5892ad4586f5ffd6abaec4e39b72191051eb4aee532726e",
+      "sha256": "209242fd9cb3290f950ef34e9e6b45e96d6c01c806c4370c655f835251f272f2",
       "geometry": {
         "documentWidth": 820,
         "viewportWidth": 820,
-        "appScrollHeight": 939,
+        "appScrollHeight": 991,
         "appClientHeight": 600
       },
       "browserDiagnostics": [
@@ -2614,11 +2616,11 @@
         "context": "wide-panel-fixture"
       },
       "file": "settings-auto-lock-light-820x720.png",
-      "sha256": "c6c1fbc3fef4997277f7d8f7bc95d7682a18ff41fe38161480ea2c8313c55b08",
+      "sha256": "e14df4afc3285801ee88a7467fb93045fd7fdc641910513487858af7912f5d25",
       "geometry": {
         "documentWidth": 820,
         "viewportWidth": 820,
-        "appScrollHeight": 939,
+        "appScrollHeight": 991,
         "appClientHeight": 600
       },
       "browserDiagnostics": [
@@ -2635,11 +2637,11 @@
         "context": "wide-panel-fixture"
       },
       "file": "settings-signing-light-820x720.png",
-      "sha256": "70c1fa1a447638a464d0a8c2805d92cee9a106b01a6a02d2eef9b023c4cae393",
+      "sha256": "949e3bb15e766a7e1edf6a0f3395f54ed900728b9ce9a58a16539c9337e2231a",
       "geometry": {
         "documentWidth": 820,
         "viewportWidth": 820,
-        "appScrollHeight": 939,
+        "appScrollHeight": 991,
         "appClientHeight": 600
       },
       "browserDiagnostics": [
@@ -2656,11 +2658,11 @@
         "context": "wide-panel-fixture"
       },
       "file": "settings-bottom-light-820x720.png",
-      "sha256": "8e4a02339ca404576e916b90e17f532f17252d2bacb561daf3dabe7dc807696f",
+      "sha256": "cb05863254404b9be4a785a9c208f797159802fe97913719decf125c5e07841e",
       "geometry": {
         "documentWidth": 820,
         "viewportWidth": 820,
-        "appScrollHeight": 939,
+        "appScrollHeight": 991,
         "appClientHeight": 600
       },
       "browserDiagnostics": [
@@ -2677,7 +2679,7 @@
         "context": "wide-panel-fixture"
       },
       "file": "welcome-dark-820x720.png",
-      "sha256": "90c998a0c1a930328969cde51e579261b516f0c2882df69b6ace8bb8c1619371",
+      "sha256": "a13f76d886601a1038f1eeb6e032a84ffb0f39ce017d0a3685c0620c666d3c7d",
       "geometry": {
         "documentWidth": 820,
         "viewportWidth": 820,
@@ -2698,7 +2700,7 @@
         "context": "wide-panel-fixture"
       },
       "file": "unlock-dark-820x720.png",
-      "sha256": "24425e3d0e5da458f68e8dbff5de88fcd439bea439dfee7b5e724e2a4ac29098",
+      "sha256": "c40826b211f7b08b6aad62beb057eafcaf689574be983d64679c0c04ac7701a7",
       "geometry": {
         "documentWidth": 820,
         "viewportWidth": 820,
@@ -2719,7 +2721,7 @@
         "context": "wide-panel-fixture"
       },
       "file": "dashboard-dark-820x720.png",
-      "sha256": "850d1db9a77b610d5828c74de7e98b18baddf6d716fe26e581b329b573b38e9f",
+      "sha256": "bc34373a543a333b374ee4a67b96670f4d03f1424b404bceda9b6dea8ac6abfb",
       "geometry": {
         "documentWidth": 820,
         "viewportWidth": 820,
@@ -2740,7 +2742,7 @@
         "context": "wide-panel-fixture"
       },
       "file": "accounts-dark-820x720.png",
-      "sha256": "1eab945cd010f8726c6733e591b40ba42c01171b4c88df47102833c65f19af83",
+      "sha256": "5b06352fa7a87922f1377cc9b2d94b3c4b7079dee0e9e00d9f30055bbae4acbe",
       "geometry": {
         "documentWidth": 820,
         "viewportWidth": 820,
@@ -2761,11 +2763,11 @@
         "context": "wide-panel-fixture"
       },
       "file": "account-dark-820x720.png",
-      "sha256": "170c35ef1e9b3818db38efab29b2f7944e4a66a69b80e2e8208fb9ef3790625b",
+      "sha256": "b7376017c033326dcdd1627a3313937b210c300c254a2ad53de2f34cfe2b30c7",
       "geometry": {
         "documentWidth": 820,
         "viewportWidth": 820,
-        "appScrollHeight": 768,
+        "appScrollHeight": 758,
         "appClientHeight": 600
       },
       "browserDiagnostics": [
@@ -2782,7 +2784,7 @@
         "context": "wide-panel-fixture"
       },
       "file": "add-account-dark-820x720.png",
-      "sha256": "7f00b33fdd4cbb629aa2b8719aacadf11302c7bb2ed86dcedb4d6bced6374a14",
+      "sha256": "5a0f4b30553591d48c1ddfac277af7dce0d9b328ae4ac8ad2f3c2a0923473e6a",
       "geometry": {
         "documentWidth": 820,
         "viewportWidth": 820,
@@ -2803,7 +2805,7 @@
         "context": "wide-panel-fixture"
       },
       "file": "keyring-dark-820x720.png",
-      "sha256": "360839ba624d81372cda0488c04c7cb9a264270ddd39672365402d491e20c232",
+      "sha256": "98f4c68a841b5bbb1d4e0dff3b5c044d6195870a7fafcd1890587e7bfc6f4a7d",
       "geometry": {
         "documentWidth": 820,
         "viewportWidth": 820,
@@ -2824,7 +2826,7 @@
         "context": "wide-panel-fixture"
       },
       "file": "export-dark-820x720.png",
-      "sha256": "616bca1904b427afed2a1365dccc485a8eb8a6785efbab33b7b0d503a32cc4aa",
+      "sha256": "73cd8d9b0db84d8570a3acd96e8bbb11de55eacbe262b179e0bbdcc8dce865ca",
       "geometry": {
         "documentWidth": 820,
         "viewportWidth": 820,
@@ -2845,11 +2847,11 @@
         "context": "wide-panel-fixture"
       },
       "file": "send-dark-820x720.png",
-      "sha256": "86c13dd07a0f5abe03369ee666886a86157efcc51bc0ac2b3d59995ca2dbdbec",
+      "sha256": "a487a4df88d22a7231c72b11b5366f74c0c9ca059be6074414644630fb81efa0",
       "geometry": {
         "documentWidth": 820,
         "viewportWidth": 820,
-        "appScrollHeight": 618,
+        "appScrollHeight": 600,
         "appClientHeight": 600
       },
       "browserDiagnostics": [
@@ -2866,7 +2868,7 @@
         "context": "wide-panel-fixture"
       },
       "file": "receive-dark-820x720.png",
-      "sha256": "5edec29f4740d5d4b0fa04b1efcdfb4a5c54ecc497197e3396242df719735fe8",
+      "sha256": "10f3361fb9ceb77826d27f45dc50270941eeb0400d7f7356f6f6e8f557e88a12",
       "geometry": {
         "documentWidth": 820,
         "viewportWidth": 820,
@@ -2887,7 +2889,7 @@
         "context": "wide-panel-fixture"
       },
       "file": "faucet-dark-820x720.png",
-      "sha256": "eddf3c09b406e6cbd2dcf0dab3b7a144df704342ef57d2713036443b56d80e81",
+      "sha256": "d6a58debaaedf6a9e09203ab2e1bf9c90a26cc74e8e45e338cd2e3bfd28631f0",
       "geometry": {
         "documentWidth": 820,
         "viewportWidth": 820,
@@ -2908,7 +2910,7 @@
         "context": "wide-panel-fixture"
       },
       "file": "name-dark-820x720.png",
-      "sha256": "88db06c28c816bfd5ec3ec9c78bce51f10ecff403d1c3d353aaf53873e6f6029",
+      "sha256": "ec43302f669b424fa6ac219e964a6c9abb55abe59e86bfbcf0cc3fde9345c94f",
       "geometry": {
         "documentWidth": 820,
         "viewportWidth": 820,
@@ -2929,7 +2931,7 @@
         "context": "wide-panel-fixture"
       },
       "file": "history-dark-820x720.png",
-      "sha256": "629b2604778401fceb535c807cf6176f5b4c529fa12a822cb54af8a2b38a58b2",
+      "sha256": "1f51b8eb5758c0b66b900f7b7ff4ba512cd8002c46cbd2762921f1b8f102f9e6",
       "geometry": {
         "documentWidth": 820,
         "viewportWidth": 820,
@@ -2950,11 +2952,11 @@
         "context": "wide-panel-fixture"
       },
       "file": "settings-dark-820x720.png",
-      "sha256": "2dd38cf12cc4883543bbfc3920f999788bbdf194b96e2cb2d0acc9343954a6ab",
+      "sha256": "42d70f4a72bb00f33f4abc345ff501cf69ab9c7d6c30711b6ae85ae6a9624114",
       "geometry": {
         "documentWidth": 820,
         "viewportWidth": 820,
-        "appScrollHeight": 939,
+        "appScrollHeight": 991,
         "appClientHeight": 600
       },
       "browserDiagnostics": [
@@ -2971,7 +2973,7 @@
         "context": "wide-panel-fixture"
       },
       "file": "reset-dark-820x720.png",
-      "sha256": "0d689862a29a1ebae0aff477cb43a901ffb08b014a2b12108004e4bac5d83003",
+      "sha256": "10017be085f31faac94095115732e34d06652256a8871bc1e0c3550956ada182",
       "geometry": {
         "documentWidth": 820,
         "viewportWidth": 820,
@@ -2992,7 +2994,7 @@
         "context": "wide-panel-fixture"
       },
       "file": "welcome-create-dark-820x720.png",
-      "sha256": "bdc86137c90f2243c72878bf7aeef9d2cbd2863dfe91c63c6dc496848ccc41ab",
+      "sha256": "0c5996928839e8c1f1d290b864654f41c56dd80836e8da56763278d2b72bef88",
       "geometry": {
         "documentWidth": 820,
         "viewportWidth": 820,
@@ -3013,7 +3015,7 @@
         "context": "wide-panel-fixture"
       },
       "file": "welcome-import-dark-820x720.png",
-      "sha256": "1a28609b84bf1d3b35198edc983092783d48b182680c506d31c0da4fe0198212",
+      "sha256": "d67f815e16a440ef46338a196f4839449984d039c767ae8be20c770210d9c8a7",
       "geometry": {
         "documentWidth": 820,
         "viewportWidth": 820,
@@ -3034,7 +3036,7 @@
         "context": "wide-panel-fixture"
       },
       "file": "accounts-cached-dark-820x720.png",
-      "sha256": "27094134dd4f7410661eac705beb0432393ee4da268b2e0c37c5c78ae78d703f",
+      "sha256": "be6f422996219996ee4b301d145a58d0f5d2c7f723ecff78ecf35b4e105800d0",
       "geometry": {
         "documentWidth": 820,
         "viewportWidth": 820,
@@ -3055,7 +3057,7 @@
         "context": "wide-panel-fixture"
       },
       "file": "accounts-refresh-error-dark-820x720.png",
-      "sha256": "bdc49ebdf840ac637622c36bb83c4ab448c910143e65a794fef85842129bd57f",
+      "sha256": "99f0af3f26748e5d5e47cdfb72a7270e840f7d01989e3db6c11ac7fbac5d795c",
       "geometry": {
         "documentWidth": 820,
         "viewportWidth": 820,
@@ -3076,7 +3078,7 @@
         "context": "wide-panel-fixture"
       },
       "file": "accounts-empty-search-dark-820x720.png",
-      "sha256": "621e75eec29b000bbe4c86b0d1d036b07a59fa0c7168d149f17569b36d41bfca",
+      "sha256": "478ce2cf41872cf3206a7ef4f6e4e66036966185b559586a11bb970eb92767c7",
       "geometry": {
         "documentWidth": 820,
         "viewportWidth": 820,
@@ -3097,7 +3099,7 @@
         "context": "wide-panel-fixture"
       },
       "file": "dashboard-assets-dark-820x720.png",
-      "sha256": "67f9ffbda12a72e2d8bfbb59bd05b5dc639d6df96edbab440908dbfd7aa3a53d",
+      "sha256": "cf758b6850613cdc0d8e9a5644ff3a094968a256e45dbba94a049beaa9198217",
       "geometry": {
         "documentWidth": 820,
         "viewportWidth": 820,
@@ -3118,11 +3120,11 @@
         "context": "wide-panel-fixture"
       },
       "file": "settings-theme-dark-820x720.png",
-      "sha256": "4662f4a18af983f500049a0471e85895c723c77e701364ff8839c06e68244151",
+      "sha256": "65648c02be1bbb05ec59be875125a3685046582d1314f30d0864613f39124f3a",
       "geometry": {
         "documentWidth": 820,
         "viewportWidth": 820,
-        "appScrollHeight": 939,
+        "appScrollHeight": 991,
         "appClientHeight": 600
       },
       "browserDiagnostics": [
@@ -3139,11 +3141,11 @@
         "context": "wide-panel-fixture"
       },
       "file": "settings-auto-lock-dark-820x720.png",
-      "sha256": "0234bfcd12951ab7efed626f4fa8ede2d82dc7469f1f8ef86bf24727b2d45e28",
+      "sha256": "a11c08c82a35ca41c9d387d4e09f54801aff87e6be7254ecafa2482316187078",
       "geometry": {
         "documentWidth": 820,
         "viewportWidth": 820,
-        "appScrollHeight": 939,
+        "appScrollHeight": 991,
         "appClientHeight": 600
       },
       "browserDiagnostics": [
@@ -3160,11 +3162,11 @@
         "context": "wide-panel-fixture"
       },
       "file": "settings-signing-dark-820x720.png",
-      "sha256": "de959a010c53335a2645d60f2be0498f88da6cf107b65a53e81fe31d60271459",
+      "sha256": "b2b5d027773e3fd7c594b36792208044ca7c3115040531db9267b50898f87f08",
       "geometry": {
         "documentWidth": 820,
         "viewportWidth": 820,
-        "appScrollHeight": 939,
+        "appScrollHeight": 991,
         "appClientHeight": 600
       },
       "browserDiagnostics": [
@@ -3181,11 +3183,11 @@
         "context": "wide-panel-fixture"
       },
       "file": "settings-bottom-dark-820x720.png",
-      "sha256": "a3eb9e748e5fb2b5ba0843c737d832594c6c4d283069576f7be63e5daac99233",
+      "sha256": "39af86b1cd68633a372a77554cea8f9b16134299eadec4bb90c8abc843c82b82",
       "geometry": {
         "documentWidth": 820,
         "viewportWidth": 820,
-        "appScrollHeight": 939,
+        "appScrollHeight": 991,
         "appClientHeight": 600
       },
       "browserDiagnostics": [
