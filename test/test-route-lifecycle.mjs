@@ -1357,6 +1357,7 @@ const FIXTURES = {
   'wallet.changePassword': ({ currentPassword, newPassword } = {}) => {
     if (currentPassword !== SECRET_PASSWORD) throw apiError('BAD_PASSWORD', 'Incorrect password.');
     if (typeof newPassword !== 'string' || newPassword.length < 8) throw apiError('BAD_PASSWORD', 'Use at least 8 characters.');
+    if (newPassword === currentPassword) throw apiError('BAD_PASSWORD', 'Choose a different new password.');
     return { changed: true };
   },
   'wallet.lock': () => {
@@ -2718,6 +2719,15 @@ async function themeTest() {
       && [...changeFields].every((input) => input.getAttribute('spellcheck') === 'false'
         && input.getAttribute('autocorrect') === 'off' && input.getAttribute('autocapitalize') === 'off'));
   if (changeFields.length === 3) {
+    const changeCallsBeforeSamePassword = chromeLog.calls.filter((method) => method === 'wallet.changePassword').length;
+    type(changeFields[0], 'same password 123');
+    type(changeFields[1], 'same password 123');
+    type(changeFields[2], 'same password 123');
+    passwordForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await settle();
+    ok('Change password rejects reusing the current password before calling the backend',
+      chromeLog.calls.filter((method) => method === 'wallet.changePassword').length === changeCallsBeforeSamePassword
+        && /different from your current password/i.test(textOf(passwordSheet)));
     type(changeFields[0], 'wrong current');
     type(changeFields[1], 'new password 123');
     type(changeFields[2], 'new password 123');

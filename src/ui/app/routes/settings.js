@@ -547,6 +547,11 @@ export function SettingsRoute({ navigate, back, params = {}, onNetworkBusy = () 
         notice.clear();
         if (!current.value) { notice.set('Enter your current password.'); current.focus(); return; }
         if (next.value.length < 8) { notice.set('Use at least 8 characters for the new password.'); next.focus(); return; }
+        if (next.value === current.value) {
+          notice.set('Choose a new password that is different from your current password.');
+          next.focus();
+          return;
+        }
         if (next.value !== confirm.value) { notice.set('The new passwords do not match.'); confirm.focus(); return; }
         const currentValue = current.value;
         const nextValue = next.value;

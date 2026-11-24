@@ -455,6 +455,14 @@ try {
 }
 assert(wrongCurrentRejected, 'password change requires the correct current password');
 assert(await vault.isUnlocked(), 'wrong current password does not lock an intact wallet');
+let samePasswordRejected = false;
+try {
+  await vault.changeMasterPassword('old master password', 'old master password');
+} catch (error) {
+  samePasswordRejected = /different from your current password/i.test(error.message);
+}
+assert(samePasswordRejected, 'new master password must differ from the current password');
+assert(await vault.isUnlocked(), 'rejecting the same password leaves the wallet unlocked');
 
 const localSet = chrome.storage.local.set;
 chrome.storage.local.set = async (record) => {

@@ -412,6 +412,9 @@ export async function changeMasterPassword(currentPassword, newPassword) {
     || typeof newPassword !== 'string' || newPassword.length < 8) {
     throw new Error('Use a new password with at least 8 characters.');
   }
+  if (currentPassword === newPassword) {
+    throw new Error('Choose a new password that is different from your current password.');
+  }
   const { [VAULT_KEY]: stored } = await chrome.storage.local.get(VAULT_KEY);
   if (!stored) throw new Error('No wallet found on this device yet.');
   checkEnvelopeVersion(stored);
