@@ -11,6 +11,22 @@
    token ledger, and persistent connection status.
    ============================================================ */
 
+@font-face {
+  font-family: 'Inter Tight';
+  src: url('../fonts/inter-tight-latin-variable.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('../fonts/jetbrains-mono-latin-variable.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 100 800;
+  font-display: swap;
+}
+
 :root {
   /* ---- thru.org Official Color Scales ---- */
   --steel-0: #f7f8f8;
