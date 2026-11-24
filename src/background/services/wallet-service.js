@@ -133,6 +133,7 @@ export async function changePassword(currentPassword, newPassword) {
   try {
     const result = await vault.changeMasterPassword(currentPassword, newPassword);
     await auth.recordSuccess();
+    if (result?.relocked) await lock();
     return result;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

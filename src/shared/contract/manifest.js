@@ -1228,7 +1228,7 @@ export const METHODS = {
   },
   'wallet.changePassword': {
     params: ['currentPassword', 'newPassword'],
-    returns: '{ changed:true } after re-encrypting the vault with the new master password',
+    returns: '{ changed:true, relocked?:true } after re-encryption; relocked means the new password is saved but session storage failed and the wallet was locked',
     auth: 'unlocked',
     since: 34,
   },

@@ -436,7 +436,13 @@ export async function changeMasterPassword(currentPassword, newPassword) {
   // storage write is interrupted. On write failure the old envelope remains unlockable.
   await chrome.storage.session.remove(SESSION_KEY);
   await chrome.storage.local.set({ [VAULT_KEY]: replacement });
-  await chrome.storage.session.set({ [SESSION_KEY]: { vaultData: verifiedData, rawKeyB64: toB64(nextKey) } });
+  try {
+    await chrome.storage.session.set({ [SESSION_KEY]: { vaultData: verifiedData, rawKeyB64: toB64(nextKey) } });
+  } catch {
+    // The encrypted envelope is already committed with the new password. Leave the wallet
+    // locked and report a successful change so callers do not tell the user it failed.
+    return { changed: true, relocked: true };
+  }
   return { changed: true };
 }
 

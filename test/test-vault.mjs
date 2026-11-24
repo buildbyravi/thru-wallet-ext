@@ -493,3 +493,16 @@ assert(oldPasswordRejected, 'old password cannot unlock after successful change'
 await vault.unlock('new master password');
 assert((await vault.exportAccountSecret(beforePasswordChange[0].ref, 'new master password')).mnemonic === changeMnemonic,
   'new password unlocks and decrypts the same recovery phrase');
+const sessionSet = chrome.storage.session.set;
+chrome.storage.session.set = async () => { throw new Error('simulated session write failure'); };
+const sessionFailureResult = await vault.changeMasterPassword('new master password', 'another master password');
+chrome.storage.session.set = sessionSet;
+assert(sessionFailureResult.changed && sessionFailureResult.relocked,
+  'post-commit session failure reports changed-and-relocked rather than false failure');
+assert(!(await vault.isUnlocked()), 'post-commit session failure leaves the wallet locked');
+let previousPasswordRejected = false;
+try { await vault.unlock('new master password'); } catch { previousPasswordRejected = true; }
+assert(previousPasswordRejected, 'the prior password cannot open the committed new envelope');
+await vault.unlock('another master password');
+assert((await vault.exportAccountSecret(beforePasswordChange[0].ref, 'another master password')).mnemonic === changeMnemonic,
+  'the new password still opens the committed envelope after session storage failure');

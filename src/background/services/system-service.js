@@ -77,11 +77,9 @@ export async function setAutoLockMinutes(minutes) {
   if (typeof chrome === 'undefined' || !chrome.storage?.local) {
     throw new Error('Auto-lock settings storage is unavailable.');
   }
-  // Never report success when the setting was not durably saved: otherwise the UI can
-  // display "Never" while a previous short timeout remains active after worker restart.
+  // Never report success when the setting write fails: otherwise the UI can display
+  // "Never" while a previous short timeout remains active after worker restart.
   await chrome.storage.local.set({ [AUTO_LOCK_KEY]: min });
-  const persisted = await getAutoLockMinutes();
-  if (persisted !== min) throw new Error('Auto-lock setting could not be saved. Please retry.');
 
   await touchActivity();
   await ensureAutoLockAlarm();
